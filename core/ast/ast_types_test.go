@@ -4,10 +4,10 @@ import (
 	"testing"
 )
 
-func TestOPSType_BasicTypes(t *testing.T) {
+func TestGoMiniType_BasicTypes(t *testing.T) {
 	tests := []struct {
 		name    string
-		typeStr OPSType
+		typeStr GoMiniType
 		isEmpty bool
 		isVoid  bool
 		isPtr   bool
@@ -56,12 +56,12 @@ func TestOPSType_BasicTypes(t *testing.T) {
 	}
 }
 
-func TestOPSType_ArrayOperations(t *testing.T) {
+func TestGoMiniType_ArrayOperations(t *testing.T) {
 	tests := []struct {
 		name         string
-		typeStr      OPSType
+		typeStr      GoMiniType
 		isArray      bool
-		expectedElem OPSType
+		expectedElem GoMiniType
 		shouldFail   bool
 	}{
 		{"Simple Array", "Array<Int>", true, "Int", false},
@@ -95,8 +95,8 @@ func TestOPSType_ArrayOperations(t *testing.T) {
 func TestCreateArrayType(t *testing.T) {
 	tests := []struct {
 		name     string
-		elemType OPSType
-		expected OPSType
+		elemType GoMiniType
+		expected GoMiniType
 	}{
 		{"Int Array", "Int", "Array<Int>"},
 		{"String Array", "String", "Array<String>"},
@@ -118,12 +118,12 @@ func TestCreateArrayType(t *testing.T) {
 	}
 }
 
-func TestOPSType_PointerOperations(t *testing.T) {
+func TestGoMiniType_PointerOperations(t *testing.T) {
 	tests := []struct {
 		name         string
-		typeStr      OPSType
+		typeStr      GoMiniType
 		isPtr        bool
-		expectedElem OPSType
+		expectedElem GoMiniType
 		shouldFail   bool
 	}{
 		{"Simple Pointer", "Ptr<Int>", true, "Int", false},
@@ -156,8 +156,8 @@ func TestOPSType_PointerOperations(t *testing.T) {
 func TestCreatePtrType(t *testing.T) {
 	tests := []struct {
 		name     string
-		elemType OPSType
-		expected OPSType
+		elemType GoMiniType
+		expected GoMiniType
 	}{
 		{"Int Pointer", "Int", "Ptr<Int>"},
 		{"Array Pointer", "Array<Int>", "Ptr<Array<Int>>"},
@@ -177,13 +177,13 @@ func TestCreatePtrType(t *testing.T) {
 	}
 }
 
-func TestOPSType_MapOperations(t *testing.T) {
+func TestGoMiniType_MapOperations(t *testing.T) {
 	tests := []struct {
 		name          string
-		typeStr       OPSType
+		typeStr       GoMiniType
 		isMap         bool
-		expectedKey   OPSType
-		expectedValue OPSType
+		expectedKey   GoMiniType
+		expectedValue GoMiniType
 		shouldFail    bool
 	}{
 		{"Simple Map", "Map<String, Int>", true, "String", "Int", false},
@@ -222,9 +222,9 @@ func TestOPSType_MapOperations(t *testing.T) {
 func TestCreateMapType(t *testing.T) {
 	tests := []struct {
 		name      string
-		keyType   OPSType
-		valueType OPSType
-		expected  OPSType
+		keyType   GoMiniType
+		valueType GoMiniType
+		expected  GoMiniType
 	}{
 		{"Simple Map", "String", "Int", "Map<String, Int>"},
 		{"Map with Pointer Value", "Int", "Ptr<String>", "Map<Int, Ptr<String>>"},
@@ -260,13 +260,13 @@ func TestCreateMapType(t *testing.T) {
 	}
 }
 
-func TestOPSType_FunctionParsing(t *testing.T) {
+func TestGoMiniType_FunctionParsing(t *testing.T) {
 	tests := []struct {
 		name           string
-		typeStr        OPSType
+		typeStr        GoMiniType
 		isFunc         bool
 		expectedParams []FunctionParam
-		expectedReturn OPSType
+		expectedReturn GoMiniType
 	}{
 		{
 			"No params, no return",
@@ -392,24 +392,24 @@ func TestOPSType_FunctionParsing(t *testing.T) {
 	}
 }
 
-func TestOPSType_TupleParsing(t *testing.T) {
+func TestGoMiniType_TupleParsing(t *testing.T) {
 	tests := []struct {
 		name          string
-		typeStr       OPSType
+		typeStr       GoMiniType
 		isTuple       bool
-		expectedTypes []OPSType
+		expectedTypes []GoMiniType
 	}{
 		{
 			"Simple tuple",
 			"tuple(Int, String, Bool)",
 			true,
-			[]OPSType{"Int", "String", "Bool"},
+			[]GoMiniType{"Int", "String", "Bool"},
 		},
 		{
 			"Single element tuple",
 			"tuple(Int)",
 			true,
-			[]OPSType{"Int"},
+			[]GoMiniType{"Int"},
 		},
 		{
 			"Empty tuple",
@@ -421,25 +421,25 @@ func TestOPSType_TupleParsing(t *testing.T) {
 			"Nested tuple",
 			"tuple(Int, tuple(String, Bool), Array<Int>)",
 			true,
-			[]OPSType{"Int", "tuple(String, Bool)", "Array<Int>"},
+			[]GoMiniType{"Int", "tuple(String, Bool)", "Array<Int>"},
 		},
 		{
 			"Tuple with complex types",
 			"tuple(Array<Int>, Map<String, Int>, function() Int)",
 			true,
-			[]OPSType{"Array<Int>", "Map<String, Int>", "function() Int"},
+			[]GoMiniType{"Array<Int>", "Map<String, Int>", "function() Int"},
 		},
 		{
 			"Not a tuple",
 			"Int",
 			false,
-			[]OPSType{},
+			[]GoMiniType{},
 		},
 		{
 			"Array acts like single-element tuple",
 			"Array<Int>",
 			false,
-			[]OPSType{"Int"}, // Special case for arrays
+			[]GoMiniType{"Int"}, // Special case for arrays
 		},
 	}
 
@@ -478,14 +478,14 @@ func TestOPSType_TupleParsing(t *testing.T) {
 func TestCreateTupleType(t *testing.T) {
 	tests := []struct {
 		name     string
-		types    []OPSType
-		expected OPSType
+		types    []GoMiniType
+		expected GoMiniType
 	}{
-		{"Empty", []OPSType{}, "Void"},
-		{"Single", []OPSType{"Int"}, "Int"},
-		{"Two types", []OPSType{"Int", "String"}, "tuple(Int, String)"},
-		{"Three types", []OPSType{"Int", "String", "Bool"}, "tuple(Int, String, Bool)"},
-		{"With complex types", []OPSType{"Array<Int>", "Map<String, Int>"}, "tuple(Array<Int>, Map<String, Int>)"},
+		{"Empty", []GoMiniType{}, "Void"},
+		{"Single", []GoMiniType{"Int"}, "Int"},
+		{"Two types", []GoMiniType{"Int", "String"}, "tuple(Int, String)"},
+		{"Three types", []GoMiniType{"Int", "String", "Bool"}, "tuple(Int, String, Bool)"},
+		{"With complex types", []GoMiniType{"Array<Int>", "Map<String, Int>"}, "tuple(Array<Int>, Map<String, Int>)"},
 	}
 
 	for _, tt := range tests {
@@ -498,11 +498,11 @@ func TestCreateTupleType(t *testing.T) {
 	}
 }
 
-func TestOPSType_Equals(t *testing.T) {
+func TestGoMiniType_Equals(t *testing.T) {
 	tests := []struct {
 		name     string
-		type1    OPSType
-		type2    OPSType
+		type1    GoMiniType
+		type2    GoMiniType
 		expected bool
 	}{
 		// Basic types

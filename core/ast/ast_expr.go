@@ -133,7 +133,7 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 		c.Args[i] = argNode.(Expr)
 	}
 
-	var args []OPSType
+	var args []GoMiniType
 	for _, arg := range c.Args {
 		args = append(args, arg.GetBase().Type)
 	}
@@ -210,7 +210,7 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 
 		if !isPerfectMatch {
-			var deducedElem OPSType = "Any"
+			var deducedElem GoMiniType = "Any"
 			if len(c.Args) > 0 {
 				deducedElem = args[0]
 				for i := 1; i < len(args); i++ {
@@ -223,7 +223,7 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 			deducedArray := CreateArrayType(deducedElem)
 
 			if !targetArrayType.Equals(deducedArray) {
-				ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, []OPSType{deducedArray})
+				ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, []GoMiniType{deducedArray})
 				return nil, false
 			}
 
@@ -384,8 +384,8 @@ func (c *CompositeExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *CompositeExpr) exprNode()          {}
 
 func (c *CompositeExpr) Validate(ctx *ValidContext) (Node, bool) {
-	c.Kind = Ident(OPSType(c.Kind).Resolve(ctx))
-	c.Type = OPSType(c.Kind) // 同步更新 BaseNode.Type
+	c.Kind = Ident(GoMiniType(c.Kind).Resolve(ctx))
+	c.Type = GoMiniType(c.Kind) // 同步更新 BaseNode.Type
 	if c.Kind == "" {
 		ctx.AddErrorf("复合类型缺少类型标识")
 		return nil, false

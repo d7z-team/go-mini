@@ -456,10 +456,10 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			}
 			n.Params = append(n.Params, ast.FunctionParam{
 				Name: ast.Ident(param.Name),
-				Type: ast.OPSType(param.Type),
+				Type: ast.GoMiniType(param.Type),
 			})
 		}
-		n.Return = ast.OPSType(raw.Return)
+		n.Return = ast.GoMiniType(raw.Return)
 
 		if raw.Body != nil {
 			body, err := unmarshalNode(raw.Body)
@@ -612,7 +612,7 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			BaseNode: ast.BaseNode{
 				ID:   baseNode.ID,
 				Meta: baseNode.Meta,
-				Type: ast.OPSType(raw.Kind),
+				Type: ast.GoMiniType(raw.Kind),
 			},
 			Value: raw.Value,
 		}, nil
@@ -730,7 +730,7 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 
 		// 设置类型
 		if raw.Kind != "" {
-			n.BaseNode.Type = ast.OPSType(raw.Kind)
+			n.BaseNode.Type = ast.GoMiniType(raw.Kind)
 		}
 
 		for i, elem := range raw.Values {
@@ -794,7 +794,7 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 
 		for key, field := range raw.Fields {
-			n.Fields[ast.Ident(key)] = ast.OPSType(field)
+			n.Fields[ast.Ident(key)] = ast.GoMiniType(field)
 		}
 		return n, nil
 	case "increment":

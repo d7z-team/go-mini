@@ -23,7 +23,7 @@ func NewMiniFile(data []byte) MiniFile {
 	return MiniFile{data: data}
 }
 
-func (o *MiniFile) OPSType() ast.Ident         { return "io.File" }
+func (o *MiniFile) GoMiniType() ast.Ident      { return "io.File" }
 func (o *MiniFile) Size() ast.MiniInt64        { return ast.NewMiniInt64(int64(len(o.data))) }
 func (o *MiniFile) Bytes() []byte              { return o.data }
 func (o *MiniFile) ReadString() ast.MiniString { return ast.NewMiniString(string(o.data)) }
@@ -59,8 +59,8 @@ func (o *MiniNamedFile) GOFileName() string   { return o.name }
 func (o *MiniNamedFile) String() ast.MiniString {
 	return ast.NewMiniString(fmt.Sprintf("File(name=%s, size=%d)", o.name, len(o.file.data)))
 }
-func (o *MiniNamedFile) OPSType() ast.Ident { return "io.NamedFile" }
-func (o *MiniNamedFile) Bytes() []byte      { return o.file.data }
+func (o *MiniNamedFile) GoMiniType() ast.Ident { return "io.NamedFile" }
+func (o *MiniNamedFile) Bytes() []byte         { return o.file.data }
 
 // --- FS Types ---
 
@@ -69,7 +69,7 @@ type MiniFileInfo struct {
 }
 
 func NewMiniFileInfo(info os.FileInfo) *MiniFileInfo { return &MiniFileInfo{info: info} }
-func (o *MiniFileInfo) OPSType() ast.Ident           { return "fs.FileInfo" }
+func (o *MiniFileInfo) GoMiniType() ast.Ident        { return "fs.FileInfo" }
 func (o *MiniFileInfo) Name() ast.MiniString         { return ast.NewMiniString(o.info.Name()) }
 func (o *MiniFileInfo) Size() ast.MiniInt64          { return ast.NewMiniInt64(o.info.Size()) }
 func (o *MiniFileInfo) IsDir() ast.MiniBool          { return ast.NewMiniBool(o.info.IsDir()) }
@@ -80,7 +80,7 @@ type MiniFsFile struct {
 }
 
 func NewMiniFsFile(file afero.File) *MiniFsFile   { return &MiniFsFile{file: file} }
-func (o *MiniFsFile) OPSType() ast.Ident          { return "fs.FsFile" }
+func (o *MiniFsFile) GoMiniType() ast.Ident       { return "fs.FsFile" }
 func (o *MiniFsFile) Read(p []byte) (int, error)  { return o.file.Read(p) }
 func (o *MiniFsFile) Write(p []byte) (int, error) { return o.file.Write(p) }
 func (o *MiniFsFile) MiniRead(n *ast.MiniInt64) (MiniFile, error) {
@@ -109,8 +109,8 @@ type MiniFs struct {
 	fs afero.Fs
 }
 
-func NewMiniFs(fs afero.Fs) *MiniFs  { return &MiniFs{fs: fs} }
-func (o *MiniFs) OPSType() ast.Ident { return "fs.Fs" }
+func NewMiniFs(fs afero.Fs) *MiniFs     { return &MiniFs{fs: fs} }
+func (o *MiniFs) GoMiniType() ast.Ident { return "fs.Fs" }
 func (o *MiniFs) Mkdir(path *ast.MiniString, perm *ast.MiniInt64) error {
 	return o.fs.Mkdir(path.GoString(), toOsFileMode(perm))
 }
@@ -247,7 +247,7 @@ func NewMiniBuffer() *MiniBuffer { return &MiniBuffer{buf: new(bytes.Buffer)} }
 func NewMiniBufferFromBytes(data []byte) *MiniBuffer {
 	return &MiniBuffer{buf: bytes.NewBuffer(data)}
 }
-func (o *MiniBuffer) OPSType() ast.Ident          { return "io.Buffer" }
+func (o *MiniBuffer) GoMiniType() ast.Ident       { return "io.Buffer" }
 func (o *MiniBuffer) Write(p []byte) (int, error) { return o.buf.Write(p) }
 func (o *MiniBuffer) Read(p []byte) (int, error)  { return o.buf.Read(p) }
 func (o *MiniBuffer) MiniWrite(p *MiniFile) (ast.MiniInt64, error) {

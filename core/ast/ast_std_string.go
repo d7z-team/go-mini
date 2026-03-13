@@ -19,8 +19,8 @@ func (o *MiniString) Set(data string) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniString) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniString) GoMiniType() Ident {
 	return "String"
 }
 

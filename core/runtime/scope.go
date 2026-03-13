@@ -11,7 +11,7 @@ import (
 )
 
 type Var struct {
-	Type   ast.OPSType
+	Type   ast.GoMiniType
 	GoType reflect.Type
 	Data   any
 	Value  reflect.Value // 变量的真实存储槽位 (可寻址)
@@ -23,7 +23,7 @@ func (v *Var) IsPtr() bool {
 	return v.Type.IsPtr()
 }
 
-func NewVar(typ ast.OPSType, goType reflect.Type, data any, stack *Stack) *Var {
+func NewVar(typ ast.GoMiniType, goType reflect.Type, data any, stack *Stack) *Var {
 	if goType == nil && data != nil {
 		if rv, ok := data.(reflect.Value); ok {
 			goType = rv.Type()
@@ -70,7 +70,7 @@ func NewVar(typ ast.OPSType, goType reflect.Type, data any, stack *Stack) *Var {
 	return res
 }
 
-func NewVarWithValue(typ ast.OPSType, val reflect.Value, stack *Stack) *Var {
+func NewVarWithValue(typ ast.GoMiniType, val reflect.Value, stack *Stack) *Var {
 	v := &Var{
 		Type:   typ,
 		GoType: val.Type(),
@@ -247,7 +247,7 @@ func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
 	return nil
 }
 
-func (c *StackContext) NewVar(s string, kind ast.OPSType) error {
+func (c *StackContext) NewVar(s string, kind ast.GoMiniType) error {
 	if c.Stack == nil {
 		return errors.New("stack is nil")
 	}

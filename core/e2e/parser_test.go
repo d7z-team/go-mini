@@ -18,7 +18,7 @@ var tf []byte
 
 func TestFor(t *testing.T) {
 	UtilsTest(t, tf, func(t *testing.T, v *ast.ValidContext) {
-		assert.NoError(t, v.AddStructDefine("Browser", map[ast.Ident]ast.OPSType{
+		assert.NoError(t, v.AddStructDefine("Browser", map[ast.Ident]ast.GoMiniType{
 			"input": "function(Browser,String,String) String",
 		}))
 		assert.NoError(t, v.AddFuncSpec("openBrowser", "function(String)Browser"))

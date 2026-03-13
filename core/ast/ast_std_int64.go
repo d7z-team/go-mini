@@ -24,8 +24,8 @@ func (o *MiniInt64) GoValue() any {
 	return o.data
 }
 
-// OPSType 获取类型名
-func (o *MiniInt64) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniInt64) GoMiniType() Ident {
 	return "Int64"
 }
 

@@ -13,8 +13,8 @@ func NewMiniBool(data bool) MiniBool {
 	return MiniBool{data: data}
 }
 
-// OPSType 获取类型名
-func (o *MiniBool) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniBool) GoMiniType() Ident {
 	return "Bool"
 }
 

@@ -17,8 +17,8 @@ func (o *MiniUint64) Set(data uint64) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniUint64) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniUint64) GoMiniType() Ident {
 	return "Uint64"
 }
 

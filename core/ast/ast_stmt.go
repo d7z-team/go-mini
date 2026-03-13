@@ -377,9 +377,9 @@ func (r *ReturnStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	if len(r.Results) > 0 {
-		var tType OPSType
+		var tType GoMiniType
 		if len(r.Results) > 1 {
-			var rTypes []OPSType
+			var rTypes []GoMiniType
 			for _, result := range r.Results {
 				rTypes = append(rTypes, result.GetBase().Type)
 			}
@@ -425,7 +425,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	if f.Scope != "" {
-		f.Scope = Ident(OPSType(f.Scope).Resolve(ctx))
+		f.Scope = Ident(GoMiniType(f.Scope).Resolve(ctx))
 		if !f.Scope.Valid(ctx) {
 			return nil, false
 		}
@@ -483,7 +483,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 
 	// this 上下文
 	if f.Scope != "" {
-		bodyCtx.AddVariable("this", OPSType(f.Scope))
+		bodyCtx.AddVariable("this", GoMiniType(f.Scope))
 	}
 
 	// 验证函数体
@@ -514,7 +514,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 	// 注册函数
 	structType.Methods[f.Name] = f.FunctionType.ToCallFunctionType()
 	if f.Scope != "" {
-		err := ctx.AddFuncSpec(Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name)), OPSType(f.FunctionType.String()))
+		err := ctx.AddFuncSpec(Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name)), GoMiniType(f.FunctionType.String()))
 		if err != nil {
 			ctx.AddErrorf("添加全局函数失败")
 			return nil, false
@@ -542,7 +542,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 type GenDeclStmt struct {
 	BaseNode
 	Name Ident
-	Kind OPSType
+	Kind GoMiniType
 }
 
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
@@ -798,8 +798,8 @@ func (d *DerefAssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 // StructStmt 所有 struct 都注册到全局
 type StructStmt struct {
 	BaseNode
-	Name   Ident             `json:"name"`
-	Fields map[Ident]OPSType `json:"fields"`
+	Name   Ident                `json:"name"`
+	Fields map[Ident]GoMiniType `json:"fields"`
 }
 
 func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }

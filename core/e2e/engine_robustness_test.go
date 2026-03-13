@@ -33,29 +33,29 @@ func TestTypeSystemEdgeCases(t *testing.T) {
 	t.Run("DeeplyNestedArray", func(t *testing.T) {
 		// Array<Array<Array<...>>>
 		typeStr := "Array<Array<Array<Array<Int64>>>>"
-		miniType := ast.OPSType(typeStr)
+		miniType := ast.GoMiniType(typeStr)
 
 		assert.True(t, miniType.IsArray())
 
 		elem, ok := miniType.ReadArrayItemType()
 		assert.True(t, ok)
-		assert.Equal(t, ast.OPSType("Array<Array<Array<Int64>>>"), elem)
+		assert.Equal(t, ast.GoMiniType("Array<Array<Array<Int64>>>"), elem)
 
 		elem2, _ := elem.ReadArrayItemType()
 		elem3, _ := elem2.ReadArrayItemType()
 		elem4, _ := elem3.ReadArrayItemType()
-		assert.Equal(t, ast.OPSType("Int64"), elem4)
+		assert.Equal(t, ast.GoMiniType("Int64"), elem4)
 	})
 
 	t.Run("ComplexMap", func(t *testing.T) {
 		typeStr := "Map<String, Array<Ptr<Int64>>>"
-		miniType := ast.OPSType(typeStr)
+		miniType := ast.GoMiniType(typeStr)
 
 		assert.True(t, miniType.IsMap())
 		k, v, ok := miniType.GetMapKeyValueTypes()
 		assert.True(t, ok)
-		assert.Equal(t, ast.OPSType("String"), k)
-		assert.Equal(t, ast.OPSType("Array<Ptr<Int64>>"), v)
+		assert.Equal(t, ast.GoMiniType("String"), k)
+		assert.Equal(t, ast.GoMiniType("Array<Ptr<Int64>>"), v)
 	})
 }
 

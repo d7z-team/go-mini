@@ -18,8 +18,8 @@ func (o *MiniFloat32) Set(data float32) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniFloat32) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniFloat32) GoMiniType() Ident {
 	return "Float32"
 }
 

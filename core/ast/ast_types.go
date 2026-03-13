@@ -6,71 +6,71 @@ import (
 	"strings"
 )
 
-// OPSType 类型的粗略表达形式
-type OPSType string
+// GoMiniType 类型的粗略表达形式
+type GoMiniType string
 
 const (
-	TypeAny OPSType = "Any"
+	TypeAny GoMiniType = "Any"
 )
 
-func (o OPSType) IsEmpty() bool {
+func (o GoMiniType) IsEmpty() bool {
 	return o == ""
 }
 
-func (o OPSType) IsVoid() bool {
+func (o GoMiniType) IsVoid() bool {
 	return o == "Void"
 }
 
-func (o OPSType) IsPtr() bool {
+func (o GoMiniType) IsPtr() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Ptr<") && strings.HasSuffix(s, ">")
 }
 
-func (o OPSType) IsArray() bool {
+func (o GoMiniType) IsArray() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">")
 }
 
-func (o OPSType) IsMap() bool {
+func (o GoMiniType) IsMap() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
 }
 
-func (o OPSType) IsAny() bool {
+func (o GoMiniType) IsAny() bool {
 	return o == TypeAny
 }
 
 // ReadArrayItemType 获取数组元素类型
-func (o OPSType) ReadArrayItemType() (OPSType, bool) {
+func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
 	if !o.IsArray() {
 		return "", false
 	}
 	s := string(o)
 	inner := s[6 : len(s)-1]
-	return OPSType(inner), true
+	return GoMiniType(inner), true
 }
 
 // CreateArrayType 创建数组类型
-func CreateArrayType(elementType OPSType) OPSType {
-	return OPSType(fmt.Sprintf("Array<%s>", elementType))
+func CreateArrayType(elementType GoMiniType) GoMiniType {
+	return GoMiniType(fmt.Sprintf("Array<%s>", elementType))
 }
 
 // GetPtrElementType 获取指针指向的类型
-func (o OPSType) GetPtrElementType() (OPSType, bool) {
+func (o GoMiniType) GetPtrElementType() (GoMiniType, bool) {
 	if !o.IsPtr() {
 		return "", false
 	}
 	s := string(o)
 	inner := s[4 : len(s)-1]
-	return OPSType(inner), true
+	return GoMiniType(inner), true
 }
 
-func (o OPSType) ToPtr() OPSType {
-	return OPSType(fmt.Sprintf("Ptr<%s>", o))
+func (o GoMiniType) ToPtr() GoMiniType {
+	return GoMiniType(fmt.Sprintf("Ptr<%s>", o))
 }
 
 // GetMapKeyValueTypes 获取Map的键和值类型
-func (o OPSType) GetMapKeyValueTypes() (keyType, valueType OPSType, ok bool) {
+func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
 	if !o.IsMap() {
 		return "", "", false
 	}
@@ -83,15 +83,15 @@ func (o OPSType) GetMapKeyValueTypes() (keyType, valueType OPSType, ok bool) {
 		return "", "", false
 	}
 
-	return OPSType(strings.TrimSpace(parts[0])), OPSType(strings.TrimSpace(parts[1])), true
+	return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
 }
 
 // CreateMapType 创建Map类型
-func CreateMapType(keyType, valueType OPSType) OPSType {
-	return OPSType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
+func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
+	return GoMiniType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
 }
 
-func (o OPSType) ReadFunc() (*FunctionType, bool) {
+func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
 	s := string(o)
 	if !strings.HasPrefix(s, "function(") {
 		return nil, false
@@ -125,7 +125,7 @@ func (o OPSType) ReadFunc() (*FunctionType, bool) {
 	params, isVariadic := parseParams(paramsStr)
 
 	// 解析返回值
-	var returns OPSType = "Void"
+	var returns GoMiniType = "Void"
 	if returnsStr != "" {
 		returns = parseReturnType(returnsStr)
 	}
@@ -139,18 +139,18 @@ func (o OPSType) ReadFunc() (*FunctionType, bool) {
 
 type FunctionType struct {
 	Params   []FunctionParam `json:"params,omitempty"`
-	Return   OPSType         `json:"return"`
+	Return   GoMiniType      `json:"return"`
 	Variadic bool            `json:"variadic,omitempty"`
 }
 
 type FunctionParam struct {
 	Name Ident
-	Type OPSType
+	Type GoMiniType
 }
 
 type CallFunctionType struct {
-	Params   []OPSType
-	Returns  OPSType
+	Params   []GoMiniType
+	Returns  GoMiniType
 	Doc      string
 	Variadic bool
 }
@@ -167,8 +167,8 @@ func (c CallFunctionType) String() string {
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ","), c.Returns)
 }
 
-func (c CallFunctionType) MiniType() OPSType {
-	return OPSType(c.String())
+func (c CallFunctionType) MiniType() GoMiniType {
+	return GoMiniType(c.String())
 }
 
 // 解析参数列表字符串
@@ -229,7 +229,7 @@ func parseParams(paramsStr string) ([]FunctionParam, bool) {
 
 		params = append(params, FunctionParam{
 			Name: paramName,
-			Type: OPSType(typeStr),
+			Type: GoMiniType(typeStr),
 		})
 	}
 
@@ -242,7 +242,7 @@ func isIdentChar(ch rune) bool {
 }
 
 // 解析返回值类型字符串
-func parseReturnType(returnStr string) OPSType {
+func parseReturnType(returnStr string) GoMiniType {
 	returnStr = strings.TrimSpace(returnStr)
 	if returnStr == "" {
 		return ""
@@ -265,25 +265,25 @@ func parseReturnType(returnStr string) OPSType {
 
 		// 如果有多个返回值，包装成tuple(...)
 		if len(types) > 1 {
-			return OPSType("tuple(" + strings.Join(types, ", ") + ")")
+			return GoMiniType("tuple(" + strings.Join(types, ", ") + ")")
 		} else if len(types) == 1 {
 			// 单个返回值，直接返回
-			return OPSType(types[0])
+			return GoMiniType(types[0])
 		}
 	}
 
 	// 单个返回值，直接返回
-	return OPSType(returnStr)
+	return GoMiniType(returnStr)
 }
 
-func (o OPSType) ReadTuple() ([]OPSType, bool) {
+func (o GoMiniType) ReadTuple() ([]GoMiniType, bool) {
 	s := string(o)
 	if o.IsArray() {
 		elemType, ok := o.ReadArrayItemType()
 		if !ok {
 			return nil, false
 		}
-		return []OPSType{elemType}, false
+		return []GoMiniType{elemType}, false
 	}
 	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") {
 		return nil, false
@@ -291,16 +291,16 @@ func (o OPSType) ReadTuple() ([]OPSType, bool) {
 	inner := s[6 : len(s)-1]
 	inner = strings.TrimSpace(inner)
 	if inner == "" {
-		return []OPSType{}, true // 空元组
+		return []GoMiniType{}, true // 空元组
 	}
 
-	var types []OPSType
+	var types []GoMiniType
 	typeParts := splitByComma(inner)
 
 	for _, part := range typeParts {
 		part = strings.TrimSpace(part)
 		if part != "" {
-			types = append(types, OPSType(part))
+			types = append(types, GoMiniType(part))
 		}
 	}
 
@@ -355,7 +355,7 @@ func splitByComma(s string) []string {
 }
 
 func (ft *FunctionType) ToCallFunctionType() CallFunctionType {
-	var callParams []OPSType
+	var callParams []GoMiniType
 	for _, param := range ft.Params {
 		callParams = append(callParams, param.Type)
 	}
@@ -374,14 +374,14 @@ func (fp *FunctionParam) ToCallFunctionType() (CallFunctionType, bool) {
 	return CallFunctionType{}, false
 }
 
-func (o OPSType) ReadCallFunc() (CallFunctionType, bool) {
+func (o GoMiniType) ReadCallFunc() (CallFunctionType, bool) {
 	if fn, ok := o.ReadFunc(); ok {
 		return fn.ToCallFunctionType(), true
 	}
 	return CallFunctionType{}, false
 }
 
-func CreateTupleType(types ...OPSType) OPSType {
+func CreateTupleType(types ...GoMiniType) GoMiniType {
 	if len(types) == 0 {
 		return "Void"
 	}
@@ -395,15 +395,15 @@ func CreateTupleType(types ...OPSType) OPSType {
 		typeStrs = append(typeStrs, string(t))
 	}
 
-	return OPSType("tuple(" + strings.Join(typeStrs, ", ") + ")")
+	return GoMiniType("tuple(" + strings.Join(typeStrs, ", ") + ")")
 }
 
-func (o OPSType) IsTuple() bool {
+func (o GoMiniType) IsTuple() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "tuple(") && strings.HasSuffix(s, ")")
 }
 
-func (o OPSType) Equals(other OPSType) bool {
+func (o GoMiniType) Equals(other GoMiniType) bool {
 	if o == other {
 		return true
 	}
@@ -441,14 +441,14 @@ func (o OPSType) Equals(other OPSType) bool {
 	return string(o) == string(other)
 }
 
-func (o OPSType) StructName() (Ident, bool) {
+func (o GoMiniType) StructName() (Ident, bool) {
 	if strings.Contains(string(o), "(") || strings.Contains(string(o), ")") {
 		return "", false
 	}
 	return Ident(o), true
 }
 
-func (o OPSType) IsPrimitive() bool {
+func (o GoMiniType) IsPrimitive() bool {
 	s := string(o)
 	switch s {
 	case "Any", "Void", "Error", "String", "Int64", "Float64", "Bool", "Uint8":
@@ -457,7 +457,7 @@ func (o OPSType) IsPrimitive() bool {
 	return false
 }
 
-func (o OPSType) Resolve(v *ValidContext) OPSType {
+func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsEmpty() || o.IsPrimitive() {
 		return o
 	}
@@ -475,7 +475,7 @@ func (o OPSType) Resolve(v *ValidContext) OPSType {
 	}
 	if o.IsTuple() {
 		types, _ := o.ReadTuple()
-		var r []OPSType
+		var r []GoMiniType
 		for _, t := range types {
 			r = append(r, t.Resolve(v))
 		}
@@ -491,25 +491,25 @@ func (o OPSType) Resolve(v *ValidContext) OPSType {
 		}
 		newReturn := readFunc.Return.Resolve(v)
 		newFunc := FunctionType{Params: newParams, Return: newReturn}
-		return OPSType(newFunc.String())
+		return GoMiniType(newFunc.String())
 	}
 
 	s := string(o)
 	if strings.Contains(s, ".") {
 		parts := strings.SplitN(s, ".", 2)
 		if realPkg, ok := v.root.Imports[parts[0]]; ok {
-			return OPSType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+			return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 		}
 		return o // fallback
 	}
 
 	if v.root.Package != "" && v.root.Package != "main" {
-		return OPSType(fmt.Sprintf("%s.%s", v.root.Package, s))
+		return GoMiniType(fmt.Sprintf("%s.%s", v.root.Package, s))
 	}
 	return o
 }
 
-func (o OPSType) Valid(v *ValidContext) bool {
+func (o GoMiniType) Valid(v *ValidContext) bool {
 	// Any 类型总是有效的
 	if o.IsAny() {
 		return true
@@ -611,7 +611,7 @@ func (ft *FunctionType) String() string {
 	return fmt.Sprintf("function(%s)%s", paramsStr, returnStr)
 }
 
-func (o OPSType) AutoPtr(pVar Expr) (Expr, bool) {
+func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 	varType := pVar.GetBase().Type
 
 	// 如果目标类型是 Any，可以接受任何类型（包括指针）
@@ -697,7 +697,7 @@ func (o OPSType) AutoPtr(pVar Expr) (Expr, bool) {
 }
 
 // IsAssignableTo 判断当前类型是否可以赋值给目标类型
-func (o OPSType) IsAssignableTo(target OPSType) bool {
+func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
 	// Any 类型可以接受任何类型
 	if target.IsAny() {
 		return true
@@ -708,7 +708,7 @@ func (o OPSType) IsAssignableTo(target OPSType) bool {
 }
 
 // CanBeAny 判断类型是否可以被当作 Any 处理
-func (o OPSType) CanBeAny() bool {
+func (o GoMiniType) CanBeAny() bool {
 	// 所有非函数类型都可以当作 Any
 	if o.IsVoid() {
 		return false

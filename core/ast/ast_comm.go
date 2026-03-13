@@ -50,10 +50,10 @@ func (i Ident) Valid(ctx *ValidContext) bool {
 
 // BaseNode 是所有节点的基类
 type BaseNode struct {
-	ID      string  `json:"id"`
-	Meta    string  `json:"meta"`
-	Type    OPSType `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
-	Message string  `json:"message,omitempty"` // 表达式带有的附加信息
+	ID      string     `json:"id"`
+	Meta    string     `json:"meta"`
+	Type    GoMiniType `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
+	Message string     `json:"message,omitempty"` // 表达式带有的附加信息
 }
 
 func (b *BaseNode) EnsureID(ctx *ValidContext) {

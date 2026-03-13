@@ -17,8 +17,8 @@ func (o *MiniInt32) Set(data int32) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniInt32) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniInt32) GoMiniType() Ident {
 	return "Int32"
 }
 

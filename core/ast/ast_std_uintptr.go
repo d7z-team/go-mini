@@ -17,8 +17,8 @@ func (o *MiniUintptr) Set(data uintptr) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniUintptr) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniUintptr) GoMiniType() Ident {
 	return "Uintptr"
 }
 

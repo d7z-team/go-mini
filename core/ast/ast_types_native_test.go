@@ -13,9 +13,9 @@ func TestMiniFloat32(t *testing.T) {
 		t.Errorf("expected 1.5, got %f", val1.Data())
 	}
 
-	// Test OPSType()
-	if val1.OPSType() != "Float32" {
-		t.Errorf("expected Float32, got %s", val1.OPSType())
+	// Test GoMiniType()
+	if val1.GoMiniType() != "Float32" {
+		t.Errorf("expected Float32, got %s", val1.GoMiniType())
 	}
 
 	// Test Clone()
@@ -95,8 +95,8 @@ func TestMiniComplex64(t *testing.T) {
 		t.Errorf("expected (1+2i), got %v", val1.Data())
 	}
 
-	if val1.OPSType() != "Complex64" {
-		t.Errorf("expected Complex64, got %s", val1.OPSType())
+	if val1.GoMiniType() != "Complex64" {
+		t.Errorf("expected Complex64, got %s", val1.GoMiniType())
 	}
 
 	str := val1.String()

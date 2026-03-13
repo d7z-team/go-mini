@@ -18,8 +18,8 @@ func (o *MiniComplex64) Set(data complex64) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniComplex64) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniComplex64) GoMiniType() Ident {
 	return "Complex64"
 }
 

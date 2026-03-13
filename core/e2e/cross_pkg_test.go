@@ -14,16 +14,16 @@ import (
 // MockTypeA 模拟包 pkgA 中的类型
 type MockTypeA struct{}
 
-func (m *MockTypeA) OPSType() ast.Ident { return "pkgA.TypeA" }
-func (m *MockTypeA) GetB() *MockTypeB   { return &MockTypeB{} }
-func (m *MockTypeA) GetVal() int64      { return 1 }
+func (m *MockTypeA) GoMiniType() ast.Ident { return "pkgA.TypeA" }
+func (m *MockTypeA) GetB() *MockTypeB      { return &MockTypeB{} }
+func (m *MockTypeA) GetVal() int64         { return 1 }
 
 // MockTypeB 模拟包 pkgB 中的类型
 type MockTypeB struct{}
 
-func (m *MockTypeB) OPSType() ast.Ident { return "pkgB.TypeB" }
-func (m *MockTypeB) GetA() *MockTypeA   { return &MockTypeA{} }
-func (m *MockTypeB) GetVal() int64      { return 2 }
+func (m *MockTypeB) GoMiniType() ast.Ident { return "pkgB.TypeB" }
+func (m *MockTypeB) GetA() *MockTypeA      { return &MockTypeA{} }
+func (m *MockTypeB) GetVal() int64         { return 2 }
 
 func TestCrossPackageMinimal(t *testing.T) {
 	executor := engine.NewMiniExecutor()

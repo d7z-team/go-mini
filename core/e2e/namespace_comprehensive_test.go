@@ -15,13 +15,13 @@ type DBConfig struct {
 	URL ast.MiniString
 }
 
-func (c *DBConfig) OPSType() ast.Ident { return "db.Config" }
+func (c *DBConfig) GoMiniType() ast.Ident { return "db.Config" }
 
 type Connection struct {
 	ID ast.MiniString
 }
 
-func (c *Connection) OPSType() ast.Ident { return "db.Connection" }
+func (c *Connection) GoMiniType() ast.Ident { return "db.Connection" }
 func (c *Connection) Query(sql *ast.MiniString) *ast.MiniString {
 	s := ast.NewMiniString(fmt.Sprintf("result of [%s] on %s", sql.GoString(), c.ID.GoString()))
 	return &s

@@ -17,8 +17,8 @@ func (o *MiniInt8) Set(data int8) {
 	o.data = data
 }
 
-// OPSType 获取类型名
-func (o *MiniInt8) OPSType() Ident {
+// GoMiniType 获取类型名
+func (o *MiniInt8) GoMiniType() Ident {
 	return "Int8"
 }
 

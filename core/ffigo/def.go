@@ -19,7 +19,7 @@ type GoToASTConverter struct {
 	fset           *token.FileSet
 	nodeID         int
 	imports        map[string]string // 包别名映射
-	structTypes    map[string]string // Go类型到OPSType的映射
+	structTypes    map[string]string // Go类型到GoMiniType的映射
 	commentsByLine map[int]string    // 行号到注释内容的映射
 	originalSource []byte            // 原始源代码
 }
@@ -217,7 +217,7 @@ func (c *GoToASTConverter) convertFuncDecl(fd *ast.FuncDecl) (spec.Stmt, error) 
 
 	// 处理返回值
 	if fd.Type.Results != nil {
-		var returnTypes []spec.OPSType
+		var returnTypes []spec.GoMiniType
 		for _, field := range fd.Type.Results.List {
 			returnType, err := c.convertType(field.Type)
 			if err != nil {
@@ -278,7 +278,7 @@ func (c *GoToASTConverter) convertTypeDecl(gd *ast.GenDecl) (spec.Stmt, error) {
 			continue
 		}
 
-		fields := make(map[spec.Ident]spec.OPSType)
+		fields := make(map[spec.Ident]spec.GoMiniType)
 
 		if structType.Fields != nil {
 			for _, field := range structType.Fields.List {
@@ -886,7 +886,7 @@ func (c *GoToASTConverter) convertExpr(expr ast.Expr) (spec.Expr, error) {
 		res, err = c.convertExpr(e.X)
 	case *ast.ArrayType:
 		// 当类型作为表达式出现时（如 make 参数）
-		var t spec.OPSType
+		var t spec.GoMiniType
 		t, err = c.convertType(e)
 		if err == nil {
 			return &spec.LiteralExpr{
@@ -938,7 +938,7 @@ func (c *GoToASTConverter) convertIdent(ident *ast.Ident) spec.Expr {
 }
 
 func (c *GoToASTConverter) convertBasicLit(lit *ast.BasicLit) (*spec.LiteralExpr, error) {
-	var typ spec.OPSType
+	var typ spec.GoMiniType
 	var value string
 
 	switch lit.Kind {
@@ -1270,7 +1270,7 @@ func (c *GoToASTConverter) convertStarExpr(star *ast.StarExpr) (*spec.DerefExpr,
 	}, nil
 }
 
-func (c *GoToASTConverter) convertType(typ ast.Expr) (spec.OPSType, error) {
+func (c *GoToASTConverter) convertType(typ ast.Expr) (spec.GoMiniType, error) {
 	switch t := typ.(type) {
 	case *ast.Ident:
 		return c.convertBasicType(t.Name)
@@ -1300,14 +1300,14 @@ func (c *GoToASTConverter) convertType(typ ast.Expr) (spec.OPSType, error) {
 		return spec.CreateMapType(keyType, valType), nil
 	case *ast.SelectorExpr:
 		// 限定标识符，如 pkg.Type
-		return spec.OPSType(fmt.Sprintf("%s.%s", t.X, t.Sel.Name)), nil
+		return spec.GoMiniType(fmt.Sprintf("%s.%s", t.X, t.Sel.Name)), nil
 	default:
 		return "", fmt.Errorf("不支持的类型: %T", typ)
 	}
 }
 
-func (c *GoToASTConverter) convertBasicType(typeName string) (spec.OPSType, error) {
-	// 映射Go基本类型到OPSType
+func (c *GoToASTConverter) convertBasicType(typeName string) (spec.GoMiniType, error) {
+	// 映射Go基本类型到GoMiniType
 	switch typeName {
 	case "byte", "uint8":
 		return "Uint8", nil
@@ -1323,14 +1323,14 @@ func (c *GoToASTConverter) convertBasicType(typeName string) (spec.OPSType, erro
 	default:
 		// 检查是否是已注册的结构体类型
 		if mapped, ok := c.structTypes[typeName]; ok {
-			return spec.OPSType(mapped), nil
+			return spec.GoMiniType(mapped), nil
 		}
 		// 默认作为自定义类型
-		return spec.OPSType(typeName), nil
+		return spec.GoMiniType(typeName), nil
 	}
 }
 
-func (c *GoToASTConverter) createDefaultValue(typ spec.OPSType) *spec.LiteralExpr {
+func (c *GoToASTConverter) createDefaultValue(typ spec.GoMiniType) *spec.LiteralExpr {
 	var value string
 
 	switch typ {

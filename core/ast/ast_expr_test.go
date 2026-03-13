@@ -6,7 +6,7 @@ import (
 
 type dummyExpr struct {
 	BaseNode
-	dummyType OPSType
+	dummyType GoMiniType
 }
 
 func (d *dummyExpr) GetBase() *BaseNode { return &d.BaseNode }
@@ -25,54 +25,54 @@ func TestCallExprArrayDeduction(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		funcType     OPSType
-		argTypes     []OPSType
+		funcType     GoMiniType
+		argTypes     []GoMiniType
 		expectedPass bool
-		expectedType OPSType
+		expectedType GoMiniType
 	}{
 		{
 			name:         "Single element perfect match",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"Array<String>"},
+			argTypes:     []GoMiniType{"Array<String>"},
 			expectedPass: true,
 			expectedType: "Void",
 		},
 		{
 			name:         "Multiple same types deduced to Array",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"String", "String"},
+			argTypes:     []GoMiniType{"String", "String"},
 			expectedPass: true,
 			expectedType: "Void",
 		},
 		{
 			name:         "Multiple types deduced to Array<Any> passing to Array<Any>",
 			funcType:     "function(Array<Any>) Void",
-			argTypes:     []OPSType{"String", "Int64"},
+			argTypes:     []GoMiniType{"String", "Int64"},
 			expectedPass: true,
 			expectedType: "Void",
 		},
 		{
 			name:         "Multiple types deduced to Array<Any> failing to pass to Array<String>",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"String", "Int64"},
+			argTypes:     []GoMiniType{"String", "Int64"},
 			expectedPass: false,
 		},
 		{
 			name:         "Array mismatch with exact array types",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"Array<Int64>"},
+			argTypes:     []GoMiniType{"Array<Int64>"},
 			expectedPass: false,
 		},
 		{
 			name:         "Single arg not implicitly matched",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"Int64"},
+			argTypes:     []GoMiniType{"Int64"},
 			expectedPass: false,
 		},
 		{
 			name:         "Single arg implicitly matched as Array item",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"String"},
+			argTypes:     []GoMiniType{"String"},
 			expectedPass: true,
 			expectedType: "Void",
 		},

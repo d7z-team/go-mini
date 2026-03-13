@@ -353,7 +353,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 			return nil
 		}
 		var results []*Var
-		var resultsType []ast.OPSType
+		var resultsType []ast.GoMiniType
 		for _, result := range n.Results {
 			expr, err := e.ExecExpr(ctx, result)
 			if err != nil {
@@ -492,14 +492,14 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		// Use the object's actual data type if it's Any
 		if miniType.IsAny() && obj.Data != nil {
 			if miniObj, ok := obj.Data.(ast.MiniObj); ok {
-				miniType = ast.OPSType(miniObj.OPSType())
+				miniType = ast.GoMiniType(miniObj.GoMiniType())
 			} else {
 				// Try pointer
 				rv := reflect.ValueOf(obj.Data)
 				if rv.Kind() == reflect.Ptr {
 					if !rv.IsNil() {
 						if miniObj, ok := rv.Interface().(ast.MiniObj); ok {
-							miniType = ast.OPSType(miniObj.OPSType())
+							miniType = ast.GoMiniType(miniObj.GoMiniType())
 						}
 					}
 				} else {
@@ -507,7 +507,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 					ptr := reflect.New(rv.Type())
 					ptr.Elem().Set(rv)
 					if miniObj, ok := ptr.Interface().(ast.MiniObj); ok {
-						miniType = ast.OPSType(miniObj.OPSType())
+						miniType = ast.GoMiniType(miniObj.GoMiniType())
 					}
 				}
 			}
@@ -761,7 +761,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			}
 		}
 	case *ast.CompositeExpr:
-		if ast.OPSType(n.Kind).IsArray() {
+		if ast.GoMiniType(n.Kind).IsArray() {
 			var slice []interface{}
 			for _, value := range n.Values {
 				v, err := e.ExecExpr(ctx, value.Value)
@@ -770,9 +770,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				}
 				slice = append(slice, v.Data)
 			}
-			return NewVar(ast.OPSType(n.Kind), reflect.TypeOf(&slice), &slice, ctx.Stack), nil
+			return NewVar(ast.GoMiniType(n.Kind), reflect.TypeOf(&slice), &slice, ctx.Stack), nil
 		}
-		if ast.OPSType(n.Kind).IsMap() {
+		if ast.GoMiniType(n.Kind).IsMap() {
 			m := make(map[interface{}]interface{})
 			for _, value := range n.Values {
 				k, err := e.ExecExpr(ctx, value.Key)
@@ -791,7 +791,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				}
 				m[key] = v.Data
 			}
-			return NewVar(ast.OPSType(n.Kind), reflect.TypeOf(m), m, ctx.Stack), nil
+			return NewVar(ast.GoMiniType(n.Kind), reflect.TypeOf(m), m, ctx.Stack), nil
 		}
 		if structDef, ok := e.structs[string(n.Kind)]; ok {
 			// 定义普通的变量
@@ -829,7 +829,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 					}
 				}
 
-				return NewVar(ast.OPSType(stru.StructName), stru.Type, val.Interface(), ctx.Stack), nil
+				return NewVar(ast.GoMiniType(stru.StructName), stru.Type, val.Interface(), ctx.Stack), nil
 			case *ast.StructStmt:
 				data := DynStruct{
 					Define: stru,
@@ -862,7 +862,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 						data.Body[key] = v.Data
 					}
 				}
-				return NewVar(ast.OPSType(stru.Name), reflect.TypeOf(data), data, ctx.Stack), nil
+				return NewVar(ast.GoMiniType(stru.Name), reflect.TypeOf(data), data, ctx.Stack), nil
 			}
 		}
 	case *ast.IndexExpr:
@@ -963,7 +963,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 					if et, b := obj.Type.GetPtrElementType(); b {
 						struName = string(et)
 					}
-					var fieldType ast.OPSType
+					var fieldType ast.GoMiniType
 					if sDef, ok := e.structs[struName]; ok {
 						if ns, ok2 := sDef.(*ast.NativeStruct); ok2 {
 							fieldType = ns.Fields[op.Property]
@@ -1007,7 +1007,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 }
 
 // 处理函数调用相关的内容
-func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, returnType ast.OPSType) (*Var, error) {
+func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, returnType ast.GoMiniType) (*Var, error) {
 	if returnType.IsVoid() {
 		if len(call) > 0 {
 			errInter := call[0].Interface()
@@ -1039,7 +1039,7 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 		call = call[:len(call)-1]
 	} else {
 		// 不是 tunple ，改为
-		resultTypes = []ast.OPSType{returnType}
+		resultTypes = []ast.GoMiniType{returnType}
 		if len(call) > 1 {
 			if len(call) != 2 {
 				return nil, fmt.Errorf("错误的函数返回调用: %s != %v", returnType, funcCall)
@@ -1084,13 +1084,13 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 		if val != nil {
 			rv := reflect.ValueOf(val)
 			if miniObj, ok := val.(ast.MiniObj); ok {
-				actualType = ast.OPSType(miniObj.OPSType())
+				actualType = ast.GoMiniType(miniObj.GoMiniType())
 				if rv.Kind() == reflect.Ptr {
 					actualType = actualType.ToPtr()
 				}
 			} else if rv.Kind() == reflect.Ptr && !rv.IsNil() {
 				if miniObj, ok := rv.Interface().(ast.MiniObj); ok {
-					actualType = ast.OPSType(miniObj.OPSType()).ToPtr()
+					actualType = ast.GoMiniType(miniObj.GoMiniType()).ToPtr()
 				}
 			}
 		}
@@ -1267,7 +1267,7 @@ func (e *Executor) toGoValue(v any) any {
 	return v
 }
 
-func (e *Executor) AddGlobalFunc(name ast.Ident, miniType ast.OPSType, f any) {
+func (e *Executor) AddGlobalFunc(name ast.Ident, miniType ast.GoMiniType, f any) {
 	e.funcs[name] = NewVar(miniType, reflect.TypeOf(f), reflect.ValueOf(f), e.ctx.Stack)
 }
 
@@ -1299,7 +1299,7 @@ func (e *Executor) AddStruct(stdlibStruct any) error {
 		e.funcs[ast.Ident(fmt.Sprintf("__obj__%s__%s", native.StructName, ident))] = NewVar(functionType.MiniType(), meth.Type, meth.Func, e.ctx.Stack)
 	}
 	if native.LiteralNew {
-		callFunc, _ := ast.OPSType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
+		callFunc, _ := ast.GoMiniType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
 		funcType := reflect.FuncOf([]reflect.Type{reflect.TypeOf("")}, []reflect.Type{native.Type}, false)
 		var lErr error
 		fc := reflect.MakeFunc(funcType, func(args []reflect.Value) []reflect.Value {
@@ -1332,7 +1332,7 @@ func (e *Executor) resolveArrayMapMethod(name ast.Ident) (*Var, error) {
 	typeStr := sName[7:lastIdx]
 	method := sName[lastIdx+2:]
 
-	miniType := ast.OPSType(typeStr)
+	miniType := ast.GoMiniType(typeStr)
 
 	if miniType.IsArray() {
 		return e.createArrayMethod(miniType, method)
@@ -1343,7 +1343,7 @@ func (e *Executor) resolveArrayMapMethod(name ast.Ident) (*Var, error) {
 	return nil, errors.New("unknown type")
 }
 
-func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var, error) {
+func (e *Executor) createArrayMethod(miniType ast.GoMiniType, method string) (*Var, error) {
 	elemType, _ := miniType.ReadArrayItemType()
 
 	switch method {
@@ -1452,10 +1452,10 @@ func (e *Executor) makeFn(sig string, inCount, outCount int, fn func([]reflect.V
 	for i := 0; i < outCount; i++ {
 		out[i] = reflect.TypeOf((*interface{})(nil)).Elem()
 	}
-	return NewVar(ast.OPSType(sig), reflect.FuncOf(in, out, false), reflect.MakeFunc(reflect.FuncOf(in, out, false), fn), nil)
+	return NewVar(ast.GoMiniType(sig), reflect.FuncOf(in, out, false), reflect.MakeFunc(reflect.FuncOf(in, out, false), fn), nil)
 }
 
-func (e *Executor) createMapMethod(miniType ast.OPSType, method string) (*Var, error) {
+func (e *Executor) createMapMethod(miniType ast.GoMiniType, method string) (*Var, error) {
 	keyType, valueType, _ := miniType.GetMapKeyValueTypes()
 
 	getMap := func(v interface{}) (map[interface{}]interface{}, error) {

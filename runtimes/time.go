@@ -15,7 +15,7 @@ func NewMiniTime(t time.Time) *MiniTime {
 	return &MiniTime{t: t}
 }
 
-func (o *MiniTime) OPSType() ast.Ident {
+func (o *MiniTime) GoMiniType() ast.Ident {
 	return "time.Time"
 }
 

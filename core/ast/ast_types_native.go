@@ -11,12 +11,12 @@ import (
 type NativeStruct struct {
 	Type       reflect.Type
 	StructName Ident
-	Fields     map[Ident]OPSType
+	Fields     map[Ident]GoMiniType
 	Methods    map[Ident]CallFunctionType
 	LiteralNew bool
 }
 type MiniObj interface {
-	OPSType() Ident
+	GoMiniType() Ident
 }
 
 type MiniClone interface {
@@ -38,7 +38,7 @@ func ParseNative(t reflect.Type) (*NativeStruct, error) {
 	}
 	inst := reflect.New(t).Interface()
 	obj := inst.(MiniObj)
-	structName := obj.OPSType()
+	structName := obj.GoMiniType()
 	_, ok := obj.(MiniObjLiteral)
 	return &NativeStruct{
 		Type:       t,
@@ -54,8 +54,8 @@ func isMiniType(t reflect.Type) bool {
 	return t.Implements(moverType)
 }
 
-func parseFields(t reflect.Type) map[Ident]OPSType {
-	fields := make(map[Ident]OPSType)
+func parseFields(t reflect.Type) map[Ident]GoMiniType {
+	fields := make(map[Ident]GoMiniType)
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		if !field.IsExported() {
@@ -71,7 +71,7 @@ func parseFields(t reflect.Type) map[Ident]OPSType {
 	return fields
 }
 
-func parseMiniType(field reflect.Type) (OPSType, bool) {
+func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 	if field.Kind() == reflect.Slice || field.Kind() == reflect.Array {
 		elemType, b := parseMiniType(field.Elem())
 		if !b {
@@ -90,105 +90,105 @@ func parseMiniType(field reflect.Type) (OPSType, bool) {
 	// 基础类型支持
 	switch field.Kind() {
 	case reflect.String:
-		miniType := OPSType("String")
+		miniType := GoMiniType("String")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Bool:
-		miniType := OPSType("Bool")
+		miniType := GoMiniType("Bool")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Int:
-		miniType := OPSType("Int")
+		miniType := GoMiniType("Int")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Int8:
-		miniType := OPSType("Int8")
+		miniType := GoMiniType("Int8")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Int16:
-		miniType := OPSType("Int16")
+		miniType := GoMiniType("Int16")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Int32:
-		miniType := OPSType("Int32")
+		miniType := GoMiniType("Int32")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Int64:
-		miniType := OPSType("Int64")
+		miniType := GoMiniType("Int64")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uint:
-		miniType := OPSType("Uint")
+		miniType := GoMiniType("Uint")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uint8:
-		miniType := OPSType("Uint8")
+		miniType := GoMiniType("Uint8")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uint16:
-		miniType := OPSType("Uint16")
+		miniType := GoMiniType("Uint16")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uint32:
-		miniType := OPSType("Uint32")
+		miniType := GoMiniType("Uint32")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uint64:
-		miniType := OPSType("Uint64")
+		miniType := GoMiniType("Uint64")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Uintptr:
-		miniType := OPSType("Uintptr")
+		miniType := GoMiniType("Uintptr")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Float32:
-		miniType := OPSType("Float32")
+		miniType := GoMiniType("Float32")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Float64:
-		miniType := OPSType("Float64")
+		miniType := GoMiniType("Float64")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Complex64:
-		miniType := OPSType("Complex64")
+		miniType := GoMiniType("Complex64")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	case reflect.Complex128:
-		miniType := OPSType("Complex128")
+		miniType := GoMiniType("Complex128")
 		if isPtr {
-			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
 	default:
@@ -207,8 +207,8 @@ func parseMiniType(field reflect.Type) (OPSType, bool) {
 	if !isMiniType(reflect.PointerTo(field)) {
 		return "", false
 	}
-	miniType := reflect.New(field).Interface().(MiniObj).OPSType()
-	res := OPSType(miniType)
+	miniType := reflect.New(field).Interface().(MiniObj).GoMiniType()
+	res := GoMiniType(miniType)
 	if isPtr {
 		res = res.ToPtr()
 	}
@@ -235,7 +235,7 @@ func parseMethods(t reflect.Type) map[Ident]CallFunctionType {
 	// 获取所有方法
 	for i := 0; i < t.NumMethod(); i++ {
 		method := t.Method(i)
-		if method.Name == "OPSType" {
+		if method.Name == "GoMiniType" {
 			continue
 		}
 		parseMethod, b := ParseMethod(method.Type)
@@ -256,7 +256,7 @@ func ParseMethod(methodType reflect.Type) (*CallFunctionType, bool) {
 	numOut := methodType.NumOut()
 
 	inTypes := make([]string, 0)
-	outTypes := make([]OPSType, 0)
+	outTypes := make([]GoMiniType, 0)
 	for i := 0; i < numIn; i++ {
 		inType := methodType.In(i)
 		// input 允许第一位为 context
@@ -285,7 +285,7 @@ func ParseMethod(methodType reflect.Type) (*CallFunctionType, bool) {
 		}
 		outTypes = append(outTypes, miniType)
 	}
-	outType := OPSType("Void")
+	outType := GoMiniType("Void")
 	if len(outTypes) > 0 {
 		if len(outTypes) > 1 {
 			outType = CreateTupleType(outTypes...)
@@ -293,6 +293,6 @@ func ParseMethod(methodType reflect.Type) (*CallFunctionType, bool) {
 			outType = outTypes[0]
 		}
 	}
-	callFunc, _ := OPSType(fmt.Sprintf("function(%s) %s", strings.Join(inTypes, ","), outType)).ReadCallFunc()
+	callFunc, _ := GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(inTypes, ","), outType)).ReadCallFunc()
 	return &callFunc, true
 }

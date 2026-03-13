@@ -123,7 +123,7 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 }
 
 type funcInfo struct {
-	fType ast.OPSType
+	fType ast.GoMiniType
 	fc    any
 	doc   string
 }
@@ -168,7 +168,7 @@ func (o *MiniExecutor) AddFunc(name string, fc any, docs ...string) error {
 		doc = ast.GetFuncDoc(fc)
 	}
 	o.funcs[ast.Ident(name)] = funcInfo{
-		fType: ast.OPSType(method.String()),
+		fType: ast.GoMiniType(method.String()),
 		fc:    fc,
 		doc:   doc,
 	}

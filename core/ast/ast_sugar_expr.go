@@ -312,7 +312,7 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 			for i, arg := range s.Args {
 				ptr, b2 := targetElem.AutoPtr(arg)
 				if !b2 {
-					argsType := []OPSType{obj.GetBase().Type}
+					argsType := []GoMiniType{obj.GetBase().Type}
 					for _, param := range s.Args {
 						argsType = append(argsType, param.GetBase().Type)
 					}
@@ -338,7 +338,7 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 				Values: wrappedArgs,
 			}}
 		} else {
-			argsType := []OPSType{obj.GetBase().Type}
+			argsType := []GoMiniType{obj.GetBase().Type}
 			for _, param := range s.Args {
 				argsType = append(argsType, param.GetBase().Type)
 			}
@@ -411,7 +411,7 @@ func (n *NewExpr) GetBase() *BaseNode { return &n.BaseNode }
 func (n *NewExpr) exprNode()          {}
 
 func (n *NewExpr) Validate(ctx *ValidContext) (Node, bool) {
-	n.Kind = Ident(OPSType(n.Kind).Resolve(ctx))
+	n.Kind = Ident(GoMiniType(n.Kind).Resolve(ctx))
 	if n.Kind == "" {
 		ctx.AddErrorf("new表达式缺少类型名称")
 		return nil, false

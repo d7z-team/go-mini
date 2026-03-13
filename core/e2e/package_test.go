@@ -13,7 +13,7 @@ type FileInfo struct {
 	Size int64
 }
 
-func (f *FileInfo) OPSType() ast.Ident {
+func (f *FileInfo) GoMiniType() ast.Ident {
 	return "fs.FileInfo"
 }
 

@@ -82,7 +82,7 @@ type SideEffectUser struct {
 	Name ast.MiniString
 }
 
-func (u *SideEffectUser) OPSType() ast.Ident { return "User" }
+func (u *SideEffectUser) GoMiniType() ast.Ident { return "User" }
 
 func TestPointerSideEffectsComprehensive(t *testing.T) {
 	e := engine.NewMiniExecutor()

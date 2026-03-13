@@ -26,7 +26,7 @@ type ValidRoot struct {
 	id              uint64
 	Package         string
 	Imports         map[string]string
-	vars            map[Ident]OPSType // 全局变量备份，用于跨作用域查找
+	vars            map[Ident]GoMiniType // 全局变量备份，用于跨作用域查找
 	Loader          func(path string) (*ProgramStmt, error)
 	Imported        map[string]bool   // 已导入的包路径
 	PathToPackage   map[string]string // 路径到包名的映射
@@ -40,7 +40,7 @@ type ValidContext struct {
 	root    *ValidRoot
 	parent  *ValidContext
 	current Node
-	vars    map[Ident]OPSType
+	vars    map[Ident]GoMiniType
 }
 
 func NewValidator(node *ProgramStmt) (*ValidContext, error) {
@@ -69,12 +69,12 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 			logs:    make([]Logs, 0),
 			structs: make(map[Ident]*ValidStruct),
 			ValidStruct: &ValidStruct{
-				Fields:  make(map[Ident]OPSType),
+				Fields:  make(map[Ident]GoMiniType),
 				Methods: make(map[Ident]CallFunctionType),
 			},
 			Package:         pkgName,
 			Imports:         imports,
-			vars:            make(map[Ident]OPSType),
+			vars:            make(map[Ident]GoMiniType),
 			Imported:        make(map[string]bool),
 			PathToPackage:   make(map[string]string),
 			ImportedFuncs:   make(map[Ident]*FunctionStmt),
@@ -84,7 +84,7 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 		},
 		parent:  nil,
 		current: node,
-		vars:    make(map[Ident]OPSType),
+		vars:    make(map[Ident]GoMiniType),
 	}
 	if err := v.AddNativeStructDefines(StdlibStructs...); err != nil {
 		return nil, err
@@ -199,12 +199,12 @@ func (c *ValidContext) Child(b Node) *ValidContext {
 		root:    c.root,
 		parent:  c,
 		current: b,
-		vars:    make(map[Ident]OPSType),
+		vars:    make(map[Ident]GoMiniType),
 	}
 }
 
 type ValidStruct struct {
-	Fields  map[Ident]OPSType
+	Fields  map[Ident]GoMiniType
 	Methods map[Ident]CallFunctionType
 }
 
@@ -243,20 +243,20 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 	}
 
 	// todo: 创建单态化类型
-	if OPSType(ident).IsArray() {
-		elemType, ok := OPSType(ident).ReadArrayItemType()
+	if GoMiniType(ident).IsArray() {
+		elemType, ok := GoMiniType(ident).ReadArrayItemType()
 		if !ok {
 			return nil, false
 		}
 		arrayStruct := &ValidStruct{
-			Fields:  make(map[Ident]OPSType),
+			Fields:  make(map[Ident]GoMiniType),
 			Methods: make(map[Ident]CallFunctionType),
 		}
 		// methods need to include receiver type
-		arrayType := OPSType(ident)
-		callFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64) %s", arrayType, elemType)).ReadCallFunc()
+		arrayType := GoMiniType(ident)
+		callFunc, _ := GoMiniType(fmt.Sprintf("function(%s, Int64) %s", arrayType, elemType)).ReadCallFunc()
 		arrayStruct.Methods["get"] = callFunc
-		readCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Int64", arrayType)).ReadCallFunc()
+		readCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Int64", arrayType)).ReadCallFunc()
 		arrayStruct.Methods["length"] = readCallFunc
 
 		setElemType := elemType
@@ -266,11 +266,11 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 			pushElemType = "Int64"
 		}
 
-		setCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64, %s) Void", arrayType, setElemType)).ReadCallFunc()
+		setCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, Int64, %s) Void", arrayType, setElemType)).ReadCallFunc()
 		arrayStruct.Methods["set"] = setCallFunc
-		pushCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", arrayType, pushElemType)).ReadCallFunc()
+		pushCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, %s) Void", arrayType, pushElemType)).ReadCallFunc()
 		arrayStruct.Methods["push"] = pushCallFunc
-		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64) Void", arrayType)).ReadCallFunc()
+		removeCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, Int64) Void", arrayType)).ReadCallFunc()
 		arrayStruct.Methods["remove"] = removeCallFunc
 
 		// Register global methods for validation
@@ -280,33 +280,33 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		c.root.structs[ident] = arrayStruct
 		return arrayStruct, true
 	}
-	if OPSType(ident).IsMap() {
-		keyType, valueType, ok := OPSType(ident).GetMapKeyValueTypes()
+	if GoMiniType(ident).IsMap() {
+		keyType, valueType, ok := GoMiniType(ident).GetMapKeyValueTypes()
 		if !ok {
 			return nil, false
 		}
 		mapStruct := &ValidStruct{
-			Fields:  make(map[Ident]OPSType),
+			Fields:  make(map[Ident]GoMiniType),
 			Methods: make(map[Ident]CallFunctionType),
 		}
-		mapType := OPSType(ident)
-		getCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) %s", mapType, keyType, valueType)).ReadCallFunc()
+		mapType := GoMiniType(ident)
+		getCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, %s) %s", mapType, keyType, valueType)).ReadCallFunc()
 		mapStruct.Methods["get"] = getCallFunc
-		putCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s, %s) Void", mapType, keyType, valueType)).ReadCallFunc()
+		putCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, %s, %s) Void", mapType, keyType, valueType)).ReadCallFunc()
 		mapStruct.Methods["put"] = putCallFunc
 		// Also support 'set' as alias for 'put' for consistency with index assignment conversion
 		mapStruct.Methods["set"] = putCallFunc
 
-		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", mapType, keyType)).ReadCallFunc()
+		removeCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, %s) Void", mapType, keyType)).ReadCallFunc()
 		mapStruct.Methods["remove"] = removeCallFunc
-		sizeCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Int64", mapType)).ReadCallFunc()
+		sizeCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Int64", mapType)).ReadCallFunc()
 		mapStruct.Methods["size"] = sizeCallFunc
 		mapStruct.Methods["length"] = sizeCallFunc
-		containsCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Bool", mapType, keyType)).ReadCallFunc()
+		containsCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s, %s) Bool", mapType, keyType)).ReadCallFunc()
 		mapStruct.Methods["contains"] = containsCallFunc
-		keysCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Array<%s>", mapType, keyType)).ReadCallFunc()
+		keysCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Array<%s>", mapType, keyType)).ReadCallFunc()
 		mapStruct.Methods["keys"] = keysCallFunc
-		valuesCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Array<%s>", mapType, valueType)).ReadCallFunc()
+		valuesCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Array<%s>", mapType, valueType)).ReadCallFunc()
 		mapStruct.Methods["values"] = valuesCallFunc
 
 		// Register global methods for validation
@@ -316,14 +316,14 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		c.root.structs[ident] = mapStruct
 		return mapStruct, true
 	}
-	if OPSType(ident).IsPtr() {
-		elementType, _ := OPSType(ident).GetPtrElementType()
+	if GoMiniType(ident).IsPtr() {
+		elementType, _ := GoMiniType(ident).GetPtrElementType()
 		return c.GetStruct(Ident(elementType))
 	}
 	return nil, false
 }
 
-func (c *ValidContext) AddVariable(name Ident, oType OPSType) {
+func (c *ValidContext) AddVariable(name Ident, oType GoMiniType) {
 	c.vars[name] = oType
 	// 仅在顶级或混淆后的名称（带点）时同步到全局，防止函数参数污染局部变量生成
 	if c.parent == nil || strings.Contains(string(name), ".") {
@@ -354,7 +354,7 @@ func (c *ValidContext) CheckScope(f Node) (Node, bool) {
 	}
 }
 
-func (c *ValidContext) GetVariable(variable Ident) (OPSType, bool) {
+func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 	ctx := c
 	for ctx != nil {
 		miniType, ok := ctx.vars[variable]
@@ -392,7 +392,7 @@ func (c *ValidContext) Logs() []Logs {
 	return c.root.logs
 }
 
-func (c *ValidContext) AddFuncSpec(name Ident, miniType OPSType) error {
+func (c *ValidContext) AddFuncSpec(name Ident, miniType GoMiniType) error {
 	if !miniType.Valid(c) {
 		return errors.New(string("invalid operation:" + miniType))
 	}
@@ -405,7 +405,7 @@ func (c *ValidContext) AddFuncSpec(name Ident, miniType OPSType) error {
 	return nil
 }
 
-func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]OPSType) error {
+func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) error {
 	if _, ok := c.root.structs[name]; ok {
 		return errors.New("struct already defined")
 	}
@@ -413,7 +413,7 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]OPSType) erro
 	if !valid {
 		return errors.New("invalid identifier")
 	}
-	fields := make(map[Ident]OPSType)
+	fields := make(map[Ident]GoMiniType)
 	methods := make(map[Ident]CallFunctionType)
 	c.root.structs[name] = &ValidStruct{Fields: fields, Methods: methods}
 	for ident, miniType := range specs {
@@ -455,7 +455,7 @@ func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 			// Update methods signatures to use mangled names for the struct itself
 			for i, m := range n.Methods {
 				m.Params = mangleCallParams(m.Params, oldNameStr, mangledNameStr)
-				m.Returns = OPSType(mangleStr(string(m.Returns), oldNameStr, mangledNameStr))
+				m.Returns = GoMiniType(mangleStr(string(m.Returns), oldNameStr, mangledNameStr))
 				n.Methods[i] = m
 			}
 			native = n
@@ -476,7 +476,7 @@ func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 	// 第一阶段：注册所有定义（占坑）
 	for _, native := range types {
 		methods := make(map[Ident]CallFunctionType)
-		fields := make(map[Ident]OPSType)
+		fields := make(map[Ident]GoMiniType)
 		for ident, miniType := range native.Fields {
 			fields[ident] = miniType
 		}
@@ -509,17 +509,17 @@ func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 		}
 
 		if native.LiteralNew {
-			callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
+			callFunc, _ := GoMiniType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
 			c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", native.StructName))] = callFunc
 		}
 	}
 	return nil
 }
 
-func mangleCallParams(params []OPSType, old, new string) []OPSType {
-	res := make([]OPSType, len(params))
+func mangleCallParams(params []GoMiniType, old, new string) []GoMiniType {
+	res := make([]GoMiniType, len(params))
 	for i, p := range params {
-		res[i] = OPSType(mangleStr(string(p), old, new))
+		res[i] = GoMiniType(mangleStr(string(p), old, new))
 	}
 	return res
 }

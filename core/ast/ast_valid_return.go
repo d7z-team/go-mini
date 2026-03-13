@@ -5,7 +5,7 @@ import "fmt"
 // ReturnAnalyzer 返回分析器，用于检查函数是否所有路径都有返回值
 type ReturnAnalyzer struct {
 	ctx         *ValidContext
-	returnTypes []OPSType
+	returnTypes []GoMiniType
 	errors      []AnalysisError
 	currentFunc *FunctionStmt
 }
@@ -121,9 +121,9 @@ func (a *ReturnAnalyzer) analyzeReturn(returnStmt *ReturnStmt) bool {
 	}
 	// 检查返回类型是否匹配
 	if len(a.returnTypes) > 0 {
-		var actualTypes []OPSType
+		var actualTypes []GoMiniType
 		if len(returnStmt.Results) == 1 {
-			actualTypes = []OPSType{returnStmt.Results[0].GetBase().Type}
+			actualTypes = []GoMiniType{returnStmt.Results[0].GetBase().Type}
 		} else if len(returnStmt.Results) > 1 {
 			for _, result := range returnStmt.Results {
 				actualTypes = append(actualTypes, result.GetBase().Type)
@@ -147,7 +147,7 @@ func (a *ReturnAnalyzer) analyzeInterrupt(interrupt *InterruptStmt) bool {
 }
 
 // compareReturnTypes 比较返回类型
-func (a *ReturnAnalyzer) compareReturnTypes(actual, expected []OPSType) bool {
+func (a *ReturnAnalyzer) compareReturnTypes(actual, expected []GoMiniType) bool {
 	if len(actual) != len(expected) {
 		return false
 	}

@@ -13,7 +13,7 @@ type VariadicTester struct {
 	Captured []string
 }
 
-func (v *VariadicTester) OPSType() ast.Ident {
+func (v *VariadicTester) GoMiniType() ast.Ident {
 	return "VariadicTester"
 }
 
