@@ -451,7 +451,19 @@ func (o GoMiniType) StructName() (Ident, bool) {
 func (o GoMiniType) IsPrimitive() bool {
 	s := string(o)
 	switch s {
-	case "Any", "Void", "Error", "String", "Int64", "Float64", "Bool", "Uint8":
+	case "Any", "Void", "Error", "String", "Int64", "Float64", "Bool", "Uint8",
+		"Int", "Int8", "Int16", "Int32", "Uint", "Uint16", "Uint32", "Uint64", "Uintptr",
+		"Float32", "Complex64", "Complex128":
+		return true
+	}
+	return false
+}
+
+func (o GoMiniType) IsNumeric() bool {
+	s := string(o)
+	switch s {
+	case "Int64", "Float64", "Uint8", "Int", "Int8", "Int16", "Int32",
+		"Uint", "Uint16", "Uint32", "Uint64", "Uintptr", "Float32", "Complex64", "Complex128":
 		return true
 	}
 	return false

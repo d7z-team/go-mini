@@ -74,6 +74,5 @@ func UtilsTest(t *testing.T, astData []byte, call func(t *testing.T, v *ast.Vali
 		encoder.SetIndent("", "  ")
 		encoder.SetEscapeHTML(false)
 		_ = encoder.Encode(optimize)
-		t.Log(decode.String())
 	}
 }

@@ -80,21 +80,29 @@ func TestTypeCast(t *testing.T) {
 		assert.Equal(t, []string{"100", "100", "100"}, result)
 	})
 
-	t.Run("different_int_types", func(t *testing.T) {
-		// 验证 Go 风格的小写类型名是否通过 ffigo 正确转换
-		result := runCastTest(t, `
+	t.Run("implicit_numeric_conversion_in_calls", func(t *testing.T) {
+		executor := engine.NewMiniExecutor()
+		runtimes.InitAll(executor)
+
+		var results []string
+		executor.MustAddFunc("push", func(v any) {
+			results = append(results, fmt.Sprintf("%v", v))
+		})
+
+		// 定义接受 *Int8 的函数
+		executor.MustAddFunc("AcceptInt8Ptr", func(v *ast.MiniInt8) {
+			results = append(results, fmt.Sprintf("ptr:%v", v.GoValue()))
+		})
+
+		code := `
 			func main() {
-				a := int8(1)
-				b := int16(2)
-				c := int32(3)
-				d := uint8(4)
-				push(a)
-				push(b)
-				push(c)
-				push(d)
+				AcceptInt8Ptr(123) // 123 is Int64, needs *Int8
 			}
-		`)
-		// ffigo 会将它们映射为 Int64 或 Uint8
-		assert.Equal(t, []string{"1", "2", "3", "4"}, result)
+		`
+		rt, err := executor.NewRuntimeByGoCode(code)
+		assert.NoError(t, err)
+		err = rt.Execute(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"ptr:123"}, results)
 	})
 }

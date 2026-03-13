@@ -284,9 +284,46 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	for i, param := range fType.Params {
-		ptr, b2 := param.AutoPtr(c.Args[i])
+		arg := c.Args[i]
+		argType := arg.GetBase().Type
+
+		// 尝试自动数值转换 (Numeric Inter-op)
+		// 如果参数需要数值类型的指针或值，但提供的是另一种数值类型
+		targetBase := param
+		if param.IsPtr() {
+			targetBase, _ = param.GetPtrElementType()
+		}
+
+		if targetBase.IsNumeric() && argType.IsNumeric() && !targetBase.Equals(argType) {
+			// 插入一个显式的构造函数调用来转换类型: targetBase(arg)
+			newFuncName := Ident(fmt.Sprintf("__obj__new__%s", targetBase))
+			if _, b := ctx.GetFunction(newFuncName); b {
+				arg = &CallExprStmt{
+					BaseNode: BaseNode{
+						ID:      arg.GetBase().ID + "_AutoCast",
+						Meta:    "call",
+						Type:    targetBase,
+						Message: "Auto Cast for " + string(targetBase),
+					},
+					Func: &ConstRefExpr{
+						BaseNode: BaseNode{
+							ID:   arg.GetBase().ID + "_AutoCast_Func",
+							Meta: "const_ref",
+							Type: GoMiniType(fmt.Sprintf("function(Any) %s", targetBase)),
+						},
+						Name: newFuncName,
+					},
+					Args: []Expr{arg},
+				}
+				// 转换后重新 Validate
+				v, _ := arg.Validate(ctx)
+				arg = v.(Expr)
+			}
+		}
+
+		ptr, b2 := param.AutoPtr(arg)
 		if !b2 {
-			ctx.Child(c.Func).AddErrorf("函数结构错误(%v) != (%v)", param, c.Args[i].GetBase().Type)
+			ctx.Child(c.Func).AddErrorf("函数结构错误(%v) != (%v)", param, arg.GetBase().Type)
 			return nil, false
 		}
 		c.Args[i] = ptr
