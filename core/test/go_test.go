@@ -166,7 +166,7 @@ push(b.String()+c)
 		assert.Equal(t, []string{"3", "2摄氏度"}, expr)
 	})
 
-	t.Run("Float", func(t *testing.T) {
+	t.Run("Float64", func(t *testing.T) {
 		result, err := utils.TestGoExpr(`
 a := 1.5
 b := 2.5
@@ -176,7 +176,7 @@ push(b - a)
 push(b / a)
 `)
 		assert.NoError(t, err)
-		// Assuming MiniFloat.String() or GoValue() produces these strings
+		// Assuming MiniFloat64.String() or GoValue() produces these strings
 		assert.Contains(t, result, "4")
 		assert.Contains(t, result, "3.75")
 		assert.Contains(t, result, "1")

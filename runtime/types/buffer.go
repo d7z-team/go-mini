@@ -31,17 +31,17 @@ func (o *MiniBuffer) Read(p []byte) (n int, err error) {
 	return o.buf.Read(p)
 }
 
-func (o *MiniBuffer) MiniWrite(p *MiniFile) (ast.MiniNumber, error) {
+func (o *MiniBuffer) MiniWrite(p *MiniFile) (ast.MiniInt64, error) {
 	n, err := o.buf.Write(p.Bytes())
-	return ast.NewMiniNumber(int64(n)), err
+	return ast.NewMiniInt64(int64(n)), err
 }
 
-func (o *MiniBuffer) MiniWriteString(s *ast.MiniString) (ast.MiniNumber, error) {
+func (o *MiniBuffer) MiniWriteString(s *ast.MiniString) (ast.MiniInt64, error) {
 	n, err := o.buf.WriteString(s.GoString())
-	return ast.NewMiniNumber(int64(n)), err
+	return ast.NewMiniInt64(int64(n)), err
 }
 
-func (o *MiniBuffer) MiniRead(n *ast.MiniNumber) (MiniFile, error) {
+func (o *MiniBuffer) MiniRead(n *ast.MiniInt64) (MiniFile, error) {
 	p := make([]byte, n.GoValue().(int64))
 	read, err := o.buf.Read(p)
 	if err != nil && err != io.EOF {
@@ -50,7 +50,7 @@ func (o *MiniBuffer) MiniRead(n *ast.MiniNumber) (MiniFile, error) {
 	return NewMiniFile(p[:read]), nil
 }
 
-func (o *MiniBuffer) Bytes() MiniFile {
+func (o *MiniBuffer) Uint8s() MiniFile {
 	return NewMiniFile(o.buf.Bytes())
 }
 
@@ -62,6 +62,6 @@ func (o *MiniBuffer) Reset() {
 	o.buf.Reset()
 }
 
-func (o *MiniBuffer) Len() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.buf.Len()))
+func (o *MiniBuffer) Len() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.buf.Len()))
 }

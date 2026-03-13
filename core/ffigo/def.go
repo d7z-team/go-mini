@@ -924,10 +924,10 @@ func (c *GoToASTConverter) convertBasicLit(lit *ast.BasicLit) (*spec.LiteralExpr
 
 	switch lit.Kind {
 	case token.INT:
-		typ = "Number"
+		typ = "Int64"
 		value = lit.Value
 	case token.FLOAT:
-		typ = "Float"
+		typ = "Float64"
 		value = lit.Value
 	case token.CHAR, token.STRING:
 		typ = "String"
@@ -1291,12 +1291,12 @@ func (c *GoToASTConverter) convertBasicType(typeName string) (spec.OPSType, erro
 	// 映射Go基本类型到OPSType
 	switch typeName {
 	case "byte", "uint8":
-		return "Byte", nil
+		return "Uint8", nil
 	case "int", "int8", "int16", "int32", "int64",
 		"uint", "uint16", "uint32", "uint64":
-		return "Number", nil
+		return "Int64", nil
 	case "float32", "float64":
-		return "Float", nil
+		return "Float64", nil
 	case "string":
 		return "String", nil
 	case "bool":
@@ -1315,9 +1315,9 @@ func (c *GoToASTConverter) createDefaultValue(typ spec.OPSType) *spec.LiteralExp
 	var value string
 
 	switch typ {
-	case "Number":
+	case "Int64":
 		value = "0"
-	case "Float":
+	case "Float64":
 		value = "0.0"
 	case "String":
 		value = ""
@@ -1406,7 +1406,7 @@ func (c *GoToASTConverter) convertRangeStmt(rangeStmt *ast.RangeStmt) (spec.Stmt
 			BaseNode: spec.BaseNode{
 				ID:   c.nextID(rangeStmt),
 				Meta: "literal",
-				Type: "Number",
+				Type: "Int64",
 			},
 			Value: "0",
 		},

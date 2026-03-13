@@ -20,7 +20,7 @@ func TestPointerSideEffects(t *testing.T) {
 		s.Set("modified-value")
 	})
 
-	e.MustAddFunc("ModifyNumber", func(n *ast.MiniNumber) {
+	e.MustAddFunc("ModifyNumber", func(n *ast.MiniInt64) {
 		n.Set(int64(999))
 	})
 

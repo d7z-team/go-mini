@@ -26,6 +26,6 @@ func ParseTime(layout, value *ast.MiniString) (*types.MiniTime, error) {
 	return types.NewMiniTime(t), nil
 }
 
-func UnixTime(sec, nsec *ast.MiniNumber) *types.MiniTime {
+func UnixTime(sec, nsec *ast.MiniInt64) *types.MiniTime {
 	return types.NewMiniTime(time.Unix(sec.GoValue().(int64), nsec.GoValue().(int64)))
 }

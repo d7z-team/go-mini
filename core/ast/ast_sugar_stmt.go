@@ -61,7 +61,7 @@ func (i *IncDecStmt) Validate(ctx *ValidContext) (Node, bool) {
 				BaseNode: BaseNode{
 					ID:   i.ID + "_Value_0_Right_0",
 					Meta: "literal",
-					Type: "Number",
+					Type: "Int64",
 				},
 				Value: "1",
 			},

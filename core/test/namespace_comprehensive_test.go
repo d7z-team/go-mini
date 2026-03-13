@@ -39,8 +39,8 @@ func TestComprehensiveNamespace(t *testing.T) {
 	})
 
 	// 2. 注入 math 包
-	e.MustAddPackageFunc("math", "Add", func(a, b *ast.MiniNumber) *ast.MiniNumber {
-		res := ast.NewMiniNumber(a.GoValue().(int64) + b.GoValue().(int64))
+	e.MustAddPackageFunc("math", "Add", func(a, b *ast.MiniInt64) *ast.MiniInt64 {
+		res := ast.NewMiniInt64(a.GoValue().(int64) + b.GoValue().(int64))
 		return &res
 	})
 
@@ -137,7 +137,7 @@ var Counter = 0
 func Inc() {
 	Counter = 100 
 }
-func Get() Number {
+func Get() Int64 {
 	return Counter
 }
 `

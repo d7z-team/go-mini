@@ -69,8 +69,8 @@ func (o *MiniFile) OPSType() ast.Ident {
 	return "File"
 }
 
-func (o *MiniFile) Size() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(len(o.data)))
+func (o *MiniFile) Size() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(len(o.data)))
 }
 
 func (o *MiniFile) Bytes() []byte {

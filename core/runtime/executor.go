@@ -841,9 +841,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			var index int
 			if i, ok := idx.Data.(int); ok {
 				index = i
-			} else if miniNum, ok := idx.Data.(*ast.MiniNumber); ok {
+			} else if miniNum, ok := idx.Data.(*ast.MiniInt64); ok {
 				index = int(miniNum.GoValue().(int64))
-			} else if miniNum, ok := idx.Data.(ast.MiniNumber); ok {
+			} else if miniNum, ok := idx.Data.(ast.MiniInt64); ok {
 				index = int(miniNum.GoValue().(int64))
 			} else {
 				return nil, fmt.Errorf("invalid index type: %T", idx.Data)
@@ -1295,7 +1295,7 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 	switch method {
 	case "get":
 		// function(arr, index) -> value, error
-		return e.makeFn(fmt.Sprintf("function(%s, Number) %s", miniType, elemType), 2, 2, func(args []reflect.Value) []reflect.Value {
+		return e.makeFn(fmt.Sprintf("function(%s, Int64) %s", miniType, elemType), 2, 2, func(args []reflect.Value) []reflect.Value {
 			arrPtr, ok := args[0].Interface().(*[]interface{})
 			if !ok {
 				return []reflect.Value{reflect.Zero(reflect.TypeOf((*interface{})(nil)).Elem()), reflect.ValueOf(errors.New("invalid array"))}
@@ -1304,9 +1304,9 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 			var idx int
 			if i, ok := idxVal.(int); ok {
 				idx = i
-			} else if miniNum, ok := idxVal.(*ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(*ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
-			} else if miniNum, ok := idxVal.(ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
 			} else {
 				return []reflect.Value{reflect.Zero(reflect.TypeOf((*interface{})(nil)).Elem()), reflect.ValueOf(fmt.Errorf("invalid index type: %T", idxVal))}
@@ -1319,12 +1319,12 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 		}), nil
 	case "length":
 		// function(arr) -> number, error
-		return e.makeFn(fmt.Sprintf("function(%s) Number", miniType), 1, 1, func(args []reflect.Value) []reflect.Value {
+		return e.makeFn(fmt.Sprintf("function(%s) Int64", miniType), 1, 1, func(args []reflect.Value) []reflect.Value {
 			arrPtr, ok := args[0].Interface().(*[]interface{})
 			if !ok {
 				return []reflect.Value{reflect.Zero(reflect.TypeOf((*interface{})(nil)).Elem()), reflect.ValueOf(errors.New("invalid array"))}
 			}
-			return []reflect.Value{reflect.ValueOf(ast.NewMiniNumber(int64(len(*arrPtr))))}
+			return []reflect.Value{reflect.ValueOf(ast.NewMiniInt64(int64(len(*arrPtr))))}
 		}), nil
 	case "push":
 		// function(arr, val) -> void (error)
@@ -1339,7 +1339,7 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 		}), nil
 	case "set":
 		// function(arr, idx, val) -> void (error)
-		return e.makeFn(fmt.Sprintf("function(%s, Number, %s) Void", miniType, elemType), 3, 1, func(args []reflect.Value) []reflect.Value {
+		return e.makeFn(fmt.Sprintf("function(%s, Int64, %s) Void", miniType, elemType), 3, 1, func(args []reflect.Value) []reflect.Value {
 			arrPtr, ok := args[0].Interface().(*[]interface{})
 			if !ok {
 				return []reflect.Value{reflect.ValueOf(errors.New("invalid array"))}
@@ -1348,9 +1348,9 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 			var idx int
 			if i, ok := idxVal.(int); ok {
 				idx = i
-			} else if miniNum, ok := idxVal.(*ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(*ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
-			} else if miniNum, ok := idxVal.(ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
 			} else {
 				return []reflect.Value{reflect.ValueOf(fmt.Errorf("invalid index type: %T", idxVal))}
@@ -1363,7 +1363,7 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 		}), nil
 	case "remove":
 		// function(arr, idx) -> void (error)
-		return e.makeFn(fmt.Sprintf("function(%s, Number) Void", miniType), 2, 1, func(args []reflect.Value) []reflect.Value {
+		return e.makeFn(fmt.Sprintf("function(%s, Int64) Void", miniType), 2, 1, func(args []reflect.Value) []reflect.Value {
 			arrPtr, ok := args[0].Interface().(*[]interface{})
 			if !ok {
 				return []reflect.Value{reflect.ValueOf(errors.New("invalid array"))}
@@ -1372,9 +1372,9 @@ func (e *Executor) createArrayMethod(miniType ast.OPSType, method string) (*Var,
 			var idx int
 			if i, ok := idxVal.(int); ok {
 				idx = i
-			} else if miniNum, ok := idxVal.(*ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(*ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
-			} else if miniNum, ok := idxVal.(ast.MiniNumber); ok {
+			} else if miniNum, ok := idxVal.(ast.MiniInt64); ok {
 				idx = int(miniNum.GoValue().(int64))
 			} else {
 				return []reflect.Value{reflect.ValueOf(fmt.Errorf("invalid index type: %T", idxVal))}
@@ -1459,12 +1459,12 @@ func (e *Executor) createMapMethod(miniType ast.OPSType, method string) (*Var, e
 			return []reflect.Value{reflect.Zero(reflect.TypeOf((*error)(nil)).Elem())}
 		}), nil
 	case "size":
-		return e.makeFn(fmt.Sprintf("function(%s) Number", miniType), 1, 2, func(args []reflect.Value) []reflect.Value {
+		return e.makeFn(fmt.Sprintf("function(%s) Int64", miniType), 1, 2, func(args []reflect.Value) []reflect.Value {
 			m, err := getMap(args[0].Interface())
 			if err != nil {
 				return []reflect.Value{reflect.Zero(reflect.TypeOf((*interface{})(nil)).Elem()), reflect.ValueOf(err)}
 			}
-			val, _ := (&ast.MiniNumber{}).New(strconv.Itoa(len(m)))
+			val, _ := (&ast.MiniInt64{}).New(strconv.Itoa(len(m)))
 			return []reflect.Value{reflect.ValueOf(val), reflect.Zero(reflect.TypeOf((*error)(nil)).Elem())}
 		}), nil
 	case "contains":

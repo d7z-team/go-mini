@@ -6,131 +6,131 @@ import (
 	"time"
 )
 
-type MiniNumber struct {
+type MiniInt64 struct {
 	data int64
 }
 
-func NewMiniNumber(data int64) MiniNumber {
-	return MiniNumber{data: data}
+func NewMiniInt64(data int64) MiniInt64 {
+	return MiniInt64{data: data}
 }
 
 // Set 更新底层的数字值
-func (o *MiniNumber) Set(data int64) {
+func (o *MiniInt64) Set(data int64) {
 	o.data = data
 }
 
 // GoValue 返回底层的 Go 任意类型值
-func (o *MiniNumber) GoValue() any {
+func (o *MiniInt64) GoValue() any {
 	return o.data
 }
 
 // OPSType 获取类型名
-func (o *MiniNumber) OPSType() Ident {
-	return "Number"
+func (o *MiniInt64) OPSType() Ident {
+	return "Int64"
 }
 
 // Clone 克隆一个数字对象
-func (o *MiniNumber) Clone() MiniObj {
-	return &MiniNumber{data: o.data}
+func (o *MiniInt64) Clone() MiniObj {
+	return &MiniInt64{data: o.data}
 }
 
 // Plus 加法运算
-func (o *MiniNumber) Plus(other *MiniNumber) MiniNumber {
+func (o *MiniInt64) Plus(other *MiniInt64) MiniInt64 {
 	n := o.data + other.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // Minus 减法运算
-func (o *MiniNumber) Minus(other *MiniNumber) MiniNumber {
+func (o *MiniInt64) Minus(other *MiniInt64) MiniInt64 {
 	n := o.data - other.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // Mult 乘法运算
-func (o *MiniNumber) Mult(other *MiniNumber) MiniNumber {
+func (o *MiniInt64) Mult(other *MiniInt64) MiniInt64 {
 	n := o.data * other.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // Div 除法运算
-func (o *MiniNumber) Div(other *MiniNumber) MiniNumber {
+func (o *MiniInt64) Div(other *MiniInt64) MiniInt64 {
 	n := o.data / other.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // Mod 取模运算
-func (o *MiniNumber) Mod(other *MiniNumber) MiniNumber {
+func (o *MiniInt64) Mod(other *MiniInt64) MiniInt64 {
 	n := o.data % other.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // Eq 判断两个数字是否相等
-func (o *MiniNumber) Eq(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Eq(other *MiniInt64) MiniBool {
 	b := o.data == other.data
 	return MiniBool{data: b}
 }
 
 // Neq 判断两个数字是否不相等
-func (o *MiniNumber) Neq(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Neq(other *MiniInt64) MiniBool {
 	b := o.data != other.data
 	return MiniBool{data: b}
 }
 
 // Lt 判断是否小于
-func (o *MiniNumber) Lt(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Lt(other *MiniInt64) MiniBool {
 	b := o.data < other.data
 	return MiniBool{data: b}
 }
 
 // Gt 判断是否大于
-func (o *MiniNumber) Gt(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Gt(other *MiniInt64) MiniBool {
 	b := o.data > other.data
 	return MiniBool{data: b}
 }
 
 // Le 判断是否小于等于
-func (o *MiniNumber) Le(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Le(other *MiniInt64) MiniBool {
 	b := o.data <= other.data
 	return MiniBool{data: b}
 }
 
 // Ge 判断是否大于等于
-func (o *MiniNumber) Ge(other *MiniNumber) MiniBool {
+func (o *MiniInt64) Ge(other *MiniInt64) MiniBool {
 	b := o.data >= other.data
 	return MiniBool{data: b}
 }
 
 // Sub 取相反数（负值）
-func (o *MiniNumber) Sub() MiniNumber {
+func (o *MiniInt64) Sub() MiniInt64 {
 	n := -o.data
-	return MiniNumber{data: n}
+	return MiniInt64{data: n}
 }
 
 // String 转换为字符串对象
-func (o *MiniNumber) String() MiniString {
+func (o *MiniInt64) String() MiniString {
 	return NewMiniString(o.GoString())
 }
 
 // GoString 返回字符串表示形式
-func (o *MiniNumber) GoString() string {
+func (o *MiniInt64) GoString() string {
 	return strconv.FormatInt(o.data, 10)
 }
 
 // New 内部方法：根据字面量创建对象
-func (o *MiniNumber) New(n string) (MiniObj, error) {
+func (o *MiniInt64) New(n string) (MiniObj, error) {
 	atoi, err := strconv.Atoi(n)
 	if err != nil {
 		return nil, err
 	}
-	return &MiniNumber{data: int64(atoi)}, nil
+	return &MiniInt64{data: int64(atoi)}, nil
 }
 
 // RandomInt 生成指定范围内的随机整数
-func (o *MiniNumber) RandomInt(ltNum, gtNum *MiniNumber) MiniNumber {
+func (o *MiniInt64) RandomInt(ltNum, gtNum *MiniInt64) MiniInt64 {
 	if ltNum.data > gtNum.data {
-		return MiniNumber{data: -1}
+		return MiniInt64{data: -1}
 	}
 	time.Sleep(time.Millisecond * 3)
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return MiniNumber{data: r.Int63n(gtNum.data-ltNum.data+1) + ltNum.data}
+	return MiniInt64{data: r.Int63n(gtNum.data-ltNum.data+1) + ltNum.data}
 }

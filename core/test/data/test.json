@@ -4,7 +4,7 @@
     "variable": "x",
     "value": {
       "meta": "literal",
-      "kind": "Number",
+      "kind": "Int64",
       "value": "0"
     }
   },
@@ -23,14 +23,14 @@
         "left": {
           "id": "ident_x_1",
           "meta": "identifier",
-          "type": "Number",
+          "type": "Int64",
           "name": "x"
         },
         "operator": ">",
         "right": {
           "id": "lit_0_1",
           "meta": "literal",
-          "type": "Number",
+          "type": "Int64",
           "value": "0"
         }
       },
@@ -42,14 +42,14 @@
         "left": {
           "id": "ident_x_2",
           "meta": "identifier",
-          "type": "Number",
+          "type": "Int64",
           "name": "x"
         },
         "operator": "<",
         "right": {
           "id": "lit_10_1",
           "meta": "literal",
-          "type": "Number",
+          "type": "Int64",
           "value": "10"
         }
       }
@@ -67,7 +67,7 @@
             {
               "id": "lit_1_1",
               "meta": "literal",
-              "type": "Number",
+              "type": "Int64",
               "value": "1"
             }
           ]
@@ -87,7 +87,7 @@
             {
               "id": "lit_0_2",
               "meta": "literal",
-              "type": "Number",
+              "type": "Int64",
               "value": "0"
             }
           ]

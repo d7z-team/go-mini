@@ -28,26 +28,26 @@ func IoReadAll(reader any) (types.MiniFile, error) {
 	return types.NewMiniFile(data), nil
 }
 
-func IoCopy(dst, src any) (ast.MiniNumber, error) {
+func IoCopy(dst, src any) (ast.MiniInt64, error) {
 	w, err := toWriter(dst)
 	if err != nil {
-		return ast.MiniNumber{}, err
+		return ast.MiniInt64{}, err
 	}
 	r, err := toReader(src)
 	if err != nil {
-		return ast.MiniNumber{}, err
+		return ast.MiniInt64{}, err
 	}
 	n, err := io.Copy(w, r)
-	return ast.NewMiniNumber(n), err
+	return ast.NewMiniInt64(n), err
 }
 
-func IoWriteString(dst any, s *ast.MiniString) (ast.MiniNumber, error) {
+func IoWriteString(dst any, s *ast.MiniString) (ast.MiniInt64, error) {
 	w, err := toWriter(dst)
 	if err != nil {
-		return ast.MiniNumber{}, err
+		return ast.MiniInt64{}, err
 	}
 	n, err := io.WriteString(w, s.GoString())
-	return ast.NewMiniNumber(int64(n)), err
+	return ast.NewMiniInt64(int64(n)), err
 }
 
 func toReader(v any) (io.Reader, error) {

@@ -30,19 +30,19 @@ func (o *MiniTime) Format(layout *ast.MiniString) ast.MiniString {
 	return ast.NewMiniString(o.t.Format(layout.GoString()))
 }
 
-func (o *MiniTime) Unix() ast.MiniNumber {
-	return ast.NewMiniNumber(o.t.Unix())
+func (o *MiniTime) Unix() ast.MiniInt64 {
+	return ast.NewMiniInt64(o.t.Unix())
 }
 
-func (o *MiniTime) UnixMilli() ast.MiniNumber {
-	return ast.NewMiniNumber(o.t.UnixMilli())
+func (o *MiniTime) UnixMilli() ast.MiniInt64 {
+	return ast.NewMiniInt64(o.t.UnixMilli())
 }
 
-func (o *MiniTime) Add(seconds *ast.MiniNumber) *MiniTime {
+func (o *MiniTime) Add(seconds *ast.MiniInt64) *MiniTime {
 	return NewMiniTime(o.t.Add(time.Duration(seconds.GoValue().(int64)) * time.Second))
 }
 
-func (o *MiniTime) AddDate(years, months, days *ast.MiniNumber) *MiniTime {
+func (o *MiniTime) AddDate(years, months, days *ast.MiniInt64) *MiniTime {
 	return NewMiniTime(o.t.AddDate(
 		int(years.GoValue().(int64)),
 		int(months.GoValue().(int64)),
@@ -50,8 +50,8 @@ func (o *MiniTime) AddDate(years, months, days *ast.MiniNumber) *MiniTime {
 	))
 }
 
-func (o *MiniTime) Sub(other *MiniTime) ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Sub(other.t).Seconds()))
+func (o *MiniTime) Sub(other *MiniTime) ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Sub(other.t).Seconds()))
 }
 
 func (o *MiniTime) Before(other *MiniTime) ast.MiniBool {
@@ -66,26 +66,26 @@ func (o *MiniTime) IsZero() ast.MiniBool {
 	return ast.NewMiniBool(o.t.IsZero())
 }
 
-func (o *MiniTime) Year() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Year()))
+func (o *MiniTime) Year() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Year()))
 }
 
-func (o *MiniTime) Month() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Month()))
+func (o *MiniTime) Month() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Month()))
 }
 
-func (o *MiniTime) Day() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Day()))
+func (o *MiniTime) Day() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Day()))
 }
 
-func (o *MiniTime) Hour() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Hour()))
+func (o *MiniTime) Hour() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Hour()))
 }
 
-func (o *MiniTime) Minute() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Minute()))
+func (o *MiniTime) Minute() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Minute()))
 }
 
-func (o *MiniTime) Second() ast.MiniNumber {
-	return ast.NewMiniNumber(int64(o.t.Second()))
+func (o *MiniTime) Second() ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(o.t.Second()))
 }

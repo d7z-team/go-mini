@@ -7,7 +7,7 @@
       "variable": "i",
       "value": {
         "meta": "literal",
-        "kind": "Number",
+        "kind": "Int64",
         "value": "0"
       }
     },
@@ -20,7 +20,7 @@
       },
       "right": {
         "meta": "literal",
-        "kind": "Number",
+        "kind": "Int64",
         "value": "10"
       }
     },

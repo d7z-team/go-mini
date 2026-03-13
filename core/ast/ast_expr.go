@@ -448,9 +448,9 @@ func (i *IndexExpr) Validate(ctx *ValidContext) (Node, bool) {
 	// 检查对象是否为数组类型
 	objType := i.Object.GetBase().Type
 	if objType.IsArray() {
-		// 检查索引类型是否为 Number
-		if i.Index.GetBase().Type != "Number" {
-			ctx.Child(i.Index).AddErrorf("数组索引只支持 Number 类型 (%s)", i.Index.GetBase().Type)
+		// 检查索引类型是否为 Int64
+		if i.Index.GetBase().Type != "Int64" {
+			ctx.Child(i.Index).AddErrorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 			return nil, false
 		}
 

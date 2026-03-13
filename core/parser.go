@@ -574,19 +574,19 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 				Value:    raw.Value,
 				Data:     &data,
 			}, nil
-		case "Number":
+		case "Int64":
 			val, _ := strconv.ParseInt(raw.Value, 10, 64)
-			data := ast.NewMiniNumber(val)
+			data := ast.NewMiniInt64(val)
 			return &ast.LiteralExpr{
-				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Number"},
+				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Int64"},
 				Value:    raw.Value,
 				Data:     &data,
 			}, nil
-		case "Float":
+		case "Float64":
 			val, _ := strconv.ParseFloat(raw.Value, 64)
-			data := ast.NewMiniFloat(val)
+			data := ast.NewMiniFloat64(val)
 			return &ast.LiteralExpr{
-				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Float"},
+				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Float64"},
 				Value:    raw.Value,
 				Data:     &data,
 			}, nil
@@ -598,11 +598,11 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 				Value:    raw.Value,
 				Data:     &data,
 			}, nil
-		case "Byte":
+		case "Uint8":
 			val, _ := strconv.ParseUint(raw.Value, 10, 8)
-			data := ast.NewMiniByte(byte(val))
+			data := ast.NewMiniUint8(byte(val))
 			return &ast.LiteralExpr{
-				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Byte"},
+				BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: "Uint8"},
 				Value:    raw.Value,
 				Data:     &data,
 			}, nil

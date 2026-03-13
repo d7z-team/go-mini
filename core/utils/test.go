@@ -24,7 +24,7 @@ func TestGoCode(goCode string) ([]string, error) {
 		miniExecutor.AddNativeStruct(stdlibStruct)
 	}
 
-	miniExecutor.MustAddFunc("push_num", func(n *ast.MiniNumber) {
+	miniExecutor.MustAddFunc("push_num", func(n *ast.MiniInt64) {
 		if n == nil {
 			result = append(result, "nil")
 			return

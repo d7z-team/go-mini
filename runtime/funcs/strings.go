@@ -42,7 +42,7 @@ func StrHasSuffix(s, suffix *ast.MiniString) ast.MiniBool {
 	return ast.NewMiniBool(strings.HasSuffix(s.GoString(), suffix.GoString()))
 }
 
-func StrReplace(s, old, new *ast.MiniString, n *ast.MiniNumber) ast.MiniString {
+func StrReplace(s, old, new *ast.MiniString, n *ast.MiniInt64) ast.MiniString {
 	res := strings.Replace(s.GoString(), old.GoString(), new.GoString(), int(n.GoValue().(int64)))
 	return ast.NewMiniString(res)
 }
@@ -85,20 +85,20 @@ func StrTrimSpace(s *ast.MiniString) ast.MiniString {
 	return ast.NewMiniString(strings.TrimSpace(s.GoString()))
 }
 
-func StrIndex(s, substr *ast.MiniString) ast.MiniNumber {
-	return ast.NewMiniNumber(int64(strings.Index(s.GoString(), substr.GoString())))
+func StrIndex(s, substr *ast.MiniString) ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(strings.Index(s.GoString(), substr.GoString())))
 }
 
-func StrRepeat(s *ast.MiniString, count *ast.MiniNumber) ast.MiniString {
+func StrRepeat(s *ast.MiniString, count *ast.MiniInt64) ast.MiniString {
 	return ast.NewMiniString(strings.Repeat(s.GoString(), int(count.GoValue().(int64))))
 }
 
-func StrLength(s *ast.MiniString) ast.MiniNumber {
-	return ast.NewMiniNumber(int64(len(s.GoString())))
+func StrLength(s *ast.MiniString) ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(len(s.GoString())))
 }
 
-func StrCount(s, substr *ast.MiniString) ast.MiniNumber {
-	return ast.NewMiniNumber(int64(strings.Count(s.GoString(), substr.GoString())))
+func StrCount(s, substr *ast.MiniString) ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(strings.Count(s.GoString(), substr.GoString())))
 }
 
 func StrEqualFold(s, t *ast.MiniString) ast.MiniBool {
@@ -114,8 +114,8 @@ func StrFields(s *ast.MiniString) []ast.MiniString {
 	return res
 }
 
-func StrLastIndex(s, substr *ast.MiniString) ast.MiniNumber {
-	return ast.NewMiniNumber(int64(strings.LastIndex(s.GoString(), substr.GoString())))
+func StrLastIndex(s, substr *ast.MiniString) ast.MiniInt64 {
+	return ast.NewMiniInt64(int64(strings.LastIndex(s.GoString(), substr.GoString())))
 }
 
 func StrTrimPrefix(s, prefix *ast.MiniString) ast.MiniString {

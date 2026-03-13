@@ -47,26 +47,26 @@ func TestCallExprArrayDeduction(t *testing.T) {
 		{
 			name:         "Multiple types deduced to Array<Any> passing to Array<Any>",
 			funcType:     "function(Array<Any>) Void",
-			argTypes:     []OPSType{"String", "Number"},
+			argTypes:     []OPSType{"String", "Int64"},
 			expectedPass: true,
 			expectedType: "Void",
 		},
 		{
 			name:         "Multiple types deduced to Array<Any> failing to pass to Array<String>",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"String", "Number"},
+			argTypes:     []OPSType{"String", "Int64"},
 			expectedPass: false,
 		},
 		{
 			name:         "Array mismatch with exact array types",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"Array<Number>"},
+			argTypes:     []OPSType{"Array<Int64>"},
 			expectedPass: false,
 		},
 		{
 			name:         "Single arg not implicitly matched",
 			funcType:     "function(Array<String>) Void",
-			argTypes:     []OPSType{"Number"},
+			argTypes:     []OPSType{"Int64"},
 			expectedPass: false,
 		},
 		{

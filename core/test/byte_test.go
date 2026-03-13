@@ -10,7 +10,7 @@ import (
 func TestByte(t *testing.T) {
 	t.Run("byte-literal", func(t *testing.T) {
 		data, err := utils.TestGoExpr(`
-			var b Byte = 65
+			var b Uint8 = 65
 			push(b)
 		`)
 		assert.NoError(t, err)
@@ -20,7 +20,7 @@ func TestByte(t *testing.T) {
 	t.Run("byte-array", func(t *testing.T) {
 		data, err := utils.TestGoCode(`
 			func main() {
-				arr := []Byte{72, 105, 33}
+				arr := []Uint8{72, 105, 33}
 				push(arr[0])
 				push(arr[1])
 				push(arr[2])
@@ -32,9 +32,9 @@ func TestByte(t *testing.T) {
 
 	t.Run("byte-compare", func(t *testing.T) {
 		data, err := utils.TestGoExpr(`
-			var b1 Byte = 10
-			var b2 Byte = 10
-			var b3 Byte = 20
+			var b1 Uint8 = 10
+			var b2 Uint8 = 10
+			var b3 Uint8 = 20
 			push(b1 == b2)
 			push(b1 != b3)
 		`)
@@ -45,7 +45,7 @@ func TestByte(t *testing.T) {
 	t.Run("byte-slice-mini", func(t *testing.T) {
 		data, err := utils.TestGoCode(`
 			func main() {
-				arr := []Byte{1, 2, 3}
+				arr := []Uint8{1, 2, 3}
 				push(arr[0])
 				
 				arr[0] = 10

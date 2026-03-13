@@ -26,8 +26,8 @@ func (o *MiniFileInfo) Name() ast.MiniString {
 	return ast.NewMiniString(o.info.Name())
 }
 
-func (o *MiniFileInfo) Size() ast.MiniNumber {
-	return ast.NewMiniNumber(o.info.Size())
+func (o *MiniFileInfo) Size() ast.MiniInt64 {
+	return ast.NewMiniInt64(o.info.Size())
 }
 
 func (o *MiniFileInfo) IsDir() ast.MiniBool {
@@ -59,7 +59,7 @@ func (o *MiniFsFile) Write(p []byte) (n int, err error) {
 	return o.file.Write(p)
 }
 
-func (o *MiniFsFile) MiniRead(n *ast.MiniNumber) (MiniFile, error) {
+func (o *MiniFsFile) MiniRead(n *ast.MiniInt64) (MiniFile, error) {
 	buf := make([]byte, n.GoValue().(int64))
 	read, err := o.file.Read(buf)
 	if err != nil && err != io.EOF {
@@ -68,9 +68,9 @@ func (o *MiniFsFile) MiniRead(n *ast.MiniNumber) (MiniFile, error) {
 	return NewMiniFile(buf[:read]), nil
 }
 
-func (o *MiniFsFile) MiniWrite(data *MiniFile) (ast.MiniNumber, error) {
+func (o *MiniFsFile) MiniWrite(data *MiniFile) (ast.MiniInt64, error) {
 	n, err := o.file.Write(data.Bytes())
-	return ast.NewMiniNumber(int64(n)), err
+	return ast.NewMiniInt64(int64(n)), err
 }
 
 func (o *MiniFsFile) Close() error {
@@ -98,7 +98,7 @@ func (o *MiniFs) OPSType() ast.Ident {
 	return "Fs"
 }
 
-func (o *MiniFs) Mkdir(path *ast.MiniString, perm *ast.MiniNumber) error {
+func (o *MiniFs) Mkdir(path *ast.MiniString, perm *ast.MiniInt64) error {
 	return o.fs.Mkdir(path.GoString(), osFileMode(perm))
 }
 
@@ -206,7 +206,7 @@ func (o *MiniFs) Stat(path *ast.MiniString) (*MiniFileInfo, error) {
 	return NewMiniFileInfo(info), nil
 }
 
-func (o *MiniFs) Chmod(path *ast.MiniString, mode *ast.MiniNumber) error {
+func (o *MiniFs) Chmod(path *ast.MiniString, mode *ast.MiniInt64) error {
 	return o.fs.Chmod(path.GoString(), osFileMode(mode))
 }
 
@@ -230,7 +230,7 @@ func (o *MiniFs) Open(path *ast.MiniString) (*MiniFsFile, error) {
 	return NewMiniFsFile(f), nil
 }
 
-func osFileMode(n *ast.MiniNumber) os.FileMode {
+func osFileMode(n *ast.MiniInt64) os.FileMode {
 	if n == nil {
 		return 0o644
 	}

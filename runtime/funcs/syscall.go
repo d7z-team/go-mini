@@ -17,7 +17,7 @@ func InitSyscall(executor *engine.MiniExecutor) {
 }
 
 // Sleep 暂停执行指定的时间（毫秒）
-func Sleep(ctx context.Context, sleep *ast.MiniNumber) error {
+func Sleep(ctx context.Context, sleep *ast.MiniInt64) error {
 	goValue := sleep.GoValue().(int64)
 	for i := 0; i < int(goValue/10); i++ {
 		select {
@@ -30,8 +30,8 @@ func Sleep(ctx context.Context, sleep *ast.MiniNumber) error {
 	return nil
 }
 
-func RandomInt(lt, gt *ast.MiniNumber) ast.MiniNumber {
-	var o ast.MiniNumber
+func RandomInt(lt, gt *ast.MiniInt64) ast.MiniInt64 {
+	var o ast.MiniInt64
 	return o.RandomInt(lt, gt)
 }
 

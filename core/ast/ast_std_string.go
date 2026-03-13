@@ -119,13 +119,13 @@ func (o *MiniString) GetData(other *MiniString) MiniString {
 
 // 获取文本长度
 // Len 获取字符串的字符长度
-func (o *MiniString) Len() MiniNumber {
-	return MiniNumber{data: int64(len(o.data))}
+func (o *MiniString) Len() MiniInt64 {
+	return MiniInt64{data: int64(len(o.data))}
 }
 
 // 追加新文本
 // Append 追加新文本，可指定是否换行
-func (o *MiniString) Append(other *MiniString, lineFlag *MiniNumber) MiniString {
+func (o *MiniString) Append(other *MiniString, lineFlag *MiniInt64) MiniString {
 	if lineFlag.data == 1 {
 		return MiniString{data: o.data + "\n" + other.data}
 	}
@@ -134,7 +134,7 @@ func (o *MiniString) Append(other *MiniString, lineFlag *MiniNumber) MiniString 
 
 // 截取一段文本
 // Substring 截取指定范围的子字符串
-func (o *MiniString) Substring(start, length *MiniNumber) MiniString {
+func (o *MiniString) Substring(start, length *MiniInt64) MiniString {
 	if length.data < 0 {
 		length.data = int64(len(o.data))
 	}
@@ -143,7 +143,7 @@ func (o *MiniString) Substring(start, length *MiniNumber) MiniString {
 
 // 补齐文本填充到指定长度
 // Pad 按照指定长度和字符填充字符串
-func (o *MiniString) Pad(fillText *MiniString, length, fillLocation *MiniNumber) MiniString {
+func (o *MiniString) Pad(fillText *MiniString, length, fillLocation *MiniInt64) MiniString {
 	if length.data <= o.Len().data {
 		return MiniString{data: o.data}
 	}
@@ -158,7 +158,7 @@ func (o *MiniString) Pad(fillText *MiniString, length, fillLocation *MiniNumber)
 
 // 改变文本的大小写
 // ChangeCase 转换字符串大小写（1为大写，2为小写）
-func (o *MiniString) ChangeCase(flag *MiniNumber) MiniString {
+func (o *MiniString) ChangeCase(flag *MiniInt64) MiniString {
 	switch flag.data {
 	case 1:
 		return MiniString{data: strings.ToUpper(o.data)}
@@ -184,7 +184,7 @@ func (o *MiniString) HasSuffix(other *MiniString) MiniBool {
 }
 
 // Replace 替换字符串中的子串 (指定次数)
-func (o *MiniString) Replace(oldText, newText *MiniString, n *MiniNumber) MiniString {
+func (o *MiniString) Replace(oldText, newText *MiniString, n *MiniInt64) MiniString {
 	return MiniString{data: strings.Replace(o.data, oldText.data, newText.data, int(n.data))}
 }
 
@@ -204,12 +204,12 @@ func (o *MiniString) Split(sep *MiniString) []interface{} {
 }
 
 // Index 获取子串第一次出现的位置
-func (o *MiniString) Index(other *MiniString) MiniNumber {
-	return MiniNumber{data: int64(strings.Index(o.data, other.data))}
+func (o *MiniString) Index(other *MiniString) MiniInt64 {
+	return MiniInt64{data: int64(strings.Index(o.data, other.data))}
 }
 
 // Repeat 重复字符串
-func (o *MiniString) Repeat(count *MiniNumber) MiniString {
+func (o *MiniString) Repeat(count *MiniInt64) MiniString {
 	return MiniString{data: strings.Repeat(o.data, int(count.data))}
 }
 

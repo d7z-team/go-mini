@@ -21,32 +21,6 @@ func TestDataHandler(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// 随机数获取
-func TestRandom(t *testing.T) {
-	// todo:重构流程
-	t.Skip()
-	_, err := utils.TestGoExpr(`
-	for i := 0; i < 10; i++ {
-		num1 := RandomInt(-20, 10)
-		println(&num1)
-	}
-	`)
-	assert.NoError(t, err)
-}
-
-// 转换成Json对象
-func TestText2Json(t *testing.T) {
-	_, err := utils.TestGoCode(`
-	func main() {
-		str1 :=  "{\"name\":\"hello world\",\"age\":18,\"sex\":true,\"hobby\":[\"football\",\"basketball\"]}"
-		json := str1.Text2Json()
-		println(json)
-		println(json.JSON2Text())
-	}
-	`)
-	assert.NoError(t, err)
-}
-
 // 追加新文本
 func TestGetData(t *testing.T) {
 	_, err := utils.TestGoCode(`
@@ -96,35 +70,6 @@ func TestChangeCase(t *testing.T) {
 		println(str1.ChangeCase(flag))
 		flag = 2
 		println(str1.ChangeCase(flag))
-	}
-	`)
-	assert.NoError(t, err)
-}
-
-// 列表转换为文本测试
-func TestList2Text(t *testing.T) {
-	// todo:重构流程
-	t.Skip()
-	_, err := utils.TestGoCode(`
-	func main() {
-		list := []string{"hello","world","雕鸽"}
-		linkSymn := "|"
-		println(list.List2Text(linkSymn))
-	}
-	`)
-	assert.NoError(t, err)
-}
-
-// 文本转换为列表测试
-func TestText2List(t *testing.T) {
-	// todo:重构流程
-	t.Skip()
-	_, err := utils.TestGoCode(`
-	func main() {
-		str1 := "hello|world|雕鸽"
-		isBank := 1
-		rexp := "|"
-		println(str1.Text2List(isBank,rexp))
 	}
 	`)
 	assert.NoError(t, err)

@@ -451,7 +451,7 @@ func (o OPSType) StructName() (Ident, bool) {
 func (o OPSType) IsPrimitive() bool {
 	s := string(o)
 	switch s {
-	case "Any", "Void", "Error", "String", "Number", "Float", "Bool", "Byte":
+	case "Any", "Void", "Error", "String", "Int64", "Float64", "Bool", "Uint8":
 		return true
 	}
 	return false
@@ -637,25 +637,25 @@ func (o OPSType) AutoPtr(pVar Expr) (Expr, bool) {
 	}
 
 	// 数值字面量自动转换
-	if (o == "Number" || o == "Float" || o == "Byte") && varType.IsPrimitive() {
+	if (o == "Int64" || o == "Float64" || o == "Uint8") && varType.IsPrimitive() {
 		if lit, ok := pVar.(*LiteralExpr); ok {
 			switch o {
-			case "Number":
+			case "Int64":
 				val, _ := strconv.ParseInt(lit.Value, 10, 64)
-				data := NewMiniNumber(val)
-				lit.Type = "Number"
+				data := NewMiniInt64(val)
+				lit.Type = "Int64"
 				lit.Data = &data
 				return lit, true
-			case "Float":
+			case "Float64":
 				val, _ := strconv.ParseFloat(lit.Value, 64)
-				data := NewMiniFloat(val)
-				lit.Type = "Float"
+				data := NewMiniFloat64(val)
+				lit.Type = "Float64"
 				lit.Data = &data
 				return lit, true
-			case "Byte":
+			case "Uint8":
 				val, _ := strconv.ParseUint(lit.Value, 10, 8)
-				data := NewMiniByte(byte(val))
-				lit.Type = "Byte"
+				data := NewMiniUint8(byte(val))
+				lit.Type = "Uint8"
 				lit.Data = &data
 				return lit, true
 			}

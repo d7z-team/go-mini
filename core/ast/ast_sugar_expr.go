@@ -67,8 +67,8 @@ func (b *BinaryExpr) Validate(ctx *ValidContext) (Node, bool) {
 	// 常量折叠优化
 	if leftLit, ok := b.Left.(*LiteralExpr); ok {
 		if rightLit, ok := b.Right.(*LiteralExpr); ok {
-			if (leftType == "Number" && rightType == "Number") ||
-				(leftType == "Float" && rightType == "Float") {
+			if (leftType == "Int64" && rightType == "Int64") ||
+				(leftType == "Float64" && rightType == "Float64") {
 				leftVal, _ := strconv.ParseFloat(leftLit.Value, 64)
 				rightVal, _ := strconv.ParseFloat(rightLit.Value, 64)
 				var result float64
@@ -95,7 +95,7 @@ func (b *BinaryExpr) Validate(ctx *ValidContext) (Node, bool) {
 					},
 					Value: fmt.Sprintf("%v", result),
 				}
-				if leftType == "Number" {
+				if leftType == "Int64" {
 					ret.Value = strconv.FormatInt(int64(result), 10)
 				}
 				return ret, true

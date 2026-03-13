@@ -7,8 +7,8 @@
 ## 默认数据类型
 
 - String: golang string
-- Number: golang int64
-- Float: golang float64
+- Int64: golang int64
+- Float64: golang float64
 - Bool: golang bool
 
 

@@ -5,58 +5,58 @@ import (
 	"strconv"
 )
 
-type MiniByte struct {
+type MiniUint8 struct {
 	data byte
 }
 
-func NewMiniByte(data byte) MiniByte {
-	return MiniByte{data: data}
+func NewMiniUint8(data byte) MiniUint8 {
+	return MiniUint8{data: data}
 }
 
 // Set 更新底层的 byte 值
-func (o *MiniByte) Set(data byte) {
+func (o *MiniUint8) Set(data byte) {
 	o.data = data
 }
 
 // OPSType 获取类型名
-func (o *MiniByte) OPSType() Ident {
-	return "Byte"
+func (o *MiniUint8) OPSType() Ident {
+	return "Uint8"
 }
 
 // GoValue 返回底层的 Go 任意类型值
-func (o *MiniByte) GoValue() any {
+func (o *MiniUint8) GoValue() any {
 	return o.data
 }
 
 // Data 返回底层的 byte 值
-func (o *MiniByte) Data() byte {
+func (o *MiniUint8) Data() byte {
 	return o.data
 }
 
 // String 转换为字符串对象
-func (o *MiniByte) String() MiniString {
+func (o *MiniUint8) String() MiniString {
 	return NewMiniString(fmt.Sprintf("%d", o.data))
 }
 
 // Clone 克隆一个 byte 对象
-func (o *MiniByte) Clone() MiniObj {
-	return &MiniByte{data: o.data}
+func (o *MiniUint8) Clone() MiniObj {
+	return &MiniUint8{data: o.data}
 }
 
 // Eq 判断两个 byte 是否相等
-func (o *MiniByte) Eq(other *MiniByte) MiniBool {
+func (o *MiniUint8) Eq(other *MiniUint8) MiniBool {
 	return NewMiniBool(o.data == other.data)
 }
 
 // Neq 判断两个 byte 是否不相等
-func (o *MiniByte) Neq(other *MiniByte) MiniBool {
+func (o *MiniUint8) Neq(other *MiniUint8) MiniBool {
 	return NewMiniBool(o.data != other.data)
 }
 
-func (o *MiniByte) New(static string) (MiniObj, error) {
+func (o *MiniUint8) New(static string) (MiniObj, error) {
 	parseInt, err := strconv.ParseUint(static, 10, 8)
 	if err != nil {
 		return nil, err
 	}
-	return &MiniByte{data: byte(parseInt)}, nil
+	return &MiniUint8{data: byte(parseInt)}, nil
 }

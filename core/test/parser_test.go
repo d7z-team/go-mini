@@ -30,7 +30,7 @@ var ts []byte
 
 func TestSwitch(t *testing.T) {
 	UtilsTest(t, ts, func(t *testing.T, v *ast.ValidContext) {
-		assert.NoError(t, v.AddFuncSpec("print", "function(Number)"))
+		assert.NoError(t, v.AddFuncSpec("print", "function(Int64)"))
 	})
 }
 
@@ -39,7 +39,7 @@ var stru []byte
 
 func TestStruct(t *testing.T) {
 	UtilsTest(t, stru, func(t *testing.T, v *ast.ValidContext) {
-		assert.NoError(t, v.AddFuncSpec("print", "function(Number)"))
+		assert.NoError(t, v.AddFuncSpec("print", "function(Int64)"))
 	})
 }
 
@@ -48,7 +48,7 @@ var test []byte
 
 func TestTest(t *testing.T) {
 	UtilsTest(t, test, func(t *testing.T, v *ast.ValidContext) {
-		assert.NoError(t, v.AddFuncSpec("print", "function(Number)"))
+		assert.NoError(t, v.AddFuncSpec("print", "function(Int64)"))
 	})
 }
 

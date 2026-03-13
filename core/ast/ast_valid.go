@@ -243,23 +243,23 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		}
 		// methods need to include receiver type
 		arrayType := OPSType(ident)
-		callFunc, _ := OPSType(fmt.Sprintf("function(%s, Number) %s", arrayType, elemType)).ReadCallFunc()
+		callFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64) %s", arrayType, elemType)).ReadCallFunc()
 		arrayStruct.Methods["get"] = callFunc
-		readCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Number", arrayType)).ReadCallFunc()
+		readCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Int64", arrayType)).ReadCallFunc()
 		arrayStruct.Methods["length"] = readCallFunc
 
 		setElemType := elemType
 		pushElemType := elemType
-		if elemType == "Byte" {
-			setElemType = "Number"
-			pushElemType = "Number"
+		if elemType == "Uint8" {
+			setElemType = "Int64"
+			pushElemType = "Int64"
 		}
 
-		setCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Number, %s) Void", arrayType, setElemType)).ReadCallFunc()
+		setCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64, %s) Void", arrayType, setElemType)).ReadCallFunc()
 		arrayStruct.Methods["set"] = setCallFunc
 		pushCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", arrayType, pushElemType)).ReadCallFunc()
 		arrayStruct.Methods["push"] = pushCallFunc
-		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Number) Void", arrayType)).ReadCallFunc()
+		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Int64) Void", arrayType)).ReadCallFunc()
 		arrayStruct.Methods["remove"] = removeCallFunc
 
 		// Register global methods for validation
@@ -287,7 +287,7 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 
 		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", mapType, keyType)).ReadCallFunc()
 		mapStruct.Methods["remove"] = removeCallFunc
-		sizeCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Number", mapType)).ReadCallFunc()
+		sizeCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Int64", mapType)).ReadCallFunc()
 		mapStruct.Methods["size"] = sizeCallFunc
 		mapStruct.Methods["length"] = sizeCallFunc
 		containsCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Bool", mapType, keyType)).ReadCallFunc()
