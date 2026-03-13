@@ -1,0 +1,83 @@
+[
+  {
+    "meta": "for",
+    "id": "for_loop",
+    "init": {
+      "meta": "assignment",
+      "variable": "i",
+      "value": {
+        "meta": "literal",
+        "kind": "Int64",
+        "value": "0"
+      }
+    },
+    "cond": {
+      "meta": "binary",
+      "operator": "<",
+      "left": {
+        "meta": "identifier",
+        "name": "i"
+      },
+      "right": {
+        "meta": "literal",
+        "kind": "Int64",
+        "value": "10"
+      }
+    },
+    "update": {
+      "meta": "increment",
+      "operator": "++",
+      "operand": {
+        "meta": "identifier",
+        "name": "i"
+      }
+    },
+    "body": {
+      "meta": "block",
+      "children": [
+        {
+          "meta": "assignment",
+          "variable": "web",
+          "value": {
+            "meta": "call",
+            "func": {
+              "meta": "const_ref",
+              "name": "openBrowser"
+            },
+            "args": [
+              {
+                "meta": "literal",
+                "kind": "String",
+                "value": "https://google.com"
+              }
+            ]
+          }
+        },
+        {
+          "meta": "assignment",
+          "variable": "ret1",
+          "value": {
+            "meta": "struct_call",
+            "object": {
+              "meta": "identifier",
+              "name": "web"
+            },
+            "name": "input",
+            "args": [
+              {
+                "meta": "literal",
+                "kind": "String",
+                "value": "#INPUT"
+              },
+              {
+                "meta": "literal",
+                "kind": "String",
+                "value": "123"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+]
