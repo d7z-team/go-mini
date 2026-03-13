@@ -360,9 +360,14 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 		// 固定参数部分
 		for i := 0; i < minIn-1; i++ {
 			param := funct.Params[i+1]
-			ptr, b2 := param.AutoPtr(s.Args[i])
+			arg := s.Args[i]
+
+			// 尝试自动数值转换
+			arg = tryAutoNumericCast(ctx, param, arg)
+
+			ptr, b2 := param.AutoPtr(arg)
 			if !b2 {
-				ctx.Child(s).AddErrorf("函数结构错误(arg %d: %v) != (%v)", i, param, s.Args[i].GetBase().Type)
+				ctx.Child(s).AddErrorf("函数结构错误(arg %d: %v) != (%v)", i, param, arg.GetBase().Type)
 				return nil, false
 			}
 			s.Args[i] = ptr
@@ -370,9 +375,14 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 		// 变长参数部分由后续的 callExpr.Validate 处理
 	} else {
 		for i, param := range funct.Params[1:] {
-			ptr, b2 := param.AutoPtr(s.Args[i])
+			arg := s.Args[i]
+
+			// 尝试自动数值转换
+			arg = tryAutoNumericCast(ctx, param, arg)
+
+			ptr, b2 := param.AutoPtr(arg)
 			if !b2 {
-				ctx.Child(s).AddErrorf("函数结构错误(arg %d: %v) != (%v)", i, param, s.Args[i].GetBase().Type)
+				ctx.Child(s).AddErrorf("函数结构错误(arg %d: %v) != (%v)", i, param, arg.GetBase().Type)
 				return nil, false
 			}
 			s.Args[i] = ptr
@@ -512,4 +522,40 @@ func (l *LiteralExpr) Validate(ctx *ValidContext) (Node, bool) {
 		return nil, false
 	}
 	return validate, true
+}
+
+func tryAutoNumericCast(ctx *ValidContext, param GoMiniType, arg Expr) Expr {
+	argType := arg.GetBase().Type
+	targetBase := param
+	if param.IsPtr() {
+		targetBase, _ = param.GetPtrElementType()
+	}
+
+	if targetBase.IsNumeric() && argType.IsNumeric() && !targetBase.Equals(argType) {
+		newFuncName := Ident(fmt.Sprintf("__obj__new__%s", targetBase))
+		if _, b := ctx.GetFunction(newFuncName); b {
+			castCall := &CallExprStmt{
+				BaseNode: BaseNode{
+					ID:      arg.GetBase().ID + "_AutoCast",
+					Meta:    "call",
+					Type:    targetBase,
+					Message: "Auto Cast for " + string(targetBase),
+				},
+				Func: &ConstRefExpr{
+					BaseNode: BaseNode{
+						ID:   arg.GetBase().ID + "_AutoCast_Func",
+						Meta: "const_ref",
+						Type: GoMiniType(fmt.Sprintf("function(Any) %s", targetBase)),
+					},
+					Name: newFuncName,
+				},
+				Args: []Expr{arg},
+			}
+			v, ok := castCall.Validate(ctx)
+			if ok {
+				return v.(Expr)
+			}
+		}
+	}
+	return arg
 }

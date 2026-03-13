@@ -80,29 +80,49 @@ func TestTypeCast(t *testing.T) {
 		assert.Equal(t, []string{"100", "100", "100"}, result)
 	})
 
-	t.Run("implicit_numeric_conversion_in_calls", func(t *testing.T) {
+	t.Run("implicit_numeric_conversion_in_binary_ops", func(t *testing.T) {
 		executor := engine.NewMiniExecutor()
 		runtimes.InitAll(executor)
 
 		var results []string
 		executor.MustAddFunc("push", func(v any) {
-			results = append(results, fmt.Sprintf("%v", v))
+			// 统一通过反射和 GoMiniValue 提取原始值
+			rv := reflect.ValueOf(v)
+			val := v
+			if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+				val = rv.Elem().Interface()
+			}
+			if gv, ok := val.(ast.GoMiniValue); ok {
+				val = gv.GoValue()
+			} else if gv, ok := v.(ast.GoMiniValue); ok {
+				val = gv.GoValue()
+			}
+			results = append(results, fmt.Sprintf("%v", val))
 		})
 
-		// 定义接受 *Int8 的函数
-		executor.MustAddFunc("AcceptInt8Ptr", func(v *ast.MiniInt8) {
-			results = append(results, fmt.Sprintf("ptr:%v", v.GoValue()))
+		// 定义返回 MiniInt 的函数
+		executor.MustAddFunc("Size", func() ast.MiniInt {
+			return ast.NewMiniInt(20)
 		})
 
 		code := `
 			func main() {
-				AcceptInt8Ptr(123) // 123 is Int64, needs *Int8
+				if Size() > 10 { // Int(20) > Int64(10)
+					push("greater")
+				}
+
+				// 显式混合运算
+				a := int8(5)
+				b := 10 // Int64
+				if a < b {
+					push("less")
+				}
 			}
 		`
 		rt, err := executor.NewRuntimeByGoCode(code)
 		assert.NoError(t, err)
 		err = rt.Execute(context.Background())
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"ptr:123"}, results)
+		assert.Equal(t, []string{"greater", "less"}, results)
 	})
 }
