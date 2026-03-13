@@ -91,71 +91,105 @@ func parseMiniType(field reflect.Type) (OPSType, bool) {
 	switch field.Kind() {
 	case reflect.String:
 		miniType := OPSType("String")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Bool:
 		miniType := OPSType("Bool")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Int:
 		miniType := OPSType("Int")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Int8:
 		miniType := OPSType("Int8")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Int16:
 		miniType := OPSType("Int16")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Int32:
 		miniType := OPSType("Int32")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Int64:
 		miniType := OPSType("Int64")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uint:
 		miniType := OPSType("Uint")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uint8:
 		miniType := OPSType("Uint8")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uint16:
 		miniType := OPSType("Uint16")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uint32:
 		miniType := OPSType("Uint32")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uint64:
 		miniType := OPSType("Uint64")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Uintptr:
 		miniType := OPSType("Uintptr")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Float32:
 		miniType := OPSType("Float32")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Float64:
 		miniType := OPSType("Float64")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Complex64:
 		miniType := OPSType("Complex64")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	case reflect.Complex128:
 		miniType := OPSType("Complex128")
-		if isPtr { miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType)) }
+		if isPtr {
+			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
+		}
 		return miniType, true
 	}
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"gopkg.d7z.net/go-mini/core"
+	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
