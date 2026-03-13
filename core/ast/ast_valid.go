@@ -509,7 +509,8 @@ func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 		}
 
 		if native.LiteralNew {
-			callFunc, _ := GoMiniType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
+			// 修改为接受 Any 以支持变量转换 T(x)
+			callFunc, _ := GoMiniType(fmt.Sprintf("function(Any) %s", native.StructName)).ReadCallFunc()
 			c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", native.StructName))] = callFunc
 		}
 	}

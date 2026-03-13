@@ -1299,18 +1299,51 @@ func (e *Executor) AddStruct(stdlibStruct any) error {
 		e.funcs[ast.Ident(fmt.Sprintf("__obj__%s__%s", native.StructName, ident))] = NewVar(functionType.MiniType(), meth.Type, meth.Func, e.ctx.Stack)
 	}
 	if native.LiteralNew {
-		callFunc, _ := ast.GoMiniType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
-		funcType := reflect.FuncOf([]reflect.Type{reflect.TypeOf("")}, []reflect.Type{native.Type}, false)
+		callFunc, _ := ast.GoMiniType(fmt.Sprintf("function(Any) %s", native.StructName)).ReadCallFunc()
+		funcType := reflect.FuncOf([]reflect.Type{reflect.TypeOf((*interface{})(nil)).Elem()}, []reflect.Type{native.Type}, false)
 		var lErr error
 		fc := reflect.MakeFunc(funcType, func(args []reflect.Value) []reflect.Value {
-			input := args[0].String()
+			var input string
+			arg := args[0].Interface()
+
+			// 尝试获取字符串表示
+			if obj, ok := arg.(interface{ String() ast.MiniString }); ok {
+				ms := obj.String()
+				input = ms.GoString()
+			} else {
+				// 剥离指针再试一次
+				rvArg := reflect.ValueOf(arg)
+				if rvArg.Kind() == reflect.Ptr && !rvArg.IsNil() {
+					if obj2, ok2 := rvArg.Elem().Interface().(interface{ String() ast.MiniString }); ok2 {
+						ms := obj2.String()
+						input = ms.GoString()
+					} else {
+						// 如果还是不行，退回到 GoValue 或 fmt
+						val := rvArg.Elem().Interface()
+						if gv, ok3 := val.(ast.GoMiniValue); ok3 {
+							val = gv.GoValue()
+						}
+						input = fmt.Sprintf("%v", val)
+					}
+				} else {
+					if gv, ok2 := arg.(ast.GoMiniValue); ok2 {
+						arg = gv.GoValue()
+					}
+					input = fmt.Sprintf("%v", arg)
+				}
+			}
+
 			value := reflect.New(native.Type).Interface().(ast.MiniObjLiteral)
 			obj, err := value.New(input)
 			if err != nil {
-				lErr = err
-				return make([]reflect.Value, 0)
+				return []reflect.Value{reflect.Zero(native.Type)}
 			}
-			return []reflect.Value{reflect.ValueOf(obj).Elem().Convert(native.Type)}
+
+			rv := reflect.ValueOf(obj)
+			if rv.Kind() == reflect.Ptr && rv.Type().Elem() == native.Type {
+				return []reflect.Value{rv.Elem()}
+			}
+			return []reflect.Value{rv.Convert(native.Type)}
 		})
 		if lErr != nil {
 			return lErr

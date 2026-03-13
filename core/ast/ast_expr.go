@@ -92,6 +92,28 @@ func (c *ConstRefExpr) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
+	// 支持类型转换/构造函数语法: T(x) -> __obj__new__T(x)
+	structName := c.Name
+	if _, b := ctx.GetStruct(structName); !b {
+		// 尝试首字母大写转换 (如 int64 -> Int64)
+		s := string(c.Name)
+		if len(s) > 0 {
+			upperName := Ident(strings.ToUpper(s[:1]) + s[1:])
+			if _, b2 := ctx.GetStruct(upperName); b2 {
+				structName = upperName
+			}
+		}
+	}
+
+	if _, b := ctx.GetStruct(structName); b {
+		newName := Ident(fmt.Sprintf("__obj__new__%s", structName))
+		if vtp, b2 := ctx.GetFunction(newName); b2 {
+			c.Name = newName
+			c.Type = vtp.MiniType()
+			return c, true
+		}
+	}
+
 	ctx.Child(c).AddErrorf("const/function %s 不存在", c.Name)
 	return nil, false
 }
