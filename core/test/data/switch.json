@@ -1,0 +1,138 @@
+[
+  {
+    "meta": "assignment",
+    "variable": "data",
+    "value": {
+      "meta": "literal",
+      "kind": "Number",
+      "value": "0"
+    }
+  },
+  {
+    "id": "switch_1",
+    "meta": "switch",
+    "cond": {
+      "id": "data_id",
+      "meta": "identifier",
+      "name": "data"
+    },
+    "cases": [
+      {
+        "cond": [
+          {
+            "id": "case1",
+            "meta": "literal",
+            "kind": "Number",
+            "value": "1"
+          }
+        ],
+        "body": {
+          "id": "case1_block",
+          "meta": "block",
+          "children": [
+            {
+              "id": "assign1",
+              "meta": "assignment",
+              "variable": "data",
+              "value": {
+                "id": "val11",
+                "meta": "literal",
+                "kind": "Number",
+                "value": "11"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "cond": [
+          {
+            "id": "case2",
+            "meta": "literal",
+            "kind": "Number",
+            "value": "2"
+          }
+        ],
+        "body": {
+          "id": "case2_block",
+          "meta": "block",
+          "children": [
+            {
+              "id": "assign2",
+              "meta": "assignment",
+              "variable": "data",
+              "value": {
+                "id": "val12",
+                "meta": "literal",
+                "kind": "Number",
+                "value": "12"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "cond": [
+          {
+            "id": "case3",
+            "meta": "literal",
+            "kind": "Number",
+            "value": "3"
+          }
+        ],
+        "body": {
+          "id": "case3_block",
+          "meta": "block",
+          "children": [
+            {
+              "id": "assign3",
+              "meta": "assignment",
+              "variable": "data",
+              "value": {
+                "id": "val13",
+                "meta": "literal",
+                "kind": "Number",
+                "value": "13"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "default": {
+      "body": {
+        "id": "default_block",
+        "meta": "block",
+        "children": [
+          {
+            "id": "assign_default",
+            "meta": "assignment",
+            "variable": "data",
+            "value": {
+              "id": "val14",
+              "meta": "literal",
+              "kind": "Number",
+              "value": "14"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "print_call",
+    "meta": "call",
+    "func": {
+      "id": "print_id",
+      "meta": "const_ref",
+      "name": "print"
+    },
+    "args": [
+      {
+        "id": "arg_data",
+        "meta": "identifier",
+        "name": "data"
+      }
+    ]
+  }
+]

@@ -1,0 +1,588 @@
+package ast
+
+import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+)
+
+type Logs struct {
+	Path    []string
+	Level   string
+	Message string
+}
+
+type Valid interface {
+	// Validate 校验节点并返回优化后的节点
+	Validate(ctx *ValidContext) (Node, bool)
+}
+
+type ValidRoot struct {
+	logs    []Logs
+	structs map[Ident]*ValidStruct
+	program *ProgramStmt
+	*ValidStruct
+	id              uint64
+	Package         string
+	Imports         map[string]string
+	vars            map[Ident]OPSType // 全局变量备份，用于跨作用域查找
+	Loader          func(path string) (*ProgramStmt, error)
+	Imported        map[string]bool   // 已导入的包路径
+	PathToPackage   map[string]string // 路径到包名的映射
+	ImportedFuncs   map[Ident]*FunctionStmt
+	ImportedStructs map[Ident]*StructStmt
+	ImportedVars    map[Ident]Expr
+	ImportedConsts  map[string]string
+}
+
+type ValidContext struct {
+	root    *ValidRoot
+	parent  *ValidContext
+	current Node
+	vars    map[Ident]OPSType
+}
+
+func NewValidator(node *ProgramStmt) (*ValidContext, error) {
+	imports := make(map[string]string)
+	if node.Imports != nil {
+		for _, imp := range node.Imports {
+			alias := imp.Alias
+			if alias == "" {
+				// 默认别名是包路径的最后一部分
+				// (虽然 ffigo 中已经处理了，但为了健壮性这里也做个检查)
+				// 实际上如果在 json 中没有给 alias，可能需要处理。但在 ffigo 中给定了。
+				alias = imp.Path // fallback
+			}
+			imports[alias] = imp.Path
+		}
+	}
+
+	pkgName := node.Package
+	if pkgName == "" {
+		pkgName = "main"
+	}
+
+	v := &ValidContext{
+		root: &ValidRoot{
+			program: node,
+			logs:    make([]Logs, 0),
+			structs: make(map[Ident]*ValidStruct),
+			ValidStruct: &ValidStruct{
+				Fields:  make(map[Ident]OPSType),
+				Methods: make(map[Ident]CallFunctionType),
+			},
+			Package:         pkgName,
+			Imports:         imports,
+			vars:            make(map[Ident]OPSType),
+			Imported:        make(map[string]bool),
+			PathToPackage:   make(map[string]string),
+			ImportedFuncs:   make(map[Ident]*FunctionStmt),
+			ImportedStructs: make(map[Ident]*StructStmt),
+			ImportedVars:    make(map[Ident]Expr),
+			ImportedConsts:  make(map[string]string),
+		},
+		parent:  nil,
+		current: node,
+		vars:    make(map[Ident]OPSType),
+	}
+	if err := v.AddNativeStructDefines(StdlibStructs...); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+func (c *ValidContext) ImportPackage(path string) error {
+	if c.root.Loader == nil {
+		return nil
+	}
+	if c.root.Imported[path] {
+		return nil
+	}
+	c.root.Imported[path] = true
+
+	pkgBlock, err := c.root.Loader(path)
+	if err != nil {
+		return fmt.Errorf("加载包 %s 失败: %v", path, err)
+	}
+
+	c.root.PathToPackage[path] = pkgBlock.Package
+
+	// 记录原始上下文状态
+	oldPackage := c.root.Package
+	oldImports := c.root.Imports
+	oldProgram := c.root.program
+
+	// 准备包的导入映射
+	newImports := make(map[string]string)
+	for _, imp := range pkgBlock.Imports {
+		alias := imp.Alias
+		if alias == "" {
+			parts := strings.Split(imp.Path, "/")
+			alias = parts[len(parts)-1]
+		}
+		newImports[alias] = imp.Path
+	}
+
+	// 切换到被导入包的上下文环境进行校验
+	c.root.Package = pkgBlock.Package
+	c.root.Imports = newImports
+	c.root.program = pkgBlock
+
+	// 递归处理该包的导入
+	for _, imp := range pkgBlock.Imports {
+		if err := c.ImportPackage(imp.Path); err != nil {
+			return err
+		}
+	}
+
+	// 校验被导入包，由于共享同一个 root，其符号会自动注册到 root.structs, root.Methods
+	oldParent := c.parent
+	c.parent = nil
+	_, ok := pkgBlock.Validate(c)
+	c.parent = oldParent
+
+	if !ok {
+		return fmt.Errorf("校验包 %s 失败", path)
+	}
+
+	// 记录符号以便后续合并
+	for k, v := range pkgBlock.Functions {
+		c.root.ImportedFuncs[k] = v
+	}
+	for k, v := range pkgBlock.Structs {
+		c.root.ImportedStructs[k] = v
+	}
+	for k, v := range pkgBlock.Variables {
+		c.root.ImportedVars[k] = v
+	}
+	for k, v := range pkgBlock.Constants {
+		c.root.ImportedConsts[k] = v
+	}
+
+	// 恢复原始上下文
+	c.root.Package = oldPackage
+	c.root.Imports = oldImports
+	c.root.program = oldProgram
+
+	return nil
+}
+
+func (c *ValidContext) SetLoader(loader func(path string) (*ProgramStmt, error)) {
+	c.root.Loader = loader
+}
+
+func (c *ValidContext) GetImportedFuncs() map[Ident]*FunctionStmt {
+	return c.root.ImportedFuncs
+}
+
+func (c *ValidContext) GetImportedStructs() map[Ident]*StructStmt {
+	return c.root.ImportedStructs
+}
+
+func (c *ValidContext) GetImportedVars() map[Ident]Expr {
+	return c.root.ImportedVars
+}
+
+func (c *ValidContext) GetImportedConsts() map[string]string {
+	return c.root.ImportedConsts
+}
+
+func (c *ValidContext) Child(b Node) *ValidContext {
+	if b != nil {
+		b.GetBase().EnsureID(c)
+	}
+	if c.current == b {
+		return c
+	}
+	return &ValidContext{
+		root:    c.root,
+		parent:  c,
+		current: b,
+		vars:    make(map[Ident]OPSType),
+	}
+}
+
+type ValidStruct struct {
+	Fields  map[Ident]OPSType
+	Methods map[Ident]CallFunctionType
+}
+
+func (c *ValidContext) NextID() uint64 {
+	c.root.id++
+	return c.root.id
+}
+
+func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
+	path := make([]string, 0)
+	msg := fmt.Sprintf(message, args...)
+
+	// 从当前节点开始构建路径
+	ctx := c
+	for ctx != nil && ctx.current != nil {
+		base := ctx.current.GetBase()
+		path = append([]string{fmt.Sprintf("%s#%s", reflect.ValueOf(ctx.current).Elem().Type().Name(), base.ID)}, path...)
+		ctx = ctx.parent
+	}
+	c.root.logs = append(c.root.logs, Logs{
+		Path:    path,
+		Message: msg,
+	})
+}
+
+func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
+	// todo: 创建单态化类型
+	if OPSType(ident).IsArray() {
+		elemType, ok := OPSType(ident).ReadArrayItemType()
+		if !ok {
+			return nil, false
+		}
+		arrayStruct := &ValidStruct{
+			Fields:  make(map[Ident]OPSType),
+			Methods: make(map[Ident]CallFunctionType),
+		}
+		// methods need to include receiver type
+		arrayType := OPSType(ident)
+		callFunc, _ := OPSType(fmt.Sprintf("function(%s, Number) %s", arrayType, elemType)).ReadCallFunc()
+		arrayStruct.Methods["get"] = callFunc
+		readCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Number", arrayType)).ReadCallFunc()
+		arrayStruct.Methods["length"] = readCallFunc
+
+		setElemType := elemType
+		pushElemType := elemType
+		if elemType == "Byte" {
+			setElemType = "Number"
+			pushElemType = "Number"
+		}
+
+		setCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Number, %s) Void", arrayType, setElemType)).ReadCallFunc()
+		arrayStruct.Methods["set"] = setCallFunc
+		pushCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", arrayType, pushElemType)).ReadCallFunc()
+		arrayStruct.Methods["push"] = pushCallFunc
+		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, Number) Void", arrayType)).ReadCallFunc()
+		arrayStruct.Methods["remove"] = removeCallFunc
+
+		// Register global methods for validation
+		for name, method := range arrayStruct.Methods {
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", arrayType, name))] = method
+		}
+		return arrayStruct, true
+	}
+	if OPSType(ident).IsMap() {
+		keyType, valueType, ok := OPSType(ident).GetMapKeyValueTypes()
+		if !ok {
+			return nil, false
+		}
+		mapStruct := &ValidStruct{
+			Fields:  make(map[Ident]OPSType),
+			Methods: make(map[Ident]CallFunctionType),
+		}
+		mapType := OPSType(ident)
+		getCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) %s", mapType, keyType, valueType)).ReadCallFunc()
+		mapStruct.Methods["get"] = getCallFunc
+		putCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s, %s) Void", mapType, keyType, valueType)).ReadCallFunc()
+		mapStruct.Methods["put"] = putCallFunc
+		// Also support 'set' as alias for 'put' for consistency with index assignment conversion
+		mapStruct.Methods["set"] = putCallFunc
+
+		removeCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Void", mapType, keyType)).ReadCallFunc()
+		mapStruct.Methods["remove"] = removeCallFunc
+		sizeCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Number", mapType)).ReadCallFunc()
+		mapStruct.Methods["size"] = sizeCallFunc
+		mapStruct.Methods["length"] = sizeCallFunc
+		containsCallFunc, _ := OPSType(fmt.Sprintf("function(%s, %s) Bool", mapType, keyType)).ReadCallFunc()
+		mapStruct.Methods["contains"] = containsCallFunc
+		keysCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Array<%s>", mapType, keyType)).ReadCallFunc()
+		mapStruct.Methods["keys"] = keysCallFunc
+		valuesCallFunc, _ := OPSType(fmt.Sprintf("function(%s) Array<%s>", mapType, valueType)).ReadCallFunc()
+		mapStruct.Methods["values"] = valuesCallFunc
+
+		// Register global methods for validation
+		for name, method := range mapStruct.Methods {
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", mapType, name))] = method
+		}
+		return mapStruct, true
+	}
+	if OPSType(ident).IsPtr() {
+		elementType, _ := OPSType(ident).GetPtrElementType()
+		return c.GetStruct(Ident(elementType))
+	}
+
+	miniType, ok := c.root.structs[ident]
+	if ok {
+		return miniType, true
+	}
+	return nil, false
+}
+
+func (c *ValidContext) AddVariable(name Ident, oType OPSType) {
+	c.vars[name] = oType
+	// 仅在顶级或混淆后的名称（带点）时同步到全局，防止函数参数污染局部变量生成
+	if c.parent == nil || strings.Contains(string(name), ".") {
+		c.root.vars[name] = oType
+	}
+}
+
+func (c *ValidContext) CheckScope(f Node) (Node, bool) {
+	valueOf := reflect.ValueOf(f)
+	if valueOf.Kind() == reflect.Ptr {
+		valueOf = valueOf.Elem()
+	}
+	of := valueOf.Type()
+	item := c
+	for {
+		if item == nil {
+			return nil, false
+		}
+		ot := reflect.ValueOf(item.current)
+		if ot.Kind() == reflect.Ptr {
+			ot = ot.Elem()
+		}
+		t := ot.Type()
+		if t.AssignableTo(of) {
+			return item.current, true
+		}
+		item = item.parent
+	}
+}
+
+func (c *ValidContext) GetVariable(variable Ident) (OPSType, bool) {
+	ctx := c
+	for ctx != nil {
+		miniType, ok := ctx.vars[variable]
+		if ok {
+			return miniType, true
+		}
+		ctx = ctx.parent
+	}
+
+	// 回退 1：检查真正的全局变量 (root.vars)
+	if miniType, ok := c.root.vars[variable]; ok {
+		return miniType, true
+	}
+
+	// 回退 2：如果当前在非 main 包，尝试查找 pkg.variable
+	if !strings.Contains(string(variable), ".") && c.root.Package != "" && c.root.Package != "main" {
+		mangled := Ident(fmt.Sprintf("%s.%s", c.root.Package, variable))
+		if miniType, ok := c.root.vars[mangled]; ok {
+			return miniType, true
+		}
+	}
+
+	return "", false
+}
+
+func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
+	miniType, ok := c.root.Methods[fc]
+	if ok {
+		return &miniType, true
+	}
+	return nil, false
+}
+
+func (c *ValidContext) Logs() []Logs {
+	return c.root.logs
+}
+
+func (c *ValidContext) AddFuncSpec(name Ident, miniType OPSType) error {
+	if !miniType.Valid(c) {
+		return errors.New(string("invalid operation:" + miniType))
+	}
+	a, b := miniType.ReadFunc()
+	if !b {
+		return errors.New("不是合法的函数")
+	}
+
+	c.root.Methods[name] = a.ToCallFunctionType()
+	return nil
+}
+
+func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]OPSType) error {
+	if _, ok := c.root.structs[name]; ok {
+		return errors.New("struct already defined")
+	}
+	valid := name.Valid(c)
+	if !valid {
+		return errors.New("invalid identifier")
+	}
+	fields := make(map[Ident]OPSType)
+	methods := make(map[Ident]CallFunctionType)
+	c.root.structs[name] = &ValidStruct{Fields: fields, Methods: methods}
+	for ident, miniType := range specs {
+		if !ident.Valid(c) || !miniType.Valid(c) {
+			delete(c.root.structs, name)
+			return fmt.Errorf("invalid member identifier (%s) or type (%s) ", ident, miniType)
+		}
+		callFunc, b := miniType.ReadCallFunc()
+		if b {
+			methods[ident] = callFunc
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", name, ident))] = callFunc
+		} else {
+			fields[ident] = miniType
+		}
+	}
+	return nil
+}
+
+func (c *ValidContext) AddNativeStructWithPackage(pkg, name string, t any) error {
+	typ := reflect.TypeOf(t)
+	if typ.Kind() != reflect.Ptr {
+		return fmt.Errorf("type must be a pointer to struct: %s", typ)
+	}
+	elem := typ.Elem()
+	if elem.Kind() != reflect.Struct {
+		return errors.New("type must be a pointer to struct")
+	}
+	native, err := ParseNative(elem)
+	if err != nil {
+		return err
+	}
+
+	oldNameStr := string(native.StructName)
+	mangledName := Ident(fmt.Sprintf("%s.%s", pkg, name))
+	native.StructName = mangledName
+	mangledNameStr := string(mangledName)
+
+	// Create a new map to hold mangled methods types
+	methods := make(map[Ident]CallFunctionType)
+	for ident, miniType := range native.Methods {
+		// Replace old struct name with mangled name in the function signature.
+		// Since it's a CallFunctionType, we can reconstruct it.
+		var newParams []OPSType
+		for _, p := range miniType.Params {
+			pStr := string(p)
+			// Simple replacements for common patterns
+			pStr = strings.ReplaceAll(pStr, "<"+oldNameStr+">", "<"+mangledNameStr+">")
+			pStr = strings.ReplaceAll(pStr, " "+oldNameStr, " "+mangledNameStr)
+			pStr = strings.ReplaceAll(pStr, "("+oldNameStr, "("+mangledNameStr)
+			pStr = strings.ReplaceAll(pStr, ","+oldNameStr, ","+mangledNameStr)
+			if pStr == oldNameStr {
+				pStr = mangledNameStr
+			}
+			newParams = append(newParams, OPSType(pStr))
+		}
+
+		retStr := string(miniType.Returns)
+		retStr = strings.ReplaceAll(retStr, "<"+oldNameStr+">", "<"+mangledNameStr+">")
+		if retStr == oldNameStr {
+			retStr = mangledNameStr
+		}
+
+		newCallFunc := CallFunctionType{
+			Params:  newParams,
+			Returns: OPSType(retStr),
+			Doc:     miniType.Doc,
+		}
+		methods[ident] = newCallFunc
+	}
+
+	fields := make(map[Ident]OPSType)
+	for ident, miniType := range native.Fields {
+		fields[ident] = miniType
+	}
+	c.root.structs[native.StructName] = &ValidStruct{Fields: fields, Methods: methods}
+
+	for ident, miniType := range fields {
+		if !ident.Valid(c) || !miniType.Valid(c) {
+			delete(c.root.structs, native.StructName)
+			return fmt.Errorf("invalid method identifier(fields): %s <=> %s", ident, miniType)
+		}
+	}
+	for ident, call := range methods {
+		if !ident.Valid(c) || !call.MiniType().Valid(c) {
+			delete(c.root.structs, native.StructName)
+			return fmt.Errorf("invalid method identifier(methods): %s <=> %s", ident, call.MiniType())
+		}
+	}
+
+	for ident, call := range methods {
+		c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", native.StructName, ident))] = call
+	}
+
+	if native.LiteralNew {
+		callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
+		c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", native.StructName))] = callFunc
+	}
+	return nil
+}
+
+func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
+	types := make([]*NativeStruct, 0, len(ts))
+
+	for _, t := range ts {
+		typ := reflect.TypeOf(t)
+		if typ.Kind() != reflect.Ptr {
+			return fmt.Errorf("type must be a pointer to struct: %s", typ)
+		}
+		elem := typ.Elem()
+		if elem.Kind() != reflect.Struct {
+			return errors.New("type must be a pointer to struct")
+		}
+		native, err := ParseNative(elem)
+		if err != nil {
+			return err
+		}
+		if !native.StructName.Valid(c) {
+			return errors.New("invalid identifier")
+		}
+		types = append(types, native)
+	}
+
+	for _, native := range types {
+		methods := make(map[Ident]CallFunctionType)
+		fields := make(map[Ident]OPSType)
+		for ident, miniType := range native.Fields {
+			fields[ident] = miniType
+		}
+		for ident, miniType := range native.Methods {
+			methods[ident] = miniType
+		}
+		c.root.structs[native.StructName] = &ValidStruct{Fields: fields, Methods: methods}
+	}
+	cleanup := func() {
+		for _, nativeStruct := range types {
+			delete(c.root.structs, nativeStruct.StructName)
+		}
+	}
+
+	for _, typ := range types {
+		vs := c.root.structs[typ.StructName]
+		for ident, miniType := range vs.Fields {
+			if !ident.Valid(c) || !miniType.Valid(c) {
+				cleanup()
+				return fmt.Errorf("invalid method identifier(fields): %s <=> %s", ident, miniType)
+			}
+		}
+		for ident, call := range vs.Methods {
+			if !ident.Valid(c) || !call.MiniType().Valid(c) {
+				cleanup()
+				return fmt.Errorf("invalid method identifier(methods): %s <=> %s", ident, call.MiniType())
+			}
+		}
+	}
+
+	for _, typ := range types {
+		vs := c.root.structs[typ.StructName]
+
+		for ident, call := range vs.Methods {
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", typ.StructName, ident))] = call
+		}
+
+		if typ.LiteralNew {
+			callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", typ.StructName)).ReadCallFunc()
+			c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", typ.StructName))] = callFunc
+		}
+	}
+	return nil
+}
+
+func (c *ValidContext) ConstStore(value string) Ident {
+	constID := fmt.Sprintf("__const__%04d", c.NextID())
+	for s, s2 := range c.root.program.Constants {
+		if s2 == value {
+			return Ident(s)
+		}
+	}
+	c.root.program.Constants[constID] = value
+	return Ident(constID)
+}
