@@ -234,6 +234,14 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 	if miniType, ok := c.root.structs[ident]; ok {
 		return miniType, true
 	}
+
+	// 支持跨包查找：如果名称带点，尝试直接从全局 root 查找
+	if strings.Contains(string(ident), ".") {
+		if miniType, ok := c.root.structs[ident]; ok {
+			return miniType, true
+		}
+	}
+
 	// todo: 创建单态化类型
 	if OPSType(ident).IsArray() {
 		elemType, ok := OPSType(ident).ReadArrayItemType()
@@ -424,110 +432,48 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]OPSType) erro
 	return nil
 }
 
-func (c *ValidContext) AddNativeStructWithPackage(pkg, name string, t any) error {
-	typ := reflect.TypeOf(t)
-	if typ.Kind() != reflect.Ptr {
-		return fmt.Errorf("type must be a pointer to struct: %s", typ)
-	}
-	elem := typ.Elem()
-	if elem.Kind() != reflect.Struct {
-		return errors.New("type must be a pointer to struct")
-	}
-	native, err := ParseNative(elem)
-	if err != nil {
-		return err
-	}
-
-	oldNameStr := string(native.StructName)
-	mangledName := Ident(fmt.Sprintf("%s.%s", pkg, name))
-	native.StructName = mangledName
-	mangledNameStr := string(mangledName)
-
-	// Create a new map to hold mangled methods types
-	methods := make(map[Ident]CallFunctionType)
-	for ident, miniType := range native.Methods {
-		// Replace old struct name with mangled name in the function signature.
-		// Since it's a CallFunctionType, we can reconstruct it.
-		var newParams []OPSType
-		for _, p := range miniType.Params {
-			pStr := string(p)
-			// Simple replacements for common patterns
-			pStr = strings.ReplaceAll(pStr, "<"+oldNameStr+">", "<"+mangledNameStr+">")
-			pStr = strings.ReplaceAll(pStr, " "+oldNameStr, " "+mangledNameStr)
-			pStr = strings.ReplaceAll(pStr, "("+oldNameStr, "("+mangledNameStr)
-			pStr = strings.ReplaceAll(pStr, ","+oldNameStr, ","+mangledNameStr)
-			if pStr == oldNameStr {
-				pStr = mangledNameStr
-			}
-			newParams = append(newParams, OPSType(pStr))
-		}
-
-		retStr := string(miniType.Returns)
-		retStr = strings.ReplaceAll(retStr, "<"+oldNameStr+">", "<"+mangledNameStr+">")
-		if retStr == oldNameStr {
-			retStr = mangledNameStr
-		}
-
-		newCallFunc := CallFunctionType{
-			Params:  newParams,
-			Returns: OPSType(retStr),
-			Doc:     miniType.Doc,
-		}
-		methods[ident] = newCallFunc
-	}
-
-	fields := make(map[Ident]OPSType)
-	for ident, miniType := range native.Fields {
-		fields[ident] = miniType
-	}
-	c.root.structs[native.StructName] = &ValidStruct{Fields: fields, Methods: methods}
-
-	for ident, miniType := range fields {
-		if !ident.Valid(c) || !miniType.Valid(c) {
-			delete(c.root.structs, native.StructName)
-			return fmt.Errorf("invalid method identifier(fields): %s <=> %s", ident, miniType)
-		}
-	}
-	for ident, call := range methods {
-		if !ident.Valid(c) || !call.MiniType().Valid(c) {
-			delete(c.root.structs, native.StructName)
-			return fmt.Errorf("invalid method identifier(methods): %s <=> %s", ident, call.MiniType())
-		}
-	}
-
-	for ident, call := range methods {
-		c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", native.StructName, ident))] = call
-	}
-
-	if native.LiteralNew {
-		callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
-		c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", native.StructName))] = callFunc
-	}
-	return nil
-}
-
 func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 	types := make([]*NativeStruct, 0, len(ts))
 
 	for _, t := range ts {
-		typ := reflect.TypeOf(t)
-		if typ.Kind() != reflect.Ptr {
-			return fmt.Errorf("type must be a pointer to struct: %s", typ)
-		}
-		elem := typ.Elem()
-		if elem.Kind() != reflect.Struct {
-			return errors.New("type must be a pointer to struct")
-		}
-		native, err := ParseNative(elem)
-		if err != nil {
-			return err
-		}
-		if !native.StructName.Valid(c) {
-			return errors.New("invalid identifier")
+		var native *NativeStruct
+		if ps, ok := t.(PackageStructWrapper); ok {
+			typ := reflect.TypeOf(ps.Stru)
+			if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
+				return fmt.Errorf("type must be a pointer to struct: %s", typ)
+			}
+			n, err := ParseNative(typ.Elem())
+			if err != nil {
+				return err
+			}
+			// Mangle the name early
+			oldNameStr := string(n.StructName)
+			mangledName := Ident(fmt.Sprintf("%s.%s", ps.Pkg, ps.Name))
+			n.StructName = mangledName
+			mangledNameStr := string(mangledName)
+
+			// Update methods signatures to use mangled names for the struct itself
+			for i, m := range n.Methods {
+				m.Params = mangleCallParams(m.Params, oldNameStr, mangledNameStr)
+				m.Returns = OPSType(mangleStr(string(m.Returns), oldNameStr, mangledNameStr))
+				n.Methods[i] = m
+			}
+			native = n
+		} else {
+			typ := reflect.TypeOf(t)
+			if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
+				return fmt.Errorf("type must be a pointer to struct: %s", typ)
+			}
+			n, err := ParseNative(typ.Elem())
+			if err != nil {
+				return err
+			}
+			native = n
 		}
 		types = append(types, native)
 	}
 
+	// 第一阶段：注册所有定义（占坑）
 	for _, native := range types {
 		methods := make(map[Ident]CallFunctionType)
 		fields := make(map[Ident]OPSType)
@@ -539,41 +485,54 @@ func (c *ValidContext) AddNativeStructDefines(ts ...any) error {
 		}
 		c.root.structs[native.StructName] = &ValidStruct{Fields: fields, Methods: methods}
 	}
-	cleanup := func() {
-		for _, nativeStruct := range types {
-			delete(c.root.structs, nativeStruct.StructName)
-		}
-	}
 
-	for _, typ := range types {
-		vs := c.root.structs[typ.StructName]
+	// 第二阶段：全量校验
+	for _, native := range types {
+		vs := c.root.structs[native.StructName]
 		for ident, miniType := range vs.Fields {
-			if !ident.Valid(c) || !miniType.Valid(c) {
-				cleanup()
-				return fmt.Errorf("invalid method identifier(fields): %s <=> %s", ident, miniType)
+			if !miniType.Valid(c) {
+				return fmt.Errorf("invalid field type: %s.%s <=> %s", native.StructName, ident, miniType)
 			}
 		}
 		for ident, call := range vs.Methods {
-			if !ident.Valid(c) || !call.MiniType().Valid(c) {
-				cleanup()
-				return fmt.Errorf("invalid method identifier(methods): %s <=> %s", ident, call.MiniType())
+			if !call.MiniType().Valid(c) {
+				return fmt.Errorf("invalid method signature: %s.%s <=> %s", native.StructName, ident, call.MiniType())
 			}
 		}
 	}
 
-	for _, typ := range types {
-		vs := c.root.structs[typ.StructName]
-
+	// 第三阶段：注册全局方法名
+	for _, native := range types {
+		vs := c.root.structs[native.StructName]
 		for ident, call := range vs.Methods {
-			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", typ.StructName, ident))] = call
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", native.StructName, ident))] = call
 		}
 
-		if typ.LiteralNew {
-			callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", typ.StructName)).ReadCallFunc()
-			c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", typ.StructName))] = callFunc
+		if native.LiteralNew {
+			callFunc, _ := OPSType(fmt.Sprintf("function(Constant) %s", native.StructName)).ReadCallFunc()
+			c.root.Methods[Ident(fmt.Sprintf("__obj__new__%s", native.StructName))] = callFunc
 		}
 	}
 	return nil
+}
+
+func mangleCallParams(params []OPSType, old, new string) []OPSType {
+	res := make([]OPSType, len(params))
+	for i, p := range params {
+		res[i] = OPSType(mangleStr(string(p), old, new))
+	}
+	return res
+}
+
+func mangleStr(s, old, new string) string {
+	s = strings.ReplaceAll(s, "<"+old+">", "<"+new+">")
+	s = strings.ReplaceAll(s, " "+old, " "+new)
+	s = strings.ReplaceAll(s, "("+old, "("+new)
+	s = strings.ReplaceAll(s, ","+old, ","+new)
+	if s == old {
+		return new
+	}
+	return s
 }
 
 func (c *ValidContext) ConstStore(value string) Ident {

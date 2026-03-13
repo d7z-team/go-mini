@@ -65,7 +65,7 @@ func TestGoCode(goCode string) ([]string, error) {
 				result = append(result, item.GoString())
 				return
 			}
-			if item, ok := rv.Interface().(ast.GoValueMini); ok {
+			if item, ok := rv.Interface().(ast.GoMiniValue); ok {
 				result = append(result, fmt.Sprintf("%v", item.GoValue()))
 				return
 			}
@@ -79,7 +79,7 @@ func TestGoCode(goCode string) ([]string, error) {
 					result = append(result, item.GoString())
 					return
 				}
-				if item, ok := rv.Addr().Interface().(ast.GoValueMini); ok {
+				if item, ok := rv.Addr().Interface().(ast.GoMiniValue); ok {
 					result = append(result, fmt.Sprintf("%v", item.GoValue()))
 					return
 				}
@@ -91,7 +91,7 @@ func TestGoCode(goCode string) ([]string, error) {
 					result = append(result, item.GoString())
 					return
 				}
-				if item, ok := tmp.Interface().(ast.GoValueMini); ok {
+				if item, ok := tmp.Interface().(ast.GoMiniValue); ok {
 					result = append(result, fmt.Sprintf("%v", item.GoValue()))
 					return
 				}

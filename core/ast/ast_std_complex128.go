@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -73,5 +74,5 @@ func (o *MiniComplex128) Neq(other *MiniComplex128) MiniBool {
 }
 
 func (o *MiniComplex128) New(static string) (MiniObj, error) {
-	return nil, fmt.Errorf("complex parsing not supported")
+	return nil, errors.New("complex parsing not supported")
 }

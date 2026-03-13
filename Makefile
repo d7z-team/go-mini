@@ -18,3 +18,6 @@ lint:
 lint-fix:
 	@$(call ensure_tool,$(GOLINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)
 	$(GOLINT) run -c .golangci.yml --fix
+
+test:
+	@go test -v ./...

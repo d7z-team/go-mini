@@ -32,7 +32,7 @@ type Executor struct {
 
 // MonitorManager 定义了执行过程中的监控接口
 type MonitorManager interface {
-	ReportProgram(state string, message string, duration int)
+	ReportProgram(state, message string, duration int)
 	ReportStep(state string, meta ast.BaseNode, duration int)
 }
 
@@ -1252,7 +1252,7 @@ func (e *Executor) toGoValue(v any) any {
 	if v == nil {
 		return nil
 	}
-	if gv, ok := v.(ast.GoValueMini); ok {
+	if gv, ok := v.(ast.GoMiniValue); ok {
 		return gv.GoValue()
 	}
 	rv := reflect.ValueOf(v)
@@ -1260,7 +1260,7 @@ func (e *Executor) toGoValue(v any) any {
 		// 尝试取地址断言
 		ptr := reflect.New(rv.Type())
 		ptr.Elem().Set(rv)
-		if gv, ok := ptr.Interface().(ast.GoValueMini); ok {
+		if gv, ok := ptr.Interface().(ast.GoMiniValue); ok {
 			return gv.GoValue()
 		}
 	}

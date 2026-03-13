@@ -1,8 +1,9 @@
-package types
+package runtimes
 
 import (
 	"time"
 
+	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
@@ -15,7 +16,7 @@ func NewMiniTime(t time.Time) *MiniTime {
 }
 
 func (o *MiniTime) OPSType() ast.Ident {
-	return "Time"
+	return "time.Time"
 }
 
 func (o *MiniTime) GoString() string {
@@ -88,4 +89,21 @@ func (o *MiniTime) Minute() ast.MiniInt64 {
 
 func (o *MiniTime) Second() ast.MiniInt64 {
 	return ast.NewMiniInt64(int64(o.t.Second()))
+}
+
+func InitTime(executor *engine.MiniExecutor) {
+	executor.AddNativeStruct(ast.PackageStructWrapper{Pkg: "time", Name: "Time", Stru: (*MiniTime)(nil)})
+	executor.MustAddPackageFunc("time", "Now", func() *MiniTime {
+		return NewMiniTime(time.Now())
+	}, "获取当前时间对象")
+	executor.MustAddPackageFunc("time", "Parse", func(layout, value *ast.MiniString) (*MiniTime, error) {
+		t, err := time.Parse(layout.GoString(), value.GoString())
+		if err != nil {
+			return nil, err
+		}
+		return NewMiniTime(t), nil
+	}, "解析时间字符串")
+	executor.MustAddPackageFunc("time", "Unix", func(sec, nsec *ast.MiniInt64) *MiniTime {
+		return NewMiniTime(time.Unix(sec.GoValue().(int64), nsec.GoValue().(int64)))
+	}, "根据秒数和纳秒数创建时间对象")
 }

@@ -13,6 +13,6 @@ type MiniOsString interface {
 	String() MiniString
 }
 
-type GoValueMini interface {
+type GoMiniValue interface {
 	GoValue() any
 }

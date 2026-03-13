@@ -34,10 +34,12 @@ func (p *MiniProgram) GetProgram() *ast.ProgramStmt {
 }
 
 func NewMiniExecutor() *MiniExecutor {
-	return &MiniExecutor{
+	res := &MiniExecutor{
 		funcs:   make(map[ast.Ident]funcInfo),
 		structs: make([]interface{}, 0),
 	}
+	res.structs = append(res.structs, ast.StdlibStructs...)
+	return res
 }
 
 func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
@@ -78,20 +80,8 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 	_ = encoder.Encode(tree)
 
 	optimize, logs, err := ValidateAndOptimizeWithLoader(tree, o.Loader, func(v *ast.ValidContext) error {
-		var normalStructs []any
-		for _, s := range o.structs {
-			if ps, ok := s.(ast.PackageStructWrapper); ok {
-				if err := v.AddNativeStructWithPackage(ps.Pkg, ps.Name, ps.Stru); err != nil {
-					return err
-				}
-			} else {
-				normalStructs = append(normalStructs, s)
-			}
-		}
-		if len(normalStructs) > 0 {
-			if err := v.AddNativeStructDefines(normalStructs...); err != nil {
-				return err
-			}
+		if err := v.AddNativeStructDefines(o.structs...); err != nil {
+			return err
 		}
 		for s, info := range o.funcs {
 			if err := v.AddFuncSpec(s, info.fType); err != nil {

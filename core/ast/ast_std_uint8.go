@@ -1,7 +1,6 @@
 package ast
 
 import (
-	"fmt"
 	"strconv"
 )
 
@@ -35,7 +34,7 @@ func (o *MiniUint8) Data() byte {
 
 // String 转换为字符串对象
 func (o *MiniUint8) String() MiniString {
-	return NewMiniString(fmt.Sprintf("%d", o.data))
+	return NewMiniString(strconv.FormatUint(uint64(o.data), 10))
 }
 
 // Clone 克隆一个 byte 对象
