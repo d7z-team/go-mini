@@ -640,32 +640,51 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 	}
 
 	// 简单赋值
-	// 获取左侧变量名
-	var varName spec.Ident
 	switch expr := lhs.(type) {
 	case *ast.Ident:
-		varName = spec.Ident(expr.Name)
+		value, err := c.convertExpr(rhs)
+		if err != nil {
+			return nil, err
+		}
+		return &spec.AssignmentStmt{
+			BaseNode: spec.BaseNode{
+				ID:   c.nextID(assign),
+				Meta: "assignment",
+				Type: "Void",
+			},
+			Variable: spec.Ident(expr.Name),
+			Value:    value,
+		}, nil
 	case *ast.SelectorExpr:
-		// 成员访问，暂时简化为变量
-		varName = spec.Ident(fmt.Sprintf("%s.%s", expr.X, expr.Sel.Name))
+		object, err := c.convertExpr(expr.X)
+		if err != nil {
+			return nil, err
+		}
+		value, err := c.convertExpr(rhs)
+		if err != nil {
+			return nil, err
+		}
+
+		// 结构体成员赋值: obj.Property = value
+		// 这里由于 spec.AssignmentStmt 的局限性，我们暂时使用 Variable + Property
+		// 如果对象是一个复杂的表达式，我们需要更通用的处理方式
+		// 但由于当前 GoToASTConverter 中变量引用的处理，这里先处理 Identifier 的情况
+		if ident, ok := object.(*spec.IdentifierExpr); ok {
+			return &spec.AssignmentStmt{
+				BaseNode: spec.BaseNode{
+					ID:   c.nextID(assign),
+					Meta: "assignment",
+					Type: "Void",
+				},
+				Variable: ident.Name,
+				Property: spec.Ident(expr.Sel.Name),
+				Value:    value,
+			}, nil
+		}
+		return nil, fmt.Errorf("暂不支持对复杂表达式结果的成员进行赋值: %T", expr.X)
 	default:
 		return nil, fmt.Errorf("不支持的赋值左侧: %T", lhs)
 	}
-
-	value, err := c.convertExpr(rhs)
-	if err != nil {
-		return nil, err
-	}
-
-	return &spec.AssignmentStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(assign),
-			Meta: "assignment",
-			Type: "Void",
-		},
-		Variable: varName,
-		Value:    value,
-	}, nil
 }
 
 func (c *GoToASTConverter) convertMultiAssign(assign *ast.AssignStmt) (spec.Stmt, error) {

@@ -180,6 +180,41 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		if err != nil {
 			return err
 		}
+
+		if n.Property != "" {
+			obj, err := ctx.Load(string(n.Variable))
+			if err != nil {
+				return err
+			}
+			if obj.Data == nil {
+				return fmt.Errorf("cannot assign to field %s of nil object %s", n.Property, n.Variable)
+			}
+
+			// Handle both pointer and value types of DynStruct
+			var ds *DynStruct
+			if pds, ok := obj.Data.(*DynStruct); ok {
+				ds = pds
+			} else if vds, ok := obj.Data.(DynStruct); ok {
+				ds = &vds
+			}
+
+			if ds != nil {
+				ds.Body[string(n.Property)] = expr.Data
+				return nil
+			}
+
+			// Native struct support
+			rv := reflect.ValueOf(obj.Data)
+			if rv.Kind() == reflect.Ptr {
+				field := rv.Elem().FieldByName(string(n.Property))
+				if field.IsValid() && field.CanSet() {
+					field.Set(reflect.ValueOf(expr.Data).Convert(field.Type()))
+					return nil
+				}
+			}
+			return fmt.Errorf("object %s is not assignable for property %s", n.Variable, n.Property)
+		}
+
 		// Allow assignment if target is Any or types match
 		return ctx.Store(string(n.Variable), expr)
 	case *ast.DerefAssignmentStmt:

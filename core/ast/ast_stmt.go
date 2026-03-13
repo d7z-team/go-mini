@@ -577,6 +577,7 @@ func (g *GenDeclStmt) Validate(ctx *ValidContext) (Node, bool) {
 type AssignmentStmt struct {
 	BaseNode
 	Variable Ident `json:"variable"`
+	Property Ident `json:"property,omitempty"` // 新增：支持成员赋值 (a.b = x)
 	Value    Expr  `json:"value"`
 }
 
@@ -645,10 +646,45 @@ func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 		return nil, false
 	}
 
+	if a.Property != "" {
+		if !b {
+			ctx.AddErrorf("变量 %s 不存在", a.Variable)
+			return nil, false
+		}
+		struName := vType
+		if vType.IsPtr() {
+			elem, _ := vType.GetPtrElementType()
+			struName = elem
+		}
+		miniStruct, b2 := ctx.GetStruct(Ident(struName))
+		if !b2 {
+			ctx.AddErrorf("类型 %s 未定义", struName)
+			return nil, false
+		}
+		fieldType, ok2 := miniStruct.Fields[a.Property]
+		if !ok2 {
+			ctx.AddErrorf("结构体 %s 不存在字段 %s", struName, a.Property)
+			return nil, false
+		}
+		if !fieldType.Equals(miniType) {
+			if ptr, ok3 := fieldType.AutoPtr(a.Value); ok3 {
+				a.Value = ptr
+			} else {
+				ctx.AddErrorf("字段赋值类型不一致: 需 %s, 实际 %s", fieldType, miniType)
+				return nil, false
+			}
+		}
+		return a, true
+	}
+
 	if b {
 		if !vType.Equals(miniType) {
-			ctx.AddErrorf("对象类型不一致 (%s != %s)，无法赋值", vType, miniType)
-			return nil, false
+			if ptr, ok3 := vType.AutoPtr(a.Value); ok3 {
+				a.Value = ptr
+			} else {
+				ctx.AddErrorf("对象类型不一致 (%s != %s)，无法赋值", vType, miniType)
+				return nil, false
+			}
 		}
 		return a, true
 	}
@@ -675,11 +711,7 @@ func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}, a)
 	block.ID = aID
 	block.Inner = true
-	validate, b := block.Validate(ctx)
-	if !b {
-		return nil, false
-	}
-	return validate, true
+	return block.Validate(ctx)
 }
 
 // InterruptStmt 表示中断语句（break/continue）
