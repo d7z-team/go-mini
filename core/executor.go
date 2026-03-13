@@ -194,3 +194,90 @@ type StructSchema struct {
 	Fields  map[string]string     `json:"fields"`
 	Methods map[string]FuncSchema `json:"methods"`
 }
+
+func (o *MiniExecutor) GenerateSchema() (*Schema, error) {
+	schema := &Schema{
+		Functions: make(map[string]FuncSchema),
+		Structs:   make(map[string]StructSchema),
+	}
+
+	// 模拟一次空验证来获取所有元数据
+	_, _, err := ValidateAndOptimize(&ast.ProgramStmt{}, func(v *ast.ValidContext) error {
+		if err := v.AddNativeStructDefines(o.structs...); err != nil {
+			return err
+		}
+		for s, info := range o.funcs {
+			if err := v.AddFuncSpec(s, info.fType); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for name, info := range o.funcs {
+		callFunc, _ := info.fType.ReadCallFunc()
+		params := make([]string, len(callFunc.Params))
+		for i, p := range callFunc.Params {
+			params[i] = string(p)
+		}
+		schema.Functions[string(name)] = FuncSchema{
+			Params: params,
+			Return: string(callFunc.Returns),
+			Doc:    info.doc,
+		}
+	}
+
+	allStructs := append([]any{}, o.structs...)
+	allStructs = append(allStructs, ast.StdlibStructs...)
+
+	for _, s := range allStructs {
+		var typ reflect.Type
+		var structName string
+
+		if ps, ok := s.(ast.PackageStructWrapper); ok {
+			typ = reflect.TypeOf(ps.Stru)
+			structName = fmt.Sprintf("%s.%s", ps.Pkg, ps.Name)
+		} else {
+			typ = reflect.TypeOf(s)
+		}
+
+		if typ.Kind() == reflect.Ptr {
+			typ = typ.Elem()
+		}
+		native, err := ast.ParseNative(typ)
+		if err != nil {
+			continue
+		}
+
+		// If we had a specific name from PackageStructWrapper, use it
+		if structName == "" {
+			structName = string(native.StructName)
+		}
+
+		structSchema := StructSchema{
+			Fields:  make(map[string]string),
+			Methods: make(map[string]FuncSchema),
+		}
+		for fName, fType := range native.Fields {
+			structSchema.Fields[string(fName)] = string(fType)
+		}
+		for mName, mType := range native.Methods {
+			params := make([]string, len(mType.Params))
+			for i, p := range mType.Params {
+				params[i] = string(p)
+			}
+			structSchema.Methods[string(mName)] = FuncSchema{
+				Params: params,
+				Return: string(mType.Returns),
+				Doc:    mType.Doc,
+			}
+		}
+		schema.Structs[structName] = structSchema
+	}
+
+	return schema, nil
+}

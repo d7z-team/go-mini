@@ -191,6 +191,7 @@ func parseMiniType(field reflect.Type) (OPSType, bool) {
 			miniType = OPSType(fmt.Sprintf("Ptr<%v>", miniType))
 		}
 		return miniType, true
+	default:
 	}
 
 	// 基础接口支持
