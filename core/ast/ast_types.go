@@ -678,6 +678,21 @@ func (o OPSType) AutoPtr(pVar Expr) (Expr, bool) {
 			Operand: pVar,
 		}, true
 	}
+
+	if !o.IsPtr() && varType.IsPtr() {
+		unPtrT, _ := varType.GetPtrElementType()
+		if !unPtrT.Equals(o) {
+			return nil, false
+		}
+		return &DerefExpr{
+			BaseNode: BaseNode{
+				ID:   pVar.GetBase().ID + "_Deref",
+				Meta: "dereference",
+				Type: unPtrT,
+			},
+			Operand: pVar,
+		}, true
+	}
 	return nil, false
 }
 

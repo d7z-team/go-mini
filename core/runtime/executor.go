@@ -713,7 +713,14 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				data := val.FieldByName(string(n.Property))
 				return NewVar(stru.Fields[n.Property], data.Type(), data.Interface(), ctx.Stack), nil
 			case *ast.StructStmt:
-				data := expr.Data.(*DynStruct)
+				var data *DynStruct
+				if ds, ok := expr.Data.(*DynStruct); ok {
+					data = ds
+				} else if ds, ok := expr.Data.(DynStruct); ok {
+					data = &ds
+				} else {
+					return nil, fmt.Errorf("invalid struct data type: %T", expr.Data)
+				}
 				item := data.Body[string(n.Property)]
 				return NewVar(data.Define.Fields[n.Property], reflect.TypeOf(item), item, ctx.Stack), nil
 			}
@@ -832,10 +839,23 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		if err != nil {
 			return nil, err
 		}
-		if obj.Type.IsArray() {
-			slicePtr, ok := obj.Data.(*[]interface{})
+
+		objType := obj.Type
+		objData := obj.Data
+		if objType.IsPtr() {
+			if et, ok := objType.GetPtrElementType(); ok && (et.IsArray() || et.IsMap()) {
+				objType = et
+				rv := reflect.ValueOf(objData)
+				if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+					objData = rv.Elem().Interface()
+				}
+			}
+		}
+
+		if objType.IsArray() {
+			slicePtr, ok := objData.(*[]interface{})
 			if !ok {
-				return nil, fmt.Errorf("object is not array pointer: %T", obj.Data)
+				return nil, fmt.Errorf("object is not array pointer: %T", objData)
 			}
 			slice := *slicePtr
 			var index int
@@ -852,13 +872,13 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				return nil, errors.New("index out of bounds")
 			}
 			val := slice[index]
-			elemType, _ := obj.Type.ReadArrayItemType()
+			elemType, _ := objType.ReadArrayItemType()
 			return NewVar(elemType, reflect.TypeOf(val), val, ctx.Stack), nil
 		}
-		if obj.Type.IsMap() {
-			m, ok := obj.Data.(map[interface{}]interface{})
+		if objType.IsMap() {
+			m, ok := objData.(map[interface{}]interface{})
 			if !ok {
-				return nil, fmt.Errorf("object is not map: %T", obj.Data)
+				return nil, fmt.Errorf("object is not map: %T", objData)
 			}
 			key := idx.Data
 			if ks, ok := idx.Data.(ast.MiniString); ok {
@@ -867,14 +887,13 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				key = ks.GoString()
 			}
 			val, ok := m[key]
-			_, valType, _ := obj.Type.GetMapKeyValueTypes()
+			_, valType, _ := objType.GetMapKeyValueTypes()
 			if !ok {
-				// Return zero value for the type if possible, or nil
-				// For now, returning nil with correct type hint
 				return NewVar(valType, nil, nil, ctx.Stack), nil
 			}
 			return NewVar(valType, reflect.TypeOf(val), val, ctx.Stack), nil
 		}
+		return nil, fmt.Errorf("object is not array or map: %s", objType)
 	case *ast.AddressExpr:
 		// 优先处理可寻址的表达式（变量、成员访问）
 		switch op := n.Operand.(type) {

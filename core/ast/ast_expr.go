@@ -447,6 +447,12 @@ func (i *IndexExpr) Validate(ctx *ValidContext) (Node, bool) {
 
 	// 检查对象是否为数组类型
 	objType := i.Object.GetBase().Type
+	if objType.IsPtr() {
+		if elem, ok := objType.GetPtrElementType(); ok {
+			objType = elem
+		}
+	}
+
 	if objType.IsArray() {
 		// 检查索引类型是否为 Int64
 		if i.Index.GetBase().Type != "Int64" {

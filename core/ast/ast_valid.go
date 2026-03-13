@@ -231,6 +231,9 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
+	if miniType, ok := c.root.structs[ident]; ok {
+		return miniType, true
+	}
 	// todo: 创建单态化类型
 	if OPSType(ident).IsArray() {
 		elemType, ok := OPSType(ident).ReadArrayItemType()
@@ -266,6 +269,7 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		for name, method := range arrayStruct.Methods {
 			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", arrayType, name))] = method
 		}
+		c.root.structs[ident] = arrayStruct
 		return arrayStruct, true
 	}
 	if OPSType(ident).IsMap() {
@@ -301,16 +305,12 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		for name, method := range mapStruct.Methods {
 			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", mapType, name))] = method
 		}
+		c.root.structs[ident] = mapStruct
 		return mapStruct, true
 	}
 	if OPSType(ident).IsPtr() {
 		elementType, _ := OPSType(ident).GetPtrElementType()
 		return c.GetStruct(Ident(elementType))
-	}
-
-	miniType, ok := c.root.structs[ident]
-	if ok {
-		return miniType, true
 	}
 	return nil, false
 }
