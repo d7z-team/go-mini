@@ -1075,6 +1075,64 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 			}
 		}
 
+		if o.IsMap() {
+			rv := reflect.ValueOf(val)
+			if rv.Kind() == reflect.Map {
+				if _, ok := val.(map[interface{}]interface{}); !ok {
+					newMap := make(map[interface{}]interface{})
+					iter := rv.MapRange()
+					for iter.Next() {
+						k := iter.Key().Interface()
+						v := iter.Value().Interface()
+
+						// 提取 Key 的 Go 原始值
+						k_val := k
+						if gv, okk := k.(ast.GoMiniValue); okk {
+							k_val = gv.GoValue()
+						} else {
+							// 尝试获取指针形式
+							rk := iter.Key()
+							if rk.CanAddr() {
+								if gvv, okkk := rk.Addr().Interface().(ast.GoMiniValue); okkk {
+									k_val = gvv.GoValue()
+								}
+							} else {
+								// 如果不能寻址（Map Key 通常不可寻址），创建一个新的指针副本
+								ptr := reflect.New(rk.Type())
+								ptr.Elem().Set(rk)
+								if gvv, okkk := ptr.Interface().(ast.GoMiniValue); okkk {
+									k_val = gvv.GoValue()
+								}
+							}
+						}
+
+						// 提取 Value 的 Go 原始值
+						v_val := v
+						if gv, okv := v.(ast.GoMiniValue); okv {
+							v_val = gv.GoValue()
+						} else {
+							rvv := iter.Value()
+							if rvv.CanAddr() {
+								if gvv, okkv := rvv.Addr().Interface().(ast.GoMiniValue); okkv {
+									v_val = gvv.GoValue()
+								}
+							} else {
+								ptr := reflect.New(rvv.Type())
+								ptr.Elem().Set(rvv)
+								if gvv, okkv := ptr.Interface().(ast.GoMiniValue); okkv {
+									v_val = gvv.GoValue()
+								}
+							}
+						}
+
+						newMap[k_val] = v_val
+					}
+					val = newMap
+					outType = reflect.TypeOf(val)
+				}
+			}
+		}
+
 		// 如果返回类型是 interface{}，尝试使用值的实际类型
 		if outType.Kind() == reflect.Interface && val != nil {
 			outType = reflect.TypeOf(val)

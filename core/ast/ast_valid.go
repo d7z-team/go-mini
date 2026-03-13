@@ -526,14 +526,32 @@ func mangleCallParams(params []GoMiniType, old, new string) []GoMiniType {
 }
 
 func mangleStr(s, old, new string) string {
-	s = strings.ReplaceAll(s, "<"+old+">", "<"+new+">")
-	s = strings.ReplaceAll(s, " "+old, " "+new)
-	s = strings.ReplaceAll(s, "("+old, "("+new)
-	s = strings.ReplaceAll(s, ","+old, ","+new)
-	if s == old {
+	// 更加彻底的替换，处理 Ptr<T>, Array<T>, Map<K, V> 等情况
+	// 注意：这里假设 old 是一个完整的类型名，不会是其他类型名的子串（如 Int 在 Int64 中）
+	// 由于我们的标准类型都是首字母大写且具有一定长度，这个假设基本成立
+
+	res := s
+	// 处理泛型包裹
+	res = strings.ReplaceAll(res, "<"+old+">", "<"+new+">")
+	res = strings.ReplaceAll(res, "<"+old+",", "<"+new+",")
+	res = strings.ReplaceAll(res, ", "+old+">", ", "+new+">")
+	res = strings.ReplaceAll(res, ","+old+">", ","+new+">")
+	res = strings.ReplaceAll(res, ", "+old+",", ", "+new+",")
+	res = strings.ReplaceAll(res, ","+old+",", ","+new+",")
+
+	// 处理前缀包裹 (Ptr<old> -> Ptr<new>)
+	res = strings.ReplaceAll(res, "Ptr<"+old+">", "Ptr<"+new+">")
+
+	// 处理函数签名中的空格或括号
+	res = strings.ReplaceAll(res, " "+old, " "+new)
+	res = strings.ReplaceAll(res, "("+old, "("+new)
+	res = strings.ReplaceAll(res, ","+old, ","+new)
+	res = strings.ReplaceAll(res, ")"+old, ")"+new) // 返回类型
+
+	if res == old {
 		return new
 	}
-	return s
+	return res
 }
 
 func (c *ValidContext) ConstStore(value string) Ident {

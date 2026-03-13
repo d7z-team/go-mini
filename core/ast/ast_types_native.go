@@ -79,6 +79,14 @@ func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 		}
 		return CreateArrayType(elemType), true
 	}
+	if field.Kind() == reflect.Map {
+		keyType, b1 := parseMiniType(field.Key())
+		valType, b2 := parseMiniType(field.Elem())
+		if !b1 || !b2 {
+			return "", false
+		}
+		return CreateMapType(keyType, valType), true
+	}
 	isPtr := field.Kind() == reflect.Ptr
 	if !isPtr && field.String() == "interface {}" {
 		return TypeAny, true
