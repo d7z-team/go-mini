@@ -199,13 +199,14 @@ func (o *MiniString) ReplaceAll(oldText, newText *MiniString) MiniString {
 }
 
 // Split 分割字符串
-func (o *MiniString) Split(sep *MiniString) []interface{} {
+func (o *MiniString) Split(sep *MiniString) MiniArray {
 	parts := strings.Split(o.data, sep.data)
-	res := make([]interface{}, len(parts))
+	res := make([]MiniObj, len(parts))
 	for i, p := range parts {
-		res[i] = NewMiniString(p)
+		ms := NewMiniString(p)
+		res[i] = &ms
 	}
-	return res
+	return &SimpleMiniArray{Data: res, ElemKind: "String"}
 }
 
 // Index 获取子串第一次出现的位置

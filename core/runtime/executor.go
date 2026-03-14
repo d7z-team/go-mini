@@ -777,7 +777,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			return NewVar(ast.GoMiniType(n.Kind), reflect.TypeOf(&slice), &slice, ctx.Stack), nil
 		}
 		if ast.GoMiniType(n.Kind).IsMap() {
-			m := make(map[interface{}]interface{})
+			m := make(map[any]any)
 			for _, value := range n.Values {
 				k, err := e.ExecExpr(ctx, value.Key)
 				if err != nil {
@@ -787,12 +787,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				if err != nil {
 					return nil, err
 				}
-				key := k.Data
-				if ks, ok := k.Data.(ast.MiniString); ok {
-					key = ks.GoString()
-				} else if ks, ok := k.Data.(*ast.MiniString); ok {
-					key = ks.GoString()
-				}
+				key := e.toGoValue(k.Data)
 				m[key] = v.Data
 			}
 			return NewVar(ast.GoMiniType(n.Kind), reflect.TypeOf(m), m, ctx.Stack), nil
@@ -818,13 +813,15 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 						return nil, err
 					}
 
-					var fieldName string
+					fieldName := ""
 					if ks, ok := k.Data.(ast.MiniString); ok {
 						fieldName = ks.GoString()
 					} else if ks, ok := k.Data.(*ast.MiniString); ok {
 						fieldName = ks.GoString()
 					} else {
-						fieldName = fmt.Sprintf("%v", k.Data)
+						// 使用 toGoValue 确保 key 可比较且是字符串
+						gv := e.toGoValue(k.Data)
+						fieldName = fmt.Sprintf("%v", gv)
 					}
 
 					field := val.FieldByName(fieldName)
@@ -851,16 +848,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 					if err != nil {
 						return nil, err
 					}
-					var key string
-					if miniString, ok := k.Data.(ast.MiniString); ok {
-						key = miniString.GoString()
-					} else if miniString, ok := k.Data.(*ast.MiniString); ok {
-						key = miniString.GoString()
-					} else {
-						// Fallback or error?
-						// Assuming it is string for now based on struct definition
-						key = fmt.Sprintf("%v", k.Data)
-					}
+					key := e.toGoValue(k.Data).(string)
 
 					if _, ok := data.Body[key]; ok {
 						data.Body[key] = v.Data
@@ -918,16 +906,11 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			return NewVar(elemType, reflect.TypeOf(val), val, ctx.Stack), nil
 		}
 		if objType.IsMap() {
-			m, ok := objData.(map[interface{}]interface{})
+			m, ok := objData.(map[any]any)
 			if !ok {
 				return nil, fmt.Errorf("object is not map: %T", objData)
 			}
-			key := idx.Data
-			if ks, ok := idx.Data.(ast.MiniString); ok {
-				key = ks.GoString()
-			} else if ks, ok := idx.Data.(*ast.MiniString); ok {
-				key = ks.GoString()
-			}
+			key := e.toGoValue(idx.Data)
 			val, ok := m[key]
 			_, valType, _ := objType.GetMapKeyValueTypes()
 			if !ok {
@@ -1074,6 +1057,27 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 		outType := funcCall.Out(i)
 		val := call[i].Interface()
 
+		// 代理接口处理
+		if mArr, ok := val.(ast.MiniArray); ok {
+			if ra, ok := mArr.(*runtimeArray); ok {
+				val = ra.data
+			} else if sa, ok := mArr.(*ast.SimpleMiniArray); ok {
+				data := make([]any, len(sa.Data))
+				for j, item := range sa.Data {
+					data[j] = item
+				}
+				val = &data
+			}
+		} else if mMap, ok := val.(ast.MiniMap); ok {
+			if rm, ok := mMap.(*runtimeMap); ok {
+				val = rm.data
+			}
+		} else if mStru, ok := val.(ast.MiniStruct); ok {
+			if ds, ok := mStru.(*DynStruct); ok {
+				val = ds
+			}
+		}
+
 		if o.IsArray() {
 			rv := reflect.ValueOf(val)
 			if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
@@ -1194,9 +1198,51 @@ func (e *Executor) prepareCallArgs(ft reflect.Type, offset int, args []*Var, arg
 
 		v := args[i]
 		arg := v.Value
+		data := v.Data
 
-		if v.Data == nil {
+		// 自动解包 Proxy
+		if _, isProxy := data.(interface{ Unbox() ast.MiniObj }); isProxy {
+			data = UnwrapProxy(data)
+			if m, ok := data.(ast.MiniObj); ok {
+				arg = reflect.ValueOf(m)
+			}
+		}
+
+		// 代理接口适配 (Zero-Copy)
+		if targetType.Kind() == reflect.Interface {
+			if targetType.Implements(reflect.TypeOf((*ast.MiniArray)(nil)).Elem()) {
+				if v.Type.IsArray() {
+					if d, ok := data.(*[]any); ok {
+						elemType, _ := v.Type.ReadArrayItemType()
+						adapter := &runtimeArray{data: d, elemType: elemType}
+						call = append(call, reflect.ValueOf(adapter))
+						continue
+					}
+				}
+			}
+			if targetType.Implements(reflect.TypeOf((*ast.MiniMap)(nil)).Elem()) {
+				if v.Type.IsMap() {
+					if d, ok := data.(map[any]any); ok {
+						keyType, valType, _ := v.Type.GetMapKeyValueTypes()
+						adapter := &runtimeMap{data: d, keyType: keyType, valType: valType}
+						call = append(call, reflect.ValueOf(adapter))
+						continue
+					}
+				}
+			}
+			if targetType.Implements(reflect.TypeOf((*ast.MiniStruct)(nil)).Elem()) {
+				// data 已经 UnwrapProxy 了
+				if ds, ok := data.(*DynStruct); ok {
+					call = append(call, reflect.ValueOf(ds))
+					continue
+				}
+			}
+		}
+
+		if data == nil {
 			call = append(call, reflect.Zero(targetType))
+		} else if targetType.Kind() == reflect.Interface && targetType.NumMethod() == 0 {
+			call = append(call, reflect.ValueOf(data))
 		} else if arg.Type().AssignableTo(targetType) {
 			call = append(call, arg)
 		} else if targetType.Kind() == reflect.Ptr && arg.Type().AssignableTo(targetType.Elem()) {
@@ -1227,66 +1273,6 @@ func (e *Executor) prepareCallArgs(ft reflect.Type, offset int, args []*Var, arg
 			}
 
 			if !unwrapped {
-				// 特殊处理变长参数打包后的切片元素解包
-				if ft.IsVariadic() && i+offset == ft.NumIn()-1 && targetType.Kind() == reflect.Slice {
-					tempArg := arg
-					for tempArg.Kind() == reflect.Ptr && !tempArg.IsNil() {
-						if tempArg.Elem().Kind() == reflect.Slice {
-							slice := tempArg.Elem()
-							newSlice := reflect.MakeSlice(targetType, slice.Len(), slice.Len())
-							elemType := targetType.Elem()
-							for j := 0; j < slice.Len(); j++ {
-								elem := slice.Index(j).Interface()
-								rv := reflect.ValueOf(elem)
-								// 优先检查原始值是否可以直接使用（处理 *ast.MiniString 等 Mini 对象）
-								if rv.IsValid() {
-									if rv.Type().AssignableTo(elemType) {
-										newSlice.Index(j).Set(rv)
-										continue
-									} else if rv.Type().ConvertibleTo(elemType) {
-										newSlice.Index(j).Set(rv.Convert(elemType))
-										continue
-									}
-								}
-
-								// 降级使用 GoValue 解包（处理基础类型 String, Int 等）
-								unwrappedElem := e.toGoValue(elem)
-								rv = reflect.ValueOf(unwrappedElem)
-								if rv.IsValid() {
-									if rv.Type().AssignableTo(elemType) {
-										newSlice.Index(j).Set(rv)
-									} else if rv.Type().ConvertibleTo(elemType) {
-										newSlice.Index(j).Set(rv.Convert(elemType))
-									} else {
-										// 尝试递归解包或强转
-										if rv.Kind() == reflect.Ptr && rv.Elem().Kind() == reflect.Slice && elemType.Kind() != reflect.Slice {
-											// 如果解包出来还是个切片，但目标是单个元素，说明发生了意外的二次打包
-											// 取第一个元素（防御性编程）
-											if rv.Elem().Len() > 0 {
-												first := rv.Elem().Index(0).Interface()
-												rvFirst := reflect.ValueOf(e.toGoValue(first))
-												if rvFirst.Type().AssignableTo(elemType) {
-													newSlice.Index(j).Set(rvFirst)
-													continue
-												}
-											}
-										}
-										newSlice.Index(j).Set(reflect.ValueOf(unwrappedElem).Convert(elemType))
-									}
-								} else {
-									newSlice.Index(j).Set(reflect.Zero(elemType))
-								}
-							}
-							call = append(call, newSlice)
-							unwrapped = true
-							break
-						}
-						tempArg = tempArg.Elem()
-					}
-				}
-			}
-
-			if !unwrapped {
 				return nil, fmt.Errorf("函数参数类型不匹配: 期望 %v, 实际 %v (Data: %T)", targetType, arg.Type(), v.Data)
 			}
 		}
@@ -1295,10 +1281,10 @@ func (e *Executor) prepareCallArgs(ft reflect.Type, offset int, args []*Var, arg
 }
 
 func (e *Executor) compareData(a, b any) bool {
-	if a == b {
-		return true
-	}
+	return equal(a, b)
+}
 
+func equal(a, b any) bool {
 	isNil := func(v any) bool {
 		if v == nil {
 			return true
@@ -1321,22 +1307,35 @@ func (e *Executor) compareData(a, b any) bool {
 		return false
 	}
 
-	return reflect.DeepEqual(a, b)
+	// 使用 recover 保护可能触发 panic 的比较 (如 map 比较)
+	return func() (res bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				res = false
+			}
+		}()
+		return reflect.DeepEqual(a, b)
+	}()
 }
 
 func (e *Executor) toGoValue(v any) any {
 	if v == nil {
 		return nil
 	}
+	v = UnwrapProxy(v)
+	if ks, ok := v.(ast.MiniString); ok {
+		return ks.GoString()
+	}
+	if ks, ok := v.(*ast.MiniString); ok {
+		return ks.GoString()
+	}
 	if gv, ok := v.(ast.GoMiniValue); ok {
 		return gv.GoValue()
 	}
 	rv := reflect.ValueOf(v)
-	if rv.IsValid() && rv.Kind() != reflect.Ptr {
-		// 尝试取地址断言
-		ptr := reflect.New(rv.Type())
-		ptr.Elem().Set(rv)
-		if gv, ok := ptr.Interface().(ast.GoMiniValue); ok {
+	if rv.IsValid() && rv.Kind() == reflect.Ptr && !rv.IsNil() {
+		// 检查指针指向的内容是否实现了 GoMiniValue
+		if gv, ok := rv.Interface().(ast.GoMiniValue); ok {
 			return gv.GoValue()
 		}
 	}
@@ -1581,21 +1580,15 @@ func (e *Executor) makeFn(sig string, inCount, outCount int, fn func([]reflect.V
 func (e *Executor) createMapMethod(miniType ast.GoMiniType, method string) (*Var, error) {
 	keyType, valueType, _ := miniType.GetMapKeyValueTypes()
 
-	getMap := func(v interface{}) (map[interface{}]interface{}, error) {
-		if m, ok := v.(map[interface{}]interface{}); ok {
+	getMap := func(v interface{}) (map[any]any, error) {
+		if m, ok := v.(map[any]any); ok {
 			return m, nil
 		}
 		return nil, errors.New("invalid map")
 	}
 
 	getKey := func(v interface{}) interface{} {
-		if ks, ok := v.(ast.MiniString); ok {
-			return ks.GoString()
-		}
-		if ks, ok := v.(*ast.MiniString); ok {
-			return ks.GoString()
-		}
-		return v
+		return e.toGoValue(v)
 	}
 
 	switch method {
@@ -1663,12 +1656,7 @@ func (e *Executor) createMapMethod(miniType ast.GoMiniType, method string) (*Var
 			}
 			var keys []interface{}
 			for k := range m {
-				if s, ok := k.(string); ok {
-					miniStr := ast.NewMiniString(s)
-					keys = append(keys, &miniStr)
-				} else {
-					keys = append(keys, k)
-				}
+				keys = append(keys, k)
 			}
 			return []reflect.Value{reflect.ValueOf(&keys), reflect.Zero(reflect.TypeOf((*error)(nil)).Elem())}
 		}), nil
@@ -1705,6 +1693,42 @@ func (e *Executor) safeCall(fn reflect.Value, args []reflect.Value) (results []r
 type DynStruct struct {
 	Define *ast.StructStmt
 	Body   map[string]any
+}
+
+func (ds *DynStruct) GoMiniType() ast.Ident {
+	if ds.Define != nil {
+		return ds.Define.Name
+	}
+	return "Struct"
+}
+
+func (ds *DynStruct) StructName() ast.Ident {
+	return ds.GoMiniType()
+}
+
+func (ds *DynStruct) GetField(name string) (ast.MiniObj, error) {
+	val, ok := ds.Body[name]
+	if !ok {
+		return nil, errors.New("field not found: " + name)
+	}
+	m, err := toMiniObj(val)
+	if err != nil {
+		return nil, err
+	}
+	return &structFieldProxy{MiniObj: m, stru: ds, name: name}, nil
+}
+
+func (ds *DynStruct) SetField(name string, val ast.MiniObj) error {
+	ds.Body[name] = val
+	return nil
+}
+
+func (ds *DynStruct) FieldNames() []string {
+	names := make([]string, 0, len(ds.Body))
+	for k := range ds.Body {
+		names = append(names, k)
+	}
+	return names
 }
 
 func (e *Executor) checkNativeValue(val any) error {

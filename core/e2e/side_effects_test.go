@@ -2,12 +2,12 @@ package e2e_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/utils"
 )
 
 func TestPointerSideEffects(t *testing.T) {
@@ -25,13 +25,7 @@ func TestPointerSideEffects(t *testing.T) {
 	})
 
 	e.MustAddFunc("push", func(v any) {
-		if s, ok := v.(*ast.MiniString); ok {
-			results = append(results, s.GoString())
-		} else if s, ok := v.(string); ok {
-			results = append(results, s)
-		} else {
-			results = append(results, fmt.Sprintf("%v", v))
-		}
+		results = append(results, utils.FormatValue(v))
 	})
 
 	t.Run("VariableSideEffect", func(t *testing.T) {
@@ -93,13 +87,7 @@ func TestPointerSideEffectsComprehensive(t *testing.T) {
 
 	var results []string
 	e.MustAddFunc("push", func(v any) {
-		if s, ok := v.(*ast.MiniString); ok {
-			results = append(results, s.GoString())
-		} else if s, ok := v.(ast.MiniString); ok {
-			results = append(results, s.GoString())
-		} else if s, ok := v.(string); ok {
-			results = append(results, s)
-		}
+		results = append(results, utils.FormatValue(v))
 	})
 
 	t.Run("VariableSideEffect", func(t *testing.T) {

@@ -17,6 +17,49 @@ func main(){
 `)
 }
 
+func FormatValue(data any) string {
+	if data == nil {
+		return "nil"
+	}
+
+	rv := reflect.ValueOf(data)
+
+	check := func(v reflect.Value) (string, bool) {
+		if !v.IsValid() {
+			return "", false
+		}
+		i := v.Interface()
+		if gv, ok := i.(interface{ GoString() string }); ok {
+			return gv.GoString(), true
+		}
+		if gv, ok := i.(interface{ GoValue() any }); ok {
+			return fmt.Sprintf("%v", gv.GoValue()), true
+		}
+		return "", false
+	}
+
+	curr := rv
+	for {
+		if s, ok := check(curr); ok {
+			return s
+		}
+		// If it's a value, try its pointer
+		if curr.CanAddr() {
+			if s, ok := check(curr.Addr()); ok {
+				return s
+			}
+		}
+
+		if curr.Kind() == reflect.Ptr && !curr.IsNil() {
+			curr = curr.Elem()
+		} else {
+			break
+		}
+	}
+
+	return fmt.Sprintf("%v", curr.Interface())
+}
+
 func TestGoCode(goCode string) ([]string, error) {
 	result := make([]string, 0)
 	miniExecutor := engine.NewMiniExecutor()
@@ -53,53 +96,7 @@ func TestGoCode(goCode string) ([]string, error) {
 		}
 	})
 	miniExecutor.MustAddFunc("push", func(data any) {
-		if data == nil {
-			result = append(result, "nil")
-			return
-		}
-
-		// Try to resolve GoString from pointers or values
-		rv := reflect.ValueOf(data)
-		for {
-			if item, ok := rv.Interface().(ast.MiniOsString); ok {
-				result = append(result, item.GoString())
-				return
-			}
-			if item, ok := rv.Interface().(ast.GoMiniValue); ok {
-				result = append(result, fmt.Sprintf("%v", item.GoValue()))
-				return
-			}
-			if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-				rv = rv.Elem()
-				continue
-			}
-			// Try taking address of value
-			if rv.Kind() != reflect.Ptr && rv.CanAddr() {
-				if item, ok := rv.Addr().Interface().(ast.MiniOsString); ok {
-					result = append(result, item.GoString())
-					return
-				}
-				if item, ok := rv.Addr().Interface().(ast.GoMiniValue); ok {
-					result = append(result, fmt.Sprintf("%v", item.GoValue()))
-					return
-				}
-			} else if rv.Kind() != reflect.Ptr {
-				// If not addressable, create a new pointer
-				tmp := reflect.New(rv.Type())
-				tmp.Elem().Set(rv)
-				if item, ok := tmp.Interface().(ast.MiniOsString); ok {
-					result = append(result, item.GoString())
-					return
-				}
-				if item, ok := tmp.Interface().(ast.GoMiniValue); ok {
-					result = append(result, fmt.Sprintf("%v", item.GoValue()))
-					return
-				}
-			}
-			break
-		}
-
-		result = append(result, fmt.Sprintf("%v", data))
+		result = append(result, FormatValue(data))
 	})
 	code, err := miniExecutor.NewRuntimeByGoCode(goCode)
 	if err != nil {

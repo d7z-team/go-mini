@@ -303,13 +303,30 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 
 	if (!isVariadic && len(funct.Params) != len(s.Args)+1) || (isVariadic && len(s.Args)+1 < minIn) {
 		// 尝试隐式推导为数组参数
-		if len(funct.Params) == 2 && funct.Params[1].IsArray() && !isVariadic {
-			targetArrayType := funct.Params[1]
+		if len(funct.Params) >= 2 && funct.Params[len(funct.Params)-1].IsArray() && !isVariadic {
+			targetArrayType := funct.Params[len(funct.Params)-1]
 			targetElem, _ := targetArrayType.ReadArrayItemType()
 
-			// 尝试自动推导每个参数
-			newArgs := make([]Expr, len(s.Args))
-			for i, arg := range s.Args {
+			// 尝试自动推导前面的固定参数
+			for i := 0; i < len(funct.Params)-2; i++ {
+				param := funct.Params[i+1]
+				arg := s.Args[i]
+				ptr, b2 := param.AutoPtr(arg)
+				if !b2 {
+					argsType := []GoMiniType{obj.GetBase().Type}
+					for _, param := range s.Args {
+						argsType = append(argsType, param.GetBase().Type)
+					}
+					ctx.Child(s).AddErrorf("函数参数不一致:call(%v) != %s(%v)", argsType, s.Name, funct.Params)
+					return nil, false
+				}
+				s.Args[i] = ptr
+			}
+
+			// 打包剩余参数到数组
+			variadicArgs := s.Args[len(funct.Params)-2:]
+			wrappedElements := make([]CompositeElement, len(variadicArgs))
+			for i, arg := range variadicArgs {
 				ptr, b2 := targetElem.AutoPtr(arg)
 				if !b2 {
 					argsType := []GoMiniType{obj.GetBase().Type}
@@ -319,24 +336,18 @@ func (s *StructCallExpr) Validate(ctx *ValidContext) (Node, bool) {
 					ctx.Child(s).AddErrorf("函数参数不一致:call(%v) != %s(%v)", argsType, s.Name, funct.Params)
 					return nil, false
 				}
-				newArgs[i] = ptr
+				wrappedElements[i] = CompositeElement{Value: ptr}
 			}
 
-			// 包装为单个数组参数
-			wrappedArgs := make([]CompositeElement, len(newArgs))
-			for i, arg := range newArgs {
-				wrappedArgs[i] = CompositeElement{Value: arg}
-			}
-
-			s.Args = []Expr{&CompositeExpr{
+			s.Args = append(s.Args[:len(funct.Params)-2], &CompositeExpr{
 				BaseNode: BaseNode{
 					ID:   s.ID + "_ArgsWrap",
 					Meta: "composite",
 					Type: targetArrayType,
 				},
 				Kind:   Ident(targetArrayType),
-				Values: wrappedArgs,
-			}}
+				Values: wrappedElements,
+			})
 		} else {
 			argsType := []GoMiniType{obj.GetBase().Type}
 			for _, param := range s.Args {

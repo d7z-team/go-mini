@@ -2,12 +2,13 @@ package e2e_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/utils"
 	"gopkg.d7z.net/go-mini/runtimes"
 )
 
@@ -15,18 +16,18 @@ func TestNativeMapReturn(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	runtimes.InitAll(executor)
 
-	// 注册返回 map[MiniString]*MiniString 的函数
-	executor.MustAddFunc("List", func() map[ast.MiniString]*ast.MiniString {
-		res := make(map[ast.MiniString]*ast.MiniString)
+	// 注册返回 MiniMap 的函数
+	executor.MustAddFunc("List", func() ast.MiniMap {
+		res := make(map[any]any)
 		k1 := ast.NewMiniString("k1")
 		v1 := ast.NewMiniString("v1")
-		res[k1] = &v1
-		return res
+		res[k1.GoString()] = &v1
+		return runtime.NewRuntimeMap(res, "String", "String")
 	})
 
 	var results []string
 	executor.MustAddFunc("push", func(v any) {
-		results = append(results, fmt.Sprintf("%v", v))
+		results = append(results, utils.FormatValue(v))
 	})
 
 	t.Run("call_native_map_return", func(t *testing.T) {

@@ -2,13 +2,12 @@ package e2e_test
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/utils"
 )
 
 // MockTypeA 模拟包 pkgA 中的类型
@@ -34,19 +33,7 @@ func TestCrossPackageMinimal(t *testing.T) {
 
 	var results []string
 	executor.MustAddFunc("push", func(v any) {
-		if gv, ok := v.(ast.GoMiniValue); ok {
-			v = gv.GoValue()
-		} else {
-			rv := reflect.ValueOf(v)
-			if rv.Kind() != reflect.Ptr {
-				ptr := reflect.New(rv.Type())
-				ptr.Elem().Set(rv)
-				if gv, ok := ptr.Interface().(ast.GoMiniValue); ok {
-					v = gv.GoValue()
-				}
-			}
-		}
-		results = append(results, fmt.Sprintf("%v", v))
+		results = append(results, utils.FormatValue(v))
 	})
 
 	t.Run("circular_dependency_validation", func(t *testing.T) {

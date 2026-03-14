@@ -219,60 +219,50 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	// 尝试隐式推导为数组参数（引擎不要可变参数概念，统一推导为 Array，callNative 单独处理）
-	if len(fType.Params) == 1 && fType.Params[0].IsArray() {
-		targetArrayType := fType.Params[0]
+	if len(fType.Params) > 0 && fType.Params[len(fType.Params)-1].IsArray() {
+		targetArrayType := fType.Params[len(fType.Params)-1]
 		targetElem, _ := targetArrayType.ReadArrayItemType()
 
 		isPerfectMatch := false
-		if len(c.Args) == 1 {
-			_, b2 := targetArrayType.AutoPtr(c.Args[0])
+		if len(c.Args) == len(fType.Params) {
+			_, b2 := targetArrayType.AutoPtr(c.Args[len(fType.Params)-1])
 			if b2 {
 				isPerfectMatch = true
 			}
 		}
 
-		if !isPerfectMatch {
-			var deducedElem GoMiniType = "Any"
-			if len(c.Args) > 0 {
-				deducedElem = args[0]
-				for i := 1; i < len(args); i++ {
-					if args[i] != deducedElem {
-						deducedElem = "Any"
-						break
-					}
+		if !isPerfectMatch && len(c.Args) >= len(fType.Params)-1 {
+			// 1. 校验前面的固定参数
+			for i := 0; i < len(fType.Params)-1; i++ {
+				ptr, ok := fType.Params[i].AutoPtr(c.Args[i])
+				if !ok {
+					ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
+					return nil, false
 				}
-			}
-			deducedArray := CreateArrayType(deducedElem)
-
-			if !targetArrayType.Equals(deducedArray) {
-				ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, []GoMiniType{deducedArray})
-				return nil, false
+				c.Args[i] = ptr
 			}
 
-			newArgs := make([]Expr, len(c.Args))
-			for i, arg := range c.Args {
+			// 2. 打包剩余参数到数组
+			variadicArgs := c.Args[len(fType.Params)-1:]
+			wrappedElements := make([]CompositeElement, len(variadicArgs))
+			for i, arg := range variadicArgs {
 				ptr, b2 := targetElem.AutoPtr(arg)
 				if !b2 {
 					ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
 					return nil, false
 				}
-				newArgs[i] = ptr
+				wrappedElements[i] = CompositeElement{Value: ptr}
 			}
 
-			// Wrap into a single array argument
-			wrappedArgs := make([]CompositeElement, len(newArgs))
-			for i, arg := range newArgs {
-				wrappedArgs[i] = CompositeElement{Value: arg}
-			}
-			c.Args = []Expr{&CompositeExpr{
+			c.Args = append(c.Args[:len(fType.Params)-1], &CompositeExpr{
 				BaseNode: BaseNode{
 					ID:   c.ID + "_ArgsWrap",
 					Meta: "composite",
 					Type: targetArrayType,
 				},
 				Kind:   Ident(targetArrayType),
-				Values: wrappedArgs,
-			}}
+				Values: wrappedElements,
+			})
 			c.Type = fType.Returns
 			return c, true
 		}

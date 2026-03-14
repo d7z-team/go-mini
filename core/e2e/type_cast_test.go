@@ -2,13 +2,12 @@ package e2e_test
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/utils"
 	"gopkg.d7z.net/go-mini/runtimes"
 )
 
@@ -18,22 +17,7 @@ func runCastTest(t *testing.T, code string) []string {
 
 	var results []string
 	executor.MustAddFunc("push", func(v any) {
-		// 检查是否为指针
-		rv := reflect.ValueOf(v)
-		val := v
-		if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-			val = rv.Elem().Interface()
-		}
-
-		// 统一通过 GoMiniValue 接口提取原始值
-		if gv, ok := val.(ast.GoMiniValue); ok {
-			val = gv.GoValue()
-		} else if gv, ok := v.(ast.GoMiniValue); ok {
-			// 针对某些实现可能挂在指针上的情况
-			val = gv.GoValue()
-		}
-
-		results = append(results, fmt.Sprintf("%v", val))
+		results = append(results, utils.FormatValue(v))
 	})
 
 	rt, err := executor.NewRuntimeByGoCode(code)
@@ -86,18 +70,7 @@ func TestTypeCast(t *testing.T) {
 
 		var results []string
 		executor.MustAddFunc("push", func(v any) {
-			// 统一通过反射和 GoMiniValue 提取原始值
-			rv := reflect.ValueOf(v)
-			val := v
-			if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-				val = rv.Elem().Interface()
-			}
-			if gv, ok := val.(ast.GoMiniValue); ok {
-				val = gv.GoValue()
-			} else if gv, ok := v.(ast.GoMiniValue); ok {
-				val = gv.GoValue()
-			}
-			results = append(results, fmt.Sprintf("%v", val))
+			results = append(results, utils.FormatValue(v))
 		})
 
 		// 定义返回 MiniInt 的函数

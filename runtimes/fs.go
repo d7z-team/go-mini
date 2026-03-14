@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/afero"
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // --- File Types ---
@@ -151,16 +152,16 @@ func (o *MiniFs) WriteString(path, content *ast.MiniString) error {
 	return afero.WriteFile(o.fs, path.GoString(), []byte(content.GoString()), 0o644)
 }
 
-func (o *MiniFs) ReadDir(path *ast.MiniString) ([]*MiniFileInfo, error) {
+func (o *MiniFs) ReadDir(path *ast.MiniString) (ast.MiniArray, error) {
 	files, err := afero.ReadDir(o.fs, path.GoString())
 	if err != nil {
 		return nil, err
 	}
-	var result []*MiniFileInfo
+	var result []any
 	for _, f := range files {
 		result = append(result, NewMiniFileInfo(f))
 	}
-	return result, nil
+	return runtime.NewRuntimeArray(&result, "fs.FileInfo"), nil
 }
 
 func (o *MiniFs) Copy(src, dst *ast.MiniString) error {
@@ -288,10 +289,13 @@ func InitFs(executor *engine.MiniExecutor) {
 	}, "获取内存文件系统实例")
 
 	// filepath related
-	executor.MustAddPackageFunc("fs", "Join", func(elem []ast.MiniString) ast.MiniString {
-		parts := make([]string, len(elem))
-		for i, e := range elem {
-			parts[i] = e.GoString()
+	executor.MustAddPackageFunc("fs", "Join", func(elem ast.MiniArray) ast.MiniString {
+		parts := make([]string, elem.Len())
+		for i := 0; i < elem.Len(); i++ {
+			item, _ := elem.Get(i)
+			if ms, ok := item.(*ast.MiniString); ok {
+				parts[i] = ms.GoString()
+			}
 		}
 		return ast.NewMiniString(filepath.Join(parts...))
 	}, "连接路径片段")

@@ -5,6 +5,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func InitStrings(executor *engine.MiniExecutor) {
@@ -25,18 +26,22 @@ func InitStrings(executor *engine.MiniExecutor) {
 		res := strings.ReplaceAll(s.GoString(), old.GoString(), new.GoString())
 		return ast.NewMiniString(res)
 	}, "替换所有匹配的子串")
-	executor.MustAddPackageFunc("strings", "Split", func(s, sep *ast.MiniString) []ast.MiniString {
+	executor.MustAddPackageFunc("strings", "Split", func(s, sep *ast.MiniString) ast.MiniArray {
 		parts := strings.Split(s.GoString(), sep.GoString())
-		res := make([]ast.MiniString, len(parts))
+		res := make([]any, len(parts))
 		for i, p := range parts {
-			res[i] = ast.NewMiniString(p)
+			ms := ast.NewMiniString(p)
+			res[i] = &ms
 		}
-		return res
+		return runtime.NewRuntimeArray(&res, "String")
 	}, "按分隔符拆分字符串")
-	executor.MustAddPackageFunc("strings", "Join", func(elems []ast.MiniString, sep *ast.MiniString) ast.MiniString {
-		sElems := make([]string, len(elems))
-		for i, e := range elems {
-			sElems[i] = e.GoString()
+	executor.MustAddPackageFunc("strings", "Join", func(elems ast.MiniArray, sep *ast.MiniString) ast.MiniString {
+		sElems := make([]string, elems.Len())
+		for i := 0; i < elems.Len(); i++ {
+			item, _ := elems.Get(i)
+			if ms, ok := item.(*ast.MiniString); ok {
+				sElems[i] = ms.GoString()
+			}
 		}
 		return ast.NewMiniString(strings.Join(sElems, sep.GoString()))
 	}, "将字符串数组连接成一个字符串")
@@ -67,13 +72,14 @@ func InitStrings(executor *engine.MiniExecutor) {
 	executor.MustAddPackageFunc("strings", "EqualFold", func(s, t *ast.MiniString) ast.MiniBool {
 		return ast.NewMiniBool(strings.EqualFold(s.GoString(), t.GoString()))
 	}, "不区分大小写判断字符串是否相等")
-	executor.MustAddPackageFunc("strings", "Fields", func(s *ast.MiniString) []ast.MiniString {
+	executor.MustAddPackageFunc("strings", "Fields", func(s *ast.MiniString) ast.MiniArray {
 		parts := strings.Fields(s.GoString())
-		res := make([]ast.MiniString, len(parts))
+		res := make([]any, len(parts))
 		for i, p := range parts {
-			res[i] = ast.NewMiniString(p)
+			ms := ast.NewMiniString(p)
+			res[i] = &ms
 		}
-		return res
+		return runtime.NewRuntimeArray(&res, "String")
 	}, "按空白字符拆分字符串")
 	executor.MustAddPackageFunc("strings", "LastIndex", func(s, substr *ast.MiniString) ast.MiniInt64 {
 		return ast.NewMiniInt64(int64(strings.LastIndex(s.GoString(), substr.GoString())))

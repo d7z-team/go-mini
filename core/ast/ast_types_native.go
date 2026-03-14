@@ -105,6 +105,14 @@ func parseFields(t reflect.Type) map[Ident]GoMiniType {
 	return fields
 }
 
+var (
+	contextType    = reflect.TypeOf((*context.Context)(nil)).Elem()
+	errorType      = reflect.TypeOf((*error)(nil)).Elem()
+	miniArrayType  = reflect.TypeOf((*MiniArray)(nil)).Elem()
+	miniMapType    = reflect.TypeOf((*MiniMap)(nil)).Elem()
+	miniStructType = reflect.TypeOf((*MiniStruct)(nil)).Elem()
+)
+
 func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 	isPtr := field.Kind() == reflect.Ptr
 	if isPtr {
@@ -114,26 +122,19 @@ func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 	var res GoMiniType
 	var ok bool
 
-	// 基础类型支持
-	switch field.Kind() {
-	case reflect.Slice, reflect.Array:
-		elemType, b := parseMiniType(field.Elem())
-		if b {
-			res, ok = CreateArrayType(elemType), true
-		}
-	case reflect.Map:
-		keyType, b1 := parseMiniType(field.Key())
-		valType, b2 := parseMiniType(field.Elem())
-		if b1 && b2 {
-			res, ok = CreateMapType(keyType, valType), true
-		}
-	case reflect.Interface:
-		if field.Implements(errorType) {
+	// 代理接口优先
+	if field.Kind() == reflect.Interface {
+		if field.Implements(miniArrayType) {
+			res, ok = CreateArrayType(TypeAny), true
+		} else if field.Implements(miniMapType) {
+			res, ok = CreateMapType(TypeAny, TypeAny), true
+		} else if field.Implements(miniStructType) {
+			res, ok = TypeAny, true
+		} else if field.Implements(errorType) {
 			res, ok = "Error", true
 		} else if field.NumMethod() == 0 {
 			res, ok = TypeAny, true
 		}
-	default:
 	}
 
 	if !ok {
@@ -153,11 +154,6 @@ func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 
 	return "", false
 }
-
-var (
-	contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
-	errorType   = reflect.TypeOf((*error)(nil)).Elem()
-)
 
 // PackageStructWrapper 用于包装带包名的原生结构体
 type PackageStructWrapper struct {

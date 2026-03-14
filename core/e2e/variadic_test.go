@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,19 +18,56 @@ func (v *VariadicTester) GoMiniType() ast.Ident {
 	return "VariadicTester"
 }
 
-func (v *VariadicTester) Aa(selectors ...*ast.MiniString) error {
-	for _, s := range selectors {
-		v.Captured = append(v.Captured, s.GoString())
+func (v *VariadicTester) Aa(selectors ast.MiniArray) error {
+	for i := 0; i < selectors.Len(); i++ {
+		item, _ := selectors.Get(i)
+		// 自动解包和处理指针
+		val := unwrap(item)
+		if s, ok := val.(*ast.MiniString); ok {
+			v.Captured = append(v.Captured, s.GoString())
+		}
 	}
 	return nil
 }
 
-func (v *VariadicTester) Bb(a *ast.MiniString, b ...*ast.MiniString) error {
+func (v *VariadicTester) Bb(a *ast.MiniString, b ast.MiniArray) error {
 	v.Captured = append(v.Captured, "fixed:"+a.GoString())
-	for _, s := range b {
-		v.Captured = append(v.Captured, "variadic:"+s.GoString())
+	for i := 0; i < b.Len(); i++ {
+		item, _ := b.Get(i)
+		// 自动解包和处理指针
+		val := unwrap(item)
+		if s, ok := val.(*ast.MiniString); ok {
+			v.Captured = append(v.Captured, "variadic:"+s.GoString())
+		}
 	}
 	return nil
+}
+
+func unwrap(v any) any {
+	if v == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(v)
+	for {
+		if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+			// 检查是否为代理对象 (通过反射检查 Unbox 方法，避免循环依赖)
+			if unbox := rv.MethodByName("Unbox"); unbox.IsValid() {
+				res := unbox.Call(nil)
+				rv = res[0]
+				continue
+			}
+			rv = rv.Elem()
+			continue
+		}
+		// 检查非指针形式的代理
+		if unbox := rv.MethodByName("Unbox"); unbox.IsValid() {
+			res := unbox.Call(nil)
+			rv = res[0]
+			continue
+		}
+		break
+	}
+	return rv.Interface()
 }
 
 func TestVariadic(t *testing.T) {

@@ -2,11 +2,10 @@ package runtimes_test
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/utils"
 	"gopkg.d7z.net/go-mini/runtimes"
 )
 
@@ -16,11 +15,7 @@ func runTest(t *testing.T, code string) []string {
 
 	var results []string
 	executor.MustAddFunc("push", func(v any) {
-		s := fmt.Sprintf("%v", v)
-		s = strings.TrimPrefix(s, "&")
-		s = strings.TrimPrefix(s, "{")
-		s = strings.TrimSuffix(s, "}")
-		results = append(results, s)
+		results = append(results, utils.FormatValue(v))
 	})
 
 	rt, err := executor.NewRuntimeByGoCode(code)

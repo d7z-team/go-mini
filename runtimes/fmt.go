@@ -6,22 +6,25 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func InitFmt(executor *engine.MiniExecutor) {
-	executor.MustAddPackageFunc("fmt", "Sprintf", func(d []any) (ast.MiniString, error) {
-		if len(d) == 0 {
+	executor.MustAddPackageFunc("fmt", "Sprintf", func(d ast.MiniArray) (ast.MiniString, error) {
+		if d.Len() == 0 {
 			return ast.NewMiniString(""), nil
 		}
 
-		format, err := toString(d[0])
+		fObj, _ := d.Get(0)
+		format, err := toString(fObj)
 		if err != nil {
-			return ast.NewMiniString(""), fmt.Errorf("fmt.Sprintf format must be a string, got %T", d[0])
+			return ast.NewMiniString(""), fmt.Errorf("fmt.Sprintf format must be a string, got %T", fObj)
 		}
 
-		args := make([]any, len(d)-1)
-		for i := 1; i < len(d); i++ {
-			args[i-1] = toGoValue(d[i])
+		args := make([]any, d.Len()-1)
+		for i := 1; i < d.Len(); i++ {
+			item, _ := d.Get(i)
+			args[i-1] = toGoValue(item)
 		}
 
 		return ast.NewMiniString(fmt.Sprintf(format, args...)), nil
@@ -29,9 +32,7 @@ func InitFmt(executor *engine.MiniExecutor) {
 }
 
 func toString(v any) (string, error) {
-	if gv, ok := v.(ast.GoMiniValue); ok {
-		v = gv.GoValue()
-	}
+	v = toGoValue(v)
 	if s, ok := v.(string); ok {
 		return s, nil
 	}
@@ -42,6 +43,7 @@ func toGoValue(v any) any {
 	if v == nil {
 		return nil
 	}
+	v = runtime.UnwrapProxy(v)
 	if gv, ok := v.(ast.GoMiniValue); ok {
 		return gv.GoValue()
 	}
