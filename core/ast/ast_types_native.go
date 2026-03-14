@@ -19,6 +19,10 @@ type MiniObj interface {
 	GoMiniType() Ident
 }
 
+type MinObjValue interface {
+	GoMiniTypeValue()
+}
+
 type MiniClone interface {
 	MiniObj
 	Clone() MiniObj
@@ -72,155 +76,51 @@ func parseFields(t reflect.Type) map[Ident]GoMiniType {
 }
 
 func parseMiniType(field reflect.Type) (GoMiniType, bool) {
-	if field.Kind() == reflect.Slice || field.Kind() == reflect.Array {
-		elemType, b := parseMiniType(field.Elem())
-		if !b {
-			return "", false
-		}
-		return CreateArrayType(elemType), true
-	}
-	if field.Kind() == reflect.Map {
-		keyType, b1 := parseMiniType(field.Key())
-		valType, b2 := parseMiniType(field.Elem())
-		if !b1 || !b2 {
-			return "", false
-		}
-		return CreateMapType(keyType, valType), true
-	}
 	isPtr := field.Kind() == reflect.Ptr
-	if !isPtr && field.String() == "interface {}" {
-		return TypeAny, true
-	}
 	if isPtr {
 		field = field.Elem()
 	}
 
+	var res GoMiniType
+	var ok bool
+
 	// 基础类型支持
 	switch field.Kind() {
-	case reflect.String:
-		miniType := GoMiniType("String")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
+	case reflect.Slice, reflect.Array:
+		elemType, b := parseMiniType(field.Elem())
+		if b {
+			res, ok = CreateArrayType(elemType), true
 		}
-		return miniType, true
-	case reflect.Bool:
-		miniType := GoMiniType("Bool")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
+	case reflect.Map:
+		keyType, b1 := parseMiniType(field.Key())
+		valType, b2 := parseMiniType(field.Elem())
+		if b1 && b2 {
+			res, ok = CreateMapType(keyType, valType), true
 		}
-		return miniType, true
-	case reflect.Int:
-		miniType := GoMiniType("Int")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Int8:
-		miniType := GoMiniType("Int8")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Int16:
-		miniType := GoMiniType("Int16")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Int32:
-		miniType := GoMiniType("Int32")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Int64:
-		miniType := GoMiniType("Int64")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uint:
-		miniType := GoMiniType("Uint")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uint8:
-		miniType := GoMiniType("Uint8")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uint16:
-		miniType := GoMiniType("Uint16")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uint32:
-		miniType := GoMiniType("Uint32")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uint64:
-		miniType := GoMiniType("Uint64")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Uintptr:
-		miniType := GoMiniType("Uintptr")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Float32:
-		miniType := GoMiniType("Float32")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Float64:
-		miniType := GoMiniType("Float64")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Complex64:
-		miniType := GoMiniType("Complex64")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	case reflect.Complex128:
-		miniType := GoMiniType("Complex128")
-		if isPtr {
-			miniType = GoMiniType(fmt.Sprintf("Ptr<%v>", miniType))
-		}
-		return miniType, true
-	default:
-	}
-
-	// 基础接口支持
-	if field.Kind() == reflect.Interface {
+	case reflect.Interface:
 		if field.Implements(errorType) {
-			return "Error", true
-		}
-		if field.String() == "interface {}" {
-			return TypeAny, true
+			res, ok = GoMiniType("Error"), true
+		} else if field.NumMethod() == 0 {
+			res, ok = TypeAny, true
 		}
 	}
 
-	if !isMiniType(reflect.PointerTo(field)) {
-		return "", false
+	if !ok {
+		// 非基础类型必须通过指针实现 MiniObj
+		if isMiniType(reflect.PointerTo(field)) {
+			miniType := reflect.New(field).Interface().(MiniObj).GoMiniType()
+			res, ok = GoMiniType(miniType), true
+		}
 	}
-	miniType := reflect.New(field).Interface().(MiniObj).GoMiniType()
-	res := GoMiniType(miniType)
-	if isPtr {
-		res = res.ToPtr()
+
+	if ok {
+		if isPtr {
+			res = res.ToPtr()
+		}
+		return res, true
 	}
-	return res, true
+
+	return "", false
 }
 
 var (

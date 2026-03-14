@@ -746,7 +746,11 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 					val = val.Elem()
 				}
 				data := val.FieldByName(string(n.Property))
-				return NewVar(stru.Fields[n.Property], data.Type(), data.Interface(), ctx.Stack), nil
+				fieldVal := data.Interface()
+				if err := e.checkNativeValue(fieldVal); err != nil {
+					return nil, err
+				}
+				return NewVar(stru.Fields[n.Property], data.Type(), fieldVal, ctx.Stack), nil
 			case *ast.StructStmt:
 				var data *DynStruct
 				if ds, ok := expr.Data.(*DynStruct); ok {
@@ -907,6 +911,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 				return nil, errors.New("index out of bounds")
 			}
 			val := slice[index]
+			if err := e.checkNativeValue(val); err != nil {
+				return nil, err
+			}
 			elemType, _ := objType.ReadArrayItemType()
 			return NewVar(elemType, reflect.TypeOf(val), val, ctx.Stack), nil
 		}
@@ -925,6 +932,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			_, valType, _ := objType.GetMapKeyValueTypes()
 			if !ok {
 				return NewVar(valType, nil, nil, ctx.Stack), nil
+			}
+			if err := e.checkNativeValue(val); err != nil {
+				return nil, err
 			}
 			return NewVar(valType, reflect.TypeOf(val), val, ctx.Stack), nil
 		}
@@ -1000,6 +1010,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		data := expr.Data
 		if _, ok := expr.Data.(ast.MiniObj); !ok {
 			data = rv.Elem().Interface()
+		}
+		if err := e.checkNativeValue(data); err != nil {
+			return nil, err
 		}
 		return NewVar(elemType, rv.Elem().Type(), data, ctx.Stack), nil
 	}
@@ -1150,6 +1163,11 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 				if miniObj, ok := rv.Interface().(ast.MiniObj); ok {
 					actualType = ast.GoMiniType(miniObj.GoMiniType()).ToPtr()
 				}
+			}
+			
+			// 防御性检查：确保 Any 类型、Array、Map 等路径中不会泄漏未实现 MiniObj 的复杂 Go 原生类型
+			if err := e.checkNativeValue(val); err != nil {
+				return nil, err
 			}
 		}
 
@@ -1688,3 +1706,59 @@ type DynStruct struct {
 	Define *ast.StructStmt
 	Body   map[string]any
 }
+
+func (e *Executor) checkNativeValue(val any) error {
+	if val == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(val)
+	kind := rv.Kind()
+	actualRV := rv
+	
+	if kind == reflect.Ptr {
+		if rv.IsNil() {
+			return nil
+		}
+		actualRV = rv.Elem()
+		kind = actualRV.Kind()
+	}
+	
+	if kind == reflect.Struct || kind == reflect.Chan || kind == reflect.Func || kind == reflect.UnsafePointer {
+		miniObjType := reflect.TypeOf((*ast.MiniObj)(nil)).Elem()
+		if rv.Type().Implements(miniObjType) || reflect.PointerTo(rv.Type()).Implements(miniObjType) {
+			return nil
+		}
+		
+		switch val.(type) {
+		case ast.GoMiniValue, *ast.GoMiniValue, ast.MiniString, *ast.MiniString, ast.MiniBool, *ast.MiniBool:
+			return nil
+		case DynStruct, *DynStruct:
+			return nil
+		case error:
+			return nil
+		}
+		
+		return fmt.Errorf("native value of type %T is not a valid MiniObj and cannot be returned to the script environment", val)
+	}
+	
+	if kind == reflect.Slice || kind == reflect.Array {
+		for i := 0; i < actualRV.Len(); i++ {
+			if err := e.checkNativeValue(actualRV.Index(i).Interface()); err != nil {
+				return err
+			}
+		}
+	} else if kind == reflect.Map {
+		iter := actualRV.MapRange()
+		for iter.Next() {
+			if err := e.checkNativeValue(iter.Key().Interface()); err != nil {
+				return err
+			}
+			if err := e.checkNativeValue(iter.Value().Interface()); err != nil {
+				return err
+			}
+		}
+	}
+	
+	return nil
+}
+

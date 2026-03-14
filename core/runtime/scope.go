@@ -23,7 +23,43 @@ func (v *Var) IsPtr() bool {
 	return v.Type.IsPtr()
 }
 
+func cloneValue(typ ast.GoMiniType, data any) any {
+	if data == nil {
+		return nil
+	}
+
+	// 引用类型不进行克隆
+	if typ.IsPtr() || typ.IsArray() || typ.IsMap() || typ.IsAny() || typ.IsTuple() {
+		return data
+	}
+
+	// 原生类型的克隆（如果实现了 MiniClone）
+	if cloner, ok := data.(ast.MiniClone); ok {
+		return cloner.Clone()
+	}
+
+	// 自定义结构体的深拷贝
+	if ds, ok := data.(DynStruct); ok {
+		newBody := make(map[string]any)
+		for k, v := range ds.Body {
+			var fieldTyp ast.GoMiniType
+			if ds.Define != nil {
+				fieldTyp = ds.Define.Fields[ast.Ident(k)]
+			}
+			newBody[k] = cloneValue(fieldTyp, v)
+		}
+		return DynStruct{
+			Define: ds.Define,
+			Body:   newBody,
+		}
+	}
+
+	return data
+}
+
 func NewVar(typ ast.GoMiniType, goType reflect.Type, data any, stack *Stack) *Var {
+	data = cloneValue(typ, data)
+
 	if goType == nil && data != nil {
 		if rv, ok := data.(reflect.Value); ok {
 			goType = rv.Type()
@@ -172,21 +208,26 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 		return fmt.Errorf("variable type mismatch: var(%s) != expr(%s)", varPtr.Type, expr.Type)
 	}
 
-	val := reflect.ValueOf(expr.Data)
+	clonedData := cloneValue(varPtr.Type, expr.Data)
+	val := reflect.ValueOf(clonedData)
+
 	if !varPtr.Value.IsValid() {
 		// 延迟初始化容器类型
-		ptr := reflect.New(val.Type())
-		varPtr.Value = ptr.Elem()
+		if val.IsValid() {
+			ptr := reflect.New(val.Type())
+			varPtr.Value = ptr.Elem()
+		}
 	}
 
-	if val.Type().AssignableTo(varPtr.Value.Type()) {
-		varPtr.Value.Set(val)
-	} else if varPtr.Value.Kind() == reflect.Interface {
-		varPtr.Value.Set(val)
+	if val.IsValid() {
+		if val.Type().AssignableTo(varPtr.Value.Type()) {
+			varPtr.Value.Set(val)
+		} else if varPtr.Value.Kind() == reflect.Interface {
+			varPtr.Value.Set(val)
+		}
+		varPtr.GoType = val.Type()
 	}
-
-	varPtr.GoType = val.Type()
-	varPtr.Data = expr.Data
+	varPtr.Data = clonedData
 	return nil
 }
 
