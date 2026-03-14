@@ -8,29 +8,59 @@ import (
 	"strings"
 )
 
+// MiniOsString 接口专门用于表示那些可以与操作系统（宿主）
+// 直接交互的字符串类型。主要为文件系统、路径等标准库操作提供便利。
+type MiniOsString interface {
+	MiniObj
+	GoString() string
+	String() MiniString
+}
+
+// GoMiniValue 是所有 GoMini 基础类型包装器（如 MiniInt, MiniString）
+// 都会实现的接口。它允许引擎在与 Native Go 代码交互时，自动将 VM 里的
+// 包装对象“拆箱”回原生的 Go 值（如将 *MiniInt64 转换为 int64），
+// 极大地简化了 Native API 的参数传递负担。
+type GoMiniValue interface {
+	GoValue() any
+}
+
+// MiniObj 是 GoMini 引擎中所有自定义对象的根接口。
+// 为了在脚本中保证类型安全和沙箱隔离，任何希望暴露给脚本层操作的
+// 原生 Go 结构体（除基础内置类型、Array、Map 外）都必须实现此接口。
+// 它声明了对象在 GoMini 环境中的“身份”（即类型标识）。
+type MiniObj interface {
+	GoMiniType() Ident
+}
+
+// MinObjValue 是一个标记接口，用于声明该对象应该被视为严格的“值类型”。
+// 暂时作为未来值语义扩展的保留接口。
+type MinObjValue interface {
+	GoMiniTypeValue()
+}
+
+// MiniClone 接口用于为对象提供深拷贝能力。
+// 在执行器进行“值传递”（如赋值或函数传参）时，如果非指针对象实现了此接口，
+// 引擎会主动调用 Clone() 来拷贝数据，避免浅拷贝引发的内存逃逸或引用副作用。
+// 这是保证 GoMini 中“值语义”（Value Semantics）的核心机制之一。
+type MiniClone interface {
+	MiniObj
+	Clone() MiniObj
+}
+
+// MiniObjLiteral 接口允许对象从一个字符串字面量中直接构造自身。
+// 实现该接口的类型在注册时，引擎会自动为其生成一个 '__obj__new__Type' 方法，
+// 支持使用诸如 `Type("value")` 的语法在脚本中进行初始化。
+type MiniObjLiteral interface {
+	MiniObj
+	New(string) (MiniObj, error)
+}
+
 type NativeStruct struct {
 	Type       reflect.Type
 	StructName Ident
 	Fields     map[Ident]GoMiniType
 	Methods    map[Ident]CallFunctionType
 	LiteralNew bool
-}
-type MiniObj interface {
-	GoMiniType() Ident
-}
-
-type MinObjValue interface {
-	GoMiniTypeValue()
-}
-
-type MiniClone interface {
-	MiniObj
-	Clone() MiniObj
-}
-
-type MiniObjLiteral interface {
-	MiniObj
-	New(string) (MiniObj, error)
 }
 
 func ParseNative(t reflect.Type) (*NativeStruct, error) {
@@ -99,10 +129,11 @@ func parseMiniType(field reflect.Type) (GoMiniType, bool) {
 		}
 	case reflect.Interface:
 		if field.Implements(errorType) {
-			res, ok = GoMiniType("Error"), true
+			res, ok = "Error", true
 		} else if field.NumMethod() == 0 {
 			res, ok = TypeAny, true
 		}
+	default:
 	}
 
 	if !ok {

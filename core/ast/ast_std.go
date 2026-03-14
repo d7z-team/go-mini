@@ -6,13 +6,3 @@ var StdlibStructs = []any{
 	(*MiniUint)(nil), (*MiniUint16)(nil), (*MiniUint32)(nil), (*MiniUint64)(nil), (*MiniUintptr)(nil),
 	(*MiniFloat32)(nil), (*MiniComplex64)(nil), (*MiniComplex128)(nil),
 }
-
-type MiniOsString interface {
-	MiniObj
-	GoString() string
-	String() MiniString
-}
-
-type GoMiniValue interface {
-	GoValue() any
-}

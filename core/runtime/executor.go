@@ -1164,7 +1164,7 @@ func (e *Executor) callRetParser(funcCall reflect.Type, call []reflect.Value, re
 					actualType = ast.GoMiniType(miniObj.GoMiniType()).ToPtr()
 				}
 			}
-			
+
 			// 防御性检查：确保 Any 类型、Array、Map 等路径中不会泄漏未实现 MiniObj 的复杂 Go 原生类型
 			if err := e.checkNativeValue(val); err != nil {
 				return nil, err
@@ -1714,7 +1714,7 @@ func (e *Executor) checkNativeValue(val any) error {
 	rv := reflect.ValueOf(val)
 	kind := rv.Kind()
 	actualRV := rv
-	
+
 	if kind == reflect.Ptr {
 		if rv.IsNil() {
 			return nil
@@ -1722,13 +1722,13 @@ func (e *Executor) checkNativeValue(val any) error {
 		actualRV = rv.Elem()
 		kind = actualRV.Kind()
 	}
-	
+
 	if kind == reflect.Struct || kind == reflect.Chan || kind == reflect.Func || kind == reflect.UnsafePointer {
 		miniObjType := reflect.TypeOf((*ast.MiniObj)(nil)).Elem()
 		if rv.Type().Implements(miniObjType) || reflect.PointerTo(rv.Type()).Implements(miniObjType) {
 			return nil
 		}
-		
+
 		switch val.(type) {
 		case ast.GoMiniValue, *ast.GoMiniValue, ast.MiniString, *ast.MiniString, ast.MiniBool, *ast.MiniBool:
 			return nil
@@ -1737,10 +1737,10 @@ func (e *Executor) checkNativeValue(val any) error {
 		case error:
 			return nil
 		}
-		
+
 		return fmt.Errorf("native value of type %T is not a valid MiniObj and cannot be returned to the script environment", val)
 	}
-	
+
 	if kind == reflect.Slice || kind == reflect.Array {
 		for i := 0; i < actualRV.Len(); i++ {
 			if err := e.checkNativeValue(actualRV.Index(i).Interface()); err != nil {
@@ -1758,7 +1758,6 @@ func (e *Executor) checkNativeValue(val any) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
-
