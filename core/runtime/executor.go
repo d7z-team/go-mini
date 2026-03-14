@@ -16,9 +16,13 @@ import (
 )
 
 const (
-	ContextKeyMonitor  = "ContextKeyMonitor"
-	ContextKeyNodeMeta = "ContextKeyNodeMeta"
+	ContextKeyMonitor       = "ContextKeyMonitor"
+	ContextKeyNodeMeta      = "ContextKeyNodeMeta"
+	ContextKeyMaxStackDepth = "ContextKeyMaxStackDepth"
 )
+
+// DefaultMaxStackDepth 设置默认的最大调用栈深度为 Go 的大致安全限制的一半左右（防止底层 Go 运行时 panic）
+const DefaultMaxStackDepth = 500000
 
 type Executor struct {
 	structs map[string]interface{}

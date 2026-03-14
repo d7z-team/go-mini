@@ -128,6 +128,7 @@ type Stack struct {
 	Scope     string          // 作用域类型
 	interrupt string
 	Deferred  []ast.Expr
+	Depth     int
 }
 
 // IsChildOf other 是否为当前 stack 的父作用域
@@ -161,11 +162,31 @@ func (c *StackContext) ScopeApply(scope string) {
 	if scope == "" {
 		panic("empty scope")
 	}
+
+	newDepth := 1
+	if c.Stack != nil {
+		newDepth = c.Stack.Depth + 1
+	}
+
+	maxDepth := DefaultMaxStackDepth
+	if c.Context != nil {
+		if val := c.Context.Value(ContextKeyMaxStackDepth); val != nil {
+			if d, ok := val.(int); ok {
+				maxDepth = d
+			}
+		}
+	}
+
+	if newDepth > maxDepth {
+		panic(fmt.Errorf("stack overflow: max stack depth %d reached", maxDepth))
+	}
+
 	c.Stack = &Stack{
 		Parent:    c.Stack,
 		MemoryPtr: make(map[string]*Var),
 		Scope:     scope,
 		Deferred:  make([]ast.Expr, 0),
+		Depth:     newDepth,
 	}
 }
 
