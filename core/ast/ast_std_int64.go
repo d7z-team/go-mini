@@ -24,6 +24,11 @@ func (o *MiniInt64) GoValue() any {
 	return o.data
 }
 
+// Data 返回底层的 Go 整数值
+func (o *MiniInt64) Data() int64 {
+	return o.data
+}
+
 // GoMiniType 获取类型名
 func (o *MiniInt64) GoMiniType() Ident {
 	return "Int64"

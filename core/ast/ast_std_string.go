@@ -34,6 +34,11 @@ func (o *MiniString) GoValue() any {
 	return o.data
 }
 
+// Data 返回底层的 Go 字符串
+func (o *MiniString) Data() string {
+	return o.data
+}
+
 // String 转换为字符串对象
 func (o *MiniString) String() MiniString {
 	return NewMiniString(o.data)
