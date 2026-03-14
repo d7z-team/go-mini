@@ -1530,6 +1530,20 @@ func (e *Executor) createArrayMethod(miniType ast.GoMiniType, method string) (*V
 			*arrPtr = append((*arrPtr)[:idx], (*arrPtr)[idx+1:]...)
 			return []reflect.Value{reflect.Zero(reflect.TypeOf((*error)(nil)).Elem())}
 		}), nil
+	case "keys":
+		// function(arr) -> Array<Int64>
+		return e.makeFn(fmt.Sprintf("function(%s) Array<Int64>", miniType), 1, 1, func(args []reflect.Value) []reflect.Value {
+			arrPtr, ok := args[0].Interface().(*[]interface{})
+			if !ok {
+				return []reflect.Value{reflect.Zero(reflect.TypeOf((*interface{})(nil)).Elem())}
+			}
+			arr := *arrPtr
+			keys := make([]interface{}, len(arr))
+			for i := range arr {
+				keys[i] = ast.NewMiniInt64(int64(i))
+			}
+			return []reflect.Value{reflect.ValueOf(&keys)}
+		}), nil
 	}
 	return nil, errors.New("method not implemented")
 }

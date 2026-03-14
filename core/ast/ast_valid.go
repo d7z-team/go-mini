@@ -258,6 +258,8 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		arrayStruct.Methods["get"] = callFunc
 		readCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Int64", arrayType)).ReadCallFunc()
 		arrayStruct.Methods["length"] = readCallFunc
+		keysCallFunc, _ := GoMiniType(fmt.Sprintf("function(%s) Array<Int64>", arrayType)).ReadCallFunc()
+		arrayStruct.Methods["keys"] = keysCallFunc
 
 		setElemType := elemType
 		pushElemType := elemType

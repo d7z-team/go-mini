@@ -1392,7 +1392,6 @@ func ConvertGoToAST(src string) (*spec.ProgramStmt, error) {
 }
 
 func (c *GoToASTConverter) convertRangeStmt(rangeStmt *ast.RangeStmt) (spec.Stmt, error) {
-	// 1. Evaluate X -> rangeObj
 	xExpr, err := c.convertExpr(rangeStmt.X)
 	if err != nil {
 		return nil, err
@@ -1400,198 +1399,104 @@ func (c *GoToASTConverter) convertRangeStmt(rangeStmt *ast.RangeStmt) (spec.Stmt
 
 	rangeObjID := c.nextID(rangeStmt)
 	rangeObjName := spec.Ident("__range_" + rangeObjID)
-	indexName := spec.Ident("__index_" + c.nextID(rangeStmt))
+	keysName := spec.Ident("__keys_" + rangeObjID)
+	indexName := spec.Ident("__index_" + rangeObjID)
 
-	// __range_obj := X
+	// 1. __range_obj := X
 	initRangeObj := &spec.AssignmentStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "assignment",
-			Type: "Void",
-		},
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "assignment", Type: "Void", Message: "declare"},
 		Variable: rangeObjName,
 		Value:    xExpr,
 	}
 
-	// 2. Index := 0
+	// 2. __keys := __range_obj.keys()
+	initKeys := &spec.AssignmentStmt{
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "assignment", Type: "Void", Message: "declare"},
+		Variable: keysName,
+		Value: &spec.StructCallExpr{
+			BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "struct_call"},
+			Object:   &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: rangeObjName},
+			Name:     "keys",
+		},
+	}
+
+	// 3. __index := 0
 	initIndex := &spec.AssignmentStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "assignment",
-			Type: "Void",
-		},
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "assignment", Type: "Void", Message: "declare"},
 		Variable: indexName,
-		Value: &spec.LiteralExpr{
-			BaseNode: spec.BaseNode{
-				ID:   c.nextID(rangeStmt),
-				Meta: "literal",
-				Type: "Int64",
-			},
-			Value: "0",
-		},
+		Value:    &spec.LiteralExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "literal", Type: "Int64"}, Value: "0"},
 	}
 
-	// 3. Cond: index < rangeObj.Len() / rangeObj.Size()
-	// rangeObj.Len() or rangeObj.Size()
-	methodName := "length"
-	if xExpr.GetBase().Type.IsMap() {
-		methodName = "size"
-	}
-
-	lenCall := &spec.StructCallExpr{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "struct_call",
-		},
-		Object: &spec.IdentifierExpr{
-			BaseNode: spec.BaseNode{
-				ID:   c.nextID(rangeStmt),
-				Meta: "identifier",
-			},
-			Name: rangeObjName,
-		},
-		Name: spec.Ident(methodName),
-	}
-
+	// 4. Cond: __index < __keys.length()
 	cond := &spec.BinaryExpr{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "binary",
-		},
-		Left: &spec.IdentifierExpr{
-			BaseNode: spec.BaseNode{
-				ID:   c.nextID(rangeStmt),
-				Meta: "identifier",
-			},
-			Name: indexName,
-		},
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "binary"},
+		Left:     &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: indexName},
 		Operator: "<",
-		Right:    lenCall,
+		Right: &spec.StructCallExpr{
+			BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "struct_call"},
+			Object:   &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: keysName},
+			Name:     "length",
+		},
 	}
 
-	// 4. Update: index++
+	// 5. Update: __index++
 	update := &spec.IncDecStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "increment",
-			Type: "Void",
-		},
-		Operand: &spec.IdentifierExpr{
-			BaseNode: spec.BaseNode{
-				ID:   c.nextID(rangeStmt),
-				Meta: "identifier",
-			},
-			Name: indexName,
-		},
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "increment", Type: "Void"},
+		Operand:  &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: indexName},
 		Operator: "++",
 	}
 
-	// 5. Body assignments
+	// 6. Body assignments
 	var assignments []spec.Stmt
 
-	// Key = index
+	// k = __keys[__index]
+	var currentKey spec.Expr = &spec.IndexExpr{
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "index"},
+		Object:   &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: keysName},
+		Index:    &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "identifier"}, Name: indexName},
+	}
+
 	if rangeStmt.Key != nil {
 		if id, ok := rangeStmt.Key.(*ast.Ident); !ok || id.Name != "_" {
-			// Convert Key to variable name
-			var keyName spec.Ident
-			if id, ok := rangeStmt.Key.(*ast.Ident); ok {
-				keyName = spec.Ident(id.Name)
-			} else {
-				return nil, errors.New("range key must be identifier")
-			}
-
-			// Then assign the index
-			storeKey := &spec.AssignmentStmt{
-				BaseNode: spec.BaseNode{
-					ID:   c.nextID(rangeStmt.Key),
-					Meta: "assignment",
-					Type: "Void",
-				},
-				Variable: keyName,
-				Value: &spec.IdentifierExpr{
-					BaseNode: spec.BaseNode{
-						ID:   c.nextID(rangeStmt.Key),
-						Meta: "identifier",
-					},
-					Name: indexName,
-				},
-			}
-			assignments = append(assignments, storeKey)
+			assignments = append(assignments, &spec.AssignmentStmt{
+				BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt.Key), Meta: "assignment", Type: "Void", Message: "declare"},
+				Variable: spec.Ident(id.Name),
+				Value:    currentKey,
+			})
 		}
 	}
 
-	// Value = rangeObj[index]
+	// v = __range_obj[k]
 	if rangeStmt.Value != nil {
 		if id, ok := rangeStmt.Value.(*ast.Ident); !ok || id.Name != "_" {
-			var valName spec.Ident
-			if id, ok := rangeStmt.Value.(*ast.Ident); ok {
-				valName = spec.Ident(id.Name)
-			} else {
-				return nil, errors.New("range value must be identifier")
-			}
-
-			indexExpr := &spec.IndexExpr{
-				BaseNode: spec.BaseNode{
-					ID:   c.nextID(rangeStmt.Value),
-					Meta: "index",
+			assignments = append(assignments, &spec.AssignmentStmt{
+				BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt.Value), Meta: "assignment", Type: "Void", Message: "declare"},
+				Variable: spec.Ident(id.Name),
+				Value: &spec.IndexExpr{
+					BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt.Value), Meta: "index"},
+					Object:   &spec.IdentifierExpr{BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt.Value), Meta: "identifier"}, Name: rangeObjName},
+					Index:    currentKey,
 				},
-				Object: &spec.IdentifierExpr{
-					BaseNode: spec.BaseNode{
-						ID:   c.nextID(rangeStmt.Value),
-						Meta: "identifier",
-					},
-					Name: rangeObjName,
-				},
-				Index: &spec.IdentifierExpr{
-					BaseNode: spec.BaseNode{
-						ID:   c.nextID(rangeStmt.Value),
-						Meta: "identifier",
-					},
-					Name: indexName,
-				},
-			}
-
-			assignVal := &spec.AssignmentStmt{
-				BaseNode: spec.BaseNode{
-					ID:   c.nextID(rangeStmt.Value),
-					Meta: "assignment",
-					Type: "Void",
-				},
-				Variable: valName,
-				Value:    indexExpr,
-			}
-			assignments = append(assignments, assignVal)
+			})
 		}
 	}
 
-	// 6. Body
 	bodyBlock, err := c.convertBlockStmt(rangeStmt.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	// Prepend assignments
 	bodyBlock.Children = append(assignments, bodyBlock.Children...)
 
 	forStmt := &spec.ForStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "for",
-			Type: "Void",
-		},
-		Init:   initIndex,
-		Cond:   cond,
-		Update: update,
-		Body:   bodyBlock,
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "for", Type: "Void"},
+		Init:     initIndex,
+		Cond:     cond,
+		Update:   update,
+		Body:     bodyBlock,
 	}
 
-	// Wrap in block
 	return &spec.BlockStmt{
-		BaseNode: spec.BaseNode{
-			ID:   c.nextID(rangeStmt),
-			Meta: "block",
-			Type: "Void",
-		},
-		Children: []spec.Stmt{initRangeObj, forStmt},
+		BaseNode: spec.BaseNode{ID: c.nextID(rangeStmt), Meta: "block", Type: "Void"},
+		Children: []spec.Stmt{initRangeObj, initKeys, forStmt},
 	}, nil
 }
