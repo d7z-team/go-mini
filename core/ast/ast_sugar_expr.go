@@ -144,6 +144,11 @@ func (b *BinaryExpr) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
+	if b.Operator == "And" || b.Operator == "Or" {
+		b.Type = "Bool"
+		return b, true
+	}
+
 	call := &StructCallExpr{
 		BaseNode: BaseNode{
 			ID:      b.ID,
@@ -178,6 +183,10 @@ func (u *UnaryExpr) Validate(ctx *ValidContext) (Node, bool) {
 		u.Operator = "Sub"
 	case "!", "Not":
 		u.Operator = "Not"
+	case "+", "Plus":
+		u.Operator = "Plus"
+	case "^", "BitwiseNot":
+		u.Operator = "BitwiseNot"
 	default:
 		ctx.AddErrorf("未知一元表达式: %s", u.Operator)
 		return nil, false
@@ -192,6 +201,11 @@ func (u *UnaryExpr) Validate(ctx *ValidContext) (Node, bool) {
 		return nil, false
 	}
 	u.Operand = node.(Expr)
+
+	if u.Operator == "Plus" {
+		// 一元加号直接返回操作数
+		return u.Operand, true
+	}
 
 	call := StructCallExpr{
 		BaseNode: BaseNode{

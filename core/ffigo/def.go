@@ -605,6 +605,27 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 			return nil, err
 		}
 
+		// 处理 +=, -= 等操作符
+		if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
+			opStr := assign.Tok.String()
+			// 去掉后面的 "="，比如 "+=" 变成 "+"
+			opStr = opStr[:len(opStr)-1]
+			
+			// 对于 arr[i] += v，我们需要先获取 arr[i] 的值
+			getExpr := &spec.StructCallExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "struct_call"},
+				Object:   object,
+				Name:     "get",
+				Args:     []spec.Expr{index},
+			}
+			value = &spec.BinaryExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "binary"},
+				Left:     getExpr,
+				Operator: spec.Ident(opStr),
+				Right:    value,
+			}
+		}
+
 		// Go 中 map[k]=v 和 arr[i]=v 语法一样。
 		// executor.go 中 resolveArrayMapMethod 可以处理方法分发。
 		return &spec.StructCallExpr{
@@ -628,6 +649,23 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 		if err != nil {
 			return nil, err
 		}
+		
+		if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
+			opStr := assign.Tok.String()
+			opStr = opStr[:len(opStr)-1]
+			
+			getExpr := &spec.DerefExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "deref"},
+				Operand:  object,
+			}
+			value = &spec.BinaryExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "binary"},
+				Left:     getExpr,
+				Operator: spec.Ident(opStr),
+				Right:    value,
+			}
+		}
+
 		return &spec.DerefAssignmentStmt{
 			BaseNode: spec.BaseNode{
 				ID:   c.nextID(assign),
@@ -646,6 +684,23 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 		if err != nil {
 			return nil, err
 		}
+		
+		if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
+			opStr := assign.Tok.String()
+			opStr = opStr[:len(opStr)-1]
+			
+			getExpr := &spec.IdentifierExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "identifier"},
+				Name:     spec.Ident(expr.Name),
+			}
+			value = &spec.BinaryExpr{
+				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "binary"},
+				Left:     getExpr,
+				Operator: spec.Ident(opStr),
+				Right:    value,
+			}
+		}
+		
 		return &spec.AssignmentStmt{
 			BaseNode: spec.BaseNode{
 				ID:   c.nextID(assign),
@@ -666,10 +721,24 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 		}
 
 		// 结构体成员赋值: obj.Property = value
-		// 这里由于 spec.AssignmentStmt 的局限性，我们暂时使用 Variable + Property
-		// 如果对象是一个复杂的表达式，我们需要更通用的处理方式
-		// 但由于当前 GoToASTConverter 中变量引用的处理，这里先处理 Identifier 的情况
 		if ident, ok := object.(*spec.IdentifierExpr); ok {
+			if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
+				opStr := assign.Tok.String()
+				opStr = opStr[:len(opStr)-1]
+				
+				getExpr := &spec.MemberExpr{
+					BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "member"},
+					Object:   object,
+					Property: spec.Ident(expr.Sel.Name),
+				}
+				value = &spec.BinaryExpr{
+					BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "binary"},
+					Left:     getExpr,
+					Operator: spec.Ident(opStr),
+					Right:    value,
+				}
+			}
+
 			return &spec.AssignmentStmt{
 				BaseNode: spec.BaseNode{
 					ID:   c.nextID(assign),
@@ -1032,6 +1101,10 @@ func (c *GoToASTConverter) convertUnaryExpr(unary *ast.UnaryExpr) (spec.Expr, er
 		operator = "-"
 	case token.NOT:
 		operator = "!"
+	case token.ADD:
+		operator = "+"
+	case token.XOR:
+		operator = "^"
 	case token.AND:
 		// 取地址操作
 		return &spec.AddressExpr{

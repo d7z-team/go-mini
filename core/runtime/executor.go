@@ -444,6 +444,61 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		}
 		return nil, fmt.Errorf("unexpected literal type: %s", n.Type)
 	case *ast.BinaryExpr:
+		// Short-circuiting logic for And / Or
+		if n.Operator == "And" || n.Operator == "Or" {
+			left, err := e.ExecExpr(ctx, n.Left)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Try to interpret left side as boolean
+			leftBool := false
+			if lb, ok := left.Data.(ast.MiniBool); ok {
+				leftBool = lb.Data()
+			} else if lb, ok := left.Data.(*ast.MiniBool); ok {
+				leftBool = lb.Data()
+			} else if gv, ok := left.Data.(ast.GoMiniValue); ok {
+				if b, ok := gv.GoValue().(bool); ok {
+					leftBool = b
+				} else {
+					return nil, fmt.Errorf("left side of logical operator is not a boolean: %T", left.Data)
+				}
+			} else {
+				return nil, fmt.Errorf("left side of logical operator is not a boolean: %T", left.Data)
+			}
+			
+			// Short circuit evaluation
+			if n.Operator == "And" && !leftBool {
+				return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(false), ctx.Stack), nil
+			}
+			if n.Operator == "Or" && leftBool {
+				return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(true), ctx.Stack), nil
+			}
+			
+			// Evaluate right side if we didn't short-circuit
+			right, err := e.ExecExpr(ctx, n.Right)
+			if err != nil {
+				return nil, err
+			}
+			
+			rightBool := false
+			if rb, ok := right.Data.(ast.MiniBool); ok {
+				rightBool = rb.Data()
+			} else if rb, ok := right.Data.(*ast.MiniBool); ok {
+				rightBool = rb.Data()
+			} else if gv, ok := right.Data.(ast.GoMiniValue); ok {
+				if b, ok := gv.GoValue().(bool); ok {
+					rightBool = b
+				} else {
+					return nil, fmt.Errorf("right side of logical operator is not a boolean: %T", right.Data)
+				}
+			} else {
+				return nil, fmt.Errorf("right side of logical operator is not a boolean: %T", right.Data)
+			}
+			
+			return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(rightBool), ctx.Stack), nil
+		}
+
 		left, err := e.ExecExpr(ctx, n.Left)
 		if err != nil {
 			return nil, err

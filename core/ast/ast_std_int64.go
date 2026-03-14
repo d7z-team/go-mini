@@ -111,6 +111,11 @@ func (o *MiniInt64) Sub() MiniInt64 {
 	return MiniInt64{data: n}
 }
 
+// BitwiseNot 按位取反操作
+func (o *MiniInt64) BitwiseNot() MiniInt64 {
+	return MiniInt64{data: ^o.data}
+}
+
 // String 转换为字符串对象
 func (o *MiniInt64) String() MiniString {
 	return NewMiniString(o.GoString())
