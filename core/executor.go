@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"reflect"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -15,9 +13,10 @@ import (
 )
 
 type MiniExecutor struct {
-	funcs   map[ast.Ident]funcInfo
-	structs []interface{}
 	Loader  func(path string) (*ast.ProgramStmt, error)
+	bridges map[uint32]ffigo.FFIBridge
+	routes  map[string]runtime.FFIRoute
+	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
 }
 
 type MiniProgram struct {
@@ -35,15 +34,34 @@ func (p *MiniProgram) GetProgram() *ast.ProgramStmt {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		funcs:   make(map[ast.Ident]funcInfo),
-		structs: make([]interface{}, 0),
+		bridges: make(map[uint32]ffigo.FFIBridge),
+		routes:  make(map[string]runtime.FFIRoute),
+		specs:   make(map[ast.Ident]ast.GoMiniType),
 	}
-	res.structs = append(res.structs, ast.StdlibStructs...)
+	// 默认注册 panic 签名以便通过验证
+	res.specs["panic"] = "function(String) Void"
 	return res
 }
 
 func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
 	o.Loader = loader
+}
+
+// RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
+func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
+	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID}
+	if spec != "" {
+		o.specs[ast.Ident(name)] = spec
+	}
+}
+
+func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
+	o.bridges[methodID] = bridge
+}
+
+// AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
+func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
+	o.specs[ast.Ident(name)] = spec
 }
 
 func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
@@ -80,11 +98,8 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 	_ = encoder.Encode(tree)
 
 	optimize, logs, err := ValidateAndOptimizeWithLoader(tree, o.Loader, func(v *ast.ValidContext) error {
-		if err := v.AddNativeStructDefines(o.structs...); err != nil {
-			return err
-		}
-		for s, info := range o.funcs {
-			if err := v.AddFuncSpec(s, info.fType); err != nil {
+		for name, spec := range o.specs {
+			if err := v.AddFuncSpec(name, spec); err != nil {
 				return err
 			}
 		}
@@ -98,186 +113,21 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 		return nil, err
 	}
 
-	var actualStructs []any
-	for _, s := range o.structs {
-		if ps, ok := s.(ast.PackageStructWrapper); ok {
-			actualStructs = append(actualStructs, ps)
-		} else {
-			actualStructs = append(actualStructs, s)
-		}
-	}
-	executor, err := runtime.NewExecutor(optimize, actualStructs...)
+	executor, err := runtime.NewExecutor(optimize)
 	if err != nil {
 		if !errors.As(err, &astError) {
 			return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: tree}
 		}
 		return nil, err
 	}
-	for ident, info := range o.funcs {
-		executor.AddGlobalFunc(ident, info.fType, info.fc)
+	
+	// Pass routes to executor
+	for name, route := range o.routes {
+		executor.RegisterRoute(name, route.Bridge, route.MethodID)
 	}
+
 	return &MiniProgram{
 		Source:   src.String(),
 		executor: executor,
 	}, nil
-}
-
-type funcInfo struct {
-	fType ast.GoMiniType
-	fc    any
-	doc   string
-}
-
-func (o *MiniExecutor) MustAddFunc(name string, fc any, docs ...string) {
-	err := o.AddFunc(name, fc, docs...)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (o *MiniExecutor) AddPackageFunc(pkg, name string, fc any, docs ...string) error {
-	mangledName := fmt.Sprintf("%s.%s", pkg, name)
-	return o.AddFunc(mangledName, fc, docs...)
-}
-
-func (o *MiniExecutor) MustAddPackageFunc(pkg, name string, fc any, docs ...string) {
-	err := o.AddPackageFunc(pkg, name, fc, docs...)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (o *MiniExecutor) AddPackageStruct(pkg, name string, stru any) {
-	o.structs = append(o.structs, ast.PackageStructWrapper{Pkg: pkg, Name: name, Stru: stru})
-}
-
-func (o *MiniExecutor) AddFunc(name string, fc any, docs ...string) error {
-	of := reflect.TypeOf(fc)
-	if of.Kind() != reflect.Func {
-		return errors.New("fc must be a function")
-	}
-	method, b := ast.ParseMethod(of)
-	if !b {
-		return errors.New("fc must be a supported mini function")
-	}
-	var doc string
-	if len(docs) > 0 {
-		doc = docs[0]
-	} else {
-		// Attempt to extract doc from the source code
-		doc = ast.GetFuncDoc(fc)
-	}
-	o.funcs[ast.Ident(name)] = funcInfo{
-		fType: ast.GoMiniType(method.String()),
-		fc:    fc,
-		doc:   doc,
-	}
-	return nil
-}
-
-func (o *MiniExecutor) AddNativeStruct(stru any) {
-	o.structs = append(o.structs, stru)
-}
-
-type Schema struct {
-	Functions map[string]FuncSchema   `json:"functions"`
-	Structs   map[string]StructSchema `json:"structs"`
-}
-
-type FuncSchema struct {
-	Params []string `json:"params"`
-	Return string   `json:"return"`
-	Doc    string   `json:"doc"`
-}
-
-type StructSchema struct {
-	Fields  map[string]string     `json:"fields"`
-	Methods map[string]FuncSchema `json:"methods"`
-}
-
-func (o *MiniExecutor) GenerateSchema() (*Schema, error) {
-	schema := &Schema{
-		Functions: make(map[string]FuncSchema),
-		Structs:   make(map[string]StructSchema),
-	}
-
-	// 模拟一次空验证来获取所有元数据
-	_, _, err := ValidateAndOptimize(&ast.ProgramStmt{}, func(v *ast.ValidContext) error {
-		if err := v.AddNativeStructDefines(o.structs...); err != nil {
-			return err
-		}
-		for s, info := range o.funcs {
-			if err := v.AddFuncSpec(s, info.fType); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	for name, info := range o.funcs {
-		callFunc, _ := info.fType.ReadCallFunc()
-		params := make([]string, len(callFunc.Params))
-		for i, p := range callFunc.Params {
-			params[i] = string(p)
-		}
-		schema.Functions[string(name)] = FuncSchema{
-			Params: params,
-			Return: string(callFunc.Returns),
-			Doc:    info.doc,
-		}
-	}
-
-	allStructs := append([]any{}, o.structs...)
-	allStructs = append(allStructs, ast.StdlibStructs...)
-
-	for _, s := range allStructs {
-		var typ reflect.Type
-		var structName string
-
-		if ps, ok := s.(ast.PackageStructWrapper); ok {
-			typ = reflect.TypeOf(ps.Stru)
-			structName = fmt.Sprintf("%s.%s", ps.Pkg, ps.Name)
-		} else {
-			typ = reflect.TypeOf(s)
-		}
-
-		if typ.Kind() == reflect.Ptr {
-			typ = typ.Elem()
-		}
-		native, err := ast.ParseNative(typ)
-		if err != nil {
-			continue
-		}
-
-		// If we had a specific name from PackageStructWrapper, use it
-		if structName == "" {
-			structName = string(native.StructName)
-		}
-
-		structSchema := StructSchema{
-			Fields:  make(map[string]string),
-			Methods: make(map[string]FuncSchema),
-		}
-		for fName, fType := range native.Fields {
-			structSchema.Fields[string(fName)] = string(fType)
-		}
-		for mName, mType := range native.Methods {
-			params := make([]string, len(mType.Params))
-			for i, p := range mType.Params {
-				params[i] = string(p)
-			}
-			structSchema.Methods[string(mName)] = FuncSchema{
-				Params: params,
-				Return: string(mType.Returns),
-				Doc:    mType.Doc,
-			}
-		}
-		schema.Structs[structName] = structSchema
-	}
-
-	return schema, nil
 }

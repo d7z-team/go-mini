@@ -2,23 +2,31 @@ package ast
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
-// GoMiniType 类型的粗略表达形式
+// GoMiniType 类型的表达形式
 type GoMiniType string
 
 const (
 	TypeAny GoMiniType = "Any"
 )
 
-func (o GoMiniType) IsEmpty() bool {
-	return o == ""
-}
+func (o GoMiniType) IsEmpty() bool { return o == "" }
+func (o GoMiniType) IsVoid()  bool { return o == "Void" || o == "" }
+func (o GoMiniType) IsAny()   bool { return o == TypeAny }
 
-func (o GoMiniType) IsVoid() bool {
-	return o == "Void"
+func (o GoMiniType) IsString() bool { return o == "String" || o == "string" }
+func (o GoMiniType) IsBool()   bool { return o == "Bool" || o == "bool" }
+
+func (o GoMiniType) IsNumeric() bool {
+	s := string(o)
+	switch s {
+	case "Int64", "Float64", "Uint8", "Int", "Int8", "Int16", "Int32",
+		"Uint", "Uint16", "Uint32", "Uint64", "Uintptr", "Float32", "Complex64", "Complex128":
+		return true
+	}
+	return false
 }
 
 func (o GoMiniType) IsPtr() bool {
@@ -36,105 +44,58 @@ func (o GoMiniType) IsMap() bool {
 	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
 }
 
-func (o GoMiniType) IsAny() bool {
-	return o == TypeAny
-}
-
-// ReadArrayItemType 获取数组元素类型
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
-	if !o.IsArray() {
-		return "", false
-	}
+	if !o.IsArray() { return "", false }
 	s := string(o)
-	inner := s[6 : len(s)-1]
-	return GoMiniType(inner), true
+	return GoMiniType(s[6 : len(s)-1]), true
 }
 
-// CreateArrayType 创建数组类型
 func CreateArrayType(elementType GoMiniType) GoMiniType {
 	return GoMiniType(fmt.Sprintf("Array<%s>", elementType))
 }
 
-// GetPtrElementType 获取指针指向的类型
 func (o GoMiniType) GetPtrElementType() (GoMiniType, bool) {
-	if !o.IsPtr() {
-		return "", false
-	}
+	if !o.IsPtr() { return "", false }
 	s := string(o)
-	inner := s[4 : len(s)-1]
-	return GoMiniType(inner), true
+	return GoMiniType(s[4 : len(s)-1]), true
 }
 
 func (o GoMiniType) ToPtr() GoMiniType {
 	return GoMiniType(fmt.Sprintf("Ptr<%s>", o))
 }
 
-// GetMapKeyValueTypes 获取Map的键和值类型
 func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
-	if !o.IsMap() {
-		return "", "", false
-	}
+	if !o.IsMap() { return "", "", false }
 	s := string(o)
 	inner := s[4 : len(s)-1]
-
-	// 分割键值类型
 	parts := splitByComma(inner)
-	if len(parts) != 2 {
-		return "", "", false
-	}
-
+	if len(parts) != 2 { return "", "", false }
 	return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
 }
 
-// CreateMapType 创建Map类型
 func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
 	return GoMiniType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
 }
 
 func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
 	s := string(o)
-	if !strings.HasPrefix(s, "function(") {
-		return nil, false
-	}
-
-	// 找到参数列表的开始和结束
+	if !strings.HasPrefix(s, "function(") { return nil, false }
 	start := len("function(")
 	parenCount := 1
 	paramEnd := -1
-
 	for i := start; i < len(s); i++ {
-		if s[i] == '(' {
-			parenCount++
-		} else if s[i] == ')' {
+		if s[i] == '(' { parenCount++ } else if s[i] == ')' {
 			parenCount--
-			if parenCount == 0 {
-				paramEnd = i
-				break
-			}
+			if parenCount == 0 { paramEnd = i; break }
 		}
 	}
-
-	if paramEnd == -1 {
-		return nil, false
-	}
-
+	if paramEnd == -1 { return nil, false }
 	paramsStr := s[start:paramEnd]
 	returnsStr := strings.TrimSpace(s[paramEnd+1:])
-
-	// 解析参数
 	params, isVariadic := parseParams(paramsStr)
-
-	// 解析返回值
 	var returns GoMiniType = "Void"
-	if returnsStr != "" {
-		returns = parseReturnType(returnsStr)
-	}
-
-	return &FunctionType{
-		Params:   params,
-		Return:   returns,
-		Variadic: isVariadic,
-	}, true
+	if returnsStr != "" { returns = parseReturnType(returnsStr) }
+	return &FunctionType{Params: params, Return: returns, Variadic: isVariadic}, true
 }
 
 type FunctionType struct {
@@ -147,9 +108,7 @@ func (f FunctionType) MiniType() GoMiniType {
 	var params []string
 	for i, p := range f.Params {
 		prefix := ""
-		if f.Variadic && i == len(f.Params)-1 {
-			prefix = "..."
-		}
+		if f.Variadic && i == len(f.Params)-1 { prefix = "..." }
 		params = append(params, prefix+string(p.Type))
 	}
 	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), f.Return))
@@ -171,219 +130,122 @@ func (c CallFunctionType) String() string {
 	var params []string
 	for i, p := range c.Params {
 		prefix := ""
-		if c.Variadic && i == len(c.Params)-1 {
-			prefix = "..."
-		}
+		if c.Variadic && i == len(c.Params)-1 { prefix = "..." }
 		params = append(params, prefix+string(p))
 	}
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ","), c.Returns)
 }
 
-func (c CallFunctionType) MiniType() GoMiniType {
-	return GoMiniType(c.String())
-}
+func (c CallFunctionType) MiniType() GoMiniType { return GoMiniType(c.String()) }
 
-// 解析参数列表字符串
 func parseParams(paramsStr string) ([]FunctionParam, bool) {
 	paramsStr = strings.TrimSpace(paramsStr)
-	if paramsStr == "" {
-		return nil, false
-	}
-
+	if paramsStr == "" { return nil, false }
 	isVariadic := false
 	var params []FunctionParam
 	parts := splitByComma(paramsStr)
-
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
+		if part == "" { continue }
 		if strings.HasPrefix(part, "...") {
 			isVariadic = true
 			part = strings.TrimPrefix(part, "...")
 		}
-
-		// 查找类型和参数名的分界
-		// 类型在前，参数名在后（可选）
-		// 例如: "Int a" 或 "Array<Int> items"
-		// 参数名只能是标识符，不包含特殊字符
-
-		// 反向查找：从末尾开始找到第一个标识符作为参数名
-		// 其余部分作为类型
 		partRunes := []rune(part)
 		end := len(partRunes) - 1
-
-		// 跳过末尾空格
-		for end >= 0 && partRunes[end] == ' ' {
-			end--
-		}
-
-		// 查找参数名的结束位置
+		for end >= 0 && partRunes[end] == ' ' { end-- }
 		nameEnd := end
-		for nameEnd >= 0 && isIdentChar(partRunes[nameEnd]) {
-			nameEnd--
-		}
-		nameEnd++ // 调整到参数名的开始位置
-
+		for nameEnd >= 0 && isIdentChar(partRunes[nameEnd]) { nameEnd-- }
+		nameEnd++
 		var paramName Ident
 		var typeStr string
-
 		if nameEnd <= end && nameEnd > 0 && partRunes[nameEnd-1] == ' ' {
-			// 有参数名
 			paramName = Ident(partRunes[nameEnd : end+1])
 			typeStr = strings.TrimSpace(string(partRunes[:nameEnd-1]))
 		} else {
-			// 没有参数名，整个部分都是类型
 			typeStr = strings.TrimSpace(part)
 		}
-
-		params = append(params, FunctionParam{
-			Name: paramName,
-			Type: GoMiniType(typeStr),
-		})
+		params = append(params, FunctionParam{Name: paramName, Type: GoMiniType(typeStr)})
 	}
-
 	return params, isVariadic
 }
 
 func isIdentChar(ch rune) bool {
-	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-		(ch >= '0' && ch <= '9') || ch == '_'
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
 }
 
-// 解析返回值类型字符串
 func parseReturnType(returnStr string) GoMiniType {
 	returnStr = strings.TrimSpace(returnStr)
-	if returnStr == "" {
-		return ""
-	}
-
-	// 如果返回值有括号，说明是多返回值
+	if returnStr == "" { return "" }
 	if len(returnStr) > 0 && returnStr[0] == '(' {
 		returnStr = strings.TrimSpace(returnStr[1 : len(returnStr)-1])
-
-		// 解析多个返回类型
 		var types []string
 		typeParts := splitByComma(returnStr)
-
 		for _, part := range typeParts {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				types = append(types, part)
-			}
+			if part = strings.TrimSpace(part); part != "" { types = append(types, part) }
 		}
-
-		// 如果有多个返回值，包装成tuple(...)
-		if len(types) > 1 {
-			return GoMiniType("tuple(" + strings.Join(types, ", ") + ")")
-		} else if len(types) == 1 {
-			// 单个返回值，直接返回
-			return GoMiniType(types[0])
-		}
+		if len(types) > 1 { return GoMiniType("tuple(" + strings.Join(types, ", ") + ")") }
+		if len(types) == 1 { return GoMiniType(types[0]) }
 	}
-
-	// 单个返回值，直接返回
 	return GoMiniType(returnStr)
 }
 
 func (o GoMiniType) ReadTuple() ([]GoMiniType, bool) {
 	s := string(o)
-	if o.IsArray() {
-		elemType, ok := o.ReadArrayItemType()
-		if !ok {
-			return nil, false
-		}
-		return []GoMiniType{elemType}, false
-	}
-	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") {
-		return nil, false
-	}
-	inner := s[6 : len(s)-1]
-	inner = strings.TrimSpace(inner)
-	if inner == "" {
-		return []GoMiniType{}, true // 空元组
-	}
-
+	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") { return nil, false }
+	inner := strings.TrimSpace(s[6 : len(s)-1])
+	if inner == "" { return []GoMiniType{}, true }
 	var types []GoMiniType
-	typeParts := splitByComma(inner)
-
-	for _, part := range typeParts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			types = append(types, GoMiniType(part))
-		}
+	for _, part := range splitByComma(inner) {
+		if part != "" { types = append(types, GoMiniType(part)) }
 	}
-
 	return types, true
 }
 
-// 按照最外层的逗号分割字符串，处理嵌套的函数类型和tuple类型
 func splitByComma(s string) []string {
 	var parts []string
 	var current strings.Builder
-	parenDepth := 0
-	bracketDepth := 0
-	angleDepth := 0 // 新增：处理尖括号 <>
-
+	pDepth, bDepth, aDepth := 0, 0, 0
 	for _, ch := range s {
 		switch ch {
-		case '(':
-			parenDepth++
-			current.WriteRune(ch)
-		case ')':
-			parenDepth--
-			current.WriteRune(ch)
-		case '[':
-			bracketDepth++
-			current.WriteRune(ch)
-		case ']':
-			bracketDepth--
-			current.WriteRune(ch)
-		case '<':
-			angleDepth++
-			current.WriteRune(ch)
-		case '>':
-			angleDepth--
-			current.WriteRune(ch)
+		case '(': pDepth++
+		case ')': pDepth--
+		case '[': bDepth++
+		case ']': bDepth--
+		case '<': aDepth++
+		case '>': aDepth--
 		case ',':
-			if parenDepth == 0 && bracketDepth == 0 && angleDepth == 0 {
+			if pDepth == 0 && bDepth == 0 && aDepth == 0 {
 				parts = append(parts, strings.TrimSpace(current.String()))
 				current.Reset()
-			} else {
-				current.WriteRune(ch)
+				continue
 			}
-		default:
-			current.WriteRune(ch)
 		}
+		current.WriteRune(ch)
 	}
-
-	if current.Len() > 0 {
-		parts = append(parts, strings.TrimSpace(current.String()))
-	}
-
+	if current.Len() > 0 { parts = append(parts, strings.TrimSpace(current.String())) }
 	return parts
 }
 
 func (ft *FunctionType) ToCallFunctionType() CallFunctionType {
 	var callParams []GoMiniType
-	for _, param := range ft.Params {
-		callParams = append(callParams, param.Type)
-	}
-
-	return CallFunctionType{
-		Params:   callParams,
-		Returns:  ft.Return,
-		Variadic: ft.Variadic,
-	}
+	for _, param := range ft.Params { callParams = append(callParams, param.Type) }
+	return CallFunctionType{Params: callParams, Returns: ft.Return, Variadic: ft.Variadic}
 }
 
-func (fp *FunctionParam) ToCallFunctionType() (CallFunctionType, bool) {
-	if fn, ok := fp.Type.ReadFunc(); ok {
-		return fn.ToCallFunctionType(), true
+func (o GoMiniType) Equals(other GoMiniType) bool {
+	if o == other || o.IsAny() || other.IsAny() { return true }
+	if o.IsArray() && other.IsArray() {
+		oElem, _ := o.ReadArrayItemType()
+		otherElem, _ := other.ReadArrayItemType()
+		return oElem.Equals(otherElem)
 	}
-	return CallFunctionType{}, false
+	if o.IsPtr() && other.IsPtr() {
+		oElem, _ := o.GetPtrElementType()
+		otherElem, _ := other.GetPtrElementType()
+		return oElem.Equals(otherElem)
+	}
+	return string(o) == string(other)
 }
 
 func (o GoMiniType) ReadCallFunc() (CallFunctionType, bool) {
@@ -393,98 +255,28 @@ func (o GoMiniType) ReadCallFunc() (CallFunctionType, bool) {
 	return CallFunctionType{}, false
 }
 
-func CreateTupleType(types ...GoMiniType) GoMiniType {
-	if len(types) == 0 {
-		return "Void"
-	}
-
-	if len(types) == 1 {
-		return types[0]
-	}
-
-	var typeStrs []string
-	for _, t := range types {
-		typeStrs = append(typeStrs, string(t))
-	}
-
-	return GoMiniType("tuple(" + strings.Join(typeStrs, ", ") + ")")
-}
-
 func (o GoMiniType) IsTuple() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "tuple(") && strings.HasSuffix(s, ")")
-}
-
-func (o GoMiniType) Equals(other GoMiniType) bool {
-	if o == other {
-		return true
-	}
-
-	// Any 类型特殊处理：Any 可以匹配任何类型
-	if o.IsAny() || other.IsAny() {
-		return true
-	}
-
-	if o.IsArray() && other.IsArray() {
-		oElem, _ := o.ReadArrayItemType()
-		otherElem, _ := other.ReadArrayItemType()
-		return oElem.Equals(otherElem)
-	}
-
-	if o.IsPtr() && other.IsPtr() {
-		oElem, _ := o.GetPtrElementType()
-		otherElem, _ := other.GetPtrElementType()
-		return oElem.Equals(otherElem)
-	}
-
-	if o.IsMap() && other.IsMap() {
-		oKey, oVal, _ := o.GetMapKeyValueTypes()
-		otherKey, otherVal, _ := other.GetMapKeyValueTypes()
-		return oKey.Equals(otherKey) && oVal.Equals(otherVal)
-	}
-
-	fc, ok := o.ReadFunc()
-	fc2, ok2 := other.ReadFunc()
-	if ok == ok2 && ok {
-		functionType := fc.ToCallFunctionType()
-		callFunctionType := fc2.ToCallFunctionType()
-		return functionType.String() == callFunctionType.String()
-	}
-	return string(o) == string(other)
+	return strings.HasPrefix(string(o), "tuple(") && strings.HasSuffix(string(o), ")")
 }
 
 func (o GoMiniType) StructName() (Ident, bool) {
-	if strings.Contains(string(o), "(") || strings.Contains(string(o), ")") {
+	s := string(o)
+	if strings.Contains(s, "(") || strings.Contains(s, "<") {
 		return "", false
 	}
-	return Ident(o), true
+	return Ident(s), true
 }
 
-func (o GoMiniType) IsPrimitive() bool {
-	s := string(o)
-	switch s {
-	case "Any", "Void", "Error", "String", "Int64", "Float64", "Bool", "Uint8",
-		"Int", "Int8", "Int16", "Int32", "Uint", "Uint16", "Uint32", "Uint64", "Uintptr",
-		"Float32", "Complex64", "Complex128":
-		return true
-	}
-	return false
-}
-
-func (o GoMiniType) IsNumeric() bool {
-	s := string(o)
-	switch s {
-	case "Int64", "Float64", "Uint8", "Int", "Int8", "Int16", "Int32",
-		"Uint", "Uint16", "Uint32", "Uint64", "Uintptr", "Float32", "Complex64", "Complex128":
-		return true
-	}
-	return false
+func CreateTupleType(types ...GoMiniType) GoMiniType {
+	if len(types) == 0 { return "Void" }
+	if len(types) == 1 { return types[0] }
+	var s []string
+	for _, t := range types { s = append(s, string(t)) }
+	return GoMiniType("tuple(" + strings.Join(s, ", ") + ")")
 }
 
 func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
-	if o.IsEmpty() || o.IsPrimitive() {
-		return o
-	}
+	if o.IsEmpty() { return o }
 	if o.IsArray() {
 		elem, _ := o.ReadArrayItemType()
 		return CreateArrayType(elem.Resolve(v))
@@ -493,263 +285,54 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		elem, _ := o.GetPtrElementType()
 		return elem.Resolve(v).ToPtr()
 	}
-	if o.IsMap() {
-		k, val, _ := o.GetMapKeyValueTypes()
-		return CreateMapType(k.Resolve(v), val.Resolve(v))
-	}
-	if o.IsTuple() {
-		types, _ := o.ReadTuple()
-		var r []GoMiniType
-		for _, t := range types {
-			r = append(r, t.Resolve(v))
-		}
-		return CreateTupleType(r...)
-	}
-	if readFunc, b := o.ReadFunc(); b {
-		var newParams []FunctionParam
-		for _, p := range readFunc.Params {
-			newParams = append(newParams, FunctionParam{
-				Name: p.Name,
-				Type: p.Type.Resolve(v),
-			})
-		}
-		newReturn := readFunc.Return.Resolve(v)
-		newFunc := FunctionType{Params: newParams, Return: newReturn}
-		return GoMiniType(newFunc.String())
-	}
-
 	s := string(o)
 	if strings.Contains(s, ".") {
 		parts := strings.SplitN(s, ".", 2)
 		if realPkg, ok := v.root.Imports[parts[0]]; ok {
 			return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 		}
-		return o // fallback
 	}
-
-	if v.root.Package != "" && v.root.Package != "main" {
+	if v.root.Package != "" && v.root.Package != "main" && !strings.Contains(s, ".") {
 		return GoMiniType(fmt.Sprintf("%s.%s", v.root.Package, s))
 	}
 	return o
 }
 
 func (o GoMiniType) Valid(v *ValidContext) bool {
-	// Any 类型总是有效的
-	if o.IsAny() {
-		return true
-	}
-
+	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() { return true }
 	if o.IsArray() {
-		elemType, ok := o.ReadArrayItemType()
-		if !ok {
-			v.AddErrorf("invalid array type: %s", o)
-			return false
-		}
-		return elemType.Valid(v)
+		elem, ok := o.ReadArrayItemType()
+		return ok && elem.Resolve(v).Valid(v)
 	}
 	if o.IsPtr() {
-		elemType, ok := o.GetPtrElementType()
-		if !ok {
-			v.AddErrorf("invalid pointer type: %s", o)
-			return false
-		}
-		return elemType.Valid(v)
+		elem, ok := o.GetPtrElementType()
+		return ok && elem.Resolve(v).Valid(v)
 	}
-	if o.IsMap() {
-		keyType, valueType, ok := o.GetMapKeyValueTypes()
-		if !ok {
-			v.AddErrorf("invalid map type: %s", o)
-			return false
-		}
-		if !keyType.Valid(v) {
-			v.AddErrorf("invalid map key type: %s", keyType)
-			return false
-		}
-		if !valueType.Valid(v) {
-			v.AddErrorf("invalid map value type: %s", valueType)
-			return false
-		}
-		return true
-	}
-	readFunc, b := o.ReadFunc()
-	if b {
-		for _, param := range readFunc.Params {
-			if param.Name != "" {
-				if !param.Name.Valid(v) {
-					v.AddErrorf("invalid parameter name: %s", param.Name)
-					return false
-				}
-				if !param.Type.Valid(v) {
-					v.AddErrorf("invalid parameter type: %s", param.Type)
-					return false
-				}
-			}
-		}
-		if !readFunc.Return.Valid(v) {
-			v.AddErrorf("invalid return type: %s", readFunc.Return)
-			return false
-		}
-		return true
-	}
-	tuple, b := o.ReadTuple()
-	if b {
-		for _, param := range tuple {
-			if !param.Valid(v) {
-				v.AddErrorf("invalid tuple type: %s", param)
-				return false
-			}
-		}
-		return true
-	}
-	_, b = v.GetStruct(Ident(o))
-	if !b && o != "Void" && !o.IsAny() && o != "Error" {
-		v.AddErrorf("struct %s not found.", o)
-		return false
-	}
-	return true
+	_, ok := v.GetStruct(Ident(o))
+	return ok
 }
 
-// 辅助方法：格式化为字符串
 func (ft *FunctionType) String() string {
-	var paramStrs []string
-	for i, param := range ft.Params {
+	var pStrs []string
+	for i, p := range ft.Params {
 		prefix := ""
-		if ft.Variadic && i == len(ft.Params)-1 {
-			prefix = "..."
-		}
-		if param.Name == "" {
-			paramStrs = append(paramStrs, prefix+string(param.Type))
-		} else {
-			// 格式为：类型 参数名
-			paramStrs = append(paramStrs, fmt.Sprintf("%s%s %s", prefix, param.Type, param.Name))
-		}
+		if ft.Variadic && i == len(ft.Params)-1 { prefix = "..." }
+		pStrs = append(pStrs, fmt.Sprintf("%s%s %s", prefix, p.Type, p.Name))
 	}
-	paramsStr := strings.Join(paramStrs, ", ")
-	var returnStr string
-	if ft.Return == "" {
-		returnStr = "Void"
-	} else {
-		returnStr = " " + string(ft.Return)
-	}
-
-	return fmt.Sprintf("function(%s)%s", paramsStr, returnStr)
+	return fmt.Sprintf("function(%s) %s", strings.Join(pStrs, ", "), ft.Return)
 }
 
 func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
-	varType := pVar.GetBase().Type
-
-	// 如果目标类型是 Any，可以接受任何类型（包括指针）
-	if o.IsAny() {
-		if !varType.IsPtr() {
-			// 不要让值类型参与运算
-			originalID := pVar.GetBase().ID
-			pVar.GetBase().ID = originalID + "_Operand_0"
-			return &AddressExpr{
-				BaseNode: BaseNode{
-					ID:   originalID,
-					Meta: "address",
-					Type: varType.ToPtr(),
-				},
-				Operand: pVar,
-			}, true
-		}
-		return pVar, true
-	}
-
-	if o.Equals(varType) {
-		return pVar, true
-	}
-
-	// 数值字面量自动转换
-	if (o == "Int64" || o == "Float64" || o == "Uint8") && varType.IsPrimitive() {
-		if lit, ok := pVar.(*LiteralExpr); ok {
-			switch o {
-			case "Int64":
-				val, err := strconv.ParseInt(lit.Value, 10, 64)
-				if err != nil {
-					return nil, false
-				}
-				data := NewMiniInt64(val)
-				lit.Type = "Int64"
-				lit.Data = &data
-				return lit, true
-			case "Float64":
-				val, err := strconv.ParseFloat(lit.Value, 64)
-				if err != nil {
-					return nil, false
-				}
-				data := NewMiniFloat64(val)
-				lit.Type = "Float64"
-				lit.Data = &data
-				return lit, true
-			case "Uint8":
-				val, err := strconv.ParseUint(lit.Value, 10, 8)
-				if err != nil {
-					return nil, false
-				}
-				data := NewMiniUint8(byte(val))
-				lit.Type = "Uint8"
-				lit.Data = &data
-				return lit, true
-			}
+	vType := pVar.GetBase().Type
+	if o.IsAny() { return pVar, true }
+	if o.Equals(vType) { return pVar, true }
+	if o.IsPtr() && !vType.IsPtr() {
+		unPtr, _ := o.GetPtrElementType()
+		if unPtr.Equals(vType) {
+			return &AddressExpr{BaseNode: BaseNode{Meta: "address", Type: vType.ToPtr()}, Operand: pVar}, true
 		}
 	}
-
-	if o.IsPtr() && !varType.IsPtr() {
-		unPtrT, _ := o.GetPtrElementType()
-		if !unPtrT.Equals(varType) {
-			return nil, false
-		}
-		originalID := pVar.GetBase().ID
-		pVar.GetBase().ID = originalID + "_Operand_0"
-		return &AddressExpr{
-			BaseNode: BaseNode{
-				ID:   originalID,
-				Meta: "address",
-				Type: varType.ToPtr(),
-			},
-			Operand: pVar,
-		}, true
-	}
-
-	if !o.IsPtr() && varType.IsPtr() {
-		unPtrT, _ := varType.GetPtrElementType()
-		if !unPtrT.Equals(o) {
-			return nil, false
-		}
-		return &DerefExpr{
-			BaseNode: BaseNode{
-				ID:   pVar.GetBase().ID + "_Deref",
-				Meta: "dereference",
-				Type: unPtrT,
-			},
-			Operand: pVar,
-		}, true
-	}
-	return nil, false
+	return pVar, true
 }
 
-// IsAssignableTo 判断当前类型是否可以赋值给目标类型
-func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
-	// Any 类型可以接受任何类型
-	if target.IsAny() {
-		return true
-	}
-
-	// 其他类型之间的赋值需要类型匹配
-	return o.Equals(target)
-}
-
-// CanBeAny 判断类型是否可以被当作 Any 处理
-func (o GoMiniType) CanBeAny() bool {
-	// 所有非函数类型都可以当作 Any
-	if o.IsVoid() {
-		return false
-	}
-
-	if _, ok := o.ReadFunc(); ok {
-		return false
-	}
-
-	return true
-}
+func (o GoMiniType) IsAssignableTo(target GoMiniType) bool { return o.Equals(target) }

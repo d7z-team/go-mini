@@ -2,190 +2,144 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"reflect"
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
+type VarType byte
+
+const (
+	TypeInt    VarType = iota // Always int64
+	TypeFloat                 // Always float64
+	TypeString
+	TypeBytes                 // Raw buffer
+	TypeBool
+	TypeMap                   // Internal VM Map (string keys only)
+	TypeArray                 // Internal VM Array ([]*Var)
+	TypeHandle                // Host resource ID (uint32)
+	TypeAny                   // Placeholder for unknown/dynamic
+)
+
 type Var struct {
 	Type   ast.GoMiniType
-	GoType reflect.Type
-	Data   any
-	Value  reflect.Value // 变量的真实存储槽位 (可寻址)
+	VType  VarType
+	I64    int64
+	F64    float64
+	Str    string
+	B      []byte
+	Bool   bool
+	Handle uint32
+	Ref    interface{} // Internal structures only: *VMArray, *VMMap
 
 	stack weak.Pointer[Stack]
 }
 
-func (v *Var) IsPtr() bool {
-	return v.Type.IsPtr()
+type VMArray struct {
+	Data []*Var
 }
 
-func cloneValue(typ ast.GoMiniType, data any) any {
-	if data == nil {
+type VMMap struct {
+	Data map[string]*Var
+}
+
+func cloneVar(v *Var) *Var {
+	if v == nil {
 		return nil
 	}
-
-	// 引用类型不进行克隆
-	if typ.IsPtr() || typ.IsArray() || typ.IsMap() || typ.IsAny() || typ.IsTuple() {
-		return data
-	}
-
-	// 原生类型的克隆（如果实现了 MiniClone）
-	if cloner, ok := data.(ast.MiniClone); ok {
-		return cloner.Clone()
-	}
-
-	// 自定义结构体的深拷贝
-	if ds, ok := data.(DynStruct); ok {
-		newBody := make(map[string]any)
-		for k, v := range ds.Body {
-			var fieldTyp ast.GoMiniType
-			if ds.Define != nil {
-				fieldTyp = ds.Define.Fields[ast.Ident(k)]
-			}
-			newBody[k] = cloneValue(fieldTyp, v)
-		}
-		return DynStruct{
-			Define: ds.Define,
-			Body:   newBody,
-		}
-	}
-
-	return data
-}
-
-func NewVar(typ ast.GoMiniType, goType reflect.Type, data any, stack *Stack) *Var {
-	data = cloneValue(typ, data)
-
-	if goType == nil && data != nil {
-		if rv, ok := data.(reflect.Value); ok {
-			goType = rv.Type()
-		} else {
-			goType = reflect.TypeOf(data)
-		}
-	}
-
 	res := &Var{
-		Type:   typ,
-		GoType: goType,
-		Data:   data,
+		Type:   v.Type,
+		VType:  v.VType,
+		I64:    v.I64,
+		F64:    v.F64,
+		Str:    v.Str,
+		Bool:   v.Bool,
+		Handle: v.Handle,
+		Ref:    v.Ref, // Reference structures are shared by pointer
 	}
-
-	if goType != nil {
-		// 创建一个该类型的可寻址副本
-		ptr := reflect.New(goType)
-		val := ptr.Elem()
-		if data != nil {
-			rv := reflect.ValueOf(data)
-			if r, ok := data.(reflect.Value); ok {
-				rv = r
-			}
-
-			if rv.Type().AssignableTo(val.Type()) {
-				val.Set(rv)
-			} else if rv.Kind() == reflect.Ptr && rv.Elem().Type().AssignableTo(val.Type()) {
-				val.Set(rv.Elem())
-			} else if rv.Type().ConvertibleTo(val.Type()) {
-				val.Set(rv.Convert(val.Type()))
-			} else {
-				// Fallback if possible or error?
-				// For now, try to set the value as is (might still panic if totally incompatible)
-				val.Set(rv)
-			}
-		}
-		res.Value = val
-		res.Data = val.Interface()
+	if v.B != nil {
+		res.B = make([]byte, len(v.B))
+		copy(res.B, v.B)
 	}
-
-	if stack != nil {
-		res.stack = weak.Make(stack)
+	if v.stack.Value() != nil {
+		res.stack = weak.Make(v.stack.Value())
 	}
 	return res
 }
 
-func NewVarWithValue(typ ast.GoMiniType, val reflect.Value, stack *Stack) *Var {
-	v := &Var{
-		Type:   typ,
-		GoType: val.Type(),
-		Data:   nil,
-		Value:  val,
+func NewVar(typ ast.GoMiniType, vType VarType) *Var {
+	return &Var{
+		Type:  typ,
+		VType: vType,
 	}
-	if val.IsValid() {
-		v.Data = val.Interface()
-	}
-	if stack != nil {
-		v.stack = weak.Make(stack)
-	}
-	return v
+}
+
+// 快速构造工厂方法，统一标量类型
+func NewInt(v int64) *Var {
+	res := NewVar("Int64", TypeInt)
+	res.I64 = v
+	return res
+}
+
+func NewFloat(v float64) *Var {
+	res := NewVar("Float64", TypeFloat)
+	res.F64 = v
+	return res
+}
+
+func NewString(v string) *Var {
+	res := NewVar("String", TypeString)
+	res.Str = v
+	return res
+}
+
+func NewBool(v bool) *Var {
+	res := NewVar("Bool", TypeBool)
+	res.Bool = v
+	return res
+}
+
+func NewBytes(v []byte) *Var {
+	res := NewVar("[]byte", TypeBytes)
+	res.B = v
+	return res
 }
 
 type Stack struct {
 	Parent    *Stack
-	MemoryPtr map[string]*Var // 内存地址
-	Scope     string          // 作用域类型
+	MemoryPtr map[string]*Var
+	Scope     string
 	interrupt string
-	Deferred  []ast.Expr
 	Depth     int
 }
 
-// IsChildOf other 是否为当前 stack 的父作用域
-func (s *Stack) IsChildOf(other *Stack) bool {
-	if s == other || other == nil {
-		return false
+type StackContext struct {
+	context.Context
+	Program  *Program
+	Stack    *Stack
+	Executor interface {
+		ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
 	}
-	parent := s.Parent
-	for parent != nil {
-		if parent == other {
-			return true
-		}
-		parent = parent.Parent
-	}
-	return false
 }
 
-type (
-	Program      struct{}
-	StackContext struct {
-		context.Context
-		Program  *Program
-		Stack    *Stack
-		Executor interface {
-			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-		}
-	}
+const (
+	ContextKeyMaxStackDepth = "ContextKeyMaxStackDepth"
+	DefaultMaxStackDepth    = 50000
 )
 
 func (c *StackContext) ScopeApply(scope string) {
-	if scope == "" {
-		panic("empty scope")
-	}
-
 	newDepth := 1
 	if c.Stack != nil {
 		newDepth = c.Stack.Depth + 1
 	}
-
-	maxDepth := DefaultMaxStackDepth
-	if c.Context != nil {
-		if val := c.Context.Value(ContextKeyMaxStackDepth); val != nil {
-			if d, ok := val.(int); ok {
-				maxDepth = d
-			}
-		}
+	if newDepth > DefaultMaxStackDepth {
+		panic(fmt.Errorf("stack overflow"))
 	}
-
-	if newDepth > maxDepth {
-		panic(fmt.Errorf("stack overflow: max stack depth %d reached", maxDepth))
-	}
-
 	c.Stack = &Stack{
 		Parent:    c.Stack,
 		MemoryPtr: make(map[string]*Var),
 		Scope:     scope,
-		Deferred:  make([]ast.Expr, 0),
 		Depth:     newDepth,
 	}
 }
@@ -197,69 +151,28 @@ func (c *StackContext) WithScope(sType string, child func(ctx *StackContext)) {
 }
 
 func (c *StackContext) ScopeExit() {
-	if c.Stack == nil || c.Stack.Parent == nil {
-		panic("stack is empty")
-	}
 	c.Stack = c.Stack.Parent
 }
 
-func (c *StackContext) ExecuteDeferred() {
-	if c.Stack == nil {
-		return
-	}
-	// LIFO 执行
-	for i := len(c.Stack.Deferred) - 1; i >= 0; i-- {
-		expr := c.Stack.Deferred[i]
-		_, _ = c.Executor.ExecExpr(c, expr)
-	}
-	c.Stack.Deferred = nil
-}
-
-// Store 变量替换
 func (c *StackContext) Store(variable string, expr *Var) error {
-	if c.Stack == nil {
-		return errors.New("stack is nil")
-	}
-	varPtr, err := c.loadVar(variable)
+	v, err := c.loadVar(variable)
 	if err != nil {
-		// 如果变量未找到，则在当前作用域创建它 (对应 := 语义)
-		// 注册新变量，将其存入 runtime MemoryPtr
 		return c.AddVariable(variable, expr)
 	}
-
-	if !varPtr.Type.IsAny() && !varPtr.Type.Equals(expr.Type) {
-		return fmt.Errorf("variable type mismatch: var(%s) != expr(%s)", varPtr.Type, expr.Type)
-	}
-
-	clonedData := cloneValue(varPtr.Type, expr.Data)
-	val := reflect.ValueOf(clonedData)
-
-	if !varPtr.Value.IsValid() {
-		// 延迟初始化容器类型
-		if val.IsValid() {
-			ptr := reflect.New(val.Type())
-			varPtr.Value = ptr.Elem()
-		}
-	}
-
-	if val.IsValid() {
-		if val.Type().AssignableTo(varPtr.Value.Type()) {
-			varPtr.Value.Set(val)
-		} else if varPtr.Value.Kind() == reflect.Interface {
-			varPtr.Value.Set(val)
-		}
-		varPtr.GoType = val.Type()
-	}
-	varPtr.Data = clonedData
+	// Copy data only, keep original metadata if strictly typed
+	v.VType = expr.VType
+	v.I64 = expr.I64
+	v.F64 = expr.F64
+	v.Str = expr.Str
+	v.B = expr.B
+	v.Bool = expr.Bool
+	v.Handle = expr.Handle
+	v.Ref = expr.Ref
 	return nil
 }
 
 func (c *StackContext) AddVariable(name string, v *Var) error {
-	if c.Stack == nil {
-		return errors.New("stack is nil")
-	}
-	// 确保变量进入 MemoryPtr
-	c.Stack.MemoryPtr[name] = NewVar(v.Type, v.GoType, v.Data, c.Stack)
+	c.Stack.MemoryPtr[name] = cloneVar(v)
 	return nil
 }
 
@@ -267,88 +180,48 @@ func (c *StackContext) Load(name string) (*Var, error) {
 	return c.loadVar(name)
 }
 
-func (c *StackContext) LoadAddr(name string) (reflect.Value, error) {
-	v, err := c.loadVar(name)
-	if err != nil {
-		return reflect.Value{}, err
-	}
-	if v.Value.CanAddr() {
-		return v.Value.Addr(), nil
-	}
-	return reflect.Value{}, fmt.Errorf("variable %s is not addressable", name)
-}
-
 func (c *StackContext) loadVar(variable string) (*Var, error) {
-	stack := c.Stack
-	for {
-		if stack == nil {
-			return nil, fmt.Errorf("var not found: %s", variable)
-		}
-		if v, ok := stack.MemoryPtr[variable]; ok {
+	s := c.Stack
+	for s != nil {
+		if v, ok := s.MemoryPtr[variable]; ok {
 			return v, nil
 		}
-		stack = stack.Parent
+		s = s.Parent
 	}
+	return nil, fmt.Errorf("undefined: %s", variable)
 }
 
 func (c *StackContext) Interrupt() bool {
-	if c.Stack == nil {
-		return false
-	}
-	return c.Stack.interrupt != ""
+	return c.Stack != nil && c.Stack.interrupt != ""
 }
 
 func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
 	s := c.Stack
-	if s == nil {
-		return errors.New("stack is nil")
-	}
-	var stacks []*Stack
-	for {
-		if s == nil {
-			return errors.New("stack not found :" + scopeName)
-		}
-		stacks = append(stacks, s)
+	for s != nil {
+		s.interrupt = interruptType
 		if s.Scope == scopeName {
-			break
+			return nil
 		}
 		s = s.Parent
 	}
-	for _, stack := range stacks {
-		stack.interrupt = interruptType
-	}
-	return nil
+	return fmt.Errorf("scope %s not found", scopeName)
 }
 
-func (c *StackContext) NewVar(s string, kind ast.GoMiniType) error {
-	if c.Stack == nil {
-		return errors.New("stack is nil")
-	}
-	if c.Stack.MemoryPtr[s] != nil {
-		return errors.New("variable already exists :" + s)
-	}
-
-	c.Stack.MemoryPtr[s] = &Var{
-		Type: kind,
-	}
+func (c *StackContext) NewVar(name string, kind ast.GoMiniType) error {
+	c.Stack.MemoryPtr[name] = &Var{Type: kind}
 	return nil
 }
 
 func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContext) error) error {
-	if c.Stack == nil {
-		return errors.New("stack is nil")
-	}
 	old := c.Stack
-	defer func() {
-		c.Stack = old
-	}()
-	root := c.Stack
-	for root.Parent != nil {
+	root := old
+	for root != nil && root.Parent != nil {
 		root = root.Parent
 	}
 	c.Stack = root
 	c.ScopeApply(name)
-	defer c.ExecuteDeferred()
-	defer c.ScopeExit()
+	defer func() { c.Stack = old }()
 	return exec(old, c)
 }
+
+type Program struct{}

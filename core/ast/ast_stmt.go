@@ -40,30 +40,36 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		ctx.AddVariable(Ident(alias), "Package")
 	}
 
-	// 第一遍：预注册所有结构体，以支持相互引用
+	// 第一遍：预注册所有结构体
 	for _, structDef := range p.Structs {
+		structDef.GetBase().EnsureID(&ctx.ValidContext)
 		if !structDef.PreRegister(&ctx.ValidContext) {
-			return fmt.Errorf("struct %s pre-registration failed", structDef.ID)
+			return fmt.Errorf("struct %s pre-registration failed", structDef.Name)
 		}
 	}
 	for _, stmt := range p.Main {
 		if s, ok := stmt.(*StructStmt); ok {
+			s.GetBase().EnsureID(&ctx.ValidContext)
 			if !s.PreRegister(&ctx.ValidContext) {
-				return fmt.Errorf("struct %s pre-registration failed", s.ID)
+				return fmt.Errorf("struct %s pre-registration failed", s.Name)
 			}
 		}
 	}
 
-	// 第二遍：预注册所有函数签名，以支持相互递归
-	for _, function := range p.Functions {
+	// 第二遍：预注册所有函数签名
+	for name, function := range p.Functions {
+		function.GetBase().EnsureID(&ctx.ValidContext)
 		if _, ok := function.PreRegister(&ctx.ValidContext); !ok {
-			return fmt.Errorf("function %s pre-registration failed", function.ID)
+			return fmt.Errorf("function %s pre-registration failed", name)
+		} else {
+			ctx.root.Methods[name] = function.FunctionType.ToCallFunctionType()
 		}
 	}
 	for _, stmt := range p.Main {
 		if f, ok := stmt.(*FunctionStmt); ok {
+			f.GetBase().EnsureID(&ctx.ValidContext)
 			if _, ok := f.PreRegister(&ctx.ValidContext); !ok {
-				return fmt.Errorf("function %s pre-registration failed", f.ID)
+				return fmt.Errorf("function %s pre-registration failed", f.Name)
 			}
 		}
 	}
@@ -458,7 +464,7 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	scope, b := ctx.CheckScope(&FunctionStmt{})
+	scope, b := ctx.CheckScope("function")
 	if !b {
 		return fmt.Errorf("return 语句只能在函数中使用")
 	}
@@ -846,7 +852,7 @@ func (i *InterruptStmt) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("无效的中断类型: %s", i.InterruptType)
 	}
 
-	if _, ok := ctx.CheckScope(&ForStmt{}); !ok {
+	if _, ok := ctx.CheckScope("for"); !ok {
 		return fmt.Errorf("%s 语句只能在循环中使用", i.InterruptType)
 	}
 
