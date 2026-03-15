@@ -509,16 +509,14 @@ func (f *FunctionStmt) stmtNode()          {}
 
 // Validate todo: 调整函数声明限制
 func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
-	_, ok := f.PreRegister(ctx)
-	if !ok {
-		return nil, false
-	}
+	// 注意：PreRegister 必须在此之前由 ProgramStmt.Validate 调用过。
+	// 这里我们只进行函数体校验和最终的程序注册。
 
 	funcCtx := ctx.Child(f)
 	// 函数注册应该是全局注册
 	funcCtx.parent = nil
 
-	// 检查参数有效性 (PreRegister 已经解析了类型，但我们还要检查名称)
+	// 检查参数有效性 (PreRegister 已经解析并验证了类型)
 	for _, param := range f.Params {
 		if param.Name == "" || !param.Name.Valid(ctx) {
 			return nil, false
@@ -885,23 +883,10 @@ func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StructStmt) stmtNode()          {}
 
 func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
+	// 注意：PreRegister 必须在此之前由 ProgramStmt.Validate 调用过。
 	ctx := parentCtx.Child(s)
-	if s.Name == "" {
-		ctx.AddErrorf("struct定义缺少名称")
-		return nil, false
-	}
 
-	if parentCtx.root.Package != "" && parentCtx.root.Package != "main" {
-		if !strings.Contains(string(s.Name), ".") {
-			s.Name = Ident(fmt.Sprintf("%s.%s", parentCtx.root.Package, s.Name))
-		}
-	}
-
-	if !s.Name.Valid(ctx) {
-		return nil, false
-	}
-
-	// 检查是否已经由其他 Validate 调用完全定义过
+	// 检查是否已经完全定义过，防止重复定义
 	if v, ok := parentCtx.root.structs[s.Name]; ok {
 		if v.Defined {
 			ctx.AddErrorf("struct %s 已被定义", s.Name)
@@ -909,7 +894,7 @@ func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
 		}
 	}
 
-	// 验证字段
+	// 验证字段类型并解析
 	for fieldName, fieldType := range s.Fields {
 		s.Fields[fieldName] = fieldType.Resolve(ctx)
 		if !fieldName.Valid(ctx) {
@@ -919,8 +904,8 @@ func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
 			return nil, false
 		}
 	}
-	_ = parentCtx.AddStructDefine("Constant", nil)
-	// 注册struct到上下文
+
+	// 填充定义到上下文 (AddStructDefine 现在支持更新已有结构体)
 	if err := parentCtx.AddStructDefine(s.Name, s.Fields); err != nil {
 		ctx.AddErrorf("定义struct失败: %v", err)
 		return nil, false
