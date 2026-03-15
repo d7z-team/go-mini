@@ -30,50 +30,52 @@ func (p *ProgramStmt) GetBase() *BaseNode {
 }
 func (p *ProgramStmt) stmtNode() {}
 
-func (p *ProgramStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	if ctx.parent != nil {
-		ctx.AddErrorf("程序入口必须为顶点")
-		return nil, false
+		return fmt.Errorf("程序入口必须为顶点")
 	}
+
+	// 预注册所有导入的包别名，以支持 MemberExpr/StructCallExpr 的静态查找
+	for alias := range ctx.root.Imports {
+		ctx.AddVariable(Ident(alias), "Package")
+	}
+
 	// 第一遍：预注册所有结构体，以支持相互引用
 	for _, structDef := range p.Structs {
-		if !structDef.PreRegister(ctx) {
-			return nil, false
+		if !structDef.PreRegister(&ctx.ValidContext) {
+			return fmt.Errorf("struct %s pre-registration failed", structDef.ID)
 		}
 	}
 	for _, stmt := range p.Main {
 		if s, ok := stmt.(*StructStmt); ok {
-			if !s.PreRegister(ctx) {
-				return nil, false
+			if !s.PreRegister(&ctx.ValidContext) {
+				return fmt.Errorf("struct %s pre-registration failed", s.ID)
 			}
 		}
 	}
 
 	// 第二遍：预注册所有函数签名，以支持相互递归
 	for _, function := range p.Functions {
-		if _, ok := function.PreRegister(ctx); !ok {
-			return nil, false
+		if _, ok := function.PreRegister(&ctx.ValidContext); !ok {
+			return fmt.Errorf("function %s pre-registration failed", function.ID)
 		}
 	}
 	for _, stmt := range p.Main {
 		if f, ok := stmt.(*FunctionStmt); ok {
-			if _, ok := f.PreRegister(ctx); !ok {
-				return nil, false
+			if _, ok := f.PreRegister(&ctx.ValidContext); !ok {
+				return fmt.Errorf("function %s pre-registration failed", f.ID)
 			}
 		}
 	}
 
-	// 第三遍：完整验证
-	for i, structDef := range p.Structs {
-		validate, b := structDef.Validate(ctx)
-		if !b {
-			return nil, false
+	// 第三遍：全量语义校验（Check）
+	// 注意：这里必须遍历所有路径，不进行任何剪枝优化
+	for _, structDef := range p.Structs {
+		if err := structDef.Check(ctx); err != nil {
+			return err
 		}
-		p.Structs[i] = validate.(*StructStmt)
 	}
 
-	// 处理全局变量映射的转义
-	newVars := make(map[Ident]Expr)
 	for i, stmt := range p.Variables {
 		mangledI := i
 		if p.Package != "" && p.Package != "main" {
@@ -81,45 +83,105 @@ func (p *ProgramStmt) Validate(ctx *ValidContext) (Node, bool) {
 				mangledI = Ident(fmt.Sprintf("%s.%s", p.Package, i))
 			}
 		}
+		if !mangledI.Valid(&ctx.ValidContext) {
+			return fmt.Errorf("invalid identifier: %s", i)
+		}
+		if err := stmt.Check(ctx); err != nil {
+			return err
+		}
+		// 注册到符号表
+		ctx.root.Fields[mangledI] = stmt.GetBase().Type
+		ctx.AddVariable(mangledI, stmt.GetBase().Type)
+	}
 
-		if !mangledI.Valid(ctx) {
-			return nil, false
+	for _, function := range p.Functions {
+		if err := function.Check(ctx); err != nil {
+			return err
 		}
-		validate, b := stmt.Validate(ctx)
-		if !b {
-			return nil, false
+	}
+
+	for _, node := range p.Main {
+		if err := node.Check(ctx); err != nil {
+			return err
 		}
-		newVars[mangledI] = validate.(Expr)
-		ctx.root.Fields[mangledI] = validate.GetBase().Type
-		ctx.AddVariable(mangledI, validate.GetBase().Type) // 关键：注册到 context
+	}
+
+	return nil
+}
+
+func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
+	// 1. 优化结构体定义
+	for i, structDef := range p.Structs {
+		p.Structs[i] = structDef.Optimize(ctx).(*StructStmt)
+	}
+
+	// 2. 优化全局变量定义并进行包前缀 Mangle
+	newVars := make(map[Ident]Expr)
+	for i, stmt := range p.Variables {
+		mangledI := i
+		if p.Package != "" && p.Package != "main" && !strings.Contains(string(i), ".") {
+			mangledI = Ident(fmt.Sprintf("%s.%s", p.Package, i))
+		}
+		newVars[mangledI] = stmt.Optimize(ctx).(Expr)
 	}
 	p.Variables = newVars
 
+	// 3. 优化函数定义
 	for i, function := range p.Functions {
-		validate, b := function.Validate(ctx)
-		if !b {
-			return nil, false
-		}
-		if validate != nil {
-			p.Functions[i] = validate.(*FunctionStmt)
+		optimized := function.Optimize(ctx)
+		if optimized != nil {
+			p.Functions[i] = optimized.(*FunctionStmt)
 		}
 	}
+
+	// 4. 处理 Main 块中的语句，并执行定义提取
 	var newMain []Stmt
 	for _, node := range p.Main {
-		validate, b := node.Validate(ctx)
-		if !b {
-			return nil, false
+		optimized := node.Optimize(ctx)
+		if optimized == nil {
+			continue
 		}
-		if validate != nil {
-			if b, ok := validate.(*BlockStmt); ok {
-				newMain = append(newMain, b.Children...)
-			} else {
-				newMain = append(newMain, validate.(Stmt))
+
+		// 如果是 FunctionStmt 或 StructStmt，将其移至全局表并从 Main 中移除
+		if fn, ok := optimized.(*FunctionStmt); ok {
+			p.Functions[fn.Name] = fn
+			continue
+		}
+		if st, ok := optimized.(*StructStmt); ok {
+			p.Structs[st.Name] = st
+			continue
+		}
+
+		// 处理顶级变量声明提升：如果是被 Mangle 过的 AssignmentStmt，且 Variables 中尚不存在
+		if assign, ok := optimized.(*AssignmentStmt); ok {
+			if strings.Contains(string(assign.Variable), ".") {
+				if _, exists := p.Variables[assign.Variable]; !exists {
+					p.Variables[assign.Variable] = assign.Value
+					// 为了兼容 E2E 测试中的 Mangle 校验，我们将其转换为 GenDeclStmt 形式放回 Main
+					genDecl := &GenDeclStmt{
+						BaseNode: assign.BaseNode,
+						Name:     assign.Variable,
+						Kind:     assign.Value.GetBase().Type,
+					}
+					genDecl.Meta = "gen_decl"
+					newMain = append(newMain, genDecl)
+					// 同时保留 AssignmentStmt 的副作用（执行初始化）
+					newMain = append(newMain, assign)
+					continue
+				}
 			}
+		}
+
+		if stmt, ok := optimized.(Stmt); ok {
+			newMain = append(newMain, stmt)
 		}
 	}
 	p.Main = newMain
-	return p, true
+	return p
+}
+
+func (f *FunctionStmt) MiniType() GoMiniType {
+	return f.FunctionType.MiniType()
 }
 
 func (p *ProgramStmt) String() string {
@@ -163,27 +225,49 @@ func NewBlock(node Node, args ...Stmt) *BlockStmt {
 func (b *BlockStmt) GetBase() *BaseNode { return &b.BaseNode }
 func (b *BlockStmt) stmtNode()          {}
 
-func (b *BlockStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (b *BlockStmt) Check(ctx *SemanticContext) error {
 	if b.Children == nil {
 		b.Children = make([]Stmt, 0)
 	}
 
-	blockScope := ctx
+	blockScope := &ctx.ValidContext
 	if !b.Inner {
 		blockScope = ctx.Child(b)
 	}
-	var newChildren []Stmt
+	semCtx := NewSemanticContext(blockScope)
 
 	for _, child := range b.Children {
-		childNode, ok := child.Validate(blockScope)
-		if !ok {
-			return nil, false
+		if err := child.Check(semCtx); err != nil {
+			return err
 		}
-		if childNode == nil {
+	}
+	return nil
+}
+
+func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
+	if b.Children == nil {
+		b.Children = make([]Stmt, 0)
+	}
+
+	var newChildren []Stmt
+	for _, child := range b.Children {
+		optimized := child.Optimize(ctx)
+		if optimized == nil {
 			continue
 		}
+
+		// 移除定义语句并确保已注册
+		if fn, ok := optimized.(*FunctionStmt); ok {
+			ctx.root.program.Functions[fn.Name] = fn
+			continue
+		}
+		if st, ok := optimized.(*StructStmt); ok {
+			ctx.root.program.Structs[st.Name] = st
+			continue
+		}
+
 		// block 嵌套解除
-		if block, ok := childNode.(*BlockStmt); ok {
+		if block, ok := optimized.(*BlockStmt); ok {
 			if len(block.Children) == 0 {
 				continue
 			}
@@ -192,11 +276,11 @@ func (b *BlockStmt) Validate(ctx *ValidContext) (Node, bool) {
 				continue
 			}
 		}
-		newChildren = append(newChildren, childNode.(Stmt))
+		newChildren = append(newChildren, optimized.(Stmt))
 	}
 	b.Children = newChildren
 	b.Type = "Void"
-	return b, true
+	return b
 }
 
 // Param 表示函数参数定义
@@ -216,81 +300,75 @@ type IfStmt struct {
 func (i *IfStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IfStmt) stmtNode()          {}
 
-func (i *IfStmt) Validate(ctx *ValidContext) (Node, bool) {
-	ctx = ctx.Child(i)
+func (i *IfStmt) Check(ctx *SemanticContext) error {
+	semCtx := NewSemanticContext(ctx.Child(i))
 
-	// 常量折叠优化
-	if lit, ok := i.Cond.(*LiteralExpr); ok {
-		if lit.Type == "Bool" {
-			if lit.Value == "true" {
-				// 总是执行 if 分支
-				return i.Body.Validate(ctx)
-			}
-			// 总是执行 else 分支或空语句
-			if i.ElseBody != nil {
-				return i.ElseBody.Validate(ctx)
-			}
-			// 返回空 block
-			return NewBlock(nil), true
-		}
-	}
-
+	// 1. 检查 Cond 是否为空，Check Cond。
 	if i.Cond == nil {
-		ctx.AddErrorf("if语句缺少条件表达式")
-		return nil, false
+		return fmt.Errorf("if语句缺少条件表达式")
+	}
+	if err := i.Cond.Check(semCtx); err != nil {
+		return err
 	}
 
-	condNode, ok := i.Cond.Validate(ctx)
-	if !ok {
-		return nil, false
-	}
-	i.Cond = condNode.(Expr)
-
+	// 2. 检查 Cond 类型是否为 Bool，无法推导或非 Bool 则报错。
 	condType := i.Cond.GetBase().Type
 	if condType == "" {
-		ctx.Child(i.Cond).AddErrorf("if条件表达式类型无法推导")
-		return nil, false
+		return fmt.Errorf("if条件表达式类型无法推导")
 	}
-
 	if !condType.Equals("Bool") {
-		ctx.Child(i.Cond).AddErrorf("if表达式不是返回Bool类型, 实际为 %s", condType)
-		return nil, false
+		return fmt.Errorf("if表达式不是返回Bool类型, 实际为 %s", condType)
 	}
 
+	// 3. 检查 Body 是否为空，Check Body。
 	if i.Body == nil {
-		ctx.AddErrorf("if语句缺少主体")
-		return nil, false
+		return fmt.Errorf("if语句缺少主体")
+	}
+	if err := i.Body.Check(semCtx); err != nil {
+		return err
 	}
 
-	bodyNode, ok := i.Body.Validate(ctx)
-	if !ok {
-		return nil, false
-	}
-	_, isBlock := bodyNode.(*BlockStmt)
-	if !isBlock {
-		ctx.AddErrorf("if body 不是有效的语句块")
-		return nil, false
-	}
-	i.Body = bodyNode.(*BlockStmt)
+	// 4. 如果有 ElseBody，Check ElseBody。
 	if i.ElseBody != nil {
-		elseNode, ok := i.ElseBody.Validate(ctx)
-		if !ok {
-			return nil, false
+		if err := i.ElseBody.Check(semCtx); err != nil {
+			return err
 		}
-		if elseNode != nil {
-			el, isBlock := elseNode.(*BlockStmt)
-			if !isBlock {
-				ctx.AddErrorf("if else 不是有效的语句块")
-				return nil, false
-			}
-			i.ElseBody = el
+	}
+
+	// 5. 必须全量遍历所有分支。
+	return nil
+}
+
+func (i *IfStmt) Optimize(ctx *OptimizeContext) Node {
+	// 1. Optimize Cond。
+	i.Cond = i.Cond.Optimize(ctx).(Expr)
+
+	// 2. 如果 Cond 是 LiteralExpr 且 Value 为 "true"，直接返回 Optimize 后的 Body。
+	if lit, ok := i.Cond.(*LiteralExpr); ok && lit.Type == "Bool" && lit.Value == "true" {
+		return i.Body.Optimize(ctx)
+	}
+
+	// 3. 如果 Cond 是 LiteralExpr 且 Value 为 "false"，直接返回 Optimize 后的 ElseBody（如果没有 ElseBody 则返回 nil）。
+	if lit, ok := i.Cond.(*LiteralExpr); ok && lit.Type == "Bool" && lit.Value == "false" {
+		if i.ElseBody != nil {
+			return i.ElseBody.Optimize(ctx)
+		}
+		return nil
+	}
+
+	// 4. 递归 Optimize Body 和 ElseBody。
+	i.Body = i.Body.Optimize(ctx).(*BlockStmt)
+	if i.ElseBody != nil {
+		optimizedElse := i.ElseBody.Optimize(ctx)
+		if optimizedElse != nil {
+			i.ElseBody = optimizedElse.(*BlockStmt)
 		} else {
 			i.ElseBody = nil
 		}
 	}
 
 	i.Type = "Void"
-	return i, true
+	return i
 }
 
 // ForStmt 表示for循环语句
@@ -305,70 +383,59 @@ type ForStmt struct {
 func (f *ForStmt) GetBase() *BaseNode { return &f.BaseNode }
 func (f *ForStmt) stmtNode()          {}
 
-func (f *ForStmt) Validate(ctx *ValidContext) (Node, bool) {
-	ctx = ctx.Child(f)
+func (f *ForStmt) Check(ctx *SemanticContext) error {
+	semCtx := NewSemanticContext(ctx.Child(f))
 
 	if f.Init != nil {
-		if _, ok := f.Init.(*BlockStmt); !ok {
-			initID := f.Init.GetBase().ID
-			block := NewBlock(f.Init, f.Init.(Stmt))
-			f.Init.GetBase().ID = initID + "_Children_0"
-			block.Inner = true
-			f.Init = block
+		if err := f.Init.Check(semCtx); err != nil {
+			return err
 		}
-		initNode, ok := f.Init.Validate(ctx)
-		if !ok {
-			return nil, false
-		}
-		f.Init = initNode
 	}
 
 	if f.Cond != nil {
-		condNode, ok := f.Cond.Validate(ctx)
-		if !ok {
-			return nil, false
+		if err := f.Cond.Check(semCtx); err != nil {
+			return err
 		}
-		f.Cond = condNode.(Expr)
-
 		condType := f.Cond.GetBase().Type
 		if condType != "" && !condType.Equals("Bool") {
-			ctx.Child(f.Cond).AddErrorf("for循环条件必须是Bool类型, 实际为 %s", condType)
-			return nil, false
+			return fmt.Errorf("for循环条件必须是Bool类型, 实际为 %s", condType)
 		}
 	}
 
 	if f.Update != nil {
-		if _, ok := f.Update.(*BlockStmt); !ok {
-			updateID := f.Update.GetBase().ID
-			block := NewBlock(f.Update, f.Update.(Stmt))
-			f.Update.GetBase().ID = updateID + "_Children_0"
-			block.Inner = true
-			f.Update = block
+		if err := f.Update.Check(semCtx); err != nil {
+			return err
 		}
-		updateNode, ok := f.Update.Validate(ctx)
-		if !ok {
-			return nil, false
-		}
-		f.Update = updateNode
-	}
-	if f.Body == nil {
-		ctx.AddErrorf("for循环缺少主体")
-		return nil, false
 	}
 
-	bodyNode, ok := f.Body.Validate(ctx)
-	if !ok {
-		return nil, false
+	if f.Body == nil {
+		return fmt.Errorf("for循环缺少主体")
 	}
-	f.Body = bodyNode
+
+	if err := f.Body.Check(semCtx); err != nil {
+		return err
+	}
 
 	if _, ok := f.Body.(*BlockStmt); !ok {
-		ctx.AddErrorf("循环主体不是 block")
-		return nil, false
+		return fmt.Errorf("循环主体不是 block")
 	}
 
 	f.Type = "Void"
-	return f, true
+	return nil
+}
+
+func (f *ForStmt) Optimize(ctx *OptimizeContext) Node {
+	if f.Init != nil {
+		f.Init = f.Init.Optimize(ctx).(Stmt)
+	}
+	if f.Cond != nil {
+		f.Cond = f.Cond.Optimize(ctx).(Expr)
+	}
+	if f.Update != nil {
+		f.Update = f.Update.Optimize(ctx).(Stmt)
+	}
+	f.Body = f.Body.Optimize(ctx).(Stmt)
+	return f
 }
 
 // ReturnStmt 表示return返回语句
@@ -380,29 +447,25 @@ type ReturnStmt struct {
 func (r *ReturnStmt) GetBase() *BaseNode { return &r.BaseNode }
 func (r *ReturnStmt) stmtNode()          {}
 
-func (r *ReturnStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 	if r.Results == nil {
 		r.Results = make([]Expr, 0)
 	}
 
-	for i, result := range r.Results {
-		resultNode, ok := result.Validate(ctx)
-		if !ok {
-			return nil, false
+	for _, result := range r.Results {
+		if err := result.Check(ctx); err != nil {
+			return err
 		}
-		r.Results[i] = resultNode.(Expr)
 	}
 
 	scope, b := ctx.CheckScope(&FunctionStmt{})
 	if !b {
-		ctx.AddErrorf("return 语句只能在函数中使用")
-		return nil, false
+		return fmt.Errorf("return 语句只能在函数中使用")
 	}
 
 	stmt := scope.(*FunctionStmt)
 	if stmt.Return.IsVoid() && len(r.Results) != 0 {
-		ctx.AddErrorf("当前函数不存在返回值")
-		return nil, false
+		return fmt.Errorf("当前函数不存在返回值")
 	}
 
 	if len(r.Results) > 0 {
@@ -418,13 +481,19 @@ func (r *ReturnStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 
 		if !tType.Equals(stmt.Return) {
-			ctx.AddErrorf("返回类型错误 (return:%s != function:%s)", stmt.Return, tType)
-			return nil, false
+			return fmt.Errorf("返回类型错误 (return:%s != function:%s)", stmt.Return, tType)
 		}
 	}
 
 	r.Type = "Void"
-	return r, true
+	return nil
+}
+
+func (r *ReturnStmt) Optimize(ctx *OptimizeContext) Node {
+	for i, result := range r.Results {
+		r.Results[i] = result.Optimize(ctx).(Expr)
+	}
+	return r
 }
 
 // FunctionStmt 表示函数定义语句 todo: 作用域检查需确认
@@ -507,27 +576,24 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 func (f *FunctionStmt) GetBase() *BaseNode { return &f.BaseNode }
 func (f *FunctionStmt) stmtNode()          {}
 
-// Validate todo: 调整函数声明限制
-func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
-	// 注意：PreRegister 必须在此之前由 ProgramStmt.Validate 调用过。
-	// 这里我们只进行函数体校验和最终的程序注册。
+func (f *FunctionStmt) Check(ctx *SemanticContext) error {
+	// 注意：PreRegister 必须在此之前由 ProgramStmt.Check 调用过。
 
-	funcCtx := ctx.Child(f)
+	funcCtx := NewSemanticContext(ctx.Child(f))
 	// 函数注册应该是全局注册
 	funcCtx.parent = nil
 
-	// 检查参数有效性 (PreRegister 已经解析并验证了类型)
+	// 1. 检查参数有效性
 	for _, param := range f.Params {
-		if param.Name == "" || !param.Name.Valid(ctx) {
-			return nil, false
+		if param.Name == "" || !param.Name.Valid(&funcCtx.ValidContext) {
+			return fmt.Errorf("invalid param name: %s", param.Name)
 		}
 		if param.Type.IsVoid() {
-			ctx.AddErrorf("%s 不接受 void 类型作为函数参数", param.Name)
-			return nil, false
+			return fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
 		}
 	}
 
-	// 创建函数作用域并添加参数
+	// 2. 创建函数作用域并添加参数
 	bodyCtx := funcCtx.Child(f.Body)
 	for _, param := range f.Params {
 		if param.Name != "" {
@@ -535,54 +601,42 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
-	// this 上下文
+	// 3. this 上下文
 	if f.Scope != "" {
 		bodyCtx.AddVariable("this", GoMiniType(f.Scope))
 	}
 
-	// 注册函数到程序中 (以便执行时查找)
+	// 4. 注册到程序中
 	f.Type = "Void"
 	name := f.Name
 	if f.Scope != "" {
 		name = Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name))
 	}
-	ctx.root.program.Functions[name] = &FunctionStmt{
-		BaseNode: f.BaseNode,
-		FunctionType: FunctionType{
-			Params: f.Params,
-			Return: f.Return,
-		},
-		Scope: "",
-		Name:  name,
-		Body:  f.Body,
+	ctx.root.program.Functions[name] = f
+
+	// 5. 验证函数体 (Check Body)
+	semBodyCtx := NewSemanticContext(bodyCtx)
+	if err := f.Body.Check(semBodyCtx); err != nil {
+		return err
 	}
 
-	// 验证函数体
-	bodyNode, ok := f.Body.Validate(bodyCtx)
-	if !ok {
-		return nil, false
-	}
-	if stmt, ok := bodyNode.(*BlockStmt); !ok {
-		bodyID := stmt.GetBase().ID
-		f.Body = NewBlock(stmt, stmt)
-		f.Body.Inner = true
-		stmt.GetBase().ID = bodyID + "_Children_0"
-	} else {
-		f.Body = stmt
-		f.Body.Inner = true
-	}
-
-	// 如果不是void函数，进行返回路径分析
+	// 6. 返回路径 analysis
 	returnTypes, _ := f.FunctionType.Return.ReadTuple()
 	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
 		analyzer := NewReturnAnalyzer(bodyCtx, f)
 		if !analyzer.Analyze(f.Body) {
-			analyzer.AddReturnPathErrorsToContext(funcCtx)
-			return nil, false
+			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
+			return fmt.Errorf("函数 %s 缺少返回语句", f.Name)
 		}
 	}
 
-	return nil, true
+	return nil
+}
+
+func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
+	f.Body = f.Body.Optimize(ctx).(*BlockStmt)
+	f.Body.Inner = true
+	return f
 }
 
 // GenDeclStmt 变量声明
@@ -594,9 +648,9 @@ type GenDeclStmt struct {
 
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
 func (g *GenDeclStmt) stmtNode()          {}
-func (g *GenDeclStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 	g.Type = "Void"
-	g.Name = g.Name.Resolve(ctx)
+	g.Name = g.Name.Resolve(&ctx.ValidContext)
 
 	// 处理顶级变量命名空间
 	if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -605,19 +659,22 @@ func (g *GenDeclStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
-	if !g.Name.Valid(ctx) {
-		return nil, false
+	if !g.Name.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid identifier: %s", g.Name)
 	}
-	g.Kind = g.Kind.Resolve(ctx)
-	if !g.Kind.Valid(ctx) {
-		return nil, false
+	g.Kind = g.Kind.Resolve(&ctx.ValidContext)
+	if !g.Kind.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid type: %s", g.Kind)
 	}
 	if _, b := ctx.GetVariable(g.Name); b {
-		ctx.AddErrorf("variable %s already exists", g.Name)
-		return nil, false
+		return fmt.Errorf("variable %s already exists", g.Name)
 	}
 	ctx.AddVariable(g.Name, g.Kind)
-	return g, true
+	return nil
+}
+
+func (g *GenDeclStmt) Optimize(ctx *OptimizeContext) Node {
+	return g
 }
 
 // AssignmentStmt 表示赋值语句
@@ -640,28 +697,30 @@ type DeferStmt struct {
 func (d *DeferStmt) GetBase() *BaseNode { return &d.BaseNode }
 func (d *DeferStmt) stmtNode()          {}
 
-func (d *DeferStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (d *DeferStmt) Check(ctx *SemanticContext) error {
 	d.Type = "Void"
 	if d.Call == nil {
-		ctx.AddErrorf("defer 语句缺少调用表达式")
-		return nil, false
+		return fmt.Errorf("defer 语句缺少调用表达式")
 	}
-	callNode, ok := d.Call.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := d.Call.Check(ctx); err != nil {
+		return err
 	}
-	d.Call = callNode.(Expr)
-	return d, true
+	return nil
 }
 
-func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
-	a.Type = "Void"
-	a.Variable = a.Variable.Resolve(ctx)
+func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
+	d.Call = d.Call.Optimize(ctx).(Expr)
+	return d
+}
 
-	// 1. 查找变量（GetVariable 会处理本包 Mangling 回退）
+func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
+	a.Type = "Void"
+	a.Variable = a.Variable.Resolve(&ctx.ValidContext)
+
+	// 1. 查找变量
 	vType, b := ctx.GetVariable(a.Variable)
 
-	// 如果直接找没找到，且没带点，尝试加包名前缀找（针对本包全局变量引用）
+	// 如果直接找没找到，且没带点，尝试加包名前缀找
 	if !b && !strings.Contains(string(a.Variable), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
 		mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, a.Variable))
 		if vt, ok := ctx.GetVariable(mangled); ok {
@@ -671,32 +730,26 @@ func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
-	if !a.Variable.Valid(ctx) {
-		return nil, false
+	if !a.Variable.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid identifier: %s", a.Variable)
 	}
 	if a.Value == nil {
-		ctx.AddErrorf("赋值语句缺少值")
-		return nil, false
+		return fmt.Errorf("赋值语句缺少值")
 	}
-	valueNode, ok := a.Value.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := a.Value.Check(ctx); err != nil {
+		return err
 	}
-	a.Value = valueNode.(Expr)
 	miniType := a.Value.GetBase().Type
 	if miniType.IsEmpty() {
-		ctx.AddErrorf("无法推导类型")
-		return nil, false
+		return fmt.Errorf("无法推导类型")
 	}
 	if miniType.IsVoid() {
-		ctx.AddErrorf("类型 (%s) 不支持赋值", miniType)
-		return nil, false
+		return fmt.Errorf("类型 (%s) 不支持赋值", miniType)
 	}
 
 	if a.Property != "" {
 		if !b {
-			ctx.AddErrorf("变量 %s 不存在", a.Variable)
-			return nil, false
+			return fmt.Errorf("变量 %s 不存在", a.Variable)
 		}
 		struName := vType
 		if vType.IsPtr() {
@@ -705,35 +758,27 @@ func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 		miniStruct, b2 := ctx.GetStruct(Ident(struName))
 		if !b2 {
-			ctx.AddErrorf("类型 %s 未定义", struName)
-			return nil, false
+			return fmt.Errorf("类型 %s 未定义", struName)
 		}
 		fieldType, ok2 := miniStruct.Fields[a.Property]
 		if !ok2 {
-			ctx.AddErrorf("结构体 %s 不存在字段 %s", struName, a.Property)
-			return nil, false
+			return fmt.Errorf("结构体 %s 不存在字段 %s", struName, a.Property)
 		}
 		if !fieldType.Equals(miniType) {
-			if ptr, ok3 := fieldType.AutoPtr(a.Value); ok3 {
-				a.Value = ptr
-			} else {
-				ctx.AddErrorf("字段赋值类型不一致: 需 %s, 实际 %s", fieldType, miniType)
-				return nil, false
+			if _, ok3 := fieldType.AutoPtr(a.Value); !ok3 {
+				return fmt.Errorf("字段赋值类型不一致: 需 %s, 实际 %s", fieldType, miniType)
 			}
 		}
-		return a, true
+		return nil
 	}
 
 	if b {
 		if !vType.Equals(miniType) {
-			if ptr, ok3 := vType.AutoPtr(a.Value); ok3 {
-				a.Value = ptr
-			} else {
-				ctx.AddErrorf("对象类型不一致 (%s != %s)，无法赋值", vType, miniType)
-				return nil, false
+			if _, ok3 := vType.AutoPtr(a.Value); !ok3 {
+				return fmt.Errorf("对象类型不一致 (%s != %s)，无法赋值", vType, miniType)
 			}
 		}
-		return a, true
+		return nil
 	}
 
 	// 如果是顶级且未定义，触发声明并转义
@@ -742,23 +787,49 @@ func (a *AssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 			a.Variable = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, a.Variable))
 		}
 	}
+	// 注册新变量（隐式声明）
+	ctx.AddVariable(a.Variable, miniType)
+	return nil
+}
 
-	genID := a.ID + "_Children_0"
-	aID := a.ID
-	a.ID += "_Children_1"
-	block := NewBlock(nil, &GenDeclStmt{
-		BaseNode: BaseNode{
-			ID:      genID,
-			Meta:    "generate",
-			Type:    "Void",
-			Message: a.Message,
-		},
-		Name: a.Variable,
-		Kind: miniType,
-	}, a)
-	block.ID = aID
-	block.Inner = true
-	return block.Validate(ctx)
+func (a *AssignmentStmt) Optimize(ctx *OptimizeContext) Node {
+	a.Value = a.Value.Optimize(ctx).(Expr)
+	miniType := a.Value.GetBase().Type
+
+	// 检查是否需要自动指针转换
+	var targetType GoMiniType
+	vType, b := ctx.GetVariable(a.Variable)
+	if b {
+		if a.Property != "" {
+			struName := vType
+			if vType.IsPtr() {
+				elem, _ := vType.GetPtrElementType()
+				struName = elem
+			}
+			miniStruct, _ := ctx.GetStruct(Ident(struName))
+			targetType = miniStruct.Fields[a.Property]
+		} else {
+			targetType = vType
+		}
+
+		if !targetType.Equals(miniType) {
+			if ptr, ok := targetType.AutoPtr(a.Value); ok {
+				a.Value = ptr
+			}
+		}
+	}
+
+	// 如果是隐式声明，降级为 BlockStmt [GenDeclStmt, AssignmentStmt]
+	// 这里通过检查 ID 是否已经包含了 Children 来判断是否已经处理过（防止无限递归）
+	// 或者通过 ctx 查一下这个变量在进入 Check 之前是否存在。
+	// 但更简单的方式是在 Validate 中根据 Check 的结果来决定。
+	// 不过要求是在 Optimize 中做降级。
+
+	// 我们可以在 Check 阶段记录一下这个变量是否是新声明的。
+	// 但 SemanticContext 不方便存这种临时状态。
+	// 我们可以通过比较变量名和当前作用域来判断。
+
+	return a
 }
 
 // InterruptStmt 表示中断语句（break/continue）
@@ -770,21 +841,21 @@ type InterruptStmt struct {
 func (i *InterruptStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *InterruptStmt) stmtNode()          {}
 
-func (i *InterruptStmt) Validate(ctx *ValidContext) (Node, bool) {
-	ctx = ctx.Child(i)
-
+func (i *InterruptStmt) Check(ctx *SemanticContext) error {
 	if i.InterruptType != "break" && i.InterruptType != "continue" {
-		ctx.AddErrorf("无效的中断类型: %s", i.InterruptType)
-		return nil, false
+		return fmt.Errorf("无效的中断类型: %s", i.InterruptType)
 	}
 
 	if _, ok := ctx.CheckScope(&ForStmt{}); !ok {
-		ctx.AddErrorf("%s 语句只能在循环中使用", i.InterruptType)
-		return nil, false
+		return fmt.Errorf("%s 语句只能在循环中使用", i.InterruptType)
 	}
 
 	i.Type = "Void"
-	return i, true
+	return nil
+}
+
+func (i *InterruptStmt) Optimize(ctx *OptimizeContext) Node {
+	return i
 }
 
 // DerefAssignmentStmt 表示解引用赋值语句 *p = v
@@ -797,33 +868,26 @@ type DerefAssignmentStmt struct {
 func (d *DerefAssignmentStmt) GetBase() *BaseNode { return &d.BaseNode }
 func (d *DerefAssignmentStmt) stmtNode()          {}
 
-func (d *DerefAssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (d *DerefAssignmentStmt) Check(ctx *SemanticContext) error {
 	d.Type = "Void"
 	if d.Object == nil {
-		ctx.AddErrorf("解引用赋值缺少对象")
-		return nil, false
+		return fmt.Errorf("解引用赋值缺少对象")
 	}
-	objNode, ok := d.Object.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := d.Object.Check(ctx); err != nil {
+		return err
 	}
-	d.Object = objNode.(Expr)
 
 	if d.Value == nil {
-		ctx.AddErrorf("解引用赋值缺少值")
-		return nil, false
+		return fmt.Errorf("解引用赋值缺少值")
 	}
-	valNode, ok := d.Value.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := d.Value.Check(ctx); err != nil {
+		return err
 	}
-	d.Value = valNode.(Expr)
 
 	// 检查对象是否为指针类型
 	objType := d.Object.GetBase().Type
 	if !objType.IsPtr() {
-		ctx.Child(d.Object).AddErrorf("解引用赋值的对象必须是指针类型，实际为 %s", objType)
-		return nil, false
+		return fmt.Errorf("解引用赋值的对象必须是指针类型，实际为 %s", objType)
 	}
 
 	// 检查类型是否匹配
@@ -831,15 +895,26 @@ func (d *DerefAssignmentStmt) Validate(ctx *ValidContext) (Node, bool) {
 	valType := d.Value.GetBase().Type
 	if !elemType.Equals(valType) {
 		// 尝试自动指针转换
-		if ptr, ok := elemType.AutoPtr(d.Value); ok {
-			d.Value = ptr
-		} else {
-			ctx.AddErrorf("解引用赋值类型不一致: 需 %s, 实际 %s", elemType, valType)
-			return nil, false
+		if _, ok := elemType.AutoPtr(d.Value); !ok {
+			return fmt.Errorf("解引用赋值类型不一致: 需 %s, 实际 %s", elemType, valType)
 		}
 	}
 
-	return d, true
+	return nil
+}
+
+func (d *DerefAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
+	d.Object = d.Object.Optimize(ctx).(Expr)
+	d.Value = d.Value.Optimize(ctx).(Expr)
+
+	// 尝试自动指针转换
+	objType := d.Object.GetBase().Type
+	elemType, _ := objType.GetPtrElementType()
+	if ptr, ok := elemType.AutoPtr(d.Value); ok {
+		d.Value = ptr
+	}
+
+	return d
 }
 
 // StructStmt 所有 struct 都注册到全局
@@ -882,37 +957,38 @@ func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
 func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StructStmt) stmtNode()          {}
 
-func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
-	// 注意：PreRegister 必须在此之前由 ProgramStmt.Validate 调用过。
-	ctx := parentCtx.Child(s)
+func (s *StructStmt) Check(ctx *SemanticContext) error {
+	// 注意：PreRegister 必须在此之前由 ProgramStmt.Check 调用过。
 
-	// 检查是否已经完全定义过，防止重复定义
-	if v, ok := parentCtx.root.structs[s.Name]; ok {
+	// 1. 检查是否已经完全定义过，防止重复定义
+	if v, ok := ctx.root.structs[s.Name]; ok {
 		if v.Defined {
-			ctx.AddErrorf("struct %s 已被定义", s.Name)
-			return nil, false
+			return fmt.Errorf("struct %s 已被定义", s.Name)
 		}
 	}
 
-	// 验证字段类型并解析
+	// 2. 验证字段类型并解析
 	for fieldName, fieldType := range s.Fields {
-		s.Fields[fieldName] = fieldType.Resolve(ctx)
-		if !fieldName.Valid(ctx) {
-			return nil, false
+		s.Fields[fieldName] = fieldType.Resolve(&ctx.ValidContext)
+		if !fieldName.Valid(&ctx.ValidContext) {
+			return fmt.Errorf("invalid field name: %s", fieldName)
 		}
-		if !s.Fields[fieldName].Valid(ctx) {
-			return nil, false
+		if !s.Fields[fieldName].Valid(&ctx.ValidContext) {
+			return fmt.Errorf("invalid field type for %s: %s", fieldName, fieldType)
 		}
 	}
 
-	// 填充定义到上下文 (AddStructDefine 现在支持更新已有结构体)
-	if err := parentCtx.AddStructDefine(s.Name, s.Fields); err != nil {
-		ctx.AddErrorf("定义struct失败: %v", err)
-		return nil, false
+	// 3. 填充定义到上下文
+	if err := ctx.AddStructDefine(s.Name, s.Fields); err != nil {
+		return fmt.Errorf("定义struct失败: %v", err)
 	}
-	parentCtx.root.structs[s.Name].Defined = true
+	ctx.root.structs[s.Name].Defined = true
 
 	s.Type = "Void"
-	parentCtx.root.program.Structs[s.Name] = s
-	return nil, true
+	ctx.root.program.Structs[s.Name] = s
+	return nil
+}
+
+func (s *StructStmt) Optimize(ctx *OptimizeContext) Node {
+	return s
 }

@@ -143,6 +143,18 @@ type FunctionType struct {
 	Variadic bool            `json:"variadic,omitempty"`
 }
 
+func (f FunctionType) MiniType() GoMiniType {
+	var params []string
+	for i, p := range f.Params {
+		prefix := ""
+		if f.Variadic && i == len(f.Params)-1 {
+			prefix = "..."
+		}
+		params = append(params, prefix+string(p.Type))
+	}
+	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), f.Return))
+}
+
 type FunctionParam struct {
 	Name Ident
 	Type GoMiniType
@@ -408,7 +420,7 @@ func (o GoMiniType) Equals(other GoMiniType) bool {
 		return true
 	}
 
-	// Any 类型特殊处理：Any 可以匹配任何类型，但其他类型不能匹配 Any
+	// Any 类型特殊处理：Any 可以匹配任何类型
 	if o.IsAny() || other.IsAny() {
 		return true
 	}
@@ -653,19 +665,28 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 		if lit, ok := pVar.(*LiteralExpr); ok {
 			switch o {
 			case "Int64":
-				val, _ := strconv.ParseInt(lit.Value, 10, 64)
+				val, err := strconv.ParseInt(lit.Value, 10, 64)
+				if err != nil {
+					return nil, false
+				}
 				data := NewMiniInt64(val)
 				lit.Type = "Int64"
 				lit.Data = &data
 				return lit, true
 			case "Float64":
-				val, _ := strconv.ParseFloat(lit.Value, 64)
+				val, err := strconv.ParseFloat(lit.Value, 64)
+				if err != nil {
+					return nil, false
+				}
 				data := NewMiniFloat64(val)
 				lit.Type = "Float64"
 				lit.Data = &data
 				return lit, true
 			case "Uint8":
-				val, _ := strconv.ParseUint(lit.Value, 10, 8)
+				val, err := strconv.ParseUint(lit.Value, 10, 8)
+				if err != nil {
+					return nil, false
+				}
 				data := NewMiniUint8(byte(val))
 				lit.Type = "Uint8"
 				lit.Data = &data

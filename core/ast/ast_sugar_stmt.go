@@ -12,34 +12,37 @@ type IncDecStmt struct {
 func (i *IncDecStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IncDecStmt) stmtNode()          {}
 
-func (i *IncDecStmt) Validate(ctx *ValidContext) (Node, bool) {
-	ctx = ctx.Child(i)
+func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 	if i.Operator != "++" && i.Operator != "--" {
-		ctx.AddErrorf("自增/自减操作符必须是 ++ 或 --, 实际为 %s", i.Operator)
-		return nil, false
+		return fmt.Errorf("自增/自减操作符必须是 ++ 或 --, 实际为 %s", i.Operator)
 	}
-	ident, ok := i.Operand.(*IdentifierExpr)
+	_, ok := i.Operand.(*IdentifierExpr)
 	if !ok {
-		ctx.Child(i.Operand).AddErrorf("自增/自减操作的操作数必须是变量")
-		return nil, false
+		return fmt.Errorf("自增/自减操作的操作数必须是变量")
 	}
-	operandNode, ok := i.Operand.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := i.Operand.Check(ctx); err != nil {
+		return err
 	}
-	i.Operand = operandNode.(Expr)
 
 	miniType := i.Operand.GetBase().Type
 	if miniType.IsEmpty() {
-		ctx.Child(i.Operand).AddErrorf("无法推导操作数类型")
-		return nil, false
-	}
-	if i.Operator == "++" {
-		i.Operator = "Plus"
-	} else {
-		i.Operator = "Minus"
+		return fmt.Errorf("无法推导操作数类型")
 	}
 	i.Type = "Void"
+	return nil
+}
+
+func (i *IncDecStmt) Optimize(ctx *OptimizeContext) Node {
+	i.Operand = i.Operand.Optimize(ctx).(Expr)
+	ident := i.Operand.(*IdentifierExpr)
+
+	op := i.Operator
+	if op == "++" {
+		op = "Plus"
+	} else {
+		op = "Minus"
+	}
+
 	ret := &AssignmentStmt{
 		BaseNode: BaseNode{
 			ID:      i.ID,
@@ -56,7 +59,7 @@ func (i *IncDecStmt) Validate(ctx *ValidContext) (Node, bool) {
 			},
 
 			Left:     i.Operand,
-			Operator: i.Operator,
+			Operator: op,
 			Right: &LiteralExpr{
 				BaseNode: BaseNode{
 					ID:   i.ID + "_Value_0_Right_0",
@@ -67,11 +70,8 @@ func (i *IncDecStmt) Validate(ctx *ValidContext) (Node, bool) {
 			},
 		},
 	}
-	node, b := ret.Validate(ctx)
-	if !b {
-		return nil, false
-	}
-	return node, true
+	// AssignmentStmt.Optimize will handle further optimization
+	return ret.Optimize(ctx)
 }
 
 // SwitchCase 表示switch语句中的case分支
@@ -91,81 +91,80 @@ type SwitchStmt struct {
 func (s *SwitchStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *SwitchStmt) stmtNode()          {}
 
-func (s *SwitchStmt) Validate(ctx *ValidContext) (Node, bool) {
-	ctx = ctx.Child(s)
-
+func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	if s.Cond == nil {
-		ctx.AddErrorf("switch语句缺少条件表达式")
-		return nil, false
+		return fmt.Errorf("switch语句缺少条件表达式")
 	}
 
-	condNode, ok := s.Cond.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := s.Cond.Check(ctx); err != nil {
+		return err
 	}
-	s.Cond = condNode.(Expr)
 
 	condType := s.Cond.GetBase().Type
 	if condType.IsEmpty() {
-		ctx.Child(s.Cond).AddErrorf("switch条件表达式类型无法推导")
-		return nil, false
+		return fmt.Errorf("switch条件表达式类型无法推导")
 	}
 
 	if len(s.Cases) == 0 && s.Default == nil {
-		ctx.AddErrorf("switch语句至少需要一个case或default分支")
-		return nil, false
+		return fmt.Errorf("switch语句至少需要一个case或default分支")
 	}
 
 	switchCtx := ctx.Child(s)
+	semSwitchCtx := NewSemanticContext(switchCtx)
 
 	// 验证所有case和default
 	for i, caseItem := range s.Cases {
 		if len(caseItem.Cond) == 0 {
-			ctx.AddErrorf("switch case %d 缺少条件表达式", i)
-			return nil, false
+			return fmt.Errorf("switch case %d 缺少条件表达式", i)
 		}
 
-		for j, cond := range caseItem.Cond {
-			condNode, ok := cond.Validate(switchCtx)
-			if !ok {
-				return nil, false
+		for _, cond := range caseItem.Cond {
+			if err := cond.Check(semSwitchCtx); err != nil {
+				return err
 			}
-			s.Cases[i].Cond[j] = condNode.(Expr)
 
 			caseType := cond.GetBase().Type
 			if caseType != "" && !condType.Equals(caseType) {
-				ctx.Child(cond).AddErrorf("case条件类型不匹配: switch条件为 %s, case条件为 %s", condType, caseType)
-				return nil, false
+				return fmt.Errorf("case条件类型不匹配: switch条件为 %s, case条件为 %s", condType, caseType)
 			}
 		}
 
 		if caseItem.Body == nil {
-			ctx.AddErrorf("switch case %d 缺少主体", i)
-			return nil, false
+			return fmt.Errorf("switch case %d 缺少主体", i)
 		}
 
-		bodyNode, ok := caseItem.Body.Validate(switchCtx)
-		if !ok {
-			return nil, false
+		if err := caseItem.Body.Check(semSwitchCtx); err != nil {
+			return err
 		}
-		s.Cases[i].Body = bodyNode.(*BlockStmt)
 	}
 
 	if s.Default != nil {
 		if s.Default.Body == nil {
-			ctx.AddErrorf("switch default分支缺少主体")
-			return nil, false
+			return fmt.Errorf("switch default分支缺少主体")
 		}
 
-		bodyNode, ok := s.Default.Body.Validate(switchCtx)
-		if !ok {
-			return nil, false
+		if err := s.Default.Body.Check(semSwitchCtx); err != nil {
+			return err
 		}
-		s.Default.Body = bodyNode.(*BlockStmt)
 	}
 	s.Type = "Void"
+	return nil
+}
+
+func (s *SwitchStmt) Optimize(ctx *OptimizeContext) Node {
+	s.Cond = s.Cond.Optimize(ctx).(Expr)
+	for i, caseItem := range s.Cases {
+		for j, cond := range caseItem.Cond {
+			s.Cases[i].Cond[j] = cond.Optimize(ctx).(Expr)
+		}
+		s.Cases[i].Body = caseItem.Body.Optimize(ctx).(*BlockStmt)
+	}
+	if s.Default != nil {
+		s.Default.Body = s.Default.Body.Optimize(ctx).(*BlockStmt)
+	}
+
 	ifElse := s.convertToIfElse()
-	return ifElse.Validate(ctx)
+	return ifElse.Optimize(ctx)
 }
 
 // convertToIfElse 将switch语句转换为if-else链

@@ -610,7 +610,7 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 			opStr := assign.Tok.String()
 			// 去掉后面的 "="，比如 "+=" 变成 "+"
 			opStr = opStr[:len(opStr)-1]
-			
+
 			// 对于 arr[i] += v，我们需要先获取 arr[i] 的值
 			getExpr := &spec.StructCallExpr{
 				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "struct_call"},
@@ -649,11 +649,11 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
 			opStr := assign.Tok.String()
 			opStr = opStr[:len(opStr)-1]
-			
+
 			getExpr := &spec.DerefExpr{
 				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "deref"},
 				Operand:  object,
@@ -684,11 +684,11 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
 			opStr := assign.Tok.String()
 			opStr = opStr[:len(opStr)-1]
-			
+
 			getExpr := &spec.IdentifierExpr{
 				BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "identifier"},
 				Name:     spec.Ident(expr.Name),
@@ -700,7 +700,7 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 				Right:    value,
 			}
 		}
-		
+
 		return &spec.AssignmentStmt{
 			BaseNode: spec.BaseNode{
 				ID:   c.nextID(assign),
@@ -725,7 +725,7 @@ func (c *GoToASTConverter) convertAssignStmt(assign *ast.AssignStmt) (spec.Stmt,
 			if assign.Tok != token.ASSIGN && assign.Tok != token.DEFINE {
 				opStr := assign.Tok.String()
 				opStr = opStr[:len(opStr)-1]
-				
+
 				getExpr := &spec.MemberExpr{
 					BaseNode: spec.BaseNode{ID: c.nextID(assign), Meta: "member"},
 					Object:   object,

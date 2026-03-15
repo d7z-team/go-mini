@@ -110,8 +110,12 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		if r := recover(); r != nil {
 			slog.Error("Executor panic", "error", r, "stack", string(debug.Stack()))
 			finalState = "program_fail"
-			finalMsg = fmt.Sprintf("panic: %v", r)
-			err = fmt.Errorf("panic: %v", r)
+			finalMsg = fmt.Sprintf("%v", r)
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic: %v", r)
+			}
 		}
 
 		if e.monitor != nil {
@@ -179,48 +183,6 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		return e.execStmts(ctx, n.Children)
 	case *ast.GenDeclStmt:
 		return ctx.NewVar(string(n.Name), n.Kind)
-	case *ast.AssignmentStmt:
-		expr, err := e.ExecExpr(ctx, n.Value)
-		if err != nil {
-			return err
-		}
-
-		if n.Property != "" {
-			obj, err := ctx.Load(string(n.Variable))
-			if err != nil {
-				return err
-			}
-			if obj.Data == nil {
-				return fmt.Errorf("cannot assign to field %s of nil object %s", n.Property, n.Variable)
-			}
-
-			// Handle both pointer and value types of DynStruct
-			var ds *DynStruct
-			if pds, ok := obj.Data.(*DynStruct); ok {
-				ds = pds
-			} else if vds, ok := obj.Data.(DynStruct); ok {
-				ds = &vds
-			}
-
-			if ds != nil {
-				ds.Body[string(n.Property)] = expr.Data
-				return nil
-			}
-
-			// Native struct support
-			rv := reflect.ValueOf(obj.Data)
-			if rv.Kind() == reflect.Ptr {
-				field := rv.Elem().FieldByName(string(n.Property))
-				if field.IsValid() && field.CanSet() {
-					field.Set(reflect.ValueOf(expr.Data).Convert(field.Type()))
-					return nil
-				}
-			}
-			return fmt.Errorf("object %s is not assignable for property %s", n.Variable, n.Property)
-		}
-
-		// Allow assignment if target is Any or types match
-		return ctx.Store(string(n.Variable), expr)
 	case *ast.DerefAssignmentStmt:
 		obj, err := e.ExecExpr(ctx, n.Object)
 		if err != nil {
@@ -282,7 +244,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		var forErr error
 		ctx.WithScope("for", func(ctx *StackContext) {
 			if n.Init != nil {
-				if err := e.execStmts(ctx, n.Init.(*ast.BlockStmt).Children); err != nil {
+				if err := e.execStmt(ctx, n.Init.(ast.Stmt)); err != nil {
 					forErr = err
 					return
 				}
@@ -302,7 +264,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 				}
 				ctx.WithScope("for-body", func(ctx *StackContext) {
 					if n.Body != nil {
-						if err := e.execStmts(ctx, n.Body.(*ast.BlockStmt).Children); err != nil {
+						if err := e.execStmt(ctx, n.Body.(ast.Stmt)); err != nil {
 							forErr = err
 							return
 						}
@@ -317,7 +279,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 					break
 				}
 				if n.Update != nil {
-					if err := e.execStmts(ctx, n.Update.(*ast.BlockStmt).Children); err != nil {
+					if err := e.execStmt(ctx, n.Update.(ast.Stmt)); err != nil {
 						forErr = err
 						ctx.ScopeExit()
 						return
@@ -336,13 +298,13 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		miniBool := expr.Data.(ast.MiniBool)
 		if miniBool.Data() {
 			if n.Body != nil {
-				if err := e.execStmts(ctx, n.Body.Children); err != nil {
+				if err := e.execStmt(ctx, n.Body); err != nil {
 					return err
 				}
 			}
 		} else {
 			if n.ElseBody != nil {
-				if err := e.execStmts(ctx, n.ElseBody.Children); err != nil {
+				if err := e.execStmt(ctx, n.ElseBody); err != nil {
 					return err
 				}
 			}
@@ -379,6 +341,22 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 			return ctx.SetInterrupt("for-body", n.InterruptType)
 		}
 		return ctx.SetInterrupt("for-main", n.InterruptType)
+	case *ast.AssignmentStmt:
+		val, err := e.ExecExpr(ctx, n.Value)
+		if err != nil {
+			return err
+		}
+		if n.Property != "" {
+			obj, err := ctx.Load(string(n.Variable))
+			if err != nil {
+				return err
+			}
+			return e.setProperty(obj, string(n.Property), val)
+		}
+		return ctx.Store(string(n.Variable), val)
+	case *ast.FunctionStmt, *ast.StructStmt:
+		// 定义语句在 Optimize 阶段已处理并移出 Main，这里安全忽略
+		return nil
 	case *ast.CallExprStmt:
 		r, err := e.ExecExpr(ctx, n)
 		if err != nil {
@@ -392,6 +370,36 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		return nil
 	}
 	return errors.New("todo: " + s.GetBase().Meta)
+}
+
+func (e *Executor) setProperty(obj *Var, prop string, val *Var) error {
+	if obj.Data == nil {
+		return fmt.Errorf("cannot assign to field %s of nil object", prop)
+	}
+
+	// Handle both pointer and value types of DynStruct
+	var ds *DynStruct
+	if pds, ok := obj.Data.(*DynStruct); ok {
+		ds = pds
+	} else if vds, ok := obj.Data.(DynStruct); ok {
+		ds = &vds
+	}
+
+	if ds != nil {
+		ds.Body[prop] = val.Data
+		return nil
+	}
+
+	// Native struct support
+	rv := reflect.ValueOf(obj.Data)
+	if rv.Kind() == reflect.Ptr {
+		field := rv.Elem().FieldByName(prop)
+		if field.IsValid() && field.CanSet() {
+			field.Set(reflect.ValueOf(val.Data).Convert(field.Type()))
+			return nil
+		}
+	}
+	return fmt.Errorf("object is not assignable for property %s", prop)
 }
 
 // execStmts todo：处理 func 中断
@@ -454,7 +462,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Try to interpret left side as boolean
 			leftBool := false
 			if lb, ok := left.Data.(ast.MiniBool); ok {
@@ -470,7 +478,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			} else {
 				return nil, fmt.Errorf("left side of logical operator is not a boolean: %T", left.Data)
 			}
-			
+
 			// Short circuit evaluation
 			if n.Operator == "And" && !leftBool {
 				return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(false), ctx.Stack), nil
@@ -478,13 +486,13 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			if n.Operator == "Or" && leftBool {
 				return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(true), ctx.Stack), nil
 			}
-			
+
 			// Evaluate right side if we didn't short-circuit
 			right, err := e.ExecExpr(ctx, n.Right)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			rightBool := false
 			if rb, ok := right.Data.(ast.MiniBool); ok {
 				rightBool = rb.Data()
@@ -499,7 +507,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 			} else {
 				return nil, fmt.Errorf("right side of logical operator is not a boolean: %T", right.Data)
 			}
-			
+
 			return NewVar("Bool", reflect.TypeOf(ast.MiniBool{}), ast.NewMiniBool(rightBool), ctx.Stack), nil
 		}
 

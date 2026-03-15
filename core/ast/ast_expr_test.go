@@ -11,9 +11,13 @@ type dummyExpr struct {
 
 func (d *dummyExpr) GetBase() *BaseNode { return &d.BaseNode }
 func (d *dummyExpr) exprNode()          {}
-func (d *dummyExpr) Validate(ctx *ValidContext) (Node, bool) {
+func (d *dummyExpr) Check(ctx *SemanticContext) error {
 	d.Type = d.dummyType
-	return d, true
+	return nil
+}
+
+func (d *dummyExpr) Optimize(ctx *OptimizeContext) Node {
+	return d
 }
 
 func TestCallExprArrayDeduction(t *testing.T) {
@@ -99,22 +103,26 @@ func TestCallExprArrayDeduction(t *testing.T) {
 			// Clear errors for new test
 			v.root.logs = nil
 
-			node, ok := callExpr.Validate(v)
+			semCtx := NewSemanticContext(v)
+			err := callExpr.Check(semCtx)
+			ok := err == nil
 			if ok != tt.expectedPass {
-				t.Errorf("expected pass: %v, got: %v", tt.expectedPass, ok)
+				t.Errorf("expected pass: %v, got: %v, error: %v", tt.expectedPass, ok, err)
 				if !tt.expectedPass && len(v.root.logs) > 0 {
 					t.Logf("Errors: %v", v.root.logs)
 				}
 			}
 			if tt.expectedPass {
+				optCtx := NewOptimizeContext(v)
+				node := callExpr.Optimize(optCtx)
 				if node.GetBase().Type != tt.expectedType {
 					t.Errorf("expected type: %v, got: %v", tt.expectedType, node.GetBase().Type)
 				}
 			} else {
-				if len(v.root.logs) == 0 {
-					t.Errorf("Expected failure but got no errors logged")
+				if len(v.root.logs) == 0 && err == nil {
+					t.Errorf("Expected failure but got no errors logged or returned")
 				} else {
-					t.Logf("Expected failure got logs: %v", v.root.logs)
+					t.Logf("Expected failure got logs: %v, err: %v", v.root.logs, err)
 				}
 			}
 		})

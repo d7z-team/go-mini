@@ -13,11 +13,6 @@ type Logs struct {
 	Message string
 }
 
-type Valid interface {
-	// Validate 校验节点并返回优化后的节点
-	Validate(ctx *ValidContext) (Node, bool)
-}
-
 type ValidRoot struct {
 	logs    []Logs
 	structs map[Ident]*ValidStruct
@@ -139,12 +134,15 @@ func (c *ValidContext) ImportPackage(path string) error {
 	// 校验被导入包，由于共享同一个 root，其符号会自动注册到 root.structs, root.Methods
 	oldParent := c.parent
 	c.parent = nil
-	_, ok := pkgBlock.Validate(c)
+	semCtx := NewSemanticContext(c)
+	err = pkgBlock.Check(semCtx)
 	c.parent = oldParent
 
-	if !ok {
-		return fmt.Errorf("校验包 %s 失败", path)
+	if err != nil {
+		return fmt.Errorf("校验包 %s 失败: %v", path, err)
 	}
+	optCtx := NewOptimizeContext(c)
+	pkgBlock.Optimize(optCtx)
 
 	// 记录符号以便后续合并
 	for k, v := range pkgBlock.Functions {

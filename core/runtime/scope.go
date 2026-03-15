@@ -222,7 +222,9 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 	}
 	varPtr, err := c.loadVar(variable)
 	if err != nil {
-		return err
+		// 如果变量未找到，则在当前作用域创建它 (对应 := 语义)
+		// 注册新变量，将其存入 runtime MemoryPtr
+		return c.AddVariable(variable, expr)
 	}
 
 	if !varPtr.Type.IsAny() && !varPtr.Type.Equals(expr.Type) {
@@ -249,6 +251,15 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 		varPtr.GoType = val.Type()
 	}
 	varPtr.Data = clonedData
+	return nil
+}
+
+func (c *StackContext) AddVariable(name string, v *Var) error {
+	if c.Stack == nil {
+		return errors.New("stack is nil")
+	}
+	// 确保变量进入 MemoryPtr
+	c.Stack.MemoryPtr[name] = NewVar(v.Type, v.GoType, v.Data, c.Stack)
 	return nil
 }
 

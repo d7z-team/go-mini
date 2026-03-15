@@ -134,10 +134,10 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 		}
 	}
 
-	optimized, ok := rootBlock.Validate(ctx)
-	if !ok {
-		return rootBlock, ctx.Logs(), errors.New("error")
+	if err := rootBlock.Check(ast.NewSemanticContext(ctx)); err != nil {
+		return rootBlock, ctx.Logs(), err
 	}
+	optimized := rootBlock.Optimize(ast.NewOptimizeContext(ctx))
 	opts := optimized.(*ast.ProgramStmt)
 
 	// 合并导入的包符号到最终的程序中

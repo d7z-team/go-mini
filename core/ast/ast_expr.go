@@ -13,25 +13,30 @@ type IdentifierExpr struct {
 func (c *IdentifierExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *IdentifierExpr) exprNode()          {}
 
-func (c *IdentifierExpr) Validate(ctx *ValidContext) (Node, bool) {
-	c.Name = c.Name.Resolve(ctx)
-	if !c.Name.Valid(ctx) {
-		return nil, false
+func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
+	c.Name = c.Name.Resolve(&ctx.ValidContext)
+	if !c.Name.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 	vtp, b := ctx.GetVariable(c.Name)
 	if !b {
+		// 回退：检查是否为包别名
+		if _, isPkg := ctx.root.Imports[string(c.Name)]; isPkg {
+			c.Type = "Package"
+			return nil
+		}
+
 		// 回退：尝试在当前包空间查找
 		if !strings.Contains(string(c.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
 			mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, c.Name))
 			if vt, ok := ctx.GetVariable(mangled); ok {
 				c.Name = mangled // 关键：更新为转义后的名称
 				c.Type = vt
-				return c, true
+				return nil
 			}
 		}
 
-		ctx.Child(c).AddErrorf("变量 %s 不存在", c.Name)
-		return nil, false
+		return fmt.Errorf("变量 %s 不存在", c.Name)
 	}
 
 	// 特殊处理：如果是顶级变量且未带包名（同一包内访问），也补齐包名
@@ -43,7 +48,11 @@ func (c *IdentifierExpr) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	c.Type = vtp
-	return c, true
+	return nil
+}
+
+func (c *IdentifierExpr) Optimize(ctx *OptimizeContext) Node {
+	return c
 }
 
 type ConstRefExpr struct {
@@ -54,19 +63,19 @@ type ConstRefExpr struct {
 func (c *ConstRefExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *ConstRefExpr) exprNode()          {}
 
-func (c *ConstRefExpr) Validate(ctx *ValidContext) (Node, bool) {
-	c.Name = c.Name.Resolve(ctx)
-	if !c.Name.Valid(ctx) {
-		return nil, false
+func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
+	c.Name = c.Name.Resolve(&ctx.ValidContext)
+	if !c.Name.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 	if vtp, b := ctx.GetVariable(c.Name); b {
 		c.Type = vtp
-		return c, true
+		return nil
 	}
 
 	if vtp, b := ctx.GetFunction(c.Name); b {
 		c.Type = vtp.MiniType()
-		return c, true
+		return nil
 	}
 
 	if ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -74,13 +83,13 @@ func (c *ConstRefExpr) Validate(ctx *ValidContext) (Node, bool) {
 		if vtp, b := ctx.GetFunction(mangled); b {
 			c.Name = mangled
 			c.Type = vtp.MiniType()
-			return c, true
+			return nil
 		}
 	}
 
 	if _, b := ctx.root.program.Constants[string(c.Name)]; b {
 		c.Type = "Constant"
-		return c, true
+		return nil
 	}
 
 	if ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -88,7 +97,7 @@ func (c *ConstRefExpr) Validate(ctx *ValidContext) (Node, bool) {
 		if _, b := ctx.root.program.Constants[string(mangled)]; b {
 			c.Name = mangled
 			c.Type = "Constant"
-			return c, true
+			return nil
 		}
 	}
 
@@ -110,12 +119,15 @@ func (c *ConstRefExpr) Validate(ctx *ValidContext) (Node, bool) {
 		if vtp, b2 := ctx.GetFunction(newName); b2 {
 			c.Name = newName
 			c.Type = vtp.MiniType()
-			return c, true
+			return nil
 		}
 	}
 
-	ctx.Child(c).AddErrorf("const/function %s 不存在", c.Name)
-	return nil, false
+	return fmt.Errorf("const/function %s 不存在", c.Name)
+}
+
+func (c *ConstRefExpr) Optimize(ctx *OptimizeContext) Node {
+	return c
 }
 
 // CallExprStmt 表示函数调用表达式
@@ -129,76 +141,127 @@ func (c *CallExprStmt) GetBase() *BaseNode { return &c.BaseNode }
 func (c *CallExprStmt) exprNode()          {}
 func (c *CallExprStmt) stmtNode()          {}
 
-func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
+func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if c.Func == nil {
-		ctx.AddErrorf("函数调用缺少函数名")
-		return nil, false
+		return fmt.Errorf("函数调用缺少函数名")
 	}
 
-	funcNode, ok := c.Func.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := c.Func.Check(ctx); err != nil {
+		return err
 	}
-	c.Func = funcNode.(Expr)
 
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
-		ctx.Child(c.Func).AddErrorf("对象(%s)不是函数", c.Func.GetBase().Type)
-		return nil, false
+		return fmt.Errorf("对象(%s)不是函数", c.Func.GetBase().Type)
 	}
 
-	for i, arg := range c.Args {
-		argNode, ok := arg.Validate(ctx)
-		if !ok {
-			return nil, false
-		}
-		c.Args[i] = argNode.(Expr)
-	}
-
-	var args []GoMiniType
 	for _, arg := range c.Args {
-		args = append(args, arg.GetBase().Type)
+		if err := arg.Check(ctx); err != nil {
+			return err
+		}
 	}
+
+	// 语义校验：参数数量和基本类型匹配
+	minParams := len(fType.Params)
+	if fType.Variadic {
+		minParams--
+	}
+	if len(c.Args) < minParams {
+		return fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
+	}
+	if !fType.Variadic && len(fType.Params) > 0 && !fType.Params[len(fType.Params)-1].IsArray() && len(c.Args) > len(fType.Params) {
+		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(fType.Params), len(c.Args))
+	}
+
+	// 校验固定参数部分的类型
+	fixedNum := len(fType.Params)
+	isImplicitArray := len(fType.Params) > 0 && fType.Params[len(fType.Params)-1].IsArray()
+	if fType.Variadic || isImplicitArray {
+		fixedNum--
+	}
+
+	for i := 0; i < fixedNum && i < len(c.Args); i++ {
+		argType := c.Args[i].GetBase().Type
+		if !fType.Params[i].Equals(argType) {
+			if _, ok := fType.Params[i].AutoPtr(c.Args[i]); !ok {
+				return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, fType.Params[i], argType)
+			}
+		}
+	}
+
+	// 校验隐式数组/变长参数的子项兼容性
+	if isImplicitArray && len(c.Args) > fixedNum {
+		targetArrayType := fType.Params[len(fType.Params)-1]
+		targetElem, _ := targetArrayType.ReadArrayItemType()
+
+		// 如果只有一个参数且正好是数组类型，视为完美匹配
+		if len(c.Args) == fixedNum+1 {
+			if targetArrayType.Equals(c.Args[fixedNum].GetBase().Type) {
+				goto done
+			}
+		}
+
+		for i := fixedNum; i < len(c.Args); i++ {
+			argType := c.Args[i].GetBase().Type
+			if !targetElem.Equals(argType) {
+				if _, ok := targetElem.AutoPtr(c.Args[i]); !ok {
+					return fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
+				}
+			}
+		}
+	}
+
+done:
+	c.Type = fType.Returns
+	// 自动解包 (T, Error) 为 T
+	if c.Type.IsTuple() {
+		types, ok := c.Type.ReadTuple()
+		if ok && len(types) == 2 && types[1] == "Error" {
+			c.Type = types[0]
+		}
+	}
+
+	return nil
+}
+
+func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
+	c.Func = c.Func.Optimize(ctx).(Expr)
+	for i, arg := range c.Args {
+		c.Args[i] = arg.Optimize(ctx).(Expr)
+	}
+
+	fType, _ := c.Func.GetBase().Type.ReadCallFunc()
 
 	// 变长参数支持 (Variadic Support)
 	if fType.Variadic {
 		paramCount := len(fType.Params)
-		// 如果参数数量正好相等，且最后一个参数已经是目标数组类型，则不需要再次打包
 		alreadyPacked := false
 		if len(c.Args) == paramCount {
 			lastArgType := c.Args[paramCount-1].GetBase().Type
 			if lastArgType.IsArray() {
-				// 简单的类型检查，如果是 Array 则认为可能已经打包
 				alreadyPacked = true
 			}
 		}
 
 		if !alreadyPacked && len(c.Args) >= paramCount-1 {
 			fixedParams := fType.Params[:paramCount-1]
-			variadicParam := fType.Params[paramCount-1] // Expected to be Array<...>
+			variadicParam := fType.Params[paramCount-1]
 
-			// 1. 校验固定参数
 			for i := 0; i < len(fixedParams); i++ {
-				ptr, ok := fixedParams[i].AutoPtr(c.Args[i])
-				if !ok {
-					ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
-					return nil, false
+				if ptr, ok := fixedParams[i].AutoPtr(c.Args[i]); ok {
+					c.Args[i] = ptr
 				}
-				c.Args[i] = ptr
 			}
 
-			// 2. 打包剩余参数到数组
 			variadicArgs := c.Args[paramCount-1:]
 			targetElem, _ := variadicParam.ReadArrayItemType()
 
 			wrappedElements := make([]CompositeElement, len(variadicArgs))
 			for i, arg := range variadicArgs {
-				ptr, ok := targetElem.AutoPtr(arg)
-				if !ok {
-					// 即使 AutoPtr 失败，我们也尝试保留原样，由后续逻辑报错
-					wrappedElements[i] = CompositeElement{Value: arg}
-				} else {
+				if ptr, ok := targetElem.AutoPtr(arg); ok {
 					wrappedElements[i] = CompositeElement{Value: ptr}
+				} else {
+					wrappedElements[i] = CompositeElement{Value: arg}
 				}
 			}
 
@@ -213,45 +276,37 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 			}
 
 			c.Args = append(c.Args[:paramCount-1], variadicWrapper)
-			c.Type = fType.Returns
-			return c, true
+			return c
 		}
 	}
 
-	// 尝试隐式推导为数组参数（引擎不要可变参数概念，统一推导为 Array，callNative 单独处理）
+	// 隐式推导为数组参数
 	if len(fType.Params) > 0 && fType.Params[len(fType.Params)-1].IsArray() {
 		targetArrayType := fType.Params[len(fType.Params)-1]
 		targetElem, _ := targetArrayType.ReadArrayItemType()
 
 		isPerfectMatch := false
 		if len(c.Args) == len(fType.Params) {
-			_, b2 := targetArrayType.AutoPtr(c.Args[len(fType.Params)-1])
-			if b2 {
+			if _, b2 := targetArrayType.AutoPtr(c.Args[len(fType.Params)-1]); b2 {
 				isPerfectMatch = true
 			}
 		}
 
 		if !isPerfectMatch && len(c.Args) >= len(fType.Params)-1 {
-			// 1. 校验前面的固定参数
 			for i := 0; i < len(fType.Params)-1; i++ {
-				ptr, ok := fType.Params[i].AutoPtr(c.Args[i])
-				if !ok {
-					ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
-					return nil, false
+				if ptr, ok := fType.Params[i].AutoPtr(c.Args[i]); ok {
+					c.Args[i] = ptr
 				}
-				c.Args[i] = ptr
 			}
 
-			// 2. 打包剩余参数到数组
 			variadicArgs := c.Args[len(fType.Params)-1:]
 			wrappedElements := make([]CompositeElement, len(variadicArgs))
 			for i, arg := range variadicArgs {
-				ptr, b2 := targetElem.AutoPtr(arg)
-				if !b2 {
-					ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
-					return nil, false
+				if ptr, b2 := targetElem.AutoPtr(arg); b2 {
+					wrappedElements[i] = CompositeElement{Value: ptr}
+				} else {
+					wrappedElements[i] = CompositeElement{Value: arg}
 				}
-				wrappedElements[i] = CompositeElement{Value: ptr}
 			}
 
 			c.Args = append(c.Args[:len(fType.Params)-1], &CompositeExpr{
@@ -263,41 +318,22 @@ func (c *CallExprStmt) Validate(ctx *ValidContext) (Node, bool) {
 				Kind:   Ident(targetArrayType),
 				Values: wrappedElements,
 			})
-			c.Type = fType.Returns
-			return c, true
+			return c
 		}
-	}
-
-	if len(c.Args) != len(fType.Params) {
-		ctx.Child(c.Func).AddErrorf("函数参数不一致 (%s) != (%s)", fType.Params, args)
-		return nil, false
 	}
 
 	for i, param := range fType.Params {
-		arg := c.Args[i]
-
-		// 尝试自动数值转换
-		arg = tryAutoNumericCast(ctx, param, arg)
-
-		ptr, b2 := param.AutoPtr(arg)
-		if !b2 {
-			ctx.Child(c.Func).AddErrorf("函数结构错误(%v) != (%v)", param, arg.GetBase().Type)
-			return nil, false
-		}
-		c.Args[i] = ptr
-	}
-
-	c.Type = fType.Returns
-
-	// 自动解包 (T, Error) 为 T
-	if c.Type.IsTuple() {
-		types, ok := c.Type.ReadTuple()
-		if ok && len(types) == 2 && types[1] == "Error" {
-			c.Type = types[0]
+		if i < len(c.Args) {
+			arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
+			if ptr, b2 := param.AutoPtr(arg); b2 {
+				c.Args[i] = ptr
+			} else {
+				c.Args[i] = arg
+			}
 		}
 	}
 
-	return c, true
+	return c
 }
 
 // MemberExpr 表示成员访问表达式 (a.b)
@@ -310,81 +346,98 @@ type MemberExpr struct {
 func (m *MemberExpr) GetBase() *BaseNode { return &m.BaseNode }
 func (m *MemberExpr) exprNode()          {}
 
-func (m *MemberExpr) Validate(ctx *ValidContext) (Node, bool) {
+func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if m.Object == nil {
-		ctx.AddErrorf("成员访问缺少对象表达式")
-		return nil, false
+		return fmt.Errorf("成员访问缺少对象表达式")
 	}
 	if m.Property == "" {
-		ctx.AddErrorf("成员访问缺少属性名")
-		return nil, false
+		return fmt.Errorf("成员访问缺少属性名")
 	}
 
-	// 1. Package selector check (Static Inlining)
+	// 1. Package selector check (Static Inlining detection)
 	if ident, ok := m.Object.(*IdentifierExpr); ok {
 		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
-			// Check visibility (exported name must start with upper case)
 			firstChar := string(m.Property)[0]
 			if firstChar < 'A' || firstChar > 'Z' {
-				ctx.AddErrorf("cannot refer to unexported name %s.%s", ident.Name, m.Property)
-				return nil, false
+				return fmt.Errorf("cannot refer to unexported name %s.%s", ident.Name, m.Property)
 			}
-
+			// It's a package selector, we'll transform it in Optimize
+			// For now, we need to determine its type
 			pkgName := ctx.root.PathToPackage[realPkg]
 			if pkgName == "" {
 				pkgName = realPkg
 			}
-
 			mangledName := fmt.Sprintf("%s.%s", pkgName, m.Property)
-			constRef := &ConstRefExpr{
-				BaseNode: BaseNode{
-					ID:   m.ID,
-					Meta: "const_ref",
-				},
-				Name: Ident(mangledName),
+			// Check if it exists as a function or variable in that package
+			if vtp, b := ctx.GetVariable(Ident(mangledName)); b {
+				m.Type = vtp
+				return nil
 			}
-			return constRef.Validate(ctx)
+			if vtp, b := ctx.GetFunction(Ident(mangledName)); b {
+				m.Type = vtp.MiniType()
+				return nil
+			}
+			return fmt.Errorf("package member %s not found", mangledName)
 		}
 	}
 
-	objNode, ok := m.Object.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := m.Object.Check(ctx); err != nil {
+		return err
 	}
-	m.Object = objNode.(Expr)
 
-	if !m.Property.Valid(ctx) {
-		return nil, false
+	if !m.Property.Valid(&ctx.ValidContext) {
+		return fmt.Errorf("invalid property: %s", m.Property)
 	}
 
 	name, b := m.Object.GetBase().Type.StructName()
 	if !b {
-		ctx.Child(m.Object).AddErrorf("不是合法的 struct (%s)", m.Object.GetBase().Type)
-		return nil, false
+		return fmt.Errorf("不是合法的 struct (%s)", m.Object.GetBase().Type)
 	}
 
 	miniStruct, b := ctx.GetStruct(name)
 	if !b {
-		ctx.AddErrorf("未定义 struct (%s)", name)
-		return nil, false
+		return fmt.Errorf("未定义 struct (%s)", name)
 	}
-	// 成员不存在
+
 	met, b := miniStruct.Fields[m.Property]
 	if !b {
 		if method, ok := miniStruct.Methods[m.Property]; ok {
 			met = method.MiniType()
 		} else {
-			ctx.AddErrorf("struct(%s) 不存在 (%s)", name, m.Property)
-			return nil, false
+			return fmt.Errorf("struct(%s) 不存在 (%s)", name, m.Property)
 		}
 	}
 
 	m.Type = met
-	return m, true
+	return nil
+}
+
+func (m *MemberExpr) Optimize(ctx *OptimizeContext) Node {
+	// 1. Package selector transformation
+	if ident, ok := m.Object.(*IdentifierExpr); ok {
+		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
+			pkgName := ctx.root.PathToPackage[realPkg]
+			if pkgName == "" {
+				pkgName = realPkg
+			}
+			mangledName := fmt.Sprintf("%s.%s", pkgName, m.Property)
+			constRef := &ConstRefExpr{
+				BaseNode: BaseNode{
+					ID:   m.ID,
+					Meta: "const_ref",
+					Type: m.Type,
+				},
+				Name: Ident(mangledName),
+			}
+			return constRef.Optimize(ctx)
+		}
+	}
+
+	m.Object = m.Object.Optimize(ctx).(Expr)
+	return m
 }
 
 // CompositeExpr 表示复合类型表达式
-// 复合类型支持普通对象 / Array对象 / Map
 type CompositeExpr struct {
 	BaseNode
 	Kind   Ident              `json:"type"`
@@ -400,33 +453,37 @@ type CompositeElement struct {
 func (c *CompositeExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *CompositeExpr) exprNode()          {}
 
-func (c *CompositeExpr) Validate(ctx *ValidContext) (Node, bool) {
-	c.Kind = Ident(GoMiniType(c.Kind).Resolve(ctx))
-	c.Type = GoMiniType(c.Kind) // 同步更新 BaseNode.Type
+func (c *CompositeExpr) Check(ctx *SemanticContext) error {
+	c.Kind = Ident(GoMiniType(c.Kind).Resolve(&ctx.ValidContext))
+	c.Type = GoMiniType(c.Kind)
 	if c.Kind == "" {
-		ctx.AddErrorf("复合类型缺少类型标识")
-		return nil, false
+		return fmt.Errorf("复合类型缺少类型标识")
 	}
-	for i, elem := range c.Values {
+	for _, elem := range c.Values {
 		if elem.Key != nil {
-			keyNode, ok := elem.Key.Validate(ctx)
-			if !ok {
-				return nil, false
+			if err := elem.Key.Check(ctx); err != nil {
+				return err
 			}
-			c.Values[i].Key = keyNode.(Expr)
 		}
 		if elem.Value == nil {
-			ctx.AddErrorf("复合类型元素缺少值")
-			return nil, false
+			return fmt.Errorf("复合类型元素缺少值")
 		}
-		valNode, ok := elem.Value.Validate(ctx)
-		if !ok {
-			return nil, false
+		if err := elem.Value.Check(ctx); err != nil {
+			return err
 		}
-		c.Values[i].Value = valNode.(Expr)
 	}
 
-	return c, true
+	return nil
+}
+
+func (c *CompositeExpr) Optimize(ctx *OptimizeContext) Node {
+	for i, elem := range c.Values {
+		if elem.Key != nil {
+			c.Values[i].Key = elem.Key.Optimize(ctx).(Expr)
+		}
+		c.Values[i].Value = elem.Value.Optimize(ctx).(Expr)
+	}
+	return c
 }
 
 // IndexExpr 表示索引访问表达式 i[1]
@@ -439,30 +496,23 @@ type IndexExpr struct {
 func (i *IndexExpr) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IndexExpr) exprNode()          {}
 
-func (i *IndexExpr) Validate(ctx *ValidContext) (Node, bool) {
+func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	if i.Object == nil {
-		ctx.AddErrorf("索引访问缺少对象表达式")
-		return nil, false
+		return fmt.Errorf("索引访问缺少对象表达式")
 	}
 
-	objNode, ok := i.Object.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := i.Object.Check(ctx); err != nil {
+		return err
 	}
-	i.Object = objNode.(Expr)
 
 	if i.Index == nil {
-		ctx.AddErrorf("索引访问缺少索引表达式")
-		return nil, false
+		return fmt.Errorf("索引访问缺少索引表达式")
 	}
 
-	idxNode, ok := i.Index.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := i.Index.Check(ctx); err != nil {
+		return err
 	}
-	i.Index = idxNode.(Expr)
 
-	// 检查对象是否为数组类型
 	objType := i.Object.GetBase().Type
 	if objType.IsPtr() {
 		if elem, ok := objType.GetPtrElementType(); ok {
@@ -471,35 +521,35 @@ func (i *IndexExpr) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	if objType.IsArray() {
-		// 检查索引类型是否为 Int64
 		if i.Index.GetBase().Type != "Int64" {
-			ctx.Child(i.Index).AddErrorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
-			return nil, false
+			return fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 		}
 
 		if elemType, ok := objType.ReadArrayItemType(); ok {
 			i.Type = elemType
 		} else {
-			ctx.Child(i.Object).AddErrorf("无法获取数组元素类型: %s", objType)
-			return nil, false
+			return fmt.Errorf("无法获取数组元素类型: %s", objType)
 		}
-		return i, true
+		return nil
 	}
 	if objType.IsMap() {
 		keyType, valType, ok := objType.GetMapKeyValueTypes()
 		if !ok {
-			ctx.Child(i.Object).AddErrorf("无法获取Map类型信息: %s", objType)
-			return nil, false
+			return fmt.Errorf("无法获取Map类型信息: %s", objType)
 		}
-		if !i.Index.GetBase().Type.Equals(keyType) {
-			ctx.Child(i.Index).AddErrorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
-			return nil, false
+		if !keyType.Equals(i.Index.GetBase().Type) {
+			return fmt.Errorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
 		}
 		i.Type = valType
-		return i, true
+		return nil
 	}
-	ctx.Child(i.Object).AddErrorf("索引访问的对象必须是数组或Map类型，实际为 %s", objType)
-	return nil, false
+	return fmt.Errorf("索引访问的对象必须是数组或Map类型，实际为 %s", objType)
+}
+
+func (i *IndexExpr) Optimize(ctx *OptimizeContext) Node {
+	i.Object = i.Object.Optimize(ctx).(Expr)
+	i.Index = i.Index.Optimize(ctx).(Expr)
+	return i
 }
 
 // AddressExpr 表示取地址表达式 &x
@@ -511,24 +561,23 @@ type AddressExpr struct {
 func (a *AddressExpr) GetBase() *BaseNode { return &a.BaseNode }
 func (a *AddressExpr) exprNode()          {}
 
-func (a *AddressExpr) Validate(ctx *ValidContext) (Node, bool) {
+func (a *AddressExpr) Check(ctx *SemanticContext) error {
 	if a.Operand == nil {
-		ctx.AddErrorf("取地址表达式缺少操作数")
-		return nil, false
+		return fmt.Errorf("取地址表达式缺少操作数")
 	}
-	operandNode, ok := a.Operand.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := a.Operand.Check(ctx); err != nil {
+		return err
 	}
-	a.Operand = operandNode.(Expr)
 	if a.Operand.GetBase().Type.IsPtr() {
-		ctx.AddErrorf("取地址操作符 & 只能用于左值")
-		return nil, false
+		return fmt.Errorf("取地址操作符 & 只能用于左值")
 	}
-	// 设置类型为指向操作数类型的指针
 	a.Type = a.Operand.GetBase().Type.ToPtr()
+	return nil
+}
 
-	return a, true
+func (a *AddressExpr) Optimize(ctx *OptimizeContext) Node {
+	a.Operand = a.Operand.Optimize(ctx).(Expr)
+	return a
 }
 
 // DerefExpr 表示解引用表达式 *p
@@ -540,30 +589,28 @@ type DerefExpr struct {
 func (d *DerefExpr) GetBase() *BaseNode { return &d.BaseNode }
 func (d *DerefExpr) exprNode()          {}
 
-func (d *DerefExpr) Validate(ctx *ValidContext) (Node, bool) {
+func (d *DerefExpr) Check(ctx *SemanticContext) error {
 	if d.Operand == nil {
-		ctx.AddErrorf("解引用表达式缺少操作数")
-		return nil, false
+		return fmt.Errorf("解引用表达式缺少操作数")
 	}
 
-	operandNode, ok := d.Operand.Validate(ctx)
-	if !ok {
-		return nil, false
+	if err := d.Operand.Check(ctx); err != nil {
+		return err
 	}
-	d.Operand = operandNode.(Expr)
 
-	// 操作数必须是指针类型
 	if !d.Operand.GetBase().Type.IsPtr() {
-		ctx.AddErrorf("解引用操作符 * 只能用于指针类型，实际为 %s", d.Operand.GetBase().Type)
-		return nil, false
+		return fmt.Errorf("解引用操作符 * 只能用于指针类型，实际为 %s", d.Operand.GetBase().Type)
 	}
 
-	// 获取指针指向的类型
 	elemType, ok := d.Operand.GetBase().Type.GetPtrElementType()
 	if !ok {
-		ctx.AddErrorf("无效的指针类型: %s", d.Operand.GetBase().Type)
-		return nil, false
+		return fmt.Errorf("无效的指针类型: %s", d.Operand.GetBase().Type)
 	}
 	d.Type = elemType
-	return d, true
+	return nil
+}
+
+func (d *DerefExpr) Optimize(ctx *OptimizeContext) Node {
+	d.Operand = d.Operand.Optimize(ctx).(Expr)
+	return d
 }

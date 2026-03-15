@@ -7,8 +7,35 @@ import (
 
 // Node 是所有AST节点的接口
 type Node interface {
-	Validate(ctx *ValidContext) (Node, bool)
+	// Check 执行全量语义校验，不修改 AST 结构。
+	// 无论代码是否可达（如 if false 内部），都必须通过此检查。
+	Check(ctx *SemanticContext) error
+
+	// Optimize 执行 AST 优化与语法糖降级（Lowering）。
+	// 在 Check 通过后运行，负责常量折叠、死代码消除和高级语法展开。
+	Optimize(ctx *OptimizeContext) Node
+
 	GetBase() *BaseNode
+}
+
+// SemanticContext 语义检查上下文
+type SemanticContext struct {
+	ValidContext // 继承原有的 ValidContext 功能
+	// 后续可以增加符号表、类型栈等专门用于 Check 的字段
+}
+
+func NewSemanticContext(ctx *ValidContext) *SemanticContext {
+	return &SemanticContext{ValidContext: *ctx}
+}
+
+// OptimizeContext 优化上下文
+type OptimizeContext struct {
+	// 用于控制优化级别、常量池等
+	*ValidContext
+}
+
+func NewOptimizeContext(ctx *ValidContext) *OptimizeContext {
+	return &OptimizeContext{ValidContext: ctx}
 }
 
 // Expr 是表达式节点的接口
@@ -67,3 +94,17 @@ func (b *BaseNode) exprNode() {}
 
 // stmtNode 标记语句节点
 func (b *BaseNode) stmtNode() {}
+
+func (b *BaseNode) GetBase() *BaseNode {
+	return b
+}
+
+func (b *BaseNode) Check(ctx *SemanticContext) error {
+	// 默认实现：不执行任何操作
+	return nil
+}
+
+func (b *BaseNode) Optimize(ctx *OptimizeContext) Node {
+	// 默认实现：返回自身
+	return b
+}

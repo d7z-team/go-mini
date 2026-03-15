@@ -40,7 +40,7 @@ func TestMaxStackDepth(t *testing.T) {
 	// Set a very small stack limit (e.g. 3) to trigger the limit
 	ctx := context.WithValue(context.Background(), runtime.ContextKeyMaxStackDepth, 3)
 	err = rt.Execute(ctx)
-	
+
 	// Expect a stack overflow error
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "stack overflow")

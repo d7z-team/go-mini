@@ -19,7 +19,7 @@ func TestEdgeCases(t *testing.T) {
 	executor.MustAddFunc("push", func(v any) {
 		results = append(results, utils.FormatValue(v))
 	})
-	
+
 	// mock function that logs when it is called (useful for short-circuit testing)
 	executor.MustAddFunc("IsTrue", func() ast.MiniBool {
 		results = append(results, "IsTrue_called")
@@ -133,7 +133,7 @@ func TestEdgeCases(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"1-3"}, results)
 	})
-	
+
 	t.Run("assignment_operations", func(t *testing.T) {
 		results = nil
 		code := `

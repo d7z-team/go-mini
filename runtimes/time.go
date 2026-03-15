@@ -23,7 +23,6 @@ func (o *MiniTime) Data() time.Time {
 	return o.t
 }
 
-
 func (o *MiniTime) GoString() string {
 	return o.t.Format(time.RFC3339)
 }
