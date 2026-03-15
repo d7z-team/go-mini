@@ -35,6 +35,35 @@ func (p *ProgramStmt) Validate(ctx *ValidContext) (Node, bool) {
 		ctx.AddErrorf("程序入口必须为顶点")
 		return nil, false
 	}
+	// 第一遍：预注册所有结构体，以支持相互引用
+	for _, structDef := range p.Structs {
+		if !structDef.PreRegister(ctx) {
+			return nil, false
+		}
+	}
+	for _, stmt := range p.Main {
+		if s, ok := stmt.(*StructStmt); ok {
+			if !s.PreRegister(ctx) {
+				return nil, false
+			}
+		}
+	}
+
+	// 第二遍：预注册所有函数签名，以支持相互递归
+	for _, function := range p.Functions {
+		if _, ok := function.PreRegister(ctx); !ok {
+			return nil, false
+		}
+	}
+	for _, stmt := range p.Main {
+		if f, ok := stmt.(*FunctionStmt); ok {
+			if _, ok := f.PreRegister(ctx); !ok {
+				return nil, false
+			}
+		}
+	}
+
+	// 第三遍：完整验证
 	for i, structDef := range p.Structs {
 		validate, b := structDef.Validate(ctx)
 		if !b {
@@ -407,23 +436,15 @@ type FunctionStmt struct {
 	Body         *BlockStmt `json:"body"` // 函数结构体
 }
 
-func (f *FunctionStmt) GetBase() *BaseNode { return &f.BaseNode }
-func (f *FunctionStmt) stmtNode()          {}
-
-// Validate todo: 调整函数声明限制
-func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
-	funcCtx := ctx.Child(f)
-	// 函数注册应该是全局注册
-	funcCtx.parent = nil
-
-	var structType *ValidStruct
-
+// PreRegister 预注册函数签名 (用于支持相互递归)
+func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 	if ctx.root.Package != "" && ctx.root.Package != "main" {
 		if !strings.Contains(string(f.Name), ".") {
 			f.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, f.Name))
 		}
 	}
 
+	var structType *ValidStruct
 	if f.Scope != "" {
 		f.Scope = Ident(GoMiniType(f.Scope).Resolve(ctx))
 		if !f.Scope.Valid(ctx) {
@@ -432,7 +453,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 
 		var ok bool
 		if structType, ok = ctx.GetStruct(f.Scope); !ok {
-			funcCtx.AddErrorf("未知 struct %s", f.Scope)
+			ctx.AddErrorf("未知 struct %s", f.Scope)
 			return nil, false
 		}
 	} else {
@@ -440,7 +461,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 	}
 
 	if f.Name == "" {
-		funcCtx.AddErrorf("函数定义缺少名称")
+		ctx.AddErrorf("函数定义缺少名称")
 		return nil, false
 	}
 
@@ -448,12 +469,7 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 		return nil, false
 	}
 
-	if t, ok := structType.Methods[f.Name]; ok {
-		funcCtx.AddErrorf("函数 %s 已被定义: %s", f.Name, t)
-		return nil, false
-	}
-
-	// 验证函数类型
+	// 验证并解析函数类型
 	f.FunctionType.Return = f.FunctionType.Return.Resolve(ctx)
 	if !f.FunctionType.Return.Valid(ctx) {
 		return nil, false
@@ -461,13 +477,53 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 
 	for i, param := range f.Params {
 		f.Params[i].Type = param.Type.Resolve(ctx)
-		if param.Name == "" || !param.Name.Valid(ctx) {
-			return nil, false
-		}
 		if !f.Params[i].Type.Valid(ctx) {
 			return nil, false
 		}
-		if f.Params[i].Type.IsVoid() {
+	}
+
+	if t, ok := structType.Methods[f.Name]; ok {
+		sig := f.FunctionType.ToCallFunctionType()
+		if t.String() != sig.String() {
+			ctx.AddErrorf("函数 %s 已被定义为 %s (新定义: %s)", f.Name, t, sig)
+			return nil, false
+		}
+		return structType, true
+	}
+
+	// 注册函数签名
+	structType.Methods[f.Name] = f.FunctionType.ToCallFunctionType()
+	if f.Scope != "" {
+		err := ctx.AddFuncSpec(Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name)), GoMiniType(f.FunctionType.String()))
+		if err != nil {
+			ctx.AddErrorf("添加全局函数失败")
+			return nil, false
+		}
+	}
+
+	return structType, true
+}
+
+func (f *FunctionStmt) GetBase() *BaseNode { return &f.BaseNode }
+func (f *FunctionStmt) stmtNode()          {}
+
+// Validate todo: 调整函数声明限制
+func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
+	_, ok := f.PreRegister(ctx)
+	if !ok {
+		return nil, false
+	}
+
+	funcCtx := ctx.Child(f)
+	// 函数注册应该是全局注册
+	funcCtx.parent = nil
+
+	// 检查参数有效性 (PreRegister 已经解析了类型，但我们还要检查名称)
+	for _, param := range f.Params {
+		if param.Name == "" || !param.Name.Valid(ctx) {
+			return nil, false
+		}
+		if param.Type.IsVoid() {
 			ctx.AddErrorf("%s 不接受 void 类型作为函数参数", param.Name)
 			return nil, false
 		}
@@ -484,6 +540,23 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 	// this 上下文
 	if f.Scope != "" {
 		bodyCtx.AddVariable("this", GoMiniType(f.Scope))
+	}
+
+	// 注册函数到程序中 (以便执行时查找)
+	f.Type = "Void"
+	name := f.Name
+	if f.Scope != "" {
+		name = Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name))
+	}
+	ctx.root.program.Functions[name] = &FunctionStmt{
+		BaseNode: f.BaseNode,
+		FunctionType: FunctionType{
+			Params: f.Params,
+			Return: f.Return,
+		},
+		Scope: "",
+		Name:  name,
+		Body:  f.Body,
 	}
 
 	// 验证函数体
@@ -511,30 +584,6 @@ func (f *FunctionStmt) Validate(ctx *ValidContext) (Node, bool) {
 		}
 	}
 
-	// 注册函数
-	structType.Methods[f.Name] = f.FunctionType.ToCallFunctionType()
-	if f.Scope != "" {
-		err := ctx.AddFuncSpec(Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name)), GoMiniType(f.FunctionType.String()))
-		if err != nil {
-			ctx.AddErrorf("添加全局函数失败")
-			return nil, false
-		}
-	}
-	f.Type = "Void"
-	name := f.Name
-	if f.Scope != "" {
-		name = Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name))
-	}
-	ctx.root.program.Functions[name] = &FunctionStmt{
-		BaseNode: f.BaseNode,
-		FunctionType: FunctionType{
-			Params: f.Params,
-			Return: f.Return,
-		},
-		Scope: "",
-		Name:  name,
-		Body:  f.Body,
-	}
 	return nil, true
 }
 
@@ -802,6 +851,36 @@ type StructStmt struct {
 	Fields map[Ident]GoMiniType `json:"fields"`
 }
 
+// PreRegister 预注册结构体 (用于支持相互引用)
+func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
+	if ctx.root.Package != "" && ctx.root.Package != "main" {
+		if !strings.Contains(string(s.Name), ".") {
+			s.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, s.Name))
+		}
+	}
+
+	if !s.Name.Valid(ctx) {
+		return false
+	}
+
+	// 提前注册一个空结构体，以支持自引用或循环引用
+	if v, ok := ctx.root.structs[s.Name]; ok {
+		// 检查是否已经定义了字段 (如果是 PreRegister 占位，Fields 通常为空)
+		// 这里简单处理：如果已经有字段了，说明重复定义了
+		if len(v.Fields) > 0 || len(v.Methods) > 0 {
+			ctx.AddErrorf("struct %s 已被定义", s.Name)
+			return false
+		}
+		return true
+	}
+
+	ctx.root.structs[s.Name] = &ValidStruct{
+		Fields:  make(map[Ident]GoMiniType),
+		Methods: make(map[Ident]CallFunctionType),
+	}
+	return true
+}
+
 func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StructStmt) stmtNode()          {}
 
@@ -822,6 +901,14 @@ func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
 		return nil, false
 	}
 
+	// 检查是否已经由其他 Validate 调用完全定义过
+	if v, ok := parentCtx.root.structs[s.Name]; ok {
+		if v.Defined {
+			ctx.AddErrorf("struct %s 已被定义", s.Name)
+			return nil, false
+		}
+	}
+
 	// 验证字段
 	for fieldName, fieldType := range s.Fields {
 		s.Fields[fieldName] = fieldType.Resolve(ctx)
@@ -838,6 +925,7 @@ func (s *StructStmt) Validate(parentCtx *ValidContext) (Node, bool) {
 		ctx.AddErrorf("定义struct失败: %v", err)
 		return nil, false
 	}
+	parentCtx.root.structs[s.Name].Defined = true
 
 	s.Type = "Void"
 	parentCtx.root.program.Structs[s.Name] = s

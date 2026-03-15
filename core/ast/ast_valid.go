@@ -206,6 +206,7 @@ func (c *ValidContext) Child(b Node) *ValidContext {
 type ValidStruct struct {
 	Fields  map[Ident]GoMiniType
 	Methods map[Ident]CallFunctionType
+	Defined bool // 是否已通过 Validate 完整定义
 }
 
 func (c *ValidContext) NextID() uint64 {
@@ -408,27 +409,29 @@ func (c *ValidContext) AddFuncSpec(name Ident, miniType GoMiniType) error {
 }
 
 func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) error {
-	if _, ok := c.root.structs[name]; ok {
-		return errors.New("struct already defined")
+	vStru, ok := c.root.structs[name]
+	if !ok {
+		valid := name.Valid(c)
+		if !valid {
+			return errors.New("invalid identifier")
+		}
+		vStru = &ValidStruct{
+			Fields:  make(map[Ident]GoMiniType),
+			Methods: make(map[Ident]CallFunctionType),
+		}
+		c.root.structs[name] = vStru
 	}
-	valid := name.Valid(c)
-	if !valid {
-		return errors.New("invalid identifier")
-	}
-	fields := make(map[Ident]GoMiniType)
-	methods := make(map[Ident]CallFunctionType)
-	c.root.structs[name] = &ValidStruct{Fields: fields, Methods: methods}
+
 	for ident, miniType := range specs {
 		if !ident.Valid(c) || !miniType.Valid(c) {
-			delete(c.root.structs, name)
 			return fmt.Errorf("invalid member identifier (%s) or type (%s) ", ident, miniType)
 		}
 		callFunc, b := miniType.ReadCallFunc()
 		if b {
-			methods[ident] = callFunc
+			vStru.Methods[ident] = callFunc
 			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", name, ident))] = callFunc
 		} else {
-			fields[ident] = miniType
+			vStru.Fields[ident] = miniType
 		}
 	}
 	return nil
