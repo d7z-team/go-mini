@@ -76,6 +76,59 @@ type VMMap struct {
 	Data map[string]*Var
 }
 
+func (v *Var) ToInt() (int64, error) {
+	if v == nil {
+		return 0, fmt.Errorf("accessing nil variable")
+	}
+	if v.VType != TypeInt {
+		return 0, fmt.Errorf("type mismatch: expected Int64, got %v", v.VType)
+	}
+	return v.I64, nil
+}
+
+func (v *Var) ToFloat() (float64, error) {
+	if v == nil {
+		return 0, fmt.Errorf("accessing nil variable")
+	}
+	if v.VType == TypeFloat {
+		return v.F64, nil
+	}
+	if v.VType == TypeInt {
+		return float64(v.I64), nil
+	}
+	return 0, fmt.Errorf("type mismatch: expected Numeric, got %v", v.VType)
+}
+
+func (v *Var) ToBool() (bool, error) {
+	if v == nil {
+		return false, fmt.Errorf("accessing nil variable")
+	}
+	if v.VType != TypeBool {
+		return false, fmt.Errorf("type mismatch: expected Bool, got %v", v.VType)
+	}
+	return v.Bool, nil
+}
+
+func (v *Var) ToBytes() ([]byte, error) {
+	if v == nil {
+		return nil, fmt.Errorf("accessing nil variable")
+	}
+	if v.VType != TypeBytes {
+		return nil, fmt.Errorf("type mismatch: expected TypeBytes, got %v", v.VType)
+	}
+	return v.B, nil
+}
+
+func (v *Var) ToHandle() (uint32, error) {
+	if v == nil {
+		return 0, fmt.Errorf("accessing nil variable")
+	}
+	if v.VType != TypeHandle {
+		return 0, fmt.Errorf("type mismatch: expected TypeHandle, got %v", v.VType)
+	}
+	return v.Handle, nil
+}
+
 func cloneVar(v *Var) *Var {
 	if v == nil {
 		return nil

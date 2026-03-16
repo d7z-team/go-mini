@@ -23,6 +23,9 @@ type Executor struct {
 	routes  map[string]FFIRoute // 显式映射外部函数名到 Bridge
 
 	activeHandles []handleRef
+
+	StepLimit int64
+	stepCount int64
 }
 
 type handleRef struct {
@@ -144,6 +147,14 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 func (e *Executor) execStmts(ctx *StackContext, children []ast.Stmt) error {
 	for _, child := range children {
+		// 检查指令限制
+		if e.StepLimit > 0 {
+			e.stepCount++
+			if e.stepCount > e.StepLimit {
+				return fmt.Errorf("instruction limit exceeded (%d)", e.StepLimit)
+			}
+		}
+
 		// 检查 Context 是否已取消
 		if err := ctx.Context.Err(); err != nil {
 			return err
@@ -462,56 +473,129 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 		return nil, errors.New("binary op with nil operand")
 	}
 
-	// 数值类型混合比较与运算
-	if (l.VType == TypeInt || l.VType == TypeFloat) && (r.VType == TypeInt || r.VType == TypeFloat) {
-		lf := float64(l.I64)
-		if l.VType == TypeFloat {
-			lf = l.F64
-		}
-		rf := float64(r.I64)
-		if r.VType == TypeFloat {
-			rf = r.F64
-		}
+	// 路由到专门的处理函数
+	switch operator {
+	case "+", "Plus", "Add", "-", "Minus", "Sub", "*", "Mult", "/", "Div", "%", "Mod":
+		return e.evalArithmetic(operator, l, r)
+	case "&", "BitAnd", "|", "BitOr", "^", "BitXor", "<<", "Lsh", ">>", "Rsh":
+		return e.evalBitwise(operator, l, r)
+	case "==", "Eq", "!=", "Neq", "<", "Lt", ">", "Gt", "<=", "Le", ">=", "Ge":
+		return e.evalComparison(operator, l, r)
+	case "&&", "And", "||", "Or":
+		return e.evalLogic(operator, l, r)
+	}
 
-		switch operator {
-		case "+", "Plus":
-			if l.VType == TypeFloat || r.VType == TypeFloat {
-				return NewFloat(lf + rf), nil
+	return nil, fmt.Errorf("unsupported operator: %s", operator)
+}
+
+func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
+	if l.VType != TypeInt && l.VType != TypeFloat {
+		// 特殊处理字符串/字节切片拼接
+		if (op == "+" || op == "Plus" || op == "Add") && (l.VType == TypeString || l.VType == TypeBytes) {
+			lStr := l.Str
+			if l.VType == TypeBytes {
+				lStr = string(l.B)
 			}
-			return NewInt(l.I64 + r.I64), nil
-		case "-", "Minus", "Sub":
-			if l.VType == TypeFloat || r.VType == TypeFloat {
-				return NewFloat(lf - rf), nil
+			rStr := r.Str
+			if r.VType == TypeBytes {
+				rStr = string(r.B)
 			}
-			return NewInt(l.I64 - r.I64), nil
-		case "*", "Mult":
-			if l.VType == TypeFloat || r.VType == TypeFloat {
-				return NewFloat(lf * rf), nil
-			}
-			return NewInt(l.I64 * r.I64), nil
-		case "/", "Div":
-			if rf == 0 {
-				return nil, errors.New("division by zero")
-			}
-			if l.VType == TypeFloat || r.VType == TypeFloat {
-				return NewFloat(lf / rf), nil
-			}
-			return NewInt(l.I64 / r.I64), nil
-		case "%", "Mod":
-			if int64(rf) == 0 {
-				return nil, errors.New("division by zero")
-			}
-			return NewInt(l.I64 % int64(rf)), nil
-		case "&", "And", "BitAnd":
-			return NewInt(l.I64 & r.I64), nil
-		case "|", "Or", "BitOr":
-			return NewInt(l.I64 | r.I64), nil
-		case "^", "Xor", "BitXor":
-			return NewInt(l.I64 ^ r.I64), nil
-		case "<<", "Lsh":
-			return NewInt(l.I64 << uint(r.I64)), nil
-		case ">>", "Rsh":
-			return NewInt(l.I64 >> uint(r.I64)), nil
+			return NewString(lStr + rStr), nil
+		}
+		return nil, fmt.Errorf("arithmetic operation %s on non-numeric type %v", op, l.VType)
+	}
+	if r.VType != TypeInt && r.VType != TypeFloat {
+		return nil, fmt.Errorf("arithmetic operation %s on non-numeric type %v", op, r.VType)
+	}
+
+	lf, _ := l.ToFloat()
+	rf, _ := r.ToFloat()
+	useFloat := l.VType == TypeFloat || r.VType == TypeFloat
+
+	switch op {
+	case "+", "Plus", "Add":
+		if useFloat {
+			return NewFloat(lf + rf), nil
+		}
+		return NewInt(l.I64 + r.I64), nil
+	case "-", "Minus", "Sub":
+		if useFloat {
+			return NewFloat(lf - rf), nil
+		}
+		return NewInt(l.I64 - r.I64), nil
+	case "*", "Mult":
+		if useFloat {
+			return NewFloat(lf * rf), nil
+		}
+		return NewInt(l.I64 * r.I64), nil
+	case "/", "Div":
+		if rf == 0 {
+			return nil, errors.New("division by zero")
+		}
+		if useFloat {
+			return NewFloat(lf / rf), nil
+		}
+		return NewInt(l.I64 / r.I64), nil
+	case "%", "Mod":
+		if r.I64 == 0 {
+			return nil, errors.New("division by zero")
+		}
+		return NewInt(l.I64 % r.I64), nil
+	}
+	return nil, fmt.Errorf("unsupported arithmetic operator: %s", op)
+}
+
+func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
+	li, err := l.ToInt()
+	if err != nil {
+		return nil, err
+	}
+	ri, err := r.ToInt()
+	if err != nil {
+		return nil, err
+	}
+
+	switch op {
+	case "&", "BitAnd":
+		return NewInt(li & ri), nil
+	case "|", "BitOr":
+		return NewInt(li | ri), nil
+	case "^", "BitXor":
+		return NewInt(li ^ ri), nil
+	case "<<", "Lsh":
+		return NewInt(li << uint(ri)), nil
+	case ">>", "Rsh":
+		return NewInt(li >> uint(ri)), nil
+	}
+	return nil, fmt.Errorf("unsupported bitwise operator: %s", op)
+}
+
+func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
+	if l.VType == TypeString && r.VType == TypeString {
+		switch op {
+		case "==", "Eq":
+			return NewBool(l.Str == r.Str), nil
+		case "!=", "Neq":
+			return NewBool(l.Str != r.Str), nil
+		}
+	}
+	if l.VType == TypeBool && r.VType == TypeBool {
+		switch op {
+		case "==", "Eq":
+			return NewBool(l.Bool == r.Bool), nil
+		case "!=", "Neq":
+			return NewBool(l.Bool != r.Bool), nil
+		}
+	}
+
+	lf, lErr := l.ToFloat()
+	rf, rErr := r.ToFloat()
+	if lErr == nil && rErr == nil {
+		switch op {
+		case "==", "Eq":
+			return NewBool(lf == rf), nil
+		case "!=", "Neq":
+			return NewBool(lf != rf), nil
 		case "<", "Lt":
 			return NewBool(lf < rf), nil
 		case ">", "Gt":
@@ -520,46 +604,37 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 			return NewBool(lf <= rf), nil
 		case ">=", "Ge":
 			return NewBool(lf >= rf), nil
-		case "==", "Eq":
-			return NewBool(lf == rf), nil
-		case "!=", "Neq":
-			return NewBool(lf != rf), nil
 		}
 	}
 
-	if l.VType == TypeBool && r.VType == TypeBool {
-		switch operator {
-		case "==", "Eq":
-			return NewBool(l.Bool == r.Bool), nil
-		case "!=", "Neq":
-			return NewBool(l.Bool != r.Bool), nil
-		case "&&", "And":
-			return NewBool(l.Bool && r.Bool), nil
-		case "||", "Or":
-			return NewBool(l.Bool || r.Bool), nil
-		}
+	// 基础比较
+	if op == "==" || op == "Eq" {
+		return NewBool(l == r), nil
+	}
+	if op == "!=" || op == "Neq" {
+		return NewBool(l != r), nil
 	}
 
-	if (l.VType == TypeString || l.VType == TypeBytes) && (r.VType == TypeString || r.VType == TypeBytes) {
-		lStr := l.Str
-		if l.VType == TypeBytes {
-			lStr = string(l.B)
-		}
-		rStr := r.Str
-		if r.VType == TypeBytes {
-			rStr = string(r.B)
-		}
+	return nil, fmt.Errorf("unsupported comparison %s between %v and %v", op, l.VType, r.VType)
+}
 
-		switch operator {
-		case "==", "Eq":
-			return NewBool(lStr == rStr), nil
-		case "!=", "Neq":
-			return NewBool(lStr != rStr), nil
-		case "+", "Plus":
-			return NewString(lStr + rStr), nil
-		}
+func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
+	lb, err := l.ToBool()
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("unsupported binary op %s between %v and %v", operator, l.VType, r.VType)
+	rb, err := r.ToBool()
+	if err != nil {
+		return nil, err
+	}
+
+	switch op {
+	case "&&", "And":
+		return NewBool(lb && rb), nil
+	case "||", "Or":
+		return NewBool(lb || rb), nil
+	}
+	return nil, fmt.Errorf("unsupported logic operator: %s", op)
 }
 
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {

@@ -31,6 +31,10 @@ type MiniProgram struct {
 	executor *runtime.Executor
 }
 
+func (p *MiniProgram) SetStepLimit(limit int64) {
+	p.executor.StepLimit = limit
+}
+
 func (p *MiniProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
 }
