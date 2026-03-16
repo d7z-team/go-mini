@@ -207,6 +207,36 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		}
 		return nil
 
+	case *ast.DeclStmt:
+		if decl, ok := st.Decl.(*ast.GenDecl); ok && decl.Tok == token.VAR {
+			var children []mini_ast.Stmt
+			for _, spec := range decl.Specs {
+				if vSpec, ok := spec.(*ast.ValueSpec); ok {
+					vType := c.typeToString(vSpec.Type)
+					for i, name := range vSpec.Names {
+						children = append(children, &mini_ast.GenDeclStmt{
+							BaseNode: mini_ast.BaseNode{Meta: "decl"},
+							Name:     mini_ast.Ident(name.Name),
+							Kind:     mini_ast.GoMiniType(vType),
+						})
+						if i < len(vSpec.Values) {
+							children = append(children, &mini_ast.AssignmentStmt{
+								BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+								Variable: mini_ast.Ident(name.Name),
+								Value:    c.convertExpr(vSpec.Values[i]),
+							})
+						}
+					}
+				}
+			}
+			return &mini_ast.BlockStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "block"},
+				Inner:    true,
+				Children: children,
+			}
+		}
+		return nil
+
 	case *ast.IfStmt:
 		res := &mini_ast.IfStmt{BaseNode: mini_ast.BaseNode{Meta: "if"}}
 		res.Cond = c.convertExpr(st.Cond)

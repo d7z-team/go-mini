@@ -302,6 +302,16 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return nil
 	}
 
+	if objType.IsMap() {
+		_, vType, ok := objType.GetMapKeyValueTypes()
+		if ok {
+			m.Type = vType
+		} else {
+			m.Type = "Any"
+		}
+		return nil
+	}
+
 	if objType.IsResult() {
 		if m.Property == "val" {
 			valType, _ := objType.ReadResult()
