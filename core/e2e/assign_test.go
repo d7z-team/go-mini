@@ -2,8 +2,8 @@ package e2e
 
 import (
 	"context"
-	"testing"
 	"strings"
+	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 )
@@ -83,7 +83,7 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	
+
 	t.Run("MemberAssignment", func(t *testing.T) {
 		code := `
 		package main

@@ -4,19 +4,19 @@ package fmtlib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
-	MethodID_Fmt_Print = 1
+	MethodID_Fmt_Print   = 1
 	MethodID_Fmt_Println = 2
-	MethodID_Fmt_Printf = 3
+	MethodID_Fmt_Printf  = 3
 	MethodID_Fmt_Sprintf = 4
 )
 
 type FmtProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -26,7 +26,7 @@ func (p *FmtProxy) Print(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-	buf.WriteAny(item)
+		buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Print, buf.Bytes())
@@ -40,7 +40,7 @@ func (p *FmtProxy) Println(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-	buf.WriteAny(item)
+		buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Println, buf.Bytes())
@@ -55,7 +55,7 @@ func (p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-	buf.WriteAny(item)
+		buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Printf, buf.Bytes())
@@ -63,14 +63,14 @@ func (p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
 	return
 }
 
-func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) (string) {
+func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-	buf.WriteAny(item)
+		buf.WriteAny(item)
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_Fmt_Sprintf, buf.Bytes())
@@ -87,89 +87,90 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	switch methodID {
 	case MethodID_Fmt_Print:
 		var args []any
-	l_args := int(reqBuf.ReadUint32())
-	args = make([]any, l_args)
-	for i_args := 0; i_args < l_args; i_args++ {
-		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
-				args[i_args] = obj
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
 			} else {
 				args[i_args] = rawVal
 			}
-		} else {
-			args[i_args] = rawVal
 		}
-	}
 		impl.Print(args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Println:
 		var args []any
-	l_args := int(reqBuf.ReadUint32())
-	args = make([]any, l_args)
-	for i_args := 0; i_args < l_args; i_args++ {
-		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
-				args[i_args] = obj
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
 			} else {
 				args[i_args] = rawVal
 			}
-		} else {
-			args[i_args] = rawVal
 		}
-	}
 		impl.Println(args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Printf:
 		var format string
-	format = reqBuf.ReadString()
+		format = reqBuf.ReadString()
 		var args []any
-	l_args := int(reqBuf.ReadUint32())
-	args = make([]any, l_args)
-	for i_args := 0; i_args < l_args; i_args++ {
-		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
-				args[i_args] = obj
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
 			} else {
 				args[i_args] = rawVal
 			}
-		} else {
-			args[i_args] = rawVal
 		}
-	}
 		impl.Printf(format, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Sprintf:
 		var format string
-	format = reqBuf.ReadString()
+		format = reqBuf.ReadString()
 		var args []any
-	l_args := int(reqBuf.ReadUint32())
-	args = make([]any, l_args)
-	for i_args := 0; i_args < l_args; i_args++ {
-		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
-				args[i_args] = obj
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
 			} else {
 				args[i_args] = rawVal
 			}
-		} else {
-			args[i_args] = rawVal
 		}
-	}
 		r0 := impl.Sprintf(format, args...)
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteString(r0)
+		resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var Fmt_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -182,7 +183,7 @@ var Fmt_FFI_Metadata = []struct {
 }
 
 type Fmt_Bridge struct {
-	Impl Fmt
+	Impl     Fmt
 	Registry *ffigo.HandleRegistry
 }
 
@@ -191,11 +192,15 @@ func (b *Fmt_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]
 }
 
 func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterFMTLIBFmtLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Fmt, registry *ffigo.HandleRegistry) {
+func RegisterFMTLIBFmtLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl Fmt, registry *ffigo.HandleRegistry) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
 	for _, m := range Fmt_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

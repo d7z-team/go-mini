@@ -4,23 +4,23 @@ package oslib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
-	MethodID_OS_Open = 1
-	MethodID_OS_Create = 2
-	MethodID_OS_ReadFile = 3
+	MethodID_OS_Open      = 1
+	MethodID_OS_Create    = 2
+	MethodID_OS_ReadFile  = 3
 	MethodID_OS_WriteFile = 4
-	MethodID_OS_Remove = 5
-	MethodID_OS_Read = 6
-	MethodID_OS_Write = 7
-	MethodID_OS_Close = 8
+	MethodID_OS_Remove    = 5
+	MethodID_OS_Read      = 6
+	MethodID_OS_Write     = 7
+	MethodID_OS_Close     = 8
 )
 
 type OSProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -33,7 +33,9 @@ func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Open, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -41,13 +43,13 @@ func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 	var v_0 *File
-		if id := retBuf.ReadUint32(); id != 0 {
-			if p.registry != nil {
-				if obj, ok := p.registry.Get(id); ok {
-					v_0 = obj.(*File)
-				}
+	if id := retBuf.ReadUint32(); id != 0 {
+		if p.registry != nil {
+			if obj, ok := p.registry.Get(id); ok {
+				v_0 = obj.(*File)
 			}
 		}
+	}
 	return v_0, nil
 }
 
@@ -60,7 +62,9 @@ func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Create, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -68,13 +72,13 @@ func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 	var v_0 *File
-		if id := retBuf.ReadUint32(); id != 0 {
-			if p.registry != nil {
-				if obj, ok := p.registry.Get(id); ok {
-					v_0 = obj.(*File)
-				}
+	if id := retBuf.ReadUint32(); id != 0 {
+		if p.registry != nil {
+			if obj, ok := p.registry.Get(id); ok {
+				v_0 = obj.(*File)
 			}
 		}
+	}
 	return v_0, nil
 }
 
@@ -87,7 +91,9 @@ func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_OS_ReadFile, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -99,7 +105,7 @@ func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) (error) {
+func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -109,11 +115,13 @@ func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) (erro
 	retData, err := p.bridge.Call(ctx, MethodID_OS_WriteFile, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (p *OSProxy) Remove(ctx context.Context, name string) (error) {
+func (p *OSProxy) Remove(ctx context.Context, name string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -122,7 +130,9 @@ func (p *OSProxy) Remove(ctx context.Context, name string) (error) {
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Remove, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -130,17 +140,19 @@ func (p *OSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-		if p.registry != nil {
-			buf.WriteUint32(p.registry.Register(f))
-		} else {
-			buf.WriteUint32(0)
-		}
+	if p.registry != nil {
+		buf.WriteUint32(p.registry.Register(f))
+	} else {
+		buf.WriteUint32(0)
+	}
 	buf.WriteBytes(b)
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Read, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return 0, err }
+	if err != nil {
+		return 0, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -156,17 +168,19 @@ func (p *OSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-		if p.registry != nil {
-			buf.WriteUint32(p.registry.Register(f))
-		} else {
-			buf.WriteUint32(0)
-		}
+	if p.registry != nil {
+		buf.WriteUint32(p.registry.Register(f))
+	} else {
+		buf.WriteUint32(0)
+	}
 	buf.WriteBytes(b)
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Write, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return 0, err }
+	if err != nil {
+		return 0, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -178,20 +192,22 @@ func (p *OSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Close(ctx context.Context, f *File) (error) {
+func (p *OSProxy) Close(ctx context.Context, f *File) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-		if p.registry != nil {
-			buf.WriteUint32(p.registry.Register(f))
-		} else {
-			buf.WriteUint32(0)
-		}
+	if p.registry != nil {
+		buf.WriteUint32(p.registry.Register(f))
+	} else {
+		buf.WriteUint32(0)
+	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Close, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -200,7 +216,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
-	name = reqBuf.ReadString()
+		name = reqBuf.ReadString()
 		r0, err := impl.Open(ctx, name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -208,12 +224,12 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-		resBuf.WriteUint32(registry.Register(r0))
+			resBuf.WriteUint32(registry.Register(r0))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Create:
 		var name string
-	name = reqBuf.ReadString()
+		name = reqBuf.ReadString()
 		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -221,12 +237,12 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-		resBuf.WriteUint32(registry.Register(r0))
+			resBuf.WriteUint32(registry.Register(r0))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_ReadFile:
 		var name string
-	name = reqBuf.ReadString()
+		name = reqBuf.ReadString()
 		r0, err := impl.ReadFile(name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -234,14 +250,14 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteBytes(r0)
+			resBuf.WriteBytes(r0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_WriteFile:
 		var name string
-	name = reqBuf.ReadString()
+		name = reqBuf.ReadString()
 		var data []byte
-	data = reqBuf.ReadBytes()
+		data = reqBuf.ReadBytes()
 		err := impl.WriteFile(name, data)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -253,7 +269,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Remove:
 		var name string
-	name = reqBuf.ReadString()
+		name = reqBuf.ReadString()
 		err := impl.Remove(name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -273,7 +289,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			}
 		}
 		var b []byte
-	b = reqBuf.ReadBytes()
+		b = reqBuf.ReadBytes()
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -281,7 +297,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteInt64(int64(r0))
+			resBuf.WriteInt64(int64(r0))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Write:
@@ -294,7 +310,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			}
 		}
 		var b []byte
-	b = reqBuf.ReadBytes()
+		b = reqBuf.ReadBytes()
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -302,7 +318,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteInt64(int64(r0))
+			resBuf.WriteInt64(int64(r0))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Close:
@@ -327,6 +343,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var OS_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -343,7 +360,7 @@ var OS_FFI_Metadata = []struct {
 }
 
 type OS_Bridge struct {
-	Impl OS
+	Impl     OS
 	Registry *ffigo.HandleRegistry
 }
 
@@ -352,11 +369,15 @@ func (b *OS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]b
 }
 
 func (b *OS_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterOSLIBOSLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl OS, registry *ffigo.HandleRegistry) {
+func RegisterOSLIBOSLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
 	for _, m := range OS_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

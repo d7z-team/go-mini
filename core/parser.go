@@ -149,17 +149,23 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		for k, sData := range raw.Structs {
 			sNode, err := unmarshalNode(sData)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			result.Structs[ast.Ident(k)] = sNode.(*ast.StructStmt)
 		}
 		for k, fData := range raw.Functions {
 			fNode, err := unmarshalNode(fData)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			result.Functions[ast.Ident(k)] = fNode.(*ast.FunctionStmt)
 		}
 		for _, mData := range raw.Main {
 			mNode, err := unmarshalNode(mData)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 			result.Main = append(result.Main, mNode.(ast.Stmt))
 		}
 		return result, nil

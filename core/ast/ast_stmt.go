@@ -1,9 +1,9 @@
 package ast
 
 import (
-	"errors"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -873,7 +873,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	// 特殊处理左值为 IdentifierExpr，因为可能涉及隐式声明
 	if ident, ok := a.LHS.(*IdentifierExpr); ok {
 		ident.Name = ident.Name.Resolve(&ctx.ValidContext)
-		
+
 		vType, b := ctx.GetVariable(ident.Name)
 		if !b && !strings.Contains(string(ident.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
 			mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
@@ -921,7 +921,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	if err := a.Value.Check(ctx); err != nil {
 		return err
 	}
-	
+
 	lhsType := a.LHS.GetBase().Type
 	valType := a.Value.GetBase().Type
 	if !valType.IsAssignableTo(lhsType) {

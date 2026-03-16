@@ -88,7 +88,7 @@ func TestFFIHandle(t *testing.T) {
 	bridge := &MockOS_Bridge{Impl: mock, Registry: registry}
 	proxy := &MockOSProxy{bridge: bridge, registry: registry}
 	ctx := context.Background()
-	
+
 	f, err := proxy.Open(ctx, "proxy.txt")
 	if err != nil {
 		t.Fatal(err)

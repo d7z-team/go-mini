@@ -4,8 +4,8 @@ package errorslib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
@@ -13,11 +13,11 @@ const (
 )
 
 type ErrorsProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func (p *ErrorsProxy) New(ctx context.Context, text string) (error) {
+func (p *ErrorsProxy) New(ctx context.Context, text string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -26,7 +26,9 @@ func (p *ErrorsProxy) New(ctx context.Context, text string) (error) {
 	retData, err := p.bridge.Call(ctx, MethodID_Errors_New, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -35,7 +37,7 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string
-	text = reqBuf.ReadString()
+		text = reqBuf.ReadString()
 		err := impl.New(text)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -49,6 +51,7 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var Errors_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -58,7 +61,7 @@ var Errors_FFI_Metadata = []struct {
 }
 
 type Errors_Bridge struct {
-	Impl Errors
+	Impl     Errors
 	Registry *ffigo.HandleRegistry
 }
 
@@ -67,11 +70,15 @@ func (b *Errors_Bridge) Call(ctx context.Context, methodID uint32, args []byte) 
 }
 
 func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterERRORSLIBErrorsLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Errors, registry *ffigo.HandleRegistry) {
+func RegisterERRORSLIBErrorsLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl Errors, registry *ffigo.HandleRegistry) {
 	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
 	for _, m := range Errors_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

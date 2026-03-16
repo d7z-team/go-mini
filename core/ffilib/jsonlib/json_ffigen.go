@@ -4,17 +4,17 @@ package jsonlib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
-	MethodID_JSON_Marshal = 1
+	MethodID_JSON_Marshal   = 1
 	MethodID_JSON_Unmarshal = 2
 )
 
 type JSONProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -27,7 +27,9 @@ func (p *JSONProxy) Marshal(ctx context.Context, v any) ([]byte, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_JSON_Marshal, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -48,7 +50,9 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_JSON_Unmarshal, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -82,12 +86,12 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteBytes(r0)
+			resBuf.WriteBytes(r0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_JSON_Unmarshal:
 		var data []byte
-	data = reqBuf.ReadBytes()
+		data = reqBuf.ReadBytes()
 		r0, err := impl.Unmarshal(data)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -95,13 +99,14 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteAny(r0)
+			resBuf.WriteAny(r0)
 		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var JSON_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -112,7 +117,7 @@ var JSON_FFI_Metadata = []struct {
 }
 
 type JSON_Bridge struct {
-	Impl JSON
+	Impl     JSON
 	Registry *ffigo.HandleRegistry
 }
 
@@ -121,11 +126,15 @@ func (b *JSON_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([
 }
 
 func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterJSONLIBJSONLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl JSON, registry *ffigo.HandleRegistry) {
+func RegisterJSONLIBJSONLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl JSON, registry *ffigo.HandleRegistry) {
 	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
 	for _, m := range JSON_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

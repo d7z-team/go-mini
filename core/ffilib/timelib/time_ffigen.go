@@ -4,25 +4,24 @@ package timelib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
-	MethodID_Time_Now = 1
+	MethodID_Time_Now   = 1
 	MethodID_Time_Sleep = 2
 	MethodID_Time_Since = 3
 )
 
 type TimeProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func (p *TimeProxy) Now(ctx context.Context, ) (string) {
+func (p *TimeProxy) Now(ctx context.Context) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
-
 
 	retData, err := p.bridge.Call(ctx, MethodID_Time_Now, buf.Bytes())
 	_ = retData
@@ -44,7 +43,7 @@ func (p *TimeProxy) Sleep(ctx context.Context, ns int64) {
 	return
 }
 
-func (p *TimeProxy) Since(ctx context.Context, startRFC3339 string) (int64) {
+func (p *TimeProxy) Since(ctx context.Context, startRFC3339 string) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -65,25 +64,26 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 	case MethodID_Time_Now:
 		r0 := impl.Now()
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteString(r0)
+		resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Sleep:
 		var ns int64
-	ns = int64(reqBuf.ReadInt64())
+		ns = int64(reqBuf.ReadInt64())
 		impl.Sleep(ns)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Since:
 		var startRFC3339 string
-	startRFC3339 = reqBuf.ReadString()
+		startRFC3339 = reqBuf.ReadString()
 		r0 := impl.Since(startRFC3339)
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteInt64(int64(r0))
+		resBuf.WriteInt64(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var Time_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -95,7 +95,7 @@ var Time_FFI_Metadata = []struct {
 }
 
 type Time_Bridge struct {
-	Impl Time
+	Impl     Time
 	Registry *ffigo.HandleRegistry
 }
 
@@ -104,11 +104,15 @@ func (b *Time_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([
 }
 
 func (b *Time_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterTIMELIBTimeLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Time, registry *ffigo.HandleRegistry) {
+func RegisterTIMELIBTimeLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl Time, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: impl, Registry: registry}
 	for _, m := range Time_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

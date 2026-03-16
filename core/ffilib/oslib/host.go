@@ -24,7 +24,7 @@ func (h *OSHost) ReadFile(name string) ([]byte, error) {
 }
 
 func (h *OSHost) WriteFile(name string, data []byte) error {
-	return os.WriteFile(name, data, 0644)
+	return os.WriteFile(name, data, 0o644)
 }
 
 func (h *OSHost) Remove(name string) error {

@@ -112,8 +112,8 @@ func TestControlFlowIfFor(t *testing.T) {
 			Update: &ast.IncDecStmt{Operand: &ast.IdentifierExpr{Name: "i"}, Operator: "++"},
 			Body: &ast.BlockStmt{Children: []ast.Stmt{
 				&ast.AssignmentStmt{
-					LHS:      &ast.IdentifierExpr{Name: "sum"},
-					Value:    &ast.BinaryExpr{Operator: "Plus", Left: &ast.IdentifierExpr{Name: "sum"}, Right: &ast.IdentifierExpr{Name: "i"}},
+					LHS:   &ast.IdentifierExpr{Name: "sum"},
+					Value: &ast.BinaryExpr{Operator: "Plus", Left: &ast.IdentifierExpr{Name: "sum"}, Right: &ast.IdentifierExpr{Name: "i"}},
 				},
 			}},
 		},

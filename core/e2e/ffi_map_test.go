@@ -32,7 +32,7 @@ func (h *MapTestHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[i
 func TestFFIMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &MapTestHost{}
-	
+
 	RegisterE2EMapTestLibrary(executor, "e2e", host, nil)
 
 	code := `

@@ -2,8 +2,8 @@ package e2e
 
 import (
 	"context"
-	"testing"
 	"strings"
+	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 )
@@ -27,10 +27,10 @@ func TestSecurityAndAuditability(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create runtime: %v", err)
 		}
-		
+
 		// 设置一个很小的 StepLimit (10步)
 		prog.SetStepLimit(10)
-		
+
 		err = prog.Execute(context.Background())
 		if err == nil {
 			t.Error("expected error due to step limit, but got nil")

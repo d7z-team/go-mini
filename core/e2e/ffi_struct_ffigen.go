@@ -4,24 +4,23 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
 	MethodID_MockShapeAPI_GetRect = 1
-	MethodID_MockShapeAPI_Area = 2
+	MethodID_MockShapeAPI_Area    = 2
 )
 
 type MockShapeAPIProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func (p *MockShapeAPIProxy) GetRect(ctx context.Context, ) (Rect) {
+func (p *MockShapeAPIProxy) GetRect(ctx context.Context) Rect {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
-
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockShapeAPI_GetRect, buf.Bytes())
 	_ = retData
@@ -35,7 +34,7 @@ func (p *MockShapeAPIProxy) GetRect(ctx context.Context, ) (Rect) {
 	return v_0
 }
 
-func (p *MockShapeAPIProxy) Area(ctx context.Context, r Rect) (int) {
+func (p *MockShapeAPIProxy) Area(ctx context.Context, r Rect) int {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -59,25 +58,26 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	case MethodID_MockShapeAPI_GetRect:
 		r0 := impl.GetRect()
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteInt64(int64(r0.A.X))
-	resBuf.WriteInt64(int64(r0.A.Y))
-	resBuf.WriteInt64(int64(r0.B.X))
-	resBuf.WriteInt64(int64(r0.B.Y))
+		resBuf.WriteInt64(int64(r0.A.X))
+		resBuf.WriteInt64(int64(r0.A.Y))
+		resBuf.WriteInt64(int64(r0.B.X))
+		resBuf.WriteInt64(int64(r0.B.Y))
 		return resBuf.Bytes(), nil
 	case MethodID_MockShapeAPI_Area:
 		var r Rect
-	r.A.X = int(reqBuf.ReadInt64())
-	r.A.Y = int(reqBuf.ReadInt64())
-	r.B.X = int(reqBuf.ReadInt64())
-	r.B.Y = int(reqBuf.ReadInt64())
+		r.A.X = int(reqBuf.ReadInt64())
+		r.A.Y = int(reqBuf.ReadInt64())
+		r.B.X = int(reqBuf.ReadInt64())
+		r.B.Y = int(reqBuf.ReadInt64())
 		r0 := impl.Area(r)
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteInt64(int64(r0))
+		resBuf.WriteInt64(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var MockShapeAPI_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -88,7 +88,7 @@ var MockShapeAPI_FFI_Metadata = []struct {
 }
 
 type MockShapeAPI_Bridge struct {
-	Impl MockShapeAPI
+	Impl     MockShapeAPI
 	Registry *ffigo.HandleRegistry
 }
 
@@ -97,11 +97,15 @@ func (b *MockShapeAPI_Bridge) Call(ctx context.Context, methodID uint32, args []
 }
 
 func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterE2EMockShapeAPILibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
+func RegisterE2EMockShapeAPILibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
 	for _, m := range MockShapeAPI_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

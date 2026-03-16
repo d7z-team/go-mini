@@ -178,7 +178,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 		if st.Tok == token.DEFINE { // :=
 			ident, ok := lhs.(*ast.Ident)
-			if !ok { return nil } // := 只能用于标识符
+			if !ok {
+				return nil
+			} // := 只能用于标识符
 			return &mini_ast.BlockStmt{
 				BaseNode: mini_ast.BaseNode{Meta: "block"},
 				Inner:    true,
@@ -521,11 +523,21 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 	switch t := e.(type) {
 	case *ast.Ident:
 		name := t.Name
-		if name == "int" || name == "int64" { return "Int64" }
-		if name == "float64" || name == "float32" { return "Float64" }
-		if name == "string" { return "String" }
-		if name == "bool" { return "Bool" }
-		if name == "any" || name == "interface{}" { return "Any" }
+		if name == "int" || name == "int64" {
+			return "Int64"
+		}
+		if name == "float64" || name == "float32" {
+			return "Float64"
+		}
+		if name == "string" {
+			return "String"
+		}
+		if name == "bool" {
+			return "Bool"
+		}
+		if name == "any" || name == "interface{}" {
+			return "Any"
+		}
 		return name
 	case *ast.ArrayType:
 		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))

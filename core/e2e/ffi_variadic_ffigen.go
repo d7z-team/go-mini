@@ -4,8 +4,8 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
@@ -13,7 +13,7 @@ const (
 )
 
 type PrinterAPIProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -23,7 +23,7 @@ func (p *PrinterAPIProxy) Println(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-	buf.WriteAny(item)
+		buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_PrinterAPI_Println, buf.Bytes())
@@ -36,20 +36,20 @@ func PrinterAPIHostRouter(ctx context.Context, impl PrinterAPI, registry *ffigo.
 	switch methodID {
 	case MethodID_PrinterAPI_Println:
 		var args []any
-	l_args := int(reqBuf.ReadUint32())
-	args = make([]any, l_args)
-	for i_args := 0; i_args < l_args; i_args++ {
-		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
-				args[i_args] = obj
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
 			} else {
 				args[i_args] = rawVal
 			}
-		} else {
-			args[i_args] = rawVal
 		}
-	}
 		impl.Println(args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
@@ -57,6 +57,7 @@ func PrinterAPIHostRouter(ctx context.Context, impl PrinterAPI, registry *ffigo.
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var PrinterAPI_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -66,7 +67,7 @@ var PrinterAPI_FFI_Metadata = []struct {
 }
 
 type PrinterAPI_Bridge struct {
-	Impl PrinterAPI
+	Impl     PrinterAPI
 	Registry *ffigo.HandleRegistry
 }
 
@@ -75,11 +76,15 @@ func (b *PrinterAPI_Bridge) Call(ctx context.Context, methodID uint32, args []by
 }
 
 func (b *PrinterAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterE2EPrinterAPILibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl PrinterAPI, registry *ffigo.HandleRegistry) {
+func RegisterE2EPrinterAPILibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl PrinterAPI, registry *ffigo.HandleRegistry) {
 	bridge := &PrinterAPI_Bridge{Impl: impl, Registry: registry}
 	for _, m := range PrinterAPI_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))

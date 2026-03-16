@@ -50,9 +50,14 @@ func TestOperators(t *testing.T) {
 
 type IntMapHost struct{}
 
-func (h *IntMapHost) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) { return m, nil }
+func (h *IntMapHost) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
+	return m, nil
+}
 func (h *IntMapHost) GetMap(ctx context.Context) (map[string]int64, error) { return nil, nil }
-func (h *IntMapHost) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) { return 0, nil }
+func (h *IntMapHost) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
+	return 0, nil
+}
+
 func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
 	return m, nil
 }

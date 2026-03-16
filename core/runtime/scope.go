@@ -155,6 +155,7 @@ func cloneVar(v *Var) *Var {
 	}
 	return res
 }
+
 func NewVar(typ ast.GoMiniType, vType VarType) *Var {
 	return &Var{
 		Type:  typ,

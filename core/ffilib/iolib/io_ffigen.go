@@ -4,8 +4,8 @@ package iolib
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 const (
@@ -13,7 +13,7 @@ const (
 )
 
 type IOProxy struct {
-	bridge ffigo.FFIBridge
+	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -26,7 +26,9 @@ func (p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 	retData, err := p.bridge.Call(ctx, MethodID_IO_ReadAll, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -60,13 +62,14 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteBytes(r0)
+			resBuf.WriteBytes(r0)
 		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
+
 var IO_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -76,7 +79,7 @@ var IO_FFI_Metadata = []struct {
 }
 
 type IO_Bridge struct {
-	Impl IO
+	Impl     IO
 	Registry *ffigo.HandleRegistry
 }
 
@@ -85,11 +88,15 @@ func (b *IO_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]b
 }
 
 func (b *IO_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil { b.Registry.Remove(handle) }
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
 	return nil
 }
 
-func RegisterIOLIBIOLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl IO, registry *ffigo.HandleRegistry) {
+func RegisterIOLIBIOLibrary(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, prefix string, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
 	for _, m := range IO_FFI_Metadata {
 		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
