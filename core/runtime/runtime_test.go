@@ -28,23 +28,31 @@ func TestScope(t *testing.T) {
 	// Nested scope
 	ctx.WithScope("local", func(c *StackContext) {
 		c.AddVariable("b", NewInt(200))
-		
+
 		// Access parent
 		gotA, _ := c.Load("a")
-		if gotA.I64 != 100 { t.Error("failed to access parent scope") }
-		
+		if gotA.I64 != 100 {
+			t.Error("failed to access parent scope")
+		}
+
 		// Shadowing (if allowed, here we just test isolation)
 		c.AddVariable("a", NewInt(300))
 		gotShadow, _ := c.Load("a")
-		if gotShadow.I64 != 300 { t.Error("shadowing failed") }
+		if gotShadow.I64 != 300 {
+			t.Error("shadowing failed")
+		}
 	})
 
 	// Check isolation
 	gotBack, _ := ctx.Load("a")
-	if gotBack.I64 != 100 { t.Error("scope isolation failed") }
-	
+	if gotBack.I64 != 100 {
+		t.Error("scope isolation failed")
+	}
+
 	_, err = ctx.Load("b")
-	if err == nil { t.Error("should not access child scope variable") }
+	if err == nil {
+		t.Error("should not access child scope variable")
+	}
 }
 
 type IdentVar = string // Alias for convenience in test
@@ -90,17 +98,17 @@ func TestExecutorBasic(t *testing.T) {
 }
 
 func TestControlFlowIfFor(t *testing.T) {
-	// Program: 
+	// Program:
 	// sum = 0
 	// for i = 0; i < 5; i++ { sum = sum + i }
 	// if sum == 10 { ok = true } else { ok = false }
-	
+
 	main := []ast.Stmt{
 		&ast.GenDeclStmt{Name: "sum", Kind: "Int64"},
 		&ast.AssignmentStmt{Variable: "sum", Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
 		&ast.ForStmt{
-			Init: &ast.AssignmentStmt{Variable: "i", Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
-			Cond: &ast.BinaryExpr{Operator: "Lt", Left: &ast.IdentifierExpr{Name: "i"}, Right: &ast.LiteralExpr{Value: "5", BaseNode: ast.BaseNode{Type: "Int64"}}},
+			Init:   &ast.AssignmentStmt{Variable: "i", Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
+			Cond:   &ast.BinaryExpr{Operator: "Lt", Left: &ast.IdentifierExpr{Name: "i"}, Right: &ast.LiteralExpr{Value: "5", BaseNode: ast.BaseNode{Type: "Int64"}}},
 			Update: &ast.IncDecStmt{Operand: &ast.IdentifierExpr{Name: "i"}, Operator: "++"},
 			Body: &ast.BlockStmt{Children: []ast.Stmt{
 				&ast.AssignmentStmt{
@@ -122,7 +130,7 @@ func TestControlFlowIfFor(t *testing.T) {
 	}
 
 	prog := &ast.ProgramStmt{
-		Main: main,
+		Main:      main,
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 		Constants: make(map[string]string),
 	}

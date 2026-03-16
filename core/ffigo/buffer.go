@@ -70,6 +70,63 @@ type Reader struct {
 	offset int
 }
 
+const (
+	TypeTagUnknown byte = 0
+	TypeTagInt64   byte = 1
+	TypeTagFloat64 byte = 2
+	TypeTagString  byte = 3
+	TypeTagBytes   byte = 4
+	TypeTagBool    byte = 5
+)
+
+func (b *Buffer) WriteAny(v interface{}) {
+	if v == nil {
+		b.buf = append(b.buf, TypeTagUnknown)
+		return
+	}
+	switch val := v.(type) {
+	case int64:
+		b.buf = append(b.buf, TypeTagInt64)
+		b.WriteInt64(val)
+	case int:
+		b.buf = append(b.buf, TypeTagInt64)
+		b.WriteInt64(int64(val))
+	case float64:
+		b.buf = append(b.buf, TypeTagFloat64)
+		b.WriteFloat64(val)
+	case string:
+		b.buf = append(b.buf, TypeTagString)
+		b.WriteString(val)
+	case []byte:
+		b.buf = append(b.buf, TypeTagBytes)
+		b.WriteBytes(val)
+	case bool:
+		b.buf = append(b.buf, TypeTagBool)
+		b.WriteBool(val)
+	default:
+		b.buf = append(b.buf, TypeTagUnknown)
+	}
+}
+
+func (r *Reader) ReadAny() interface{} {
+	tag := r.buf[r.offset]
+	r.offset++
+	switch tag {
+	case TypeTagInt64:
+		return r.ReadInt64()
+	case TypeTagFloat64:
+		return r.ReadFloat64()
+	case TypeTagString:
+		return r.ReadString()
+	case TypeTagBytes:
+		return r.ReadBytes()
+	case TypeTagBool:
+		return r.ReadBool()
+	default:
+		return nil
+	}
+}
+
 func NewReader(data []byte) *Reader {
 	return &Reader{buf: data, offset: 0}
 }

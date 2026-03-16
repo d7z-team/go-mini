@@ -245,7 +245,8 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 
 		if !alreadyPacked && len(c.Args) >= paramCount-1 {
 			fixedParams := fType.Params[:paramCount-1]
-			variadicParam := fType.Params[paramCount-1]
+			targetElem := fType.Params[paramCount-1]
+			variadicParam := CreateArrayType(targetElem)
 
 			for i := 0; i < len(fixedParams); i++ {
 				if ptr, ok := fixedParams[i].AutoPtr(c.Args[i]); ok {
@@ -254,7 +255,6 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 			}
 
 			variadicArgs := c.Args[paramCount-1:]
-			targetElem, _ := variadicParam.ReadArrayItemType()
 
 			wrappedElements := make([]CompositeElement, len(variadicArgs))
 			for i, arg := range variadicArgs {

@@ -249,7 +249,9 @@ func (s *StructCallExpr) Check(ctx *SemanticContext) error {
 	if ident, ok := s.Object.(*IdentifierExpr); ok {
 		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
 			pkgName := ctx.root.PathToPackage[realPkg]
-			if pkgName == "" { pkgName = realPkg }
+			if pkgName == "" {
+				pkgName = realPkg
+			}
 			mangledName := fmt.Sprintf("%s.%s", pkgName, s.Name)
 			if _, exists := ctx.GetFunction(Ident(mangledName)); exists {
 				s.Type = "Any" // 暂时统一定义为 Any
@@ -281,9 +283,11 @@ func (s *StructCallExpr) Optimize(ctx *OptimizeContext) Node {
 	if ident, ok := s.Object.(*IdentifierExpr); ok {
 		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
 			pkgName := ctx.root.PathToPackage[realPkg]
-			if pkgName == "" { pkgName = realPkg }
+			if pkgName == "" {
+				pkgName = realPkg
+			}
 			mangledName := fmt.Sprintf("%s.%s", pkgName, s.Name)
-			
+
 			constRef := &ConstRefExpr{
 				BaseNode: BaseNode{
 					ID:   s.ID + "_ref",
@@ -313,7 +317,7 @@ func (s *StructCallExpr) Optimize(ctx *OptimizeContext) Node {
 // LiteralExpr 表示字面量表达式
 type LiteralExpr struct {
 	BaseNode
-	Value string  `json:"value"`
+	Value string `json:"value"`
 }
 
 func (l *LiteralExpr) GetBase() *BaseNode { return &l.BaseNode }

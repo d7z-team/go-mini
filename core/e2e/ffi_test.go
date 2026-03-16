@@ -25,10 +25,14 @@ func (b *MockFmtBridge) Call(methodID uint32, args []byte) ([]byte, error) {
 	return nil, fmt.Errorf("unknown method %d", methodID)
 }
 
+func (b *MockFmtBridge) DestroyHandle(handle uint32) error {
+	return nil
+}
+
 func TestFFIPrintln(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &MockFmtBridge{}
-	
+
 	// 注册 FFI 路由
 	executor.RegisterFFI("fmt.Println", bridge, 1, "function(String) Void")
 

@@ -29,28 +29,46 @@ func unmarshalNode(data []byte) (ast.Node, error) {
 }
 
 func parseExpr(data []byte) (ast.Expr, error) {
-	if len(data) == 0 { return nil, nil }
+	if len(data) == 0 {
+		return nil, nil
+	}
 	node, err := unmarshalNode(data)
-	if err != nil { return nil, err }
-	if expr, ok := node.(ast.Expr); ok { return expr, nil }
+	if err != nil {
+		return nil, err
+	}
+	if expr, ok := node.(ast.Expr); ok {
+		return expr, nil
+	}
 	return nil, fmt.Errorf("节点不是表达式类型: %T", node)
 }
 
 func Unmarshal(data []byte) (ast.Node, error) {
-	if len(data) == 0 { return ast.NewBlock(nil), nil }
+	if len(data) == 0 {
+		return ast.NewBlock(nil), nil
+	}
 	if data[0] != '[' {
 		node, err := unmarshalNode(data)
-		if err != nil { return nil, err }
-		if block, ok := node.(*ast.BlockStmt); ok { return block, nil }
-		if prog, ok := node.(*ast.ProgramStmt); ok { return prog, nil }
+		if err != nil {
+			return nil, err
+		}
+		if block, ok := node.(*ast.BlockStmt); ok {
+			return block, nil
+		}
+		if prog, ok := node.(*ast.ProgramStmt); ok {
+			return prog, nil
+		}
 		return ast.NewBlock(nil, node.(ast.Stmt)), nil
 	}
 	var rawNodes []json.RawMessage
-	if err := json.Unmarshal(data, &rawNodes); err != nil { return nil, fmt.Errorf("解析节点数组失败: %w", err) }
+	if err := json.Unmarshal(data, &rawNodes); err != nil {
+		return nil, fmt.Errorf("解析节点数组失败: %w", err)
+	}
 	block := ast.NewBlock(nil)
 	for i, raw := range rawNodes {
 		node, err := unmarshalNode(raw)
-		if err != nil { return nil, fmt.Errorf("解析节点[%d]失败: %w", i, err) }
+		if err != nil {
+			return nil, fmt.Errorf("解析节点[%d]失败: %w", i, err)
+		}
 		block.Children = append(block.Children, node.(ast.Stmt))
 	}
 	return block, nil
@@ -65,21 +83,29 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 	var rootBlock *ast.ProgramStmt
 	if rootBlock, ok = root.(*ast.ProgramStmt); !ok {
 		rootBlock = &ast.ProgramStmt{
-			BaseNode: ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
+			BaseNode:  ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
 			Constants: make(map[string]string),
 			Variables: make(map[ast.Ident]ast.Expr),
 			Structs:   make(map[ast.Ident]*ast.StructStmt),
 			Functions: make(map[ast.Ident]*ast.FunctionStmt),
 			Main:      make([]ast.Stmt, 0),
 		}
-		if block, ok := root.(*ast.BlockStmt); ok { rootBlock.Main = block.Children }
+		if block, ok := root.(*ast.BlockStmt); ok {
+			rootBlock.Main = block.Children
+		}
 	}
 	ctx, err := ast.NewValidator(rootBlock)
-	if err != nil { return nil, nil, err }
+	if err != nil {
+		return nil, nil, err
+	}
 	ctx.SetLoader(loader)
-	if err := call(ctx); err != nil { return nil, nil, err }
+	if err := call(ctx); err != nil {
+		return nil, nil, err
+	}
 
-	if err := rootBlock.Check(ast.NewSemanticContext(ctx)); err != nil { return rootBlock, ctx.Logs(), err }
+	if err := rootBlock.Check(ast.NewSemanticContext(ctx)); err != nil {
+		return rootBlock, ctx.Logs(), err
+	}
 	optimized := rootBlock.Optimize(ast.NewOptimizeContext(ctx))
 	opts := optimized.(*ast.ProgramStmt)
 
@@ -105,7 +131,9 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			Functions map[string]json.RawMessage `json:"functions"`
 			Main      []json.RawMessage          `json:"main"`
 		}
-		if err := json.Unmarshal(data, &raw); err != nil { return nil, err }
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, err
+		}
 		result := &ast.ProgramStmt{
 			BaseNode:  baseNode,
 			Package:   raw.Package,
@@ -137,7 +165,9 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			Children []json.RawMessage `json:"children"`
 			Inner    bool              `json:"inner,omitempty"`
 		}
-		if err := json.Unmarshal(data, &raw); err != nil { return nil, err }
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, err
+		}
 		result := &ast.BlockStmt{BaseNode: baseNode, Inner: raw.Inner}
 		for _, childData := range raw.Children {
 			child, _ := unmarshalNode(childData)
@@ -155,11 +185,19 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		n.Cond, _ = parseExpr(raw.Cond)
 		if raw.Body != nil {
 			node, _ := unmarshalNode(raw.Body)
-			if block, ok := node.(*ast.BlockStmt); ok { n.Body = block } else { n.Body = ast.NewBlock(nil, node.(ast.Stmt)) }
+			if block, ok := node.(*ast.BlockStmt); ok {
+				n.Body = block
+			} else {
+				n.Body = ast.NewBlock(nil, node.(ast.Stmt))
+			}
 		}
 		if raw.Else != nil {
 			node, _ := unmarshalNode(raw.Else)
-			if block, ok := node.(*ast.BlockStmt); ok { n.ElseBody = block } else { n.ElseBody = ast.NewBlock(nil, node.(ast.Stmt)) }
+			if block, ok := node.(*ast.BlockStmt); ok {
+				n.ElseBody = block
+			} else {
+				n.ElseBody = ast.NewBlock(nil, node.(ast.Stmt))
+			}
 		}
 		return n, nil
 	case "for":
@@ -171,13 +209,23 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		n := &ast.ForStmt{BaseNode: baseNode}
-		if raw.Init != nil { n.Init, _ = unmarshalNode(raw.Init) }
-		if raw.Cond != nil { n.Cond, _ = parseExpr(raw.Cond) }
-		if raw.Upd != nil { n.Update, _ = unmarshalNode(raw.Upd) }
-		if raw.Body != nil { n.Body, _ = unmarshalNode(raw.Body) }
+		if raw.Init != nil {
+			n.Init, _ = unmarshalNode(raw.Init)
+		}
+		if raw.Cond != nil {
+			n.Cond, _ = parseExpr(raw.Cond)
+		}
+		if raw.Upd != nil {
+			n.Update, _ = unmarshalNode(raw.Upd)
+		}
+		if raw.Body != nil {
+			n.Body, _ = unmarshalNode(raw.Body)
+		}
 		return n, nil
 	case "return":
-		var raw struct{ Results []json.RawMessage `json:"results"` }
+		var raw struct {
+			Results []json.RawMessage `json:"results"`
+		}
 		_ = json.Unmarshal(data, &raw)
 		n := &ast.ReturnStmt{BaseNode: baseNode}
 		for _, rData := range raw.Results {
@@ -234,7 +282,9 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		return n, nil
 	case "identifier":
-		var raw struct{ Name string `json:"name"` }
+		var raw struct {
+			Name string `json:"name"`
+		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.IdentifierExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
 	case "assignment":
@@ -253,14 +303,16 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			Value string `json:"value"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		if raw.Kind == "" { raw.Kind = raw.Type }
+		if raw.Kind == "" {
+			raw.Kind = raw.Type
+		}
 		// 隔离架构下直接保留字面量，不包装 Data
 		return &ast.LiteralExpr{BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: ast.GoMiniType(raw.Kind)}, Value: raw.Value}, nil
 	case "binary":
 		var raw struct {
-			L    json.RawMessage `json:"left"`
-			Op   string          `json:"operator"`
-			R    json.RawMessage `json:"right"`
+			L  json.RawMessage `json:"left"`
+			Op string          `json:"operator"`
+			R  json.RawMessage `json:"right"`
 		}
 		_ = json.Unmarshal(data, &raw)
 		n := &ast.BinaryExpr{BaseNode: baseNode, Operator: ast.Ident(raw.Op)}
@@ -277,7 +329,9 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		n.Operand, _ = parseExpr(raw.Val)
 		return n, nil
 	case "const_ref":
-		var raw struct{ Name string `json:"name"` }
+		var raw struct {
+			Name string `json:"name"`
+		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.ConstRefExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
 	default:

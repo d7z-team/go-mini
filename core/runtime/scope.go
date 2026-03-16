@@ -6,20 +6,21 @@ import (
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type VarType byte
 
 const (
-	TypeInt    VarType = iota // Always int64
-	TypeFloat                 // Always float64
+	TypeInt   VarType = iota // Always int64
+	TypeFloat                // Always float64
 	TypeString
-	TypeBytes                 // Raw buffer
+	TypeBytes // Raw buffer
 	TypeBool
-	TypeMap                   // Internal VM Map (string keys only)
-	TypeArray                 // Internal VM Array ([]*Var)
-	TypeHandle                // Host resource ID (uint32)
-	TypeAny                   // Placeholder for unknown/dynamic
+	TypeMap    // Internal VM Map (string keys only)
+	TypeArray  // Internal VM Array ([]*Var)
+	TypeHandle // Host resource ID (uint32)
+	TypeAny    // Placeholder for unknown/dynamic
 )
 
 type Var struct {
@@ -31,6 +32,7 @@ type Var struct {
 	B      []byte
 	Bool   bool
 	Handle uint32
+	Bridge ffigo.FFIBridge
 	Ref    interface{} // Internal structures only: *VMArray, *VMMap
 
 	stack weak.Pointer[Stack]

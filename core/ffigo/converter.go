@@ -190,9 +190,15 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 	case *ast.ForStmt:
 		res := &mini_ast.ForStmt{BaseNode: mini_ast.BaseNode{Meta: "for"}}
-		if st.Init != nil { res.Init = c.convertStmt(st.Init) }
-		if st.Cond != nil { res.Cond = c.convertExpr(st.Cond) }
-		if st.Post != nil { res.Update = c.convertStmt(st.Post) }
+		if st.Init != nil {
+			res.Init = c.convertStmt(st.Init)
+		}
+		if st.Cond != nil {
+			res.Cond = c.convertExpr(st.Cond)
+		}
+		if st.Post != nil {
+			res.Update = c.convertStmt(st.Post)
+		}
 		res.Body = c.toBlock(st.Body)
 		return res
 
@@ -235,16 +241,22 @@ func (c *GoToASTConverter) toBlock(s ast.Stmt) *mini_ast.BlockStmt {
 }
 
 func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
-	if e == nil { return nil }
+	if e == nil {
+		return nil
+	}
 	switch ex := e.(type) {
 	case *ast.BasicLit:
 		t := "String"
 		val := ex.Value
 		switch ex.Kind {
-		case token.INT: t = "Int64"
-		case token.FLOAT: t = "Float64"
+		case token.INT:
+			t = "Int64"
+		case token.FLOAT:
+			t = "Float64"
 		case token.STRING:
-			if len(val) >= 2 { val = val[1 : len(val)-1] }
+			if len(val) >= 2 {
+				val = val[1 : len(val)-1]
+			}
 		}
 		return &mini_ast.LiteralExpr{BaseNode: mini_ast.BaseNode{Meta: "literal", Type: mini_ast.GoMiniType(t)}, Value: val}
 	case *ast.Ident:
@@ -255,7 +267,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 	case *ast.BinaryExpr:
 		return &mini_ast.BinaryExpr{BaseNode: mini_ast.BaseNode{Meta: "binary"}, Left: c.convertExpr(ex.X), Operator: mini_ast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
 	case *ast.UnaryExpr:
-		return &mini_ast.UnaryExpr{BaseNode: mini_ast.BaseNode{Meta: "unary"}, Operator: mini_ast.Ident(c.convertOp(ex.Op)), Operand:  c.convertExpr(ex.X)}
+		return &mini_ast.UnaryExpr{BaseNode: mini_ast.BaseNode{Meta: "unary"}, Operator: mini_ast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
 	case *ast.ParenExpr:
 		return c.convertExpr(ex.X)
 	case *ast.CallExpr:
@@ -283,20 +295,34 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 
 func (c *GoToASTConverter) convertOp(op token.Token) string {
 	switch op {
-	case token.ADD: return "Plus"
-	case token.SUB: return "Minus"
-	case token.MUL: return "Mult"
-	case token.QUO: return "Div"
-	case token.REM: return "Mod"
-	case token.EQL: return "Eq"
-	case token.NEQ: return "Neq"
-	case token.LSS: return "Lt"
-	case token.GTR: return "Gt"
-	case token.LEQ: return "Le"
-	case token.GEQ: return "Ge"
-	case token.LAND: return "And"
-	case token.LOR: return "Or"
-	case token.NOT: return "Not"
+	case token.ADD:
+		return "Plus"
+	case token.SUB:
+		return "Minus"
+	case token.MUL:
+		return "Mult"
+	case token.QUO:
+		return "Div"
+	case token.REM:
+		return "Mod"
+	case token.EQL:
+		return "Eq"
+	case token.NEQ:
+		return "Neq"
+	case token.LSS:
+		return "Lt"
+	case token.GTR:
+		return "Gt"
+	case token.LEQ:
+		return "Le"
+	case token.GEQ:
+		return "Ge"
+	case token.LAND:
+		return "And"
+	case token.LOR:
+		return "Or"
+	case token.NOT:
+		return "Not"
 	}
 	return op.String()
 }
@@ -304,7 +330,9 @@ func (c *GoToASTConverter) convertOp(op token.Token) string {
 func (c *GoToASTConverter) convertArgs(args []ast.Expr) []mini_ast.Expr {
 	var res []mini_ast.Expr
 	for _, a := range args {
-		if ca := c.convertExpr(a); ca != nil { res = append(res, ca) }
+		if ca := c.convertExpr(a); ca != nil {
+			res = append(res, ca)
+		}
 	}
 	return res
 }
@@ -313,14 +341,25 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 	switch t := e.(type) {
 	case *ast.Ident:
 		name := t.Name
-		if name == "int" || name == "int64" { return "Int64" }
-		if name == "float64" || name == "float32" { return "Float64" }
-		if name == "string" { return "String" }
-		if name == "bool" { return "Bool" }
+		if name == "int" || name == "int64" {
+			return "Int64"
+		}
+		if name == "float64" || name == "float32" {
+			return "Float64"
+		}
+		if name == "string" {
+			return "String"
+		}
+		if name == "bool" {
+			return "Bool"
+		}
 		return name
-	case *ast.ArrayType: return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
-	case *ast.StarExpr: return fmt.Sprintf("Ptr<%s>", c.typeToString(t.X))
-	case *ast.MapType: return fmt.Sprintf("Map<%s, %s>", c.typeToString(t.Key), c.typeToString(t.Value))
+	case *ast.ArrayType:
+		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
+	case *ast.StarExpr:
+		return fmt.Sprintf("Ptr<%s>", c.typeToString(t.X))
+	case *ast.MapType:
+		return fmt.Sprintf("Map<%s, %s>", c.typeToString(t.Key), c.typeToString(t.Value))
 	}
 	return "Any"
 }

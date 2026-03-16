@@ -49,7 +49,18 @@ func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, err
 
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
 func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
-	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID}
+	returns := "Void"
+	if callFunc, ok := spec.ReadCallFunc(); ok {
+		// Try to read tuple and get the first return type
+		returns = string(callFunc.Returns)
+		if callFunc.Returns.IsTuple() {
+			if types, ok := callFunc.Returns.ReadTuple(); ok && len(types) > 0 {
+				returns = string(types[0])
+			}
+		}
+	}
+
+	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns}
 	if spec != "" {
 		o.specs[ast.Ident(name)] = spec
 	}
@@ -120,10 +131,10 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 		}
 		return nil, err
 	}
-	
+
 	// Pass routes to executor
 	for name, route := range o.routes {
-		executor.RegisterRoute(name, route.Bridge, route.MethodID)
+		executor.RegisterRoute(name, route)
 	}
 
 	return &MiniProgram{

@@ -42,13 +42,17 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
 			alias := imp.Alias
-			if alias == "" { alias = imp.Path }
+			if alias == "" {
+				alias = imp.Path
+			}
 			imports[alias] = imp.Path
 		}
 	}
 
 	pkgName := node.Package
-	if pkgName == "" { pkgName = "main" }
+	if pkgName == "" {
+		pkgName = "main"
+	}
 
 	v := &ValidContext{
 		root: &ValidRoot{
@@ -77,8 +81,12 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 }
 
 func (c *ValidContext) Child(b Node) *ValidContext {
-	if b != nil { b.GetBase().EnsureID(c) }
-	if c.current == b { return c }
+	if b != nil {
+		b.GetBase().EnsureID(c)
+	}
+	if c.current == b {
+		return c
+	}
 	return &ValidContext{
 		root:    c.root,
 		parent:  c,
@@ -111,14 +119,16 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
-	if miniType, ok := c.root.structs[ident]; ok { return miniType, true }
-	
+	if miniType, ok := c.root.structs[ident]; ok {
+		return miniType, true
+	}
+
 	// 在隔离架构下，Array/Map 仅支持基本操作，不再动态生成方法集定义
 	// 校验器仅需知道类型存在即可
 	if GoMiniType(ident).IsArray() || GoMiniType(ident).IsMap() {
 		return &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}, true
 	}
-	
+
 	if GoMiniType(ident).IsPtr() {
 		elem, _ := GoMiniType(ident).ReadArrayItemType()
 		return c.GetStruct(Ident(elem))
@@ -147,15 +157,21 @@ func (c *ValidContext) CheckScope(targetMeta string) (Node, bool) {
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 	ctx := c
 	for ctx != nil {
-		if miniType, ok := ctx.vars[variable]; ok { return miniType, true }
+		if miniType, ok := ctx.vars[variable]; ok {
+			return miniType, true
+		}
 		ctx = ctx.parent
 	}
-	if miniType, ok := c.root.vars[variable]; ok { return miniType, true }
+	if miniType, ok := c.root.vars[variable]; ok {
+		return miniType, true
+	}
 	return "", false
 }
 
 func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
-	if miniType, ok := c.root.Methods[fc]; ok { return &miniType, true }
+	if miniType, ok := c.root.Methods[fc]; ok {
+		return &miniType, true
+	}
 	return nil, false
 }
 
@@ -163,7 +179,9 @@ func (c *ValidContext) Logs() []Logs { return c.root.logs }
 
 func (c *ValidContext) AddFuncSpec(name Ident, miniType GoMiniType) error {
 	a, b := miniType.ReadFunc()
-	if !b { return errors.New("invalid function type") }
+	if !b {
+		return errors.New("invalid function type")
+	}
 	c.root.Methods[name] = a.ToCallFunctionType()
 	return nil
 }
@@ -185,7 +203,9 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 func (c *ValidContext) ConstStore(value string) Ident {
 	constID := fmt.Sprintf("__const__%04d", c.NextID())
 	for s, s2 := range c.root.program.Constants {
-		if s2 == value { return Ident(s) }
+		if s2 == value {
+			return Ident(s)
+		}
 	}
 	c.root.program.Constants[constID] = value
 	return Ident(constID)

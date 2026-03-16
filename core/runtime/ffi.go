@@ -8,4 +8,5 @@ import (
 type FFIRoute struct {
 	Bridge   ffigo.FFIBridge
 	MethodID uint32
+	Returns  string
 }

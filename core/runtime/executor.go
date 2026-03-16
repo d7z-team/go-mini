@@ -21,6 +21,13 @@ type Executor struct {
 
 	routes  map[string]FFIRoute // 显式映射外部函数名到 Bridge
 	monitor MonitorManager
+
+	activeHandles []handleRef
+}
+
+type handleRef struct {
+	Bridge ffigo.FFIBridge
+	ID     uint32
 }
 
 type MonitorManager interface {
@@ -34,7 +41,9 @@ type MiniRuntimeError struct {
 }
 
 func (e *MiniRuntimeError) Error() string {
-	if e.Err == nil { return "unknown error" }
+	if e.Err == nil {
+		return "unknown error"
+	}
 	return e.Err.Error()
 }
 
@@ -58,11 +67,21 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	return result, nil
 }
 
-func (e *Executor) RegisterRoute(name string, bridge ffigo.FFIBridge, methodID uint32) {
-	e.routes[name] = FFIRoute{Bridge: bridge, MethodID: methodID}
+func (e *Executor) RegisterRoute(name string, route FFIRoute) {
+	e.routes[name] = route
 }
 
 func (e *Executor) Execute(ctx context.Context) (err error) {
+	defer func() {
+		// Clean up all active handles to prevent memory leaks on VM exit
+		for _, h := range e.activeHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+		e.activeHandles = nil
+	}()
+
 	e.ctx = &StackContext{
 		Context:  ctx,
 		Executor: e,
@@ -128,11 +147,15 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		return ctx.NewVar(string(n.Name), n.Kind)
 	case *ast.AssignmentStmt:
 		val, err := e.ExecExpr(ctx, n.Value)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		return ctx.Store(string(n.Variable), val)
 	case *ast.IfStmt:
 		cond, err := e.ExecExpr(ctx, n.Cond)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if cond != nil && cond.Bool {
 			return e.execStmt(ctx, n.Body)
 		} else if n.ElseBody != nil {
@@ -194,7 +217,11 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		ident, _ := n.Operand.(*ast.IdentifierExpr)
 		v, _ := ctx.Load(string(ident.Name))
 		if v != nil {
-			if n.Operator == "++" { v.I64++ } else { v.I64-- }
+			if n.Operator == "++" {
+				v.I64++
+			} else {
+				v.I64--
+			}
 		}
 		return nil
 	}
@@ -202,7 +229,9 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 }
 
 func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
-	if ctx == nil { return nil, errors.New("nil context") }
+	if ctx == nil {
+		return nil, errors.New("nil context")
+	}
 	switch n := s.(type) {
 	case *ast.LiteralExpr:
 		return e.evalLiteral(n)
@@ -217,12 +246,29 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return e.evalUnaryExprDirect(string(n.Operator), val)
 	case *ast.ConstRefExpr:
 		val, ok := e.program.Constants[string(n.Name)]
-		if !ok { return nil, fmt.Errorf("const %s not found", n.Name) }
+		if !ok {
+			return nil, fmt.Errorf("const %s not found", n.Name)
+		}
 		return NewString(val), nil
 	case *ast.CallExprStmt:
 		return e.evalCallExpr(ctx, n)
+	case *ast.CompositeExpr:
+		return e.evalCompositeExpr(ctx, n)
 	}
 	return nil, fmt.Errorf("todo: expr %T", s)
+}
+
+func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*Var, error) {
+	if n.Type.IsArray() {
+		res := make([]*Var, len(n.Values))
+		for i, v := range n.Values {
+			val, err := e.ExecExpr(ctx, v.Value)
+			if err != nil { return nil, err }
+			res[i] = val
+		}
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: n.Type}, nil
+	}
+	return nil, fmt.Errorf("todo: composite %s", n.Type)
 }
 
 func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
@@ -242,36 +288,53 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
-	if l == nil || r == nil { return nil, errors.New("binary op with nil operand") }
-	
+	if l == nil || r == nil {
+		return nil, errors.New("binary op with nil operand")
+	}
+
 	if l.VType == TypeString && r.VType == TypeString {
 		switch operator {
-		case "==", "Eq": return NewBool(l.Str == r.Str), nil
-		case "!=", "Neq": return NewBool(l.Str != r.Str), nil
+		case "==", "Eq":
+			return NewBool(l.Str == r.Str), nil
+		case "!=", "Neq":
+			return NewBool(l.Str != r.Str), nil
 		}
 	}
 
 	if l.VType == TypeInt && r.VType == TypeInt {
 		switch operator {
-		case "+", "Plus": return NewInt(l.I64 + r.I64), nil
-		case "-", "Minus", "Sub": return NewInt(l.I64 - r.I64), nil
-		case "*", "Mult": return NewInt(l.I64 * r.I64), nil
-		case "/", "Div": return NewInt(l.I64 / r.I64), nil
-		case "<", "Lt": return NewBool(l.I64 < r.I64), nil
-		case ">", "Gt": return NewBool(l.I64 > r.I64), nil
-		case "==", "Eq": return NewBool(l.I64 == r.I64), nil
-		case "!=", "Neq": return NewBool(l.I64 != r.I64), nil
+		case "+", "Plus":
+			return NewInt(l.I64 + r.I64), nil
+		case "-", "Minus", "Sub":
+			return NewInt(l.I64 - r.I64), nil
+		case "*", "Mult":
+			return NewInt(l.I64 * r.I64), nil
+		case "/", "Div":
+			return NewInt(l.I64 / r.I64), nil
+		case "<", "Lt":
+			return NewBool(l.I64 < r.I64), nil
+		case ">", "Gt":
+			return NewBool(l.I64 > r.I64), nil
+		case "==", "Eq":
+			return NewBool(l.I64 == r.I64), nil
+		case "!=", "Neq":
+			return NewBool(l.I64 != r.I64), nil
 		}
 	}
 	return nil, fmt.Errorf("unsupported binary op %s between %v and %v", operator, l.VType, r.VType)
 }
 
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
-	if val == nil { return nil, errors.New("unary op with nil operand") }
+	if val == nil {
+		return nil, errors.New("unary op with nil operand")
+	}
 	switch operator {
-	case "!", "Not": return NewBool(!val.Bool), nil
+	case "!", "Not":
+		return NewBool(!val.Bool), nil
 	case "-", "Sub", "Minus":
-		if val.VType == TypeInt { return NewInt(-val.I64), nil }
+		if val.VType == TypeInt {
+			return NewInt(-val.I64), nil
+		}
 	}
 	return nil, fmt.Errorf("unsupported unary op %s", operator)
 }
@@ -290,7 +353,9 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			msg := "panic"
 			if len(n.Args) > 0 {
 				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg != nil { msg = arg.Str }
+				if arg != nil {
+					msg = arg.Str
+				}
 			}
 			panic(fmt.Errorf("mini-panic: %v", msg))
 		}
@@ -299,7 +364,9 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 		if f, ok := e.program.Functions[ast.Ident(name)]; ok {
 			args := make([]*Var, len(n.Args))
 			for i, aExpr := range n.Args {
-				args[i], _ = e.ExecExpr(ctx, aExpr)
+				var err error
+				args[i], err = e.ExecExpr(ctx, aExpr)
+				if err != nil { return nil, err }
 			}
 
 			var res *Var
@@ -307,11 +374,17 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 				c.Executor = e
 				for i, p := range f.Params {
 					c.NewVar(string(p.Name), p.Type)
-					if i < len(args) && args[i] != nil { c.Store(string(p.Name), args[i]) }
+					if i < len(args) && args[i] != nil {
+						c.Store(string(p.Name), args[i])
+					}
 				}
-				if !f.Return.IsVoid() { c.NewVar("__return__", f.Return) }
+				if !f.Return.IsVoid() {
+					c.NewVar("__return__", f.Return)
+				}
 				_ = e.execStmts(c, f.Body.Children)
-				if !f.Return.IsVoid() { res, _ = c.loadVar("__return__") }
+				if !f.Return.IsVoid() {
+					res, _ = c.loadVar("__return__")
+				}
 				return nil
 			})
 			return res, nil
@@ -321,7 +394,9 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 		if route, ok := e.routes[name]; ok {
 			args := make([]*Var, len(n.Args))
 			for i, aExpr := range n.Args {
-				args[i], _ = e.ExecExpr(ctx, aExpr)
+				var err error
+				args[i], err = e.ExecExpr(ctx, aExpr)
+				if err != nil { return nil, err }
 			}
 			return e.evalFFI(route, args)
 		}
@@ -351,6 +426,14 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 			buf.WriteBytes(arg.B)
 		case TypeBool:
 			buf.WriteBool(arg.Bool)
+		case TypeHandle:
+			buf.WriteUint32(arg.Handle)
+		case TypeArray:
+			arr := arg.Ref.(*VMArray)
+			buf.WriteUint32(uint32(len(arr.Data)))
+			for _, item := range arr.Data {
+				writeAnyToBuffer(buf, item)
+			}
 		default:
 			return nil, fmt.Errorf("FFI unsupported arg type: %v", arg.VType)
 		}
@@ -368,14 +451,48 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 	}
 
 	reader := ffigo.NewReader(retData)
-	// 这里需要根据预定义的返回类型来解析，暂时根据字节流尝试解析
-	// TODO: 真正的实现应由 ffigen 生成的 Proxy 来处理反序列化
-	// 临时方案：如果 retData 长度为 8，假设是 Int64
-	if len(retData) == 8 {
+
+	switch route.Returns {
+	case "TypeHandle":
+		id := reader.ReadUint32()
+		e.activeHandles = append(e.activeHandles, handleRef{Bridge: route.Bridge, ID: id})
+		return &Var{VType: TypeHandle, Handle: id, Bridge: route.Bridge}, nil
+	case "String":
+		return NewString(reader.ReadString()), nil
+	case "Int64":
 		return NewInt(reader.ReadInt64()), nil
+	case "Bool":
+		return &Var{VType: TypeBool, Bool: reader.ReadBool()}, nil
+	default:
+		// 临时方案：如果 retData 长度为 8，假设是 Int64
+		if len(retData) == 8 {
+			return NewInt(reader.ReadInt64()), nil
+		}
+		// 如果是字符串 (长度 uint32 + 字节)
+		return NewString(string(retData)), nil
 	}
-	// 如果是字符串 (长度 uint32 + 字节)
-	return NewString(string(retData)), nil
+}
+
+func writeAnyToBuffer(buf *ffigo.Buffer, arg *Var) {
+	if arg == nil {
+		buf.WriteAny(nil)
+		return
+	}
+	switch arg.VType {
+	case TypeInt:
+		buf.WriteAny(arg.I64)
+	case TypeFloat:
+		buf.WriteAny(arg.F64)
+	case TypeString:
+		buf.WriteAny(arg.Str)
+	case TypeBytes:
+		buf.WriteAny(arg.B)
+	case TypeBool:
+		buf.WriteAny(arg.Bool)
+	default:
+		// 暂不支持将 Handle 或其它复杂类型作为 Any 写入
+		buf.WriteAny(nil)
+	}
 }
 
 func (e *Executor) GetProgram() *ast.ProgramStmt { return e.program }

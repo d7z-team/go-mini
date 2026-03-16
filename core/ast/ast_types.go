@@ -13,11 +13,11 @@ const (
 )
 
 func (o GoMiniType) IsEmpty() bool { return o == "" }
-func (o GoMiniType) IsVoid()  bool { return o == "Void" || o == "" }
-func (o GoMiniType) IsAny()   bool { return o == TypeAny }
+func (o GoMiniType) IsVoid() bool  { return o == "Void" || o == "" }
+func (o GoMiniType) IsAny() bool   { return o == TypeAny }
 
 func (o GoMiniType) IsString() bool { return o == "String" || o == "string" }
-func (o GoMiniType) IsBool()   bool { return o == "Bool" || o == "bool" }
+func (o GoMiniType) IsBool() bool   { return o == "Bool" || o == "bool" }
 
 func (o GoMiniType) IsNumeric() bool {
 	s := string(o)
@@ -45,7 +45,9 @@ func (o GoMiniType) IsMap() bool {
 }
 
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
-	if !o.IsArray() { return "", false }
+	if !o.IsArray() {
+		return "", false
+	}
 	s := string(o)
 	return GoMiniType(s[6 : len(s)-1]), true
 }
@@ -55,7 +57,9 @@ func CreateArrayType(elementType GoMiniType) GoMiniType {
 }
 
 func (o GoMiniType) GetPtrElementType() (GoMiniType, bool) {
-	if !o.IsPtr() { return "", false }
+	if !o.IsPtr() {
+		return "", false
+	}
 	s := string(o)
 	return GoMiniType(s[4 : len(s)-1]), true
 }
@@ -65,11 +69,15 @@ func (o GoMiniType) ToPtr() GoMiniType {
 }
 
 func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
-	if !o.IsMap() { return "", "", false }
+	if !o.IsMap() {
+		return "", "", false
+	}
 	s := string(o)
 	inner := s[4 : len(s)-1]
 	parts := splitByComma(inner)
-	if len(parts) != 2 { return "", "", false }
+	if len(parts) != 2 {
+		return "", "", false
+	}
 	return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
 }
 
@@ -79,22 +87,33 @@ func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
 
 func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
 	s := string(o)
-	if !strings.HasPrefix(s, "function(") { return nil, false }
+	if !strings.HasPrefix(s, "function(") {
+		return nil, false
+	}
 	start := len("function(")
 	parenCount := 1
 	paramEnd := -1
 	for i := start; i < len(s); i++ {
-		if s[i] == '(' { parenCount++ } else if s[i] == ')' {
+		if s[i] == '(' {
+			parenCount++
+		} else if s[i] == ')' {
 			parenCount--
-			if parenCount == 0 { paramEnd = i; break }
+			if parenCount == 0 {
+				paramEnd = i
+				break
+			}
 		}
 	}
-	if paramEnd == -1 { return nil, false }
+	if paramEnd == -1 {
+		return nil, false
+	}
 	paramsStr := s[start:paramEnd]
 	returnsStr := strings.TrimSpace(s[paramEnd+1:])
 	params, isVariadic := parseParams(paramsStr)
 	var returns GoMiniType = "Void"
-	if returnsStr != "" { returns = parseReturnType(returnsStr) }
+	if returnsStr != "" {
+		returns = parseReturnType(returnsStr)
+	}
 	return &FunctionType{Params: params, Return: returns, Variadic: isVariadic}, true
 }
 
@@ -108,7 +127,9 @@ func (f FunctionType) MiniType() GoMiniType {
 	var params []string
 	for i, p := range f.Params {
 		prefix := ""
-		if f.Variadic && i == len(f.Params)-1 { prefix = "..." }
+		if f.Variadic && i == len(f.Params)-1 {
+			prefix = "..."
+		}
 		params = append(params, prefix+string(p.Type))
 	}
 	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), f.Return))
@@ -130,7 +151,9 @@ func (c CallFunctionType) String() string {
 	var params []string
 	for i, p := range c.Params {
 		prefix := ""
-		if c.Variadic && i == len(c.Params)-1 { prefix = "..." }
+		if c.Variadic && i == len(c.Params)-1 {
+			prefix = "..."
+		}
 		params = append(params, prefix+string(p))
 	}
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ","), c.Returns)
@@ -140,22 +163,30 @@ func (c CallFunctionType) MiniType() GoMiniType { return GoMiniType(c.String()) 
 
 func parseParams(paramsStr string) ([]FunctionParam, bool) {
 	paramsStr = strings.TrimSpace(paramsStr)
-	if paramsStr == "" { return nil, false }
+	if paramsStr == "" {
+		return nil, false
+	}
 	isVariadic := false
 	var params []FunctionParam
 	parts := splitByComma(paramsStr)
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if part == "" { continue }
+		if part == "" {
+			continue
+		}
 		if strings.HasPrefix(part, "...") {
 			isVariadic = true
 			part = strings.TrimPrefix(part, "...")
 		}
 		partRunes := []rune(part)
 		end := len(partRunes) - 1
-		for end >= 0 && partRunes[end] == ' ' { end-- }
+		for end >= 0 && partRunes[end] == ' ' {
+			end--
+		}
 		nameEnd := end
-		for nameEnd >= 0 && isIdentChar(partRunes[nameEnd]) { nameEnd-- }
+		for nameEnd >= 0 && isIdentChar(partRunes[nameEnd]) {
+			nameEnd--
+		}
 		nameEnd++
 		var paramName Ident
 		var typeStr string
@@ -176,28 +207,42 @@ func isIdentChar(ch rune) bool {
 
 func parseReturnType(returnStr string) GoMiniType {
 	returnStr = strings.TrimSpace(returnStr)
-	if returnStr == "" { return "" }
+	if returnStr == "" {
+		return ""
+	}
 	if len(returnStr) > 0 && returnStr[0] == '(' {
 		returnStr = strings.TrimSpace(returnStr[1 : len(returnStr)-1])
 		var types []string
 		typeParts := splitByComma(returnStr)
 		for _, part := range typeParts {
-			if part = strings.TrimSpace(part); part != "" { types = append(types, part) }
+			if part = strings.TrimSpace(part); part != "" {
+				types = append(types, part)
+			}
 		}
-		if len(types) > 1 { return GoMiniType("tuple(" + strings.Join(types, ", ") + ")") }
-		if len(types) == 1 { return GoMiniType(types[0]) }
+		if len(types) > 1 {
+			return GoMiniType("tuple(" + strings.Join(types, ", ") + ")")
+		}
+		if len(types) == 1 {
+			return GoMiniType(types[0])
+		}
 	}
 	return GoMiniType(returnStr)
 }
 
 func (o GoMiniType) ReadTuple() ([]GoMiniType, bool) {
 	s := string(o)
-	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") { return nil, false }
+	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") {
+		return nil, false
+	}
 	inner := strings.TrimSpace(s[6 : len(s)-1])
-	if inner == "" { return []GoMiniType{}, true }
+	if inner == "" {
+		return []GoMiniType{}, true
+	}
 	var types []GoMiniType
 	for _, part := range splitByComma(inner) {
-		if part != "" { types = append(types, GoMiniType(part)) }
+		if part != "" {
+			types = append(types, GoMiniType(part))
+		}
 	}
 	return types, true
 }
@@ -208,12 +253,18 @@ func splitByComma(s string) []string {
 	pDepth, bDepth, aDepth := 0, 0, 0
 	for _, ch := range s {
 		switch ch {
-		case '(': pDepth++
-		case ')': pDepth--
-		case '[': bDepth++
-		case ']': bDepth--
-		case '<': aDepth++
-		case '>': aDepth--
+		case '(':
+			pDepth++
+		case ')':
+			pDepth--
+		case '[':
+			bDepth++
+		case ']':
+			bDepth--
+		case '<':
+			aDepth++
+		case '>':
+			aDepth--
 		case ',':
 			if pDepth == 0 && bDepth == 0 && aDepth == 0 {
 				parts = append(parts, strings.TrimSpace(current.String()))
@@ -223,18 +274,24 @@ func splitByComma(s string) []string {
 		}
 		current.WriteRune(ch)
 	}
-	if current.Len() > 0 { parts = append(parts, strings.TrimSpace(current.String())) }
+	if current.Len() > 0 {
+		parts = append(parts, strings.TrimSpace(current.String()))
+	}
 	return parts
 }
 
 func (ft *FunctionType) ToCallFunctionType() CallFunctionType {
 	var callParams []GoMiniType
-	for _, param := range ft.Params { callParams = append(callParams, param.Type) }
+	for _, param := range ft.Params {
+		callParams = append(callParams, param.Type)
+	}
 	return CallFunctionType{Params: callParams, Returns: ft.Return, Variadic: ft.Variadic}
 }
 
 func (o GoMiniType) Equals(other GoMiniType) bool {
-	if o == other || o.IsAny() || other.IsAny() { return true }
+	if o == other || o.IsAny() || other.IsAny() {
+		return true
+	}
 	if o.IsArray() && other.IsArray() {
 		oElem, _ := o.ReadArrayItemType()
 		otherElem, _ := other.ReadArrayItemType()
@@ -268,15 +325,23 @@ func (o GoMiniType) StructName() (Ident, bool) {
 }
 
 func CreateTupleType(types ...GoMiniType) GoMiniType {
-	if len(types) == 0 { return "Void" }
-	if len(types) == 1 { return types[0] }
+	if len(types) == 0 {
+		return "Void"
+	}
+	if len(types) == 1 {
+		return types[0]
+	}
 	var s []string
-	for _, t := range types { s = append(s, string(t)) }
+	for _, t := range types {
+		s = append(s, string(t))
+	}
 	return GoMiniType("tuple(" + strings.Join(s, ", ") + ")")
 }
 
 func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
-	if o.IsEmpty() { return o }
+	if o.IsEmpty() {
+		return o
+	}
 	if o.IsArray() {
 		elem, _ := o.ReadArrayItemType()
 		return CreateArrayType(elem.Resolve(v))
@@ -299,7 +364,9 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 }
 
 func (o GoMiniType) Valid(v *ValidContext) bool {
-	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() { return true }
+	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() {
+		return true
+	}
 	if o.IsArray() {
 		elem, ok := o.ReadArrayItemType()
 		return ok && elem.Resolve(v).Valid(v)
@@ -316,7 +383,9 @@ func (ft *FunctionType) String() string {
 	var pStrs []string
 	for i, p := range ft.Params {
 		prefix := ""
-		if ft.Variadic && i == len(ft.Params)-1 { prefix = "..." }
+		if ft.Variadic && i == len(ft.Params)-1 {
+			prefix = "..."
+		}
 		pStrs = append(pStrs, fmt.Sprintf("%s%s %s", prefix, p.Type, p.Name))
 	}
 	return fmt.Sprintf("function(%s) %s", strings.Join(pStrs, ", "), ft.Return)
@@ -324,8 +393,12 @@ func (ft *FunctionType) String() string {
 
 func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 	vType := pVar.GetBase().Type
-	if o.IsAny() { return pVar, true }
-	if o.Equals(vType) { return pVar, true }
+	if o.IsAny() {
+		return pVar, true
+	}
+	if o.Equals(vType) {
+		return pVar, true
+	}
 	if o.IsPtr() && !vType.IsPtr() {
 		unPtr, _ := o.GetPtrElementType()
 		if unPtr.Equals(vType) {
