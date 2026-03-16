@@ -25,13 +25,13 @@ func (p *ErrorsProxy) New(ctx context.Context, text string) (error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_Errors_New, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return err }
 	return nil
 }
 
 func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string
@@ -40,7 +40,7 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		}

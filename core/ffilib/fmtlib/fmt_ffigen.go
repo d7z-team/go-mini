@@ -26,12 +26,12 @@ func (p *FmtProxy) Print(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		_ = item
 	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Print, buf.Bytes())
 	_ = err
+	return
 }
 
 func (p *FmtProxy) Println(ctx context.Context, args ...any) {
@@ -40,12 +40,12 @@ func (p *FmtProxy) Println(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		_ = item
 	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Println, buf.Bytes())
 	_ = err
+	return
 }
 
 func (p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
@@ -55,12 +55,12 @@ func (p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		_ = item
 	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_Fmt_Printf, buf.Bytes())
 	_ = err
+	return
 }
 
 func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) (string) {
@@ -70,7 +70,6 @@ func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) (str
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		_ = item
 	buf.WriteAny(item)
 	}
 
@@ -85,7 +84,6 @@ func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) (str
 
 func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_Fmt_Print:
 		var args []any

@@ -26,6 +26,7 @@ func (p *JSONProxy) Marshal(ctx context.Context, v any) ([]byte, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_JSON_Marshal, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -46,6 +47,7 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_JSON_Unmarshal, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -60,7 +62,6 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 
 func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_JSON_Marshal:
 		var v any
@@ -78,7 +79,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteBytes(r0)
@@ -91,7 +92,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteAny(r0)

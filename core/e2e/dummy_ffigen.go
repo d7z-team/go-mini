@@ -31,6 +31,7 @@ func (p *MockOSProxy) Open(ctx context.Context, name string) (*File, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockOS_Open, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -80,6 +81,7 @@ func (p *MockOSProxy) Stat(ctx context.Context, f *File) (FileInfo, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockOS_Stat, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return FileInfo{}, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -106,6 +108,7 @@ func (p *MockOSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) 
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockOS_Read, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -131,6 +134,7 @@ func (p *MockOSProxy) Write(ctx context.Context, f *File, b []byte) (int, error)
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockOS_Write, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -155,6 +159,7 @@ func (p *MockOSProxy) Close(ctx context.Context, f *File) (error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_MockOS_Close, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return err }
 	return nil
 }
@@ -180,7 +185,6 @@ func (p *MockOSProxy) Deep(ctx context.Context, n Nested) (Nested) {
 
 func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_MockOS_Open:
 		var name string
@@ -189,7 +193,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		resBuf.WriteUint32(registry.Register(r0))
@@ -221,7 +225,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteString(r0.Name)
@@ -243,7 +247,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
@@ -264,7 +268,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
@@ -283,7 +287,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		}

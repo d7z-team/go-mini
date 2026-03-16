@@ -963,7 +963,12 @@ func (e *Executor) deserializeAnyToVar(val interface{}, bridge ffigo.FFIBridge) 
 	case bool:
 		return NewBool(v)
 	case uint32:
-		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge}
+		var h *VMHandle
+		if v != 0 {
+			h = NewVMHandle(v, bridge)
+			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: v})
+		}
+		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
 	case map[string]interface{}:
 		res := make(map[string]*Var)
 		for k, raw := range v {
@@ -1016,10 +1021,12 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 		return &Var{VType: TypeBytes, B: reader.ReadBytes()}, nil
 	case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
 		id := reader.ReadUint32()
+		var h *VMHandle
 		if id != 0 {
+			h = NewVMHandle(id, bridge)
 			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
 		}
-		return &Var{VType: TypeHandle, Handle: id, Bridge: bridge}, nil
+		return &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}, nil
 	case typ.IsArray():
 		// 处理从 FFI 返回的数组（如果以后支持）
 		count := int(reader.ReadUint32())

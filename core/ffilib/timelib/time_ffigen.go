@@ -41,6 +41,7 @@ func (p *TimeProxy) Sleep(ctx context.Context, ns int64) {
 
 	_, err := p.bridge.Call(ctx, MethodID_Time_Sleep, buf.Bytes())
 	_ = err
+	return
 }
 
 func (p *TimeProxy) Since(ctx context.Context, startRFC3339 string) (int64) {
@@ -60,7 +61,6 @@ func (p *TimeProxy) Since(ctx context.Context, startRFC3339 string) (int64) {
 
 func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_Time_Now:
 		r0 := impl.Now()

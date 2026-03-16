@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -18,13 +19,13 @@ const (
 	TypeBytes // Raw buffer
 	TypeBool
 	TypeMap    // Internal VM Map (string keys only)
-	TypeArray                 // Internal VM Array ([]*Var)
-	TypeHandle                // Host resource ID (uint32)
-	TypeResult                // Standard result type (val, err)
-	TypeAny                   // Placeholder for unknown/dynamic
-	)
+	TypeArray  // Internal VM Array ([]*Var)
+	TypeHandle // Host resource ID (uint32)
+	TypeResult // Standard result type (val, err)
+	TypeAny    // Placeholder for unknown/dynamic
+)
 
-	type Var struct {
+type Var struct {
 	Type   ast.GoMiniType
 	VType  VarType
 	I64    int64
@@ -34,14 +35,38 @@ const (
 	Bool   bool
 	Handle uint32
 	Bridge ffigo.FFIBridge
-	Ref    interface{} // Internal structures only: *VMArray, *VMMap
+	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle
 
 	// Result fields
 	ResultVal *Var
 	ResultErr string
 
 	stack weak.Pointer[Stack]
+}
+
+// VMHandle wraps a handle ID and its bridge, providing automatic cleanup via finalizer.
+type VMHandle struct {
+	ID     uint32
+	Bridge ffigo.FFIBridge
+}
+
+func (h *VMHandle) release() {
+	if h.ID != 0 && h.Bridge != nil {
+		_ = h.Bridge.DestroyHandle(h.ID)
+		h.ID = 0
 	}
+}
+
+func NewVMHandle(id uint32, bridge ffigo.FFIBridge) *VMHandle {
+	if id == 0 {
+		return nil
+	}
+	h := &VMHandle{ID: id, Bridge: bridge}
+	runtime.SetFinalizer(h, func(obj *VMHandle) {
+		obj.release()
+	})
+	return h
+}
 
 type VMArray struct {
 	Data []*Var
@@ -56,15 +81,15 @@ func cloneVar(v *Var) *Var {
 		return nil
 	}
 	res := &Var{
-		Type:   v.Type,
-		VType:  v.VType,
-		I64:    v.I64,
-		F64:    v.F64,
-		Str:    v.Str,
-		Bool:   v.Bool,
-		Handle: v.Handle,
-		Bridge: v.Bridge,
-		Ref:    v.Ref, // Reference structures are shared by pointer
+		Type:      v.Type,
+		VType:     v.VType,
+		I64:       v.I64,
+		F64:       v.F64,
+		Str:       v.Str,
+		Bool:      v.Bool,
+		Handle:    v.Handle,
+		Bridge:    v.Bridge,
+		Ref:       v.Ref, // Reference structures are shared by pointer
 		ResultVal: cloneVar(v.ResultVal),
 		ResultErr: v.ResultErr,
 	}
@@ -77,7 +102,6 @@ func cloneVar(v *Var) *Var {
 	}
 	return res
 }
-
 func NewVar(typ ast.GoMiniType, vType VarType) *Var {
 	return &Var{
 		Type:  typ,

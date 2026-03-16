@@ -26,13 +26,13 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 
 	buf.WriteUint32(uint32(len(m)))
 	for k, v := range m {
-		_ = k; _ = v
 	buf.WriteString(k)
 	buf.WriteString(v)
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoMap, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return map[string]string{}, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -60,6 +60,7 @@ func (p *MapTestProxy) GetMap(ctx context.Context, ) (map[string]int64, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_GetMap, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return map[string]int64{}, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -86,13 +87,13 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 
 	buf.WriteUint32(uint32(len(m)))
 	for k, v := range m {
-		_ = k; _ = v
 	buf.WriteString(k)
 	buf.WriteInt64(int64(v))
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -111,13 +112,13 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 
 	buf.WriteUint32(uint32(len(m)))
 	for k, v := range m {
-		_ = k; _ = v
 	buf.WriteInt64(int64(k))
 	buf.WriteString(v)
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return map[int64]string{}, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -140,7 +141,6 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 
 func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_MapTest_EchoMap:
 		var m map[string]string
@@ -157,12 +157,11 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteUint32(uint32(len(r0)))
 	for k, v := range r0 {
-		_ = k; _ = v
 	resBuf.WriteString(k)
 	resBuf.WriteString(v)
 	}
@@ -173,12 +172,11 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteUint32(uint32(len(r0)))
 	for k, v := range r0 {
-		_ = k; _ = v
 	resBuf.WriteString(k)
 	resBuf.WriteInt64(int64(v))
 	}
@@ -199,7 +197,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
@@ -220,12 +218,11 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteUint32(uint32(len(r0)))
 	for k, v := range r0 {
-		_ = k; _ = v
 	resBuf.WriteInt64(int64(k))
 	resBuf.WriteString(v)
 	}

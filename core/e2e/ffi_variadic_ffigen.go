@@ -23,17 +23,16 @@ func (p *PrinterAPIProxy) Println(ctx context.Context, args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		_ = item
 	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(ctx, MethodID_PrinterAPI_Println, buf.Bytes())
 	_ = err
+	return
 }
 
 func PrinterAPIHostRouter(ctx context.Context, impl PrinterAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_PrinterAPI_Println:
 		var args []any

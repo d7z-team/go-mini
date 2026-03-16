@@ -32,6 +32,7 @@ func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Open, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -58,6 +59,7 @@ func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Create, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -84,6 +86,7 @@ func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_ReadFile, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -105,6 +108,7 @@ func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) (erro
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_WriteFile, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return err }
 	return nil
 }
@@ -117,6 +121,7 @@ func (p *OSProxy) Remove(ctx context.Context, name string) (error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Remove, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return err }
 	return nil
 }
@@ -134,6 +139,7 @@ func (p *OSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Read, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -159,6 +165,7 @@ func (p *OSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Write, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
@@ -183,13 +190,13 @@ func (p *OSProxy) Close(ctx context.Context, f *File) (error) {
 
 	retData, err := p.bridge.Call(ctx, MethodID_OS_Close, buf.Bytes())
 	_ = retData
+	_ = err
 	if err != nil { return err }
 	return nil
 }
 
 func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
@@ -198,7 +205,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		resBuf.WriteUint32(registry.Register(r0))
@@ -211,7 +218,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		resBuf.WriteUint32(registry.Register(r0))
@@ -224,7 +231,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteBytes(r0)
@@ -239,7 +246,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		}
@@ -251,7 +258,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		}
@@ -271,7 +278,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
@@ -292,7 +299,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
@@ -311,7 +318,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)
-			resBuf.WriteString(err.Error())
+			resBuf.WriteString(ffigo.WrapError(err))
 		} else {
 			resBuf.WriteByte(0)
 		}

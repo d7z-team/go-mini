@@ -23,7 +23,6 @@ func (p *MockGeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int
 
 	buf.WriteUint32(uint32(len(points)))
 	for _, item := range points {
-		_ = item
 	buf.WriteInt64(int64(item.X))
 	buf.WriteInt64(int64(item.Y))
 	}
@@ -39,7 +38,6 @@ func (p *MockGeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int
 
 func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
-	_ = reqBuf
 	switch methodID {
 	case MethodID_MockGeometry_SumX:
 		var points []RobustPoint
