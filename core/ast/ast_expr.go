@@ -515,69 +515,6 @@ func (i *IndexExpr) Optimize(ctx *OptimizeContext) Node {
 	return i
 }
 
-// AddressExpr 表示取地址表达式 &x
-type AddressExpr struct {
-	BaseNode
-	Operand Expr `json:"operand"`
-}
-
-func (a *AddressExpr) GetBase() *BaseNode { return &a.BaseNode }
-func (a *AddressExpr) exprNode()          {}
-
-func (a *AddressExpr) Check(ctx *SemanticContext) error {
-	if a.Operand == nil {
-		return errors.New("取地址表达式缺少操作数")
-	}
-	if err := a.Operand.Check(ctx); err != nil {
-		return err
-	}
-	if a.Operand.GetBase().Type.IsPtr() {
-		return errors.New("取地址操作符 & 只能用于左值")
-	}
-	a.Type = a.Operand.GetBase().Type.ToPtr()
-	return nil
-}
-
-func (a *AddressExpr) Optimize(ctx *OptimizeContext) Node {
-	a.Operand = a.Operand.Optimize(ctx).(Expr)
-	return a
-}
-
-// DerefExpr 表示解引用表达式 *p
-type DerefExpr struct {
-	BaseNode
-	Operand Expr `json:"operand"`
-}
-
-func (d *DerefExpr) GetBase() *BaseNode { return &d.BaseNode }
-func (d *DerefExpr) exprNode()          {}
-
-func (d *DerefExpr) Check(ctx *SemanticContext) error {
-	if d.Operand == nil {
-		return errors.New("解引用表达式缺少操作数")
-	}
-
-	if err := d.Operand.Check(ctx); err != nil {
-		return err
-	}
-
-	if !d.Operand.GetBase().Type.IsPtr() {
-		return fmt.Errorf("解引用操作符 * 只能用于指针类型，实际为 %s", d.Operand.GetBase().Type)
-	}
-
-	elemType, ok := d.Operand.GetBase().Type.GetPtrElementType()
-	if !ok {
-		return fmt.Errorf("无效的指针类型: %s", d.Operand.GetBase().Type)
-	}
-	d.Type = elemType
-	return nil
-}
-
-func (d *DerefExpr) Optimize(ctx *OptimizeContext) Node {
-	d.Operand = d.Operand.Optimize(ctx).(Expr)
-	return d
-}
-
 // SliceExpr 表示切片表达式 (a[low:high])
 type SliceExpr struct {
 	BaseNode

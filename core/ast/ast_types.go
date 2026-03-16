@@ -433,7 +433,8 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 	if o.IsPtr() && !vType.IsPtr() {
 		unPtr, _ := o.GetPtrElementType()
 		if unPtr.Equals(vType) {
-			return &AddressExpr{BaseNode: BaseNode{Meta: "address", Type: vType.ToPtr()}, Operand: pVar}, true
+			// 在隔离架构下不使用真实的指针，直接返回原表达式，复合类型按引用传递
+			return pVar, true
 		}
 	}
 	return pVar, true

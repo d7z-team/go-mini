@@ -973,65 +973,6 @@ func (i *InterruptStmt) Optimize(ctx *OptimizeContext) Node {
 	return i
 }
 
-// DerefAssignmentStmt 表示解引用赋值语句 *p = v
-type DerefAssignmentStmt struct {
-	BaseNode
-	Object Expr `json:"object"` // 指针对象表达式
-	Value  Expr `json:"value"`  // 新值表达式
-}
-
-func (d *DerefAssignmentStmt) GetBase() *BaseNode { return &d.BaseNode }
-func (d *DerefAssignmentStmt) stmtNode()          {}
-
-func (d *DerefAssignmentStmt) Check(ctx *SemanticContext) error {
-	d.Type = "Void"
-	if d.Object == nil {
-		return errors.New("解引用赋值缺少对象")
-	}
-	if err := d.Object.Check(ctx); err != nil {
-		return err
-	}
-
-	if d.Value == nil {
-		return errors.New("解引用赋值缺少值")
-	}
-	if err := d.Value.Check(ctx); err != nil {
-		return err
-	}
-
-	// 检查对象是否为指针类型
-	objType := d.Object.GetBase().Type
-	if !objType.IsPtr() {
-		return fmt.Errorf("解引用赋值的对象必须是指针类型，实际为 %s", objType)
-	}
-
-	// 检查类型是否匹配
-	elemType, _ := objType.GetPtrElementType()
-	valType := d.Value.GetBase().Type
-	if !elemType.Equals(valType) {
-		// 尝试自动指针转换
-		if _, ok := elemType.AutoPtr(d.Value); !ok {
-			return fmt.Errorf("解引用赋值类型不一致: 需 %s, 实际 %s", elemType, valType)
-		}
-	}
-
-	return nil
-}
-
-func (d *DerefAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
-	d.Object = d.Object.Optimize(ctx).(Expr)
-	d.Value = d.Value.Optimize(ctx).(Expr)
-
-	// 尝试自动指针转换
-	objType := d.Object.GetBase().Type
-	elemType, _ := objType.GetPtrElementType()
-	if ptr, ok := elemType.AutoPtr(d.Value); ok {
-		d.Value = ptr
-	}
-
-	return d
-}
-
 // StructStmt 所有 struct 都注册到全局
 type StructStmt struct {
 	BaseNode

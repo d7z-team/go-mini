@@ -148,15 +148,18 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			result.Variables[ast.Ident(k)] = vNode
 		}
 		for k, sData := range raw.Structs {
-			sNode, _ := unmarshalNode(sData)
+			sNode, err := unmarshalNode(sData)
+			if err != nil { return nil, err }
 			result.Structs[ast.Ident(k)] = sNode.(*ast.StructStmt)
 		}
 		for k, fData := range raw.Functions {
-			fNode, _ := unmarshalNode(fData)
+			fNode, err := unmarshalNode(fData)
+			if err != nil { return nil, err }
 			result.Functions[ast.Ident(k)] = fNode.(*ast.FunctionStmt)
 		}
 		for _, mData := range raw.Main {
-			mNode, _ := unmarshalNode(mData)
+			mNode, err := unmarshalNode(mData)
+			if err != nil { return nil, err }
 			result.Main = append(result.Main, mNode.(ast.Stmt))
 		}
 		return result, nil
@@ -267,18 +270,155 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			n.Args = append(n.Args, arg)
 		}
 		return n, nil
-	case "struct_call":
+	case "struct":
 		var raw struct {
-			Obj  json.RawMessage   `json:"object"`
-			Name string            `json:"name"`
-			Args []json.RawMessage `json:"args,omitempty"`
+			Name       string            `json:"name"`
+			Fields     map[string]string `json:"fields"`
+			FieldNames []string          `json:"field_names,omitempty"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.StructCallExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}
-		n.Object, _ = parseExpr(raw.Obj)
-		for _, aData := range raw.Args {
-			arg, _ := parseExpr(aData)
-			n.Args = append(n.Args, arg)
+		n := &ast.StructStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Fields: make(map[ast.Ident]ast.GoMiniType)}
+		for k, v := range raw.Fields {
+			n.Fields[ast.Ident(k)] = ast.GoMiniType(v)
+		}
+		for _, v := range raw.FieldNames {
+			n.FieldNames = append(n.FieldNames, ast.Ident(v))
+		}
+		return n, nil
+	case "range":
+		var raw struct {
+			Key    string          `json:"key"`
+			Value  string          `json:"value"`
+			X      json.RawMessage `json:"x"`
+			Body   json.RawMessage `json:"body"`
+			Define bool            `json:"define"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.RangeStmt{BaseNode: baseNode, Key: ast.Ident(raw.Key), Value: ast.Ident(raw.Value), Define: raw.Define}
+		n.X, _ = parseExpr(raw.X)
+		if raw.Body != nil {
+			node, _ := unmarshalNode(raw.Body)
+			n.Body = node.(*ast.BlockStmt)
+		}
+		return n, nil
+	case "switch":
+		var raw struct {
+			Init json.RawMessage `json:"init,omitempty"`
+			Tag  json.RawMessage `json:"tag,omitempty"`
+			Body json.RawMessage `json:"body"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.SwitchStmt{BaseNode: baseNode}
+		if raw.Init != nil {
+			node, _ := unmarshalNode(raw.Init)
+			n.Init = node.(ast.Stmt)
+		}
+		if raw.Tag != nil {
+			n.Tag, _ = parseExpr(raw.Tag)
+		}
+		if raw.Body != nil {
+			node, _ := unmarshalNode(raw.Body)
+			n.Body = node.(*ast.BlockStmt)
+		}
+		return n, nil
+	case "case":
+		var raw struct {
+			List []json.RawMessage `json:"list,omitempty"`
+			Body []json.RawMessage `json:"body,omitempty"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.CaseClause{BaseNode: baseNode}
+		for _, eData := range raw.List {
+			expr, _ := parseExpr(eData)
+			n.List = append(n.List, expr)
+		}
+		for _, sData := range raw.Body {
+			stmt, _ := unmarshalNode(sData)
+			n.Body = append(n.Body, stmt.(ast.Stmt))
+		}
+		return n, nil
+	case "defer":
+		var raw struct {
+			Call json.RawMessage `json:"call"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.DeferStmt{BaseNode: baseNode}
+		n.Call, _ = parseExpr(raw.Call)
+		return n, nil
+	case "decl":
+		var raw struct {
+			Name string `json:"name"`
+			Kind string `json:"kind"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.GenDeclStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Kind: ast.GoMiniType(raw.Kind)}, nil
+	case "increment":
+		var raw struct {
+			Operand  json.RawMessage `json:"operand"`
+			Operator string          `json:"operator"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.IncDecStmt{BaseNode: baseNode, Operator: ast.Ident(raw.Operator)}
+		n.Operand, _ = parseExpr(raw.Operand)
+		return n, nil
+	case "interrupt":
+		var raw struct {
+			InterruptType string `json:"interrupt_type"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.InterruptStmt{BaseNode: baseNode, InterruptType: raw.InterruptType}, nil
+	case "member":
+		var raw struct {
+			Object   json.RawMessage `json:"object"`
+			Property string          `json:"property"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.MemberExpr{BaseNode: baseNode, Property: ast.Ident(raw.Property)}
+		n.Object, _ = parseExpr(raw.Object)
+		return n, nil
+	case "index":
+		var raw struct {
+			Object json.RawMessage `json:"object"`
+			Index  json.RawMessage `json:"index"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.IndexExpr{BaseNode: baseNode}
+		n.Object, _ = parseExpr(raw.Object)
+		n.Index, _ = parseExpr(raw.Index)
+		return n, nil
+	case "slice":
+		var raw struct {
+			X    json.RawMessage `json:"x"`
+			Low  json.RawMessage `json:"low,omitempty"`
+			High json.RawMessage `json:"high,omitempty"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.SliceExpr{BaseNode: baseNode}
+		n.X, _ = parseExpr(raw.X)
+		if raw.Low != nil {
+			n.Low, _ = parseExpr(raw.Low)
+		}
+		if raw.High != nil {
+			n.High, _ = parseExpr(raw.High)
+		}
+		return n, nil
+	case "composite":
+		var raw struct {
+			Kind   string `json:"type"`
+			Values []struct {
+				Key   json.RawMessage `json:"key,omitempty"`
+				Value json.RawMessage `json:"value"`
+			} `json:"values,omitempty"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.CompositeExpr{BaseNode: baseNode, Kind: ast.Ident(raw.Kind)}
+		for _, v := range raw.Values {
+			elem := ast.CompositeElement{}
+			if v.Key != nil {
+				elem.Key, _ = parseExpr(v.Key)
+			}
+			elem.Value, _ = parseExpr(v.Value)
+			n.Values = append(n.Values, elem)
 		}
 		return n, nil
 	case "identifier":
