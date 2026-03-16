@@ -124,6 +124,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	// 1. 执行顶级语句 (Main)
 	err = e.execStmts(e.ctx, e.program.Main)
+	e.ctx.Stack.RunDefers()
 	if err != nil {
 		return err
 	}
@@ -131,6 +132,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	// 2. 自动寻找并执行 main() 入口函数
 	if f, ok := e.program.Functions["main"]; ok {
 		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) error {
+			defer c.Stack.RunDefers()
 			c.Executor = e
 			for _, p := range f.Params {
 				_ = c.NewVar(string(p.Name), p.Type)
@@ -251,6 +253,25 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 			}
 		})
 		return forErr
+	case *ast.RangeStmt:
+		obj, err := e.ExecExpr(ctx, n.X)
+		if err != nil {
+			return err
+		}
+		if obj == nil {
+			return nil
+		}
+		return e.evalRangeStmt(ctx, n, obj)
+	case *ast.SwitchStmt:
+		return e.evalSwitchStmt(ctx, n)
+	case *ast.DeferStmt:
+		call := n.Call
+		ctx.Stack.AddDefer(func() {
+			if c, ok := call.(*ast.CallExprStmt); ok {
+				_, _ = e.evalCallExpr(ctx, c)
+			}
+		})
+		return nil
 	case *ast.InterruptStmt:
 		if ctx.Stack != nil {
 			ctx.Stack.interrupt = n.InterruptType
@@ -637,6 +658,103 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported logic operator: %s", op)
 }
 
+func (e *Executor) evalRangeStmt(ctx *StackContext, n *ast.RangeStmt, obj *Var) error {
+	switch obj.VType {
+	case TypeArray:
+		arr := obj.Ref.(*VMArray)
+		for i, v := range arr.Data {
+			if n.Key != "" {
+				_ = ctx.Store(string(n.Key), NewInt(int64(i)))
+			}
+			if n.Value != "" {
+				_ = ctx.Store(string(n.Value), v)
+			}
+			err := e.execStmts(ctx, n.Body.Children)
+			if err != nil {
+				return err
+			}
+			if ctx.Stack.interrupt == "break" {
+				ctx.Stack.interrupt = ""
+				break
+			}
+			if ctx.Stack.interrupt == "continue" {
+				ctx.Stack.interrupt = ""
+			}
+		}
+	case TypeMap:
+		m := obj.Ref.(*VMMap)
+		for k, v := range m.Data {
+			if n.Key != "" {
+				_ = ctx.Store(string(n.Key), NewString(k))
+			}
+			if n.Value != "" {
+				_ = ctx.Store(string(n.Value), v)
+			}
+			err := e.execStmts(ctx, n.Body.Children)
+			if err != nil {
+				return err
+			}
+			if ctx.Stack.interrupt == "break" {
+				ctx.Stack.interrupt = ""
+				break
+			}
+			if ctx.Stack.interrupt == "continue" {
+				ctx.Stack.interrupt = ""
+			}
+		}
+	}
+	return nil
+}
+
+func (e *Executor) evalSwitchStmt(ctx *StackContext, n *ast.SwitchStmt) error {
+	if n.Init != nil {
+		_ = e.execStmt(ctx, n.Init)
+	}
+	var tag *Var
+	if n.Tag != nil {
+		var err error
+		tag, err = e.ExecExpr(ctx, n.Tag)
+		if err != nil {
+			return err
+		}
+	} else {
+		tag = NewBool(true) // default to switch true
+	}
+
+	var defaultClause *ast.CaseClause
+	found := false
+
+	for _, child := range n.Body.Children {
+		clause := child.(*ast.CaseClause)
+		if clause.List == nil {
+			defaultClause = clause
+			continue
+		}
+		for _, expr := range clause.List {
+			val, err := e.ExecExpr(ctx, expr)
+			if err != nil {
+				return err
+			}
+			res, _ := e.evalComparison("==", tag, val)
+			if res != nil && res.Bool {
+				found = true
+				if err := e.execStmts(ctx, clause.Body); err != nil {
+					return err
+				}
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found && defaultClause != nil {
+		return e.execStmts(ctx, defaultClause.Body)
+	}
+	return nil
+}
+
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
 	if val == nil {
 		return nil, errors.New("unary op with nil operand")
@@ -747,6 +865,7 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 
 			var res *Var
 			_ = ctx.WithFuncScope(name, func(old *Stack, c *StackContext) error {
+				defer c.Stack.RunDefers()
 				c.Executor = e
 				for i, p := range f.Params {
 					_ = c.NewVar(string(p.Name), p.Type)

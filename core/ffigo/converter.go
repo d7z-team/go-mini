@@ -260,6 +260,52 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		res.Body = c.toBlock(st.Body)
 		return res
 
+	case *ast.RangeStmt:
+		res := &mini_ast.RangeStmt{BaseNode: mini_ast.BaseNode{Meta: "range"}}
+		if st.Key != nil {
+			res.Key = mini_ast.Ident(st.Key.(*ast.Ident).Name)
+		}
+		if st.Value != nil {
+			res.Value = mini_ast.Ident(st.Value.(*ast.Ident).Name)
+		}
+		res.X = c.convertExpr(st.X)
+		res.Body = c.toBlock(st.Body)
+		res.Define = st.Tok == token.DEFINE
+		return res
+
+	case *ast.SwitchStmt:
+		res := &mini_ast.SwitchStmt{BaseNode: mini_ast.BaseNode{Meta: "switch"}}
+		if st.Init != nil {
+			res.Init = c.convertStmt(st.Init)
+		}
+		if st.Tag != nil {
+			res.Tag = c.convertExpr(st.Tag)
+		}
+		res.Body = &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}}
+		for _, stmt := range st.Body.List {
+			if clause, ok := stmt.(*ast.CaseClause); ok {
+				cClause := &mini_ast.CaseClause{BaseNode: mini_ast.BaseNode{Meta: "case"}}
+				for _, expr := range clause.List {
+					cClause.List = append(cClause.List, c.convertExpr(expr))
+				}
+				for _, bStmt := range clause.Body {
+					cClause.Body = append(cClause.Body, c.convertStmt(bStmt))
+				}
+				res.Body.Children = append(res.Body.Children, cClause)
+			}
+		}
+		return res
+
+	case *ast.DeferStmt:
+		call := c.convertExpr(st.Call)
+		if cExpr, ok := call.(*mini_ast.CallExprStmt); ok {
+			return &mini_ast.DeferStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "defer"},
+				Call:     cExpr,
+			}
+		}
+		return nil
+
 	case *ast.BlockStmt:
 		return c.toBlock(st)
 

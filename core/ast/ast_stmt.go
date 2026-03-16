@@ -504,7 +504,171 @@ func (r *ReturnStmt) Optimize(ctx *OptimizeContext) Node {
 	return r
 }
 
-// FunctionStmt 表示函数定义语句 todo: 作用域检查需确认
+// DeferStmt 表示延迟执行语句
+type DeferStmt struct {
+	BaseNode
+	Call Expr
+}
+
+func (d *DeferStmt) GetBase() *BaseNode { return &d.BaseNode }
+func (d *DeferStmt) stmtNode()          {}
+
+func (d *DeferStmt) Check(ctx *SemanticContext) error {
+	d.Type = "Void"
+	if d.Call == nil {
+		return errors.New("defer 语句缺少调用表达式")
+	}
+	return d.Call.Check(ctx)
+}
+
+func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
+	d.Call = d.Call.Optimize(ctx).(Expr)
+	return d
+}
+
+// RangeStmt 表示 range 遍历语句
+type RangeStmt struct {
+	BaseNode
+	Key    Ident // 可选
+	Value  Ident // 可选
+	X      Expr
+	Body   *BlockStmt
+	Define bool // 是否是 := 形式
+}
+
+func (r *RangeStmt) GetBase() *BaseNode { return &r.BaseNode }
+func (r *RangeStmt) stmtNode()          {}
+
+func (r *RangeStmt) Check(ctx *SemanticContext) error {
+	r.Type = "Void"
+	if r.X == nil {
+		return errors.New("range 语句缺少对象")
+	}
+	if err := r.X.Check(ctx); err != nil {
+		return err
+	}
+	objType := r.X.GetBase().Type
+	if !objType.IsArray() && !objType.IsMap() && !objType.IsAny() {
+		return fmt.Errorf("range 语句不支持类型 %s", objType)
+	}
+
+	// 注册循环变量
+	inner := NewSemanticContext(ctx.Child(r.Body))
+	if r.Key != "" {
+		kType := GoMiniType("Int64")
+		if objType.IsMap() {
+			kType, _, _ = objType.GetMapKeyValueTypes()
+		}
+		inner.AddVariable(r.Key, kType)
+	}
+	if r.Value != "" {
+		vType := GoMiniType("Any")
+		if objType.IsArray() {
+			vType, _ = objType.ReadArrayItemType()
+		} else if objType.IsMap() {
+			_, vType, _ = objType.GetMapKeyValueTypes()
+		}
+		inner.AddVariable(r.Value, vType)
+	}
+
+	return r.Body.Check(inner)
+}
+
+func (r *RangeStmt) Optimize(ctx *OptimizeContext) Node {
+	r.X = r.X.Optimize(ctx).(Expr)
+	r.Body = r.Body.Optimize(ctx).(*BlockStmt)
+	return r
+}
+
+// SwitchStmt 表示 switch 分支语句
+type SwitchStmt struct {
+	BaseNode
+	Init Stmt
+	Tag  Expr
+	Body *BlockStmt // 包含多个 CaseClause
+}
+
+func (s *SwitchStmt) GetBase() *BaseNode { return &s.BaseNode }
+func (s *SwitchStmt) stmtNode()          {}
+
+func (s *SwitchStmt) Check(ctx *SemanticContext) error {
+	s.Type = "Void"
+	inner := NewSemanticContext(ctx.Child(s.Body))
+	if s.Init != nil {
+		if err := s.Init.Check(inner); err != nil {
+			return err
+		}
+	}
+	tagType := GoMiniType("Bool")
+	if s.Tag != nil {
+		if err := s.Tag.Check(inner); err != nil {
+			return err
+		}
+		tagType = s.Tag.GetBase().Type
+	}
+
+	for _, child := range s.Body.Children {
+		clause, ok := child.(*CaseClause)
+		if !ok {
+			return fmt.Errorf("switch 语句只能包含 CaseClause, 得到 %T", child)
+		}
+		if err := clause.CheckWithTag(inner, tagType); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SwitchStmt) Optimize(ctx *OptimizeContext) Node {
+	if s.Init != nil {
+		s.Init = s.Init.Optimize(ctx).(Stmt)
+	}
+	if s.Tag != nil {
+		s.Tag = s.Tag.Optimize(ctx).(Expr)
+	}
+	s.Body = s.Body.Optimize(ctx).(*BlockStmt)
+	return s
+}
+
+// CaseClause 表示 switch 中的 case 分支
+type CaseClause struct {
+	BaseNode
+	List []Expr // nil 表示 default
+	Body []Stmt
+}
+
+func (c *CaseClause) GetBase() *BaseNode { return &c.BaseNode }
+func (c *CaseClause) stmtNode()          {}
+
+func (c *CaseClause) Check(ctx *SemanticContext) error {
+	return errors.New("CaseClause should be checked via SwitchStmt")
+}
+
+func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) error {
+	c.Type = "Void"
+	for i, expr := range c.List {
+		if err := expr.Check(ctx); err != nil {
+			return err
+		}
+		if !expr.GetBase().Type.IsAssignableTo(tagType) {
+			return fmt.Errorf("case 类型不匹配: 期望 %s, 实际 %s", tagType, expr.GetBase().Type)
+		}
+		c.List[i] = expr.Optimize(NewOptimizeContext(&ctx.ValidContext)).(Expr)
+	}
+	for i, stmt := range c.Body {
+		if err := stmt.Check(ctx); err != nil {
+			return err
+		}
+		c.Body[i] = stmt.Optimize(NewOptimizeContext(&ctx.ValidContext)).(Stmt)
+	}
+	return nil
+}
+
+func (c *CaseClause) Optimize(ctx *OptimizeContext) Node {
+	return c
+}
+
+// FunctionStmt 表示函数定义语句
 type FunctionStmt struct {
 	BaseNode
 	FunctionType `json:",inline"`
@@ -696,30 +860,7 @@ type AssignmentStmt struct {
 func (a *AssignmentStmt) GetBase() *BaseNode { return &a.BaseNode }
 func (a *AssignmentStmt) stmtNode()          {}
 
-// DeferStmt 表示延迟执行语句
-type DeferStmt struct {
-	BaseNode
-	Call Expr `json:"call"`
-}
-
-func (d *DeferStmt) GetBase() *BaseNode { return &d.BaseNode }
-func (d *DeferStmt) stmtNode()          {}
-
-func (d *DeferStmt) Check(ctx *SemanticContext) error {
-	d.Type = "Void"
-	if d.Call == nil {
-		return errors.New("defer 语句缺少调用表达式")
-	}
-	if err := d.Call.Check(ctx); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
-	d.Call = d.Call.Optimize(ctx).(Expr)
-	return d
-}
+// DeferStmt, RangeStmt, SwitchStmt are defined earlier
 
 func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	a.Type = "Void"

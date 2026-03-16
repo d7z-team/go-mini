@@ -199,6 +199,20 @@ type Stack struct {
 	Scope     string
 	interrupt string
 	Depth     int
+
+	DeferStack []func()
+}
+
+func (s *Stack) AddDefer(fn func()) {
+	s.DeferStack = append(s.DeferStack, fn)
+}
+
+func (s *Stack) RunDefers() {
+	// 逆序执行 defer
+	for i := len(s.DeferStack) - 1; i >= 0; i-- {
+		s.DeferStack[i]()
+	}
+	s.DeferStack = nil
 }
 
 type StackContext struct {
