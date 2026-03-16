@@ -77,11 +77,12 @@
     *   **[x] 实现 FFI 路由分发**：支持 `RegisterFFI` 动态绑定外部 Bridge。
     *   **[x] 数据序列化/反序列化**：在执行引擎内实现 `evalFFI` 字节流转换。
 5.  **[x] 源码适配转换器 (Converter)**：实现 `GoToASTConverter` 跑通 Go 源码测试。
-6.  **[ ] 开发标准库代码生成器 (Generator)**
-    *   **[x] 基础生成器雏形**：实现 `cmd/ffigen`，支持基于接口生成 `Host Router` 和 `VM Proxy`。
-    *   **[x] 支持更多数据类型**：如对结构体、复杂数组和句柄类型的自动处理。
-    *   **[x] 动态可变参数支持**：支持 `...any` / `...interface{}` 类型，实现 FFI 层的 `Any` 包装协议。
-    *   **[ ] 标准库全量生成**：针对 `fmt`, `os`, `net` 等标准库生成适配代码。
-7.  **[ ] 全面迁移与测试 (Migration)**
-    *   **[x] 句柄机制 (Handle System) 落地**：补充资源生命周期管理（GC/Close）实现。
-    *   **[ ] 补充复杂场景测试**：包含大内存数据传递、零拷贝边界条件、多并发执行状态等场景。
+6.  **[ ] 错误处理协议重构 (Generic Result<T>)**
+    *   **[ ] 类型系统支持**：在 `ast.GoMiniType` 中实现 `Result<T>` 泛型解析逻辑。
+    *   **[ ] 运行时变量支持**：在 `runtime.Var` 中实现 `TypeResult` 专用存储与访问逻辑。
+    *   **[ ] FFI 协议升级**：实现 `[Status][Payload]` 序列化协议，升级 `evalFFI` 自动装箱。
+    *   **[ ] 生成器同步**：升级 `ffigen` 以支持生成基于 `Result<T>` 的 Router 与 Proxy。
+7.  **[ ] 标准库全量生成与迁移 (Migration)**
+    *   **[ ] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Result<T>` 契约。
+    *   **[x] 句柄机制 (Handle System) 落地**：已实现基础生命周期管理。
+    *   **[ ] 补充复杂场景测试**：验证泛型在深度嵌套和高并发下的表现。

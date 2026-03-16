@@ -13,6 +13,10 @@ func TestStdlibInjection(t *testing.T) {
 	executor.InjectStandardLibraries()
 
 	code := `
+	package main
+	import "os"
+	import "fmt"
+
 	func main() {
 		fmt.Println("Testing stdlib injection...")
 		
@@ -20,17 +24,27 @@ func TestStdlibInjection(t *testing.T) {
 		content := "Hello from Go-Mini Stdlib!"
 		
 		// Test OS WriteFile
-		os.WriteFile(fileName, []byte(content))
+		resW := os.WriteFile(fileName, []byte(content))
+		if resW.err != nil {
+			panic("write failed: " + resW.err)
+		}
 		
 		// Test OS ReadFile
-		data := os.ReadFile(fileName)
+		resR := os.ReadFile(fileName)
+		if resR.err != nil {
+			panic("read failed: " + resR.err)
+		}
+		data := resR.val
 		
 		if string(data) != content {
 			panic("content mismatch")
 		}
 		
 		// Cleanup
-		os.Remove(fileName)
+		resRm := os.Remove(fileName)
+		if resRm.err != nil {
+			panic("remove failed")
+		}
 		fmt.Println("Stdlib test completed successfully.")
 	}
 	`

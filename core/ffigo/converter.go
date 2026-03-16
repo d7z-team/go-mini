@@ -5,22 +5,47 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 
 	mini_ast "gopkg.d7z.net/go-mini/core/ast"
 )
 
 type GoToASTConverter struct {
-	fset *token.FileSet
+	fset    *token.FileSet
+	imports map[string]string // Alias -> Path
 }
 
 func NewGoToASTConverter() *GoToASTConverter {
-	return &GoToASTConverter{fset: token.NewFileSet()}
+	return &GoToASTConverter{
+		fset:    token.NewFileSet(),
+		imports: make(map[string]string),
+	}
 }
 
 func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 	f, err := parser.ParseFile(c.fset, "", code, parser.ParseComments)
 	if err != nil {
 		return nil, err
+	}
+
+	// 记录导入
+	c.imports = make(map[string]string)
+	var miniImports []mini_ast.ImportSpec
+	for _, imp := range f.Imports {
+		path := imp.Path.Value[1 : len(imp.Path.Value)-1]
+		alias := ""
+		if imp.Name != nil {
+			alias = imp.Name.Name
+		} else {
+			// 简单处理：使用路径最后一段作为包名
+			parts := strings.Split(path, "/")
+			alias = parts[len(parts)-1]
+		}
+		c.imports[alias] = path
+		miniImports = append(miniImports, mini_ast.ImportSpec{
+			Alias: alias,
+			Path:  path,
+		})
 	}
 
 	program := &mini_ast.ProgramStmt{
@@ -30,6 +55,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 		Variables: make(map[mini_ast.Ident]mini_ast.Expr),
 		Structs:   make(map[mini_ast.Ident]*mini_ast.StructStmt),
 		Functions: make(map[mini_ast.Ident]*mini_ast.FunctionStmt),
+		Imports:   miniImports,
 	}
 
 	for _, decl := range f.Decls {
@@ -295,9 +321,20 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 	case *ast.SelectorExpr:
 		if xIdent, ok := ex.X.(*ast.Ident); ok {
-			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: mini_ast.Ident(fmt.Sprintf("%s.%s", xIdent.Name, ex.Sel.Name))}
+			// 只有当 X 是已导入的包名时，才视为包成员访问（静态绑定）
+			if _, isPkg := c.imports[xIdent.Name]; isPkg {
+				return &mini_ast.ConstRefExpr{
+					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
+					Name:     mini_ast.Ident(fmt.Sprintf("%s.%s", xIdent.Name, ex.Sel.Name)),
+				}
+			}
 		}
-		return &mini_ast.StructCallExpr{BaseNode: mini_ast.BaseNode{Meta: "struct_call"}, Object: c.convertExpr(ex.X), Name: mini_ast.Ident(ex.Sel.Name)}
+		// 否则视为对象成员访问（动态绑定/Result访问）
+		return &mini_ast.MemberExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "member"},
+			Object:   c.convertExpr(ex.X),
+			Property: mini_ast.Ident(ex.Sel.Name),
+		}
 	}
 	return nil
 }

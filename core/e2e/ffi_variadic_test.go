@@ -49,6 +49,8 @@ func TestFFIVariadic(t *testing.T) {
 	executor.RegisterFFI("fmt.Println", bridge, MethodID_PrinterAPI_Println, "function(...Any) Void")
 
 	code := `
+	package main
+	import "fmt"
 	func main() {
 		fmt.Println("Hello", "World", 123, true)
 	}

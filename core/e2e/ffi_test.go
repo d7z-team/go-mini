@@ -37,6 +37,8 @@ func TestFFIPrintln(t *testing.T) {
 	executor.RegisterFFI("fmt.Println", bridge, 1, "function(String) Void")
 
 	code := `
+	package main
+	import "fmt"
 	func main() {
 		fmt.Println("Hello from Sandbox!")
 	}

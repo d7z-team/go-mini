@@ -136,14 +136,14 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 			return oslib.OSHostRouter(osHost, reg, methodID, args)
 		},
 	}
-	o.RegisterFFI("os.Open", osBridge, oslib.MethodID_OS_Open, "function(String) tuple(TypeHandle, Error)")
-	o.RegisterFFI("os.Create", osBridge, oslib.MethodID_OS_Create, "function(String) tuple(TypeHandle, Error)")
-	o.RegisterFFI("os.ReadFile", osBridge, oslib.MethodID_OS_ReadFile, "function(String) tuple(TypeBytes, Error)")
-	o.RegisterFFI("os.WriteFile", osBridge, oslib.MethodID_OS_WriteFile, "function(String, TypeBytes) Error")
-	o.RegisterFFI("os.Remove", osBridge, oslib.MethodID_OS_Remove, "function(String) Error")
-	o.RegisterFFI("os.Read", osBridge, oslib.MethodID_OS_Read, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
-	o.RegisterFFI("os.Write", osBridge, oslib.MethodID_OS_Write, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
-	o.RegisterFFI("os.Close", osBridge, oslib.MethodID_OS_Close, "function(TypeHandle) Error")
+	o.RegisterFFI("os.Open", osBridge, oslib.MethodID_OS_Open, "function(String) Result<TypeHandle>")
+	o.RegisterFFI("os.Create", osBridge, oslib.MethodID_OS_Create, "function(String) Result<TypeHandle>")
+	o.RegisterFFI("os.ReadFile", osBridge, oslib.MethodID_OS_ReadFile, "function(String) Result<TypeBytes>")
+	o.RegisterFFI("os.WriteFile", osBridge, oslib.MethodID_OS_WriteFile, "function(String, TypeBytes) Result<Void>")
+	o.RegisterFFI("os.Remove", osBridge, oslib.MethodID_OS_Remove, "function(String) Result<Void>")
+	o.RegisterFFI("os.Read", osBridge, oslib.MethodID_OS_Read, "function(TypeHandle, TypeBytes) Result<Int64>")
+	o.RegisterFFI("os.Write", osBridge, oslib.MethodID_OS_Write, "function(TypeHandle, TypeBytes) Result<Int64>")
+	o.RegisterFFI("os.Close", osBridge, oslib.MethodID_OS_Close, "function(TypeHandle) Result<Void>")
 
 	// 3. Inject errors
 	errorsHost := &errorslib.ErrorsHost{}
@@ -152,7 +152,7 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 			return errorslib.ErrorsHostRouter(errorsHost, o.registry, methodID, args)
 		},
 	}
-	o.RegisterFFI("errors.New", errorsBridge, errorslib.MethodID_Errors_New, "function(String) Error")
+	o.RegisterFFI("errors.New", errorsBridge, errorslib.MethodID_Errors_New, "function(String) Result<Void>")
 
 	// 4. Inject io
 	ioHost := &iolib.IOHost{}
@@ -161,7 +161,7 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 			return iolib.IOHostRouter(ioHost, o.registry, methodID, args)
 		},
 	}
-	o.RegisterFFI("io.ReadAll", ioBridge, iolib.MethodID_IO_ReadAll, "function(Any) tuple(TypeBytes, Error)")
+	o.RegisterFFI("io.ReadAll", ioBridge, iolib.MethodID_IO_ReadAll, "function(Any) Result<TypeBytes>")
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数

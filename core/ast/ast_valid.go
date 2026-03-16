@@ -77,6 +77,8 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 		current: node,
 		vars:    make(map[Ident]GoMiniType),
 	}
+	// 注入内建 nil
+	v.root.vars["nil"] = "Any"
 	return v, nil
 }
 
@@ -139,6 +141,20 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 func (c *ValidContext) AddVariable(name Ident, oType GoMiniType) {
 	c.vars[name] = oType
 	if c.parent == nil || strings.Contains(string(name), ".") {
+		c.root.vars[name] = oType
+	}
+}
+
+func (c *ValidContext) UpdateVariable(name Ident, oType GoMiniType) {
+	ctx := c
+	for ctx != nil {
+		if _, ok := ctx.vars[name]; ok {
+			ctx.vars[name] = oType
+			return
+		}
+		ctx = ctx.parent
+	}
+	if _, ok := c.root.vars[name]; ok {
 		c.root.vars[name] = oType
 	}
 }

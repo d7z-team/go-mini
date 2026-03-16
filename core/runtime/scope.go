@@ -18,12 +18,13 @@ const (
 	TypeBytes // Raw buffer
 	TypeBool
 	TypeMap    // Internal VM Map (string keys only)
-	TypeArray  // Internal VM Array ([]*Var)
-	TypeHandle // Host resource ID (uint32)
-	TypeAny    // Placeholder for unknown/dynamic
-)
+	TypeArray                 // Internal VM Array ([]*Var)
+	TypeHandle                // Host resource ID (uint32)
+	TypeResult                // Standard result type (val, err)
+	TypeAny                   // Placeholder for unknown/dynamic
+	)
 
-type Var struct {
+	type Var struct {
 	Type   ast.GoMiniType
 	VType  VarType
 	I64    int64
@@ -35,8 +36,12 @@ type Var struct {
 	Bridge ffigo.FFIBridge
 	Ref    interface{} // Internal structures only: *VMArray, *VMMap
 
+	// Result fields
+	ResultVal *Var
+	ResultErr string
+
 	stack weak.Pointer[Stack]
-}
+	}
 
 type VMArray struct {
 	Data []*Var
@@ -58,7 +63,10 @@ func cloneVar(v *Var) *Var {
 		Str:    v.Str,
 		Bool:   v.Bool,
 		Handle: v.Handle,
+		Bridge: v.Bridge,
 		Ref:    v.Ref, // Reference structures are shared by pointer
+		ResultVal: cloneVar(v.ResultVal),
+		ResultErr: v.ResultErr,
 	}
 	if v.B != nil {
 		res.B = make([]byte, len(v.B))
@@ -169,7 +177,10 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 	v.B = expr.B
 	v.Bool = expr.Bool
 	v.Handle = expr.Handle
+	v.Bridge = expr.Bridge
 	v.Ref = expr.Ref
+	v.ResultVal = expr.ResultVal
+	v.ResultErr = expr.ResultErr
 	return nil
 }
 

@@ -34,6 +34,10 @@ func (b *Buffer) Bytes() []byte {
 	return b.buf
 }
 
+func (b *Buffer) WriteByte(v byte) {
+	b.buf = append(b.buf, v)
+}
+
 func (b *Buffer) WriteUint32(v uint32) {
 	b.buf = binary.LittleEndian.AppendUint32(b.buf, v)
 }
@@ -137,6 +141,12 @@ func NewReader(data []byte) *Reader {
 	return &Reader{buf: data, offset: 0}
 }
 
+func (r *Reader) ReadByte() byte {
+	v := r.buf[r.offset]
+	r.offset += 1
+	return v
+}
+
 func (r *Reader) ReadUint32() uint32 {
 	v := binary.LittleEndian.Uint32(r.buf[r.offset:])
 	r.offset += 4
@@ -174,4 +184,8 @@ func (r *Reader) ReadBytes() []byte {
 	v := r.buf[r.offset : r.offset+l]
 	r.offset += l
 	return v
+}
+
+func (r *Reader) Available() int {
+	return len(r.buf) - r.offset
 }

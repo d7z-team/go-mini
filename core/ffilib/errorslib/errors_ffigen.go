@@ -37,7 +37,13 @@ func ErrorsHostRouter(impl Errors, registry *ffigo.HandleRegistry, methodID uint
 	text = reqBuf.ReadString()
 		err := impl.New(text)
 		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), err
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}

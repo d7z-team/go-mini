@@ -73,21 +73,27 @@ func TestFFIHandle(t *testing.T) {
 		registry: ffigo.NewHandleRegistry(),
 	}
 
-	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) tuple(TypeHandle, Error)")
+	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")
 	executor.RegisterFFI("os.Name", bridge, MethodID_OS_Name, "function(TypeHandle) String")
-	executor.RegisterFFI("os.Stat", bridge, MethodID_OS_Stat, "function(TypeHandle) tuple(FileInfo, Error)")
-	executor.RegisterFFI("os.Close", bridge, MethodID_OS_Close, "function(TypeHandle) Error")
+	executor.RegisterFFI("os.Stat", bridge, MethodID_OS_Stat, "function(TypeHandle) Result<FileInfo>")
+	executor.RegisterFFI("os.Close", bridge, MethodID_OS_Close, "function(TypeHandle) Result<Void>")
 
 	code := `
+	package main
+	import "os"
+
 	func main() {
-		file := os.Open("test.txt")
+		res := os.Open("test.txt")
+		if res.err != nil { panic(res.err) }
+		file := res.val
 		
 		name := os.Name(file)
 		if name != "test.txt" {
 			panic("wrong name")
 		}
 
-		os.Close(file)
+		resC := os.Close(file)
+		if resC.err != nil { panic("close failed") }
 		
 		nameAfterClose := os.Name(file)
 		if nameAfterClose != "closed" {

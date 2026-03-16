@@ -27,6 +27,11 @@ func (p *IOProxy) ReadAll(r any) ([]byte, error) {
 	}
 
 	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return nil, fmt.Errorf("%s", errMsg)
+	}
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
 	return v_0, nil
@@ -49,8 +54,14 @@ func IOHostRouter(impl IO, registry *ffigo.HandleRegistry, methodID uint32, args
 	}
 		r0, err := impl.ReadAll(r)
 		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
 	resBuf.WriteBytes(r0)
-		return resBuf.Bytes(), err
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}

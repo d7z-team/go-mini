@@ -779,10 +779,12 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	}
 
 	if b {
-		if !vType.Equals(miniType) {
-			if _, ok3 := vType.AutoPtr(a.Value); !ok3 {
-				return fmt.Errorf("对象类型不一致 (%s != %s)，无法赋值", vType, miniType)
-			}
+		if !miniType.IsAssignableTo(vType) {
+			return fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, a.Variable, vType)
+		}
+		// 类型推导：如果原变量是 Any 类型，更新为具体类型
+		if vType == "Any" && miniType != "Any" {
+			ctx.UpdateVariable(a.Variable, miniType)
 		}
 		return nil
 	}

@@ -280,6 +280,26 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 
 		if needsRetBuf {
 			sb.WriteString("\tretBuf := ffigo.NewReader(retData)\n")
+			if hasErr {
+				sb.WriteString("\tstatus := retBuf.ReadByte()\n")
+				sb.WriteString("\tif status != 0 {\n")
+				sb.WriteString("\t\terrMsg := retBuf.ReadString()\n")
+				sb.WriteString("\t\treturn ")
+				if funcType.Results != nil {
+					for j, result := range funcType.Results.List {
+						rType := typeToString(result.Type)
+						if rType == "error" {
+							sb.WriteString("fmt.Errorf(\"%s\", errMsg)")
+						} else {
+							sb.WriteString(zeroValue(rType))
+							if j < len(funcType.Results.List)-1 {
+								sb.WriteString(", ")
+							}
+						}
+					}
+				}
+				sb.WriteString("\n\t}\n")
+			}
 		}
 
 		if funcType.Results != nil {
@@ -360,19 +380,28 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 
 		sb.WriteString("\t\tresBuf := ffigo.GetBuffer()\n")
 
-		if funcType.Results != nil {
+		if hasErr {
+			sb.WriteString("\t\tif err != nil {\n")
+			sb.WriteString("\t\t\tresBuf.WriteByte(1)\n")
+			sb.WriteString("\t\t\tresBuf.WriteString(err.Error())\n")
+			sb.WriteString("\t\t} else {\n")
+			sb.WriteString("\t\t\tresBuf.WriteByte(0)\n")
 			for i, result := range funcType.Results.List {
 				rType := typeToString(result.Type)
-				if rType == "error" {
-					continue
+				if rType != "error" {
+					emitWrite(&sb, fmt.Sprintf("r%d", i), rType, structs, "resBuf", true)
+					break // Only supports single value in Result<T>
 				}
-				emitWrite(&sb, fmt.Sprintf("r%d", i), rType, structs, "resBuf", true)
 			}
-		}
-
-		if hasErr {
-			sb.WriteString("\t\treturn resBuf.Bytes(), err\n")
+			sb.WriteString("\t\t}\n")
+			sb.WriteString("\t\treturn resBuf.Bytes(), nil\n")
 		} else {
+			if funcType.Results != nil {
+				for i, result := range funcType.Results.List {
+					rType := typeToString(result.Type)
+					emitWrite(&sb, fmt.Sprintf("r%d", i), rType, structs, "resBuf", true)
+				}
+			}
 			sb.WriteString("\t\treturn resBuf.Bytes(), nil\n")
 		}
 	}

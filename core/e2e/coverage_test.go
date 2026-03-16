@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -64,20 +65,31 @@ func TestFFICoverage(t *testing.T) {
 		},
 	}
 
-	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) tuple(TypeHandle, Error)")
-	executor.RegisterFFI("os.Read", bridge, MethodID_OS_Read, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
-	executor.RegisterFFI("os.Write", bridge, MethodID_OS_Write, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
+	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")
+	executor.RegisterFFI("os.Read", bridge, MethodID_OS_Read, "function(TypeHandle, TypeBytes) Result<Int64>")
+	executor.RegisterFFI("os.Write", bridge, MethodID_OS_Write, "function(TypeHandle, TypeBytes) Result<Int64>")
 
 	code := `
+	package main
+	import "os"
+	import "fmt"
+
 	func main() {
 		// 1. 测试读写
-		h2 := os.Open("test.txt")
+		resO := os.Open("test.txt")
+		if resO.err != nil { panic(resO.err) }
+		h2 := resO.val
+
 		buf := []byte("payload")
-		n := os.Write(h2, buf)
+		resW := os.Write(h2, buf)
+		if resW.err != nil { panic(resW.err) }
+		n := resW.val
 		if n != 7 { panic("write length mismatch") }
 
 		readBuf := []byte(".....")
-		rn := os.Read(h2, readBuf)
+		resR := os.Read(h2, readBuf)
+		if resR.err != nil { panic(resR.err) }
+		rn := resR.val
 		if rn != 5 { panic("read length mismatch") }
 
 		// 2. 测试标准库已注入的方法覆盖
@@ -111,12 +123,23 @@ func TestFFIErrorPropagation(t *testing.T) {
 			return OSHostRouter(mock, reg, methodID, args)
 		},
 	}
-	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) tuple(TypeHandle, Error)")
+	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")
 
-	code := `func main() { os.Open("missing") }`
-	prog, _ := executor.NewRuntimeByGoCode(code)
-	err := prog.Execute(context.Background())
-	if err == nil || err.Error() != "file not found" {
-		t.Fatalf("expected 'file not found' error, got: %v", err)
+	code := `
+	package main
+	import "os"
+	func main() { 
+		res := os.Open("missing")
+		if res.err != nil {
+			panic(res.err)
+		}
+	}`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("failed to create runtime: %v", err)
+	}
+	err = prog.Execute(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "file not found") {
+		t.Fatalf("expected 'file not found' panic, got: %v", err)
 	}
 }

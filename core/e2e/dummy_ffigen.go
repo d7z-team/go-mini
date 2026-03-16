@@ -33,6 +33,11 @@ func (p *OSProxy) Open(name string) (*File, error) {
 	}
 
 	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return nil, fmt.Errorf("%s", errMsg)
+	}
 	var v_0 *File
 		if id := retBuf.ReadUint32(); id != 0 {
 			if p.registry != nil {
@@ -78,6 +83,11 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 	}
 
 	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return FileInfo{}, fmt.Errorf("%s", errMsg)
+	}
 	var v_0 FileInfo
 	v_0.Size = retBuf.ReadUint32()
 	v_0.Name = retBuf.ReadString()
@@ -101,6 +111,11 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 	}
 
 	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return 0, fmt.Errorf("%s", errMsg)
+	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
 	return v_0, nil
@@ -123,6 +138,11 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 	}
 
 	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return 0, fmt.Errorf("%s", errMsg)
+	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
 	return v_0, nil
@@ -172,8 +192,14 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 	name = reqBuf.ReadString()
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
 		resBuf.WriteUint32(registry.Register(r0))
-		return resBuf.Bytes(), err
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_OS_Name:
 		var f *File
 		if id := reqBuf.ReadUint32(); id != 0 {
@@ -198,9 +224,15 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 		}
 		r0, err := impl.Stat(f)
 		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
 	resBuf.WriteUint32(r0.Size)
 	resBuf.WriteString(r0.Name)
-		return resBuf.Bytes(), err
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_OS_Read:
 		var f *File
 		if id := reqBuf.ReadUint32(); id != 0 {
@@ -214,8 +246,14 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 	b = reqBuf.ReadBytes()
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
-		return resBuf.Bytes(), err
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_OS_Write:
 		var f *File
 		if id := reqBuf.ReadUint32(); id != 0 {
@@ -229,8 +267,14 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 	b = reqBuf.ReadBytes()
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
 	resBuf.WriteInt64(int64(r0))
-		return resBuf.Bytes(), err
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_OS_Close:
 		var f *File
 		if id := reqBuf.ReadUint32(); id != 0 {
@@ -242,7 +286,13 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 		}
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), err
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_OS_Deep:
 		var n Nested
 	n.Info.Size = reqBuf.ReadUint32()

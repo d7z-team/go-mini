@@ -44,6 +44,11 @@ func (o GoMiniType) IsMap() bool {
 	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
 }
 
+func (o GoMiniType) IsResult() bool {
+	s := string(o)
+	return strings.HasPrefix(s, "Result<") && strings.HasSuffix(s, ">")
+}
+
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
 	if !o.IsArray() {
 		return "", false
@@ -83,6 +88,18 @@ func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok boo
 
 func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
 	return GoMiniType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
+}
+
+func (o GoMiniType) ReadResult() (GoMiniType, bool) {
+	if !o.IsResult() {
+		return "", false
+	}
+	s := string(o)
+	return GoMiniType(s[7 : len(s)-1]), true
+}
+
+func CreateResultType(elementType GoMiniType) GoMiniType {
+	return GoMiniType(fmt.Sprintf("Result<%s>", elementType))
 }
 
 func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
@@ -319,6 +336,11 @@ func (o GoMiniType) IsTuple() bool {
 func (o GoMiniType) StructName() (Ident, bool) {
 	s := string(o)
 	if strings.Contains(s, "(") || strings.Contains(s, "<") {
+		return "", false
+	}
+	// 排除基础类型
+	switch s {
+	case "Any", "String", "Int64", "Float64", "Bool", "Void", "TypeBytes":
 		return "", false
 	}
 	return Ident(s), true

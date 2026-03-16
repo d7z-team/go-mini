@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"strconv"
+	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -91,6 +92,9 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 			Depth:     1,
 		},
 	}
+
+	// 注入内建 nil
+	_ = e.ctx.AddVariable("nil", nil)
 
 	// 初始化全局变量
 	for name, expr := range e.program.Variables {
@@ -254,8 +258,41 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return e.evalCallExpr(ctx, n)
 	case *ast.CompositeExpr:
 		return e.evalCompositeExpr(ctx, n)
+	case *ast.MemberExpr:
+		return e.evalMemberExpr(ctx, n)
 	}
 	return nil, fmt.Errorf("todo: expr %T", s)
+}
+
+func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, error) {
+	obj, err := e.ExecExpr(ctx, n.Object)
+	if err != nil {
+		return nil, err
+	}
+	if obj == nil {
+		return nil, fmt.Errorf("member access on nil object")
+	}
+
+	switch obj.VType {
+	case TypeResult:
+		if n.Property == "val" {
+			return obj.ResultVal, nil
+		}
+		if n.Property == "err" {
+			if obj.ResultErr == "" {
+				return nil, nil // Represent success as nil error
+			}
+			return NewString(obj.ResultErr), nil
+		}
+	case TypeMap:
+		m := obj.Ref.(*VMMap)
+		if val, ok := m.Data[string(n.Property)]; ok {
+			return val, nil
+		}
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("type %v does not support member access", obj.VType)
 }
 
 func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*Var, error) {
@@ -288,7 +325,19 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
-	if l == nil || r == nil { return nil, errors.New("binary op with nil operand") }
+	// 允许比较运算的操作数为 nil
+	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
+		if l == nil && r == nil {
+			return NewBool(operator == "==" || operator == "Eq"), nil
+		}
+		if l == nil || r == nil {
+			return NewBool(operator == "!=" || operator == "Neq"), nil
+		}
+	}
+
+	if l == nil || r == nil {
+		return nil, errors.New("binary op with nil operand")
+	}
 
 	if (l.VType == TypeString || l.VType == TypeBytes) && (r.VType == TypeString || r.VType == TypeBytes) {
 		lStr := l.Str
@@ -492,27 +541,54 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 	}
 
 	reader := ffigo.NewReader(retData)
+	retType := ast.GoMiniType(route.Returns)
 
-	switch route.Returns {
-	case "TypeHandle":
-		id := reader.ReadUint32()
-		e.activeHandles = append(e.activeHandles, handleRef{Bridge: route.Bridge, ID: id})
-		return &Var{VType: TypeHandle, Handle: id, Bridge: route.Bridge}, nil
-	case "TypeBytes":
-		return &Var{VType: TypeBytes, B: reader.ReadBytes()}, nil
-	case "String":
+	// 检查是否是 Result<T> 类型
+	if retType.IsResult() {
+		status := reader.ReadByte() // 0: Success, 1: Error
+		innerType, _ := retType.ReadResult()
+
+		if status == 0 {
+			// 成功路径
+			val, err := e.deserializeVar(reader, innerType, route.Bridge)
+			if err != nil { return nil, err }
+			return &Var{VType: TypeResult, ResultVal: val, Type: retType}, nil
+		} else {
+			// 错误路径
+			errMsg := reader.ReadString()
+			return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
+		}
+	}
+
+	// 兼容旧模式
+	return e.deserializeVar(reader, retType, route.Bridge)
+}
+
+func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
+	switch {
+	case typ == "String":
 		return NewString(reader.ReadString()), nil
-	case "Int64":
+	case typ == "Int64":
 		return NewInt(reader.ReadInt64()), nil
-	case "Bool":
-		return &Var{VType: TypeBool, Bool: reader.ReadBool()}, nil
+	case typ == "Bool":
+		return NewBool(reader.ReadBool()), nil
+	case typ == "TypeBytes" || strings.Contains(string(typ), "Array<Uint8>"):
+		return &Var{VType: TypeBytes, B: reader.ReadBytes()}, nil
+	case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
+		id := reader.ReadUint32()
+		if id != 0 {
+			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
+		}
+		return &Var{VType: TypeHandle, Handle: id, Bridge: bridge}, nil
 	default:
-		// 临时方案：如果 retData 长度为 8，假设是 Int64
-		if len(retData) == 8 {
+		// 临时方案：根据数据长度尝试推断
+		if reader.Available() == 8 {
 			return NewInt(reader.ReadInt64()), nil
 		}
-		// 如果是字符串 (长度 uint32 + 字节)
-		return NewString(string(retData)), nil
+		if reader.Available() > 0 {
+			return NewString(reader.ReadString()), nil
+		}
+		return nil, nil
 	}
 }
 

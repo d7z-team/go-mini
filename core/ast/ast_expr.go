@@ -385,6 +385,20 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 
+	objType := m.Object.GetBase().Type
+	if objType.IsResult() {
+		if m.Property == "val" {
+			valType, _ := objType.ReadResult()
+			m.Type = valType
+			return nil
+		}
+		if m.Property == "err" {
+			m.Type = "String"
+			return nil
+		}
+		return fmt.Errorf("Result type only has 'val' and 'err' properties")
+	}
+
 	if !m.Property.Valid(&ctx.ValidContext) {
 		return fmt.Errorf("invalid property: %s", m.Property)
 	}
