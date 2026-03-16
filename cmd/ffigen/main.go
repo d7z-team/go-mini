@@ -63,8 +63,11 @@ func emitWrite(sb *strings.Builder, prefix string, pType string, structs map[str
 		if isHost {
 			sb.WriteString(fmt.Sprintf("\t\t%s.WriteUint32(registry.Register(%s))\n", bufName, prefix))
 		} else {
-			sb.WriteString(fmt.Sprintf("\t// Warning: passing handle %s as uint32 not fully supported in pure Go proxy\n", prefix))
-			sb.WriteString(fmt.Sprintf("\t%s.WriteUint32(0) // TODO: pass actual handle ID\n", bufName))
+			sb.WriteString(fmt.Sprintf("\t\tif p.registry != nil {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t%s.WriteUint32(p.registry.Register(%s))\n", bufName, prefix))
+			sb.WriteString(fmt.Sprintf("\t\t} else {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t%s.WriteUint32(0)\n", bufName))
+			sb.WriteString(fmt.Sprintf("\t\t}\n"))
 		}
 		return
 	}
@@ -109,7 +112,13 @@ func emitReadAssign(sb *strings.Builder, varName string, pType string, structs m
 			sb.WriteString(fmt.Sprintf("\t\t\t}\n"))
 			sb.WriteString(fmt.Sprintf("\t\t}\n"))
 		} else {
-			sb.WriteString(fmt.Sprintf("\t_ = %s.ReadUint32() // Read handle ID\n", readerName))
+			sb.WriteString(fmt.Sprintf("\t\tif id := %s.ReadUint32(); id != 0 {\n", readerName))
+			sb.WriteString(fmt.Sprintf("\t\t\tif p.registry != nil {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t\tif obj, ok := p.registry.Get(id); ok {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t\t\t%s = obj.(%s)\n", varName, pType))
+			sb.WriteString(fmt.Sprintf("\t\t\t\t}\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t}\n"))
+			sb.WriteString(fmt.Sprintf("\t\t}\n"))
 		}
 		return
 	}
@@ -123,7 +132,20 @@ func emitReadAssign(sb *strings.Builder, varName string, pType string, structs m
 	case "[]byte":
 		sb.WriteString(fmt.Sprintf("\t%s = %s.ReadBytes()\n", varName, readerName))
 	case "any":
-		sb.WriteString(fmt.Sprintf("\t%s = %s.ReadAny()\n", varName, readerName))
+		if isHost {
+			sb.WriteString(fmt.Sprintf("\t%s_raw := %s.ReadAny()\n", varName, readerName))
+			sb.WriteString(fmt.Sprintf("\tif id, ok := %s_raw.(uint32); ok {\n", varName))
+			sb.WriteString(fmt.Sprintf("\t\tif obj, ok := registry.Get(id); ok {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t%s = obj\n", varName))
+			sb.WriteString(fmt.Sprintf("\t\t} else {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t\t%s = %s_raw\n", varName, varName))
+			sb.WriteString(fmt.Sprintf("\t\t}\n"))
+			sb.WriteString(fmt.Sprintf("\t} else {\n"))
+			sb.WriteString(fmt.Sprintf("\t\t%s = %s_raw\n", varName, varName))
+			sb.WriteString(fmt.Sprintf("\t}\n"))
+		} else {
+			sb.WriteString(fmt.Sprintf("\t%s = %s.ReadAny()\n", varName, readerName))
+		}
 	case "[]any", "...any":
 		sb.WriteString(fmt.Sprintf("\tl_%s := int(%s.ReadUint32())\n", varName, readerName))
 		sb.WriteString(fmt.Sprintf("\t%s = make([]any, l_%s)\n", varName, varName))
@@ -159,7 +181,7 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 	sb.WriteString(")\n\n")
 
 	// Generate VM Proxy
-	sb.WriteString(fmt.Sprintf("type %sProxy struct {\n\tbridge ffigo.FFIBridge\n}\n\n", name))
+	sb.WriteString(fmt.Sprintf("type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name))
 
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 {

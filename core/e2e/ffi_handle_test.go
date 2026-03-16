@@ -40,6 +40,18 @@ func (m *MockOS) Close(f *File) error {
 	return nil
 }
 
+func (m *MockOS) Read(f *File, b []byte) (int, error) {
+	return 0, nil
+}
+
+func (m *MockOS) Write(f *File, b []byte) (int, error) {
+	return 0, nil
+}
+
+func (m *MockOS) Deep(n Nested) Nested {
+	return n
+}
+
 type MockOSBridge struct {
 	impl     *MockOS
 	registry *ffigo.HandleRegistry
@@ -91,5 +103,47 @@ func TestFFIHandle(t *testing.T) {
 	err = prog.Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOSProxyDirect(t *testing.T) {
+	registry := ffigo.NewHandleRegistry()
+	mockOS := &MockOS{}
+	bridge := &MockOSBridge{
+		impl:     mockOS,
+		registry: registry,
+	}
+
+	// 初始化 Proxy，并注入 Registry
+	proxy := &OSProxy{
+		bridge:   bridge,
+		registry: registry,
+	}
+
+	// 1. 测试返回句柄：Open 会在宿主机创建一个 *File 并注册 ID 返回给 Proxy
+	file, err := proxy.Open("direct_test.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file == nil {
+		t.Fatal("expected file handle, got nil")
+	}
+
+	// 2. 测试发送句柄：Name 会把 file 指针通过 Proxy 重新注册（或识别）并发送给 Host
+	name := proxy.Name(file)
+	if name != "direct_test.txt" {
+		t.Fatalf("expected 'direct_test.txt', got %q", name)
+	}
+
+	// 3. 测试句柄生命周期
+	err = proxy.Close(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 再次获取名称，验证 Host 端对象已被修改
+	nameAfter := proxy.Name(file)
+	if nameAfter != "closed" {
+		t.Fatalf("expected 'closed', got %q", nameAfter)
 	}
 }

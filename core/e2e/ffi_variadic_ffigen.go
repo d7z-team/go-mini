@@ -12,6 +12,7 @@ const (
 
 type PrinterAPIProxy struct {
 	bridge ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
 }
 
 func (p *PrinterAPIProxy) Println(args ...any) {

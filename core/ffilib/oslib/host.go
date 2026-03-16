@@ -29,6 +29,20 @@ func (h *OSHost) Remove(name string) error {
 	return os.Remove(name)
 }
 
+func (h *OSHost) Read(f *File, b []byte) (int, error) {
+	if f == nil {
+		return 0, os.ErrInvalid
+	}
+	return ((*os.File)(unsafe.Pointer(f))).Read(b)
+}
+
+func (h *OSHost) Write(f *File, b []byte) (int, error) {
+	if f == nil {
+		return 0, os.ErrInvalid
+	}
+	return ((*os.File)(unsafe.Pointer(f))).Write(b)
+}
+
 func (h *OSHost) Close(f *File) error {
 	if f == nil {
 		return nil

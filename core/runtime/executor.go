@@ -532,8 +532,10 @@ func writeAnyToBuffer(buf *ffigo.Buffer, arg *Var) {
 		buf.WriteAny(arg.B)
 	case TypeBool:
 		buf.WriteAny(arg.Bool)
+	case TypeHandle:
+		buf.WriteAny(arg.Handle)
 	default:
-		// 暂不支持将 Handle 或其它复杂类型作为 Any 写入
+		// 暂不支持将其它复杂类型作为 Any 写入
 		buf.WriteAny(nil)
 	}
 }

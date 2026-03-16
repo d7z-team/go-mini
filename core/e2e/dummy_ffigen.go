@@ -10,11 +10,15 @@ const (
 	MethodID_OS_Open = 1
 	MethodID_OS_Name = 2
 	MethodID_OS_Stat = 3
-	MethodID_OS_Close = 4
+	MethodID_OS_Read = 4
+	MethodID_OS_Write = 5
+	MethodID_OS_Close = 6
+	MethodID_OS_Deep = 7
 )
 
 type OSProxy struct {
 	bridge ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
 }
 
 func (p *OSProxy) Open(name string) (*File, error) {
@@ -30,7 +34,13 @@ func (p *OSProxy) Open(name string) (*File, error) {
 
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
-	_ = retBuf.ReadUint32() // Read handle ID
+		if id := retBuf.ReadUint32(); id != 0 {
+			if p.registry != nil {
+				if obj, ok := p.registry.Get(id); ok {
+					v_0 = obj.(*File)
+				}
+			}
+		}
 	return v_0, nil
 }
 
@@ -38,8 +48,11 @@ func (p *OSProxy) Name(f *File) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	// Warning: passing handle f as uint32 not fully supported in pure Go proxy
-	buf.WriteUint32(0) // TODO: pass actual handle ID
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
 
 	retData, err := p.bridge.Call(MethodID_OS_Name, buf.Bytes())
 	_ = err
@@ -53,8 +66,11 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	// Warning: passing handle f as uint32 not fully supported in pure Go proxy
-	buf.WriteUint32(0) // TODO: pass actual handle ID
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
 
 	retData, err := p.bridge.Call(MethodID_OS_Stat, buf.Bytes())
 	if err != nil {
@@ -68,12 +84,59 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 	return v_0, nil
 }
 
+func (p *OSProxy) Read(f *File, b []byte) (int, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
+	buf.WriteBytes(b)
+
+	retData, err := p.bridge.Call(MethodID_OS_Read, buf.Bytes())
+	if err != nil {
+		return 0, err
+	}
+
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int
+	v_0 = int(retBuf.ReadInt64())
+	return v_0, nil
+}
+
+func (p *OSProxy) Write(f *File, b []byte) (int, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
+	buf.WriteBytes(b)
+
+	retData, err := p.bridge.Call(MethodID_OS_Write, buf.Bytes())
+	if err != nil {
+		return 0, err
+	}
+
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int
+	v_0 = int(retBuf.ReadInt64())
+	return v_0, nil
+}
+
 func (p *OSProxy) Close(f *File) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	// Warning: passing handle f as uint32 not fully supported in pure Go proxy
-	buf.WriteUint32(0) // TODO: pass actual handle ID
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
 
 	_, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
 	if err != nil {
@@ -81,6 +144,24 @@ func (p *OSProxy) Close(f *File) (error) {
 	}
 
 	return nil
+}
+
+func (p *OSProxy) Deep(n Nested) (Nested) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteUint32(n.Info.Size)
+	buf.WriteString(n.Info.Name)
+	buf.WriteInt64(int64(n.Level))
+
+	retData, err := p.bridge.Call(MethodID_OS_Deep, buf.Bytes())
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 Nested
+	v_0.Info.Size = retBuf.ReadUint32()
+	v_0.Info.Name = retBuf.ReadString()
+	v_0.Level = int(retBuf.ReadInt64())
+	return v_0
 }
 
 func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
@@ -120,6 +201,36 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 	resBuf.WriteUint32(r0.Size)
 	resBuf.WriteString(r0.Name)
 		return resBuf.Bytes(), err
+	case MethodID_OS_Read:
+		var f *File
+		if id := reqBuf.ReadUint32(); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				f = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var b []byte
+	b = reqBuf.ReadBytes()
+		r0, err := impl.Read(f, b)
+		resBuf := ffigo.GetBuffer()
+	resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), err
+	case MethodID_OS_Write:
+		var f *File
+		if id := reqBuf.ReadUint32(); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				f = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var b []byte
+	b = reqBuf.ReadBytes()
+		r0, err := impl.Write(f, b)
+		resBuf := ffigo.GetBuffer()
+	resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), err
 	case MethodID_OS_Close:
 		var f *File
 		if id := reqBuf.ReadUint32(); id != 0 {
@@ -132,6 +243,17 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), err
+	case MethodID_OS_Deep:
+		var n Nested
+	n.Info.Size = reqBuf.ReadUint32()
+	n.Info.Name = reqBuf.ReadString()
+	n.Level = int(reqBuf.ReadInt64())
+		r0 := impl.Deep(n)
+		resBuf := ffigo.GetBuffer()
+	resBuf.WriteUint32(r0.Info.Size)
+	resBuf.WriteString(r0.Info.Name)
+	resBuf.WriteInt64(int64(r0.Level))
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}

@@ -77,6 +77,7 @@ const (
 	TypeTagString  byte = 3
 	TypeTagBytes   byte = 4
 	TypeTagBool    byte = 5
+	TypeTagHandle  byte = 6
 )
 
 func (b *Buffer) WriteAny(v interface{}) {
@@ -103,6 +104,9 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case bool:
 		b.buf = append(b.buf, TypeTagBool)
 		b.WriteBool(val)
+	case uint32: // Handle ID
+		b.buf = append(b.buf, TypeTagHandle)
+		b.WriteUint32(val)
 	default:
 		b.buf = append(b.buf, TypeTagUnknown)
 	}
@@ -122,6 +126,8 @@ func (r *Reader) ReadAny() interface{} {
 		return r.ReadBytes()
 	case TypeTagBool:
 		return r.ReadBool()
+	case TypeTagHandle:
+		return r.ReadUint32()
 	default:
 		return nil
 	}

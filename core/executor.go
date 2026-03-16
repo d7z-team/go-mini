@@ -9,7 +9,9 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -59,12 +61,21 @@ func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, err
 func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
 	returns := "Void"
 	if callFunc, ok := spec.ReadCallFunc(); ok {
-		// Try to read tuple and get the first return type
-		returns = string(callFunc.Returns)
-		if callFunc.Returns.IsTuple() {
-			if types, ok := callFunc.Returns.ReadTuple(); ok && len(types) > 0 {
-				returns = string(types[0])
+		retType := callFunc.Returns
+		if retType.IsTuple() {
+			if types, ok := retType.ReadTuple(); ok && len(types) > 0 {
+				retType = types[0]
 			}
+		}
+		
+		// 映射 ast.GoMiniType 到 evalFFI 识别的字符串标签
+		returns = string(retType)
+		switch {
+		case retType == "String": returns = "String"
+		case retType == "Int64": returns = "Int64"
+		case retType == "Bool": returns = "Bool"
+		case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"): returns = "TypeBytes"
+		case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle": returns = "TypeHandle"
 		}
 	}
 
@@ -78,37 +89,37 @@ func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, s
 	o.bridges[methodID] = bridge
 }
 
-type bridgeWrapper struct {
-	router func(methodID uint32, args []byte) ([]byte, error)
+type BridgeWrapper struct {
+	Router func(methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *bridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
-	return b.router(methodID, args)
+func (b *BridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
+	return b.Router(methodID, args)
 }
 
-func (b *bridgeWrapper) DestroyHandle(handle uint32) error {
+func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
 	return nil // Base wrapper doesn't manage registry
 }
 
-type handleBridgeWrapper struct {
-	registry *ffigo.HandleRegistry
-	router   func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
+type HandleBridgeWrapper struct {
+	Registry *ffigo.HandleRegistry
+	Router   func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *handleBridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
-	return b.router(b.registry, methodID, args)
+func (b *HandleBridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
+	return b.Router(b.Registry, methodID, args)
 }
 
-func (b *handleBridgeWrapper) DestroyHandle(handle uint32) error {
-	b.registry.Remove(handle)
+func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
+	b.Registry.Remove(handle)
 	return nil
 }
 
 func (o *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject fmt
 	fmtHost := &fmtlib.FmtHost{}
-	fmtBridge := &bridgeWrapper{
-		router: func(methodID uint32, args []byte) ([]byte, error) {
+	fmtBridge := &BridgeWrapper{
+		Router: func(methodID uint32, args []byte) ([]byte, error) {
 			return fmtlib.FmtHostRouter(fmtHost, o.registry, methodID, args)
 		},
 	}
@@ -119,9 +130,9 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 
 	// 2. Inject os
 	osHost := &oslib.OSHost{}
-	osBridge := &handleBridgeWrapper{
-		registry: o.registry,
-		router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+	osBridge := &HandleBridgeWrapper{
+		Registry: o.registry,
+		Router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 			return oslib.OSHostRouter(osHost, reg, methodID, args)
 		},
 	}
@@ -130,7 +141,27 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 	o.RegisterFFI("os.ReadFile", osBridge, oslib.MethodID_OS_ReadFile, "function(String) tuple(TypeBytes, Error)")
 	o.RegisterFFI("os.WriteFile", osBridge, oslib.MethodID_OS_WriteFile, "function(String, TypeBytes) Error")
 	o.RegisterFFI("os.Remove", osBridge, oslib.MethodID_OS_Remove, "function(String) Error")
+	o.RegisterFFI("os.Read", osBridge, oslib.MethodID_OS_Read, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
+	o.RegisterFFI("os.Write", osBridge, oslib.MethodID_OS_Write, "function(TypeHandle, TypeBytes) tuple(Int64, Error)")
 	o.RegisterFFI("os.Close", osBridge, oslib.MethodID_OS_Close, "function(TypeHandle) Error")
+
+	// 3. Inject errors
+	errorsHost := &errorslib.ErrorsHost{}
+	errorsBridge := &BridgeWrapper{
+		Router: func(methodID uint32, args []byte) ([]byte, error) {
+			return errorslib.ErrorsHostRouter(errorsHost, o.registry, methodID, args)
+		},
+	}
+	o.RegisterFFI("errors.New", errorsBridge, errorslib.MethodID_Errors_New, "function(String) Error")
+
+	// 4. Inject io
+	ioHost := &iolib.IOHost{}
+	ioBridge := &BridgeWrapper{
+		Router: func(methodID uint32, args []byte) ([]byte, error) {
+			return iolib.IOHostRouter(ioHost, o.registry, methodID, args)
+		},
+	}
+	o.RegisterFFI("io.ReadAll", ioBridge, iolib.MethodID_IO_ReadAll, "function(Any) tuple(TypeBytes, Error)")
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数

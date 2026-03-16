@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	MethodID_Fmt_Print   = 1
+	MethodID_Fmt_Print = 1
 	MethodID_Fmt_Println = 2
-	MethodID_Fmt_Printf  = 3
+	MethodID_Fmt_Printf = 3
 	MethodID_Fmt_Sprintf = 4
 )
 
 type FmtProxy struct {
 	bridge ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
 }
 
 func (p *FmtProxy) Print(args ...any) {
@@ -57,7 +58,7 @@ func (p *FmtProxy) Printf(format string, args ...any) {
 	_ = err
 }
 
-func (p *FmtProxy) Sprintf(format string, args ...any) string {
+func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -80,48 +81,48 @@ func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, ar
 	switch methodID {
 	case MethodID_Fmt_Print:
 		var args []any
-		l_args := int(reqBuf.ReadUint32())
-		args = make([]any, l_args)
-		for i_args := 0; i_args < l_args; i_args++ {
-			args[i_args] = reqBuf.ReadAny()
-		}
+	l_args := int(reqBuf.ReadUint32())
+	args = make([]any, l_args)
+	for i_args := 0; i_args < l_args; i_args++ {
+		args[i_args] = reqBuf.ReadAny()
+	}
 		impl.Print(args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Println:
 		var args []any
-		l_args := int(reqBuf.ReadUint32())
-		args = make([]any, l_args)
-		for i_args := 0; i_args < l_args; i_args++ {
-			args[i_args] = reqBuf.ReadAny()
-		}
+	l_args := int(reqBuf.ReadUint32())
+	args = make([]any, l_args)
+	for i_args := 0; i_args < l_args; i_args++ {
+		args[i_args] = reqBuf.ReadAny()
+	}
 		impl.Println(args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Printf:
 		var format string
-		format = reqBuf.ReadString()
+	format = reqBuf.ReadString()
 		var args []any
-		l_args := int(reqBuf.ReadUint32())
-		args = make([]any, l_args)
-		for i_args := 0; i_args < l_args; i_args++ {
-			args[i_args] = reqBuf.ReadAny()
-		}
+	l_args := int(reqBuf.ReadUint32())
+	args = make([]any, l_args)
+	for i_args := 0; i_args < l_args; i_args++ {
+		args[i_args] = reqBuf.ReadAny()
+	}
 		impl.Printf(format, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Sprintf:
 		var format string
-		format = reqBuf.ReadString()
+	format = reqBuf.ReadString()
 		var args []any
-		l_args := int(reqBuf.ReadUint32())
-		args = make([]any, l_args)
-		for i_args := 0; i_args < l_args; i_args++ {
-			args[i_args] = reqBuf.ReadAny()
-		}
+	l_args := int(reqBuf.ReadUint32())
+	args = make([]any, l_args)
+	for i_args := 0; i_args < l_args; i_args++ {
+		args[i_args] = reqBuf.ReadAny()
+	}
 		r0 := impl.Sprintf(format, args...)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+	resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)

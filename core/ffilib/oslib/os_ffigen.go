@@ -7,16 +7,19 @@ import (
 )
 
 const (
-	MethodID_OS_Open      = 1
-	MethodID_OS_Create    = 2
-	MethodID_OS_ReadFile  = 3
+	MethodID_OS_Open = 1
+	MethodID_OS_Create = 2
+	MethodID_OS_ReadFile = 3
 	MethodID_OS_WriteFile = 4
-	MethodID_OS_Remove    = 5
-	MethodID_OS_Close     = 6
+	MethodID_OS_Remove = 5
+	MethodID_OS_Read = 6
+	MethodID_OS_Write = 7
+	MethodID_OS_Close = 8
 )
 
 type OSProxy struct {
 	bridge ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
 }
 
 func (p *OSProxy) Open(name string) (*File, error) {
@@ -32,7 +35,13 @@ func (p *OSProxy) Open(name string) (*File, error) {
 
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
-	_ = retBuf.ReadUint32() // Read handle ID
+		if id := retBuf.ReadUint32(); id != 0 {
+			if p.registry != nil {
+				if obj, ok := p.registry.Get(id); ok {
+					v_0 = obj.(*File)
+				}
+			}
+		}
 	return v_0, nil
 }
 
@@ -49,7 +58,13 @@ func (p *OSProxy) Create(name string) (*File, error) {
 
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
-	_ = retBuf.ReadUint32() // Read handle ID
+		if id := retBuf.ReadUint32(); id != 0 {
+			if p.registry != nil {
+				if obj, ok := p.registry.Get(id); ok {
+					v_0 = obj.(*File)
+				}
+			}
+		}
 	return v_0, nil
 }
 
@@ -70,7 +85,7 @@ func (p *OSProxy) ReadFile(name string) ([]byte, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) WriteFile(name string, data []byte) error {
+func (p *OSProxy) WriteFile(name string, data []byte) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -85,7 +100,7 @@ func (p *OSProxy) WriteFile(name string, data []byte) error {
 	return nil
 }
 
-func (p *OSProxy) Remove(name string) error {
+func (p *OSProxy) Remove(name string) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -99,12 +114,59 @@ func (p *OSProxy) Remove(name string) error {
 	return nil
 }
 
-func (p *OSProxy) Close(f *File) error {
+func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	// Warning: passing handle f as uint32 not fully supported in pure Go proxy
-	buf.WriteUint32(0) // TODO: pass actual handle ID
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
+	buf.WriteBytes(b)
+
+	retData, err := p.bridge.Call(MethodID_OS_Read, buf.Bytes())
+	if err != nil {
+		return 0, err
+	}
+
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int
+	v_0 = int(retBuf.ReadInt64())
+	return v_0, nil
+}
+
+func (p *OSProxy) Write(f *File, b []byte) (int, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
+	buf.WriteBytes(b)
+
+	retData, err := p.bridge.Call(MethodID_OS_Write, buf.Bytes())
+	if err != nil {
+		return 0, err
+	}
+
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int
+	v_0 = int(retBuf.ReadInt64())
+	return v_0, nil
+}
+
+func (p *OSProxy) Close(f *File) (error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+		if p.registry != nil {
+			buf.WriteUint32(p.registry.Register(f))
+		} else {
+			buf.WriteUint32(0)
+		}
 
 	_, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
 	if err != nil {
@@ -119,38 +181,68 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
-		name = reqBuf.ReadString()
+	name = reqBuf.ReadString()
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUint32(registry.Register(r0))
 		return resBuf.Bytes(), err
 	case MethodID_OS_Create:
 		var name string
-		name = reqBuf.ReadString()
+	name = reqBuf.ReadString()
 		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUint32(registry.Register(r0))
 		return resBuf.Bytes(), err
 	case MethodID_OS_ReadFile:
 		var name string
-		name = reqBuf.ReadString()
+	name = reqBuf.ReadString()
 		r0, err := impl.ReadFile(name)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBytes(r0)
+	resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), err
 	case MethodID_OS_WriteFile:
 		var name string
-		name = reqBuf.ReadString()
+	name = reqBuf.ReadString()
 		var data []byte
-		data = reqBuf.ReadBytes()
+	data = reqBuf.ReadBytes()
 		err := impl.WriteFile(name, data)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), err
 	case MethodID_OS_Remove:
 		var name string
-		name = reqBuf.ReadString()
+	name = reqBuf.ReadString()
 		err := impl.Remove(name)
 		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), err
+	case MethodID_OS_Read:
+		var f *File
+		if id := reqBuf.ReadUint32(); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				f = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var b []byte
+	b = reqBuf.ReadBytes()
+		r0, err := impl.Read(f, b)
+		resBuf := ffigo.GetBuffer()
+	resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), err
+	case MethodID_OS_Write:
+		var f *File
+		if id := reqBuf.ReadUint32(); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				f = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var b []byte
+	b = reqBuf.ReadBytes()
+		r0, err := impl.Write(f, b)
+		resBuf := ffigo.GetBuffer()
+	resBuf.WriteInt64(int64(r0))
 		return resBuf.Bytes(), err
 	case MethodID_OS_Close:
 		var f *File

@@ -13,6 +13,7 @@ const (
 
 type ShapeAPIProxy struct {
 	bridge ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
 }
 
 func (p *ShapeAPIProxy) GetRect() (Rect) {
