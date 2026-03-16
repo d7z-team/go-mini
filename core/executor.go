@@ -70,18 +70,24 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 		}
 
 		// 映射 ast.GoMiniType 到 evalFFI 识别的字符串标签
-		returns = string(retType)
-		switch {
-		case retType == "String":
-			returns = "String"
-		case retType == "Int64":
-			returns = "Int64"
-		case retType == "Bool":
-			returns = "Bool"
-		case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"):
-			returns = "TypeBytes"
-		case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle":
-			returns = "TypeHandle"
+		if retType.IsResult() {
+			returns = string(retType)
+		} else {
+			returns = string(retType)
+			switch {
+			case retType == "String":
+				returns = "String"
+			case retType == "Int64":
+				returns = "Int64"
+			case retType == "Bool":
+				returns = "Bool"
+			case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"):
+				returns = "TypeBytes"
+			case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle":
+				returns = "TypeHandle"
+			case retType.IsMap():
+				returns = string(retType) // evaluation uses full type for Map
+			}
 		}
 	}
 
@@ -123,72 +129,22 @@ func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
 
 func (o *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject fmt
-	fmtHost := &fmtlib.FmtHost{}
-	fmtBridge := &BridgeWrapper{
-		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-			return fmtlib.FmtHostRouter(ctx, fmtHost, o.registry, methodID, args)
-		},
-	}
-	o.RegisterFFI("fmt.Print", fmtBridge, fmtlib.MethodID_Fmt_Print, "function(...Any) Void")
-	o.RegisterFFI("fmt.Println", fmtBridge, fmtlib.MethodID_Fmt_Println, "function(...Any) Void")
-	o.RegisterFFI("fmt.Printf", fmtBridge, fmtlib.MethodID_Fmt_Printf, "function(String, ...Any) Void")
-	o.RegisterFFI("fmt.Sprintf", fmtBridge, fmtlib.MethodID_Fmt_Sprintf, "function(String, ...Any) String")
+	fmtlib.RegisterFMTLIBFmtLibrary(o, "fmt", &fmtlib.FmtHost{}, o.registry)
 
 	// 2. Inject os
-	osHost := &oslib.OSHost{}
-	osBridge := &HandleBridgeWrapper{
-		Registry: o.registry,
-		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return oslib.OSHostRouter(ctx, osHost, reg, methodID, args)
-		},
-	}
-	o.RegisterFFI("os.Open", osBridge, oslib.MethodID_OS_Open, "function(String) Result<TypeHandle>")
-	o.RegisterFFI("os.Create", osBridge, oslib.MethodID_OS_Create, "function(String) Result<TypeHandle>")
-	o.RegisterFFI("os.ReadFile", osBridge, oslib.MethodID_OS_ReadFile, "function(String) Result<TypeBytes>")
-	o.RegisterFFI("os.WriteFile", osBridge, oslib.MethodID_OS_WriteFile, "function(String, TypeBytes) Result<Void>")
-	o.RegisterFFI("os.Remove", osBridge, oslib.MethodID_OS_Remove, "function(String) Result<Void>")
-	o.RegisterFFI("os.Read", osBridge, oslib.MethodID_OS_Read, "function(TypeHandle, TypeBytes) Result<Int64>")
-	o.RegisterFFI("os.Write", osBridge, oslib.MethodID_OS_Write, "function(TypeHandle, TypeBytes) Result<Int64>")
-	o.RegisterFFI("os.Close", osBridge, oslib.MethodID_OS_Close, "function(TypeHandle) Result<Void>")
+	oslib.RegisterOSLIBOSLibrary(o, "os", &oslib.OSHost{}, o.registry)
 
 	// 3. Inject errors
-	errorsHost := &errorslib.ErrorsHost{}
-	errorsBridge := &BridgeWrapper{
-		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-			return errorslib.ErrorsHostRouter(ctx, errorsHost, o.registry, methodID, args)
-		},
-	}
-	o.RegisterFFI("errors.New", errorsBridge, errorslib.MethodID_Errors_New, "function(String) Result<Void>")
+	errorslib.RegisterERRORSLIBErrorsLibrary(o, "errors", &errorslib.ErrorsHost{}, o.registry)
 
 	// 4. Inject io
-	ioHost := &iolib.IOHost{}
-	ioBridge := &BridgeWrapper{
-		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-			return iolib.IOHostRouter(ctx, ioHost, o.registry, methodID, args)
-		},
-	}
-	o.RegisterFFI("io.ReadAll", ioBridge, iolib.MethodID_IO_ReadAll, "function(Any) Result<TypeBytes>")
+	iolib.RegisterIOLIBIOLibrary(o, "io", &iolib.IOHost{}, o.registry)
 
 	// 5. Inject json
-	jsonHost := &jsonlib.JSONHost{}
-	jsonBridge := &BridgeWrapper{
-		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-			return jsonlib.JSONHostRouter(ctx, jsonHost, o.registry, methodID, args)
-		},
-	}
-	o.RegisterFFI("json.Marshal", jsonBridge, jsonlib.MethodID_JSON_Marshal, "function(Any) Result<TypeBytes>")
-	o.RegisterFFI("json.Unmarshal", jsonBridge, jsonlib.MethodID_JSON_Unmarshal, "function(TypeBytes) Result<Any>")
+	jsonlib.RegisterJSONLIBJSONLibrary(o, "json", &jsonlib.JSONHost{}, o.registry)
 
 	// 6. Inject time
-	timeHost := &timelib.TimeHost{}
-	timeBridge := &BridgeWrapper{
-		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-			return timelib.TimeHostRouter(ctx, timeHost, o.registry, methodID, args)
-		},
-	}
-	o.RegisterFFI("time.Now", timeBridge, timelib.MethodID_Time_Now, "function() String")
-	o.RegisterFFI("time.Sleep", timeBridge, timelib.MethodID_Time_Sleep, "function(Int64) Void")
-	o.RegisterFFI("time.Since", timeBridge, timelib.MethodID_Time_Since, "function(String) Int64")
+	timelib.RegisterTIMELIBTimeLibrary(o, "time", &timelib.TimeHost{}, o.registry)
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数

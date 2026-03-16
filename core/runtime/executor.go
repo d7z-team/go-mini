@@ -21,7 +21,6 @@ type Executor struct {
 	ctx     *StackContext
 
 	routes  map[string]FFIRoute // 显式映射外部函数名到 Bridge
-	monitor MonitorManager
 
 	activeHandles []handleRef
 }
@@ -81,7 +80,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		// Clean up all active handles to prevent memory leaks on VM exit
 		for _, h := range e.activeHandles {
 			if h.Bridge != nil && h.ID != 0 {
-				h.Bridge.DestroyHandle(h.ID)
+				_ = h.Bridge.DestroyHandle(h.ID)
 			}
 		}
 		e.activeHandles = nil
@@ -106,7 +105,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to initialize global var %s: %w", name, err)
 		}
-		e.ctx.AddVariable(string(name), val)
+		_ = e.ctx.AddVariable(string(name), val)
 	}
 
 	defer func() {
@@ -131,7 +130,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) error {
 			c.Executor = e
 			for _, p := range f.Params {
-				c.NewVar(string(p.Name), p.Type)
+				_ = c.NewVar(string(p.Name), p.Type)
 			}
 			return e.execStmts(c, f.Body.Children)
 		})
@@ -233,7 +232,10 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 					}
 				}
 				if n.Update != nil {
-					e.execStmt(ctx, n.Update.(ast.Stmt))
+					if updateErr := e.execStmt(ctx, n.Update.(ast.Stmt)); updateErr != nil {
+						forErr = updateErr
+						break
+					}
 				}
 			}
 		})
@@ -244,11 +246,11 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		}
 		return nil
 	case *ast.ReturnStmt:
-		ctx.SetInterrupt("function", "return")
+		_ = ctx.SetInterrupt("function", "return")
 		if len(n.Results) > 0 {
 			res, err := e.ExecExpr(ctx, n.Results[0])
 			if err == nil && res != nil {
-				ctx.Store("__return__", res)
+				_ = ctx.Store("__return__", res)
 			}
 		}
 		return nil
@@ -512,6 +514,10 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 			return NewBool(l.Bool == r.Bool), nil
 		case "!=", "Neq":
 			return NewBool(l.Bool != r.Bool), nil
+		case "&&", "And":
+			return NewBool(l.Bool && r.Bool), nil
+		case "||", "Or":
+			return NewBool(l.Bool || r.Bool), nil
 		}
 	}
 
@@ -645,13 +651,13 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			_ = ctx.WithFuncScope(name, func(old *Stack, c *StackContext) error {
 				c.Executor = e
 				for i, p := range f.Params {
-					c.NewVar(string(p.Name), p.Type)
+					_ = c.NewVar(string(p.Name), p.Type)
 					if i < len(args) && args[i] != nil {
-						c.Store(string(p.Name), args[i])
+						_ = c.Store(string(p.Name), args[i])
 					}
 				}
 				if !f.Return.IsVoid() {
-					c.NewVar("__return__", f.Return)
+					_ = c.NewVar("__return__", f.Return)
 				}
 				_ = e.execStmts(c, f.Body.Children)
 				if !f.Return.IsVoid() {
@@ -835,6 +841,22 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 				return nil
 			}
 		}
+		if typ.IsMap() {
+			kType, vType, ok := typ.GetMapKeyValueTypes()
+			if ok {
+				vmMap := v.Ref.(*VMMap)
+				buf.WriteUint32(uint32(len(vmMap.Data)))
+				for k, val := range vmMap.Data {
+					// Currently VMMap only supports string keys in the VM
+					_ = kType // Assume string for now
+					buf.WriteString(k)
+					if err := e.serializeVar(buf, val, vType); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+		}
 		// 回退到动态 Map 序列化（Any 协议）
 		e.serializeVarToAny(buf, v)
 	default:
@@ -964,6 +986,19 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			res[i] = val
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
+	case typ.IsMap():
+		count := int(reader.ReadUint32())
+		_, vType, _ := typ.GetMapKeyValueTypes()
+		res := make(map[string]*Var)
+		for i := 0; i < count; i++ {
+			k := reader.ReadString() // Currently only supports string keys in VM
+			val, err := e.deserializeVar(reader, vType, bridge)
+			if err != nil {
+				return nil, err
+			}
+			res[k] = val
+		}
+		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: typ}, nil
 	default:
 		return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 	}

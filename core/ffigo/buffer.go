@@ -19,12 +19,16 @@ var bufferPool = sync.Pool{
 
 // GetBuffer 从池中获取一个 Buffer
 func GetBuffer() *Buffer {
-	return &Buffer{buf: make([]byte, 0, 128)}
+	buf := bufferPool.Get().(*Buffer)
+	buf.buf = buf.buf[:0]
+	return buf
 }
 
 // ReleaseBuffer 将 Buffer 放回池中
 func ReleaseBuffer(b *Buffer) {
-	// bufferPool.Put(b)
+	if cap(b.buf) < 65536 {
+		bufferPool.Put(b)
+	}
 }
 
 // Bytes 返回缓冲区的字节切片
@@ -172,7 +176,7 @@ func NewReader(data []byte) *Reader {
 
 func (r *Reader) ReadByte() byte {
 	v := r.buf[r.offset]
-	r.offset += 1
+	r.offset++
 	return v
 }
 
@@ -195,9 +199,9 @@ func (r *Reader) ReadFloat64() float64 {
 }
 
 func (r *Reader) ReadBool() bool {
-	v := r.buf[r.offset]
-	r.offset += 1
-	return v != 0
+	v := r.buf[r.offset] == 1
+	r.offset++
+	return v
 }
 
 func (r *Reader) ReadString() string {

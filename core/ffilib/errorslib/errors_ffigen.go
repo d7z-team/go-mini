@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -46,5 +47,33 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var Errors_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"New", 1, "function(String) Result<Void>"},
+}
+
+type Errors_Bridge struct {
+	Impl Errors
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Errors_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return ErrorsHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterERRORSLIBErrorsLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Errors, registry *ffigo.HandleRegistry) {
+	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
+	for _, m := range Errors_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

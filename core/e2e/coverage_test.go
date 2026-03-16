@@ -58,16 +58,8 @@ func TestFFICoverage(t *testing.T) {
 
 	mock := &CoverageMockOS{}
 	registry := ffigo.NewHandleRegistry()
-	bridge := &engine.HandleBridgeWrapper{
-		Registry: registry,
-		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return OSHostRouter(ctx, mock, reg, methodID, args)
-		},
-	}
 
-	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")
-	executor.RegisterFFI("os.Read", bridge, MethodID_OS_Read, "function(TypeHandle, TypeBytes) Result<Int64>")
-	executor.RegisterFFI("os.Write", bridge, MethodID_OS_Write, "function(TypeHandle, TypeBytes) Result<Int64>")
+	RegisterE2EMockOSLibrary(executor, "os", mock, registry)
 
 	code := `
 	package main
@@ -118,13 +110,7 @@ func TestFFIErrorPropagation(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &CoverageMockOS{}
 	registry := ffigo.NewHandleRegistry()
-	bridge := &engine.HandleBridgeWrapper{
-		Registry: registry,
-		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return OSHostRouter(ctx, mock, reg, methodID, args)
-		},
-	}
-	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")
+	RegisterE2EMockOSLibrary(executor, "os", mock, registry)
 
 	code := `
 	package main

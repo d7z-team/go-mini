@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -317,5 +318,40 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var OS_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"Open", 1, "function(String) Result<Ptr<File>>"},
+	{"Create", 2, "function(String) Result<Ptr<File>>"},
+	{"ReadFile", 3, "function(String) Result<Array<Uint8>>"},
+	{"WriteFile", 4, "function(String, Array<Uint8>) Result<Void>"},
+	{"Remove", 5, "function(String) Result<Void>"},
+	{"Read", 6, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
+	{"Write", 7, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
+	{"Close", 8, "function(Ptr<File>) Result<Void>"},
+}
+
+type OS_Bridge struct {
+	Impl OS
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *OS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return OSHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *OS_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterOSLIBOSLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl OS, registry *ffigo.HandleRegistry) {
+	bridge := &OS_Bridge{Impl: impl, Registry: registry}
+	for _, m := range OS_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

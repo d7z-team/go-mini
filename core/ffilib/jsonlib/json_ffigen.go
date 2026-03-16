@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -98,5 +99,34 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var JSON_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"Marshal", 1, "function(Any) Result<Array<Uint8>>"},
+	{"Unmarshal", 2, "function(Array<Uint8>) Result<Any>"},
+}
+
+type JSON_Bridge struct {
+	Impl JSON
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *JSON_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return JSONHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterJSONLIBJSONLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl JSON, registry *ffigo.HandleRegistry) {
+	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
+	for _, m := range JSON_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

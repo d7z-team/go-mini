@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -169,5 +170,36 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var Fmt_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"Print", 1, "function(...Any) Void"},
+	{"Println", 2, "function(...Any) Void"},
+	{"Printf", 3, "function(String, ...Any) Void"},
+	{"Sprintf", 4, "function(String, ...Any) String"},
+}
+
+type Fmt_Bridge struct {
+	Impl Fmt
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Fmt_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return FmtHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterFMTLIBFmtLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Fmt, registry *ffigo.HandleRegistry) {
+	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
+	for _, m := range Fmt_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

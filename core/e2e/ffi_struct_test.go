@@ -14,37 +14,24 @@ type Rect struct {
 	A Point
 	B Point
 }
-
-type ShapeAPI interface {
+type MockShapeAPI interface {
 	GetRect() Rect
 	Area(r Rect) int
 }
 
-type MockShapeAPI struct{}
+type MockShapeHost struct{}
 
-func (m *MockShapeAPI) GetRect() Rect {
+func (m *MockShapeHost) GetRect() Rect {
 	return Rect{A: Point{10, 20}, B: Point{30, 40}}
 }
 
-func (m *MockShapeAPI) Area(r Rect) int {
+func (m *MockShapeHost) Area(r Rect) int {
 	return (r.B.X - r.A.X) * (r.B.Y - r.A.Y)
 }
 
-type MockShapeBridge struct {
-	impl *MockShapeAPI
-}
-
-func (b *MockShapeBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ShapeAPIHostRouter(ctx, b.impl, nil, methodID, args)
-}
-
-func (b *MockShapeBridge) DestroyHandle(handle uint32) error {
-	return nil
-}
-
 func TestFFIStruct(t *testing.T) {
-	bridge := &MockShapeBridge{impl: &MockShapeAPI{}}
-	proxy := &ShapeAPIProxy{bridge: bridge}
+	impl := &MockShapeHost{}
+	proxy := &MockShapeAPIProxy{bridge: &MockShapeAPI_Bridge{Impl: impl}}
 	ctx := context.Background()
 
 	rect := proxy.GetRect(ctx)

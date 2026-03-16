@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type RobustPoint struct {
@@ -14,7 +13,7 @@ type RobustPoint struct {
 	Y int
 }
 
-type Geometry interface {
+type MockGeometry interface {
 	SumX(points []RobustPoint) int
 }
 
@@ -35,17 +34,12 @@ func TestRobustness(t *testing.T) {
 
 	// 注册一个处理数组+结构体的 FFI
 	mock := &MockGeo{}
-	bridge := &engine.HandleBridgeWrapper{
-		Registry: ffigo.NewHandleRegistry(),
-		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return GeometryHostRouter(ctx, mock, reg, methodID, args)
-		},
-	}
-	executor.RegisterFFI("SumX", bridge, MethodID_Geometry_SumX, "function(Array<RobustPoint>) Int64")
+	RegisterE2EMockGeometryLibrary(executor, "e2e", mock, nil)
 
 	code := `
 	package main
 	import "fmt"
+	import "e2e"
 
 	type RobustPoint struct { X Int64; Y Int64 }
 
@@ -62,7 +56,7 @@ func TestRobustness(t *testing.T) {
 		p2 := RobustPoint{X: 30, Y: 40}
 		points := []RobustPoint{p1, p2}
 		
-		totalX := SumX(points)
+		totalX := e2e.SumX(points)
 		if totalX != 40 { 
 			panic("FFI array sum failed: got " + string(totalX)) 
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -55,5 +56,33 @@ func PrinterAPIHostRouter(ctx context.Context, impl PrinterAPI, registry *ffigo.
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var PrinterAPI_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"Println", 1, "function(...Any) Void"},
+}
+
+type PrinterAPI_Bridge struct {
+	Impl PrinterAPI
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *PrinterAPI_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return PrinterAPIHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *PrinterAPI_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterE2EPrinterAPILibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl PrinterAPI, registry *ffigo.HandleRegistry) {
+	bridge := &PrinterAPI_Bridge{Impl: impl, Registry: registry}
+	for _, m := range PrinterAPI_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

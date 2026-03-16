@@ -41,12 +41,10 @@ func (b *MockPrinterBridge) DestroyHandle(handle uint32) error {
 
 func TestFFIVariadic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	bridge := &MockPrinterBridge{
-		impl:     &MockPrinter{},
-		registry: ffigo.NewHandleRegistry(),
-	}
+	mock := &MockPrinter{}
+	registry := ffigo.NewHandleRegistry()
 
-	executor.RegisterFFI("fmt.Println", bridge, MethodID_PrinterAPI_Println, "function(...Any) Void")
+	RegisterE2EPrinterAPILibrary(executor, "fmt", mock, registry)
 
 	code := `
 	package main
@@ -67,7 +65,7 @@ func TestFFIVariadic(t *testing.T) {
 	}
 
 	expected := "FFI is working 123 true"
-	if bridge.impl.LastMsg != expected {
-		t.Fatalf("expected %q, got %q", expected, bridge.impl.LastMsg)
+	if mock.LastMsg != expected {
+		t.Fatalf("expected %q, got %q", expected, mock.LastMsg)
 	}
 }

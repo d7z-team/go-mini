@@ -5,18 +5,19 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
-	MethodID_Geometry_SumX = 1
+	MethodID_MockGeometry_SumX = 1
 )
 
-type GeometryProxy struct {
+type MockGeometryProxy struct {
 	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func (p *GeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int) {
+func (p *MockGeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -27,7 +28,7 @@ func (p *GeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int) {
 	buf.WriteInt64(int64(item.Y))
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_Geometry_SumX, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_MockGeometry_SumX, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -36,11 +37,11 @@ func (p *GeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int) {
 	return v_0
 }
 
-func GeometryHostRouter(ctx context.Context, impl Geometry, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {
-	case MethodID_Geometry_SumX:
+	case MethodID_MockGeometry_SumX:
 		var points []RobustPoint
 	l_points := int(reqBuf.ReadUint32())
 	points = make([]RobustPoint, l_points)
@@ -54,5 +55,33 @@ func GeometryHostRouter(ctx context.Context, impl Geometry, registry *ffigo.Hand
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var MockGeometry_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"SumX", 1, "function(Array<RobustPoint>) Int"},
+}
+
+type MockGeometry_Bridge struct {
+	Impl MockGeometry
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *MockGeometry_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return MockGeometryHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterE2EMockGeometryLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
+	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
+	for _, m := range MockGeometry_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

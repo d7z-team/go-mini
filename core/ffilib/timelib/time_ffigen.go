@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -81,5 +82,35 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var Time_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"Now", 1, "function() String"},
+	{"Sleep", 2, "function(Int64) Void"},
+	{"Since", 3, "function(String) Int64"},
+}
+
+type Time_Bridge struct {
+	Impl Time
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Time_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return TimeHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *Time_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterTIMELIBTimeLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl Time, registry *ffigo.HandleRegistry) {
+	bridge := &Time_Bridge{Impl: impl, Registry: registry}
+	for _, m := range Time_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

@@ -14,7 +14,7 @@ type Nested struct {
 	Level int
 }
 
-type OS interface {
+type MockOS interface {
 	Open(name string) (*File, error)
 	Name(f *File) string
 	Stat(f *File) (FileInfo, error)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 const (
@@ -64,5 +65,33 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+var IO_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"ReadAll", 1, "function(Any) Result<Array<Uint8>>"},
+}
+
+type IO_Bridge struct {
+	Impl IO
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *IO_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return IOHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *IO_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil { b.Registry.Remove(handle) }
+	return nil
+}
+
+func RegisterIOLIBIOLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl IO, registry *ffigo.HandleRegistry) {
+	bridge := &IO_Bridge{Impl: impl, Registry: registry}
+	for _, m := range IO_FFI_Metadata {
+		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }
