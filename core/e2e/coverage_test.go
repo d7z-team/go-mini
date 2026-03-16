@@ -60,8 +60,8 @@ func TestFFICoverage(t *testing.T) {
 	registry := ffigo.NewHandleRegistry()
 	bridge := &engine.HandleBridgeWrapper{
 		Registry: registry,
-		Router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return OSHostRouter(mock, reg, methodID, args)
+		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+			return OSHostRouter(ctx, mock, reg, methodID, args)
 		},
 	}
 
@@ -117,10 +117,11 @@ func TestFFICoverage(t *testing.T) {
 func TestFFIErrorPropagation(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &CoverageMockOS{}
+	registry := ffigo.NewHandleRegistry()
 	bridge := &engine.HandleBridgeWrapper{
-		Registry: ffigo.NewHandleRegistry(),
-		Router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return OSHostRouter(mock, reg, methodID, args)
+		Registry: registry,
+		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+			return OSHostRouter(ctx, mock, reg, methodID, args)
 		},
 	}
 	executor.RegisterFFI("os.Open", bridge, MethodID_OS_Open, "function(String) Result<TypeHandle>")

@@ -29,6 +29,8 @@ gen:
 	@go run cmd/ffigen/main.go -pkg oslib -out core/ffilib/oslib/os_ffigen.go core/ffilib/oslib/interface.go
 	@go run cmd/ffigen/main.go -pkg errorslib -out core/ffilib/errorslib/errors_ffigen.go core/ffilib/errorslib/interface.go
 	@go run cmd/ffigen/main.go -pkg iolib -out core/ffilib/iolib/io_ffigen.go core/ffilib/iolib/interface.go
+	@go run cmd/ffigen/main.go -pkg jsonlib -out core/ffilib/jsonlib/json_ffigen.go core/ffilib/jsonlib/interface.go
+	@go run cmd/ffigen/main.go -pkg timelib -out core/ffilib/timelib/time_ffigen.go core/ffilib/timelib/interface.go
 
 test: gen
 	@go test -v ./...

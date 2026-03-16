@@ -37,8 +37,8 @@ func TestRobustness(t *testing.T) {
 	mock := &MockGeo{}
 	bridge := &engine.HandleBridgeWrapper{
 		Registry: ffigo.NewHandleRegistry(),
-		Router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return GeometryHostRouter(mock, reg, methodID, args)
+		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+			return GeometryHostRouter(ctx, mock, reg, methodID, args)
 		},
 	}
 	executor.RegisterFFI("SumX", bridge, MethodID_Geometry_SumX, "function(Array<RobustPoint>) Int64")

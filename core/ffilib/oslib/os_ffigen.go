@@ -2,6 +2,7 @@
 package oslib
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -22,13 +23,13 @@ type OSProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *OSProxy) Open(name string) (*File, error) {
+func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 
-	retData, err := p.bridge.Call(MethodID_OS_Open, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Open, buf.Bytes())
 	_ = retData
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
@@ -48,13 +49,13 @@ func (p *OSProxy) Open(name string) (*File, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Create(name string) (*File, error) {
+func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 
-	retData, err := p.bridge.Call(MethodID_OS_Create, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Create, buf.Bytes())
 	_ = retData
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
@@ -74,13 +75,13 @@ func (p *OSProxy) Create(name string) (*File, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) ReadFile(name string) ([]byte, error) {
+func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 
-	retData, err := p.bridge.Call(MethodID_OS_ReadFile, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_ReadFile, buf.Bytes())
 	_ = retData
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
@@ -94,32 +95,32 @@ func (p *OSProxy) ReadFile(name string) ([]byte, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) WriteFile(name string, data []byte) (error) {
+func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 	buf.WriteBytes(data)
 
-	retData, err := p.bridge.Call(MethodID_OS_WriteFile, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_WriteFile, buf.Bytes())
 	_ = retData
 	if err != nil { return err }
 	return nil
 }
 
-func (p *OSProxy) Remove(name string) (error) {
+func (p *OSProxy) Remove(ctx context.Context, name string) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 
-	retData, err := p.bridge.Call(MethodID_OS_Remove, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Remove, buf.Bytes())
 	_ = retData
 	if err != nil { return err }
 	return nil
 }
 
-func (p *OSProxy) Read(f *File, b []byte) (int, error) {
+func (p *OSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -130,7 +131,7 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 		}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(MethodID_OS_Read, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Read, buf.Bytes())
 	_ = retData
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
@@ -144,7 +145,7 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Write(f *File, b []byte) (int, error) {
+func (p *OSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -155,7 +156,7 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 		}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(MethodID_OS_Write, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Write, buf.Bytes())
 	_ = retData
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
@@ -169,7 +170,7 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Close(f *File) (error) {
+func (p *OSProxy) Close(ctx context.Context, f *File) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -179,20 +180,20 @@ func (p *OSProxy) Close(f *File) (error) {
 			buf.WriteUint32(0)
 		}
 
-	retData, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Close, buf.Bytes())
 	_ = retData
 	if err != nil { return err }
 	return nil
 }
 
-func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
 	name = reqBuf.ReadString()
-		r0, err := impl.Open(name)
+		r0, err := impl.Open(ctx, name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			resBuf.WriteByte(1)

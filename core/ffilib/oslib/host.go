@@ -1,13 +1,15 @@
 package oslib
 
 import (
+	"context"
 	"os"
 	"unsafe"
 )
 
 type OSHost struct{}
 
-func (h *OSHost) Open(name string) (*File, error) {
+func (h *OSHost) Open(ctx context.Context, name string) (*File, error) {
+	// 在真实的 Go os 包中 Open 不带 ctx，这里仅作为演示接口兼容性
 	f, err := os.Open(name)
 	return (*File)(unsafe.Pointer(f)), err
 }

@@ -1,10 +1,9 @@
 package engine
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -12,7 +11,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
+	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -34,7 +35,7 @@ func (p *MiniProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
 }
 
-func (p *MiniProgram) GetProgram() *ast.ProgramStmt {
+func (p *MiniProgram) GetAst() *ast.ProgramStmt {
 	return p.executor.GetProgram()
 }
 
@@ -67,15 +68,20 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 				retType = types[0]
 			}
 		}
-		
+
 		// 映射 ast.GoMiniType 到 evalFFI 识别的字符串标签
 		returns = string(retType)
 		switch {
-		case retType == "String": returns = "String"
-		case retType == "Int64": returns = "Int64"
-		case retType == "Bool": returns = "Bool"
-		case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"): returns = "TypeBytes"
-		case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle": returns = "TypeHandle"
+		case retType == "String":
+			returns = "String"
+		case retType == "Int64":
+			returns = "Int64"
+		case retType == "Bool":
+			returns = "Bool"
+		case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"):
+			returns = "TypeBytes"
+		case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle":
+			returns = "TypeHandle"
 		}
 	}
 
@@ -90,11 +96,11 @@ func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, s
 }
 
 type BridgeWrapper struct {
-	Router func(methodID uint32, args []byte) ([]byte, error)
+	Router func(ctx context.Context, methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *BridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
-	return b.Router(methodID, args)
+func (b *BridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return b.Router(ctx, methodID, args)
 }
 
 func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
@@ -103,11 +109,11 @@ func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
 
 type HandleBridgeWrapper struct {
 	Registry *ffigo.HandleRegistry
-	Router   func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
+	Router   func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *HandleBridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
-	return b.Router(b.Registry, methodID, args)
+func (b *HandleBridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return b.Router(ctx, b.Registry, methodID, args)
 }
 
 func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
@@ -119,8 +125,8 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject fmt
 	fmtHost := &fmtlib.FmtHost{}
 	fmtBridge := &BridgeWrapper{
-		Router: func(methodID uint32, args []byte) ([]byte, error) {
-			return fmtlib.FmtHostRouter(fmtHost, o.registry, methodID, args)
+		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+			return fmtlib.FmtHostRouter(ctx, fmtHost, o.registry, methodID, args)
 		},
 	}
 	o.RegisterFFI("fmt.Print", fmtBridge, fmtlib.MethodID_Fmt_Print, "function(...Any) Void")
@@ -132,8 +138,8 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 	osHost := &oslib.OSHost{}
 	osBridge := &HandleBridgeWrapper{
 		Registry: o.registry,
-		Router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
-			return oslib.OSHostRouter(osHost, reg, methodID, args)
+		Router: func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+			return oslib.OSHostRouter(ctx, osHost, reg, methodID, args)
 		},
 	}
 	o.RegisterFFI("os.Open", osBridge, oslib.MethodID_OS_Open, "function(String) Result<TypeHandle>")
@@ -148,8 +154,8 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 	// 3. Inject errors
 	errorsHost := &errorslib.ErrorsHost{}
 	errorsBridge := &BridgeWrapper{
-		Router: func(methodID uint32, args []byte) ([]byte, error) {
-			return errorslib.ErrorsHostRouter(errorsHost, o.registry, methodID, args)
+		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+			return errorslib.ErrorsHostRouter(ctx, errorsHost, o.registry, methodID, args)
 		},
 	}
 	o.RegisterFFI("errors.New", errorsBridge, errorslib.MethodID_Errors_New, "function(String) Result<Void>")
@@ -157,11 +163,32 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 	// 4. Inject io
 	ioHost := &iolib.IOHost{}
 	ioBridge := &BridgeWrapper{
-		Router: func(methodID uint32, args []byte) ([]byte, error) {
-			return iolib.IOHostRouter(ioHost, o.registry, methodID, args)
+		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+			return iolib.IOHostRouter(ctx, ioHost, o.registry, methodID, args)
 		},
 	}
 	o.RegisterFFI("io.ReadAll", ioBridge, iolib.MethodID_IO_ReadAll, "function(Any) Result<TypeBytes>")
+
+	// 5. Inject json
+	jsonHost := &jsonlib.JSONHost{}
+	jsonBridge := &BridgeWrapper{
+		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+			return jsonlib.JSONHostRouter(ctx, jsonHost, o.registry, methodID, args)
+		},
+	}
+	o.RegisterFFI("json.Marshal", jsonBridge, jsonlib.MethodID_JSON_Marshal, "function(Any) Result<TypeBytes>")
+	o.RegisterFFI("json.Unmarshal", jsonBridge, jsonlib.MethodID_JSON_Unmarshal, "function(TypeBytes) Result<Any>")
+
+	// 6. Inject time
+	timeHost := &timelib.TimeHost{}
+	timeBridge := &BridgeWrapper{
+		Router: func(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+			return timelib.TimeHostRouter(ctx, timeHost, o.registry, methodID, args)
+		},
+	}
+	o.RegisterFFI("time.Now", timeBridge, timelib.MethodID_Time_Now, "function() String")
+	o.RegisterFFI("time.Sleep", timeBridge, timelib.MethodID_Time_Sleep, "function(Int64) Void")
+	o.RegisterFFI("time.Since", timeBridge, timelib.MethodID_Time_Since, "function(String) Int64")
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
@@ -169,60 +196,9 @@ func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
 	o.specs[ast.Ident(name)] = spec
 }
 
-func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
-	converter := ffigo.NewGoToASTConverter()
-	if !strings.HasPrefix(strings.TrimSpace(code), "package ") {
-		code = "package main\n" + code
-	}
-	astTree, err := converter.ConvertSource(code)
+func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
+	executor, err := runtime.NewExecutor(program)
 	if err != nil {
-		return nil, err
-	}
-	return o.NewRuntimeByAst(astTree)
-}
-
-func (o *MiniExecutor) NewRuntimeByGoExpr(code string) (*MiniProgram, error) {
-	return o.NewRuntimeByGoCode(`func main(){
-` + code + `
-}`)
-}
-
-func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
-	node, err := Unmarshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return o.NewRuntimeByAst(node)
-}
-
-func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
-	var src bytes.Buffer
-	encoder := json.NewEncoder(&src)
-	encoder.SetIndent("", "  ")
-	encoder.SetEscapeHTML(false)
-	_ = encoder.Encode(tree)
-
-	optimize, logs, err := ValidateAndOptimizeWithLoader(tree, o.Loader, func(v *ast.ValidContext) error {
-		for name, spec := range o.specs {
-			if err := v.AddFuncSpec(name, spec); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	var astError *ast.MiniAstError
-	if err != nil {
-		if !errors.As(err, &astError) {
-			return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: tree}
-		}
-		return nil, err
-	}
-
-	executor, err := runtime.NewExecutor(optimize)
-	if err != nil {
-		if !errors.As(err, &astError) {
-			return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: tree}
-		}
 		return nil, err
 	}
 
@@ -232,7 +208,36 @@ func (o *MiniExecutor) NewRuntimeByAst(tree ast.Node) (*MiniProgram, error) {
 	}
 
 	return &MiniProgram{
-		Source:   src.String(),
+		Source:   "",
 		executor: executor,
 	}, nil
+}
+
+func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
+	converter := ffigo.NewGoToASTConverter()
+	node, err := converter.ConvertSource(code)
+	if err != nil {
+		return nil, err
+	}
+
+	program := node.(*ast.ProgramStmt)
+
+	// Validate and Optimize
+	validator, _ := ast.NewValidator(program)
+	for name, spec := range o.specs {
+		validator.AddVariable(name, spec)
+	}
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = program.Check(semanticCtx)
+	if err != nil {
+		// Serialize program for debug
+		data, _ := json.MarshalIndent(program, "", "  ")
+		return nil, fmt.Errorf("验证失败:\n\n%s\n\n%w", string(data), err)
+	}
+
+	optimizeCtx := ast.NewOptimizeContext(validator)
+	program.Optimize(optimizeCtx)
+
+	return o.NewRuntimeByAst(program)
 }

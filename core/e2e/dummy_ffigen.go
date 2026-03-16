@@ -2,6 +2,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -21,13 +22,13 @@ type OSProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *OSProxy) Open(name string) (*File, error) {
+func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(name)
 
-	retData, err := p.bridge.Call(MethodID_OS_Open, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Open, buf.Bytes())
 	_ = retData
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
@@ -47,7 +48,7 @@ func (p *OSProxy) Open(name string) (*File, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Name(f *File) (string) {
+func (p *OSProxy) Name(ctx context.Context, f *File) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -57,7 +58,7 @@ func (p *OSProxy) Name(f *File) (string) {
 			buf.WriteUint32(0)
 		}
 
-	retData, err := p.bridge.Call(MethodID_OS_Name, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Name, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -66,7 +67,7 @@ func (p *OSProxy) Name(f *File) (string) {
 	return v_0
 }
 
-func (p *OSProxy) Stat(f *File) (FileInfo, error) {
+func (p *OSProxy) Stat(ctx context.Context, f *File) (FileInfo, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -76,7 +77,7 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 			buf.WriteUint32(0)
 		}
 
-	retData, err := p.bridge.Call(MethodID_OS_Stat, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Stat, buf.Bytes())
 	_ = retData
 	if err != nil { return FileInfo{}, err }
 	retBuf := ffigo.NewReader(retData)
@@ -91,7 +92,7 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Read(f *File, b []byte) (int, error) {
+func (p *OSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -102,7 +103,7 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 		}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(MethodID_OS_Read, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Read, buf.Bytes())
 	_ = retData
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
@@ -116,7 +117,7 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Write(f *File, b []byte) (int, error) {
+func (p *OSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -127,7 +128,7 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 		}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(MethodID_OS_Write, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Write, buf.Bytes())
 	_ = retData
 	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
@@ -141,7 +142,7 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 	return v_0, nil
 }
 
-func (p *OSProxy) Close(f *File) (error) {
+func (p *OSProxy) Close(ctx context.Context, f *File) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -151,13 +152,13 @@ func (p *OSProxy) Close(f *File) (error) {
 			buf.WriteUint32(0)
 		}
 
-	retData, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Close, buf.Bytes())
 	_ = retData
 	if err != nil { return err }
 	return nil
 }
 
-func (p *OSProxy) Deep(n Nested) (Nested) {
+func (p *OSProxy) Deep(ctx context.Context, n Nested) (Nested) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -165,7 +166,7 @@ func (p *OSProxy) Deep(n Nested) (Nested) {
 	buf.WriteUint32(uint32(n.Info.Size))
 	buf.WriteInt64(int64(n.Level))
 
-	retData, err := p.bridge.Call(MethodID_OS_Deep, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Deep, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -176,7 +177,7 @@ func (p *OSProxy) Deep(n Nested) (Nested) {
 	return v_0
 }
 
-func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

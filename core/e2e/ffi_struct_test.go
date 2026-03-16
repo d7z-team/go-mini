@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"testing"
 )
 
@@ -33,8 +34,8 @@ type MockShapeBridge struct {
 	impl *MockShapeAPI
 }
 
-func (b *MockShapeBridge) Call(methodID uint32, args []byte) ([]byte, error) {
-	return ShapeAPIHostRouter(b.impl, nil, methodID, args)
+func (b *MockShapeBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return ShapeAPIHostRouter(ctx, b.impl, nil, methodID, args)
 }
 
 func (b *MockShapeBridge) DestroyHandle(handle uint32) error {
@@ -44,13 +45,14 @@ func (b *MockShapeBridge) DestroyHandle(handle uint32) error {
 func TestFFIStruct(t *testing.T) {
 	bridge := &MockShapeBridge{impl: &MockShapeAPI{}}
 	proxy := &ShapeAPIProxy{bridge: bridge}
+	ctx := context.Background()
 
-	rect := proxy.GetRect()
+	rect := proxy.GetRect(ctx)
 	if rect.A.X != 10 || rect.A.Y != 20 || rect.B.X != 30 || rect.B.Y != 40 {
 		t.Fatalf("GetRect failed: %+v", rect)
 	}
 
-	area := proxy.Area(rect)
+	area := proxy.Area(ctx, rect)
 	if area != 400 {
 		t.Fatalf("Area failed: %d", area)
 	}

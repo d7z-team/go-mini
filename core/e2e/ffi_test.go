@@ -14,7 +14,7 @@ type MockFmtBridge struct {
 	LastOutput string
 }
 
-func (b *MockFmtBridge) Call(methodID uint32, args []byte) ([]byte, error) {
+func (b *MockFmtBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	if methodID == 1 { // Println
 		reader := ffigo.NewReader(args)
 		msg := reader.ReadString()

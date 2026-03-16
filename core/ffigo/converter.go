@@ -366,6 +366,12 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			Object:   c.convertExpr(ex.X),
 			Property: mini_ast.Ident(ex.Sel.Name),
 		}
+	case *ast.IndexExpr:
+		return &mini_ast.IndexExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "index"},
+			Object:   c.convertExpr(ex.X),
+			Index:    c.convertExpr(ex.Index),
+		}
 	}
 	return nil
 }

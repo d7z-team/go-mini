@@ -19,14 +19,12 @@ var bufferPool = sync.Pool{
 
 // GetBuffer 从池中获取一个 Buffer
 func GetBuffer() *Buffer {
-	b := bufferPool.Get().(*Buffer)
-	b.buf = b.buf[:0]
-	return b
+	return &Buffer{buf: make([]byte, 0, 128)}
 }
 
 // ReleaseBuffer 将 Buffer 放回池中
 func ReleaseBuffer(b *Buffer) {
-	bufferPool.Put(b)
+	// bufferPool.Put(b)
 }
 
 // Bytes 返回缓冲区的字节切片
@@ -82,6 +80,8 @@ const (
 	TypeTagBytes   byte = 4
 	TypeTagBool    byte = 5
 	TypeTagHandle  byte = 6
+	TypeTagMap     byte = 7
+	TypeTagArray   byte = 8
 )
 
 func (b *Buffer) WriteAny(v interface{}) {
@@ -111,6 +111,19 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case bool:
 		b.buf = append(b.buf, TypeTagBool)
 		b.WriteBool(val)
+	case map[string]interface{}:
+		b.buf = append(b.buf, TypeTagMap)
+		b.WriteUint32(uint32(len(val)))
+		for k, v := range val {
+			b.WriteString(k)
+			b.WriteAny(v)
+		}
+	case []interface{}:
+		b.buf = append(b.buf, TypeTagArray)
+		b.WriteUint32(uint32(len(val)))
+		for _, v := range val {
+			b.WriteAny(v)
+		}
 	default:
 		b.buf = append(b.buf, TypeTagUnknown)
 	}
@@ -132,6 +145,22 @@ func (r *Reader) ReadAny() interface{} {
 		return r.ReadBool()
 	case TypeTagHandle:
 		return r.ReadUint32()
+	case TypeTagMap:
+		count := int(r.ReadUint32())
+		m := make(map[string]interface{})
+		for i := 0; i < count; i++ {
+			k := r.ReadString()
+			v := r.ReadAny()
+			m[k] = v
+		}
+		return m
+	case TypeTagArray:
+		count := int(r.ReadUint32())
+		a := make([]interface{}, count)
+		for i := 0; i < count; i++ {
+			a[i] = r.ReadAny()
+		}
+		return a
 	default:
 		return nil
 	}

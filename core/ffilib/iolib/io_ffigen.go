@@ -2,6 +2,7 @@
 package iolib
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -15,13 +16,13 @@ type IOProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *IOProxy) ReadAll(r any) ([]byte, error) {
+func (p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteAny(r)
 
-	retData, err := p.bridge.Call(MethodID_IO_ReadAll, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_IO_ReadAll, buf.Bytes())
 	_ = retData
 	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
@@ -35,7 +36,7 @@ func (p *IOProxy) ReadAll(r any) ([]byte, error) {
 	return v_0, nil
 }
 
-func IOHostRouter(impl IO, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

@@ -2,6 +2,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -15,7 +16,7 @@ type PrinterAPIProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *PrinterAPIProxy) Println(args ...any) {
+func (p *PrinterAPIProxy) Println(ctx context.Context, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -25,11 +26,11 @@ func (p *PrinterAPIProxy) Println(args ...any) {
 	buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(MethodID_PrinterAPI_Println, buf.Bytes())
+	_, err := p.bridge.Call(ctx, MethodID_PrinterAPI_Println, buf.Bytes())
 	_ = err
 }
 
-func PrinterAPIHostRouter(impl PrinterAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func PrinterAPIHostRouter(ctx context.Context, impl PrinterAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

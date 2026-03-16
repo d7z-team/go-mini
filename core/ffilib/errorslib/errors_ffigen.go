@@ -2,6 +2,7 @@
 package errorslib
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -15,19 +16,19 @@ type ErrorsProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *ErrorsProxy) New(text string) (error) {
+func (p *ErrorsProxy) New(ctx context.Context, text string) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(text)
 
-	retData, err := p.bridge.Call(MethodID_Errors_New, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_Errors_New, buf.Bytes())
 	_ = retData
 	if err != nil { return err }
 	return nil
 }
 
-func ErrorsHostRouter(impl Errors, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

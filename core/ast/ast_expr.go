@@ -386,6 +386,11 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	}
 
 	objType := m.Object.GetBase().Type
+	if objType.IsAny() {
+		m.Type = "Any"
+		return nil
+	}
+
 	if objType.IsResult() {
 		if m.Property == "val" {
 			valType, _ := objType.ReadResult()
@@ -546,6 +551,11 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	}
 
 	objType := i.Object.GetBase().Type
+	if objType.IsAny() {
+		i.Type = "Any"
+		return nil
+	}
+
 	if objType.IsPtr() {
 		if elem, ok := objType.GetPtrElementType(); ok {
 			objType = elem

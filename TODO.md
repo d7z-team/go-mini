@@ -82,8 +82,9 @@
     *   **[x] 运行时变量支持**：在 `runtime.Var` 中实现 `TypeResult` 专用存储与访问逻辑。
     *   **[x] FFI 协议升级**：实现 `[Status][Payload]` 序列化协议，升级 `evalFFI` 自动装箱。
     *   **[x] 生成器同步**：升级 `ffigen` 以支持生成基于 `Result<T>` 的 Router 与 Proxy。
+    *   **[ ] 动态容器支持**：实现 `TypeMap` 的完整 FFI 序列化，支持非结构体的纯 Map 传输。
 7.  **[ ] 标准库全量生成与迁移 (Migration)**
     *   **[x] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Result<T>` 契约。
-    *   **[x] 句柄机制 (Handle System) 落地**：已实现基础生命周期管理。
+    *   **[ ] 关键库注入**：实现 `json`, `time`, `net` 库的 FFI 封装。
+    *   **[ ] 运行安全增强**：在解释器循环中增加对 `context.Context` 取消信号的感知。
     *   **[x] 补充复杂场景测试**：已通过 robustness_test 验证字段排序、Any 包装及 Nil 比较。
-    *   **[ ] 标准库补全**：继续迁移 `net`, `time`, `json` 等库。

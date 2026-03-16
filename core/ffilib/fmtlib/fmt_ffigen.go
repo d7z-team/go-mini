@@ -2,6 +2,7 @@
 package fmtlib
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -18,7 +19,7 @@ type FmtProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *FmtProxy) Print(args ...any) {
+func (p *FmtProxy) Print(ctx context.Context, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -28,11 +29,11 @@ func (p *FmtProxy) Print(args ...any) {
 	buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(MethodID_Fmt_Print, buf.Bytes())
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Print, buf.Bytes())
 	_ = err
 }
 
-func (p *FmtProxy) Println(args ...any) {
+func (p *FmtProxy) Println(ctx context.Context, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -42,11 +43,11 @@ func (p *FmtProxy) Println(args ...any) {
 	buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(MethodID_Fmt_Println, buf.Bytes())
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Println, buf.Bytes())
 	_ = err
 }
 
-func (p *FmtProxy) Printf(format string, args ...any) {
+func (p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -57,11 +58,11 @@ func (p *FmtProxy) Printf(format string, args ...any) {
 	buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(MethodID_Fmt_Printf, buf.Bytes())
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Printf, buf.Bytes())
 	_ = err
 }
 
-func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
+func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -72,7 +73,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
 	buf.WriteAny(item)
 	}
 
-	retData, err := p.bridge.Call(MethodID_Fmt_Sprintf, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_Fmt_Sprintf, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -81,7 +82,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
 	return v_0
 }
 
-func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

@@ -2,6 +2,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -15,7 +16,7 @@ type GeometryProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *GeometryProxy) SumX(points []RobustPoint) (int) {
+func (p *GeometryProxy) SumX(ctx context.Context, points []RobustPoint) (int) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -26,7 +27,7 @@ func (p *GeometryProxy) SumX(points []RobustPoint) (int) {
 	buf.WriteInt64(int64(item.Y))
 	}
 
-	retData, err := p.bridge.Call(MethodID_Geometry_SumX, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_Geometry_SumX, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -35,7 +36,7 @@ func (p *GeometryProxy) SumX(points []RobustPoint) (int) {
 	return v_0
 }
 
-func GeometryHostRouter(impl Geometry, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func GeometryHostRouter(ctx context.Context, impl Geometry, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {

@@ -3,8 +3,8 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"testing"
 	"strings"
+	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -31,8 +31,8 @@ type MockPrinterBridge struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (b *MockPrinterBridge) Call(methodID uint32, args []byte) ([]byte, error) {
-	return PrinterAPIHostRouter(b.impl, b.registry, methodID, args)
+func (b *MockPrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return PrinterAPIHostRouter(ctx, b.impl, b.registry, methodID, args)
 }
 
 func (b *MockPrinterBridge) DestroyHandle(handle uint32) error {
@@ -51,13 +51,14 @@ func TestFFIVariadic(t *testing.T) {
 	code := `
 	package main
 	import "fmt"
+
 	func main() {
-		fmt.Println("Hello", "World", 123, true)
+		fmt.Println("FFI", "is", "working", 123, true)
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to create runtime: %v", err)
 	}
 
 	err = prog.Execute(context.Background())
@@ -65,7 +66,8 @@ func TestFFIVariadic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bridge.impl.LastMsg != "Hello World 123 true" {
-		t.Fatalf("expected 'Hello World 123 true', got '%s'", bridge.impl.LastMsg)
+	expected := "FFI is working 123 true"
+	if bridge.impl.LastMsg != expected {
+		t.Fatalf("expected %q, got %q", expected, bridge.impl.LastMsg)
 	}
 }

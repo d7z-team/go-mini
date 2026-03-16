@@ -2,6 +2,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -16,12 +17,12 @@ type ShapeAPIProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *ShapeAPIProxy) GetRect() (Rect) {
+func (p *ShapeAPIProxy) GetRect(ctx context.Context, ) (Rect) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 
-	retData, err := p.bridge.Call(MethodID_ShapeAPI_GetRect, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_ShapeAPI_GetRect, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -33,7 +34,7 @@ func (p *ShapeAPIProxy) GetRect() (Rect) {
 	return v_0
 }
 
-func (p *ShapeAPIProxy) Area(r Rect) (int) {
+func (p *ShapeAPIProxy) Area(ctx context.Context, r Rect) (int) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -42,7 +43,7 @@ func (p *ShapeAPIProxy) Area(r Rect) (int) {
 	buf.WriteInt64(int64(r.B.X))
 	buf.WriteInt64(int64(r.B.Y))
 
-	retData, err := p.bridge.Call(MethodID_ShapeAPI_Area, buf.Bytes())
+	retData, err := p.bridge.Call(ctx, MethodID_ShapeAPI_Area, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -51,7 +52,7 @@ func (p *ShapeAPIProxy) Area(r Rect) (int) {
 	return v_0
 }
 
-func ShapeAPIHostRouter(impl ShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func ShapeAPIHostRouter(ctx context.Context, impl ShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
 	switch methodID {
