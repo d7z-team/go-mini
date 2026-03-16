@@ -109,7 +109,9 @@ func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *mini_a
 	for _, field := range s.Fields.List {
 		typeName := c.typeToString(field.Type)
 		for _, fieldName := range field.Names {
-			res.Fields[mini_ast.Ident(fieldName.Name)] = mini_ast.GoMiniType(typeName)
+			ident := mini_ast.Ident(fieldName.Name)
+			res.Fields[ident] = mini_ast.GoMiniType(typeName)
+			res.FieldNames = append(res.FieldNames, ident)
 		}
 	}
 	return res
@@ -319,6 +321,35 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			Func:     funExpr,
 			Args:     c.convertArgs(ex.Args),
 		}
+	case *ast.CompositeLit:
+		typeName := c.typeToString(ex.Type)
+		res := &mini_ast.CompositeExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "composite"},
+			Kind:     mini_ast.Ident(typeName),
+			Values:   make([]mini_ast.CompositeElement, len(ex.Elts)),
+		}
+		for i, elt := range ex.Elts {
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				var keyExpr mini_ast.Expr
+				if ident, ok := kv.Key.(*ast.Ident); ok {
+					keyExpr = &mini_ast.IdentifierExpr{
+						BaseNode: mini_ast.BaseNode{Meta: "identifier"},
+						Name:     mini_ast.Ident(ident.Name),
+					}
+				} else {
+					keyExpr = c.convertExpr(kv.Key)
+				}
+				res.Values[i] = mini_ast.CompositeElement{
+					Key:   keyExpr,
+					Value: c.convertExpr(kv.Value),
+				}
+			} else {
+				res.Values[i] = mini_ast.CompositeElement{
+					Value: c.convertExpr(elt),
+				}
+			}
+		}
+		return res
 	case *ast.SelectorExpr:
 		if xIdent, ok := ex.X.(*ast.Ident); ok {
 			// 只有当 X 是已导入的包名时，才视为包成员访问（静态绑定）
@@ -387,18 +418,11 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 	switch t := e.(type) {
 	case *ast.Ident:
 		name := t.Name
-		if name == "int" || name == "int64" {
-			return "Int64"
-		}
-		if name == "float64" || name == "float32" {
-			return "Float64"
-		}
-		if name == "string" {
-			return "String"
-		}
-		if name == "bool" {
-			return "Bool"
-		}
+		if name == "int" || name == "int64" { return "Int64" }
+		if name == "float64" || name == "float32" { return "Float64" }
+		if name == "string" { return "String" }
+		if name == "bool" { return "Bool" }
+		if name == "any" || name == "interface{}" { return "Any" }
 		return name
 	case *ast.ArrayType:
 		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
@@ -406,6 +430,8 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 		return fmt.Sprintf("Ptr<%s>", c.typeToString(t.X))
 	case *ast.MapType:
 		return fmt.Sprintf("Map<%s, %s>", c.typeToString(t.Key), c.typeToString(t.Value))
+	case *ast.SelectorExpr:
+		return fmt.Sprintf("%s.%s", c.typeToString(t.X), t.Sel.Name)
 	}
 	return "Any"
 }

@@ -24,6 +24,7 @@ gen:
 	@go run cmd/ffigen/main.go -pkg e2e -out core/e2e/dummy_ffigen.go core/e2e/dummy.go core/e2e/coverage_test.go
 	@go run cmd/ffigen/main.go -pkg e2e -out core/e2e/ffi_struct_ffigen.go core/e2e/ffi_struct_test.go
 	@go run cmd/ffigen/main.go -pkg e2e -out core/e2e/ffi_variadic_ffigen.go core/e2e/ffi_variadic_test.go
+	@go run cmd/ffigen/main.go -pkg e2e -out core/e2e/ffi_robustness_ffigen.go core/e2e/robustness_test.go
 	@go run cmd/ffigen/main.go -pkg fmtlib -out core/ffilib/fmtlib/fmt_ffigen.go core/ffilib/fmtlib/interface.go
 	@go run cmd/ffigen/main.go -pkg oslib -out core/ffilib/oslib/os_ffigen.go core/ffilib/oslib/interface.go
 	@go run cmd/ffigen/main.go -pkg errorslib -out core/ffilib/errorslib/errors_ffigen.go core/ffilib/errorslib/interface.go

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -928,8 +929,9 @@ func (d *DerefAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 // StructStmt 所有 struct 都注册到全局
 type StructStmt struct {
 	BaseNode
-	Name   Ident                `json:"name"`
-	Fields map[Ident]GoMiniType `json:"fields"`
+	Name       Ident                `json:"name"`
+	Fields     map[Ident]GoMiniType `json:"fields"`
+	FieldNames []Ident              `json:"field_names,omitempty"`
 }
 
 // PreRegister 预注册结构体 (用于支持相互引用)
@@ -975,8 +977,18 @@ func (s *StructStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	// 2. 验证字段类型并解析
-	for fieldName, fieldType := range s.Fields {
+	// 2. 遍历字段，进行类型解析与合法性检查
+	if len(s.FieldNames) == 0 {
+		for fieldName := range s.Fields {
+			s.FieldNames = append(s.FieldNames, fieldName)
+		}
+		sort.Slice(s.FieldNames, func(i, j int) bool {
+			return s.FieldNames[i] < s.FieldNames[j]
+		})
+	}
+
+	for _, fieldName := range s.FieldNames {
+		fieldType := s.Fields[fieldName]
 		s.Fields[fieldName] = fieldType.Resolve(&ctx.ValidContext)
 		if !fieldName.Valid(&ctx.ValidContext) {
 			return fmt.Errorf("invalid field name: %s", fieldName)

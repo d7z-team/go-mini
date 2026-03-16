@@ -22,10 +22,8 @@ func (p *IOProxy) ReadAll(r any) ([]byte, error) {
 	buf.WriteAny(r)
 
 	retData, err := p.bridge.Call(MethodID_IO_ReadAll, buf.Bytes())
-	if err != nil {
-		return nil, err
-	}
-
+	_ = retData
+	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -39,19 +37,20 @@ func (p *IOProxy) ReadAll(r any) ([]byte, error) {
 
 func IOHostRouter(impl IO, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_IO_ReadAll:
 		var r any
-	r_raw := reqBuf.ReadAny()
-	if id, ok := r_raw.(uint32); ok {
-		if obj, ok := registry.Get(id); ok {
-			r = obj
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				r = obj
+			} else {
+				r = rawVal
+			}
 		} else {
-			r = r_raw
+			r = rawVal
 		}
-	} else {
-		r = r_raw
-	}
 		r0, err := impl.ReadAll(r)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {

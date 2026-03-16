@@ -305,7 +305,33 @@ func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: n.Type}, nil
 	}
-	return nil, fmt.Errorf("todo: composite %s", n.Type)
+	
+	// 结构体或 Map 字面量
+	res := make(map[string]*Var)
+	for _, v := range n.Values {
+		keyName := ""
+		if v.Key != nil {
+			if ident, ok := v.Key.(*ast.IdentifierExpr); ok {
+				keyName = string(ident.Name)
+			} else {
+				// 支持计算型 Key，如 { ["a"+"b"]: 1 }
+				kVar, err := e.ExecExpr(ctx, v.Key)
+				if err != nil { return nil, err }
+				keyName = kVar.Str
+			}
+		}
+		
+		val, err := e.ExecExpr(ctx, v.Value)
+		if err != nil { return nil, err }
+		res[keyName] = val
+	}
+	
+	if n.Type.IsMap() {
+		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: n.Type}, nil
+	}
+	
+	// 默认视为普通结构体对象（在 VM 内部以 Map 形式存储）
+	return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: n.Type}, nil
 }
 
 func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
@@ -327,10 +353,13 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
 	// 允许比较运算的操作数为 nil
 	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
-		if l == nil && r == nil {
+		isLEmpty := l == nil || (l.VType == TypeAny && l.Ref == nil && l.I64 == 0 && l.Str == "") || (l.VType == TypeHandle && l.Handle == 0)
+		isREmpty := r == nil || (r.VType == TypeAny && r.Ref == nil && r.I64 == 0 && r.Str == "") || (r.VType == TypeHandle && r.Handle == 0)
+
+		if isLEmpty && isREmpty {
 			return NewBool(operator == "==" || operator == "Eq"), nil
 		}
-		if l == nil || r == nil {
+		if isLEmpty || isREmpty {
 			return NewBool(operator == "!=" || operator == "Neq"), nil
 		}
 	}
@@ -499,33 +528,24 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// 获取函数签名以获取参数类型列表
+	fn, ok := ast.GoMiniType(route.Spec).ReadCallFunc()
+
 	// 序列化参数
-	for _, arg := range args {
-		if arg == nil {
-			buf.WriteUint32(0) // Null marker
-			continue
-		}
-		switch arg.VType {
-		case TypeInt:
-			buf.WriteInt64(arg.I64)
-		case TypeFloat:
-			buf.WriteFloat64(arg.F64)
-		case TypeString:
-			buf.WriteString(arg.Str)
-		case TypeBytes:
-			buf.WriteBytes(arg.B)
-		case TypeBool:
-			buf.WriteBool(arg.Bool)
-		case TypeHandle:
-			buf.WriteUint32(arg.Handle)
-		case TypeArray:
-			arr := arg.Ref.(*VMArray)
-			buf.WriteUint32(uint32(len(arr.Data)))
-			for _, item := range arr.Data {
-				writeAnyToBuffer(buf, item)
+	for i, arg := range args {
+		var argType ast.GoMiniType = "Any"
+		if ok && i < len(fn.Params) {
+			argType = fn.Params[i]
+			// 如果是变长参数的最后一个，且输入已经是打包好的数组，
+			// 确保 argType 也是数组形式，以触发正确的序列化逻辑（写入长度）。
+			if fn.Variadic && i == len(fn.Params)-1 {
+				if !argType.IsArray() {
+					argType = ast.CreateArrayType(argType)
+				}
 			}
-		default:
-			return nil, fmt.Errorf("FFI unsupported arg type: %v", arg.VType)
+		}
+		if err := e.serializeVar(buf, arg, argType); err != nil {
+			return nil, err
 		}
 	}
 
@@ -535,7 +555,7 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 		return nil, err
 	}
 
-	// 解析返回值 (目前简化为支持单返回值或 Void)
+	// 解析返回值
 	if len(retData) == 0 {
 		return nil, nil
 	}
@@ -549,27 +569,109 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 		innerType, _ := retType.ReadResult()
 
 		if status == 0 {
-			// 成功路径
 			val, err := e.deserializeVar(reader, innerType, route.Bridge)
 			if err != nil { return nil, err }
 			return &Var{VType: TypeResult, ResultVal: val, Type: retType}, nil
 		} else {
-			// 错误路径
-			errMsg := reader.ReadString()
-			return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
+			return &Var{VType: TypeResult, ResultErr: reader.ReadString(), Type: retType}, nil
 		}
 	}
 
-	// 兼容旧模式
 	return e.deserializeVar(reader, retType, route.Bridge)
 }
 
+func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
+	if v == nil {
+		// 写入零值，必须确保字节对齐
+		switch {
+		case typ == "String": buf.WriteString("")
+		case typ.IsNumeric(): buf.WriteInt64(0)
+		case typ == "Bool": buf.WriteBool(false)
+		case typ.IsPtr() || typ == "TypeHandle": buf.WriteUint32(0)
+		case typ == "Any": buf.WriteAny(nil)
+		case typ.IsArray(): buf.WriteUint32(0)
+		default:
+			if name, ok := typ.StructName(); ok {
+				if sDef, ok := e.program.Structs[name]; ok {
+					for _, fName := range sDef.FieldNames {
+						_ = e.serializeVar(buf, nil, sDef.Fields[fName])
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	// 特殊处理 Any：必须按照 WriteAny 协议写入 Tag
+	if typ == "Any" {
+		switch v.VType {
+		case TypeInt: buf.WriteAny(v.I64)
+		case TypeFloat: buf.WriteAny(v.F64)
+		case TypeString: buf.WriteAny(v.Str)
+		case TypeBytes: buf.WriteAny(v.B)
+		case TypeBool: buf.WriteAny(v.Bool)
+		case TypeHandle: buf.WriteAny(v.Handle)
+		default: buf.WriteAny(nil)
+		}
+		return nil
+	}
+
+	// 正常强类型序列化
+	switch v.VType {
+	case TypeInt:
+		buf.WriteInt64(v.I64)
+	case TypeFloat:
+		buf.WriteFloat64(v.F64)
+	case TypeString:
+		buf.WriteString(v.Str)
+	case TypeBool:
+		buf.WriteBool(v.Bool)
+	case TypeBytes:
+		buf.WriteBytes(v.B)
+	case TypeHandle:
+		buf.WriteUint32(v.Handle)
+	case TypeArray:
+		arr := v.Ref.(*VMArray)
+		buf.WriteUint32(uint32(len(arr.Data)))
+		itemType, _ := typ.ReadArrayItemType()
+		if itemType == "" { itemType = "Any" }
+		for _, item := range arr.Data {
+			if err := e.serializeVar(buf, item, itemType); err != nil { return err }
+		}
+	case TypeMap: // 结构体模拟
+		if name, ok := typ.StructName(); ok {
+			if sDef, ok := e.program.Structs[name]; ok {
+				m := v.Ref.(*VMMap)
+				for _, fName := range sDef.FieldNames {
+					fType := sDef.Fields[fName]
+					if err := e.serializeVar(buf, m.Data[string(fName)], fType); err != nil { return err }
+				}
+			}
+		} else {
+			// 真正的 Map 序列化暂不支持，目前仅用于结构体模拟
+			return fmt.Errorf("Map serialization not implemented yet")
+		}
+	default:
+		return fmt.Errorf("unsupported serialization type: %v", v.VType)
+	}
+	return nil
+}
+
 func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
+	if typ.IsVoid() {
+		return nil, nil
+	}
+	if reader.Available() == 0 {
+		return nil, nil
+	}
+
 	switch {
 	case typ == "String":
 		return NewString(reader.ReadString()), nil
-	case typ == "Int64":
+	case typ == "Int64" || typ == "Int" || typ == "Uint32":
 		return NewInt(reader.ReadInt64()), nil
+	case typ == "Float64":
+		return NewFloat(reader.ReadFloat64()), nil
 	case typ == "Bool":
 		return NewBool(reader.ReadBool()), nil
 	case typ == "TypeBytes" || strings.Contains(string(typ), "Array<Uint8>"):
@@ -580,15 +682,19 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
 		}
 		return &Var{VType: TypeHandle, Handle: id, Bridge: bridge}, nil
+	case typ.IsArray():
+		// 处理从 FFI 返回的数组（如果以后支持）
+		count := int(reader.ReadUint32())
+		itemType, _ := typ.ReadArrayItemType()
+		res := make([]*Var, count)
+		for i := 0; i < count; i++ {
+			val, err := e.deserializeVar(reader, itemType, bridge)
+			if err != nil { return nil, err }
+			res[i] = val
+		}
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
 	default:
-		// 临时方案：根据数据长度尝试推断
-		if reader.Available() == 8 {
-			return NewInt(reader.ReadInt64()), nil
-		}
-		if reader.Available() > 0 {
-			return NewString(reader.ReadString()), nil
-		}
-		return nil, nil
+		return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 	}
 }
 

@@ -13,8 +13,21 @@ const (
 )
 
 func (o GoMiniType) IsEmpty() bool { return o == "" }
-func (o GoMiniType) IsVoid() bool  { return o == "Void" || o == "" }
-func (o GoMiniType) IsAny() bool   { return o == TypeAny }
+
+func (o GoMiniType) IsVoid() bool {
+	return o == "Void" || o == ""
+}
+
+func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
+	fn, ok := o.ReadFunc()
+	if !ok {
+		return nil, false
+	}
+	res := fn.ToCallFunctionType()
+	return &res, true
+}
+
+func (o GoMiniType) IsAny() bool { return o == TypeAny }
 
 func (o GoMiniType) IsString() bool { return o == "String" || o == "string" }
 func (o GoMiniType) IsBool() bool   { return o == "Bool" || o == "bool" }
@@ -39,22 +52,25 @@ func (o GoMiniType) IsArray() bool {
 	return strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">")
 }
 
-func (o GoMiniType) IsMap() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
-}
-
 func (o GoMiniType) IsResult() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Result<") && strings.HasSuffix(s, ">")
 }
 
-func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
-	if !o.IsArray() {
-		return "", false
-	}
+func (o GoMiniType) IsMap() bool {
 	s := string(o)
-	return GoMiniType(s[6 : len(s)-1]), true
+	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
+}
+
+func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
+	s := string(o)
+	if o.IsArray() {
+		return GoMiniType(s[6 : len(s)-1]), true
+	}
+	if strings.HasPrefix(s, "...") { // 仅用于兼容处理 Spec 解析
+		return GoMiniType(s[3:]), true
+	}
+	return "", false
 }
 
 func CreateArrayType(elementType GoMiniType) GoMiniType {
@@ -320,13 +336,6 @@ func (o GoMiniType) Equals(other GoMiniType) bool {
 		return oElem.Equals(otherElem)
 	}
 	return string(o) == string(other)
-}
-
-func (o GoMiniType) ReadCallFunc() (CallFunctionType, bool) {
-	if fn, ok := o.ReadFunc(); ok {
-		return fn.ToCallFunctionType(), true
-	}
-	return CallFunctionType{}, false
 }
 
 func (o GoMiniType) IsTuple() bool {

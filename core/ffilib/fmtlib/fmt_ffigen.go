@@ -24,7 +24,8 @@ func (p *FmtProxy) Print(args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		_ = item
+	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(MethodID_Fmt_Print, buf.Bytes())
@@ -37,7 +38,8 @@ func (p *FmtProxy) Println(args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		_ = item
+	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(MethodID_Fmt_Println, buf.Bytes())
@@ -51,7 +53,8 @@ func (p *FmtProxy) Printf(format string, args ...any) {
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		_ = item
+	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(MethodID_Fmt_Printf, buf.Bytes())
@@ -65,10 +68,12 @@ func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
 	buf.WriteString(format)
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		_ = item
+	buf.WriteAny(item)
 	}
 
 	retData, err := p.bridge.Call(MethodID_Fmt_Sprintf, buf.Bytes())
+	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
@@ -78,13 +83,23 @@ func (p *FmtProxy) Sprintf(format string, args ...any) (string) {
 
 func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_Fmt_Print:
 		var args []any
 	l_args := int(reqBuf.ReadUint32())
 	args = make([]any, l_args)
 	for i_args := 0; i_args < l_args; i_args++ {
-		args[i_args] = reqBuf.ReadAny()
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				args[i_args] = obj
+			} else {
+				args[i_args] = rawVal
+			}
+		} else {
+			args[i_args] = rawVal
+		}
 	}
 		impl.Print(args...)
 		resBuf := ffigo.GetBuffer()
@@ -94,7 +109,16 @@ func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, ar
 	l_args := int(reqBuf.ReadUint32())
 	args = make([]any, l_args)
 	for i_args := 0; i_args < l_args; i_args++ {
-		args[i_args] = reqBuf.ReadAny()
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				args[i_args] = obj
+			} else {
+				args[i_args] = rawVal
+			}
+		} else {
+			args[i_args] = rawVal
+		}
 	}
 		impl.Println(args...)
 		resBuf := ffigo.GetBuffer()
@@ -106,7 +130,16 @@ func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, ar
 	l_args := int(reqBuf.ReadUint32())
 	args = make([]any, l_args)
 	for i_args := 0; i_args < l_args; i_args++ {
-		args[i_args] = reqBuf.ReadAny()
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				args[i_args] = obj
+			} else {
+				args[i_args] = rawVal
+			}
+		} else {
+			args[i_args] = rawVal
+		}
 	}
 		impl.Printf(format, args...)
 		resBuf := ffigo.GetBuffer()
@@ -118,7 +151,16 @@ func FmtHostRouter(impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, ar
 	l_args := int(reqBuf.ReadUint32())
 	args = make([]any, l_args)
 	for i_args := 0; i_args < l_args; i_args++ {
-		args[i_args] = reqBuf.ReadAny()
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				args[i_args] = obj
+			} else {
+				args[i_args] = rawVal
+			}
+		} else {
+			args[i_args] = rawVal
+		}
 	}
 		r0 := impl.Sprintf(format, args...)
 		resBuf := ffigo.GetBuffer()

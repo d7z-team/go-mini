@@ -96,6 +96,9 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case int:
 		b.buf = append(b.buf, TypeTagInt64)
 		b.WriteInt64(int64(val))
+	case uint32:
+		b.buf = append(b.buf, TypeTagHandle)
+		b.WriteUint32(val)
 	case float64:
 		b.buf = append(b.buf, TypeTagFloat64)
 		b.WriteFloat64(val)
@@ -108,9 +111,6 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case bool:
 		b.buf = append(b.buf, TypeTagBool)
 		b.WriteBool(val)
-	case uint32: // Handle ID
-		b.buf = append(b.buf, TypeTagHandle)
-		b.WriteUint32(val)
 	default:
 		b.buf = append(b.buf, TypeTagUnknown)
 	}

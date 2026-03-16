@@ -21,7 +21,8 @@ func (p *PrinterAPIProxy) Println(args ...any) {
 
 	buf.WriteUint32(uint32(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		_ = item
+	buf.WriteAny(item)
 	}
 
 	_, err := p.bridge.Call(MethodID_PrinterAPI_Println, buf.Bytes())
@@ -30,13 +31,23 @@ func (p *PrinterAPIProxy) Println(args ...any) {
 
 func PrinterAPIHostRouter(impl PrinterAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_PrinterAPI_Println:
 		var args []any
 	l_args := int(reqBuf.ReadUint32())
 	args = make([]any, l_args)
 	for i_args := 0; i_args < l_args; i_args++ {
-		args[i_args] = reqBuf.ReadAny()
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				args[i_args] = obj
+			} else {
+				args[i_args] = rawVal
+			}
+		} else {
+			args[i_args] = rawVal
+		}
 	}
 		impl.Println(args...)
 		resBuf := ffigo.GetBuffer()

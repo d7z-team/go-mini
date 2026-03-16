@@ -206,8 +206,8 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 	vStru := &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
 	for ident, miniType := range specs {
 		if callFunc, b := miniType.ReadCallFunc(); b {
-			vStru.Methods[ident] = callFunc
-			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", name, ident))] = callFunc
+			vStru.Methods[ident] = *callFunc
+			c.root.Methods[Ident(fmt.Sprintf("__obj__%s__%s", name, ident))] = *callFunc
 		} else {
 			vStru.Fields[ident] = miniType
 		}

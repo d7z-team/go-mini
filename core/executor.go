@@ -79,7 +79,7 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 		}
 	}
 
-	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns}
+	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec)}
 	if spec != "" {
 		o.specs[ast.Ident(name)] = spec
 	}

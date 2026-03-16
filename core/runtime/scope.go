@@ -169,6 +169,19 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 	if err != nil {
 		return c.AddVariable(variable, expr)
 	}
+	if expr == nil {
+		v.VType = TypeAny
+		v.I64 = 0
+		v.F64 = 0
+		v.Str = ""
+		v.B = nil
+		v.Bool = false
+		v.Handle = 0
+		v.Ref = nil
+		v.ResultVal = nil
+		v.ResultErr = ""
+		return nil
+	}
 	// Copy data only, keep original metadata if strictly typed
 	v.VType = expr.VType
 	v.I64 = expr.I64

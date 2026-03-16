@@ -21,16 +21,15 @@ func (p *ErrorsProxy) New(text string) (error) {
 
 	buf.WriteString(text)
 
-	_, err := p.bridge.Call(MethodID_Errors_New, buf.Bytes())
-	if err != nil {
-		return err
-	}
-
+	retData, err := p.bridge.Call(MethodID_Errors_New, buf.Bytes())
+	_ = retData
+	if err != nil { return err }
 	return nil
 }
 
 func ErrorsHostRouter(impl Errors, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string

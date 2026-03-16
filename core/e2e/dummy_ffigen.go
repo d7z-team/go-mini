@@ -28,10 +28,8 @@ func (p *OSProxy) Open(name string) (*File, error) {
 	buf.WriteString(name)
 
 	retData, err := p.bridge.Call(MethodID_OS_Open, buf.Bytes())
-	if err != nil {
-		return nil, err
-	}
-
+	_ = retData
+	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -60,6 +58,7 @@ func (p *OSProxy) Name(f *File) (string) {
 		}
 
 	retData, err := p.bridge.Call(MethodID_OS_Name, buf.Bytes())
+	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
@@ -78,10 +77,8 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 		}
 
 	retData, err := p.bridge.Call(MethodID_OS_Stat, buf.Bytes())
-	if err != nil {
-		return FileInfo{}, err
-	}
-
+	_ = retData
+	if err != nil { return FileInfo{}, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -89,8 +86,8 @@ func (p *OSProxy) Stat(f *File) (FileInfo, error) {
 		return FileInfo{}, fmt.Errorf("%s", errMsg)
 	}
 	var v_0 FileInfo
-	v_0.Size = retBuf.ReadUint32()
 	v_0.Name = retBuf.ReadString()
+	v_0.Size = uint32(retBuf.ReadUint32())
 	return v_0, nil
 }
 
@@ -106,10 +103,8 @@ func (p *OSProxy) Read(f *File, b []byte) (int, error) {
 	buf.WriteBytes(b)
 
 	retData, err := p.bridge.Call(MethodID_OS_Read, buf.Bytes())
-	if err != nil {
-		return 0, err
-	}
-
+	_ = retData
+	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -133,10 +128,8 @@ func (p *OSProxy) Write(f *File, b []byte) (int, error) {
 	buf.WriteBytes(b)
 
 	retData, err := p.bridge.Call(MethodID_OS_Write, buf.Bytes())
-	if err != nil {
-		return 0, err
-	}
-
+	_ = retData
+	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	status := retBuf.ReadByte()
 	if status != 0 {
@@ -158,11 +151,9 @@ func (p *OSProxy) Close(f *File) (error) {
 			buf.WriteUint32(0)
 		}
 
-	_, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
-	if err != nil {
-		return err
-	}
-
+	retData, err := p.bridge.Call(MethodID_OS_Close, buf.Bytes())
+	_ = retData
+	if err != nil { return err }
 	return nil
 }
 
@@ -170,22 +161,24 @@ func (p *OSProxy) Deep(n Nested) (Nested) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUint32(n.Info.Size)
 	buf.WriteString(n.Info.Name)
+	buf.WriteUint32(uint32(n.Info.Size))
 	buf.WriteInt64(int64(n.Level))
 
 	retData, err := p.bridge.Call(MethodID_OS_Deep, buf.Bytes())
+	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Nested
-	v_0.Info.Size = retBuf.ReadUint32()
 	v_0.Info.Name = retBuf.ReadString()
+	v_0.Info.Size = uint32(retBuf.ReadUint32())
 	v_0.Level = int(retBuf.ReadInt64())
 	return v_0
 }
 
 func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
@@ -229,8 +222,8 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 			resBuf.WriteString(err.Error())
 		} else {
 			resBuf.WriteByte(0)
-	resBuf.WriteUint32(r0.Size)
 	resBuf.WriteString(r0.Name)
+	resBuf.WriteUint32(uint32(r0.Size))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Read:
@@ -295,13 +288,13 @@ func OSHostRouter(impl OS, registry *ffigo.HandleRegistry, methodID uint32, args
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Deep:
 		var n Nested
-	n.Info.Size = reqBuf.ReadUint32()
 	n.Info.Name = reqBuf.ReadString()
+	n.Info.Size = uint32(reqBuf.ReadUint32())
 	n.Level = int(reqBuf.ReadInt64())
 		r0 := impl.Deep(n)
 		resBuf := ffigo.GetBuffer()
-	resBuf.WriteUint32(r0.Info.Size)
 	resBuf.WriteString(r0.Info.Name)
+	resBuf.WriteUint32(uint32(r0.Info.Size))
 	resBuf.WriteInt64(int64(r0.Level))
 		return resBuf.Bytes(), nil
 	default:

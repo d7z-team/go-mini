@@ -22,6 +22,7 @@ func (p *ShapeAPIProxy) GetRect() (Rect) {
 
 
 	retData, err := p.bridge.Call(MethodID_ShapeAPI_GetRect, buf.Bytes())
+	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Rect
@@ -42,6 +43,7 @@ func (p *ShapeAPIProxy) Area(r Rect) (int) {
 	buf.WriteInt64(int64(r.B.Y))
 
 	retData, err := p.bridge.Call(MethodID_ShapeAPI_Area, buf.Bytes())
+	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int
@@ -51,6 +53,7 @@ func (p *ShapeAPIProxy) Area(r Rect) (int) {
 
 func ShapeAPIHostRouter(impl ShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
+	_ = reqBuf
 	switch methodID {
 	case MethodID_ShapeAPI_GetRect:
 		r0 := impl.GetRect()

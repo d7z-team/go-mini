@@ -473,10 +473,28 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	if c.Kind == "" {
 		return fmt.Errorf("复合类型缺少类型标识")
 	}
+
+	isMap := c.Type.IsMap()
+	isArray := c.Type.IsArray()
+	var miniStruct *ValidStruct
+	var hasStruct bool
+	if !isMap && !isArray {
+		miniStruct, hasStruct = ctx.GetStruct(c.Kind)
+	}
+
 	for _, elem := range c.Values {
 		if elem.Key != nil {
-			if err := elem.Key.Check(ctx); err != nil {
-				return err
+			if hasStruct {
+				// 结构体 Key 必须是字段名，不参与变量 Check
+				if ident, ok := elem.Key.(*IdentifierExpr); ok {
+					if _, ok2 := miniStruct.Fields[ident.Name]; !ok2 {
+						return fmt.Errorf("结构体 %s 不存在字段 %s", c.Kind, ident.Name)
+					}
+				}
+			} else {
+				if err := elem.Key.Check(ctx); err != nil {
+					return err
+				}
 			}
 		}
 		if elem.Value == nil {
