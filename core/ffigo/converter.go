@@ -406,6 +406,16 @@ func (c *GoToASTConverter) convertOp(op token.Token) string {
 		return "Or"
 	case token.NOT:
 		return "Not"
+	case token.AND:
+		return "BitAnd"
+	case token.OR:
+		return "BitOr"
+	case token.XOR:
+		return "BitXor"
+	case token.SHL:
+		return "Lsh"
+	case token.SHR:
+		return "Rsh"
 	}
 	return op.String()
 }

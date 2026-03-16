@@ -317,7 +317,7 @@ func (e *Executor) evalIndexExpr(ctx *StackContext, n *ast.IndexExpr) (*Var, err
 	}
 
 	if obj == nil || idx == nil {
-		return nil, fmt.Errorf("index access on nil")
+		return nil, errors.New("index access on nil")
 	}
 
 	switch obj.VType {
@@ -330,7 +330,11 @@ func (e *Executor) evalIndexExpr(ctx *StackContext, n *ast.IndexExpr) (*Var, err
 		return arr.Data[i], nil
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
-		if val, ok := m.Data[idx.Str]; ok {
+		key := idx.Str
+		if idx.VType == TypeInt {
+			key = strconv.FormatInt(idx.I64, 10)
+		}
+		if val, ok := m.Data[key]; ok {
 			return val, nil
 		}
 		return nil, nil
@@ -344,7 +348,7 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 		return nil, err
 	}
 	if obj == nil {
-		return nil, fmt.Errorf("member access on nil object")
+		return nil, errors.New("member access on nil object")
 	}
 
 	switch obj.VType {
@@ -493,6 +497,21 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 				return NewFloat(lf / rf), nil
 			}
 			return NewInt(l.I64 / r.I64), nil
+		case "%", "Mod":
+			if int64(rf) == 0 {
+				return nil, errors.New("division by zero")
+			}
+			return NewInt(l.I64 % int64(rf)), nil
+		case "&", "And", "BitAnd":
+			return NewInt(l.I64 & r.I64), nil
+		case "|", "Or", "BitOr":
+			return NewInt(l.I64 | r.I64), nil
+		case "^", "Xor", "BitXor":
+			return NewInt(l.I64 ^ r.I64), nil
+		case "<<", "Lsh":
+			return NewInt(l.I64 << uint(r.I64)), nil
+		case ">>", "Rsh":
+			return NewInt(l.I64 >> uint(r.I64)), nil
 		case "<", "Lt":
 			return NewBool(lf < rf), nil
 		case ">", "Gt":
@@ -553,6 +572,10 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 	case "-", "Sub", "Minus":
 		if val.VType == TypeInt {
 			return NewInt(-val.I64), nil
+		}
+	case "^", "BitXor", "Xor":
+		if val.VType == TypeInt {
+			return NewInt(^val.I64), nil
 		}
 	}
 	return nil, fmt.Errorf("unsupported unary op %s", operator)
@@ -766,6 +789,19 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 	return e.deserializeVar(reader, retType, route.Bridge)
 }
 
+func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniType) error {
+	switch kType {
+	case "String":
+		buf.WriteString(key)
+	case "Int64":
+		v, _ := strconv.ParseInt(key, 10, 64)
+		buf.WriteInt64(v)
+	default:
+		return fmt.Errorf("unsupported map key type: %s", kType)
+	}
+	return nil
+}
+
 func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
 	if v == nil || (v.VType == TypeAny && v.Ref == nil && v.I64 == 0 && v.Str == "") {
 		// 写入零值，必须确保字节对齐
@@ -847,9 +883,9 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 				vmMap := v.Ref.(*VMMap)
 				buf.WriteUint32(uint32(len(vmMap.Data)))
 				for k, val := range vmMap.Data {
-					// Currently VMMap only supports string keys in the VM
-					_ = kType // Assume string for now
-					buf.WriteString(k)
+					if err := e.serializeKey(buf, k, kType); err != nil {
+						return err
+					}
 					if err := e.serializeVar(buf, val, vType); err != nil {
 						return err
 					}
@@ -944,6 +980,17 @@ func (e *Executor) deserializeAnyToVar(val interface{}, bridge ffigo.FFIBridge) 
 	return nil
 }
 
+func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (string, error) {
+	switch kType {
+	case "String":
+		return reader.ReadString(), nil
+	case "Int64":
+		return strconv.FormatInt(reader.ReadInt64(), 10), nil
+	default:
+		return "", fmt.Errorf("unsupported map key type: %s", kType)
+	}
+}
+
 func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
 	if typ.IsVoid() {
 		return nil, nil
@@ -988,10 +1035,13 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
 	case typ.IsMap():
 		count := int(reader.ReadUint32())
-		_, vType, _ := typ.GetMapKeyValueTypes()
+		kType, vType, _ := typ.GetMapKeyValueTypes()
 		res := make(map[string]*Var)
 		for i := 0; i < count; i++ {
-			k := reader.ReadString() // Currently only supports string keys in VM
+			k, err := e.deserializeKey(reader, kType)
+			if err != nil {
+				return nil, err
+			}
 			val, err := e.deserializeVar(reader, vType, bridge)
 			if err != nil {
 				return nil, err

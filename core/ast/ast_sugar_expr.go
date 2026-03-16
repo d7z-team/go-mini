@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -130,6 +131,16 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 		b.Operator = "And"
 	case "||", "Or":
 		b.Operator = "Or"
+	case "&", "BitAnd":
+		b.Operator = "BitAnd"
+	case "|", "BitOr":
+		b.Operator = "BitOr"
+	case "^", "BitXor":
+		b.Operator = "BitXor"
+	case "<<", "Lsh":
+		b.Operator = "Lsh"
+	case ">>", "Rsh":
+		b.Operator = "Rsh"
 	default:
 		ctx.AddErrorf("未知二元表达式: %s", b.Operator)
 		return fmt.Errorf("未知二元表达式: %s", b.Operator)
@@ -183,8 +194,8 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 		u.Operator = "Not"
 	case "+", "Plus":
 		u.Operator = "Plus"
-	case "^", "BitwiseNot":
-		u.Operator = "BitwiseNot"
+	case "^", "BitXor", "BitwiseNot":
+		u.Operator = "BitXor"
 	default:
 		ctx.AddErrorf("未知一元表达式: %s", u.Operator)
 		return fmt.Errorf("未知一元表达式: %s", u.Operator)
@@ -192,7 +203,7 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 
 	if u.Operand == nil {
 		ctx.AddErrorf("一元表达式缺少操作数")
-		return fmt.Errorf("一元表达式缺少操作数")
+		return errors.New("一元表达式缺少操作数")
 	}
 	if err := u.Operand.Check(ctx); err != nil {
 		return err
@@ -232,7 +243,7 @@ func (s *StructCallExpr) exprNode() {}
 
 func (s *StructCallExpr) Check(ctx *SemanticContext) error {
 	if !s.Name.Valid(&ctx.ValidContext) {
-		return fmt.Errorf("invalid name")
+		return errors.New("invalid name")
 	}
 
 	if err := s.Object.Check(ctx); err != nil {
@@ -326,7 +337,7 @@ func (l *LiteralExpr) exprNode()          {}
 func (l *LiteralExpr) Check(ctx *SemanticContext) error {
 	l.Type = l.Type.Resolve(&ctx.ValidContext)
 	if l.Type == "" {
-		return fmt.Errorf("missing type for literal")
+		return errors.New("missing type for literal")
 	}
 	// 在隔离架构下，LiteralExpr 是合法的，无需构造函数检查
 	return nil

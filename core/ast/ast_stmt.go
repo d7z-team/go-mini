@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"errors"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -33,7 +34,7 @@ func (p *ProgramStmt) stmtNode() {}
 
 func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	if ctx.parent != nil {
-		return fmt.Errorf("程序入口必须为顶点")
+		return errors.New("程序入口必须为顶点")
 	}
 
 	// 预注册所有导入的包别名，以支持 MemberExpr/StructCallExpr 的静态查找
@@ -312,7 +313,7 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 
 	// 1. 检查 Cond 是否为空，Check Cond。
 	if i.Cond == nil {
-		return fmt.Errorf("if语句缺少条件表达式")
+		return errors.New("if语句缺少条件表达式")
 	}
 	if err := i.Cond.Check(semCtx); err != nil {
 		return err
@@ -321,7 +322,7 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 	// 2. 检查 Cond 类型是否为 Bool，无法推导或非 Bool 则报错。
 	condType := i.Cond.GetBase().Type
 	if condType == "" {
-		return fmt.Errorf("if条件表达式类型无法推导")
+		return errors.New("if条件表达式类型无法推导")
 	}
 	if !condType.Equals("Bool") {
 		return fmt.Errorf("if表达式不是返回Bool类型, 实际为 %s", condType)
@@ -329,7 +330,7 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 
 	// 3. 检查 Body 是否为空，Check Body。
 	if i.Body == nil {
-		return fmt.Errorf("if语句缺少主体")
+		return errors.New("if语句缺少主体")
 	}
 	if err := i.Body.Check(semCtx); err != nil {
 		return err
@@ -416,7 +417,7 @@ func (f *ForStmt) Check(ctx *SemanticContext) error {
 	}
 
 	if f.Body == nil {
-		return fmt.Errorf("for循环缺少主体")
+		return errors.New("for循环缺少主体")
 	}
 
 	if err := f.Body.Check(semCtx); err != nil {
@@ -424,7 +425,7 @@ func (f *ForStmt) Check(ctx *SemanticContext) error {
 	}
 
 	if _, ok := f.Body.(*BlockStmt); !ok {
-		return fmt.Errorf("循环主体不是 block")
+		return errors.New("循环主体不是 block")
 	}
 
 	f.Type = "Void"
@@ -467,12 +468,12 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 
 	scope, b := ctx.CheckScope("function")
 	if !b {
-		return fmt.Errorf("return 语句只能在函数中使用")
+		return errors.New("return 语句只能在函数中使用")
 	}
 
 	stmt := scope.(*FunctionStmt)
 	if stmt.Return.IsVoid() && len(r.Results) != 0 {
-		return fmt.Errorf("当前函数不存在返回值")
+		return errors.New("当前函数不存在返回值")
 	}
 
 	if len(r.Results) > 0 {
@@ -707,7 +708,7 @@ func (d *DeferStmt) stmtNode()          {}
 func (d *DeferStmt) Check(ctx *SemanticContext) error {
 	d.Type = "Void"
 	if d.Call == nil {
-		return fmt.Errorf("defer 语句缺少调用表达式")
+		return errors.New("defer 语句缺少调用表达式")
 	}
 	if err := d.Call.Check(ctx); err != nil {
 		return err
@@ -741,14 +742,14 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("invalid identifier: %s", a.Variable)
 	}
 	if a.Value == nil {
-		return fmt.Errorf("赋值语句缺少值")
+		return errors.New("赋值语句缺少值")
 	}
 	if err := a.Value.Check(ctx); err != nil {
 		return err
 	}
 	miniType := a.Value.GetBase().Type
 	if miniType.IsEmpty() {
-		return fmt.Errorf("无法推导类型")
+		return errors.New("无法推导类型")
 	}
 	if miniType.IsVoid() {
 		return fmt.Errorf("类型 (%s) 不支持赋值", miniType)
@@ -880,14 +881,14 @@ func (d *DerefAssignmentStmt) stmtNode()          {}
 func (d *DerefAssignmentStmt) Check(ctx *SemanticContext) error {
 	d.Type = "Void"
 	if d.Object == nil {
-		return fmt.Errorf("解引用赋值缺少对象")
+		return errors.New("解引用赋值缺少对象")
 	}
 	if err := d.Object.Check(ctx); err != nil {
 		return err
 	}
 
 	if d.Value == nil {
-		return fmt.Errorf("解引用赋值缺少值")
+		return errors.New("解引用赋值缺少值")
 	}
 	if err := d.Value.Check(ctx); err != nil {
 		return err

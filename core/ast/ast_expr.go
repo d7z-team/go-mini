@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -143,7 +144,7 @@ func (c *CallExprStmt) stmtNode()          {}
 
 func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if c.Func == nil {
-		return fmt.Errorf("函数调用缺少函数名")
+		return errors.New("函数调用缺少函数名")
 	}
 
 	if err := c.Func.Check(ctx); err != nil {
@@ -258,10 +259,10 @@ func (m *MemberExpr) exprNode()          {}
 
 func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if m.Object == nil {
-		return fmt.Errorf("成员访问缺少对象表达式")
+		return errors.New("成员访问缺少对象表达式")
 	}
 	if m.Property == "" {
-		return fmt.Errorf("成员访问缺少属性名")
+		return errors.New("成员访问缺少属性名")
 	}
 
 	// 1. Package selector check (Static Inlining detection)
@@ -311,7 +312,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			m.Type = "String"
 			return nil
 		}
-		return fmt.Errorf("Result type only has 'val' and 'err' properties")
+		return errors.New("Result type only has 'val' and 'err' properties")
 	}
 
 	if !m.Property.Valid(&ctx.ValidContext) {
@@ -386,7 +387,7 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	c.Kind = Ident(GoMiniType(c.Kind).Resolve(&ctx.ValidContext))
 	c.Type = GoMiniType(c.Kind)
 	if c.Kind == "" {
-		return fmt.Errorf("复合类型缺少类型标识")
+		return errors.New("复合类型缺少类型标识")
 	}
 
 	isMap := c.Type.IsMap()
@@ -413,7 +414,7 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 			}
 		}
 		if elem.Value == nil {
-			return fmt.Errorf("复合类型元素缺少值")
+			return errors.New("复合类型元素缺少值")
 		}
 		if err := elem.Value.Check(ctx); err != nil {
 			return err
@@ -445,7 +446,7 @@ func (i *IndexExpr) exprNode()          {}
 
 func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	if i.Object == nil {
-		return fmt.Errorf("索引访问缺少对象表达式")
+		return errors.New("索引访问缺少对象表达式")
 	}
 
 	if err := i.Object.Check(ctx); err != nil {
@@ -453,7 +454,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if i.Index == nil {
-		return fmt.Errorf("索引访问缺少索引表达式")
+		return errors.New("索引访问缺少索引表达式")
 	}
 
 	if err := i.Index.Check(ctx); err != nil {
@@ -515,13 +516,13 @@ func (a *AddressExpr) exprNode()          {}
 
 func (a *AddressExpr) Check(ctx *SemanticContext) error {
 	if a.Operand == nil {
-		return fmt.Errorf("取地址表达式缺少操作数")
+		return errors.New("取地址表达式缺少操作数")
 	}
 	if err := a.Operand.Check(ctx); err != nil {
 		return err
 	}
 	if a.Operand.GetBase().Type.IsPtr() {
-		return fmt.Errorf("取地址操作符 & 只能用于左值")
+		return errors.New("取地址操作符 & 只能用于左值")
 	}
 	a.Type = a.Operand.GetBase().Type.ToPtr()
 	return nil
@@ -543,7 +544,7 @@ func (d *DerefExpr) exprNode()          {}
 
 func (d *DerefExpr) Check(ctx *SemanticContext) error {
 	if d.Operand == nil {
-		return fmt.Errorf("解引用表达式缺少操作数")
+		return errors.New("解引用表达式缺少操作数")
 	}
 
 	if err := d.Operand.Check(ctx); err != nil {

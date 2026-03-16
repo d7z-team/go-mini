@@ -12,6 +12,7 @@ const (
 	MethodID_MapTest_EchoMap = 1
 	MethodID_MapTest_GetMap = 2
 	MethodID_MapTest_ProcessMap = 3
+	MethodID_MapTest_EchoIntMap = 4
 )
 
 type MapTestProxy struct {
@@ -104,6 +105,39 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	return v_0, nil
 }
 
+func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteUint32(uint32(len(m)))
+	for k, v := range m {
+		_ = k; _ = v
+	buf.WriteInt64(int64(k))
+	buf.WriteString(v)
+	}
+
+	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
+	_ = retData
+	if err != nil { return map[int64]string{}, err }
+	retBuf := ffigo.NewReader(retData)
+	status := retBuf.ReadByte()
+	if status != 0 {
+		errMsg := retBuf.ReadString()
+		return map[int64]string{}, fmt.Errorf("%s", errMsg)
+	}
+	var v_0 map[int64]string
+	l_v_0 := int(retBuf.ReadUint32())
+	v_0 = make(map[int64]string)
+	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
+		var k int64
+		var v string
+	k = int64(retBuf.ReadInt64())
+	v = retBuf.ReadString()
+		v_0[k] = v
+	}
+	return v_0, nil
+}
+
 func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	_ = reqBuf
@@ -171,6 +205,32 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	resBuf.WriteInt64(int64(r0))
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_MapTest_EchoIntMap:
+		var m map[int64]string
+	l_m := int(reqBuf.ReadUint32())
+	m = make(map[int64]string)
+	for i_m := 0; i_m < l_m; i_m++ {
+		var k int64
+		var v string
+	k = int64(reqBuf.ReadInt64())
+	v = reqBuf.ReadString()
+		m[k] = v
+	}
+		r0, err := impl.EchoIntMap(ctx, m)
+		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(err.Error())
+		} else {
+			resBuf.WriteByte(0)
+	resBuf.WriteUint32(uint32(len(r0)))
+	for k, v := range r0 {
+		_ = k; _ = v
+	resBuf.WriteInt64(int64(k))
+	resBuf.WriteString(v)
+	}
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -183,6 +243,7 @@ var MapTest_FFI_Metadata = []struct {
 	{"EchoMap", 1, "function(Map<String, String>) Result<Map<String, String>>"},
 	{"GetMap", 2, "function() Result<Map<String, Int64>>"},
 	{"ProcessMap", 3, "function(Map<String, Int64>) Result<Int64>"},
+	{"EchoIntMap", 4, "function(Map<Int64, String>) Result<Map<Int64, String>>"},
 }
 
 type MapTest_Bridge struct {

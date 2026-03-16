@@ -81,45 +81,45 @@ func readMapKeyValueTypes(pType string) (string, string, bool) {
 func emitWrite(sb *strings.Builder, prefix string, pType string, structs map[string]*ast.StructType, bufName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
 		if isHost {
-			sb.WriteString(fmt.Sprintf("\t\t%s.WriteUint32(registry.Register(%s))\n", bufName, prefix))
+			fmt.Fprintf(sb, "\t\t%s.WriteUint32(registry.Register(%s))\n", bufName, prefix)
 		} else {
-			sb.WriteString(fmt.Sprintf("\t\tif p.registry != nil {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t%s.WriteUint32(p.registry.Register(%s))\n", bufName, prefix))
-			sb.WriteString(fmt.Sprintf("\t\t} else {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t%s.WriteUint32(0)\n", bufName))
-			sb.WriteString(fmt.Sprintf("\t\t}\n"))
+			fmt.Fprintf(sb, "\t\tif p.registry != nil {\n")
+			fmt.Fprintf(sb, "\t\t\t%s.WriteUint32(p.registry.Register(%s))\n", bufName, prefix)
+			fmt.Fprintf(sb, "\t\t} else {\n")
+			fmt.Fprintf(sb, "\t\t\t%s.WriteUint32(0)\n", bufName)
+			fmt.Fprintf(sb, "\t\t}\n")
 		}
 		return
 	}
 	switch pType {
 	case "Uint32", "uint32", "Int32", "int32":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteUint32(uint32(%s))\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteUint32(uint32(%s))\n", bufName, prefix)
 	case "int", "Int", "Int64", "int64":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteInt64(int64(%s))\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteInt64(int64(%s))\n", bufName, prefix)
 	case "string", "String":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteString(%s)\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteString(%s)\n", bufName, prefix)
 	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteBytes(%s)\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteBytes(%s)\n", bufName, prefix)
 	case "Any", "any":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteAny(%s)\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteAny(%s)\n", bufName, prefix)
 	case "bool", "Bool":
-		sb.WriteString(fmt.Sprintf("\t%s.WriteBool(%s)\n", bufName, prefix))
+		fmt.Fprintf(sb, "\t%s.WriteBool(%s)\n", bufName, prefix)
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
-			sb.WriteString(fmt.Sprintf("\t%s.WriteUint32(uint32(len(%s)))\n", bufName, prefix))
-			sb.WriteString(fmt.Sprintf("\tfor _, item := range %s {\n", prefix))
-			sb.WriteString("\t\t_ = item\n")
+			fmt.Fprintf(sb, "\t%s.WriteUint32(uint32(len(%s)))\n", bufName, prefix)
+			fmt.Fprintf(sb, "\tfor _, item := range %s {\n", prefix)
+			fmt.Fprintf(sb, "\t\t_ = item\n")
 			emitWrite(sb, "item", itemType, structs, bufName, isHost)
-			sb.WriteString(fmt.Sprintf("\t}\n"))
+			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if kType, vType, ok := readMapKeyValueTypes(pType); ok {
-			sb.WriteString(fmt.Sprintf("\t%s.WriteUint32(uint32(len(%s)))\n", bufName, prefix))
-			sb.WriteString(fmt.Sprintf("\tfor k, v := range %s {\n", prefix))
-			sb.WriteString("\t\t_ = k; _ = v\n")
+			fmt.Fprintf(sb, "\t%s.WriteUint32(uint32(len(%s)))\n", bufName, prefix)
+			fmt.Fprintf(sb, "\tfor k, v := range %s {\n", prefix)
+			fmt.Fprintf(sb, "\t\t_ = k; _ = v\n")
 			emitWrite(sb, "k", kType, structs, bufName, isHost)
 			emitWrite(sb, "v", vType, structs, bufName, isHost)
-			sb.WriteString(fmt.Sprintf("\t}\n"))
+			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if str, ok := structs[pType]; ok {
@@ -137,7 +137,7 @@ func emitWrite(sb *strings.Builder, prefix string, pType string, structs map[str
 				emitWrite(sb, prefix+"."+fName, fType, structs, bufName, isHost)
 			}
 		} else {
-			sb.WriteString(fmt.Sprintf("\t// Unknown type for write: %s\n", pType))
+			fmt.Fprintf(sb, "\t// Unknown type for write: %s\n", pType)
 		}
 	}
 }
@@ -145,73 +145,73 @@ func emitWrite(sb *strings.Builder, prefix string, pType string, structs map[str
 func emitReadAssign(sb *strings.Builder, varName string, pType string, structs map[string]*ast.StructType, readerName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
 		if isHost {
-			sb.WriteString(fmt.Sprintf("\t\tif id := %s.ReadUint32(); id != 0 {\n", readerName))
-			sb.WriteString(fmt.Sprintf("\t\t\tif obj, ok := registry.Get(id); ok {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t%s = obj.(%s)\n", varName, toGoType(pType)))
-			sb.WriteString(fmt.Sprintf("\t\t\t} else {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\treturn nil, fmt.Errorf(\"invalid handle ID: %%d\", id)\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t}\n"))
-			sb.WriteString(fmt.Sprintf("\t\t}\n"))
+			fmt.Fprintf(sb, "\t\tif id := %s.ReadUint32(); id != 0 {\n", readerName)
+			fmt.Fprintf(sb, "\t\t\tif obj, ok := registry.Get(id); ok {\n")
+			fmt.Fprintf(sb, "\t\t\t\t%s = obj.(%s)\n", varName, toGoType(pType))
+			fmt.Fprintf(sb, "\t\t\t} else {\n")
+			fmt.Fprintf(sb, "\t\t\t\treturn nil, fmt.Errorf(\"invalid handle ID: %%d\", id)\n")
+			fmt.Fprintf(sb, "\t\t\t}\n")
+			fmt.Fprintf(sb, "\t\t}\n")
 		} else {
-			sb.WriteString(fmt.Sprintf("\t\tif id := %s.ReadUint32(); id != 0 {\n", readerName))
-			sb.WriteString(fmt.Sprintf("\t\t\tif p.registry != nil {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\tif obj, ok := p.registry.Get(id); ok {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t%s = obj.(%s)\n", varName, toGoType(pType)))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t}\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t}\n"))
-			sb.WriteString(fmt.Sprintf("\t\t}\n"))
+			fmt.Fprintf(sb, "\t\tif id := %s.ReadUint32(); id != 0 {\n", readerName)
+			fmt.Fprintf(sb, "\t\t\tif p.registry != nil {\n")
+			fmt.Fprintf(sb, "\t\t\t\tif obj, ok := p.registry.Get(id); ok {\n")
+			fmt.Fprintf(sb, "\t\t\t\t\t%s = obj.(%s)\n", varName, toGoType(pType))
+			fmt.Fprintf(sb, "\t\t\t\t}\n")
+			fmt.Fprintf(sb, "\t\t\t}\n")
+			fmt.Fprintf(sb, "\t\t}\n")
 		}
 		return
 	}
 	switch pType {
 	case "Uint32", "uint32", "Int32", "int32":
-		sb.WriteString(fmt.Sprintf("\t%s = %s(%s.ReadUint32())\n", varName, toGoType(pType), readerName))
+		fmt.Fprintf(sb, "\t%s = %s(%s.ReadUint32())\n", varName, toGoType(pType), readerName)
 	case "int", "Int", "Int64", "int64":
-		sb.WriteString(fmt.Sprintf("\t%s = %s(%s.ReadInt64())\n", varName, toGoType(pType), readerName))
+		fmt.Fprintf(sb, "\t%s = %s(%s.ReadInt64())\n", varName, toGoType(pType), readerName)
 	case "Uint8", "byte", "uint8":
-		sb.WriteString(fmt.Sprintf("\t%s = %s(%s.ReadInt64())\n", varName, toGoType(pType), readerName))
+		fmt.Fprintf(sb, "\t%s = %s(%s.ReadInt64())\n", varName, toGoType(pType), readerName)
 	case "string", "String":
-		sb.WriteString(fmt.Sprintf("\t%s = %s.ReadString()\n", varName, readerName))
+		fmt.Fprintf(sb, "\t%s = %s.ReadString()\n", varName, readerName)
 	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
-		sb.WriteString(fmt.Sprintf("\t%s = %s.ReadBytes()\n", varName, readerName))
+		fmt.Fprintf(sb, "\t%s = %s.ReadBytes()\n", varName, readerName)
 	case "bool", "Bool":
-		sb.WriteString(fmt.Sprintf("\t%s = %s.ReadBool()\n", varName, readerName))
+		fmt.Fprintf(sb, "\t%s = %s.ReadBool()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
-			sb.WriteString(fmt.Sprintf("\t\trawVal := %s.ReadAny()\n", readerName))
-			sb.WriteString(fmt.Sprintf("\t\tif id, ok := rawVal.(uint32); ok {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\tif obj, ok := registry.Get(id); ok {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t%s = obj\n", varName))
-			sb.WriteString(fmt.Sprintf("\t\t\t} else {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t%s = rawVal\n", varName))
-			sb.WriteString(fmt.Sprintf("\t\t\t}\n"))
-			sb.WriteString(fmt.Sprintf("\t\t} else {\n"))
-			sb.WriteString(fmt.Sprintf("\t\t\t%s = rawVal\n", varName))
-			sb.WriteString(fmt.Sprintf("\t\t}\n"))
+			fmt.Fprintf(sb, "\t\trawVal := %s.ReadAny()\n", readerName)
+			fmt.Fprintf(sb, "\t\tif id, ok := rawVal.(uint32); ok {\n")
+			fmt.Fprintf(sb, "\t\t\tif obj, ok := registry.Get(id); ok {\n")
+			fmt.Fprintf(sb, "\t\t\t\t%s = obj\n", varName)
+			fmt.Fprintf(sb, "\t\t\t} else {\n")
+			fmt.Fprintf(sb, "\t\t\t\t%s = rawVal\n", varName)
+			fmt.Fprintf(sb, "\t\t\t}\n")
+			fmt.Fprintf(sb, "\t\t} else {\n")
+			fmt.Fprintf(sb, "\t\t\t%s = rawVal\n", varName)
+			fmt.Fprintf(sb, "\t\t}\n")
 		} else {
-			sb.WriteString(fmt.Sprintf("\t%s = %s.ReadAny()\n", varName, readerName))
+			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
 		}
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
-			sb.WriteString(fmt.Sprintf("\tl_%s := int(%s.ReadUint32())\n", varName, readerName))
+			fmt.Fprintf(sb, "\tl_%s := int(%s.ReadUint32())\n", varName, readerName)
 			goType := toGoType(pType)
-			sb.WriteString(fmt.Sprintf("\t%s = make(%s, l_%s)\n", varName, goType, varName))
-			sb.WriteString(fmt.Sprintf("\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName))
+			fmt.Fprintf(sb, "\t%s = make(%s, l_%s)\n", varName, goType, varName)
+			fmt.Fprintf(sb, "\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName)
 			emitReadAssign(sb, fmt.Sprintf("%s[i_%s]", varName, varName), itemType, structs, readerName, isHost)
-			sb.WriteString(fmt.Sprintf("\t}\n"))
+			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if kType, vType, ok := readMapKeyValueTypes(pType); ok {
-			sb.WriteString(fmt.Sprintf("\tl_%s := int(%s.ReadUint32())\n", varName, readerName))
+			fmt.Fprintf(sb, "\tl_%s := int(%s.ReadUint32())\n", varName, readerName)
 			goType := toGoType(pType)
-			sb.WriteString(fmt.Sprintf("\t%s = make(%s)\n", varName, goType))
-			sb.WriteString(fmt.Sprintf("\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName))
-			sb.WriteString(fmt.Sprintf("\t\tvar k %s\n", toGoType(kType)))
-			sb.WriteString(fmt.Sprintf("\t\tvar v %s\n", toGoType(vType)))
+			fmt.Fprintf(sb, "\t%s = make(%s)\n", varName, goType)
+			fmt.Fprintf(sb, "\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName)
+			fmt.Fprintf(sb, "\t\tvar k %s\n", toGoType(kType))
+			fmt.Fprintf(sb, "\t\tvar v %s\n", toGoType(vType))
 			emitReadAssign(sb, "k", kType, structs, readerName, isHost)
 			emitReadAssign(sb, "v", vType, structs, readerName, isHost)
-			sb.WriteString(fmt.Sprintf("\t\t%s[k] = v\n", varName))
-			sb.WriteString(fmt.Sprintf("\t}\n"))
+			fmt.Fprintf(sb, "\t\t%s[k] = v\n", varName)
+			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if str, ok := structs[pType]; ok {
@@ -229,7 +229,7 @@ func emitReadAssign(sb *strings.Builder, varName string, pType string, structs m
 				emitReadAssign(sb, varName+"."+fName, fType, structs, readerName, isHost)
 			}
 		} else {
-			sb.WriteString(fmt.Sprintf("\t// Unknown type for read: %s\n", pType))
+			fmt.Fprintf(sb, "\t// Unknown type for read: %s\n", pType)
 		}
 	}
 }
@@ -267,15 +267,15 @@ func toGoType(pType string) string {
 
 func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string]*ast.StructType) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("const (\n"))
+	fmt.Fprintf(&sb, "const (\n")
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 { continue }
 		methodName := method.Names[0].Name
-		sb.WriteString(fmt.Sprintf("\tMethodID_%s_%s = %d\n", name, methodName, i+1))
+		fmt.Fprintf(&sb, "\tMethodID_%s_%s = %d\n", name, methodName, i+1)
 	}
-	sb.WriteString(")\n\n")
+	fmt.Fprintf(&sb, ")\n\n")
 
-	sb.WriteString(fmt.Sprintf("type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name))
+	fmt.Fprintf(&sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name)
 
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 { continue }
@@ -292,7 +292,7 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 			}
 		}
 
-		sb.WriteString(fmt.Sprintf("func (p *%sProxy) %s(ctx context.Context, ", name, methodName))
+		fmt.Fprintf(&sb, "func (p *%sProxy) %s(ctx context.Context, ", name, methodName)
 		if funcType.Params != nil {
 			for j, param := range funcType.Params.List {
 				if j == 0 && hasContext { continue }
@@ -302,25 +302,25 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 					if _, ok := param.Type.(*ast.Ellipsis); ok {
 						goType = "..." + strings.TrimPrefix(goType, "[]")
 					}
-					sb.WriteString(fmt.Sprintf("%s %s", pName.Name, goType))
-					if j < len(funcType.Params.List)-1 || k < len(param.Names)-1 { sb.WriteString(", ") }
+					fmt.Fprintf(&sb, "%s %s", pName.Name, goType)
+					if j < len(funcType.Params.List)-1 || k < len(param.Names)-1 { fmt.Fprintf(&sb, ", ") }
 				}
 			}
 		}
-		sb.WriteString(") ")
+		fmt.Fprintf(&sb, ") ")
 
 		var hasErr bool
 		if funcType.Results != nil {
-			sb.WriteString("(")
+			fmt.Fprintf(&sb, "(")
 			for j, result := range funcType.Results.List {
 				rType := typeToString(result.Type)
-				if rType == "error" { hasErr = true; sb.WriteString("error") } else { sb.WriteString(toGoType(rType)) }
-				if j < len(funcType.Results.List)-1 { sb.WriteString(", ") }
+				if rType == "error" { hasErr = true; fmt.Fprintf(&sb, "error") } else { fmt.Fprintf(&sb, "%s", toGoType(rType)) }
+				if j < len(funcType.Results.List)-1 { fmt.Fprintf(&sb, ", ") }
 			}
-			sb.WriteString(") ")
+			fmt.Fprintf(&sb, ") ")
 		}
 
-		sb.WriteString("{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
+		fmt.Fprintf(&sb, "{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
 		if funcType.Params != nil {
 			for j, param := range funcType.Params.List {
 				if j == 0 && hasContext { continue }
@@ -338,38 +338,38 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 		}
 
 		if needsRetBuf || hasErr {
-			sb.WriteString(fmt.Sprintf("\n\tretData, err := p.bridge.Call(ctx, MethodID_%s_%s, buf.Bytes())\n", name, methodName))
-			sb.WriteString("\t_ = retData\n")
+			fmt.Fprintf(&sb, "\n\tretData, err := p.bridge.Call(ctx, MethodID_%s_%s, buf.Bytes())\n", name, methodName)
+			fmt.Fprintf(&sb, "\t_ = retData\n")
 		} else {
-			sb.WriteString(fmt.Sprintf("\n\t_, err := p.bridge.Call(ctx, MethodID_%s_%s, buf.Bytes())\n", name, methodName))
+			fmt.Fprintf(&sb, "\n\t_, err := p.bridge.Call(ctx, MethodID_%s_%s, buf.Bytes())\n", name, methodName)
 		}
 
 		if hasErr {
-			sb.WriteString("\tif err != nil { return ")
+			fmt.Fprintf(&sb, "\tif err != nil { return ")
 			if funcType.Results != nil {
 				for j, result := range funcType.Results.List {
 					rType := typeToString(result.Type)
-					if rType == "error" { sb.WriteString("err") } else { sb.WriteString(zeroValue(toGoType(rType))) }
-					if j < len(funcType.Results.List)-1 { sb.WriteString(", ") }
+					if rType == "error" { fmt.Fprintf(&sb, "err") } else { fmt.Fprintf(&sb, "%s", zeroValue(toGoType(rType))) }
+					if j < len(funcType.Results.List)-1 { fmt.Fprintf(&sb, ", ") }
 				}
 			}
-			sb.WriteString(" }\n")
+			fmt.Fprintf(&sb, " }\n")
 		} else {
-			sb.WriteString("\t_ = err\n")
+			fmt.Fprintf(&sb, "\t_ = err\n")
 		}
 
 		if needsRetBuf {
-			sb.WriteString("\tretBuf := ffigo.NewReader(retData)\n")
+			fmt.Fprintf(&sb, "\tretBuf := ffigo.NewReader(retData)\n")
 			if hasErr {
-				sb.WriteString("\tstatus := retBuf.ReadByte()\n\tif status != 0 {\n\t\terrMsg := retBuf.ReadString()\n\t\treturn ")
+				fmt.Fprintf(&sb, "\tstatus := retBuf.ReadByte()\n\tif status != 0 {\n\t\terrMsg := retBuf.ReadString()\n\t\treturn ")
 				if funcType.Results != nil {
 					for j, result := range funcType.Results.List {
 						rType := typeToString(result.Type)
-						if rType == "error" { sb.WriteString("fmt.Errorf(\"%s\", errMsg)") } else { sb.WriteString(zeroValue(toGoType(rType))) }
-						if j < len(funcType.Results.List)-1 { sb.WriteString(", ") }
+						if rType == "error" { fmt.Fprintf(&sb, "fmt.Errorf(\"%%s\", errMsg)") } else { fmt.Fprintf(&sb, "%s", zeroValue(toGoType(rType))) }
+						if j < len(funcType.Results.List)-1 { fmt.Fprintf(&sb, ", ") }
 					}
 				}
-				sb.WriteString("\n\t}\n")
+				fmt.Fprintf(&sb, "\n\t}\n")
 			}
 		}
 
@@ -379,17 +379,17 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 				rType := typeToString(result.Type)
 				if rType == "error" { retStmt = append(retStmt, "nil"); continue }
 				varName := fmt.Sprintf("v_%d", i)
-				sb.WriteString(fmt.Sprintf("\tvar %s %s\n", varName, toGoType(rType)))
+				fmt.Fprintf(&sb, "\tvar %s %s\n", varName, toGoType(rType))
 				emitReadAssign(&sb, varName, rType, structs, "retBuf", false)
 				retStmt = append(retStmt, varName)
 			}
 		}
-		if len(retStmt) > 0 { sb.WriteString(fmt.Sprintf("\treturn %s\n", strings.Join(retStmt, ", "))) }
-		sb.WriteString("}\n\n")
+		if len(retStmt) > 0 { fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(retStmt, ", ")) }
+		fmt.Fprintf(&sb, "}\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {\n", name, name))
-	sb.WriteString("\treqBuf := ffigo.NewReader(args)\n\t_ = reqBuf\n\tswitch methodID {\n")
+	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {\n", name, name)
+	fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n\t_ = reqBuf\n\tswitch methodID {\n")
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 { continue }
 		methodName := method.Names[0].Name
@@ -404,7 +404,7 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 			}
 		}
 
-		sb.WriteString(fmt.Sprintf("\tcase MethodID_%s_%s:\n", name, methodName))
+		fmt.Fprintf(&sb, "\tcase MethodID_%s_%s:\n", name, methodName)
 		var paramVars []string
 		if hasContext {
 			paramVars = append(paramVars, "ctx")
@@ -418,7 +418,7 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 					goType := toGoType(pType)
 					isVariadic := false
 					if _, ok := param.Type.(*ast.Ellipsis); ok { isVariadic = true; goType = "[]" + strings.TrimPrefix(goType, "[]") }
-					sb.WriteString(fmt.Sprintf("\t\tvar %s %s\n", pName.Name, goType))
+					fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
 					emitReadAssign(&sb, pName.Name, pType, structs, "reqBuf", true)
 					if isVariadic { paramVars = append(paramVars, pName.Name+"...") } else { paramVars = append(paramVars, pName.Name) }
 				}
@@ -432,50 +432,50 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 				rType := typeToString(result.Type)
 				if rType == "error" { hasErr = true; retVars = append(retVars, "err") } else { retVars = append(retVars, fmt.Sprintf("r%d", i)) }
 			}
-			sb.WriteString(fmt.Sprintf("\t\t%s := %s\n", strings.Join(retVars, ", "), callStmt))
+			fmt.Fprintf(&sb, "\t\t%s := %s\n", strings.Join(retVars, ", "), callStmt)
 		} else {
-			sb.WriteString(fmt.Sprintf("\t\t%s\n", callStmt))
+			fmt.Fprintf(&sb, "\t\t%s\n", callStmt)
 		}
-		sb.WriteString("\t\tresBuf := ffigo.GetBuffer()\n")
+		fmt.Fprintf(&sb, "\t\tresBuf := ffigo.GetBuffer()\n")
 		if hasErr {
-			sb.WriteString("\t\tif err != nil {\n\t\t\tresBuf.WriteByte(1)\n\t\t\tresBuf.WriteString(err.Error())\n\t\t} else {\n\t\t\tresBuf.WriteByte(0)\n")
+			fmt.Fprintf(&sb, "\t\tif err != nil {\n\t\t\tresBuf.WriteByte(1)\n\t\t\tresBuf.WriteString(err.Error())\n\t\t} else {\n\t\t\tresBuf.WriteByte(0)\n")
 			for i, result := range funcType.Results.List {
 				rType := typeToString(result.Type)
 				if rType != "error" { emitWrite(&sb, fmt.Sprintf("r%d", i), rType, structs, "resBuf", true); break }
 			}
-			sb.WriteString("\t\t}\n\t\treturn resBuf.Bytes(), nil\n")
+			fmt.Fprintf(&sb, "\t\t}\n\t\treturn resBuf.Bytes(), nil\n")
 		} else {
 			if funcType.Results != nil {
 				for i, result := range funcType.Results.List {
 					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)
 				}
 			}
-			sb.WriteString("\t\treturn resBuf.Bytes(), nil\n")
+			fmt.Fprintf(&sb, "\t\treturn resBuf.Bytes(), nil\n")
 		}
 	}
-	sb.WriteString("\tdefault:\n\t\treturn nil, fmt.Errorf(\"unknown method ID %d\", methodID)\n\t}\n}\n")
+	fmt.Fprintf(&sb, "\tdefault:\n\t\treturn nil, fmt.Errorf(\"unknown method ID %%d\", methodID)\n\t}\n}\n")
 
 	// New: Generate metadata and registration helper
-	sb.WriteString(fmt.Sprintf("var %s_FFI_Metadata = []struct {\n\tName     string\n\tMethodID uint32\n\tSpec     string\n}{\n", name))
+	fmt.Fprintf(&sb, "var %s_FFI_Metadata = []struct {\n\tName     string\n\tMethodID uint32\n\tSpec     string\n}{\n", name)
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 { continue }
 		methodName := method.Names[0].Name
 		funcType := method.Type.(*ast.FuncType)
-		sb.WriteString(fmt.Sprintf("\t{\"%s\", %d, \"%s\"},\n", methodName, i+1, getSpec(funcType)))
+		fmt.Fprintf(&sb, "\t{\"%s\", %d, \"%s\"},\n", methodName, i+1, getSpec(funcType))
 	}
-	sb.WriteString("}\n\n")
+	fmt.Fprintf(&sb, "}\n\n")
 
-	sb.WriteString(fmt.Sprintf("type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, name))
-	sb.WriteString(fmt.Sprintf("func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name))
-	sb.WriteString(fmt.Sprintf("\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, args)\n}\n\n", name))
-	sb.WriteString(fmt.Sprintf("func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n", name))
-	sb.WriteString("\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n")
+	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, name)
+	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name)
+	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, args)\n}\n\n", name)
+	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n", name)
+	fmt.Fprintf(&sb, "\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n")
 
 	funcTitle := strings.ToUpper(pkg)
-	sb.WriteString(fmt.Sprintf("func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", funcTitle, name, name))
-	sb.WriteString(fmt.Sprintf("\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name))
-	sb.WriteString(fmt.Sprintf("\tfor _, m := range %s_FFI_Metadata {\n", name))
-	sb.WriteString("\t\texecutor.RegisterFFI(prefix+\".\"+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+	fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", funcTitle, name, name)
+	fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
+	fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
+	fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+\".\"+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
 
 	return sb.String()
 }

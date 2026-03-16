@@ -1,6 +1,9 @@
 package ast
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // IncDecStmt : i++ i--
 type IncDecStmt struct {
@@ -18,7 +21,7 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 	}
 	_, ok := i.Operand.(*IdentifierExpr)
 	if !ok {
-		return fmt.Errorf("自增/自减操作的操作数必须是变量")
+		return errors.New("自增/自减操作的操作数必须是变量")
 	}
 	if err := i.Operand.Check(ctx); err != nil {
 		return err
@@ -26,7 +29,7 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 
 	miniType := i.Operand.GetBase().Type
 	if miniType.IsEmpty() {
-		return fmt.Errorf("无法推导操作数类型")
+		return errors.New("无法推导操作数类型")
 	}
 	i.Type = "Void"
 	return nil
@@ -93,7 +96,7 @@ func (s *SwitchStmt) stmtNode()          {}
 
 func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	if s.Cond == nil {
-		return fmt.Errorf("switch语句缺少条件表达式")
+		return errors.New("switch语句缺少条件表达式")
 	}
 
 	if err := s.Cond.Check(ctx); err != nil {
@@ -102,11 +105,11 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 
 	condType := s.Cond.GetBase().Type
 	if condType.IsEmpty() {
-		return fmt.Errorf("switch条件表达式类型无法推导")
+		return errors.New("switch条件表达式类型无法推导")
 	}
 
 	if len(s.Cases) == 0 && s.Default == nil {
-		return fmt.Errorf("switch语句至少需要一个case或default分支")
+		return errors.New("switch语句至少需要一个case或default分支")
 	}
 
 	switchCtx := ctx.Child(s)
@@ -140,7 +143,7 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 
 	if s.Default != nil {
 		if s.Default.Body == nil {
-			return fmt.Errorf("switch default分支缺少主体")
+			return errors.New("switch default分支缺少主体")
 		}
 
 		if err := s.Default.Body.Check(semSwitchCtx); err != nil {

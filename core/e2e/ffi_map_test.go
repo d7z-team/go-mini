@@ -25,6 +25,10 @@ func (h *MapTestHost) ProcessMap(ctx context.Context, m map[string]int64) (int64
 	return sum, nil
 }
 
+func (h *MapTestHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
+	return m, nil
+}
+
 func TestFFIMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &MapTestHost{}
