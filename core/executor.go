@@ -9,6 +9,8 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -17,6 +19,8 @@ type MiniExecutor struct {
 	bridges map[uint32]ffigo.FFIBridge
 	routes  map[string]runtime.FFIRoute
 	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
+
+	registry *ffigo.HandleRegistry
 }
 
 type MiniProgram struct {
@@ -34,12 +38,16 @@ func (p *MiniProgram) GetProgram() *ast.ProgramStmt {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges: make(map[uint32]ffigo.FFIBridge),
-		routes:  make(map[string]runtime.FFIRoute),
-		specs:   make(map[ast.Ident]ast.GoMiniType),
+		bridges:  make(map[uint32]ffigo.FFIBridge),
+		routes:   make(map[string]runtime.FFIRoute),
+		specs:    make(map[ast.Ident]ast.GoMiniType),
+		registry: ffigo.NewHandleRegistry(),
 	}
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
+	res.specs["string"] = "function(Any) String"
+	res.specs["[]byte"] = "function(Any) TypeBytes"
+	res.specs["len"] = "function(Any) Int64"
 	return res
 }
 
@@ -68,6 +76,61 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 
 func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
 	o.bridges[methodID] = bridge
+}
+
+type bridgeWrapper struct {
+	router func(methodID uint32, args []byte) ([]byte, error)
+}
+
+func (b *bridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
+	return b.router(methodID, args)
+}
+
+func (b *bridgeWrapper) DestroyHandle(handle uint32) error {
+	return nil // Base wrapper doesn't manage registry
+}
+
+type handleBridgeWrapper struct {
+	registry *ffigo.HandleRegistry
+	router   func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
+}
+
+func (b *handleBridgeWrapper) Call(methodID uint32, args []byte) ([]byte, error) {
+	return b.router(b.registry, methodID, args)
+}
+
+func (b *handleBridgeWrapper) DestroyHandle(handle uint32) error {
+	b.registry.Remove(handle)
+	return nil
+}
+
+func (o *MiniExecutor) InjectStandardLibraries() {
+	// 1. Inject fmt
+	fmtHost := &fmtlib.FmtHost{}
+	fmtBridge := &bridgeWrapper{
+		router: func(methodID uint32, args []byte) ([]byte, error) {
+			return fmtlib.FmtHostRouter(fmtHost, o.registry, methodID, args)
+		},
+	}
+	o.RegisterFFI("fmt.Print", fmtBridge, fmtlib.MethodID_Fmt_Print, "function(...Any) Void")
+	o.RegisterFFI("fmt.Println", fmtBridge, fmtlib.MethodID_Fmt_Println, "function(...Any) Void")
+	o.RegisterFFI("fmt.Printf", fmtBridge, fmtlib.MethodID_Fmt_Printf, "function(String, ...Any) Void")
+	o.RegisterFFI("fmt.Sprintf", fmtBridge, fmtlib.MethodID_Fmt_Sprintf, "function(String, ...Any) String")
+
+	// 2. Inject os
+	osHost := &oslib.OSHost{}
+	osBridge := &handleBridgeWrapper{
+		registry: o.registry,
+		router: func(reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+			return oslib.OSHostRouter(osHost, reg, methodID, args)
+		},
+	}
+	o.RegisterFFI("os.Open", osBridge, oslib.MethodID_OS_Open, "function(String) tuple(TypeHandle, Error)")
+	o.RegisterFFI("os.Create", osBridge, oslib.MethodID_OS_Create, "function(String) tuple(TypeHandle, Error)")
+	o.RegisterFFI("os.ReadFile", osBridge, oslib.MethodID_OS_ReadFile, "function(String) tuple(TypeBytes, Error)")
+	o.RegisterFFI("os.WriteFile", osBridge, oslib.MethodID_OS_WriteFile, "function(String, TypeBytes) Error")
+	o.RegisterFFI("os.Remove", osBridge, oslib.MethodID_OS_Remove, "function(String) Error")
+	o.RegisterFFI("os.Close", osBridge, oslib.MethodID_OS_Close, "function(TypeHandle) Error")
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数

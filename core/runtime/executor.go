@@ -288,16 +288,17 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
-	if l == nil || r == nil {
-		return nil, errors.New("binary op with nil operand")
-	}
+	if l == nil || r == nil { return nil, errors.New("binary op with nil operand") }
 
-	if l.VType == TypeString && r.VType == TypeString {
+	if (l.VType == TypeString || l.VType == TypeBytes) && (r.VType == TypeString || r.VType == TypeBytes) {
+		lStr := l.Str
+		if l.VType == TypeBytes { lStr = string(l.B) }
+		rStr := r.Str
+		if r.VType == TypeBytes { rStr = string(r.B) }
+
 		switch operator {
-		case "==", "Eq":
-			return NewBool(l.Str == r.Str), nil
-		case "!=", "Neq":
-			return NewBool(l.Str != r.Str), nil
+		case "==", "Eq": return NewBool(lStr == rStr), nil
+		case "!=", "Neq": return NewBool(lStr != rStr), nil
 		}
 	}
 
@@ -353,11 +354,51 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			msg := "panic"
 			if len(n.Args) > 0 {
 				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg != nil {
-					msg = arg.Str
-				}
+				if arg != nil { msg = arg.Str }
 			}
 			panic(fmt.Errorf("mini-panic: %v", msg))
+		}
+		if name == "string" {
+			if len(n.Args) > 0 {
+				arg, _ := e.ExecExpr(ctx, n.Args[0])
+				if arg == nil { return NewString(""), nil }
+				switch arg.VType {
+				case TypeString: return arg, nil
+				case TypeBytes: return NewString(string(arg.B)), nil
+				case TypeInt: return NewString(strconv.FormatInt(arg.I64, 10)), nil
+				case TypeFloat: return NewString(strconv.FormatFloat(arg.F64, 'f', -1, 64)), nil
+				case TypeBool: return NewString(strconv.FormatBool(arg.Bool)), nil
+				}
+			}
+			return NewString(""), nil
+		}
+		if name == "[]byte" {
+			if len(n.Args) > 0 {
+				arg, _ := e.ExecExpr(ctx, n.Args[0])
+				if arg == nil { return NewBytes(nil), nil }
+				switch arg.VType {
+				case TypeBytes: return arg, nil
+				case TypeString: return NewBytes([]byte(arg.Str)), nil
+				}
+			}
+			return NewBytes(nil), nil
+		}
+		if name == "len" {
+			if len(n.Args) > 0 {
+				arg, _ := e.ExecExpr(ctx, n.Args[0])
+				if arg == nil { return NewInt(0), nil }
+				switch arg.VType {
+				case TypeString: return NewInt(int64(len(arg.Str))), nil
+				case TypeBytes: return NewInt(int64(len(arg.B))), nil
+				case TypeArray:
+					arr := arg.Ref.(*VMArray)
+					return NewInt(int64(len(arr.Data))), nil
+				case TypeMap:
+					m := arg.Ref.(*VMMap)
+					return NewInt(int64(len(m.Data))), nil
+				}
+			}
+			return NewInt(0), nil
 		}
 
 		// 内部函数
@@ -457,6 +498,8 @@ func (e *Executor) evalFFI(route FFIRoute, args []*Var) (*Var, error) {
 		id := reader.ReadUint32()
 		e.activeHandles = append(e.activeHandles, handleRef{Bridge: route.Bridge, ID: id})
 		return &Var{VType: TypeHandle, Handle: id, Bridge: route.Bridge}, nil
+	case "TypeBytes":
+		return &Var{VType: TypeBytes, B: reader.ReadBytes()}, nil
 	case "String":
 		return NewString(reader.ReadString()), nil
 	case "Int64":

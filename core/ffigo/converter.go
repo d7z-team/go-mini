@@ -279,6 +279,15 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 				Name:     ident.Name,
 			}
 		}
+		// 特殊处理类型转换
+		if array, ok := ex.Fun.(*ast.ArrayType); ok {
+			if ident, ok := array.Elt.(*ast.Ident); ok && ident.Name == "byte" {
+				funExpr = &mini_ast.ConstRefExpr{
+					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
+					Name:     "[]byte",
+				}
+			}
+		}
 		return &mini_ast.CallExprStmt{
 			BaseNode: mini_ast.BaseNode{Meta: "call"},
 			Func:     funExpr,
