@@ -289,11 +289,12 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return &ast.IdentifierExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
 	case "assignment":
 		var raw struct {
-			Var string          `json:"variable"`
+			LHS json.RawMessage `json:"lhs"`
 			Val json.RawMessage `json:"value"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.AssignmentStmt{BaseNode: baseNode, Variable: ast.Ident(raw.Var)}
+		n := &ast.AssignmentStmt{BaseNode: baseNode}
+		n.LHS, _ = parseExpr(raw.LHS)
 		n.Value, _ = parseExpr(raw.Val)
 		return n, nil
 	case "literal":

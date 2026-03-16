@@ -177,7 +177,8 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		rhs := st.Rhs[0]
 
 		if st.Tok == token.DEFINE { // :=
-			ident := lhs.(*ast.Ident)
+			ident, ok := lhs.(*ast.Ident)
+			if !ok { return nil } // := 只能用于标识符
 			return &mini_ast.BlockStmt{
 				BaseNode: mini_ast.BaseNode{Meta: "block"},
 				Inner:    true,
@@ -189,7 +190,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 					},
 					&mini_ast.AssignmentStmt{
 						BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-						Variable: mini_ast.Ident(ident.Name),
+						LHS:      &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(ident.Name)},
 						Value:    c.convertExpr(rhs),
 					},
 				},
@@ -197,12 +198,10 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		}
 
 		if st.Tok == token.ASSIGN {
-			if ident, ok := lhs.(*ast.Ident); ok {
-				return &mini_ast.AssignmentStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-					Variable: mini_ast.Ident(ident.Name),
-					Value:    c.convertExpr(rhs),
-				}
+			return &mini_ast.AssignmentStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+				LHS:      c.convertExpr(lhs),
+				Value:    c.convertExpr(rhs),
 			}
 		}
 		return nil
@@ -222,7 +221,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 						if i < len(vSpec.Values) {
 							children = append(children, &mini_ast.AssignmentStmt{
 								BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-								Variable: mini_ast.Ident(name.Name),
+								LHS:      &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(name.Name)},
 								Value:    c.convertExpr(vSpec.Values[i]),
 							})
 						}
@@ -448,6 +447,18 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			Object:   c.convertExpr(ex.X),
 			Index:    c.convertExpr(ex.Index),
 		}
+	case *ast.SliceExpr:
+		res := &mini_ast.SliceExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "slice"},
+			X:        c.convertExpr(ex.X),
+		}
+		if ex.Low != nil {
+			res.Low = c.convertExpr(ex.Low)
+		}
+		if ex.High != nil {
+			res.High = c.convertExpr(ex.High)
+		}
+		return res
 	}
 	return nil
 }

@@ -61,12 +61,12 @@ func TestExecutorBasic(t *testing.T) {
 	// Program: x = 10; y = 20; res = x + y * 2;
 	main := []ast.Stmt{
 		&ast.GenDeclStmt{Name: "x", Kind: "Int64"},
-		&ast.AssignmentStmt{Variable: "x", Value: &ast.LiteralExpr{Value: "10", BaseNode: ast.BaseNode{Type: "Int64"}}},
+		&ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "x"}, Value: &ast.LiteralExpr{Value: "10", BaseNode: ast.BaseNode{Type: "Int64"}}},
 		&ast.GenDeclStmt{Name: "y", Kind: "Int64"},
-		&ast.AssignmentStmt{Variable: "y", Value: &ast.LiteralExpr{Value: "20", BaseNode: ast.BaseNode{Type: "Int64"}}},
+		&ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "y"}, Value: &ast.LiteralExpr{Value: "20", BaseNode: ast.BaseNode{Type: "Int64"}}},
 		&ast.GenDeclStmt{Name: "res", Kind: "Int64"},
 		&ast.AssignmentStmt{
-			Variable: "res",
+			LHS: &ast.IdentifierExpr{Name: "res"},
 			Value: &ast.BinaryExpr{
 				Operator: "Plus",
 				Left:     &ast.IdentifierExpr{Name: "x"},
@@ -105,14 +105,14 @@ func TestControlFlowIfFor(t *testing.T) {
 
 	main := []ast.Stmt{
 		&ast.GenDeclStmt{Name: "sum", Kind: "Int64"},
-		&ast.AssignmentStmt{Variable: "sum", Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
+		&ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "sum"}, Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
 		&ast.ForStmt{
-			Init:   &ast.AssignmentStmt{Variable: "i", Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
+			Init:   &ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "i"}, Value: &ast.LiteralExpr{Value: "0", BaseNode: ast.BaseNode{Type: "Int64"}}},
 			Cond:   &ast.BinaryExpr{Operator: "Lt", Left: &ast.IdentifierExpr{Name: "i"}, Right: &ast.LiteralExpr{Value: "5", BaseNode: ast.BaseNode{Type: "Int64"}}},
 			Update: &ast.IncDecStmt{Operand: &ast.IdentifierExpr{Name: "i"}, Operator: "++"},
 			Body: &ast.BlockStmt{Children: []ast.Stmt{
 				&ast.AssignmentStmt{
-					Variable: "sum",
+					LHS:      &ast.IdentifierExpr{Name: "sum"},
 					Value:    &ast.BinaryExpr{Operator: "Plus", Left: &ast.IdentifierExpr{Name: "sum"}, Right: &ast.IdentifierExpr{Name: "i"}},
 				},
 			}},
@@ -121,10 +121,10 @@ func TestControlFlowIfFor(t *testing.T) {
 		&ast.IfStmt{
 			Cond: &ast.BinaryExpr{Operator: "Eq", Left: &ast.IdentifierExpr{Name: "sum"}, Right: &ast.LiteralExpr{Value: "10", BaseNode: ast.BaseNode{Type: "Int64"}}},
 			Body: &ast.BlockStmt{Children: []ast.Stmt{
-				&ast.AssignmentStmt{Variable: "ok", Value: &ast.LiteralExpr{Value: "true", BaseNode: ast.BaseNode{Type: "Bool"}}},
+				&ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "ok"}, Value: &ast.LiteralExpr{Value: "true", BaseNode: ast.BaseNode{Type: "Bool"}}},
 			}},
 			ElseBody: &ast.BlockStmt{Children: []ast.Stmt{
-				&ast.AssignmentStmt{Variable: "ok", Value: &ast.LiteralExpr{Value: "false", BaseNode: ast.BaseNode{Type: "Bool"}}},
+				&ast.AssignmentStmt{LHS: &ast.IdentifierExpr{Name: "ok"}, Value: &ast.LiteralExpr{Value: "false", BaseNode: ast.BaseNode{Type: "Bool"}}},
 			}},
 		},
 	}

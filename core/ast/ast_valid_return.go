@@ -109,8 +109,16 @@ func (a *ReturnAnalyzer) analyzeFor(forStmt *ForStmt) bool {
 	if forStmt == nil {
 		return false
 	}
-	// todo: 分析循环体,循环不能保证返回。,循环可能执行0次,循环中可能有break/continue
-	_ = a.analyzeNode(forStmt.Body)
+	
+	bodyReturns := a.analyzeNode(forStmt.Body)
+	
+	// 如果是无限循环 (没有条件) 且内部保证了返回 (且不考虑复杂的 break 逃逸，或者假设验证器能识别 break)
+	// 在严格安全的引擎中，为了避免死循环报错被屏蔽，通常要求无限循环如果有返回则视为必返回。
+	// 由于我们没有跨分支跟踪 break，这里做保守优化：只有当明确无条件且 body 返回时才视为真
+	if forStmt.Cond == nil && bodyReturns {
+		return true
+	}
+	
 	return false
 }
 

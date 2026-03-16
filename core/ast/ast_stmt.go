@@ -162,13 +162,13 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 
 		// 处理顶级变量声明提升：如果是被 Mangle 过的 AssignmentStmt，且 Variables 中尚不存在
 		if assign, ok := optimized.(*AssignmentStmt); ok {
-			if strings.Contains(string(assign.Variable), ".") {
-				if _, exists := p.Variables[assign.Variable]; !exists {
-					p.Variables[assign.Variable] = assign.Value
+			if ident, ok := assign.LHS.(*IdentifierExpr); ok && strings.Contains(string(ident.Name), ".") {
+				if _, exists := p.Variables[ident.Name]; !exists {
+					p.Variables[ident.Name] = assign.Value
 					// 为了兼容 E2E 测试中的 Mangle 校验，我们将其转换为 GenDeclStmt 形式放回 Main
 					genDecl := &GenDeclStmt{
 						BaseNode: assign.BaseNode,
-						Name:     assign.Variable,
+						Name:     ident.Name,
 						Kind:     assign.Value.GetBase().Type,
 					}
 					genDecl.Meta = "gen_decl"
@@ -852,9 +852,8 @@ func (g *GenDeclStmt) Optimize(ctx *OptimizeContext) Node {
 // AssignmentStmt 表示赋值语句
 type AssignmentStmt struct {
 	BaseNode
-	Variable Ident `json:"variable"`
-	Property Ident `json:"property,omitempty"` // 新增：支持成员赋值 (a.b = x)
-	Value    Expr  `json:"value"`
+	LHS   Expr `json:"lhs"`
+	Value Expr `json:"value"`
 }
 
 func (a *AssignmentStmt) GetBase() *BaseNode { return &a.BaseNode }
@@ -864,121 +863,86 @@ func (a *AssignmentStmt) stmtNode()          {}
 
 func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	a.Type = "Void"
-	a.Variable = a.Variable.Resolve(&ctx.ValidContext)
-
-	// 1. 查找变量
-	vType, b := ctx.GetVariable(a.Variable)
-
-	// 如果直接找没找到，且没带点，尝试加包名前缀找
-	if !b && !strings.Contains(string(a.Variable), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
-		mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, a.Variable))
-		if vt, ok := ctx.GetVariable(mangled); ok {
-			a.Variable = mangled
-			vType = vt
-			b = true
-		}
-	}
-
-	if !a.Variable.Valid(&ctx.ValidContext) {
-		return fmt.Errorf("invalid identifier: %s", a.Variable)
+	if a.LHS == nil {
+		return errors.New("赋值语句缺少左值")
 	}
 	if a.Value == nil {
 		return errors.New("赋值语句缺少值")
 	}
+
+	// 特殊处理左值为 IdentifierExpr，因为可能涉及隐式声明
+	if ident, ok := a.LHS.(*IdentifierExpr); ok {
+		ident.Name = ident.Name.Resolve(&ctx.ValidContext)
+		
+		vType, b := ctx.GetVariable(ident.Name)
+		if !b && !strings.Contains(string(ident.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
+			mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
+			if vt, ok := ctx.GetVariable(mangled); ok {
+				ident.Name = mangled
+				vType = vt
+				b = true
+			}
+		}
+
+		if err := a.Value.Check(ctx); err != nil {
+			return err
+		}
+		miniType := a.Value.GetBase().Type
+		if miniType.IsEmpty() {
+			return errors.New("无法推导类型")
+		}
+		if miniType.IsVoid() {
+			return fmt.Errorf("类型 (%s) 不支持赋值", miniType)
+		}
+
+		if b {
+			if !miniType.IsAssignableTo(vType) {
+				return fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+			}
+			if vType == "Any" && miniType != "Any" {
+				ctx.UpdateVariable(ident.Name, miniType)
+			}
+			return nil
+		}
+
+		if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
+			if !strings.Contains(string(ident.Name), ".") {
+				ident.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
+			}
+		}
+		ctx.AddVariable(ident.Name, miniType)
+		return nil
+	}
+
+	// 对于其他复杂的 LHS (IndexExpr, MemberExpr)，直接进行类型检查
+	if err := a.LHS.Check(ctx); err != nil {
+		return err
+	}
 	if err := a.Value.Check(ctx); err != nil {
 		return err
 	}
-	miniType := a.Value.GetBase().Type
-	if miniType.IsEmpty() {
-		return errors.New("无法推导类型")
-	}
-	if miniType.IsVoid() {
-		return fmt.Errorf("类型 (%s) 不支持赋值", miniType)
-	}
-
-	if a.Property != "" {
-		if !b {
-			return fmt.Errorf("变量 %s 不存在", a.Variable)
-		}
-		struName := vType
-		if vType.IsPtr() {
-			elem, _ := vType.GetPtrElementType()
-			struName = elem
-		}
-		miniStruct, b2 := ctx.GetStruct(Ident(struName))
-		if !b2 {
-			return fmt.Errorf("类型 %s 未定义", struName)
-		}
-		fieldType, ok2 := miniStruct.Fields[a.Property]
-		if !ok2 {
-			return fmt.Errorf("结构体 %s 不存在字段 %s", struName, a.Property)
-		}
-		if !fieldType.Equals(miniType) {
-			if _, ok3 := fieldType.AutoPtr(a.Value); !ok3 {
-				return fmt.Errorf("字段赋值类型不一致: 需 %s, 实际 %s", fieldType, miniType)
-			}
-		}
-		return nil
+	
+	lhsType := a.LHS.GetBase().Type
+	valType := a.Value.GetBase().Type
+	if !valType.IsAssignableTo(lhsType) {
+		return fmt.Errorf("赋值类型不匹配: 左值类型为 %s，右值类型为 %s", lhsType, valType)
 	}
 
-	if b {
-		if !miniType.IsAssignableTo(vType) {
-			return fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, a.Variable, vType)
-		}
-		// 类型推导：如果原变量是 Any 类型，更新为具体类型
-		if vType == "Any" && miniType != "Any" {
-			ctx.UpdateVariable(a.Variable, miniType)
-		}
-		return nil
-	}
-
-	// 如果是顶级且未定义，触发声明并转义
-	if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
-		if !strings.Contains(string(a.Variable), ".") {
-			a.Variable = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, a.Variable))
-		}
-	}
-	// 注册新变量（隐式声明）
-	ctx.AddVariable(a.Variable, miniType)
 	return nil
 }
 
 func (a *AssignmentStmt) Optimize(ctx *OptimizeContext) Node {
+	a.LHS = a.LHS.Optimize(ctx).(Expr)
 	a.Value = a.Value.Optimize(ctx).(Expr)
-	miniType := a.Value.GetBase().Type
 
-	// 检查是否需要自动指针转换
-	var targetType GoMiniType
-	vType, b := ctx.GetVariable(a.Variable)
-	if b {
-		if a.Property != "" {
-			struName := vType
-			if vType.IsPtr() {
-				elem, _ := vType.GetPtrElementType()
-				struName = elem
-			}
-			miniStruct, _ := ctx.GetStruct(Ident(struName))
-			targetType = miniStruct.Fields[a.Property]
-		} else {
-			targetType = vType
-		}
+	lhsType := a.LHS.GetBase().Type
+	valType := a.Value.GetBase().Type
 
-		if !targetType.Equals(miniType) {
-			if ptr, ok := targetType.AutoPtr(a.Value); ok {
-				a.Value = ptr
-			}
+	if !lhsType.Equals(valType) {
+		if ptr, ok := lhsType.AutoPtr(a.Value); ok {
+			a.Value = ptr
 		}
 	}
-
-	// 如果是隐式声明，降级为 BlockStmt [GenDeclStmt, AssignmentStmt]
-	// 这里通过检查 ID 是否已经包含了 Children 来判断是否已经处理过（防止无限递归）
-	// 或者通过 ctx 查一下这个变量在进入 Check 之前是否存在。
-	// 但更简单的方式是在 Validate 中根据 Check 的结果来决定。
-	// 不过要求是在 Optimize 中做降级。
-
-	// 我们可以在 Check 阶段记录一下这个变量是否是新声明的。
-	// 但 SemanticContext 不方便存这种临时状态。
-	// 我们可以通过比较变量名和当前作用域来判断。
 
 	return a
 }

@@ -577,3 +577,58 @@ func (d *DerefExpr) Optimize(ctx *OptimizeContext) Node {
 	d.Operand = d.Operand.Optimize(ctx).(Expr)
 	return d
 }
+
+// SliceExpr 表示切片表达式 (a[low:high])
+type SliceExpr struct {
+	BaseNode
+	X    Expr
+	Low  Expr // 可为 nil
+	High Expr // 可为 nil
+}
+
+func (s *SliceExpr) GetBase() *BaseNode { return &s.BaseNode }
+func (s *SliceExpr) exprNode()          {}
+
+func (s *SliceExpr) Check(ctx *SemanticContext) error {
+	if s.X == nil {
+		return errors.New("slice 语句缺少对象")
+	}
+	if err := s.X.Check(ctx); err != nil {
+		return err
+	}
+	xType := s.X.GetBase().Type
+	if !xType.IsArray() && xType != "TypeBytes" && !xType.IsAny() {
+		return fmt.Errorf("类型 %s 不支持切片操作", xType)
+	}
+
+	if s.Low != nil {
+		if err := s.Low.Check(ctx); err != nil {
+			return err
+		}
+		if !s.Low.GetBase().Type.IsNumeric() {
+			return errors.New("slice low 索引必须是数值类型")
+		}
+	}
+	if s.High != nil {
+		if err := s.High.Check(ctx); err != nil {
+			return err
+		}
+		if !s.High.GetBase().Type.IsNumeric() {
+			return errors.New("slice high 索引必须是数值类型")
+		}
+	}
+
+	s.Type = xType // 切片结果类型保持一致
+	return nil
+}
+
+func (s *SliceExpr) Optimize(ctx *OptimizeContext) Node {
+	s.X = s.X.Optimize(ctx).(Expr)
+	if s.Low != nil {
+		s.Low = s.Low.Optimize(ctx).(Expr)
+	}
+	if s.High != nil {
+		s.High = s.High.Optimize(ctx).(Expr)
+	}
+	return s
+}

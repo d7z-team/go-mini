@@ -195,8 +195,57 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		if err != nil {
 			return err
 		}
-		return ctx.Store(string(n.Variable), val)
+
+		switch lhs := n.LHS.(type) {
+		case *ast.IdentifierExpr:
+			return ctx.Store(string(lhs.Name), val)
+		case *ast.IndexExpr:
+			obj, err := e.ExecExpr(ctx, lhs.Object)
+			if err != nil { return err }
+			idx, err := e.ExecExpr(ctx, lhs.Index)
+			if err != nil { return err }
+			if obj == nil || idx == nil { return errors.New("assignment to nil object or index") }
+
+			switch obj.VType {
+			case TypeArray:
+				arr := obj.Ref.(*VMArray)
+				i := int(idx.I64)
+				if i < 0 || i >= len(arr.Data) { return fmt.Errorf("index out of range: %d", i) }
+				arr.Data[i] = val
+				return nil
+			case TypeMap:
+				m := obj.Ref.(*VMMap)
+				key := idx.Str
+				if idx.VType == TypeInt { key = strconv.FormatInt(idx.I64, 10) }
+				m.Data[key] = val
+				return nil
+			}
+			return fmt.Errorf("type %v does not support index assignment", obj.VType)
+
+		case *ast.MemberExpr:
+			obj, err := e.ExecExpr(ctx, lhs.Object)
+			if err != nil { return err }
+			if obj == nil { return errors.New("member assignment on nil object") }
+
+			switch obj.VType {
+			case TypeMap:
+				m := obj.Ref.(*VMMap)
+				m.Data[string(lhs.Property)] = val
+				return nil
+			case TypeAny:
+				if obj.Ref != nil {
+					if m, ok := obj.Ref.(*VMMap); ok {
+						m.Data[string(lhs.Property)] = val
+						return nil
+					}
+				}
+				return errors.New("unsupported Any wrapper for member assignment")
+			}
+			return fmt.Errorf("type %v does not support member assignment", obj.VType)
+		}
+		return fmt.Errorf("unsupported LHS in assignment: %T", n.LHS)
 	case *ast.IfStmt:
+
 		cond, err := e.ExecExpr(ctx, n.Cond)
 		if err != nil {
 			return err
@@ -334,8 +383,48 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return e.evalMemberExpr(ctx, n)
 	case *ast.IndexExpr:
 		return e.evalIndexExpr(ctx, n)
+	case *ast.SliceExpr:
+		return e.evalSliceExpr(ctx, n)
 	}
 	return nil, fmt.Errorf("todo: expr %T", s)
+}
+
+func (e *Executor) evalSliceExpr(ctx *StackContext, n *ast.SliceExpr) (*Var, error) {
+	obj, err := e.ExecExpr(ctx, n.X)
+	if err != nil { return nil, err }
+	if obj == nil { return nil, errors.New("slice on nil object") }
+
+	var low, high int = 0, -1
+	if n.Low != nil {
+		l, err := e.ExecExpr(ctx, n.Low)
+		if err != nil { return nil, err }
+		if l != nil && l.VType == TypeInt { low = int(l.I64) }
+	}
+	if n.High != nil {
+		h, err := e.ExecExpr(ctx, n.High)
+		if err != nil { return nil, err }
+		if h != nil && h.VType == TypeInt { high = int(h.I64) }
+	}
+
+	switch obj.VType {
+	case TypeBytes:
+		l := len(obj.B)
+		if high == -1 { high = l }
+		if low < 0 || high < low || high > l { return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l) }
+		return NewBytes(obj.B[low:high]), nil
+	case TypeString:
+		l := len(obj.Str)
+		if high == -1 { high = l }
+		if low < 0 || high < low || high > l { return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l) }
+		return NewString(obj.Str[low:high]), nil
+	case TypeArray:
+		arr := obj.Ref.(*VMArray)
+		l := len(arr.Data)
+		if high == -1 { high = l }
+		if low < 0 || high < low || high > l { return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l) }
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Data[low:high]}, Type: obj.Type}, nil
+	}
+	return nil, fmt.Errorf("type %v does not support slice operations", obj.VType)
 }
 
 func (e *Executor) evalIndexExpr(ctx *StackContext, n *ast.IndexExpr) (*Var, error) {
