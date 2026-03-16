@@ -128,13 +128,16 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	// 2. 自动寻找并执行 main() 入口函数
 	if f, ok := e.program.Functions["main"]; ok {
-		_ = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) error {
+		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) error {
 			c.Executor = e
 			for _, p := range f.Params {
 				c.NewVar(string(p.Name), p.Type)
 			}
 			return e.execStmts(c, f.Body.Children)
 		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -683,37 +686,44 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 	// 获取函数签名以获取参数类型列表
 	fn, ok := ast.GoMiniType(route.Spec).ReadCallFunc()
 
-	if ok && fn.Variadic {
-		numNormal := len(fn.Params) - 1
-		if len(args) > numNormal {
-			// 自动打包变长部分
-			// 必须克隆切片，防止后续 args 修改导致循环引用
-			variadicPart := make([]*Var, len(args)-numNormal)
-			copy(variadicPart, args[numNormal:])
-
-			args = append(args[:numNormal], &Var{
-				VType: TypeArray,
-				Ref:   &VMArray{Data: variadicPart},
-				Type:  fn.Params[numNormal],
-			})
-		} else if len(args) == numNormal {
-			// 补全空的变长数组
-			args = append(args, &Var{
-				VType: TypeArray,
-				Ref:   &VMArray{Data: nil},
-				Type:  fn.Params[numNormal],
-			})
-		}
-	}
-
 	// 序列化参数
-	for i, arg := range args {
-		var argType ast.GoMiniType = "Any"
-		if ok && i < len(fn.Params) {
-			argType = fn.Params[i]
+	if ok && fn.Variadic {
+		// 1. 序列化常规参数
+		numNormal := len(fn.Params) - 1
+		for i := 0; i < numNormal; i++ {
+			arg := &Var{VType: TypeAny} // 默认
+			if i < len(args) {
+				arg = args[i]
+			}
+			if err := e.serializeVar(buf, arg, fn.Params[i]); err != nil {
+				return nil, err
+			}
 		}
-		if err := e.serializeVar(buf, arg, argType); err != nil {
-			return nil, err
+
+		// 2. 序列化变长参数部分：[Count (Uint32)] [Item1] [Item2]...
+		numVariadic := 0
+		if len(args) > numNormal {
+			numVariadic = len(args) - numNormal
+		}
+		buf.WriteUint32(uint32(numVariadic))
+		itemType := fn.Params[numNormal]
+		if numVariadic > 0 {
+			for i := 0; i < numVariadic; i++ {
+				if err := e.serializeVar(buf, args[numNormal+i], itemType); err != nil {
+					return nil, err
+				}
+			}
+		}
+	} else {
+		// 普通非变长函数序列化
+		for i, arg := range args {
+			var argType ast.GoMiniType = "Any"
+			if ok && i < len(fn.Params) {
+				argType = fn.Params[i]
+			}
+			if err := e.serializeVar(buf, arg, argType); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -960,4 +970,3 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 }
 
 func (e *Executor) GetProgram() *ast.ProgramStmt { return e.program }
-
