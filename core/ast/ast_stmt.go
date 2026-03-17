@@ -33,10 +33,6 @@ func (p *ProgramStmt) GetBase() *BaseNode {
 func (p *ProgramStmt) stmtNode() {}
 
 func (p *ProgramStmt) Check(ctx *SemanticContext) error {
-	if ctx.parent != nil {
-		return errors.New("程序入口必须为顶点")
-	}
-
 	// 处理模块加载
 	if p.Imports != nil {
 		for _, imp := range p.Imports {
@@ -92,21 +88,15 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for i, stmt := range p.Variables {
-		mangledI := i
-		if p.Package != "" && p.Package != "main" {
-			if !strings.Contains(string(i), ".") {
-				mangledI = Ident(fmt.Sprintf("%s.%s", p.Package, i))
-			}
-		}
-		if !mangledI.Valid(&ctx.ValidContext) {
+		if !i.Valid(&ctx.ValidContext) {
 			return fmt.Errorf("invalid identifier: %s", i)
 		}
 		if err := stmt.Check(ctx); err != nil {
 			return err
 		}
 		// 注册到符号表
-		ctx.root.Fields[mangledI] = stmt.GetBase().Type
-		ctx.AddVariable(mangledI, stmt.GetBase().Type)
+		ctx.root.Global.Fields[i] = stmt.GetBase().Type
+		ctx.AddVariable(i, stmt.GetBase().Type)
 	}
 
 	for _, function := range p.Functions {
@@ -130,14 +120,10 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 		p.Structs[i] = structDef.Optimize(ctx).(*StructStmt)
 	}
 
-	// 2. 优化全局变量定义并进行包前缀 Mangle
+	// 2. 优化全局变量定义
 	newVars := make(map[Ident]Expr)
 	for i, stmt := range p.Variables {
-		mangledI := i
-		if p.Package != "" && p.Package != "main" && !strings.Contains(string(i), ".") {
-			mangledI = Ident(fmt.Sprintf("%s.%s", p.Package, i))
-		}
-		newVars[mangledI] = stmt.Optimize(ctx).(Expr)
+		newVars[i] = stmt.Optimize(ctx).(Expr)
 	}
 	p.Variables = newVars
 
@@ -699,10 +685,6 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 
 			// 查找对应的 Struct
 			st, ok := ctx.root.structs[typeName]
-			if !ok && ctx.root.Package != "" && ctx.root.Package != "main" {
-				// 尝试带包名前缀
-				st, ok = ctx.root.structs[Ident(fmt.Sprintf("%s.%s", ctx.root.Package, typeName))]
-			}
 			if ok {
 				structType = st
 				fnName = methodName
@@ -712,13 +694,8 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 	}
 
 	if !isMethod {
-		if ctx.root.Package != "" && ctx.root.Package != "main" {
-			if !strings.Contains(string(f.Name), ".") && !strings.HasPrefix(string(f.Name), "__method_") {
-				f.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, f.Name))
-				fnName = f.Name
-			}
-		}
-		structType = ctx.root.ValidStruct
+		structType = ctx.root.Global
+		fnName = f.Name
 	}
 
 	if f.Name == "" {
@@ -1094,12 +1071,6 @@ type StructStmt struct {
 
 // PreRegister 预注册结构体 (用于支持相互引用)
 func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
-	if ctx.root.Package != "" && ctx.root.Package != "main" {
-		if !strings.Contains(string(s.Name), ".") {
-			s.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, s.Name))
-		}
-	}
-
 	if !s.Name.Valid(ctx) {
 		return false
 	}

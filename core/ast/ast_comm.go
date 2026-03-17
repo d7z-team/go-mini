@@ -53,17 +53,6 @@ type Stmt interface {
 type Ident string
 
 func (i Ident) Resolve(v *ValidContext) Ident {
-	s := string(i)
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		if realPkg, ok := v.root.Imports[parts[0]]; ok {
-			return Ident(fmt.Sprintf("%s.%s", realPkg, parts[1]))
-		}
-		return i // fallback
-	}
-	// For normal identifiers, we only mangle them if they are top-level Structs or Functions
-	// Wait, local variables shouldn't be mangled!
-	// So Ident shouldn't blindly mangle here. We will mangle specifically where needed.
 	return i
 }
 

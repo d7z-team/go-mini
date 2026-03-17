@@ -22,9 +22,10 @@ type Executor struct {
 
 	routes map[string]FFIRoute // 显式映射外部函数名到 Bridge
 
-	activeHandles []handleRef
-	moduleCache   map[string]*Var
-	Loader        func(path string) (*ast.ProgramStmt, error)
+	activeHandles  []handleRef
+	moduleCache    map[string]*Var
+	loadingModules map[string]bool
+	Loader         func(path string) (*ast.ProgramStmt, error)
 
 	StepLimit int64
 	stepCount int64
@@ -61,12 +62,13 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		return nil, errors.New("invalid program")
 	}
 	result := &Executor{
-		program:     program,
-		structs:     make(map[string]*ast.StructStmt),
-		funcs:       make(map[ast.Ident]*Var),
-		consts:      make(map[string]string),
-		routes:      make(map[string]FFIRoute),
-		moduleCache: make(map[string]*Var),
+		program:        program,
+		structs:        make(map[string]*ast.StructStmt),
+		funcs:          make(map[ast.Ident]*Var),
+		consts:         make(map[string]string),
+		routes:         make(map[string]FFIRoute),
+		moduleCache:    make(map[string]*Var),
+		loadingModules: make(map[string]bool),
 	}
 	for ident, stmt := range program.Structs {
 		result.structs[string(ident)] = stmt
@@ -481,10 +483,17 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 		return v, nil
 	}
 
+	if e.loadingModules[path] {
+		return nil, fmt.Errorf("circular dependency detected: %s", path)
+	}
+
 	// 1. Try script loader
 	if e.Loader != nil {
 		prog, err := e.Loader(path)
 		if err == nil {
+			e.loadingModules[path] = true
+			defer func() { delete(e.loadingModules, path) }()
+
 			// Execute module
 			modExecutor, err := NewExecutor(prog)
 			if err != nil {
@@ -493,6 +502,7 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 			modExecutor.Loader = e.Loader
 			modExecutor.routes = e.routes
 			modExecutor.moduleCache = e.moduleCache
+			modExecutor.loadingModules = e.loadingModules
 
 			err = modExecutor.Execute(ctx.Context)
 			if err != nil {
@@ -501,6 +511,7 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 
 			// Collect exports
 			exports := make(map[string]*Var)
+			// Functions
 			for name, fn := range prog.Functions {
 				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 					exports[string(name)] = &Var{
@@ -509,11 +520,27 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 					}
 				}
 			}
+			// Variables
 			for name := range prog.Variables {
 				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 					v, err := modExecutor.ctx.Load(string(name))
 					if err == nil {
 						exports[string(name)] = v
+					}
+				}
+			}
+			// Constants
+			for name, val := range prog.Constants {
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					exports[name] = NewString(val)
+				}
+			}
+			// Structs
+			for name, s := range prog.Structs {
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					exports[string(name)] = &Var{
+						VType: TypeAny,
+						Ref:   s,
 					}
 				}
 			}
@@ -534,11 +561,17 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 	// 2. Fallback to FFI Virtual Module
 	ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
 	found := false
-	prefix := path + "."
+	prefix1 := path + "."
+	prefix2 := strings.ReplaceAll(path, "/", ".") + "."
 	for name, route := range e.routes {
-		if strings.HasPrefix(name, prefix) {
+		if strings.HasPrefix(name, prefix1) || strings.HasPrefix(name, prefix2) {
 			found = true
-			methodName := strings.TrimPrefix(name, prefix)
+			methodName := ""
+			if strings.HasPrefix(name, prefix1) {
+				methodName = strings.TrimPrefix(name, prefix1)
+			} else {
+				methodName = strings.TrimPrefix(name, prefix2)
+			}
 			ffiMod.Data[methodName] = &Var{
 				VType: TypeAny,
 				Str:   name,
@@ -1167,6 +1200,16 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 
 func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n *ast.CallExprStmt) (*Var, bool, error) {
 	switch name {
+	case "require":
+		if len(n.Args) != 1 {
+			return nil, true, fmt.Errorf("require expects 1 argument")
+		}
+		pathVar, err := e.ExecExpr(ctx, n.Args[0])
+		if err != nil {
+			return nil, true, err
+		}
+		v, err := e.evalImportExpr(ctx, &ast.ImportExpr{Path: pathVar.Str})
+		return v, true, err
 	case "panic":
 		msg := "panic"
 		if len(args) > 0 && args[0] != nil {

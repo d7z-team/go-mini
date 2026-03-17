@@ -392,9 +392,6 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 			return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 		}
 	}
-	if v.root.Package != "" && v.root.Package != "main" && !strings.Contains(s, ".") {
-		return GoMiniType(fmt.Sprintf("%s.%s", v.root.Package, s))
-	}
 	return o
 }
 

@@ -60,6 +60,7 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["int"] = "function(Any) Int64"
 	res.specs["int64"] = "function(Any) Int64"
 	res.specs["float64"] = "function(Any) Float64"
+	res.specs["require"] = "function(String) TypeModule"
 	return res
 }
 

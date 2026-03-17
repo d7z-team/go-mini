@@ -263,6 +263,9 @@ func (i *ImportExpr) exprNode()          {}
 
 func (i *ImportExpr) Check(ctx *SemanticContext) error {
 	i.Type = TypeModule
+	if ctx.parent != nil {
+		return errors.New("import 只能在包级作用域中使用")
+	}
 	return nil
 }
 

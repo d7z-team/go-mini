@@ -27,25 +27,7 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
-		// 回退：尝试在当前包空间查找
-		if !strings.Contains(string(c.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
-			mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, c.Name))
-			if vt, ok := ctx.GetVariable(mangled); ok {
-				c.Name = mangled // 关键：更新为转义后的名称
-				c.Type = vt
-				return nil
-			}
-		}
-
 		return fmt.Errorf("变量 %s 不存在", c.Name)
-	}
-
-	// 特殊处理：如果是顶级变量且未带包名（同一包内访问），也补齐包名
-	if !strings.Contains(string(c.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
-		mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, c.Name))
-		if _, ok := ctx.root.vars[mangled]; ok {
-			c.Name = mangled
-		}
 	}
 
 	c.Type = vtp
@@ -79,27 +61,9 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 		return nil
 	}
 
-	if ctx.root.Package != "" && ctx.root.Package != "main" {
-		mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, c.Name))
-		if vtp, b := ctx.GetFunction(mangled); b {
-			c.Name = mangled
-			c.Type = vtp.MiniType()
-			return nil
-		}
-	}
-
 	if _, b := ctx.root.program.Constants[string(c.Name)]; b {
 		c.Type = "Constant"
 		return nil
-	}
-
-	if ctx.root.Package != "" && ctx.root.Package != "main" {
-		mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, c.Name))
-		if _, b := ctx.root.program.Constants[string(mangled)]; b {
-			c.Name = mangled
-			c.Type = "Constant"
-			return nil
-		}
 	}
 
 	// 支持类型转换/构造函数语法: T(x) -> __obj__new__T(x)
@@ -280,7 +244,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	}
 
 	objType := m.Object.GetBase().Type
-	if objType.IsAny() {
+	if objType == TypeModule || objType == "Any" {
 		m.Type = "Any"
 		return nil
 	}
@@ -312,53 +276,40 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("invalid property: %s", m.Property)
 	}
 
-	name, b := m.Object.GetBase().Type.StructName()
-	if !b {
-		return fmt.Errorf("不是合法的 struct (%s)", m.Object.GetBase().Type)
-	}
-
-	miniStruct, b := ctx.GetStruct(name)
-	if !b {
-		return fmt.Errorf("未定义 struct (%s)", name)
-	}
-
-	met, b := miniStruct.Fields[m.Property]
-	if !b {
-		if method, ok := miniStruct.Methods[m.Property]; ok {
-			// If it's a method, the type of the MemberExpr itself is the function signature.
-			// The subsequent CallExprStmt will check arguments against this signature and set the final return type.
-			m.Type = GoMiniType(method.String())
+	// 尝试作为结构体访问
+	structName, isStruct := m.Object.GetBase().Type.StructName()
+	if isStruct {
+		miniStruct, b := ctx.GetStruct(structName)
+		if b {
+			met, b := miniStruct.Fields[m.Property]
+			if !b {
+				if method, ok := miniStruct.Methods[m.Property]; ok {
+					m.Type = GoMiniType(method.String())
+					return nil
+				}
+				// 继续尝试其他可能，不立即报错
+			} else {
+				m.Type = met
+				return nil
+			}
+		} else if strings.Contains(string(structName), ".") {
+			// 如果是跨包的结构体（例如 lib.Point），由于在隔离架构下不静态合并符号表，
+			// 在编译期无法得知其完整定义，因此放行作为动态成员访问
+			m.Type = "Any"
 			return nil
-		} else {
-			return fmt.Errorf("struct(%s) 不存在 (%s)", name, m.Property)
 		}
 	}
 
-	m.Type = met
-	return nil
+	// 如果对象本身是 TypeModule 或 Any，直接放行 (动态绑定)
+	if objType == TypeModule || objType == "Any" {
+		m.Type = "Any"
+		return nil
+	}
+
+	return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 }
 
 func (m *MemberExpr) Optimize(ctx *OptimizeContext) Node {
-	// 1. Package selector transformation
-	if ident, ok := m.Object.(*IdentifierExpr); ok {
-		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
-			pkgName := ctx.root.PathToPackage[realPkg]
-			if pkgName == "" {
-				pkgName = realPkg
-			}
-			mangledName := fmt.Sprintf("%s.%s", pkgName, m.Property)
-			constRef := &ConstRefExpr{
-				BaseNode: BaseNode{
-					ID:   m.ID,
-					Meta: "const_ref",
-					Type: m.Type,
-				},
-				Name: Ident(mangledName),
-			}
-			return constRef.Optimize(ctx)
-		}
-	}
-
 	m.Object = m.Object.Optimize(ctx).(Expr)
 	return m
 }
@@ -396,17 +347,21 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 
 	for _, elem := range c.Values {
 		if elem.Key != nil {
-			if hasStruct {
+			if !isMap && !isArray {
 				// 结构体 Key 必须是字段名，不参与变量 Check
 				if ident, ok := elem.Key.(*IdentifierExpr); ok {
-					if _, ok2 := miniStruct.Fields[ident.Name]; !ok2 {
-						return fmt.Errorf("结构体 %s 不存在字段 %s", c.Kind, ident.Name)
+					if hasStruct {
+						if _, ok2 := miniStruct.Fields[ident.Name]; !ok2 {
+							return fmt.Errorf("结构体 %s 不存在字段 %s", c.Kind, ident.Name)
+						}
 					}
+					// 强制标记为已解析，防止任何意外的二次 Check
+					ident.Type = "Any"
+					continue // 跳过 elem.Key.Check
 				}
-			} else {
-				if err := elem.Key.Check(ctx); err != nil {
-					return err
-				}
+			}
+			if err := elem.Key.Check(ctx); err != nil {
+				return err
 			}
 		}
 		if elem.Value == nil {

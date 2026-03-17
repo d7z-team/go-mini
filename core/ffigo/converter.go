@@ -439,6 +439,11 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		if ex.Name == "true" || ex.Name == "false" {
 			return &mini_ast.LiteralExpr{BaseNode: mini_ast.BaseNode{Meta: "literal", Type: "Bool"}, Value: ex.Name}
 		}
+		// 特殊处理内建函数，它们应该是 ConstRefExpr 以便在验证阶段找到签名
+		switch ex.Name {
+		case "panic", "make", "append", "delete", "len", "string", "int", "int64", "float64", "require":
+			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: mini_ast.Ident(ex.Name)}
+		}
 		return &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(ex.Name)}
 	case *ast.BinaryExpr:
 		return &mini_ast.BinaryExpr{BaseNode: mini_ast.BaseNode{Meta: "binary"}, Left: c.convertExpr(ex.X), Operator: mini_ast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
@@ -461,6 +466,18 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 				funExpr = &mini_ast.ConstRefExpr{
 					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
 					Name:     "[]byte",
+				}
+			}
+		}
+
+		if ident, ok := funExpr.(*mini_ast.ConstRefExpr); ok && ident.Name == "require" {
+			if len(ex.Args) == 1 {
+				if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					path := lit.Value[1 : len(lit.Value)-1]
+					return &mini_ast.ImportExpr{
+						BaseNode: mini_ast.BaseNode{Meta: "import", Type: mini_ast.TypeModule},
+						Path:     path,
+					}
 				}
 			}
 		}
@@ -501,6 +518,8 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			if kv, ok := elt.(*ast.KeyValueExpr); ok {
 				var keyExpr mini_ast.Expr
 				if ident, ok := kv.Key.(*ast.Ident); ok {
+					// 结构体字段名不应作为 IdentifierExpr 被 Check
+					// 保持为 nil 或特殊的字面量，由 CompositeExpr.Check 处理
 					keyExpr = &mini_ast.IdentifierExpr{
 						BaseNode: mini_ast.BaseNode{Meta: "identifier"},
 						Name:     mini_ast.Ident(ident.Name),
