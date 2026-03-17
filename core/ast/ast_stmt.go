@@ -863,6 +863,10 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 		// Result decomposes into [val, err]
 		resType, _ := valType.ReadResult()
 		elementTypes = []GoMiniType{resType, "String"}
+	} else if valType.IsAny() {
+		for i := 0; i < len(m.LHS); i++ {
+			elementTypes = append(elementTypes, "Any")
+		}
 	} else {
 		return fmt.Errorf("cannot destructure non-composite type: %s", valType)
 	}

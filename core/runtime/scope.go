@@ -22,8 +22,15 @@ const (
 	TypeArray  // Internal VM Array ([]*Var)
 	TypeHandle // Host resource ID (uint32)
 	TypeResult // Standard result type (val, err)
+	TypeModule // Dynamic module object
 	TypeAny    // Placeholder for unknown/dynamic
 )
+
+type VMModule struct {
+	Name    string
+	Data    map[string]*Var
+	Context *StackContext
+}
 
 type Var struct {
 	Type   ast.GoMiniType
@@ -35,7 +42,7 @@ type Var struct {
 	Bool   bool
 	Handle uint32
 	Bridge ffigo.FFIBridge
-	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle
+	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule
 
 	// Result fields
 	ResultVal *Var

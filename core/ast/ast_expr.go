@@ -153,6 +153,15 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
+		if c.Func.GetBase().Type.IsAny() {
+			c.Type = "Any"
+			for _, arg := range c.Args {
+				if err := arg.Check(ctx); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		return fmt.Errorf("对象(%s)不是函数", c.Func.GetBase().Type)
 	}
 
@@ -231,15 +240,16 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 		c.Args[i] = arg.Optimize(ctx).(Expr)
 	}
 
-	fType, _ := c.Func.GetBase().Type.ReadCallFunc()
-
-	for i, param := range fType.Params {
-		if i < len(c.Args) {
-			arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
-			if ptr, b2 := param.AutoPtr(arg); b2 {
-				c.Args[i] = ptr
-			} else {
-				c.Args[i] = arg
+	fType, ok := c.Func.GetBase().Type.ReadCallFunc()
+	if ok && fType != nil {
+		for i, param := range fType.Params {
+			if i < len(c.Args) {
+				arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
+				if ptr, b2 := param.AutoPtr(arg); b2 {
+					c.Args[i] = ptr
+				} else {
+					c.Args[i] = arg
+				}
 			}
 		}
 	}
@@ -263,33 +273,6 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	}
 	if m.Property == "" {
 		return errors.New("成员访问缺少属性名")
-	}
-
-	// 1. Package selector check (Static Inlining detection)
-	if ident, ok := m.Object.(*IdentifierExpr); ok {
-		if realPkg, isPkg := ctx.root.Imports[string(ident.Name)]; isPkg {
-			firstChar := string(m.Property)[0]
-			if firstChar < 'A' || firstChar > 'Z' {
-				return fmt.Errorf("cannot refer to unexported name %s.%s", ident.Name, m.Property)
-			}
-			// It's a package selector, we'll transform it in Optimize
-			// For now, we need to determine its type
-			pkgName := ctx.root.PathToPackage[realPkg]
-			if pkgName == "" {
-				pkgName = realPkg
-			}
-			mangledName := fmt.Sprintf("%s.%s", pkgName, m.Property)
-			// Check if it exists as a function or variable in that package
-			if vtp, b := ctx.GetVariable(Ident(mangledName)); b {
-				m.Type = vtp
-				return nil
-			}
-			if vtp, b := ctx.GetFunction(Ident(mangledName)); b {
-				m.Type = vtp.MiniType()
-				return nil
-			}
-			return fmt.Errorf("package member %s not found", mangledName)
-		}
 	}
 
 	if err := m.Object.Check(ctx); err != nil {

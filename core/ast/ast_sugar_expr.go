@@ -252,6 +252,24 @@ func (l *LiteralExpr) Optimize(ctx *OptimizeContext) Node {
 	return l
 }
 
+// ImportExpr 表示导入模块表达式
+type ImportExpr struct {
+	BaseNode
+	Path string `json:"path"`
+}
+
+func (i *ImportExpr) GetBase() *BaseNode { return &i.BaseNode }
+func (i *ImportExpr) exprNode()          {}
+
+func (i *ImportExpr) Check(ctx *SemanticContext) error {
+	i.Type = TypeModule
+	return nil
+}
+
+func (i *ImportExpr) Optimize(ctx *OptimizeContext) Node {
+	return i
+}
+
 // 移除过时的自动数值转换
 func tryAutoNumericCast(ctx *ValidContext, param GoMiniType, arg Expr) Expr {
 	return arg

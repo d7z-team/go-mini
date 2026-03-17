@@ -58,6 +58,14 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 		Imports:   miniImports,
 	}
 
+	// 将导入转换为变量声明 (动态模块对象)
+	for _, imp := range miniImports {
+		program.Variables[mini_ast.Ident(imp.Alias)] = &mini_ast.ImportExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "import", Type: mini_ast.TypeModule},
+			Path:     imp.Path,
+		}
+	}
+
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -512,16 +520,8 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 		return res
 	case *ast.SelectorExpr:
-		if xIdent, ok := ex.X.(*ast.Ident); ok {
-			// 只有当 X 是已导入的包名时，才视为包成员访问（静态绑定）
-			if _, isPkg := c.imports[xIdent.Name]; isPkg {
-				return &mini_ast.ConstRefExpr{
-					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
-					Name:     mini_ast.Ident(fmt.Sprintf("%s.%s", xIdent.Name, ex.Sel.Name)),
-				}
-			}
-		}
-		// 否则视为对象成员访问（动态绑定/Result访问）
+		// 统一视为对象成员访问（动态绑定）
+		// 包成员现在通过 ImportExpr 映射为局部变量，因此这里 X.Sel 会自动解析
 		return &mini_ast.MemberExpr{
 			BaseNode: mini_ast.BaseNode{Meta: "member"},
 			Object:   c.convertExpr(ex.X),

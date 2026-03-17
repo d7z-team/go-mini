@@ -23,6 +23,8 @@ type Executor struct {
 	routes map[string]FFIRoute // 显式映射外部函数名到 Bridge
 
 	activeHandles []handleRef
+	moduleCache   map[string]*Var
+	Loader        func(path string) (*ast.ProgramStmt, error)
 
 	StepLimit int64
 	stepCount int64
@@ -59,11 +61,12 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		return nil, errors.New("invalid program")
 	}
 	result := &Executor{
-		program: program,
-		structs: make(map[string]*ast.StructStmt),
-		funcs:   make(map[ast.Ident]*Var),
-		consts:  make(map[string]string),
-		routes:  make(map[string]FFIRoute),
+		program:     program,
+		structs:     make(map[string]*ast.StructStmt),
+		funcs:       make(map[ast.Ident]*Var),
+		consts:      make(map[string]string),
+		routes:      make(map[string]FFIRoute),
+		moduleCache: make(map[string]*Var),
 	}
 	for ident, stmt := range program.Structs {
 		result.structs[string(ident)] = stmt
@@ -466,8 +469,91 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return e.evalIndexExpr(ctx, n)
 	case *ast.SliceExpr:
 		return e.evalSliceExpr(ctx, n)
+	case *ast.ImportExpr:
+		return e.evalImportExpr(ctx, n)
 	}
-	return nil, fmt.Errorf("unsupported expr: %T", s)
+	return nil, fmt.Errorf("unsupported expression type: %T", s)
+}
+
+func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
+	path := n.Path
+	if v, ok := e.moduleCache[path]; ok {
+		return v, nil
+	}
+
+	// 1. Try script loader
+	if e.Loader != nil {
+		prog, err := e.Loader(path)
+		if err == nil {
+			// Execute module
+			modExecutor, err := NewExecutor(prog)
+			if err != nil {
+				return nil, err
+			}
+			modExecutor.Loader = e.Loader
+			modExecutor.routes = e.routes
+			modExecutor.moduleCache = e.moduleCache
+
+			err = modExecutor.Execute(ctx.Context)
+			if err != nil {
+				return nil, fmt.Errorf("module %s execution failed: %w", path, err)
+			}
+
+			// Collect exports
+			exports := make(map[string]*Var)
+			for name, fn := range prog.Functions {
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					exports[string(name)] = &Var{
+						VType: TypeAny,
+						Ref:   fn,
+					}
+				}
+			}
+			for name := range prog.Variables {
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					v, err := modExecutor.ctx.Load(string(name))
+					if err == nil {
+						exports[string(name)] = v
+					}
+				}
+			}
+
+			res := &Var{
+				VType: TypeModule,
+				Ref: &VMModule{
+					Name:    path,
+					Data:    exports,
+					Context: modExecutor.ctx,
+				},
+			}
+			e.moduleCache[path] = res
+			return res, nil
+		}
+	}
+
+	// 2. Fallback to FFI Virtual Module
+	ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
+	found := false
+	prefix := path + "."
+	for name, route := range e.routes {
+		if strings.HasPrefix(name, prefix) {
+			found = true
+			methodName := strings.TrimPrefix(name, prefix)
+			ffiMod.Data[methodName] = &Var{
+				VType: TypeAny,
+				Str:   name,
+				Ref:   route,
+			}
+		}
+	}
+
+	if found {
+		res := &Var{VType: TypeModule, Ref: ffiMod}
+		e.moduleCache[path] = res
+		return res, nil
+	}
+
+	return nil, fmt.Errorf("failed to load module %s", path)
 }
 
 func (e *Executor) evalSliceExpr(ctx *StackContext, n *ast.SliceExpr) (*Var, error) {
@@ -594,6 +680,12 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 			return val, nil
 		}
 		return nil, nil
+	case TypeModule:
+		mod := obj.Ref.(*VMModule)
+		if val, ok := mod.Data[string(n.Property)]; ok {
+			return val, nil
+		}
+		return nil, fmt.Errorf("module member %s not found", n.Property)
 	case TypeAny:
 		// 支持动态成员访问
 		if obj.Ref != nil {
@@ -971,13 +1063,14 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, error) {
 	var name string
 	var receiver *Var
+	var mod *VMModule
 
+	// 1. Determine the callable and receiver
 	if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
 		name = string(ident.Name)
 	} else if ident, ok := n.Func.(*ast.IdentifierExpr); ok {
 		name = string(ident.Name)
 	} else if member, ok := n.Func.(*ast.MemberExpr); ok {
-		// 方法调用支持
 		obj, err := e.ExecExpr(ctx, member.Object)
 		if err != nil {
 			return nil, err
@@ -986,340 +1079,299 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			return nil, fmt.Errorf("calling method on nil object")
 		}
 
-		receiver = obj
-		tName := string(obj.Type)
-		tName = strings.TrimPrefix(tName, "Ptr<")
-		tName = strings.TrimPrefix(tName, "*")
-		tName = strings.TrimSuffix(tName, ">")
-
-		// 拼接方法名以匹配 Converter 阶段生成的全局函数 (如 __method_Person_GetAge)
-		name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
+		if obj.VType == TypeModule {
+			// 模块函数调用
+			mod = obj.Ref.(*VMModule)
+			name = string(member.Property)
+		} else {
+			// 方法调用支持
+			receiver = obj
+			tName := string(obj.Type)
+			tName = strings.TrimPrefix(tName, "Ptr<")
+			tName = strings.TrimPrefix(tName, "*")
+			tName = strings.TrimSuffix(tName, ">")
+			name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
+		}
 	}
 
-	if name != "" {
-		// 内建 Intrinsics
-		if name == "panic" {
-			msg := "panic"
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg != nil {
-					msg = arg.Str
-				}
-			}
-			panic(fmt.Errorf("mini-panic: %v", msg))
+	if name != "" || mod != nil {
+		// 2. Prepare arguments
+		totalArgs := len(n.Args)
+		offset := 0
+		if receiver != nil {
+			totalArgs++
+			offset = 1
 		}
-		if name == "string" {
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg == nil {
-					return NewString(""), nil
-				}
-				switch arg.VType {
-				case TypeString:
-					return arg, nil
-				case TypeBytes:
-					return NewString(string(arg.B)), nil
-				case TypeInt:
-					return NewString(strconv.FormatInt(arg.I64, 10)), nil
-				case TypeFloat:
-					return NewString(strconv.FormatFloat(arg.F64, 'f', -1, 64)), nil
-				case TypeBool:
-					return NewString(strconv.FormatBool(arg.Bool)), nil
-				}
-			}
-			return NewString(""), nil
+		args := make([]*Var, totalArgs)
+		if receiver != nil {
+			args[0] = receiver
 		}
-		if name == "[]byte" {
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg == nil {
-					return NewBytes(nil), nil
-				}
-				switch arg.VType {
-				case TypeBytes:
-					return arg, nil
-				case TypeString:
-					return NewBytes([]byte(arg.Str)), nil
-				}
-			}
-			return NewBytes(nil), nil
-		}
-		if name == "int64" || name == "int" {
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg == nil {
-					return NewInt(0), nil
-				}
-				switch arg.VType {
-				case TypeInt:
-					return arg, nil
-				case TypeFloat:
-					return NewInt(int64(arg.F64)), nil
-				case TypeString:
-					val, _ := strconv.ParseInt(arg.Str, 10, 64)
-					return NewInt(val), nil
-				case TypeBool:
-					if arg.Bool {
-						return NewInt(1), nil
-					}
-					return NewInt(0), nil
-				}
-			}
-			return NewInt(0), nil
-		}
-		if name == "float64" {
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg == nil {
-					return NewFloat(0), nil
-				}
-				switch arg.VType {
-				case TypeFloat:
-					return arg, nil
-				case TypeInt:
-					return NewFloat(float64(arg.I64)), nil
-				case TypeString:
-					val, _ := strconv.ParseFloat(arg.Str, 64)
-					return NewFloat(val), nil
-				}
-			}
-			return NewFloat(0), nil
-		}
-		if name == "len" {
-			if len(n.Args) > 0 {
-				arg, _ := e.ExecExpr(ctx, n.Args[0])
-				if arg == nil {
-					return NewInt(0), nil
-				}
-				switch arg.VType {
-				case TypeString:
-					return NewInt(int64(len(arg.Str))), nil
-				case TypeBytes:
-					return NewInt(int64(len(arg.B))), nil
-				case TypeArray:
-					arr := arg.Ref.(*VMArray)
-					return NewInt(int64(len(arr.Data))), nil
-				case TypeMap:
-					m := arg.Ref.(*VMMap)
-					return NewInt(int64(len(m.Data))), nil
-				}
-			}
-			return NewInt(0), nil
-		}
-		if name == "make" {
-			if len(n.Args) < 1 {
-				return nil, errors.New("missing type argument to make")
-			}
-			typeArg, err := e.ExecExpr(ctx, n.Args[0])
+		for i, aExpr := range n.Args {
+			var err error
+			args[i+offset], err = e.ExecExpr(ctx, aExpr)
 			if err != nil {
 				return nil, err
 			}
-			if typeArg == nil || typeArg.VType != TypeString {
-				return nil, fmt.Errorf("first argument to make must be a type string")
-			}
-			tStr := typeArg.Str
-
-			if strings.HasPrefix(tStr, "Map<") {
-				return &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: ast.GoMiniType(tStr)}, nil
-			} else if strings.HasPrefix(tStr, "Array<") || tStr == "[]byte" || tStr == "TypeBytes" {
-				length := 0
-				capacity := 0
-				if len(n.Args) > 1 {
-					lArg, err := e.ExecExpr(ctx, n.Args[1])
-					if err != nil {
-						return nil, err
-					}
-					lInt, err := lArg.ToInt()
-					if err != nil {
-						return nil, err
-					}
-					length = int(lInt)
-					capacity = length
-				}
-				if len(n.Args) > 2 {
-					cArg, err := e.ExecExpr(ctx, n.Args[2])
-					if err != nil {
-						return nil, err
-					}
-					cInt, err := cArg.ToInt()
-					if err != nil {
-						return nil, err
-					}
-					capacity = int(cInt)
-				}
-				if capacity < length {
-					return nil, errors.New("make capacity < length")
-				}
-				if tStr == "[]byte" || tStr == "TypeBytes" {
-					return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: ast.GoMiniType("TypeBytes")}, nil
-				}
-				return &Var{VType: TypeArray, Ref: &VMArray{Data: make([]*Var, length, capacity)}, Type: ast.GoMiniType(tStr)}, nil
-			}
-			return nil, fmt.Errorf("cannot make type %s", tStr)
-		}
-		if name == "append" {
-			if len(n.Args) < 1 {
-				return nil, errors.New("missing arguments to append")
-			}
-			sliceArg, err := e.ExecExpr(ctx, n.Args[0])
-			if err != nil {
-				return nil, err
-			}
-			
-			var t ast.GoMiniType = "Array<Any>"
-			var data []*Var
-			if sliceArg != nil {
-				if sliceArg.VType != TypeArray && sliceArg.VType != TypeBytes {
-					return nil, fmt.Errorf("first argument to append must be slice; have %v", sliceArg.VType)
-				}
-				if sliceArg.VType == TypeBytes {
-					b := make([]byte, len(sliceArg.B))
-					copy(b, sliceArg.B)
-					for i := 1; i < len(n.Args); i++ {
-						arg, err := e.ExecExpr(ctx, n.Args[i])
-						if err != nil {
-							return nil, err
-						}
-						if arg != nil {
-							if arg.VType == TypeInt {
-								b = append(b, byte(arg.I64))
-							} else if arg.VType == TypeBytes {
-								b = append(b, arg.B...)
-							}
-						}
-					}
-					return &Var{VType: TypeBytes, B: b, Type: sliceArg.Type}, nil
-				}
-				arr := sliceArg.Ref.(*VMArray)
-				t = sliceArg.Type
-				data = make([]*Var, len(arr.Data))
-				copy(data, arr.Data)
-			}
-			
-			for i := 1; i < len(n.Args); i++ {
-				arg, err := e.ExecExpr(ctx, n.Args[i])
-				if err != nil {
-					return nil, err
-				}
-				data = append(data, arg)
-			}
-			return &Var{VType: TypeArray, Ref: &VMArray{Data: data}, Type: t}, nil
-		}
-		if name == "delete" {
-			if len(n.Args) != 2 {
-				return nil, errors.New("missing arguments to delete")
-			}
-			mapArg, err := e.ExecExpr(ctx, n.Args[0])
-			if err != nil {
-				return nil, err
-			}
-			if mapArg == nil {
-				return nil, nil // Go allows delete on nil map
-			}
-			if mapArg.VType != TypeMap && mapArg.VType != TypeAny {
-				return nil, fmt.Errorf("first argument to delete must be map; have %v", mapArg.VType)
-			}
-			
-			keyArg, err := e.ExecExpr(ctx, n.Args[1])
-			if err != nil {
-				return nil, err
-			}
-			if keyArg != nil {
-				var m *VMMap
-				if mapArg.VType == TypeMap {
-					m = mapArg.Ref.(*VMMap)
-				} else if mapArg.Ref != nil {
-					m, _ = mapArg.Ref.(*VMMap)
-				}
-				if m != nil {
-					key := keyArg.Str
-					if keyArg.VType == TypeInt {
-						key = strconv.FormatInt(keyArg.I64, 10)
-					}
-					delete(m.Data, key)
-				}
-			}
-			return nil, nil
 		}
 
-		// 内部函数
+		// 3. Handle Intrinsics (only if not a module call)
+		if mod == nil && name != "" {
+			if res, handled, err := e.evalIntrinsic(ctx, name, args, n); handled {
+				return res, err
+			}
+		}
+
+		// 4. Resolve and execute callable
+		if mod != nil {
+			if val, ok := mod.Data[name]; ok {
+				return e.evalDynamicCall(ctx, val, args, mod.Context)
+			}
+			return nil, fmt.Errorf("module member %s not found in %s", name, mod.Name)
+		}
+
+		// Internal function in current program
 		if f, ok := e.program.Functions[ast.Ident(name)]; ok {
-			totalArgs := len(n.Args)
-			offset := 0
-			if receiver != nil {
-				totalArgs++
-				offset = 1
-			}
-
-			args := make([]*Var, totalArgs)
-			if receiver != nil {
-				args[0] = receiver
-			}
-
-			for i, aExpr := range n.Args {
-				var err error
-				args[i+offset], err = e.ExecExpr(ctx, aExpr)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			var res *Var
-			_ = ctx.WithFuncScope(name, func(old *Stack, c *StackContext) error {
-				defer c.Stack.RunDefers()
-				c.Executor = e
-				for i, p := range f.Params {
-					_ = c.NewVar(string(p.Name), p.Type)
-					if f.Variadic && i == len(f.Params)-1 {
-						var variadicArgs []*Var
-						if i < len(args) {
-							variadicArgs = args[i:]
-						}
-						_ = c.Store(string(p.Name), &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
-					} else {
-						if i < len(args) && args[i] != nil {
-							_ = c.Store(string(p.Name), args[i])
-						}
-					}
-				}
-				if !f.Return.IsVoid() {
-					_ = c.NewVar("__return__", f.Return)
-				}
-				_ = e.execStmts(c, f.Body.Children)
-				if !f.Return.IsVoid() {
-					res, _ = c.loadVar("__return__")
-				}
-				return nil
-			})
-			return res, nil
+			return e.execInternalFunc(ctx, name, f, args)
 		}
 
-		// 外部路由 FFI
+		// FFI Route
 		if route, ok := e.routes[name]; ok {
-			totalArgs := len(n.Args)
-			offset := 0
-			if receiver != nil {
-				totalArgs++
-				offset = 1
-			}
-
-			args := make([]*Var, totalArgs)
-			if receiver != nil {
-				args[0] = receiver
-			}
-
-			for i, aExpr := range n.Args {
-				var err error
-				args[i+offset], err = e.ExecExpr(ctx, aExpr)
-				if err != nil {
-					return nil, err
-				}
-			}
 			return e.evalFFI(ctx, route, args)
 		}
 	}
 
 	return nil, fmt.Errorf("unsupported call expression: %v (name: %s)", n.Func, name)
+}
+
+func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var, modCtx *StackContext) (*Var, error) {
+	if callable == nil {
+		return nil, errors.New("cannot call nil")
+	}
+
+	// If it has Ref to FunctionStmt, it's a script function
+	if f, ok := callable.Ref.(*ast.FunctionStmt); ok {
+		callCtx := ctx
+		if modCtx != nil {
+			callCtx = modCtx
+		}
+		return e.execInternalFunc(callCtx, string(f.Name), f, args)
+	}
+
+	// If it has Ref to FFIRoute, it's an FFI function
+	if route, ok := callable.Ref.(FFIRoute); ok {
+		return e.evalFFI(ctx, route, args)
+	}
+
+	return nil, fmt.Errorf("type %v is not callable", callable.VType)
+}
+
+func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n *ast.CallExprStmt) (*Var, bool, error) {
+	switch name {
+	case "panic":
+		msg := "panic"
+		if len(args) > 0 && args[0] != nil {
+			msg = args[0].Str
+		}
+		panic(fmt.Errorf("mini-panic: %v", msg))
+	case "string":
+		if len(args) > 0 && args[0] != nil {
+			arg := args[0]
+			switch arg.VType {
+			case TypeString:
+				return arg, true, nil
+			case TypeBytes:
+				return NewString(string(arg.B)), true, nil
+			case TypeInt:
+				return NewString(strconv.FormatInt(arg.I64, 10)), true, nil
+			case TypeFloat:
+				return NewString(strconv.FormatFloat(arg.F64, 'f', -1, 64)), true, nil
+			case TypeBool:
+				return NewString(strconv.FormatBool(arg.Bool)), true, nil
+			}
+		}
+		return NewString(""), true, nil
+	case "[]byte":
+		if len(args) > 0 && args[0] != nil {
+			arg := args[0]
+			switch arg.VType {
+			case TypeBytes:
+				return arg, true, nil
+			case TypeString:
+				return NewBytes([]byte(arg.Str)), true, nil
+			}
+		}
+		return NewBytes(nil), true, nil
+	case "int64", "int":
+		if len(args) > 0 && args[0] != nil {
+			arg := args[0]
+			switch arg.VType {
+			case TypeInt:
+				return arg, true, nil
+			case TypeFloat:
+				return NewInt(int64(arg.F64)), true, nil
+			case TypeString:
+				val, _ := strconv.ParseInt(arg.Str, 10, 64)
+				return NewInt(val), true, nil
+			case TypeBool:
+				if arg.Bool {
+					return NewInt(1), true, nil
+				}
+				return NewInt(0), true, nil
+			}
+		}
+		return NewInt(0), true, nil
+	case "float64":
+		if len(args) > 0 && args[0] != nil {
+			arg := args[0]
+			switch arg.VType {
+			case TypeFloat:
+				return arg, true, nil
+			case TypeInt:
+				return NewFloat(float64(arg.I64)), true, nil
+			case TypeString:
+				val, _ := strconv.ParseFloat(arg.Str, 64)
+				return NewFloat(val), true, nil
+			case TypeBool:
+				if arg.Bool {
+					return NewFloat(1.0), true, nil
+				}
+				return NewFloat(0.0), true, nil
+			}
+		}
+		return NewFloat(0.0), true, nil
+	case "len":
+		if len(args) > 0 && args[0] != nil {
+			arg := args[0]
+			switch arg.VType {
+			case TypeString:
+				return NewInt(int64(len(arg.Str))), true, nil
+			case TypeBytes:
+				return NewInt(int64(len(arg.B))), true, nil
+			case TypeArray:
+				arr := arg.Ref.(*VMArray)
+				return NewInt(int64(len(arr.Data))), true, nil
+			case TypeMap:
+				m := arg.Ref.(*VMMap)
+				return NewInt(int64(len(m.Data))), true, nil
+			}
+		}
+		return NewInt(0), true, nil
+	case "make":
+		if len(args) < 1 || args[0] == nil || args[0].VType != TypeString {
+			return nil, true, errors.New("invalid arguments to make")
+		}
+		tStr := args[0].Str
+		if strings.HasPrefix(tStr, "Map<") {
+			return &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: ast.GoMiniType(tStr)}, true, nil
+		} else if strings.HasPrefix(tStr, "Array<") || tStr == "[]byte" || tStr == "TypeBytes" {
+			length := 0
+			capacity := 0
+			if len(args) > 1 && args[1] != nil {
+				lInt, _ := args[1].ToInt()
+				length = int(lInt)
+				capacity = length
+			}
+			if len(args) > 2 && args[2] != nil {
+				cInt, _ := args[2].ToInt()
+				capacity = int(cInt)
+			}
+			if capacity < length {
+				return nil, true, errors.New("make capacity < length")
+			}
+			if tStr == "[]byte" || tStr == "TypeBytes" {
+				return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: ast.GoMiniType("TypeBytes")}, true, nil
+			}
+			return &Var{VType: TypeArray, Ref: &VMArray{Data: make([]*Var, length, capacity)}, Type: ast.GoMiniType(tStr)}, true, nil
+		}
+		return nil, true, fmt.Errorf("cannot make type %s", tStr)
+	case "append":
+		if len(args) < 1 || args[0] == nil {
+			return nil, true, errors.New("missing arguments to append")
+		}
+		sliceArg := args[0]
+		if sliceArg.VType != TypeArray && sliceArg.VType != TypeBytes {
+			return nil, true, fmt.Errorf("first argument to append must be slice; have %v", sliceArg.VType)
+		}
+		if sliceArg.VType == TypeBytes {
+			data := make([]byte, len(sliceArg.B))
+			copy(data, sliceArg.B)
+			for i := 1; i < len(args); i++ {
+				arg := args[i]
+				if arg != nil {
+					if arg.VType == TypeInt {
+						data = append(data, byte(arg.I64))
+					} else if arg.VType == TypeBytes {
+						data = append(data, arg.B...)
+					}
+				}
+			}
+			return &Var{VType: TypeBytes, B: data, Type: sliceArg.Type}, true, nil
+		}
+		arr := sliceArg.Ref.(*VMArray)
+		data := make([]*Var, len(arr.Data))
+		copy(data, arr.Data)
+		for i := 1; i < len(args); i++ {
+			data = append(data, args[i])
+		}
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: data}, Type: sliceArg.Type}, true, nil
+	case "delete":
+		if len(args) != 2 || args[0] == nil {
+			return nil, true, errors.New("invalid arguments to delete")
+		}
+		mapArg := args[0]
+		if mapArg.VType != TypeMap && mapArg.VType != TypeAny {
+			return nil, true, fmt.Errorf("first argument to delete must be map; have %v", mapArg.VType)
+		}
+		keyArg := args[1]
+		if keyArg != nil {
+			var m *VMMap
+			if mapArg.VType == TypeMap {
+				m = mapArg.Ref.(*VMMap)
+			} else if mapArg.Ref != nil {
+				m, _ = mapArg.Ref.(*VMMap)
+			}
+			if m != nil {
+				key := keyArg.Str
+				if keyArg.VType == TypeInt {
+					key = strconv.FormatInt(keyArg.I64, 10)
+				}
+				delete(m.Data, key)
+			}
+		}
+		return nil, true, nil
+	}
+	return nil, false, nil
+}
+
+func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.FunctionStmt, args []*Var) (*Var, error) {
+	var res *Var
+	_ = ctx.WithFuncScope(name, func(old *Stack, c *StackContext) error {
+		defer c.Stack.RunDefers()
+		c.Executor = e
+		for i, p := range f.Params {
+			_ = c.NewVar(string(p.Name), p.Type)
+			if f.Variadic && i == len(f.Params)-1 {
+				var variadicArgs []*Var
+				if i < len(args) {
+					variadicArgs = args[i:]
+				}
+				_ = c.Store(string(p.Name), &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
+			} else {
+				if i < len(args) && args[i] != nil {
+					_ = c.Store(string(p.Name), args[i])
+				}
+			}
+		}
+		if !f.Return.IsVoid() {
+			_ = c.NewVar("__return__", f.Return)
+		}
+		_ = e.execStmts(c, f.Body.Children)
+		if !f.Return.IsVoid() {
+			res, _ = c.loadVar("__return__")
+		}
+		return nil
+	})
+	return res, nil
 }
 
 func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var, error) {

@@ -140,6 +140,7 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 	if err != nil {
 		return nil, err
 	}
+	executor.Loader = o.Loader
 
 	// Pass routes to executor
 	for name, route := range o.routes {

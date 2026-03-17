@@ -116,3 +116,25 @@
     3.  **[x] 模块化与工程化管理**
     *   **[x] 真正的包加载系统 (Module Import)**：提供一个抽象的 Module Loader，支持跨文件调用（例如 `import "utils"` 加载纯脚本文件），解决单文件代码臃肿的问题。
     *   **[x] 内存预分配 (`make`)**：支持使用 `make([]int, 0, 100)` 或预分配容量的 Map，优化大量数据处理时的 GC 压力。
+
+---
+
+## 八、 重构计划：动态模块化系统 (Dynamic Module System) [x]
+目标：将静态符号合并加载升级为运行时动态 Module 对象加载，以支持多语言前端。
+
+### Phase 1: 核心数据结构扩展 [x]
+- [x] `ast_types.go`: 引入 `TypeModule` 原语。
+- [x] `scope.go`: 引入 `VMModule` 结构，包含 `Exports map[string]*Var`。
+
+### Phase 2: AST 转换器解耦 (Converter) [x]
+- [x] `converter.go`: 停止名称重整（Name Mangling）。将 `pkg.Func()` 从 `ConstRefExpr("pkg.Func")` 转换为标准的 `MemberExpr`（对象为 pkg，属性为 Func）。
+- [x] 将 import 语句视为在顶层作用域声明一个类型为 `TypeModule` 的变量。
+
+### Phase 3: 验证器重构 (Validator) [x]
+- [x] `ast_valid.go`: 删除 `ImportPackage` 中的符号全局展平合并逻辑。
+- [x] 修改 `Check` 逻辑：当对 `TypeModule` 进行 `MemberExpr` 访问时，予以放行（动态方法调用）或推导类型。
+
+### Phase 4: 运行时隔离执行 (Executor) [x]
+- [x] `executor.go`: 引入 `ModuleCache`。
+- [x] 模块运行时加载：遇到 import 时，创建全新 `StackContext` 执行目标模块，收集其公开的函数和变量，封箱为 `VMModule` 注入当前环境变量。
+- [x] FFI 模块重构：将 `executor.RegisterFFI` 注册的扁平符号（如 `fmt.Println`）在引擎启动时自动打包为 `VMModule("fmt")`。

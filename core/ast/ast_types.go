@@ -9,7 +9,8 @@ import (
 type GoMiniType string
 
 const (
-	TypeAny GoMiniType = "Any"
+	TypeAny    GoMiniType = "Any"
+	TypeModule GoMiniType = "TypeModule" // 动态模块对象 (JS/Python 风格)
 )
 
 func (o GoMiniType) IsEmpty() bool { return o == "" }
@@ -27,7 +28,7 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	return &res, true
 }
 
-func (o GoMiniType) IsAny() bool { return o == TypeAny }
+func (o GoMiniType) IsAny() bool { return o == TypeAny || o == TypeModule }
 
 func (o GoMiniType) IsString() bool { return o == "String" || o == "string" }
 func (o GoMiniType) IsBool() bool   { return o == "Bool" || o == "bool" }

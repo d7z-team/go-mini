@@ -266,29 +266,6 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return fmt.Errorf("failed to check package %s: %w", path, err)
 	}
 
-	// 合并函数、结构体、变量等到当前 program
-	for _, v := range prog.Functions {
-		c.root.program.Functions[v.Name] = v
-	}
-	for _, v := range prog.Structs {
-		c.root.program.Structs[v.Name] = v
-	}
-	for k, v := range prog.Variables {
-		mangledK := k
-		if prog.Package != "" && prog.Package != "main" && !strings.Contains(string(k), ".") {
-			mangledK = Ident(fmt.Sprintf("%s.%s", prog.Package, k))
-		}
-		c.root.program.Variables[mangledK] = v
-	}
-	for k, v := range prog.Constants {
-		mangledK := k
-		if prog.Package != "" && prog.Package != "main" && !strings.Contains(k, ".") {
-			mangledK = fmt.Sprintf("%s.%s", prog.Package, k)
-		}
-		c.root.program.Constants[mangledK] = v
-	}
-	// 不合并 Main (包级别代码/init暂不支持)
-
 	return nil
 }
 
