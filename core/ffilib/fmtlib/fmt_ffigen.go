@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"strings"
 )
 
 const (
@@ -198,11 +199,16 @@ func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFMTLIBFmtLibrary(executor interface {
+func RegisterFmt(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
-}, prefix string, impl Fmt, registry *ffigo.HandleRegistry) {
+}, impl Fmt, registry *ffigo.HandleRegistry) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
+	prefix := "fmt"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
 	for _, m := range Fmt_FFI_Metadata {
-		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

@@ -9,43 +9,50 @@ import (
 type OSHost struct{}
 
 func (h *OSHost) Open(ctx context.Context, name string) (*File, error) {
-	// 在真实的 Go os 包中 Open 不带 ctx，这里仅作为演示接口兼容性
 	f, err := os.Open(name)
-	return (*File)(unsafe.Pointer(f)), err
+	if err != nil {
+		return nil, err
+	}
+	return (*File)(unsafe.Pointer(f)), nil
 }
 
-func (h *OSHost) Create(name string) (*File, error) {
+func (h *OSHost) Create(ctx context.Context, name string) (*File, error) {
 	f, err := os.Create(name)
-	return (*File)(unsafe.Pointer(f)), err
+	if err != nil {
+		return nil, err
+	}
+	return (*File)(unsafe.Pointer(f)), nil
 }
 
-func (h *OSHost) ReadFile(name string) ([]byte, error) {
+func (h *OSHost) ReadFile(ctx context.Context, name string) ([]byte, error) {
 	return os.ReadFile(name)
 }
 
-func (h *OSHost) WriteFile(name string, data []byte) error {
+func (h *OSHost) WriteFile(ctx context.Context, name string, data []byte) error {
 	return os.WriteFile(name, data, 0o644)
 }
 
-func (h *OSHost) Remove(name string) error {
+func (h *OSHost) Remove(ctx context.Context, name string) error {
 	return os.Remove(name)
 }
 
-func (h *OSHost) Read(f *File, b []byte) (int, error) {
+type FileMethodsHost struct{}
+
+func (h *FileMethodsHost) Read(f *File, b []byte) (int, error) {
 	if f == nil {
 		return 0, os.ErrInvalid
 	}
 	return ((*os.File)(unsafe.Pointer(f))).Read(b)
 }
 
-func (h *OSHost) Write(f *File, b []byte) (int, error) {
+func (h *FileMethodsHost) Write(f *File, b []byte) (int, error) {
 	if f == nil {
 		return 0, os.ErrInvalid
 	}
 	return ((*os.File)(unsafe.Pointer(f))).Write(b)
 }
 
-func (h *OSHost) Close(f *File) error {
+func (h *FileMethodsHost) Close(f *File) error {
 	if f == nil {
 		return nil
 	}

@@ -26,7 +26,6 @@ func main() {
 	}
 
 	fset := token.NewFileSet()
-	var interfaces []string
 	var ifaceSpecs []*ast.TypeSpec
 	structs := make(map[string]*ast.StructType)
 
@@ -37,19 +36,28 @@ func main() {
 		}
 
 		ast.Inspect(node, func(n ast.Node) bool {
-			if typeSpec, ok := n.(*ast.TypeSpec); ok {
-				if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-					ifaceSpecs = append(ifaceSpecs, typeSpec)
-				} else if str, ok := typeSpec.Type.(*ast.StructType); ok {
-					structs[typeSpec.Name.Name] = str
+			if gd, ok := n.(*ast.GenDecl); ok {
+				for _, spec := range gd.Specs {
+					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+							// 关联文档：优先使用 typeSpec.Doc，其次使用 gd.Doc (针对 type X interface {})
+							if typeSpec.Doc == nil {
+								typeSpec.Doc = gd.Doc
+							}
+							ifaceSpecs = append(ifaceSpecs, typeSpec)
+						} else if str, ok := typeSpec.Type.(*ast.StructType); ok {
+							structs[typeSpec.Name.Name] = str
+						}
+					}
 				}
 			}
 			return true
 		})
 	}
 
+	var interfaces []string
 	for _, spec := range ifaceSpecs {
-		interfaces = append(interfaces, generateCode(*pkgName, spec.Name.Name, spec.Type.(*ast.InterfaceType), structs))
+		interfaces = append(interfaces, generateCode(*pkgName, spec, structs))
 	}
 
 	var sb strings.Builder
@@ -58,6 +66,7 @@ func main() {
 	sb.WriteString("import (\n")
 	sb.WriteString("\t\"context\"\n")
 	sb.WriteString("\t\"fmt\"\n")
+	sb.WriteString("\t\"strings\"\n")
 	sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ffigo\"\n")
 	sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ast\"\n")
 	sb.WriteString(")\n\n")
@@ -65,12 +74,9 @@ func main() {
 
 	src := []byte(sb.String())
 
-	// Use parser to validate and then format using format.Source
-	// This is the "import/export" approach using AST
 	f, err := parser.ParseFile(fset, "", src, parser.ParseComments)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: generated code has syntax errors: %v\n", err)
-		// Write the unformatted source anyway to help debugging
 		_ = os.WriteFile(*outFile, src, 0o644)
 		os.Exit(1)
 	}
@@ -298,8 +304,24 @@ func toGoType(pType string) string {
 	return pType
 }
 
-func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string]*ast.StructType) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType) string {
+	name := spec.Name.Name
+	iface := spec.Type.(*ast.InterfaceType)
 	var sb strings.Builder
+
+	fixedPrefix := ""
+	if spec.Doc != nil {
+		for _, comment := range spec.Doc.List {
+			text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+			if strings.HasPrefix(text, "ffigen:module ") {
+				fixedPrefix = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:module "))
+			} else if strings.HasPrefix(text, "ffigen:methods ") {
+				typeName := strings.TrimSpace(strings.TrimPrefix(text, "ffigen:methods "))
+				fixedPrefix = "__method_" + typeName
+			}
+		}
+	}
+
 	fmt.Fprintf(&sb, "const (\n")
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
@@ -546,10 +568,21 @@ func generateCode(pkg, name string, iface *ast.InterfaceType, structs map[string
 	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
-	fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, name)
-	fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
-	fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
-	fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+\".\"+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+	if fixedPrefix != "" {
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, name)
+		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
+		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n", fixedPrefix)
+		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
+		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+	} else {
+		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, name)
+		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
+		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
+		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+	}
+
 	return sb.String()
 }
 

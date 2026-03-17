@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"strings"
 )
 
 const (
@@ -352,7 +353,112 @@ func RegisterE2EMockOSLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
 }, prefix string, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
 	for _, m := range MockOS_FFI_Metadata {
-		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+	}
+}
+
+const (
+	MethodID_ContextMock_WithContext    = 1
+	MethodID_ContextMock_WithoutContext = 2
+)
+
+type ContextMockProxy struct {
+	bridge   ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
+}
+
+func (p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(key)
+
+	retData, err := p.bridge.Call(ctx, MethodID_ContextMock_WithContext, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = retBuf.ReadString()
+	return v_0
+}
+
+func (p *ContextMockProxy) WithoutContext(ctx context.Context, val string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(val)
+
+	retData, err := p.bridge.Call(ctx, MethodID_ContextMock_WithoutContext, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = retBuf.ReadString()
+	return v_0
+}
+
+func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+	reqBuf := ffigo.NewReader(args)
+	switch methodID {
+	case MethodID_ContextMock_WithContext:
+		var key string
+		key = reqBuf.ReadString()
+		r0 := impl.WithContext(ctx, key)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(r0)
+		return resBuf.Bytes(), nil
+	case MethodID_ContextMock_WithoutContext:
+		var val string
+		val = reqBuf.ReadString()
+		r0 := impl.WithoutContext(val)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(r0)
+		return resBuf.Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+
+var ContextMock_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"WithContext", 1, "function(String) String"},
+	{"WithoutContext", 2, "function(String) String"},
+}
+
+type ContextMock_Bridge struct {
+	Impl     ContextMock
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *ContextMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return ContextMockHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}
+
+func RegisterContextMock(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, impl ContextMock, registry *ffigo.HandleRegistry) {
+	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
+	prefix := "ctx_test"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
+	for _, m := range ContextMock_FFI_Metadata {
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

@@ -113,22 +113,23 @@ func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
 
 func (o *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject fmt
-	fmtlib.RegisterFMTLIBFmtLibrary(o, "fmt", &fmtlib.FmtHost{}, o.registry)
+	fmtlib.RegisterFmt(o, &fmtlib.FmtHost{}, o.registry)
 
 	// 2. Inject os
-	oslib.RegisterOSLIBOSLibrary(o, "os", &oslib.OSHost{}, o.registry)
+	oslib.RegisterOS(o, &oslib.OSHost{}, o.registry)
+	oslib.RegisterFileMethods(o, &oslib.FileMethodsHost{}, o.registry)
 
 	// 3. Inject errors
-	errorslib.RegisterERRORSLIBErrorsLibrary(o, "errors", &errorslib.ErrorsHost{}, o.registry)
+	errorslib.RegisterErrors(o, &errorslib.ErrorsHost{}, o.registry)
 
 	// 4. Inject io
-	iolib.RegisterIOLIBIOLibrary(o, "io", &iolib.IOHost{}, o.registry)
+	iolib.RegisterIO(o, &iolib.IOHost{}, o.registry)
 
 	// 5. Inject json
-	jsonlib.RegisterJSONLIBJSONLibrary(o, "json", &jsonlib.JSONHost{}, o.registry)
+	jsonlib.RegisterJSON(o, &jsonlib.JSONHost{}, o.registry)
 
 	// 6. Inject time
-	timelib.RegisterTIMELIBTimeLibrary(o, "time", &timelib.TimeHost{}, o.registry)
+	timelib.RegisterTime(o, &timelib.TimeHost{}, o.registry)
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数

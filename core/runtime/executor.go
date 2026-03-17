@@ -1713,72 +1713,79 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 		return nil, nil
 	}
 
+	var res *Var
+	var err error
+
 	if typ == "Any" {
-		return e.deserializeAnyToVar(reader.ReadAny(), bridge), nil
+		res = e.deserializeAnyToVar(reader.ReadAny(), bridge)
+	} else {
+		switch {
+		case typ == "String":
+			res = NewString(reader.ReadString())
+		case typ == "Int64" || typ == "Int" || typ == "Uint32":
+			res = NewInt(reader.ReadInt64())
+		case typ == "Float64":
+			res = NewFloat(reader.ReadFloat64())
+		case typ == "Bool":
+			res = NewBool(reader.ReadBool())
+		case typ == "TypeBytes" || strings.Contains(string(typ), "Array<Uint8>"):
+			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
+		case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
+			id := reader.ReadUint32()
+			var h *VMHandle
+			if id != 0 {
+				h = NewVMHandle(id, bridge)
+				e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
+			}
+			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
+		case typ.IsArray():
+			count := int(reader.ReadUint32())
+			itemType, _ := typ.ReadArrayItemType()
+			arrData := make([]*Var, count)
+			for i := 0; i < count; i++ {
+				val, err := e.deserializeVar(reader, itemType, bridge)
+				if err != nil {
+					return nil, err
+				}
+				arrData[i] = val
+			}
+			res = &Var{VType: TypeArray, Ref: &VMArray{Data: arrData}}
+		case typ.IsMap():
+			count := int(reader.ReadUint32())
+			kType, vType, _ := typ.GetMapKeyValueTypes()
+			mapData := make(map[string]*Var)
+			for i := 0; i < count; i++ {
+				k, err := e.deserializeKey(reader, kType)
+				if err != nil {
+					return nil, err
+				}
+				val, err := e.deserializeVar(reader, vType, bridge)
+				if err != nil {
+					return nil, err
+				}
+				mapData[k] = val
+			}
+			res = &Var{VType: TypeMap, Ref: &VMMap{Data: mapData}}
+		case typ.IsTuple():
+			types, _ := typ.ReadTuple()
+			tupleData := make([]*Var, len(types))
+			for i, t := range types {
+				val, err := e.deserializeVar(reader, t, bridge)
+				if err != nil {
+					return nil, err
+				}
+				tupleData[i] = val
+			}
+			res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
+		default:
+			return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
+		}
 	}
 
-	switch {
-	case typ == "String":
-		return NewString(reader.ReadString()), nil
-	case typ == "Int64" || typ == "Int" || typ == "Uint32":
-		return NewInt(reader.ReadInt64()), nil
-	case typ == "Float64":
-		return NewFloat(reader.ReadFloat64()), nil
-	case typ == "Bool":
-		return NewBool(reader.ReadBool()), nil
-	case typ == "TypeBytes" || strings.Contains(string(typ), "Array<Uint8>"):
-		return &Var{VType: TypeBytes, B: reader.ReadBytes()}, nil
-	case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
-		id := reader.ReadUint32()
-		var h *VMHandle
-		if id != 0 {
-			h = NewVMHandle(id, bridge)
-			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
-		}
-		return &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}, nil
-	case typ.IsArray():
-		// 处理从 FFI 返回的数组（如果以后支持）
-		count := int(reader.ReadUint32())
-		itemType, _ := typ.ReadArrayItemType()
-		res := make([]*Var, count)
-		for i := 0; i < count; i++ {
-			val, err := e.deserializeVar(reader, itemType, bridge)
-			if err != nil {
-				return nil, err
-			}
-			res[i] = val
-		}
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
-	case typ.IsMap():
-		count := int(reader.ReadUint32())
-		kType, vType, _ := typ.GetMapKeyValueTypes()
-		res := make(map[string]*Var)
-		for i := 0; i < count; i++ {
-			k, err := e.deserializeKey(reader, kType)
-			if err != nil {
-				return nil, err
-			}
-			val, err := e.deserializeVar(reader, vType, bridge)
-			if err != nil {
-				return nil, err
-			}
-			res[k] = val
-		}
-		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: typ}, nil
-	case typ.IsTuple():
-		types, _ := typ.ReadTuple()
-		res := make([]*Var, len(types))
-		for i, t := range types {
-			val, err := e.deserializeVar(reader, t, bridge)
-			if err != nil {
-				return nil, err
-			}
-			res[i] = val
-		}
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
-	default:
-		return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
+	if res != nil {
+		res.Type = typ
 	}
+	return res, err
 }
 
 func (e *Executor) GetProgram() *ast.ProgramStmt { return e.program }

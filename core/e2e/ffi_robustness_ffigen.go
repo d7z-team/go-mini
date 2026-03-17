@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"strings"
 )
 
 const (
@@ -84,7 +85,11 @@ func RegisterE2EMockGeometryLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
 }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
 	for _, m := range MockGeometry_FFI_Metadata {
-		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

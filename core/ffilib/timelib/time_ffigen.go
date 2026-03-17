@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"strings"
 )
 
 const (
@@ -110,11 +111,16 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterTIMELIBTimeLibrary(executor interface {
+func RegisterTime(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
-}, prefix string, impl Time, registry *ffigo.HandleRegistry) {
+}, impl Time, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: impl, Registry: registry}
+	prefix := "time"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
 	for _, m := range Time_FFI_Metadata {
-		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

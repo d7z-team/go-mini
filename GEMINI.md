@@ -76,12 +76,14 @@ go-mini/
 
 ### C. 添加或修改标准库 (`core/ffilib`)
 1.  **目录结构**: 创建目录 (例如 `core/ffilib/netlib`)。
-2.  **定义接口**: 在 `interface.go` 中定义接口。对于有状态的对象 (它们将成为 Handles)，使用指针接收者，并严格使用标准的 Go 类型。
-3.  **生成指令**: 在 `interface.go` 首行添加 `//go:generate` 指令，格式如下：
+2.  **定义接口**: 在 `interface.go` 中定义接口。
+    *   使用 `// ffigen:module <name>` 注解接口以定义包名（如 `fmt`, `os`）。
+    *   使用 `// ffigen:methods <TypeName>` 注解接口以定义面向对象的方法集（如 `File`），这会自动生成 `__method_TypeName_MethodName` 格式的 FFI 路由。
+3.  **生成指令**: 在 `interface.go` 首行添加 `//go:generate` 指令：
     `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -out <name>_ffigen.go interface.go`
 4.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。
-5.  **触发生成**: 运行 `go generate ./...` 或 `make gen`。`ffigen` 工具会自动进行 AST 解析并输出格式化的 Go 代码，同时校验语法正确性。
-6.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中将新库注入执行器。
+5.  **触发生成**: 运行 `make gen`。
+6.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中使用生成的简洁 API 注入（如 `RegisterOS(o, impl, reg)`）。
 
 ### D. 测试 (`core/e2e`)
 1.  **强制要求**: 每个 Bug 修复或功能实现都必须在 `core/e2e/` 中附带一个测试。

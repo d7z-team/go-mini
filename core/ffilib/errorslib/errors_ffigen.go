@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"strings"
 )
 
 const (
@@ -76,11 +77,16 @@ func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterERRORSLIBErrorsLibrary(executor interface {
+func RegisterErrors(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
-}, prefix string, impl Errors, registry *ffigo.HandleRegistry) {
+}, impl Errors, registry *ffigo.HandleRegistry) {
 	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
+	prefix := "errors"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
 	for _, m := range Errors_FFI_Metadata {
-		executor.RegisterFFI(prefix+"."+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }

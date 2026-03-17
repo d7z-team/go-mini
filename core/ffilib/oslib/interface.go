@@ -3,14 +3,24 @@ package oslib
 
 import "context"
 
+// File 是一个占位符结构体，用于在 FFI 中表示文件句柄
 type File struct{}
 
+// OS 接口定义了文件系统操作
+//
+// ffigen:module os
 type OS interface {
 	Open(ctx context.Context, name string) (*File, error)
-	Create(name string) (*File, error) // 没有 context 的例子
-	ReadFile(name string) ([]byte, error)
-	WriteFile(name string, data []byte) error
-	Remove(name string) error
+	Create(ctx context.Context, name string) (*File, error)
+	ReadFile(ctx context.Context, name string) ([]byte, error)
+	WriteFile(ctx context.Context, name string, data []byte) error
+	Remove(ctx context.Context, name string) error
+}
+
+// FileMethods 接口定义了文件句柄的方法
+//
+// ffigen:methods File
+type FileMethods interface {
 	Read(f *File, b []byte) (int, error)
 	Write(f *File, b []byte) (int, error)
 	Close(f *File) error
