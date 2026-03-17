@@ -156,16 +156,16 @@ type FunctionType struct {
 	Variadic bool            `json:"variadic,omitempty"`
 }
 
-func (f FunctionType) MiniType() GoMiniType {
+func (ft *FunctionType) MiniType() GoMiniType {
 	var params []string
-	for i, p := range f.Params {
+	for i, p := range ft.Params {
 		prefix := ""
-		if f.Variadic && i == len(f.Params)-1 {
+		if ft.Variadic && i == len(ft.Params)-1 {
 			prefix = "..."
 		}
 		params = append(params, prefix+string(p.Type))
 	}
-	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), f.Return))
+	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), ft.Return))
 }
 
 type FunctionParam struct {

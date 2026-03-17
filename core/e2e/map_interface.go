@@ -1,3 +1,4 @@
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out ffi_map_ffigen.go map_interface.go
 package e2e
 
 import "context"

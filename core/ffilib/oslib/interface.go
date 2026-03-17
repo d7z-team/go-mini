@@ -1,3 +1,4 @@
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg oslib -out os_ffigen.go interface.go
 package oslib
 
 import "context"
