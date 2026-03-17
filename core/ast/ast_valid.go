@@ -232,7 +232,63 @@ func (c *ValidContext) ConstStore(value string) Ident {
 }
 
 func (c *ValidContext) ImportPackage(path string) error {
-	// 暂不支持隔离架构下的动态包加载，需显式 FFI 注册
+	if c.root.Loader == nil {
+		return nil // 回退到 FFI 行为
+	}
+	if c.root.Imported[path] {
+		return nil
+	}
+	c.root.Imported[path] = true
+
+	prog, err := c.root.Loader(path)
+	if err != nil {
+		// 找不到模块时，假设其为 FFI 包
+		return nil
+	}
+
+	// 将导入包的函数、结构体、变量等合并到当前程序中，并进行语义检查
+	// 由于 Check 内部会自动加上 package 前缀，我们直接让 prog 在当前 ctx 下 Check
+	
+	// 需要注意，prog.Check 会检查 ctx.parent != nil
+	// 我们临时将 parent 置为空以通过检查
+	oldParent := c.parent
+	oldPkg := c.root.Package
+	
+	c.parent = nil
+	c.root.Package = prog.Package
+	
+	err = prog.Check(NewSemanticContext(c))
+	
+	c.root.Package = oldPkg
+	c.parent = oldParent
+
+	if err != nil {
+		return fmt.Errorf("failed to check package %s: %w", path, err)
+	}
+
+	// 合并函数、结构体、变量等到当前 program
+	for _, v := range prog.Functions {
+		c.root.program.Functions[v.Name] = v
+	}
+	for _, v := range prog.Structs {
+		c.root.program.Structs[v.Name] = v
+	}
+	for k, v := range prog.Variables {
+		mangledK := k
+		if prog.Package != "" && prog.Package != "main" && !strings.Contains(string(k), ".") {
+			mangledK = Ident(fmt.Sprintf("%s.%s", prog.Package, k))
+		}
+		c.root.program.Variables[mangledK] = v
+	}
+	for k, v := range prog.Constants {
+		mangledK := k
+		if prog.Package != "" && prog.Package != "main" && !strings.Contains(k, ".") {
+			mangledK = fmt.Sprintf("%s.%s", prog.Package, k)
+		}
+		c.root.program.Constants[mangledK] = v
+	}
+	// 不合并 Main (包级别代码/init暂不支持)
+
 	return nil
 }
 

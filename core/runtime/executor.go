@@ -1106,6 +1106,57 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			}
 			return NewInt(0), nil
 		}
+		if name == "make" {
+			if len(n.Args) < 1 {
+				return nil, errors.New("missing type argument to make")
+			}
+			typeArg, err := e.ExecExpr(ctx, n.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			if typeArg == nil || typeArg.VType != TypeString {
+				return nil, fmt.Errorf("first argument to make must be a type string")
+			}
+			tStr := typeArg.Str
+
+			if strings.HasPrefix(tStr, "Map<") {
+				return &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: ast.GoMiniType(tStr)}, nil
+			} else if strings.HasPrefix(tStr, "Array<") || tStr == "[]byte" || tStr == "TypeBytes" {
+				length := 0
+				capacity := 0
+				if len(n.Args) > 1 {
+					lArg, err := e.ExecExpr(ctx, n.Args[1])
+					if err != nil {
+						return nil, err
+					}
+					lInt, err := lArg.ToInt()
+					if err != nil {
+						return nil, err
+					}
+					length = int(lInt)
+					capacity = length
+				}
+				if len(n.Args) > 2 {
+					cArg, err := e.ExecExpr(ctx, n.Args[2])
+					if err != nil {
+						return nil, err
+					}
+					cInt, err := cArg.ToInt()
+					if err != nil {
+						return nil, err
+					}
+					capacity = int(cInt)
+				}
+				if capacity < length {
+					return nil, errors.New("make capacity < length")
+				}
+				if tStr == "[]byte" || tStr == "TypeBytes" {
+					return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: ast.GoMiniType("TypeBytes")}, nil
+				}
+				return &Var{VType: TypeArray, Ref: &VMArray{Data: make([]*Var, length, capacity)}, Type: ast.GoMiniType(tStr)}, nil
+			}
+			return nil, fmt.Errorf("cannot make type %s", tStr)
+		}
 		if name == "append" {
 			if len(n.Args) < 1 {
 				return nil, errors.New("missing arguments to append")

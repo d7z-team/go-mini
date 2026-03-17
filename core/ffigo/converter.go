@@ -456,6 +456,27 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 				}
 			}
 		}
+
+		if ident, ok := funExpr.(*mini_ast.ConstRefExpr); ok && ident.Name == "make" {
+			if len(ex.Args) > 0 {
+				typeArg := c.typeToString(ex.Args[0])
+				args := []mini_ast.Expr{
+					&mini_ast.LiteralExpr{
+						BaseNode: mini_ast.BaseNode{Meta: "literal", Type: "String"},
+						Value:    typeArg,
+					},
+				}
+				if len(ex.Args) > 1 {
+					args = append(args, c.convertArgs(ex.Args[1:])...)
+				}
+				return &mini_ast.CallExprStmt{
+					BaseNode: mini_ast.BaseNode{Meta: "call"},
+					Func:     funExpr,
+					Args:     args,
+				}
+			}
+		}
+
 		return &mini_ast.CallExprStmt{
 			BaseNode: mini_ast.BaseNode{Meta: "call"},
 			Func:     funExpr,

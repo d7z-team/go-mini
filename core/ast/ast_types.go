@@ -373,6 +373,9 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsEmpty() {
 		return o
 	}
+	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() || o == "TypeBytes" {
+		return o
+	}
 	if o.IsArray() {
 		elem, _ := o.ReadArrayItemType()
 		return CreateArrayType(elem.Resolve(v))

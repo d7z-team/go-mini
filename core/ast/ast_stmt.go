@@ -37,6 +37,15 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		return errors.New("程序入口必须为顶点")
 	}
 
+	// 处理模块加载
+	if p.Imports != nil {
+		for _, imp := range p.Imports {
+			if err := ctx.ImportPackage(imp.Path); err != nil {
+				return err
+			}
+		}
+	}
+
 	// 预注册所有导入的包别名，以支持 MemberExpr/StructCallExpr 的静态查找
 	for alias := range ctx.root.Imports {
 		ctx.AddVariable(Ident(alias), "Package")

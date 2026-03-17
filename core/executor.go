@@ -54,6 +54,7 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["string"] = "function(Any) String"
 	res.specs["[]byte"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
+	res.specs["make"] = "function(String, ...Int64) Any"
 	res.specs["append"] = "function(Any, ...Any) Any"
 	res.specs["delete"] = "function(Any, Any) Void"
 	res.specs["int"] = "function(Any) Int64"
@@ -162,6 +163,7 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 
 	// Validate and Optimize
 	validator, _ := ast.NewValidator(program)
+	validator.SetLoader(o.Loader)
 	for name, spec := range o.specs {
 		validator.AddVariable(name, spec)
 	}
