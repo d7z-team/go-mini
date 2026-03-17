@@ -49,6 +49,7 @@ go-mini/
 ### III. 封闭类型系统 (Closed Type System / Data Reduction)
 *   **规则**: 不要试图将每种 Go 类型都映射到 VM 中。
 *   **实现**: VM 只理解原语：`TypeInt` (int64), `TypeFloat` (float64), `TypeString`, `TypeBool`, `TypeBytes` ([]byte), `TypeArray`, `TypeMap`, `TypeResult`, `TypeHandle`, 以及 `TypeAny`。
+*   **引用语义约定**: 所有的复合类型（Array, Map, 以及由 Map 模拟的 Struct）在 VM 内部传递时均采用**引用语义**。赋值操作或方法调用不会触发深度拷贝。
 *   **转换**: `GoToASTConverter` 在执行前负责 Go 类型到 VM 类型的“降维” (例如 `int32` -> `Int64`)。
 
 ### IV. 泛型错误协议 (`Result<T>`)

@@ -9,6 +9,7 @@ Go-Mini is a high-performance, absolutely isolated Go-like script executor. It i
 - **Raw-FFI IPC**: High-performance binary communication via `ffigo.Buffer` and `ffigo.Bridge`.
 - **Static Code Generation**: FFI wrappers are generated at compile-time using `cmd/ffigen`.
 - **Data Reduction**: All scalar types are mapped to `Int64` or `Float64` for simplicity.
+- **Reference Semantics**: Script-defined structs and arrays use **reference semantics** for performance. Assignments and method calls do not trigger a deep copy.
 
 ## Architecture
 

@@ -1778,6 +1778,21 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			}
 			res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
 		default:
+			if name, ok := typ.StructName(); ok {
+				if sDef, ok := e.program.Structs[name]; ok {
+					resMap := make(map[string]*Var)
+					for _, fName := range sDef.FieldNames {
+						fType := sDef.Fields[fName]
+						val, err := e.deserializeVar(reader, fType, bridge)
+						if err != nil {
+							return nil, err
+						}
+						resMap[string(fName)] = val
+					}
+					res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+					break
+				}
+			}
 			return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 		}
 	}

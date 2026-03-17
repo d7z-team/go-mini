@@ -462,3 +462,164 @@ func RegisterContextMock(executor interface {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
 	}
 }
+
+const (
+	MethodID_NativeMock_GetStruct = 1
+	MethodID_NativeMock_GetPtr    = 2
+	MethodID_NativeMock_SetStruct = 3
+	MethodID_NativeMock_SetPtr    = 4
+)
+
+type NativeMockProxy struct {
+	bridge   ffigo.FFIBridge
+	registry *ffigo.HandleRegistry
+}
+
+func (p *NativeMockProxy) GetStruct(ctx context.Context) NativeStruct {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := p.bridge.Call(ctx, MethodID_NativeMock_GetStruct, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 NativeStruct
+	v_0.Msg = retBuf.ReadString()
+	v_0.Value = int64(retBuf.ReadInt64())
+	return v_0
+}
+
+func (p *NativeMockProxy) GetPtr(ctx context.Context) *NativeStruct {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := p.bridge.Call(ctx, MethodID_NativeMock_GetPtr, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 *NativeStruct
+	if id := retBuf.ReadUint32(); id != 0 {
+		if p.registry != nil {
+			if obj, ok := p.registry.Get(id); ok {
+				v_0 = obj.(*NativeStruct)
+			}
+		}
+	}
+	return v_0
+}
+
+func (p *NativeMockProxy) SetStruct(ctx context.Context, s NativeStruct) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(s.Msg)
+	buf.WriteInt64(int64(s.Value))
+
+	retData, err := p.bridge.Call(ctx, MethodID_NativeMock_SetStruct, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	v_0 = int64(retBuf.ReadInt64())
+	return v_0
+}
+
+func (p *NativeMockProxy) SetPtr(ctx context.Context, s *NativeStruct) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	if p.registry != nil {
+		buf.WriteUint32(p.registry.Register(s))
+	} else {
+		buf.WriteUint32(0)
+	}
+
+	retData, err := p.bridge.Call(ctx, MethodID_NativeMock_SetPtr, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	v_0 = int64(retBuf.ReadInt64())
+	return v_0
+}
+
+func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+	reqBuf := ffigo.NewReader(args)
+	switch methodID {
+	case MethodID_NativeMock_GetStruct:
+		r0 := impl.GetStruct()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(r0.Msg)
+		resBuf.WriteInt64(int64(r0.Value))
+		return resBuf.Bytes(), nil
+	case MethodID_NativeMock_GetPtr:
+		r0 := impl.GetPtr()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUint32(registry.Register(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_NativeMock_SetStruct:
+		var s NativeStruct
+		s.Msg = reqBuf.ReadString()
+		s.Value = int64(reqBuf.ReadInt64())
+		r0 := impl.SetStruct(s)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_NativeMock_SetPtr:
+		var s *NativeStruct
+		if id := reqBuf.ReadUint32(); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				s = obj.(*NativeStruct)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0 := impl.SetPtr(s)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+
+var NativeMock_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+}{
+	{"GetStruct", 1, "function() NativeStruct"},
+	{"GetPtr", 2, "function() Ptr<NativeStruct>"},
+	{"SetStruct", 3, "function(NativeStruct) Int64"},
+	{"SetPtr", 4, "function(Ptr<NativeStruct>) Int64"},
+}
+
+type NativeMock_Bridge struct {
+	Impl     NativeMock
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *NativeMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return NativeMockHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+}
+
+func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}
+
+func RegisterNativeMock(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+}, impl NativeMock, registry *ffigo.HandleRegistry) {
+	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
+	prefix := "native"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
+	for _, m := range NativeMock_FFI_Metadata {
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+	}
+}
