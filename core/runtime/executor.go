@@ -1219,8 +1219,16 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 				c.Executor = e
 				for i, p := range f.Params {
 					_ = c.NewVar(string(p.Name), p.Type)
-					if i < len(args) && args[i] != nil {
-						_ = c.Store(string(p.Name), args[i])
+					if f.Variadic && i == len(f.Params)-1 {
+						var variadicArgs []*Var
+						if i < len(args) {
+							variadicArgs = args[i:]
+						}
+						_ = c.Store(string(p.Name), &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
+					} else {
+						if i < len(args) && args[i] != nil {
+							_ = c.Store(string(p.Name), args[i])
+						}
 					}
 				}
 				if !f.Return.IsVoid() {

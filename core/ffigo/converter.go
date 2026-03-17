@@ -157,6 +157,9 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
 	if d.Type.Params != nil {
 		for _, p := range d.Type.Params.List {
 			t := c.typeToString(p.Type)
+			if _, isVariadic := p.Type.(*ast.Ellipsis); isVariadic {
+				fn.Variadic = true
+			}
 			for _, name := range p.Names {
 				fn.Params = append(fn.Params, mini_ast.FunctionParam{
 					Name: mini_ast.Ident(name.Name),
@@ -607,6 +610,8 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 		return fmt.Sprintf("Map<%s, %s>", c.typeToString(t.Key), c.typeToString(t.Value))
 	case *ast.SelectorExpr:
 		return fmt.Sprintf("%s.%s", c.typeToString(t.X), t.Sel.Name)
+	case *ast.Ellipsis:
+		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
 	}
 	return "Any"
 }
