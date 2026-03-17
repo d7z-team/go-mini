@@ -195,69 +195,43 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		if err != nil {
 			return err
 		}
+		return e.assignToLHS(ctx, n.LHS, val)
 
-		switch lhs := n.LHS.(type) {
-		case *ast.IdentifierExpr:
-			return ctx.Store(string(lhs.Name), val)
-		case *ast.IndexExpr:
-			obj, err := e.ExecExpr(ctx, lhs.Object)
-			if err != nil {
-				return err
-			}
-			idx, err := e.ExecExpr(ctx, lhs.Index)
-			if err != nil {
-				return err
-			}
-			if obj == nil || idx == nil {
-				return errors.New("assignment to nil object or index")
-			}
-
-			switch obj.VType {
-			case TypeArray:
-				arr := obj.Ref.(*VMArray)
-				i := int(idx.I64)
-				if i < 0 || i >= len(arr.Data) {
-					return fmt.Errorf("index out of range: %d", i)
-				}
-				arr.Data[i] = val
-				return nil
-			case TypeMap:
-				m := obj.Ref.(*VMMap)
-				key := idx.Str
-				if idx.VType == TypeInt {
-					key = strconv.FormatInt(idx.I64, 10)
-				}
-				m.Data[key] = val
-				return nil
-			}
-			return fmt.Errorf("type %v does not support index assignment", obj.VType)
-
-		case *ast.MemberExpr:
-			obj, err := e.ExecExpr(ctx, lhs.Object)
-			if err != nil {
-				return err
-			}
-			if obj == nil {
-				return errors.New("member assignment on nil object")
-			}
-
-			switch obj.VType {
-			case TypeMap:
-				m := obj.Ref.(*VMMap)
-				m.Data[string(lhs.Property)] = val
-				return nil
-			case TypeAny:
-				if obj.Ref != nil {
-					if m, ok := obj.Ref.(*VMMap); ok {
-						m.Data[string(lhs.Property)] = val
-						return nil
-					}
-				}
-				return errors.New("unsupported Any wrapper for member assignment")
-			}
-			return fmt.Errorf("type %v does not support member assignment", obj.VType)
+	case *ast.MultiAssignmentStmt:
+		val, err := e.ExecExpr(ctx, n.Value)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("unsupported LHS in assignment: %T", n.LHS)
+		if val == nil {
+			return errors.New("multi assignment: RHS evaluated to nil")
+		}
+
+		var elements []*Var
+		switch val.VType {
+		case TypeArray:
+			elements = val.Ref.(*VMArray).Data
+		case TypeResult:
+			// [val, err]
+			errVar := NewString(val.ResultErr)
+			if val.ResultErr == "" {
+				errVar = nil // Use nil for success
+			}
+			elements = []*Var{val.ResultVal, errVar}
+		default:
+			return fmt.Errorf("cannot destructure type %v", val.VType)
+		}
+
+		if len(elements) < len(n.LHS) {
+			return fmt.Errorf("multi assignment: not enough elements to destructure (need %d, got %d)", len(n.LHS), len(elements))
+		}
+
+		for i, lhsExpr := range n.LHS {
+			item := elements[i]
+			if err := e.assignToLHS(ctx, lhsExpr, item); err != nil {
+				return err
+			}
+		}
+		return nil
 	case *ast.IfStmt:
 
 		cond, err := e.ExecExpr(ctx, n.Cond)
@@ -393,6 +367,71 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		return nil
 	}
 	return fmt.Errorf("unsupported stmt: %T", s)
+}
+
+func (e *Executor) assignToLHS(ctx *StackContext, lhsExpr ast.Expr, val *Var) error {
+	switch lhs := lhsExpr.(type) {
+	case *ast.IdentifierExpr:
+		return ctx.Store(string(lhs.Name), val)
+	case *ast.IndexExpr:
+		obj, err := e.ExecExpr(ctx, lhs.Object)
+		if err != nil {
+			return err
+		}
+		idx, err := e.ExecExpr(ctx, lhs.Index)
+		if err != nil {
+			return err
+		}
+		if obj == nil || idx == nil {
+			return errors.New("assignment to nil object or index")
+		}
+
+		switch obj.VType {
+		case TypeArray:
+			arr := obj.Ref.(*VMArray)
+			i := int(idx.I64)
+			if i < 0 || i >= len(arr.Data) {
+				return fmt.Errorf("index out of range: %d", i)
+			}
+			arr.Data[i] = val
+			return nil
+		case TypeMap:
+			m := obj.Ref.(*VMMap)
+			key := idx.Str
+			if idx.VType == TypeInt {
+				key = strconv.FormatInt(idx.I64, 10)
+			}
+			m.Data[key] = val
+			return nil
+		}
+		return fmt.Errorf("type %v does not support index assignment", obj.VType)
+
+	case *ast.MemberExpr:
+		obj, err := e.ExecExpr(ctx, lhs.Object)
+		if err != nil {
+			return err
+		}
+		if obj == nil {
+			return errors.New("member assignment on nil object")
+		}
+
+		switch obj.VType {
+		case TypeMap:
+			m := obj.Ref.(*VMMap)
+			m.Data[string(lhs.Property)] = val
+			return nil
+		case TypeAny:
+			if obj.Ref != nil {
+				if m, ok := obj.Ref.(*VMMap); ok {
+					m.Data[string(lhs.Property)] = val
+					return nil
+				}
+			}
+			return errors.New("unsupported Any wrapper for member assignment")
+		}
+		return fmt.Errorf("type %v does not support member assignment", obj.VType)
+	}
+	return fmt.Errorf("unsupported LHS in assignment: %T", lhsExpr)
 }
 
 func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
@@ -1447,6 +1486,17 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			res[k] = val
 		}
 		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: typ}, nil
+	case typ.IsTuple():
+		types, _ := typ.ReadTuple()
+		res := make([]*Var, len(types))
+		for i, t := range types {
+			val, err := e.deserializeVar(reader, t, bridge)
+			if err != nil {
+				return nil, err
+			}
+			res[i] = val
+		}
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ}, nil
 	default:
 		return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 	}

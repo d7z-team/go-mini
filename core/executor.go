@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -66,33 +65,7 @@ func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, err
 func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
 	returns := "Void"
 	if callFunc, ok := spec.ReadCallFunc(); ok {
-		retType := callFunc.Returns
-		if retType.IsTuple() {
-			if types, ok := retType.ReadTuple(); ok && len(types) > 0 {
-				retType = types[0]
-			}
-		}
-
-		// 映射 ast.GoMiniType 到 evalFFI 识别的字符串标签
-		if retType.IsResult() {
-			returns = string(retType)
-		} else {
-			returns = string(retType)
-			switch {
-			case retType == "String":
-				returns = "String"
-			case retType == "Int64":
-				returns = "Int64"
-			case retType == "Bool":
-				returns = "Bool"
-			case retType == "TypeBytes" || strings.Contains(string(retType), "Array<Uint8>"):
-				returns = "TypeBytes"
-			case strings.HasPrefix(string(retType), "Ptr<") || retType == "TypeHandle":
-				returns = "TypeHandle"
-			case retType.IsMap():
-				returns = string(retType) // evaluation uses full type for Map
-			}
-		}
+		returns = string(callFunc.Returns)
 	}
 
 	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec)}

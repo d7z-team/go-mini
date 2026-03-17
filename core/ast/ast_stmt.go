@@ -814,6 +814,98 @@ func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
 	return f
 }
 
+// MultiAssignmentStmt 表示多变量解构赋值语句
+type MultiAssignmentStmt struct {
+	BaseNode
+	LHS   []Expr `json:"lhs"`
+	Value Expr   `json:"value"`
+}
+
+func (m *MultiAssignmentStmt) GetBase() *BaseNode { return &m.BaseNode }
+func (m *MultiAssignmentStmt) stmtNode()          {}
+
+func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
+	m.Type = "Void"
+	if len(m.LHS) == 0 {
+		return errors.New("multi assignment missing LHS")
+	}
+	if m.Value == nil {
+		return errors.New("multi assignment missing value")
+	}
+
+	if err := m.Value.Check(ctx); err != nil {
+		return err
+	}
+
+	valType := m.Value.GetBase().Type
+	var elementTypes []GoMiniType
+
+	if valType.IsTuple() {
+		elementTypes, _ = valType.ReadTuple()
+	} else if valType.IsArray() {
+		// If it's an array, we can't statically know the length,
+		// but we know all elements have the same type.
+		// For simplicity, we allow destructuring if LHS count is known.
+		itemType, _ := valType.ReadArrayItemType()
+		for i := 0; i < len(m.LHS); i++ {
+			elementTypes = append(elementTypes, GoMiniType(itemType))
+		}
+	} else if valType.IsResult() {
+		// Result decomposes into [val, err]
+		resType, _ := valType.ReadResult()
+		elementTypes = []GoMiniType{resType, "String"}
+	} else {
+		return fmt.Errorf("cannot destructure non-composite type: %s", valType)
+	}
+
+	if len(m.LHS) != len(elementTypes) {
+		return fmt.Errorf("assignment count mismatch: %d = %d", len(m.LHS), len(elementTypes))
+	}
+
+	for i, lhs := range m.LHS {
+		targetType := elementTypes[i]
+
+		if ident, ok := lhs.(*IdentifierExpr); ok {
+			ident.Name = ident.Name.Resolve(&ctx.ValidContext)
+			vType, exists := ctx.GetVariable(ident.Name)
+
+			if !exists {
+				// Type inference for new variables
+				if !targetType.IsVoid() {
+					ctx.AddVariable(ident.Name, targetType)
+					ident.Type = targetType
+				}
+			} else {
+				if !targetType.IsAssignableTo(vType) {
+					return fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
+				}
+				if vType == "Any" && targetType != "Any" {
+					ctx.UpdateVariable(ident.Name, targetType)
+				}
+				ident.Type = targetType
+			}
+		} else {
+			if err := lhs.Check(ctx); err != nil {
+				return err
+			}
+			lhsType := lhs.GetBase().Type
+			if !targetType.IsAssignableTo(lhsType) {
+				return fmt.Errorf("assignment type mismatch at index %d: LHS is %s, RHS is %s", i, lhsType, targetType)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
+	for i, lhs := range m.LHS {
+		m.LHS[i] = lhs.Optimize(ctx).(Expr)
+	}
+	m.Value = m.Value.Optimize(ctx).(Expr)
+	return m
+}
+
 // GenDeclStmt 变量声明
 type GenDeclStmt struct {
 	BaseNode

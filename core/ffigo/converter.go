@@ -200,40 +200,70 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		}
 		return res
 	case *ast.AssignStmt:
-		if len(st.Lhs) != 1 || len(st.Rhs) != 1 {
+		if len(st.Rhs) != 1 {
+			// 目前仅支持 a, b = f() 这种单右值解构，不支持 a, b = 1, 2
 			return nil
 		}
-		lhs := st.Lhs[0]
 		rhs := st.Rhs[0]
 
 		if st.Tok == token.DEFINE { // :=
-			ident, ok := lhs.(*ast.Ident)
-			if !ok {
-				return nil
-			} // := 只能用于标识符
-			return &mini_ast.BlockStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "block"},
-				Inner:    true,
-				Children: []mini_ast.Stmt{
-					&mini_ast.GenDeclStmt{
+			var children []mini_ast.Stmt
+			var lhsExprs []mini_ast.Expr
+
+			for _, lhs := range st.Lhs {
+				if ident, ok := lhs.(*ast.Ident); ok {
+					// 1. Declare variable
+					children = append(children, &mini_ast.GenDeclStmt{
 						BaseNode: mini_ast.BaseNode{Meta: "decl"},
 						Name:     mini_ast.Ident(ident.Name),
 						Kind:     "Any",
-					},
-					&mini_ast.AssignmentStmt{
-						BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-						LHS:      &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(ident.Name)},
-						Value:    c.convertExpr(rhs),
-					},
-				},
+					})
+					// 2. Prepare LHS list
+					lhsExprs = append(lhsExprs, &mini_ast.IdentifierExpr{
+						BaseNode: mini_ast.BaseNode{Meta: "identifier"},
+						Name:     mini_ast.Ident(ident.Name),
+					})
+				}
+			}
+
+			if len(lhsExprs) == 1 {
+				children = append(children, &mini_ast.AssignmentStmt{
+					BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+					LHS:      lhsExprs[0],
+					Value:    c.convertExpr(rhs),
+				})
+			} else {
+				children = append(children, &mini_ast.MultiAssignmentStmt{
+					BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
+					LHS:      lhsExprs,
+					Value:    c.convertExpr(rhs),
+				})
+			}
+
+			return &mini_ast.BlockStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "block"},
+				Inner:    true,
+				Children: children,
 			}
 		}
 
 		if st.Tok == token.ASSIGN {
-			return &mini_ast.AssignmentStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-				LHS:      c.convertExpr(lhs),
-				Value:    c.convertExpr(rhs),
+			if len(st.Lhs) == 1 {
+				return &mini_ast.AssignmentStmt{
+					BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+					LHS:      c.convertExpr(st.Lhs[0]),
+					Value:    c.convertExpr(rhs),
+				}
+			} else {
+				var lhsExprs []mini_ast.Expr
+				for _, l := range st.Lhs {
+					lhsExprs = append(lhsExprs, c.convertExpr(l))
+				}
+				return &mini_ast.MultiAssignmentStmt{
+					BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
+					LHS:      lhsExprs,
+					Value:    c.convertExpr(rhs),
+				}
 			}
 		}
 		return nil
