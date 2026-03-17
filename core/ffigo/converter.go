@@ -62,7 +62,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			fn := c.convertFunc(d)
-			program.Functions[mini_ast.Ident(d.Name.Name)] = fn
+			program.Functions[fn.Name] = fn
 		case *ast.GenDecl:
 			for _, spec := range d.Specs {
 				switch s := spec.(type) {
@@ -118,10 +118,40 @@ func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *mini_a
 }
 
 func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
+	fnName := d.Name.Name
+	var params []mini_ast.FunctionParam
+
+	// Handle Receiver: func (r T) Name(...) -> __method_T_Name(r T, ...)
+	if d.Recv != nil && len(d.Recv.List) > 0 {
+		recv := d.Recv.List[0]
+		typeName := c.typeToString(recv.Type)
+		// Clean type name
+		baseTypeName := strings.TrimPrefix(typeName, "Ptr<")
+		baseTypeName = strings.TrimPrefix(baseTypeName, "*")
+		baseTypeName = strings.TrimSuffix(baseTypeName, ">")
+
+		fnName = fmt.Sprintf("__method_%s_%s", baseTypeName, fnName)
+
+		if len(recv.Names) > 0 {
+			params = append(params, mini_ast.FunctionParam{
+				Name: mini_ast.Ident(recv.Names[0].Name),
+				Type: mini_ast.GoMiniType(typeName),
+			})
+		} else {
+			params = append(params, mini_ast.FunctionParam{
+				Name: "_",
+				Type: mini_ast.GoMiniType(typeName),
+			})
+		}
+	}
+
 	fn := &mini_ast.FunctionStmt{
 		BaseNode: mini_ast.BaseNode{Meta: "function"},
-		Name:     mini_ast.Ident(d.Name.Name),
+		Name:     mini_ast.Ident(fnName),
 		Body:     &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}},
+		FunctionType: mini_ast.FunctionType{
+			Params: params,
+		},
 	}
 	// Params
 	if d.Type.Params != nil {

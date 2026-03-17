@@ -353,13 +353,41 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 		_, err := e.ExecExpr(ctx, n)
 		return err
 	case *ast.IncDecStmt:
-		ident, _ := n.Operand.(*ast.IdentifierExpr)
-		v, _ := ctx.Load(string(ident.Name))
-		if v != nil {
-			if n.Operator == "++" {
-				v.I64++
-			} else {
-				v.I64--
+		if ident, ok := n.Operand.(*ast.IdentifierExpr); ok {
+			v, _ := ctx.Load(string(ident.Name))
+			if v != nil {
+				if n.Operator == "++" {
+					v.I64++
+				} else {
+					v.I64--
+				}
+			}
+		} else if member, ok := n.Operand.(*ast.MemberExpr); ok {
+			obj, err := e.ExecExpr(ctx, member.Object)
+			if err == nil && obj != nil {
+				switch obj.VType {
+				case TypeMap:
+					m := obj.Ref.(*VMMap)
+					if val, exists := m.Data[string(member.Property)]; exists && val != nil {
+						if n.Operator == "++" {
+							val.I64++
+						} else {
+							val.I64--
+						}
+					}
+				case TypeAny:
+					if obj.Ref != nil {
+						if m, ok2 := obj.Ref.(*VMMap); ok2 {
+							if val, exists := m.Data[string(member.Property)]; exists && val != nil {
+								if n.Operator == "++" {
+									val.I64++
+								} else {
+									val.I64--
+								}
+							}
+						}
+					}
+				}
 			}
 		}
 		return nil
@@ -903,10 +931,30 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 
 func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, error) {
 	var name string
+	var receiver *Var
+
 	if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
 		name = string(ident.Name)
 	} else if ident, ok := n.Func.(*ast.IdentifierExpr); ok {
 		name = string(ident.Name)
+	} else if member, ok := n.Func.(*ast.MemberExpr); ok {
+		// 方法调用支持
+		obj, err := e.ExecExpr(ctx, member.Object)
+		if err != nil {
+			return nil, err
+		}
+		if obj == nil {
+			return nil, fmt.Errorf("calling method on nil object")
+		}
+
+		receiver = obj
+		tName := string(obj.Type)
+		tName = strings.TrimPrefix(tName, "Ptr<")
+		tName = strings.TrimPrefix(tName, "*")
+		tName = strings.TrimSuffix(tName, ">")
+
+		// 拼接方法名以匹配 Converter 阶段生成的全局函数 (如 __method_Person_GetAge)
+		name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
 	}
 
 	if name != "" {
@@ -981,10 +1029,21 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 
 		// 内部函数
 		if f, ok := e.program.Functions[ast.Ident(name)]; ok {
-			args := make([]*Var, len(n.Args))
+			totalArgs := len(n.Args)
+			offset := 0
+			if receiver != nil {
+				totalArgs++
+				offset = 1
+			}
+
+			args := make([]*Var, totalArgs)
+			if receiver != nil {
+				args[0] = receiver
+			}
+
 			for i, aExpr := range n.Args {
 				var err error
-				args[i], err = e.ExecExpr(ctx, aExpr)
+				args[i+offset], err = e.ExecExpr(ctx, aExpr)
 				if err != nil {
 					return nil, err
 				}
@@ -1014,10 +1073,21 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 
 		// 外部路由 FFI
 		if route, ok := e.routes[name]; ok {
-			args := make([]*Var, len(n.Args))
+			totalArgs := len(n.Args)
+			offset := 0
+			if receiver != nil {
+				totalArgs++
+				offset = 1
+			}
+
+			args := make([]*Var, totalArgs)
+			if receiver != nil {
+				args[0] = receiver
+			}
+
 			for i, aExpr := range n.Args {
 				var err error
-				args[i], err = e.ExecExpr(ctx, aExpr)
+				args[i+offset], err = e.ExecExpr(ctx, aExpr)
 				if err != nil {
 					return nil, err
 				}

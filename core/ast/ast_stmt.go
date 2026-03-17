@@ -63,8 +63,6 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		function.GetBase().EnsureID(&ctx.ValidContext)
 		if _, ok := function.PreRegister(&ctx.ValidContext); !ok {
 			return fmt.Errorf("function %s pre-registration failed", name)
-		} else {
-			ctx.root.Methods[name] = function.FunctionType.ToCallFunctionType()
 		}
 	}
 	for _, stmt := range p.Main {
@@ -679,25 +677,38 @@ type FunctionStmt struct {
 
 // PreRegister 预注册函数签名 (用于支持相互递归)
 func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
-	if ctx.root.Package != "" && ctx.root.Package != "main" {
-		if !strings.Contains(string(f.Name), ".") {
-			f.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, f.Name))
+	var structType *ValidStruct
+	fnName := f.Name
+	isMethod := false
+
+	// 检测 __method_ 前缀
+	if strings.HasPrefix(string(f.Name), "__method_") {
+		parts := strings.SplitN(strings.TrimPrefix(string(f.Name), "__method_"), "_", 2)
+		if len(parts) == 2 {
+			typeName := Ident(parts[0])
+			methodName := Ident(parts[1])
+
+			// 查找对应的 Struct
+			st, ok := ctx.root.structs[typeName]
+			if !ok && ctx.root.Package != "" && ctx.root.Package != "main" {
+				// 尝试带包名前缀
+				st, ok = ctx.root.structs[Ident(fmt.Sprintf("%s.%s", ctx.root.Package, typeName))]
+			}
+			if ok {
+				structType = st
+				fnName = methodName
+				isMethod = true
+			}
 		}
 	}
 
-	var structType *ValidStruct
-	if f.Scope != "" {
-		f.Scope = Ident(GoMiniType(f.Scope).Resolve(ctx))
-		if !f.Scope.Valid(ctx) {
-			return nil, false
+	if !isMethod {
+		if ctx.root.Package != "" && ctx.root.Package != "main" {
+			if !strings.Contains(string(f.Name), ".") && !strings.HasPrefix(string(f.Name), "__method_") {
+				f.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, f.Name))
+				fnName = f.Name
+			}
 		}
-
-		var ok bool
-		if structType, ok = ctx.GetStruct(f.Scope); !ok {
-			ctx.AddErrorf("未知 struct %s", f.Scope)
-			return nil, false
-		}
-	} else {
 		structType = ctx.root.ValidStruct
 	}
 
@@ -723,8 +734,17 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 		}
 	}
 
-	if t, ok := structType.Methods[f.Name]; ok {
-		sig := f.FunctionType.ToCallFunctionType()
+	// 注册函数签名
+	sig := f.FunctionType.ToCallFunctionType()
+	if isMethod {
+		methodSig := f.FunctionType
+		if len(methodSig.Params) > 0 {
+			methodSig.Params = append([]FunctionParam(nil), methodSig.Params[1:]...)
+		}
+		sig = methodSig.ToCallFunctionType()
+	}
+
+	if t, ok := structType.Methods[fnName]; ok {
 		if t.String() != sig.String() {
 			ctx.AddErrorf("函数 %s 已被定义为 %s (新定义: %s)", f.Name, t, sig)
 			return nil, false
@@ -732,15 +752,7 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 		return structType, true
 	}
 
-	// 注册函数签名
-	structType.Methods[f.Name] = f.FunctionType.ToCallFunctionType()
-	if f.Scope != "" {
-		err := ctx.AddFuncSpec(Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name)), GoMiniType(f.FunctionType.String()))
-		if err != nil {
-			ctx.AddErrorf("添加全局函数失败")
-			return nil, false
-		}
-	}
+	structType.Methods[fnName] = sig
 
 	return structType, true
 }
@@ -773,26 +785,17 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	// 3. this 上下文
-	if f.Scope != "" {
-		bodyCtx.AddVariable("this", GoMiniType(f.Scope))
-	}
-
-	// 4. 注册到程序中
+	// 3. 注册到程序中
 	f.Type = "Void"
-	name := f.Name
-	if f.Scope != "" {
-		name = Ident(fmt.Sprintf("__obj__%s__%s", f.Scope, f.Name))
-	}
-	ctx.root.program.Functions[name] = f
+	ctx.root.program.Functions[f.Name] = f
 
-	// 5. 验证函数体 (Check Body)
+	// 4. 校验函数体
 	semBodyCtx := NewSemanticContext(bodyCtx)
 	if err := f.Body.Check(semBodyCtx); err != nil {
 		return err
 	}
 
-	// 6. 返回路径 analysis
+	// 5. 返回路径 analysis
 	returnTypes, _ := f.FunctionType.Return.ReadTuple()
 	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
 		analyzer := NewReturnAnalyzer(bodyCtx, f)
@@ -902,6 +905,9 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			if vType == "Any" && miniType != "Any" {
 				ctx.UpdateVariable(ident.Name, miniType)
 			}
+			// Update the identifier's own type so subsequent uses in the AST might benefit,
+			// though typical Check flows rely on GetVariable.
+			ident.Type = miniType
 			return nil
 		}
 

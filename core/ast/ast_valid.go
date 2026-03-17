@@ -203,7 +203,12 @@ func (c *ValidContext) AddFuncSpec(name Ident, miniType GoMiniType) error {
 }
 
 func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) error {
-	vStru := &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
+	vStru, exists := c.root.structs[name]
+	if !exists {
+		vStru = &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
+		c.root.structs[name] = vStru
+	}
+
 	for ident, miniType := range specs {
 		if callFunc, b := miniType.ReadCallFunc(); b {
 			vStru.Methods[ident] = *callFunc
@@ -212,7 +217,6 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 			vStru.Fields[ident] = miniType
 		}
 	}
-	c.root.structs[name] = vStru
 	return nil
 }
 

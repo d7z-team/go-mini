@@ -23,3 +23,8 @@ clean:
 
 test: gen
 	@go test -v ./...
+
+fmt:
+	$(call ensure_tool,$(GOFUMPT),mvdan.cc/gofumpt@latest)
+	$(GOFUMPT) -l -w .
+	go mod tidy

@@ -275,6 +275,11 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 		return nil
 	}
 	// Copy data only, keep original metadata if strictly typed
+	// But if original type was Any, allow it to become the specific type
+	if v.Type == "Any" && expr.Type != "Any" {
+		v.Type = expr.Type
+	}
+
 	v.VType = expr.VType
 	v.I64 = expr.I64
 	v.F64 = expr.F64

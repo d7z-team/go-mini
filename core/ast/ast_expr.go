@@ -342,7 +342,10 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	met, b := miniStruct.Fields[m.Property]
 	if !b {
 		if method, ok := miniStruct.Methods[m.Property]; ok {
-			met = method.MiniType()
+			// If it's a method, the type of the MemberExpr itself is the function signature.
+			// The subsequent CallExprStmt will check arguments against this signature and set the final return type.
+			m.Type = GoMiniType(method.String())
+			return nil
 		} else {
 			return fmt.Errorf("struct(%s) 不存在 (%s)", name, m.Property)
 		}
