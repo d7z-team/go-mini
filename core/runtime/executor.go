@@ -1065,6 +1065,90 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			}
 			return NewInt(0), nil
 		}
+		if name == "append" {
+			if len(n.Args) < 1 {
+				return nil, errors.New("missing arguments to append")
+			}
+			sliceArg, err := e.ExecExpr(ctx, n.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			
+			var t ast.GoMiniType = "Array<Any>"
+			var data []*Var
+			if sliceArg != nil {
+				if sliceArg.VType != TypeArray && sliceArg.VType != TypeBytes {
+					return nil, fmt.Errorf("first argument to append must be slice; have %v", sliceArg.VType)
+				}
+				if sliceArg.VType == TypeBytes {
+					b := make([]byte, len(sliceArg.B))
+					copy(b, sliceArg.B)
+					for i := 1; i < len(n.Args); i++ {
+						arg, err := e.ExecExpr(ctx, n.Args[i])
+						if err != nil {
+							return nil, err
+						}
+						if arg != nil {
+							if arg.VType == TypeInt {
+								b = append(b, byte(arg.I64))
+							} else if arg.VType == TypeBytes {
+								b = append(b, arg.B...)
+							}
+						}
+					}
+					return &Var{VType: TypeBytes, B: b, Type: sliceArg.Type}, nil
+				}
+				arr := sliceArg.Ref.(*VMArray)
+				t = sliceArg.Type
+				data = make([]*Var, len(arr.Data))
+				copy(data, arr.Data)
+			}
+			
+			for i := 1; i < len(n.Args); i++ {
+				arg, err := e.ExecExpr(ctx, n.Args[i])
+				if err != nil {
+					return nil, err
+				}
+				data = append(data, arg)
+			}
+			return &Var{VType: TypeArray, Ref: &VMArray{Data: data}, Type: t}, nil
+		}
+		if name == "delete" {
+			if len(n.Args) != 2 {
+				return nil, errors.New("missing arguments to delete")
+			}
+			mapArg, err := e.ExecExpr(ctx, n.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			if mapArg == nil {
+				return nil, nil // Go allows delete on nil map
+			}
+			if mapArg.VType != TypeMap && mapArg.VType != TypeAny {
+				return nil, fmt.Errorf("first argument to delete must be map; have %v", mapArg.VType)
+			}
+			
+			keyArg, err := e.ExecExpr(ctx, n.Args[1])
+			if err != nil {
+				return nil, err
+			}
+			if keyArg != nil {
+				var m *VMMap
+				if mapArg.VType == TypeMap {
+					m = mapArg.Ref.(*VMMap)
+				} else if mapArg.Ref != nil {
+					m, _ = mapArg.Ref.(*VMMap)
+				}
+				if m != nil {
+					key := keyArg.Str
+					if keyArg.VType == TypeInt {
+						key = strconv.FormatInt(keyArg.I64, 10)
+					}
+					delete(m.Data, key)
+				}
+			}
+			return nil, nil
+		}
 
 		// 内部函数
 		if f, ok := e.program.Functions[ast.Ident(name)]; ok {

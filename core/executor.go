@@ -54,6 +54,8 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["string"] = "function(Any) String"
 	res.specs["[]byte"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
+	res.specs["append"] = "function(Any, ...Any) Any"
+	res.specs["delete"] = "function(Any, Any) Void"
 	return res
 }
 
