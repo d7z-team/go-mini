@@ -68,6 +68,10 @@ func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, err
 	o.Loader = loader
 }
 
+func (o *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
+	return o.registry
+}
+
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
 func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
 	returns := "Void"

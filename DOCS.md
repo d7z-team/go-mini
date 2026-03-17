@@ -76,21 +76,29 @@ func main() {
 
 	code := `
 	package main
+	import "os"
 	import "fmt"
-	import "json"
 
 	func main() {
-		// 使用 fmt 打印
-		fmt.Println("Hello from Go-Mini!")
-
-		// 使用 json 解析 (返回 Result<T> 结构)
-		res := json.Unmarshal([]byte(` + "`" + `{"status": "ok"}` + "`" + `))
+		// 使用 os.Create 创建文件，返回 Result<Ptr<File>>
+		res := os.Create("hello.txt")
 		if res.err != nil {
 			panic(res.err)
 		}
+		f := res.val
+
+		// 面向对象风格的方法调用：写入数据
+		f.Write([]byte("Hello from Go-Mini OOP!"))
 		
-		// 动态访问 Map 字段
-		fmt.Println("Status:", res.val.status)
+		// 关闭文件
+		f.Close()
+
+		// 读取验证
+		dataRes := os.ReadFile("hello.txt")
+		fmt.Println("Content:", string(dataRes.val))
+		
+		// 清理
+		os.Remove("hello.txt")
 	}
 	`
 
@@ -142,45 +150,44 @@ err := prog.Execute(ctx)
 如果你想让脚本调用你自己的 Go 函数（例如操作数据库、请求网络），你需要使用 `ffigen` 工具。
 
 ### 步骤 1：定义接口
-在你的项目中定义一个普通的 Go 接口。所有可能失败的方法都应该返回 `error`。
+在你的 Go 代码中定义一个接口，并使用注解来指导生成器。
 
 ```go
 // mylib/interface.go
 package mylib
 
+// ffigen:module db
 type Database interface {
 	GetUser(id int64) (string, error)
 	SaveData(data []byte) error
 }
 ```
+*   `// ffigen:module <name>`: 指定脚本中 import 的包名。
+*   `// ffigen:methods <TypeName>`: (可选) 用于定义面向对象的方法句柄前缀。
 
 ### 步骤 2：生成绑定代码
-使用附带的 `ffigen` 命令行工具（或者通过 `go generate`）：
+使用 `ffigen` 工具：
 
 ```bash
-go run ./cmd/ffigen -pkg mylib -iface Database -out mylib_ffigen.go
+go run ./cmd/ffigen -pkg mylib -out mylib_ffigen.go interface.go
 ```
-这会自动生成安全且零反射的 `Router`（宿主端接收器）和 `Proxy`（供 VM 生成 AST 用的代理类型）。
 
-### 步骤 3：实现宿主逻辑并注册
-实现你定义的接口，并将其注册到执行器中：
-
+### 步骤 3：实现并注册
 ```go
-// 宿主端的真实实现
+// 宿主逻辑
 type MyDatabaseImpl struct {}
 func (db *MyDatabaseImpl) GetUser(id int64) (string, error) { return "Alice", nil }
 func (db *MyDatabaseImpl) SaveData(data []byte) error { return nil }
 
-// 在 main.go 中注册
 func main() {
 	executor := engine.NewMiniExecutor()
-	
-	// 假设生成器生成了 RegisterDatabaseFFI 函数
-	// mylib.RegisterDatabaseFFI(executor, &MyDatabaseImpl{})
-	
-	// 现在脚本里就可以 import "mylib" 并调用对应方法了
+
+	// 使用生成的精简注册函数
+	mylib.RegisterDatabase(executor, &MyDatabaseImpl{}, executor.HandleRegistry())
 }
 ```
+现在脚本里就可以 `import "db"` 并直接调用 `db.GetUser(1)` 了。
+
 
 ---
 
@@ -211,7 +218,9 @@ func main() {
     *   `break / continue`
 
 ### 4. 高级操作与错误处理
-*   **内存预分配**：支持通过 `make([]int, len, cap)` 或 `make(map[string]any)` 预分配内存，优化大批量数据处理的 GC 压力。
+*   **引用语义**：**重要**。为了性能优化，脚本内定义的结构体和数组采用**引用语义**。赋值（`a := b`）或将对象作为方法接收者时，修改其中一个变量会影响另一个。
+*   **Context 数据传递**：执行脚本时通过 `Execute(ctx)` 传入的 Context 会自动透传给所有带 `context.Context` 参数的 FFI 方法。这允许宿主程序动态向脚本调用链注入数据（通过 `context.WithValue`）。
+*   **内存预分配**：支持通过 `make([]int, len, cap)` 或 `make(map[string]any)` 预分配内存。
 *   **动态集合操作**：内建支持 `append(slice, ...items)` 用于向数组追加元素，支持 `delete(map, key)` 用于从字典中移除键值对。
 *   **模块与包加载系统**：支持 `import "pkg"`。执行器内置了真正的动态模块加载器，允许脚本引用其他脚本文件，共享导出（首字母大写）的常量、变量、结构体和函数。
 *   **错误处理**：通过标准的 `Result` 对象 (`res.val`, `res.err`) 与多变量解构完美结合处理。引擎秉持 Fail-Fast 哲学，不支持原生 `recover`，但支持通过 `panic()` 抛出致命异常。
