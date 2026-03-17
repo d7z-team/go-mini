@@ -56,6 +56,33 @@ func TestBuiltins(t *testing.T) {
 		if len(mAny) != 0 {
 			panic("delete on Any map failed")
 		}
+
+		// 5. Test numeric conversions
+		f := 1.9
+		i := int(f)
+		if i != 1 {
+			panic("float to int conversion failed")
+		}
+		
+		i64 := int64(2.5)
+		if i64 != 2 {
+			panic("float to int64 conversion failed")
+		}
+
+		f2 := float64(i64)
+		if f2 != 2.0 {
+			panic("int to float conversion failed")
+		}
+
+		s := "123"
+		if int(s) != 123 {
+			panic("string to int conversion failed")
+		}
+
+		s2 := "3.14"
+		if float64(s2) != 3.14 {
+			panic("string to float conversion failed")
+		}
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

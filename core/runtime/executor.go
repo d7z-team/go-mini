@@ -1044,6 +1044,47 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			}
 			return NewBytes(nil), nil
 		}
+		if name == "int64" || name == "int" {
+			if len(n.Args) > 0 {
+				arg, _ := e.ExecExpr(ctx, n.Args[0])
+				if arg == nil {
+					return NewInt(0), nil
+				}
+				switch arg.VType {
+				case TypeInt:
+					return arg, nil
+				case TypeFloat:
+					return NewInt(int64(arg.F64)), nil
+				case TypeString:
+					val, _ := strconv.ParseInt(arg.Str, 10, 64)
+					return NewInt(val), nil
+				case TypeBool:
+					if arg.Bool {
+						return NewInt(1), nil
+					}
+					return NewInt(0), nil
+				}
+			}
+			return NewInt(0), nil
+		}
+		if name == "float64" {
+			if len(n.Args) > 0 {
+				arg, _ := e.ExecExpr(ctx, n.Args[0])
+				if arg == nil {
+					return NewFloat(0), nil
+				}
+				switch arg.VType {
+				case TypeFloat:
+					return arg, nil
+				case TypeInt:
+					return NewFloat(float64(arg.I64)), nil
+				case TypeString:
+					val, _ := strconv.ParseFloat(arg.Str, 64)
+					return NewFloat(val), nil
+				}
+			}
+			return NewFloat(0), nil
+		}
 		if name == "len" {
 			if len(n.Args) > 0 {
 				arg, _ := e.ExecExpr(ctx, n.Args[0])

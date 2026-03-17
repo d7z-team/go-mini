@@ -56,6 +56,9 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["len"] = "function(Any) Int64"
 	res.specs["append"] = "function(Any, ...Any) Any"
 	res.specs["delete"] = "function(Any, Any) Void"
+	res.specs["int"] = "function(Any) Int64"
+	res.specs["int64"] = "function(Any) Int64"
+	res.specs["float64"] = "function(Any) Float64"
 	return res
 }
 
