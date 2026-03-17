@@ -17,7 +17,7 @@ func TestTimeLibrary(t *testing.T) {
 	import "fmt"
 
 	func main() {
-		start := time.Now()
+		start := time.UnixNano()
 		fmt.Println("Starting sleep...")
 		
 		// Sleep 100ms (100 * 1000 * 1000 ns)

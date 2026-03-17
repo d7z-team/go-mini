@@ -15,6 +15,8 @@ const (
 	MethodID_OS_ReadFile  = 3
 	MethodID_OS_WriteFile = 4
 	MethodID_OS_Remove    = 5
+	MethodID_OS_Getenv    = 6
+	MethodID_OS_Setenv    = 7
 )
 
 type OSProxy struct {
@@ -134,6 +136,37 @@ func (p *OSProxy) Remove(ctx context.Context, name string) error {
 	return nil
 }
 
+func (p *OSProxy) Getenv(ctx context.Context, key string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(key)
+
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Getenv, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = retBuf.ReadString()
+	return v_0
+}
+
+func (p *OSProxy) Setenv(ctx context.Context, key string, value string) error {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(key)
+	buf.WriteString(value)
+
+	retData, err := p.bridge.Call(ctx, MethodID_OS_Setenv, buf.Bytes())
+	_ = retData
+	_ = err
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
@@ -202,6 +235,27 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteByte(0)
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_OS_Getenv:
+		var key string
+		key = reqBuf.ReadString()
+		r0 := impl.Getenv(key)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(r0)
+		return resBuf.Bytes(), nil
+	case MethodID_OS_Setenv:
+		var key string
+		key = reqBuf.ReadString()
+		var value string
+		value = reqBuf.ReadString()
+		err := impl.Setenv(key, value)
+		resBuf := ffigo.GetBuffer()
+		if err != nil {
+			resBuf.WriteByte(1)
+			resBuf.WriteString(ffigo.WrapError(err))
+		} else {
+			resBuf.WriteByte(0)
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -217,6 +271,8 @@ var OS_FFI_Metadata = []struct {
 	{"ReadFile", 3, "function(String) Result<Array<Uint8>>"},
 	{"WriteFile", 4, "function(String, Array<Uint8>) Result<Void>"},
 	{"Remove", 5, "function(String) Result<Void>"},
+	{"Getenv", 6, "function(String) String"},
+	{"Setenv", 7, "function(String, String) Result<Void>"},
 }
 
 type OS_Bridge struct {

@@ -10,9 +10,11 @@ import (
 )
 
 const (
-	MethodID_Time_Now   = 1
-	MethodID_Time_Sleep = 2
-	MethodID_Time_Since = 3
+	MethodID_Time_Now      = 1
+	MethodID_Time_Unix     = 2
+	MethodID_Time_UnixNano = 3
+	MethodID_Time_Sleep    = 4
+	MethodID_Time_Since    = 5
 )
 
 type TimeProxy struct {
@@ -33,6 +35,32 @@ func (p *TimeProxy) Now(ctx context.Context) string {
 	return v_0
 }
 
+func (p *TimeProxy) Unix(ctx context.Context) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := p.bridge.Call(ctx, MethodID_Time_Unix, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	v_0 = int64(retBuf.ReadInt64())
+	return v_0
+}
+
+func (p *TimeProxy) UnixNano(ctx context.Context) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := p.bridge.Call(ctx, MethodID_Time_UnixNano, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	v_0 = int64(retBuf.ReadInt64())
+	return v_0
+}
+
 func (p *TimeProxy) Sleep(ctx context.Context, ns int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
@@ -44,11 +72,11 @@ func (p *TimeProxy) Sleep(ctx context.Context, ns int64) {
 	return
 }
 
-func (p *TimeProxy) Since(ctx context.Context, startRFC3339 string) int64 {
+func (p *TimeProxy) Since(ctx context.Context, ns int64) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(startRFC3339)
+	buf.WriteInt64(int64(ns))
 
 	retData, err := p.bridge.Call(ctx, MethodID_Time_Since, buf.Bytes())
 	_ = retData
@@ -67,6 +95,16 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
+	case MethodID_Time_Unix:
+		r0 := impl.Unix()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixNano:
+		r0 := impl.UnixNano()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteInt64(int64(r0))
+		return resBuf.Bytes(), nil
 	case MethodID_Time_Sleep:
 		var ns int64
 		ns = int64(reqBuf.ReadInt64())
@@ -74,9 +112,9 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Since:
-		var startRFC3339 string
-		startRFC3339 = reqBuf.ReadString()
-		r0 := impl.Since(startRFC3339)
+		var ns int64
+		ns = int64(reqBuf.ReadInt64())
+		r0 := impl.Since(ns)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteInt64(int64(r0))
 		return resBuf.Bytes(), nil
@@ -91,8 +129,10 @@ var Time_FFI_Metadata = []struct {
 	Spec     string
 }{
 	{"Now", 1, "function() String"},
-	{"Sleep", 2, "function(Int64) Void"},
-	{"Since", 3, "function(String) Int64"},
+	{"Unix", 2, "function() Int64"},
+	{"UnixNano", 3, "function() Int64"},
+	{"Sleep", 4, "function(Int64) Void"},
+	{"Since", 5, "function(Int64) Int64"},
 }
 
 type Time_Bridge struct {

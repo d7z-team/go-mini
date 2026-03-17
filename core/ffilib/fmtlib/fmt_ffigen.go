@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	MethodID_Fmt_Print   = 1
-	MethodID_Fmt_Println = 2
-	MethodID_Fmt_Printf  = 3
-	MethodID_Fmt_Sprintf = 4
+	MethodID_Fmt_Print    = 1
+	MethodID_Fmt_Println  = 2
+	MethodID_Fmt_Printf   = 3
+	MethodID_Fmt_Sprintf  = 4
+	MethodID_Fmt_Fprint   = 5
+	MethodID_Fmt_Fprintf  = 6
+	MethodID_Fmt_Fprintln = 7
 )
 
 type FmtProxy struct {
@@ -81,6 +84,52 @@ func (p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) stri
 	var v_0 string
 	v_0 = retBuf.ReadString()
 	return v_0
+}
+
+func (p *FmtProxy) Fprint(ctx context.Context, w any, args ...any) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteAny(w)
+	buf.WriteUint32(uint32(len(args)))
+	for _, item := range args {
+		buf.WriteAny(item)
+	}
+
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Fprint, buf.Bytes())
+	_ = err
+	return
+}
+
+func (p *FmtProxy) Fprintf(ctx context.Context, w any, format string, args ...any) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteAny(w)
+	buf.WriteString(format)
+	buf.WriteUint32(uint32(len(args)))
+	for _, item := range args {
+		buf.WriteAny(item)
+	}
+
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Fprintf, buf.Bytes())
+	_ = err
+	return
+}
+
+func (p *FmtProxy) Fprintln(ctx context.Context, w any, args ...any) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteAny(w)
+	buf.WriteUint32(uint32(len(args)))
+	for _, item := range args {
+		buf.WriteAny(item)
+	}
+
+	_, err := p.bridge.Call(ctx, MethodID_Fmt_Fprintln, buf.Bytes())
+	_ = err
+	return
 }
 
 func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
@@ -167,6 +216,98 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
+	case MethodID_Fmt_Fprint:
+		var w any
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				w = obj
+			} else {
+				w = rawVal
+			}
+		} else {
+			w = rawVal
+		}
+		var args []any
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
+			} else {
+				args[i_args] = rawVal
+			}
+		}
+		impl.Fprint(w, args...)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Fmt_Fprintf:
+		var w any
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				w = obj
+			} else {
+				w = rawVal
+			}
+		} else {
+			w = rawVal
+		}
+		var format string
+		format = reqBuf.ReadString()
+		var args []any
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
+			} else {
+				args[i_args] = rawVal
+			}
+		}
+		impl.Fprintf(w, format, args...)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Fmt_Fprintln:
+		var w any
+		rawVal := reqBuf.ReadAny()
+		if id, ok := rawVal.(uint32); ok {
+			if obj, ok := registry.Get(id); ok {
+				w = obj
+			} else {
+				w = rawVal
+			}
+		} else {
+			w = rawVal
+		}
+		var args []any
+		l_args := int(reqBuf.ReadUint32())
+		args = make([]any, l_args)
+		for i_args := 0; i_args < l_args; i_args++ {
+			rawVal := reqBuf.ReadAny()
+			if id, ok := rawVal.(uint32); ok {
+				if obj, ok := registry.Get(id); ok {
+					args[i_args] = obj
+				} else {
+					args[i_args] = rawVal
+				}
+			} else {
+				args[i_args] = rawVal
+			}
+		}
+		impl.Fprintln(w, args...)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -181,6 +322,9 @@ var Fmt_FFI_Metadata = []struct {
 	{"Println", 2, "function(...Any) Void"},
 	{"Printf", 3, "function(String, ...Any) Void"},
 	{"Sprintf", 4, "function(String, ...Any) String"},
+	{"Fprint", 5, "function(Any, ...Any) Void"},
+	{"Fprintf", 6, "function(Any, String, ...Any) Void"},
+	{"Fprintln", 7, "function(Any, ...Any) Void"},
 }
 
 type Fmt_Bridge struct {

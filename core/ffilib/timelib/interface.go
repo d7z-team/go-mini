@@ -6,6 +6,8 @@ package timelib
 // ffigen:module time
 type Time interface {
 	Now() string
+	Unix() int64
+	UnixNano() int64
 	Sleep(ns int64)
-	Since(startRFC3339 string) int64
+	Since(ns int64) int64
 }

@@ -36,6 +36,14 @@ func (h *OSHost) Remove(ctx context.Context, name string) error {
 	return os.Remove(name)
 }
 
+func (h *OSHost) Getenv(key string) string {
+	return os.Getenv(key)
+}
+
+func (h *OSHost) Setenv(key, value string) error {
+	return os.Setenv(key, value)
+}
+
 type FileMethodsHost struct{}
 
 func (h *FileMethodsHost) Read(f *File, b []byte) (int, error) {
@@ -57,4 +65,14 @@ func (h *FileMethodsHost) Close(f *File) error {
 		return nil
 	}
 	return ((*os.File)(unsafe.Pointer(f))).Close()
+}
+
+// 满足 io.Reader 接口
+func (f *File) Read(p []byte) (n int, err error) {
+	return ((*os.File)(unsafe.Pointer(f))).Read(p)
+}
+
+// 满足 io.Writer 接口
+func (f *File) Write(p []byte) (n int, err error) {
+	return ((*os.File)(unsafe.Pointer(f))).Write(p)
 }

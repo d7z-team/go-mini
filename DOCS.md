@@ -90,13 +90,21 @@ func main() {
 		// 面向对象风格的方法调用：写入数据
 		f.Write([]byte("Hello from Go-Mini OOP!"))
 		
+		// 也可以使用扩展的 fmt 包写入句柄
+		fmt.Fprintf(f, "Formatted count: %d", 100)
+		
 		// 关闭文件
 		f.Close()
 
-		// 读取验证
-		dataRes := os.ReadFile("hello.txt")
+		// 使用 io 包读取全量数据
+		openRes := os.Open("hello.txt")
+		dataRes := io.ReadAll(openRes.val)
 		fmt.Println("Content:", string(dataRes.val))
 		
+		// 环境变量操作
+		os.Setenv("SCRIPT_RUN", "true")
+		fmt.Println("Env:", os.Getenv("SCRIPT_RUN"))
+
 		// 清理
 		os.Remove("hello.txt")
 	}
@@ -165,7 +173,12 @@ type Database interface {
 *   `// ffigen:module <name>`: 指定脚本中 import 的包名。
 *   `// ffigen:methods <TypeName>`: (可选) 用于定义面向对象的方法句柄前缀。
 
-### 步骤 2：生成绑定代码
+### 步骤 2：设计数据交换语义
+`ffigen` 根据你的接口参数和返回类型自动决定数据交换方式：
+*   **值语义 (T)**：如果方法返回或接收结构体值，`ffigen` 会触发全量二进制序列化。这适用于纯数据对象。注意：脚本内定义的结构体对应这些对象时采用引用语义。
+*   **句柄语义 (*T)**：如果方法返回或接收指针，`ffigen` 会将其自动注册为 `TypeHandle` (uint32 ID)。VM 无法直接访问其内部字段，只能通过 FFI 方法操作。这适用于有状态的资源（如数据库连接、文件描述符）。
+
+### 步骤 3：生成绑定代码
 使用 `ffigen` 工具：
 
 ```bash
@@ -220,6 +233,7 @@ func main() {
 ### 4. 高级操作与错误处理
 *   **引用语义**：**重要**。为了性能优化，脚本内定义的结构体和数组采用**引用语义**。赋值（`a := b`）或将对象作为方法接收者时，修改其中一个变量会影响另一个。
 *   **Context 数据传递**：执行脚本时通过 `Execute(ctx)` 传入的 Context 会自动透传给所有带 `context.Context` 参数的 FFI 方法。这允许宿主程序动态向脚本调用链注入数据（通过 `context.WithValue`）。
+*   **时间与计算**：`time` 标准库支持 `time.UnixNano()` 和 `time.Since(ns)`，允许脚本进行高精度的执行时间统计。
 *   **内存预分配**：支持通过 `make([]int, len, cap)` 或 `make(map[string]any)` 预分配内存。
 *   **动态集合操作**：内建支持 `append(slice, ...items)` 用于向数组追加元素，支持 `delete(map, key)` 用于从字典中移除键值对。
 *   **模块与包加载系统**：支持 `import "pkg"`。执行器内置了真正的动态模块加载器，允许脚本引用其他脚本文件，共享导出（首字母大写）的常量、变量、结构体和函数。

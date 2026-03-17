@@ -15,6 +15,8 @@ type OS interface {
 	ReadFile(ctx context.Context, name string) ([]byte, error)
 	WriteFile(ctx context.Context, name string, data []byte) error
 	Remove(ctx context.Context, name string) error
+	Getenv(key string) string
+	Setenv(key, value string) error
 }
 
 // FileMethods 接口定义了文件句柄的方法

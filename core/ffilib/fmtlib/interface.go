@@ -9,4 +9,7 @@ type Fmt interface {
 	Println(args ...any)
 	Printf(format string, args ...any)
 	Sprintf(format string, args ...any) string
+	Fprint(w any, args ...any)
+	Fprintf(w any, format string, args ...any)
+	Fprintln(w any, args ...any)
 }
