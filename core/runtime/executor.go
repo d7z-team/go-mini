@@ -275,7 +275,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 				// Go 1.22 语义：每次迭代创建一个逻辑上的新变量副本
 				// 这样闭包捕获的就是当前迭代的值
 				var bodyErr error
-				
+
 				// 预先收集父级作用域的变量，因为 WithScope 会修改 ctx.Stack
 				parentVars := make(map[string]*Var)
 				for k, v := range ctx.Stack.MemoryPtr {
@@ -300,7 +300,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 						// bodyCtx.Stack is currently top, its parent is the for scope
 						bodyCtx.Stack.Parent.interrupt = bodyCtx.Stack.interrupt
 					}
-					
+
 					// 3. 同步回父级。
 					// 只有将修改后的值同步回父级，Update 语句 (i++) 才能作用于正确的当前值，
 					// 并带入下一次迭代。

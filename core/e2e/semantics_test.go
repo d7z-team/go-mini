@@ -38,7 +38,7 @@ func TestStructSemantics(t *testing.T) {
 	// 我们需要获取返回值，但目前 Execute 不直接返回结果，
 	// 我们通过在脚本最后抛出 panic 或修改全局变量来观察，或者直接看执行器状态。
 	// 这里我们通过断言来验证。
-	
+
 	// 修改脚本，使其如果语义不符合 Go 则 panic
 	codeV := `
 	package main

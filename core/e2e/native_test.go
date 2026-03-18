@@ -37,7 +37,7 @@ func TestNativeObjectInjection(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &NativeMockImpl{}
 	registry := ffigo.NewHandleRegistry()
-	
+
 	// 使用生成的注册函数
 	RegisterNativeMock(executor, mock, registry)
 

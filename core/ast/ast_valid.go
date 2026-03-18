@@ -12,17 +12,17 @@ type Logs struct {
 }
 
 type ValidRoot struct {
-	logs    []Logs
-	structs map[Ident]*ValidStruct
-	program *ProgramStmt
-	Global  *ValidStruct
-	id      uint64
-	Path    string // 模块的导入路径
-	Package string
-	Imports map[string]string
-	vars    map[Ident]GoMiniType
-	Loader  func(path string) (*ProgramStmt, error)
-	Imported map[string]bool
+	logs        []Logs
+	structs     map[Ident]*ValidStruct
+	program     *ProgramStmt
+	Global      *ValidStruct
+	id          uint64
+	Path        string // 模块的导入路径
+	Package     string
+	Imports     map[string]string
+	vars        map[Ident]GoMiniType
+	Loader      func(path string) (*ProgramStmt, error)
+	Imported    map[string]bool
 	importStack []string
 }
 
@@ -60,11 +60,11 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 				Fields:  make(map[Ident]GoMiniType),
 				Methods: make(map[Ident]CallFunctionType),
 			},
-			Package: pkgName,
-			Path:    pkgName, // 默认为包名
-			Imports: imports,
-			vars:    make(map[Ident]GoMiniType),
-			Imported: make(map[string]bool),
+			Package:     pkgName,
+			Path:        pkgName, // 默认为包名
+			Imports:     imports,
+			vars:        make(map[Ident]GoMiniType),
+			Imported:    make(map[string]bool),
 			importStack: make([]string, 0),
 		},
 		parent:  nil,

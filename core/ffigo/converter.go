@@ -611,7 +611,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		if ex.Type.Results != nil && len(ex.Type.Results.List) > 0 {
 			retType = c.typeToString(ex.Type.Results.List[0].Type)
 		}
-		
+
 		funcExpr := &mini_ast.FuncLitExpr{
 			BaseNode: mini_ast.BaseNode{Meta: "func_lit"},
 			FunctionType: mini_ast.FunctionType{
@@ -623,7 +623,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			funcExpr.Body = c.convertStmt(ex.Body).(*mini_ast.BlockStmt)
 			funcExpr.Body.Inner = true
 		}
-		// Capture analysis will be performed during semantic validation (ast_valid.go) 
+		// Capture analysis will be performed during semantic validation (ast_valid.go)
 		// because it's much more accurate to resolve local vs external variables there.
 		return funcExpr
 	}

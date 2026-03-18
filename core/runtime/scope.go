@@ -304,11 +304,11 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 		}
 		return nil
 	}
-	
+
 	if v == nil {
 		return c.AddVariable(variable, expr)
 	}
-	
+
 	// Copy data only, keep original metadata if strictly typed
 	// But if original type was Any, allow it to become the specific type
 	if v.Type == "Any" && expr.Type != "Any" {

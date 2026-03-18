@@ -524,7 +524,7 @@ func (f *FuncLitExpr) exprNode() {}
 func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
 	// 类型推导
 	f.Type = TypeClosure
-	
+
 	// 这里我们需要在 SemanticContext 中开启一个新的作用域来检查函数体
 	// 但这在现有的 check_*.go 或 ast_stmt.go 的 FunctionStmt.Check 中可能有现成的模式
 	// 为了简单起见，我们委托给一个在 ast_valid.go 里的专用检查函数
