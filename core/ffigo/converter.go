@@ -345,6 +345,16 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		if st.Else != nil {
 			res.ElseBody = c.toBlock(st.Else)
 		}
+		if st.Init != nil {
+			return &mini_ast.BlockStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "block"},
+				Inner:    true,
+				Children: []mini_ast.Stmt{
+					c.convertStmt(st.Init),
+					res,
+				},
+			}
+		}
 		return res
 
 	case *ast.ForStmt:

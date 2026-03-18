@@ -373,6 +373,39 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.InterruptStmt{BaseNode: baseNode, InterruptType: raw.InterruptType}, nil
+	case "try":
+		var raw struct {
+			Body    json.RawMessage `json:"body"`
+			Catch   json.RawMessage `json:"catch,omitempty"`
+			Finally json.RawMessage `json:"finally,omitempty"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.TryStmt{BaseNode: baseNode}
+		if raw.Body != nil {
+			node, _ := unmarshalNode(raw.Body)
+			n.Body = node.(*ast.BlockStmt)
+		}
+		if raw.Catch != nil {
+			node, _ := unmarshalNode(raw.Catch)
+			n.Catch = node.(*ast.CatchClause)
+		}
+		if raw.Finally != nil {
+			node, _ := unmarshalNode(raw.Finally)
+			n.Finally = node.(*ast.BlockStmt)
+		}
+		return n, nil
+	case "catch":
+		var raw struct {
+			VarName string          `json:"var_name,omitempty"`
+			Body    json.RawMessage `json:"body"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.CatchClause{BaseNode: baseNode, VarName: ast.Ident(raw.VarName)}
+		if raw.Body != nil {
+			node, _ := unmarshalNode(raw.Body)
+			n.Body = node.(*ast.BlockStmt)
+		}
+		return n, nil
 	case "member":
 		var raw struct {
 			Object   json.RawMessage `json:"object"`

@@ -46,6 +46,17 @@ type MiniRuntimeError struct {
 	Err      error
 }
 
+type PanicError struct {
+	Value *Var
+}
+
+func (p *PanicError) Error() string {
+	if p.Value != nil && p.Value.VType == TypeString {
+		return "panic: " + p.Value.Str
+	}
+	return "panic"
+}
+
 func (e *MiniRuntimeError) Error() string {
 	if e.Err == nil {
 		return "unknown error"
@@ -119,16 +130,32 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Executor panic", "error", r, "stack", string(debug.Stack()))
-			if errRec, ok := r.(error); ok {
-				err = errRec
-			} else {
-				err = fmt.Errorf("panic: %v", r)
+			// Only set err if it's currently nil to avoid overriding intentional script errors
+			if err == nil {
+				if errRec, ok := r.(error); ok {
+					err = errRec
+				} else {
+					err = fmt.Errorf("panic: %v", r)
+				}
 			}
 		}
 	}()
 
 	// 1. 执行顶级语句 (Main)
-	err = e.execStmts(e.ctx, e.program.Main)
+	if err = e.execStmts(e.ctx, e.program.Main); err != nil {
+		targetErr := err
+		for {
+			if mErr, ok := targetErr.(*MiniRuntimeError); ok {
+				targetErr = mErr.Err
+			} else {
+				break
+			}
+		}
+		if pErr, ok := targetErr.(*PanicError); ok {
+			e.ctx.PanicVar = pErr.Value
+			err = pErr
+		}
+	}
 	e.ctx.Stack.RunDefers()
 	if err != nil {
 		return err
@@ -136,20 +163,41 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	// 2. 自动寻找并执行 main() 入口函数
 	if f, ok := e.program.Functions["main"]; ok {
-		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) error {
-			defer c.Stack.RunDefers()
+		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) (innerErr error) {
+			defer func() {
+				c.Stack.RunDefers()
+				if c.PanicVar != nil {
+					innerErr = &PanicError{Value: c.PanicVar}
+				}
+			}()
 			c.Executor = e
 			for _, p := range f.Params {
 				_ = c.NewVar(string(p.Name), p.Type)
 			}
-			return e.execStmts(c, f.Body.Children)
+			execErr := e.execStmts(c, f.Body.Children)
+			if execErr != nil {
+				targetErr := execErr
+				for {
+					if mErr, ok := targetErr.(*MiniRuntimeError); ok {
+						targetErr = mErr.Err
+					} else {
+						break
+					}
+				}
+				if pErr, ok := targetErr.(*PanicError); ok {
+					c.PanicVar = pErr.Value
+				} else {
+					innerErr = execErr
+				}
+			}
+			return innerErr
 		})
 		if err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return err
 }
 
 func (e *Executor) execStmts(ctx *StackContext, children []ast.Stmt) error {
@@ -364,6 +412,42 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 			}
 		})
 		return nil
+	case *ast.TryStmt:
+		err = e.execStmt(ctx, n.Body)
+		if err != nil {
+			// Unwrapping the error to check if it's a PanicError
+			targetErr := err
+			for {
+				if mErr, ok := targetErr.(*MiniRuntimeError); ok {
+					targetErr = mErr.Err
+				} else {
+					break
+				}
+			}
+
+			if pErr, ok := targetErr.(*PanicError); ok {
+				// 成功捕获异常后，清理全局的 PanicVar，防止泄漏给外层环境
+				ctx.PanicVar = nil
+
+				if n.Catch != nil {
+					ctx.WithScope("catch", func(catchCtx *StackContext) {
+						if n.Catch.VarName != "" {
+							_ = catchCtx.NewVar(string(n.Catch.VarName), "Any")
+							_ = catchCtx.Store(string(n.Catch.VarName), pErr.Value)
+						}
+						err = e.execStmts(catchCtx, n.Catch.Body.Children)
+					})
+				}
+			}
+		}
+
+		if n.Finally != nil {
+			finallyErr := e.execStmt(ctx, n.Finally)
+			if finallyErr != nil {
+				err = finallyErr
+			}
+		}
+		return err
 	case *ast.InterruptStmt:
 		if ctx.Stack != nil {
 			ctx.Stack.interrupt = n.InterruptType
@@ -878,10 +962,27 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
+	isEmpty := func(v *Var) bool {
+		if v == nil {
+			return true
+		}
+		switch v.VType {
+		case TypeAny:
+			return v.Ref == nil && v.I64 == 0 && v.Str == ""
+		case TypeString:
+			return v.Str == ""
+		case TypeHandle:
+			return v.Handle == 0
+		case TypeArray, TypeMap, TypeResult, TypeClosure, TypeModule:
+			return v.Ref == nil && v.ResultVal == nil && v.ResultErr == ""
+		}
+		return false
+	}
+
 	// 允许比较运算的操作数为 nil
 	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
-		isLEmpty := l == nil || (l.VType == TypeAny && l.Ref == nil && l.I64 == 0 && l.Str == "") || (l.VType == TypeHandle && l.Handle == 0)
-		isREmpty := r == nil || (r.VType == TypeAny && r.Ref == nil && r.I64 == 0 && r.Str == "") || (r.VType == TypeHandle && r.Handle == 0)
+		isLEmpty := isEmpty(l)
+		isREmpty := isEmpty(r)
 
 		if isLEmpty && isREmpty {
 			return NewBool(operator == "==" || operator == "Eq"), nil
@@ -1361,19 +1462,17 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 		v, err := e.evalImportExpr(ctx, &ast.ImportExpr{Path: pathVar.Str})
 		return v, true, err
 	case "panic":
-		msg := "panic"
-		if len(args) > 0 && args[0] != nil {
-			arg := args[0]
-			switch arg.VType {
-			case TypeString:
-				msg = arg.Str
-			case TypeInt:
-				msg = strconv.FormatInt(arg.I64, 10)
-			default:
-				msg = fmt.Sprintf("%v", arg.VType)
-			}
+		var val *Var
+		if len(args) > 0 {
+			val = args[0]
+		} else {
+			val = NewString("panic")
 		}
-		panic(fmt.Errorf("mini-panic: %v", msg))
+		return nil, true, &PanicError{Value: val}
+	case "recover":
+		res := ctx.PanicVar
+		ctx.PanicVar = nil
+		return res, true, nil
 	case "string":
 		if len(args) > 0 && args[0] != nil {
 			arg := args[0]
@@ -1546,8 +1645,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 
 func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.FunctionStmt, args []*Var) (*Var, error) {
 	var res *Var
-	_ = ctx.WithFuncScope(name, func(old *Stack, c *StackContext) error {
-		defer c.Stack.RunDefers()
+	err := ctx.WithFuncScope(name, func(old *Stack, c *StackContext) (innerErr error) {
 		c.Executor = e
 		for i, p := range f.Params {
 			_ = c.NewVar(string(p.Name), p.Type)
@@ -1566,22 +1664,45 @@ func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.Funct
 		if !f.Return.IsVoid() {
 			_ = c.NewVar("__return__", f.Return)
 		}
-		_ = e.execStmts(c, f.Body.Children)
-		if !f.Return.IsVoid() {
+
+		execErr := e.execStmts(c, f.Body.Children)
+		if execErr != nil {
+			targetErr := execErr
+			for {
+				if mErr, ok := targetErr.(*MiniRuntimeError); ok {
+					targetErr = mErr.Err
+				} else {
+					break
+				}
+			}
+			if pErr, ok := targetErr.(*PanicError); ok {
+				c.PanicVar = pErr.Value
+			} else {
+				innerErr = execErr
+			}
+		}
+
+		// 执行 defer
+		c.Stack.RunDefers()
+
+		// 如果 RunDefers 之后 PanicVar 依然存在，则说明没被恢复
+		if c.PanicVar != nil {
+			innerErr = &PanicError{Value: c.PanicVar}
+		}
+
+		if !f.Return.IsVoid() && innerErr == nil {
 			res, _ = c.loadVar("__return__")
 		}
-		return nil
+		return innerErr
 	})
-	return res, nil
+	return res, err
 }
 
 func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Var) (*Var, error) {
 	f := closure.FuncDef
 	var res *Var
-	var err error
 
-	err = ctx.WithFuncScope("closure", func(old *Stack, c *StackContext) error {
-		defer c.Stack.RunDefers()
+	err := ctx.WithFuncScope("closure", func(old *Stack, c *StackContext) (innerErr error) {
 		c.Executor = e
 
 		// Inject upvalues
@@ -1593,7 +1714,6 @@ func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Va
 		for i, p := range f.Params {
 			if string(p.Name) != "" {
 				_ = c.NewVar(string(p.Name), p.Type)
-				// Here we just use the simple mapping, FuncLit currently doesn't support Variadic in parser directly but let's handle just in case
 				if i < len(args) && args[i] != nil {
 					_ = c.Store(string(p.Name), args[i])
 				}
@@ -1604,15 +1724,34 @@ func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Va
 			_ = c.NewVar("__return__", f.Return)
 		}
 
-		err = e.execStmts(c, f.Body.Children)
-		if err != nil {
-			return err
+		execErr := e.execStmts(c, f.Body.Children)
+		if execErr != nil {
+			targetErr := execErr
+			for {
+				if mErr, ok := targetErr.(*MiniRuntimeError); ok {
+					targetErr = mErr.Err
+				} else {
+					break
+				}
+			}
+			if pErr, ok := targetErr.(*PanicError); ok {
+				c.PanicVar = pErr.Value
+			} else {
+				innerErr = execErr
+			}
 		}
 
-		if !f.Return.IsVoid() {
+		// 执行 defer
+		c.Stack.RunDefers()
+
+		if c.PanicVar != nil {
+			innerErr = &PanicError{Value: c.PanicVar}
+		}
+
+		if !f.Return.IsVoid() && innerErr == nil {
 			res, _ = c.loadVar("__return__")
 		}
-		return nil
+		return innerErr
 	})
 
 	return res, err
@@ -1692,7 +1831,8 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 			}
 			return &Var{VType: TypeResult, ResultVal: val, Type: retType}, nil
 		} else {
-			return &Var{VType: TypeResult, ResultErr: reader.ReadString(), Type: retType}, nil
+			errMsg := reader.ReadString()
+			return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
 		}
 	}
 

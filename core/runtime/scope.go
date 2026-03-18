@@ -243,6 +243,7 @@ type StackContext struct {
 	context.Context
 	Program  *Program
 	Stack    *Stack
+	PanicVar *Var // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
 	Executor interface {
 		ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
 	}

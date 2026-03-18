@@ -105,16 +105,16 @@
         *   *评估*: **难度: 低~中**。只需在调用时将末尾参数打包为 `VMArray`。
         *   *多语言兼容性: 极高*。JS (`...args`), Python (`*args`), Java (`Object...`), Go (`...any`) 均在语义上完美契合“末尾参数数组化”的底层抽象。
 2.  **[ ] 健壮性与异常处理**
-    *   **[-] 脚本级错误恢复 (`recover` / Try-Catch) (决定不实现)**：支持在脚本层级截获异常，防止局部异常导致整个引擎/任务崩溃，增强脚本容错性。
-        *   *评估*: **难度: 高**。需要干预执行器的控制流，实现虚拟机级别的异常展开 (Exception Unwinding)。
-        *   *多语言兼容性: 存在语义鸿沟*。JS/Python/Java 采用结构化的 `try-catch`，而 Go 采用延迟栈展开的 `defer-recover`。底层引擎建议统一采用 `TryCatchStmt` 原语（对 JS/Python 更友好），但这会导致 Go 前端的自动转换面临巨大挑战，可能需要引入特定宏或妥协性语法。
-        *   *替代方案评估*: **`Result<T>` 模式能否完全替代 `try/catch/recover`？**
-            *   **可以替代“业务级错误 (Expected Errors)”**：对于文件找不到、网络超时、格式解析失败等预期内的业务异常，`Result<T>` 配合多变量解构（`val, err := f()`）是极其完美和高效的，完全不需要 `try/catch`。它甚至比 `try/catch` 更清晰地强制开发者处理错误。
-            *   **无法替代“致命缺陷与越界 (Unexpected Panics/Traps)”**：`Result<T>` 无法捕获脚本自身的**运行时陷阱 (Traps)**。例如：数组越界 (`arr[100]`)、除零错误 (`a / 0`)、向 nil Map 写入数据、或者深度嵌套逻辑中主动触发的 `panic("unreachable")`。这些陷阱目前会直接中断整个虚拟机。
-        *   **最终决策 (Final Decision): 坚持 Fail-Fast (快速失败) 哲学**。
-            *   作为“逻辑粘合剂”或“短周期任务”的脚本，在遭遇如数组越界等严重代码缺陷时，直接崩溃 (`panic`) 交由宿主处理是最安全的做法，能有效防止脏数据污染。
-            *   保持引擎的极度轻量与高性能，拒绝引入复杂的虚拟机异常控制流开销。
-            *   因此，我们**不会在当前引擎级别提供内部错误拦截机制**。
+    *   **[x] 脚本级错误恢复 (`recover` / Try-Catch)**：支持在脚本层级截获异常，防止局部异常导致整个引擎/任务崩溃，增强脚本容错性。
+        *   *评估*: **难度: 中**。通过引入 `PanicError` 冒泡机制和 `TryStmt` AST 原语，可以同时兼容 Go 的 `defer-recover` 动态异常模型和 JS/Java 的 `try-catch` 词法异常模型。
+        *   *多语言兼容性: 高 (双轨制)*。底层引擎提供 `TryStmt` (Body, Catch, Finally) 原语，同时在函数作用域层级配合 `DeferStack` 实现 `recover()` 状态读取。
+        *   *实施路径*:
+            - [x] `ast_stmt.go`: 新增 `TryStmt` 节点。
+            - [x] `runtime/scope.go`: 扩展 `Stack` 以支持 `PanicVar` 寄存器。
+            - [x] `runtime/executor.go`: 实现 `PanicError` 冒泡逻辑，改造 `panic` 注入函数。
+            - [x] `runtime/executor.go`: 实现 `recover` 内建函数。
+            - [x] `runtime/executor.go`: 实现 `TryStmt` 执行逻辑。
+            - [x] `ffigo/converter.go`: 修复了 IfStmt 的 Init 转换，支持了 recover() 的语义路径。
     3.  **[x] 模块化与工程化管理**
     *   **[x] 真正的包加载系统 (Module Import)**：提供一个抽象的 Module Loader，支持跨文件调用（例如 `import "utils"` 加载纯脚本文件），解决单文件代码臃肿的问题。
     *   **[x] 内存预分配 (`make`)**：支持使用 `make([]int, 0, 100)` 或预分配容量的 Map，优化大量数据处理时的 GC 压力。

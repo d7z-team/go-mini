@@ -1070,6 +1070,67 @@ func (i *InterruptStmt) Optimize(ctx *OptimizeContext) Node {
 	return i
 }
 
+// TryStmt 表示 try-catch-finally 语句
+type TryStmt struct {
+	BaseNode `json:",inline"`
+	Body     *BlockStmt   `json:"body"`
+	Catch    *CatchClause `json:"catch,omitempty"`
+	Finally  *BlockStmt   `json:"finally,omitempty"`
+}
+
+func (t *TryStmt) GetBase() *BaseNode { return &t.BaseNode }
+func (t *TryStmt) stmtNode()          {}
+
+func (t *TryStmt) Check(ctx *SemanticContext) error {
+	t.Type = "Void"
+	if t.Body == nil {
+		return errors.New("try 语句缺少主体")
+	}
+	if err := t.Body.Check(ctx); err != nil {
+		return err
+	}
+	if t.Catch != nil {
+		inner := NewSemanticContext(ctx.Child(t.Catch))
+		if t.Catch.VarName != "" {
+			inner.AddVariable(t.Catch.VarName, "Any")
+		}
+		if err := t.Catch.Body.Check(inner); err != nil {
+			return err
+		}
+	}
+	if t.Finally != nil {
+		if err := t.Finally.Check(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *TryStmt) Optimize(ctx *OptimizeContext) Node {
+	t.Body = t.Body.Optimize(ctx).(*BlockStmt)
+	if t.Catch != nil {
+		t.Catch.Body = t.Catch.Body.Optimize(ctx).(*BlockStmt)
+	}
+	if t.Finally != nil {
+		t.Finally = t.Finally.Optimize(ctx).(*BlockStmt)
+	}
+	return t
+}
+
+// CatchClause 表示 catch 分支
+type CatchClause struct {
+	BaseNode `json:",inline"`
+	VarName  Ident      `json:"var_name,omitempty"`
+	Body     *BlockStmt `json:"body"`
+}
+
+func (c *CatchClause) GetBase() *BaseNode { return &c.BaseNode }
+func (c *CatchClause) stmtNode()          {}
+func (c *CatchClause) Check(ctx *SemanticContext) error {
+	return errors.New("CatchClause should be checked via TryStmt")
+}
+func (c *CatchClause) Optimize(ctx *OptimizeContext) Node { return c }
+
 // StructStmt 所有 struct 都注册到全局
 type StructStmt struct {
 	BaseNode

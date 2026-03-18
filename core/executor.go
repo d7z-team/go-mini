@@ -51,6 +51,7 @@ func NewMiniExecutor() *MiniExecutor {
 	}
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
+	res.specs["recover"] = "function() Any"
 	res.specs["string"] = "function(Any) String"
 	res.specs["[]byte"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
