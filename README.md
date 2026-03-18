@@ -1,4 +1,4 @@
-# Go-Mini (Isolated Raw-FFI Edition)
+# Go-Mini
 
 Go-Mini is a high-performance, absolutely isolated Go-like script executor. It is designed for maximum security and I/O efficiency by cutting off direct memory sharing between the host and the VM.
 
