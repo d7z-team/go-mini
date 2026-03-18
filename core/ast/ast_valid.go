@@ -361,7 +361,7 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 		analyzer := NewReturnAnalyzer(bodyCtx, f.Return)
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
-			return fmt.Errorf("匿名函数缺少返回语句")
+			return errors.New("匿名函数缺少返回语句")
 		}
 	}
 

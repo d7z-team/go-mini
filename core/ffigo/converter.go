@@ -79,7 +79,8 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 						program.Structs[mini_ast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st)
 					}
 				case *ast.ValueSpec:
-					if d.Tok == token.CONST {
+					switch d.Tok {
+					case token.CONST:
 						for i, name := range s.Names {
 							if i < len(s.Values) {
 								if lit, ok := s.Values[i].(*ast.BasicLit); ok {
@@ -91,7 +92,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 								}
 							}
 						}
-					} else if d.Tok == token.VAR {
+					case token.VAR:
 						for i, name := range s.Names {
 							var val mini_ast.Expr
 							if i < len(s.Values) {

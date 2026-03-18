@@ -28,3 +28,11 @@ fmt:
 	$(call ensure_tool,$(GOFUMPT),mvdan.cc/gofumpt@latest)
 	$(GOFUMPT) -l -w .
 	go mod tidy
+
+lint:
+	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
+	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml
+
+lint-fix:
+	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
+	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix

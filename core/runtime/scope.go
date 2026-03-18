@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"weak"
@@ -101,7 +102,7 @@ type VMMap struct {
 
 func (v *Var) ToInt() (int64, error) {
 	if v == nil {
-		return 0, fmt.Errorf("accessing nil variable")
+		return 0, errors.New("accessing nil variable")
 	}
 	if v.VType != TypeInt {
 		return 0, fmt.Errorf("type mismatch: expected Int64, got %v", v.VType)
@@ -111,7 +112,7 @@ func (v *Var) ToInt() (int64, error) {
 
 func (v *Var) ToFloat() (float64, error) {
 	if v == nil {
-		return 0, fmt.Errorf("accessing nil variable")
+		return 0, errors.New("accessing nil variable")
 	}
 	if v.VType == TypeFloat {
 		return v.F64, nil
@@ -124,7 +125,7 @@ func (v *Var) ToFloat() (float64, error) {
 
 func (v *Var) ToBool() (bool, error) {
 	if v == nil {
-		return false, fmt.Errorf("accessing nil variable")
+		return false, errors.New("accessing nil variable")
 	}
 	if v.VType != TypeBool {
 		return false, fmt.Errorf("type mismatch: expected Bool, got %v", v.VType)
@@ -134,7 +135,7 @@ func (v *Var) ToBool() (bool, error) {
 
 func (v *Var) ToBytes() ([]byte, error) {
 	if v == nil {
-		return nil, fmt.Errorf("accessing nil variable")
+		return nil, errors.New("accessing nil variable")
 	}
 	if v.VType != TypeBytes {
 		return nil, fmt.Errorf("type mismatch: expected TypeBytes, got %v", v.VType)
@@ -144,7 +145,7 @@ func (v *Var) ToBytes() ([]byte, error) {
 
 func (v *Var) ToHandle() (uint32, error) {
 	if v == nil {
-		return 0, fmt.Errorf("accessing nil variable")
+		return 0, errors.New("accessing nil variable")
 	}
 	if v.VType != TypeHandle {
 		return 0, fmt.Errorf("type mismatch: expected TypeHandle, got %v", v.VType)
@@ -260,7 +261,7 @@ func (c *StackContext) ScopeApply(scope string) {
 		newDepth = c.Stack.Depth + 1
 	}
 	if newDepth > DefaultMaxStackDepth {
-		panic(fmt.Errorf("stack overflow"))
+		panic(errors.New("stack overflow"))
 	}
 	c.Stack = &Stack{
 		Parent:    c.Stack,

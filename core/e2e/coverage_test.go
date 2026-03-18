@@ -2,7 +2,7 @@ package e2e
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 	"testing"
 
@@ -17,7 +17,7 @@ type CoverageMockOS struct {
 
 func (m *CoverageMockOS) Open(name string) (*File, error) {
 	if name == "missing" {
-		return nil, fmt.Errorf("file not found")
+		return nil, errors.New("file not found")
 	}
 	return &File{Name: name}, nil
 }

@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -92,7 +93,7 @@ func TestCircularDependency(t *testing.T) {
 		} else if path == "b" {
 			code = "package b; import \"a\"; func Run() {}"
 		} else {
-			return nil, fmt.Errorf("not found")
+			return nil, errors.New("not found")
 		}
 		converter := ffigo.NewGoToASTConverter()
 		node, _ := converter.ConvertSource(code)

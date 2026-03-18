@@ -753,7 +753,7 @@ func (e *Executor) evalSliceExpr(ctx *StackContext, n *ast.SliceExpr) (*Var, err
 		return nil, errors.New("slice on nil object")
 	}
 
-	var low, high int = 0, -1
+	low, high := 0, -1
 	if n.Low != nil {
 		l, err := e.ExecExpr(ctx, n.Low)
 		if err != nil {
@@ -1328,7 +1328,7 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			return nil, err
 		}
 		if obj == nil {
-			return nil, fmt.Errorf("calling method on nil object")
+			return nil, errors.New("calling method on nil object")
 		}
 
 		if obj.VType == TypeModule {
@@ -1453,7 +1453,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 	switch name {
 	case "require":
 		if len(n.Args) != 1 {
-			return nil, true, fmt.Errorf("require expects 1 argument")
+			return nil, true, errors.New("require expects 1 argument")
 		}
 		pathVar, err := e.ExecExpr(ctx, n.Args[0])
 		if err != nil {
@@ -1598,9 +1598,10 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			for i := 1; i < len(args); i++ {
 				arg := args[i]
 				if arg != nil {
-					if arg.VType == TypeInt {
+					switch arg.VType {
+					case TypeInt:
 						data = append(data, byte(arg.I64))
-					} else if arg.VType == TypeBytes {
+					case TypeBytes:
 						data = append(data, arg.B...)
 					}
 				}

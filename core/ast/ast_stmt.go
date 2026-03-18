@@ -128,9 +128,8 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 	p.Variables = newVars
 
 	// 3. 优化函数定义
-	for i, function := range p.Functions {
-		optimized := function.Optimize(ctx)
-		if optimized != nil {
+	for i, funcs := range p.Functions {
+		if optimized := funcs.Optimize(ctx); optimized != nil {
 			p.Functions[i] = optimized.(*FunctionStmt)
 		}
 	}

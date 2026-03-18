@@ -17,7 +17,7 @@ type BinaryExpr struct {
 func (b *BinaryExpr) GetBase() *BaseNode { return &b.BaseNode }
 func (b *BinaryExpr) exprNode()          {}
 
-func tryConstantFold(left, right *LiteralExpr, operator Ident, id string, message string) *LiteralExpr {
+func tryConstantFold(left, right *LiteralExpr, operator Ident, id, message string) *LiteralExpr {
 	leftType := left.Type
 	rightType := right.Type
 

@@ -1,0 +1,41 @@
+name: Go Test
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '**.go'
+      - 'go.mod'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Boot Test Service
+        run: make deps
+
+      - name: Run tests with coverage
+        run: make test
+
+      - uses: codecov/codecov-action@v5
+        name: Upload coverage reports to Codecov
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: d7z-team/go-mini
+          files: ./coverage.txt
