@@ -27,9 +27,6 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Boot Test Service
-        run: make deps
-
       - name: Run tests with coverage
         run: make test
 

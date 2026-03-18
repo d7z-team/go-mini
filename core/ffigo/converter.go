@@ -33,7 +33,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 	var miniImports []mini_ast.ImportSpec
 	for _, imp := range f.Imports {
 		path := imp.Path.Value[1 : len(imp.Path.Value)-1]
-		alias := ""
+		var alias string
 		if imp.Name != nil {
 			alias = imp.Name.Name
 		} else {
@@ -266,16 +266,15 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 					LHS:      c.convertExpr(st.Lhs[0]),
 					Value:    c.convertExpr(rhs),
 				}
-			} else {
-				var lhsExprs []mini_ast.Expr
-				for _, l := range st.Lhs {
-					lhsExprs = append(lhsExprs, c.convertExpr(l))
-				}
-				return &mini_ast.MultiAssignmentStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
-					LHS:      lhsExprs,
-					Value:    c.convertExpr(rhs),
-				}
+			}
+			var lhsExprs []mini_ast.Expr
+			for _, l := range st.Lhs {
+				lhsExprs = append(lhsExprs, c.convertExpr(l))
+			}
+			return &mini_ast.MultiAssignmentStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
+				LHS:      lhsExprs,
+				Value:    c.convertExpr(rhs),
 			}
 		}
 

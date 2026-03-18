@@ -363,7 +363,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 								dest = parentVar.Ref.(*Cell).Value
 							}
 							if dest != nil && source != nil {
-								_ = copyVarData(dest, source)
+								copyVarData(dest, source)
 							}
 						}
 					}
@@ -721,7 +721,7 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 	for name, route := range e.routes {
 		if strings.HasPrefix(name, prefix1) || strings.HasPrefix(name, prefix2) {
 			found = true
-			methodName := ""
+			var methodName string
 			if strings.HasPrefix(name, prefix1) {
 				methodName = strings.TrimPrefix(name, prefix1)
 			} else {
@@ -1656,10 +1656,8 @@ func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.Funct
 					variadicArgs = args[i:]
 				}
 				_ = c.Store(string(p.Name), &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
-			} else {
-				if i < len(args) && args[i] != nil {
-					_ = c.Store(string(p.Name), args[i])
-				}
+			} else if i < len(args) && args[i] != nil {
+				_ = c.Store(string(p.Name), args[i])
 			}
 		}
 		if !f.Return.IsVoid() {
@@ -1831,10 +1829,9 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 				return nil, err
 			}
 			return &Var{VType: TypeResult, ResultVal: val, Type: retType}, nil
-		} else {
-			errMsg := reader.ReadString()
-			return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
 		}
+		errMsg := reader.ReadString()
+		return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
 	}
 
 	return e.deserializeVar(reader, retType, route.Bridge)

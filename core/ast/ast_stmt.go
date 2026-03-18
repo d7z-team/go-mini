@@ -129,9 +129,8 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 
 	// 3. 优化函数定义
 	for i, funcs := range p.Functions {
-		if optimized := funcs.Optimize(ctx); optimized != nil {
-			p.Functions[i] = optimized.(*FunctionStmt)
-		}
+		optimized := funcs.Optimize(ctx)
+		p.Functions[i] = optimized.(*FunctionStmt)
 	}
 
 	// 4. 处理 Main 块中的语句，并执行定义提取
@@ -360,11 +359,7 @@ func (i *IfStmt) Optimize(ctx *OptimizeContext) Node {
 	i.Body = i.Body.Optimize(ctx).(*BlockStmt)
 	if i.ElseBody != nil {
 		optimizedElse := i.ElseBody.Optimize(ctx)
-		if optimizedElse != nil {
-			i.ElseBody = optimizedElse.(*BlockStmt)
-		} else {
-			i.ElseBody = nil
-		}
+		i.ElseBody = optimizedElse.(*BlockStmt)
 	}
 
 	i.Type = "Void"
@@ -796,7 +791,6 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
 			return fmt.Errorf("函数 %s 缺少返回语句", f.Name)
 		}
-
 	}
 
 	return nil
@@ -842,7 +836,7 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 		// For simplicity, we allow destructuring if LHS count is known.
 		itemType, _ := valType.ReadArrayItemType()
 		for i := 0; i < len(m.LHS); i++ {
-			elementTypes = append(elementTypes, GoMiniType(itemType))
+			elementTypes = append(elementTypes, itemType)
 		}
 	} else if valType.IsResult() {
 		// Result decomposes into [val, err]

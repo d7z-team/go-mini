@@ -19,7 +19,7 @@ func (b *MockFmtBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 		reader := ffigo.NewReader(args)
 		msg := reader.ReadString()
 		b.LastOutput = msg
-		fmt.Printf("[FFI fmt.Println] %s\n", msg)
+		fmt.Printf("[FFI fmt.Println] %s\n", msg) //nolint:forbidigo // allowed for testing
 		return nil, nil
 	}
 	return nil, fmt.Errorf("unknown method %d", methodID)

@@ -408,7 +408,7 @@ func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContex
 	return exec(old, c)
 }
 
-func copyVarData(dest, src *Var) error {
+func copyVarData(dest, src *Var) {
 	dest.VType = src.VType
 	dest.I64 = src.I64
 	dest.F64 = src.F64
@@ -420,7 +420,6 @@ func copyVarData(dest, src *Var) error {
 	dest.Ref = src.Ref
 	dest.ResultVal = src.ResultVal
 	dest.ResultErr = src.ResultErr
-	return nil
 }
 
 type Program struct{}

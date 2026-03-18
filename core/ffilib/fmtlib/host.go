@@ -8,15 +8,15 @@ import (
 type FmtHost struct{}
 
 func (h *FmtHost) Print(args ...any) {
-	fmt.Print(args...)
+	fmt.Print(args...) //nolint:forbidigo // native implementation
 }
 
 func (h *FmtHost) Println(args ...any) {
-	fmt.Println(args...)
+	fmt.Println(args...) //nolint:forbidigo // native implementation
 }
 
 func (h *FmtHost) Printf(format string, args ...any) {
-	fmt.Printf(format, args...)
+	fmt.Printf(format, args...) //nolint:forbidigo // native implementation
 }
 
 func (h *FmtHost) Sprintf(format string, args ...any) string {

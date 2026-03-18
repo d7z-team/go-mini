@@ -45,7 +45,7 @@ func TestTryCatchManual(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	// 手动构造一个 TryStmt 的 JSON 表达
 	// 注意我们需要一个 ProgramStmt 包含 Main
-	tryJson := `
+	tryJSON := `
 {
   "meta": "boot",
   "variables": {
@@ -96,7 +96,7 @@ func TestTryCatchManual(t *testing.T) {
   ]
 }
 `
-	node, err := engine.Unmarshal([]byte(tryJson))
+	node, err := engine.Unmarshal([]byte(tryJSON))
 	if err != nil {
 		t.Fatal(err)
 	}

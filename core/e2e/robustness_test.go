@@ -21,7 +21,7 @@ type MockGeometry interface {
 type MockGeo struct{}
 
 func (m *MockGeo) SumX(points []RobustPoint) int {
-	fmt.Printf("Host received points: %+v\n", points)
+	fmt.Printf("Host received points: %+v\n", points) //nolint:forbidigo // allowed for testing
 	sum := 0
 	for _, p := range points {
 		sum += p.X

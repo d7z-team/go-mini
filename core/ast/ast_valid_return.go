@@ -7,7 +7,6 @@ type ReturnAnalyzer struct {
 	ctx         *ValidContext
 	returnTypes []GoMiniType
 	errors      []AnalysisError
-	currentFunc *FunctionStmt
 }
 
 // AnalysisError 分析错误

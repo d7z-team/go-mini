@@ -12,7 +12,7 @@ import (
 func TestTryCatchDeepPanic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	// 手动构造一个 TryStmt 的 JSON 表达，内部调用一个会 panic 的函数
-	tryJson := `
+	tryJSON := `
 {
   "meta": "boot",
   "variables": {
@@ -88,7 +88,7 @@ func TestTryCatchDeepPanic(t *testing.T) {
   ]
 }
 `
-	node, err := engine.Unmarshal([]byte(tryJson))
+	node, err := engine.Unmarshal([]byte(tryJSON))
 	if err != nil {
 		t.Fatal(err)
 	}

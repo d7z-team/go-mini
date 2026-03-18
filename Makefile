@@ -21,18 +21,18 @@ clean:
 	rm -rf bin
 	find . -name "*_ffigen.go" -delete
 
-test: gen
-	@go test -v ./...
-
 fmt:
 	$(call ensure_tool,$(GOFUMPT),mvdan.cc/gofumpt@latest)
 	$(GOFUMPT) -l -w .
 	go mod tidy
 
-lint:
+lint: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml
 
-lint-fix:
+lint-fix: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
+
+test: gen
+	@go test -v -coverprofile=coverage.txt ./...

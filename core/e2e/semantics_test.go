@@ -34,7 +34,7 @@ func TestStructSemantics(t *testing.T) {
 		return d1.Val, d2.Val
 	}
 	`
-	prog, _ := executor.NewRuntimeByGoCode(code)
+	_, _ = executor.NewRuntimeByGoCode(code)
 	// 我们需要获取返回值，但目前 Execute 不直接返回结果，
 	// 我们通过在脚本最后抛出 panic 或修改全局变量来观察，或者直接看执行器状态。
 	// 这里我们通过断言来验证。
@@ -53,7 +53,7 @@ func TestStructSemantics(t *testing.T) {
 		}
 	}
 	`
-	prog, _ = executor.NewRuntimeByGoCode(codeV)
+	prog, _ := executor.NewRuntimeByGoCode(codeV)
 	err := prog.Execute(context.Background())
 	if err != nil && err.Error() == "mini-panic: REFERENCE_SEMANTICS_DETECTED" {
 		// 证实了目前的实现是引用语义
