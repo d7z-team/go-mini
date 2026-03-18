@@ -51,22 +51,22 @@ func (o GoMiniType) IsPtr() bool {
 
 func (o GoMiniType) IsArray() bool {
 	s := string(o)
-	return strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">")
+	return strings.HasPrefix(s, "Array<")
 }
 
 func (o GoMiniType) IsResult() bool {
 	s := string(o)
-	return strings.HasPrefix(s, "Result<") && strings.HasSuffix(s, ">")
+	return strings.HasPrefix(s, "Result<")
 }
 
 func (o GoMiniType) IsMap() bool {
 	s := string(o)
-	return strings.HasPrefix(s, "Map<") && strings.HasSuffix(s, ">")
+	return strings.HasPrefix(s, "Map<")
 }
 
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
 	s := string(o)
-	if o.IsArray() {
+	if strings.HasPrefix(s, "Array<") {
 		return GoMiniType(s[6 : len(s)-1]), true
 	}
 	if strings.HasPrefix(s, "...") { // 仅用于兼容处理 Spec 解析
@@ -96,12 +96,15 @@ func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok boo
 		return "", "", false
 	}
 	s := string(o)
-	inner := s[4 : len(s)-1]
-	parts := splitByComma(inner)
-	if len(parts) != 2 {
-		return "", "", false
+	if strings.HasPrefix(s, "Map<") {
+		inner := s[4 : len(s)-1]
+		parts := splitByComma(inner)
+		if len(parts) != 2 {
+			return "", "", false
+		}
+		return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
 	}
-	return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
+	return "", "", false
 }
 
 func CreateMapType(keyType, valueType GoMiniType) GoMiniType {

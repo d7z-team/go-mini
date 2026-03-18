@@ -56,6 +56,13 @@ go-mini/
 *   **规则**: 可能失败的 FFI 函数必须返回 `Result` 包装器。
 *   **实现**: VM 原生理解 `TypeResult`。访问 Result 对象的 `.val` 或 `.err` 是一项内置的 VM 功能，而不是结构体字段访问。FFI 响应使用 `[StatusByte][Payload]` 二进制格式。
 
+### V. 语言中立与规范化表达 (Language Neutrality & Canonical Representation)
+*   **规则**: 核心引擎 (`core/ast`, `core/runtime`) 必须保持语言中立。禁止在底层类型判断逻辑中加入特定前端语言的语法兼容（如 Go 的 `[]T` 或 `map[K]V`）。
+*   **实现**:
+    *   **规范化**: 引擎只识别其定义的规范化字符串表达，如 `Array<T>`、`Map<K, V>`、`Ptr<T>` 和 `Result<T>`。所有类型前缀必须首字母大写。
+    *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go 风格类型映射为规范格式）。
+    *   **零容错**: 执行器在进行 FFI 序列化或类型断言时，应严格匹配规范格式，不应引入 `strings.ToLower` 等宽容性处理以牺牲性能或破坏严谨性。
+
 ---
 
 ## 🤖 3. AI 贡献者工作流指南

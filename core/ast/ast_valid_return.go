@@ -17,7 +17,13 @@ type AnalysisError struct {
 
 // NewReturnAnalyzer 创建新的返回分析器
 func NewReturnAnalyzer(ctx *ValidContext, returnType GoMiniType) *ReturnAnalyzer {
-	returnTypes, _ := returnType.ReadTuple()
+	returnTypes, ok := returnType.ReadTuple()
+	if !ok && returnType != "" {
+		// 单返回值场景，如果不是 Void，则放入列表
+		if !returnType.IsVoid() {
+			returnTypes = []GoMiniType{returnType}
+		}
+	}
 
 	return &ReturnAnalyzer{
 		ctx:         ctx,
@@ -58,6 +64,10 @@ func (a *ReturnAnalyzer) analyzeNode(node Node) bool {
 		return a.analyzeFor(n)
 	case *ReturnStmt:
 		return a.analyzeReturn(n)
+	case *SwitchStmt:
+		return a.analyzeSwitch(n)
+	case *TryStmt:
+		return a.analyzeTry(n)
 	case *InterruptStmt:
 		return a.analyzeInterrupt(n)
 	default:
@@ -201,6 +211,49 @@ func getTypeName(v interface{}) string {
 	}
 
 	return typeStr
+}
+
+func (a *ReturnAnalyzer) analyzeSwitch(s *SwitchStmt) bool {
+	if s == nil || s.Body == nil {
+		return false
+	}
+	hasDefault := false
+	allCasesReturn := true
+	for _, child := range s.Body.Children {
+		clause, ok := child.(*CaseClause)
+		if !ok {
+			continue
+		}
+		if len(clause.List) == 0 {
+			hasDefault = true
+		}
+		// 分析 case 的 body
+		caseReturns := false
+		for _, stmt := range clause.Body {
+			if a.analyzeNode(stmt) {
+				caseReturns = true
+				break
+			}
+		}
+		if !caseReturns {
+			allCasesReturn = false
+		}
+	}
+	return hasDefault && allCasesReturn
+}
+
+func (a *ReturnAnalyzer) analyzeTry(t *TryStmt) bool {
+	if t == nil {
+		return false
+	}
+	bodyReturns := a.analyzeNode(t.Body)
+	// 如果 try 块返回，我们还需要检查 catch 块（如果存在）是否也返回
+	// 因为如果执行流进入 catch，它也必须返回才能保证全路径覆盖
+	if t.Catch != nil {
+		catchReturns := a.analyzeNode(t.Catch.Body)
+		return bodyReturns && catchReturns
+	}
+	return bodyReturns
 }
 
 // GetErrors 获取所有错误
