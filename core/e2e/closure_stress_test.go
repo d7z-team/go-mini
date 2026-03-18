@@ -112,6 +112,35 @@ func TestClosureStress(t *testing.T) {
 				if fib(7) != 13 { panic("recursive closure failed") }
 			}`,
 		},
+		{
+			name: "Closure Capturing Map",
+			code: `
+			package main
+			func main() {
+				data := make(map[string]any)
+				data["val"] = 100
+				
+				f := func() {
+					data["val"] = 200
+				}
+				f()
+				if data["val"] != 200 { panic("map capture modification failed") }
+			}`,
+		},
+		{
+			name: "Closure Capturing Closure (Sharing)",
+			code: `
+			package main
+			func main() {
+				val := 10
+				f1 := func() int64 { return val }
+				f2 := func() { val = 20 }
+				
+				if f1() != 10 { panic("f1 initial failed") }
+				f2()
+				if f1() != 20 { panic("f1 after f2 failed") }
+			}`,
+		},
 	}
 
 	for _, tt := range tests {

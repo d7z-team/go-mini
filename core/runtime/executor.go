@@ -271,7 +271,57 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 						break
 					}
 				}
-				if bodyErr := e.execStmts(ctx, n.Body.(*ast.BlockStmt).Children); bodyErr != nil {
+
+				// Go 1.22 语义：每次迭代创建一个逻辑上的新变量副本
+				// 这样闭包捕获的就是当前迭代的值
+				var bodyErr error
+				
+				// 预先收集父级作用域的变量，因为 WithScope 会修改 ctx.Stack
+				parentVars := make(map[string]*Var)
+				for k, v := range ctx.Stack.MemoryPtr {
+					parentVars[k] = v
+				}
+
+				ctx.WithScope("for_body", func(bodyCtx *StackContext) {
+					// 1. 从父级作用域（for init）拷贝当前变量的纯值快照
+					// 注意：即便父级变量已经是 TypeCell，我们这里也只取其 Value，
+					// 从而切断与父级 Cell 的联系，让 bodyCtx 能独立升格。
+					for k, v := range parentVars {
+						val := v
+						if v != nil && v.VType == TypeCell {
+							val = v.Ref.(*Cell).Value
+						}
+						_ = bodyCtx.AddVariable(k, val)
+					}
+
+					// 2. 执行主体
+					bodyErr = e.execStmts(bodyCtx, n.Body.(*ast.BlockStmt).Children)
+					if bodyErr == nil && bodyCtx.Interrupt() {
+						// bodyCtx.Stack is currently top, its parent is the for scope
+						bodyCtx.Stack.Parent.interrupt = bodyCtx.Stack.interrupt
+					}
+					
+					// 3. 同步回父级。
+					// 只有将修改后的值同步回父级，Update 语句 (i++) 才能作用于正确的当前值，
+					// 并带入下一次迭代。
+					for k, v := range bodyCtx.Stack.MemoryPtr {
+						if parentVar, ok := parentVars[k]; ok {
+							source := v
+							if v != nil && v.VType == TypeCell {
+								source = v.Ref.(*Cell).Value
+							}
+							dest := parentVar
+							if parentVar != nil && parentVar.VType == TypeCell {
+								dest = parentVar.Ref.(*Cell).Value
+							}
+							if dest != nil && source != nil {
+								_ = copyVarData(dest, source)
+							}
+						}
+					}
+				})
+
+				if bodyErr != nil {
 					forErr = bodyErr
 					break
 				}
@@ -752,7 +802,18 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 		return nil, nil
 	}
 
-	return nil, fmt.Errorf("type %v does not support member access", obj.VType)
+	// 方法提取支持 (Method Value)
+	tName := string(obj.Type)
+	tName = strings.TrimPrefix(tName, "Ptr<")
+	tName = strings.TrimPrefix(tName, "*")
+	tName = strings.TrimSuffix(tName, ">")
+	methodName := fmt.Sprintf("__method_%s_%s", tName, n.Property)
+
+	if _, ok := e.routes[methodName]; ok {
+		return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+	}
+
+	return nil, fmt.Errorf("type %v does not support member access: %s", obj.VType, n.Property)
 }
 
 func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*Var, error) {
@@ -999,47 +1060,82 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 }
 
 func (e *Executor) evalRangeStmt(ctx *StackContext, n *ast.RangeStmt, obj *Var) error {
+	var rangeErr error
+
+	executeIteration := func(key, value *Var) {
+		ctx.WithScope("for_range_body", func(bodyCtx *StackContext) {
+			if n.Define {
+				// Go 1.22 semantics: each iteration gets fresh variables if they were defined in the range clause.
+				if n.Key != "" && n.Key != "_" {
+					_ = bodyCtx.AddVariable(string(n.Key), key)
+				}
+				if n.Value != "" && n.Value != "_" && value != nil {
+					_ = bodyCtx.AddVariable(string(n.Value), value)
+				}
+			} else {
+				// If not defined with :=, it assigns to variables in outer scope.
+				if n.Key != "" && n.Key != "_" {
+					_ = ctx.Store(string(n.Key), key) // Use ctx, not bodyCtx
+				}
+				if n.Value != "" && n.Value != "_" && value != nil {
+					_ = ctx.Store(string(n.Value), value)
+				}
+			}
+
+			err := e.execStmts(bodyCtx, n.Body.Children)
+			if err != nil {
+				rangeErr = err
+			}
+			if bodyCtx.Interrupt() {
+				// propagate interrupt to the parent scope temporarily to handle break/continue
+				ctx.Stack.interrupt = bodyCtx.Stack.interrupt
+			}
+		})
+	}
+
 	switch obj.VType {
 	case TypeArray:
 		arr := obj.Ref.(*VMArray)
 		for i, v := range arr.Data {
-			if n.Key != "" {
-				_ = ctx.Store(string(n.Key), NewInt(int64(i)))
+			if ctx.Context.Err() != nil {
+				return ctx.Context.Err()
 			}
-			if n.Value != "" {
-				_ = ctx.Store(string(n.Value), v)
+			executeIteration(NewInt(int64(i)), v)
+			if rangeErr != nil {
+				return rangeErr
 			}
-			err := e.execStmts(ctx, n.Body.Children)
-			if err != nil {
-				return err
-			}
-			if ctx.Stack.interrupt == "break" {
-				ctx.Stack.interrupt = ""
-				break
-			}
-			if ctx.Stack.interrupt == "continue" {
-				ctx.Stack.interrupt = ""
+			if ctx.Interrupt() {
+				if ctx.Stack.interrupt == "break" {
+					ctx.Stack.interrupt = ""
+					break
+				}
+				if ctx.Stack.interrupt == "continue" {
+					ctx.Stack.interrupt = ""
+				} else {
+					break
+				}
 			}
 		}
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
 		for k, v := range m.Data {
-			if n.Key != "" {
-				_ = ctx.Store(string(n.Key), NewString(k))
+			if ctx.Context.Err() != nil {
+				return ctx.Context.Err()
 			}
-			if n.Value != "" {
-				_ = ctx.Store(string(n.Value), v)
+			executeIteration(NewString(k), v)
+			if rangeErr != nil {
+				return rangeErr
 			}
-			err := e.execStmts(ctx, n.Body.Children)
-			if err != nil {
-				return err
-			}
-			if ctx.Stack.interrupt == "break" {
-				ctx.Stack.interrupt = ""
-				break
-			}
-			if ctx.Stack.interrupt == "continue" {
-				ctx.Stack.interrupt = ""
+			if ctx.Interrupt() {
+				if ctx.Stack.interrupt == "break" {
+					ctx.Stack.interrupt = ""
+					break
+				}
+				if ctx.Stack.interrupt == "continue" {
+					ctx.Stack.interrupt = ""
+				} else {
+					break
+				}
 			}
 		}
 	}
@@ -1222,6 +1318,15 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 	}
 
 	if callable.VType == TypeClosure {
+		if method, ok := callable.Ref.(*VMMethodValue); ok {
+			fullArgs := make([]*Var, len(args)+1)
+			fullArgs[0] = method.Receiver
+			copy(fullArgs[1:], args)
+			if route, ok := e.routes[method.Method]; ok {
+				return e.evalFFI(ctx, route, fullArgs)
+			}
+			return nil, fmt.Errorf("method route not found: %s", method.Method)
+		}
 		closure := callable.Ref.(*VMClosure)
 		return e.execClosure(ctx, closure, args)
 	}

@@ -43,6 +43,11 @@ type VMClosure struct {
 	Upvalues map[string]*Var  // Captured environment variables (should be TypeCell)
 }
 
+type VMMethodValue struct {
+	Receiver *Var
+	Method   string // Full FFI method name or internal function name
+}
+
 type Var struct {
 	Type   ast.GoMiniType
 	VType  VarType
@@ -399,6 +404,21 @@ func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContex
 	c.ScopeApply(name)
 	defer func() { c.Stack = old }()
 	return exec(old, c)
+}
+
+func copyVarData(dest, src *Var) error {
+	dest.VType = src.VType
+	dest.I64 = src.I64
+	dest.F64 = src.F64
+	dest.Str = src.Str
+	dest.B = src.B
+	dest.Bool = src.Bool
+	dest.Handle = src.Handle
+	dest.Bridge = src.Bridge
+	dest.Ref = src.Ref
+	dest.ResultVal = src.ResultVal
+	dest.ResultErr = src.ResultErr
+	return nil
 }
 
 type Program struct{}

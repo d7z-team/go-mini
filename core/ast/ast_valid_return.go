@@ -17,13 +17,12 @@ type AnalysisError struct {
 }
 
 // NewReturnAnalyzer 创建新的返回分析器
-func NewReturnAnalyzer(ctx *ValidContext, funcStmt *FunctionStmt) *ReturnAnalyzer {
-	returnTypes, _ := funcStmt.Return.ReadTuple()
+func NewReturnAnalyzer(ctx *ValidContext, returnType GoMiniType) *ReturnAnalyzer {
+	returnTypes, _ := returnType.ReadTuple()
 
 	return &ReturnAnalyzer{
 		ctx:         ctx,
 		returnTypes: returnTypes,
-		currentFunc: funcStmt,
 		errors:      make([]AnalysisError, 0),
 	}
 }

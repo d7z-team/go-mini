@@ -792,11 +792,12 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 	// 5. 返回路径 analysis
 	returnTypes, _ := f.FunctionType.Return.ReadTuple()
 	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
-		analyzer := NewReturnAnalyzer(bodyCtx, f)
+		analyzer := NewReturnAnalyzer(&funcCtx.ValidContext, f.Return)
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
 			return fmt.Errorf("函数 %s 缺少返回语句", f.Name)
 		}
+
 	}
 
 	return nil

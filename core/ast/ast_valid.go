@@ -358,16 +358,7 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 	// 对于 FuncLit，如果定义了返回值，同样需要确保有 return 语句
 	returnTypes, _ := f.FunctionType.Return.ReadTuple()
 	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
-		// ReturnAnalyzer 需要一个 FunctionStmt，但目前只依赖于 params 和 return。
-		// 由于 ReturnAnalyzer 的签名强依赖 *FunctionStmt，我们可能需要重构或做个 dummy。
-		// 这里临时提供一个检查逻辑，或者修改 ReturnAnalyzer 支持接口/不同类型。
-		// 为简单起见，可以把 FuncLitExpr 包装成临时 FunctionStmt 传进去
-		dummyFn := &FunctionStmt{
-			Name:         "anonymous",
-			FunctionType: f.FunctionType,
-			Body:         f.Body,
-		}
-		analyzer := NewReturnAnalyzer(bodyCtx, dummyFn)
+		analyzer := NewReturnAnalyzer(bodyCtx, f.Return)
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
 			return fmt.Errorf("匿名函数缺少返回语句")
