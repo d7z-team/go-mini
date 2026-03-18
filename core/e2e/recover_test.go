@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 func TestDeferRecover(t *testing.T) {
@@ -119,4 +119,3 @@ func TestTryCatchManual(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
