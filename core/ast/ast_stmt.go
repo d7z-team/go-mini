@@ -459,13 +459,21 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	scope, b := ctx.CheckScope("function")
+	scope, b := ctx.CheckAnyScope("function", "func_lit")
 	if !b {
 		return errors.New("return 语句只能在函数中使用")
 	}
 
-	stmt := scope.(*FunctionStmt)
-	if stmt.Return.IsVoid() && len(r.Results) != 0 {
+	var expectedReturn GoMiniType
+	if stmt, ok := scope.(*FunctionStmt); ok {
+		expectedReturn = stmt.Return
+	} else if expr, ok := scope.(*FuncLitExpr); ok {
+		expectedReturn = expr.Return
+	} else {
+		return errors.New("未知的函数范围类型")
+	}
+
+	if expectedReturn.IsVoid() && len(r.Results) != 0 {
 		return errors.New("当前函数不存在返回值")
 	}
 
@@ -481,8 +489,8 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 			tType = r.Results[0].GetBase().Type
 		}
 
-		if !tType.Equals(stmt.Return) {
-			return fmt.Errorf("返回类型错误 (return:%s != function:%s)", stmt.Return, tType)
+		if !tType.Equals(expectedReturn) {
+			return fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
 		}
 	}
 
@@ -923,8 +931,8 @@ func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 	if !g.Kind.Valid(&ctx.ValidContext) {
 		return fmt.Errorf("invalid type: %s", g.Kind)
 	}
-	if _, b := ctx.GetVariable(g.Name); b {
-		return fmt.Errorf("variable %s already exists", g.Name)
+	if ctx.IsLocalVariable(g.Name) {
+		return fmt.Errorf("variable %s already exists in current scope", g.Name)
 	}
 	ctx.AddVariable(g.Name, g.Kind)
 	return nil

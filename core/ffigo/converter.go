@@ -277,6 +277,35 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 				}
 			}
 		}
+
+		// 处理复合赋值: a += b => a = a + b
+		var op token.Token
+		switch st.Tok {
+		case token.ADD_ASSIGN:
+			op = token.ADD
+		case token.SUB_ASSIGN:
+			op = token.SUB
+		case token.MUL_ASSIGN:
+			op = token.MUL
+		case token.QUO_ASSIGN:
+			op = token.QUO
+		default:
+			return nil
+		}
+
+		if len(st.Lhs) == 1 {
+			lhs := c.convertExpr(st.Lhs[0])
+			return &mini_ast.AssignmentStmt{
+				BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+				LHS:      lhs,
+				Value: &mini_ast.BinaryExpr{
+					BaseNode: mini_ast.BaseNode{Meta: "binary"},
+					Left:     lhs,
+					Operator: mini_ast.Ident(c.convertOp(op)),
+					Right:    c.convertExpr(rhs),
+				},
+			}
+		}
 		return nil
 
 	case *ast.DeclStmt:
@@ -564,6 +593,39 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			res.High = c.convertExpr(ex.High)
 		}
 		return res
+	case *ast.FuncLit:
+		params := []mini_ast.FunctionParam{}
+		if ex.Type.Params != nil {
+			for _, field := range ex.Type.Params.List {
+				typeName := c.typeToString(field.Type)
+				if len(field.Names) == 0 {
+					params = append(params, mini_ast.FunctionParam{Type: mini_ast.GoMiniType(typeName)})
+				} else {
+					for _, name := range field.Names {
+						params = append(params, mini_ast.FunctionParam{Name: mini_ast.Ident(name.Name), Type: mini_ast.GoMiniType(typeName)})
+					}
+				}
+			}
+		}
+		retType := "Void"
+		if ex.Type.Results != nil && len(ex.Type.Results.List) > 0 {
+			retType = c.typeToString(ex.Type.Results.List[0].Type)
+		}
+		
+		funcExpr := &mini_ast.FuncLitExpr{
+			BaseNode: mini_ast.BaseNode{Meta: "func_lit"},
+			FunctionType: mini_ast.FunctionType{
+				Params: params,
+				Return: mini_ast.GoMiniType(retType),
+			},
+		}
+		if ex.Body != nil {
+			funcExpr.Body = c.convertStmt(ex.Body).(*mini_ast.BlockStmt)
+			funcExpr.Body.Inner = true
+		}
+		// Capture analysis will be performed during semantic validation (ast_valid.go) 
+		// because it's much more accurate to resolve local vs external variables there.
+		return funcExpr
 	}
 	return nil
 }

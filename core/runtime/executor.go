@@ -473,8 +473,29 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return e.evalSliceExpr(ctx, n)
 	case *ast.ImportExpr:
 		return e.evalImportExpr(ctx, n)
+	case *ast.FuncLitExpr:
+		return e.evalFuncLit(ctx, n)
 	}
 	return nil, fmt.Errorf("unsupported expression type: %T", s)
+}
+
+func (e *Executor) evalFuncLit(ctx *StackContext, n *ast.FuncLitExpr) (*Var, error) {
+	closure := &VMClosure{
+		FuncDef:  n,
+		Upvalues: make(map[string]*Var),
+	}
+
+	for _, name := range n.CaptureNames {
+		cellVar, err := ctx.CaptureVar(name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to capture variable %s: %w", name, err)
+		}
+		closure.Upvalues[name] = cellVar
+	}
+
+	v := NewVar(ast.TypeClosure, TypeClosure)
+	v.Ref = closure
+	return v, nil
 }
 
 func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
@@ -1097,6 +1118,7 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 	var name string
 	var receiver *Var
 	var mod *VMModule
+	var callable *Var
 
 	// 1. Determine the callable and receiver
 	if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
@@ -1125,9 +1147,23 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			tName = strings.TrimSuffix(tName, ">")
 			name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
 		}
+	} else {
+		// It could be a FuncLitExpr or another CallExpr returning a closure
+		var err error
+		callable, err = e.ExecExpr(ctx, n.Func)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if name != "" || mod != nil {
+	// If it's a local variable, it could be a closure.
+	if name != "" && mod == nil && callable == nil {
+		if v, err := ctx.Load(name); err == nil && v != nil {
+			callable = v
+		}
+	}
+
+	if name != "" || mod != nil || callable != nil {
 		// 2. Prepare arguments
 		totalArgs := len(n.Args)
 		offset := 0
@@ -1147,8 +1183,8 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 			}
 		}
 
-		// 3. Handle Intrinsics (only if not a module call)
-		if mod == nil && name != "" {
+		// 3. Handle Intrinsics (only if not a module call and no local callable shadows it)
+		if mod == nil && callable == nil && name != "" {
 			if res, handled, err := e.evalIntrinsic(ctx, name, args, n); handled {
 				return res, err
 			}
@@ -1160,6 +1196,10 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 				return e.evalDynamicCall(ctx, val, args, mod.Context)
 			}
 			return nil, fmt.Errorf("module member %s not found in %s", name, mod.Name)
+		}
+
+		if callable != nil {
+			return e.evalDynamicCall(ctx, callable, args, nil)
 		}
 
 		// Internal function in current program
@@ -1179,6 +1219,11 @@ func (e *Executor) evalCallExpr(ctx *StackContext, n *ast.CallExprStmt) (*Var, e
 func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var, modCtx *StackContext) (*Var, error) {
 	if callable == nil {
 		return nil, errors.New("cannot call nil")
+	}
+
+	if callable.VType == TypeClosure {
+		closure := callable.Ref.(*VMClosure)
+		return e.execClosure(ctx, closure, args)
 	}
 
 	// If it has Ref to FunctionStmt, it's a script function
@@ -1213,7 +1258,15 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 	case "panic":
 		msg := "panic"
 		if len(args) > 0 && args[0] != nil {
-			msg = args[0].Str
+			arg := args[0]
+			switch arg.VType {
+			case TypeString:
+				msg = arg.Str
+			case TypeInt:
+				msg = strconv.FormatInt(arg.I64, 10)
+			default:
+				msg = fmt.Sprintf("%v", arg.VType)
+			}
 		}
 		panic(fmt.Errorf("mini-panic: %v", msg))
 	case "string":
@@ -1415,6 +1468,49 @@ func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.Funct
 		return nil
 	})
 	return res, nil
+}
+
+func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Var) (*Var, error) {
+	f := closure.FuncDef
+	var res *Var
+	var err error
+
+	err = ctx.WithFuncScope("closure", func(old *Stack, c *StackContext) error {
+		defer c.Stack.RunDefers()
+		c.Executor = e
+
+		// Inject upvalues
+		for k, v := range closure.Upvalues {
+			c.Stack.MemoryPtr[k] = v // directly assign the Cell pointer
+		}
+
+		// Inject parameters
+		for i, p := range f.Params {
+			if string(p.Name) != "" {
+				_ = c.NewVar(string(p.Name), p.Type)
+				// Here we just use the simple mapping, FuncLit currently doesn't support Variadic in parser directly but let's handle just in case
+				if i < len(args) && args[i] != nil {
+					_ = c.Store(string(p.Name), args[i])
+				}
+			}
+		}
+
+		if !f.Return.IsVoid() {
+			_ = c.NewVar("__return__", f.Return)
+		}
+
+		err = e.execStmts(c, f.Body.Children)
+		if err != nil {
+			return err
+		}
+
+		if !f.Return.IsVoid() {
+			res, _ = c.loadVar("__return__")
+		}
+		return nil
+	})
+
+	return res, err
 }
 
 func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var, error) {

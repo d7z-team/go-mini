@@ -495,6 +495,24 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.ConstRefExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
+	case "func_lit":
+		var raw struct {
+			Params       []ast.FunctionParam `json:"params,omitempty"`
+			Return       ast.GoMiniType      `json:"return,omitempty"`
+			Body         json.RawMessage     `json:"body"`
+			CaptureNames []string            `json:"capture_names,omitempty"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.FuncLitExpr{
+			BaseNode:     baseNode,
+			FunctionType: ast.FunctionType{Params: raw.Params, Return: raw.Return},
+			CaptureNames: raw.CaptureNames,
+		}
+		if raw.Body != nil {
+			bodyNode, _ := unmarshalNode(raw.Body)
+			n.Body = bodyNode.(*ast.BlockStmt)
+		}
+		return n, nil
 	default:
 		return nil, errors.New("unknown meta: " + baseNode.Meta)
 	}

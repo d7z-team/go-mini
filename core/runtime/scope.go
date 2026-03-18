@@ -18,18 +18,29 @@ const (
 	TypeString
 	TypeBytes // Raw buffer
 	TypeBool
-	TypeMap    // Internal VM Map (string keys only)
-	TypeArray  // Internal VM Array ([]*Var)
-	TypeHandle // Host resource ID (uint32)
-	TypeResult // Standard result type (val, err)
-	TypeModule // Dynamic module object
-	TypeAny    // Placeholder for unknown/dynamic
+	TypeMap     // Internal VM Map (string keys only)
+	TypeArray   // Internal VM Array ([]*Var)
+	TypeHandle  // Host resource ID (uint32)
+	TypeResult  // Standard result type (val, err)
+	TypeModule  // Dynamic module object
+	TypeClosure // Anonymous function with captured environment
+	TypeCell    // Boxed variable for closure capture
+	TypeAny     // Placeholder for unknown/dynamic
 )
 
 type VMModule struct {
 	Name    string
 	Data    map[string]*Var
 	Context *StackContext
+}
+
+type Cell struct {
+	Value *Var
+}
+
+type VMClosure struct {
+	FuncDef  *ast.FuncLitExpr // Ast node of the function
+	Upvalues map[string]*Var  // Captured environment variables (should be TypeCell)
 }
 
 type Var struct {
@@ -42,7 +53,7 @@ type Var struct {
 	Bool   bool
 	Handle uint32
 	Bridge ffigo.FFIBridge
-	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule
+	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
 
 	// Result fields
 	ResultVal *Var
@@ -268,19 +279,31 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 	if err != nil {
 		return c.AddVariable(variable, expr)
 	}
+	if v != nil && v.VType == TypeCell {
+		v = v.Ref.(*Cell).Value
+	}
 	if expr == nil {
-		v.VType = TypeAny
-		v.I64 = 0
-		v.F64 = 0
-		v.Str = ""
-		v.B = nil
-		v.Bool = false
-		v.Handle = 0
-		v.Ref = nil
-		v.ResultVal = nil
-		v.ResultErr = ""
+		if v != nil {
+			v.VType = TypeAny
+			v.I64 = 0
+			v.F64 = 0
+			v.Str = ""
+			v.B = nil
+			v.Bool = false
+			v.Handle = 0
+			v.Ref = nil
+			v.ResultVal = nil
+			v.ResultErr = ""
+		} else {
+			return c.AddVariable(variable, nil)
+		}
 		return nil
 	}
+	
+	if v == nil {
+		return c.AddVariable(variable, expr)
+	}
+	
 	// Copy data only, keep original metadata if strictly typed
 	// But if original type was Any, allow it to become the specific type
 	if v.Type == "Any" && expr.Type != "Any" {
@@ -307,7 +330,14 @@ func (c *StackContext) AddVariable(name string, v *Var) error {
 }
 
 func (c *StackContext) Load(name string) (*Var, error) {
-	return c.loadVar(name)
+	v, err := c.loadVar(name)
+	if err != nil {
+		return nil, err
+	}
+	if v != nil && v.VType == TypeCell {
+		return v.Ref.(*Cell).Value, nil
+	}
+	return v, nil
 }
 
 func (c *StackContext) loadVar(variable string) (*Var, error) {
@@ -319,6 +349,23 @@ func (c *StackContext) loadVar(variable string) (*Var, error) {
 		s = s.Parent
 	}
 	return nil, fmt.Errorf("undefined: %s", variable)
+}
+
+func (c *StackContext) CaptureVar(name string) (*Var, error) {
+	s := c.Stack
+	for s != nil {
+		if v, ok := s.MemoryPtr[name]; ok {
+			if v != nil && v.VType != TypeCell {
+				cellValue := cloneVar(v)
+				v.VType = TypeCell
+				v.Ref = &Cell{Value: cellValue}
+				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+			}
+			return v, nil
+		}
+		s = s.Parent
+	}
+	return nil, fmt.Errorf("undefined capture: %s", name)
 }
 
 func (c *StackContext) Interrupt() bool {

@@ -83,13 +83,15 @@
     *   **[x] FFI 协议升级**：实现 `[Status][Payload]` 序列化协议，升级 `evalFFI` 自动装箱。
     *   **[x] 生成器同步**：升级 `ffigen` 以支持生成基于 `Result<T>` 的 Router 与 Proxy.
     *   **[x] 动态容器支持**：实现 `TypeMap` 的完整 FFI 序列化，支持非结构体的纯 Map 传输。
-7.  **[ ] 标准库全量生成与迁移 (Migration)**
-    *   **[x] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Result<T>` 契约。
-    *   **[x] 关键库注入**：实现 `json`, `time` 库的 FFI 封装。
-    *   **[x] 运行安全增强**：在解释器循环中增加对 `context.Context` 取消信号的感知。
-    *   **[x] 补充复杂场景测试**：已通过 robustness_test 验证字段排序、Any 包装及 Nil 比较。
+7.  **标准库全量生成与迁移 (Migration)**
+    *   **[x] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Result<T>` 契约。 [x]
+    *   **[x] 关键库注入**：实现 `json`, `time` 库的 FFI 封装。 [x]
+    *   **[x] 运行安全增强**：在解释器循环中增加对 `context.Context` 取消信号的感知。 [x]
+    *   **[x] 补充复杂场景测试**：已通过 robustness_test 验证字段排序、Any 包装及 Nil 比较。 [x]
+    *   **[x] FFI 句柄 OOP 转换**：实现了 `f.Write` 风格的方法调用映射。 [x]
     *   **[ ] 网络库注入**：实现 `net` 库的 FFI 封装（后续处理）。
-    *   **[x] 类型映射增强**：完善 `TypeMap` 的动态字段访问与边界鲁棒性（包含深度赋值与切片支持）。
+    *   **[x] 类型映射增强**：完善 `TypeMap` 的动态字段访问与边界鲁棒性（包含深度赋值与切片支持）。 [x]
+
 
 ---
 
@@ -98,7 +100,7 @@
 在完善了基础架构和 FFI 隔离协议后，为了使 `go-mini` 成为一个对标 Lua、JS 等成熟引擎的现代通用脚本系统，需规划以下核心功能的研发：
 
 1.  **[ ] 高级控制流与函数式编程**
-    *   **[ ] 匿名函数与闭包 (Closures)**：支持 `func() { ... }` 表达式，并实现变量的逃逸与环境捕获。这是实现异步回调、事件监听的关键。
+    *   **[x] 匿名函数与闭包 (Closures)**：支持 `func() { ... }` 表达式，并实现变量的逃逸与环境捕获。采用按需 Cell 装箱技术，兼顾了极致性能与完备性。
     *   **[x] 变长参数定义 (Variadic Functions)**：支持脚本内部使用 `func log(args ...any)` 进行二次封装，提升脚本的工程能力。
         *   *评估*: **难度: 低~中**。只需在调用时将末尾参数打包为 `VMArray`。
         *   *多语言兼容性: 极高*。JS (`...args`), Python (`*args`), Java (`Object...`), Go (`...any`) 均在语义上完美契合“末尾参数数组化”的底层抽象。
@@ -136,5 +138,31 @@
 
 ### Phase 4: 运行时隔离执行 (Executor) [x]
 - [x] `executor.go`: 引入 `ModuleCache`。
-- [x] 模块运行时加载：遇到 import 时，创建全新 `StackContext` 执行目标模块，收集其公开的函数和变量，封箱为 `VMModule` 注入当前环境变量。
+- [x] 模块运行时加载：遇到 import 时，创建全新 `StackContext` 执行目 标模块，收集其公开的函数和变量，封箱为 `VMModule` 注入当前环境变量。
 - [x] FFI 模块重构：将 `executor.RegisterFFI` 注册的扁平符号（如 `fmt.Println`）在引擎启动时自动打包为 `VMModule("fmt")`。
+
+---
+
+## 九、 重构计划：闭包与匿名函数支持 (Closures) [x]
+目标：支持带捕获的匿名函数，实现 `Cell` 引用装箱以平衡性能与完备性。
+
+### Phase 1: 核心运行时数据结构改造 [x]
+- [x] `scope.go`: 引入 `Cell` 机制与 `VMClosure` 结构体。
+- [x] `ast_types.go`: 扩展 `TypeFunc` 和 `TypeClosure` 常量。
+
+### Phase 2: AST 语法树与解析器支持 [x]
+- [x] `ast_expr.go`: 新增 `FuncLitExpr` AST 节点。
+- [x] `ast_valid.go`: 为 `FuncLitExpr` 添加 `Check()` 验证。
+- [x] `parser.go`: JSON 反序列化支持。
+
+### Phase 3: Go 源码转换器增强 (Converter) [x]
+- [x] `converter.go`: 转换 `*ast.FuncLit`，实现自由变量捕获分析（Upvalue 分析），并将其记录在 `FuncLitExpr` 节点上。
+
+### Phase 4: 执行引擎 (Executor) 的闭包实例化与调用 [x]
+- [x] `executor.go`: 实现 `evalFuncLit` 创建 `VMClosure` 并按需装箱 (`Cell`)。
+- [x] 变量读写逻辑适配：在读写变量时支持穿透 `Cell`。
+- [x] `evalCallExpr` 适配：支持 `VMClosure` 的环境注入与调用。
+
+### Phase 5: 测试验证与性能基准 [x]
+- [x] 闭包正确性测试（捕获、多实例、深层嵌套）。
+

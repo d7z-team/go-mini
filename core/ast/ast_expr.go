@@ -510,3 +510,30 @@ func (s *SliceExpr) Optimize(ctx *OptimizeContext) Node {
 	}
 	return s
 }
+
+// FuncLitExpr 表示匿名函数/闭包字面量表达式
+type FuncLitExpr struct {
+	BaseNode
+	FunctionType `json:",inline"`
+	Body         *BlockStmt `json:"body"`
+	CaptureNames []string   `json:"capture_names,omitempty"` // 静态分析出的需要捕获的外部变量名
+}
+
+func (f *FuncLitExpr) exprNode() {}
+
+func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
+	// 类型推导
+	f.Type = TypeClosure
+	
+	// 这里我们需要在 SemanticContext 中开启一个新的作用域来检查函数体
+	// 但这在现有的 check_*.go 或 ast_stmt.go 的 FunctionStmt.Check 中可能有现成的模式
+	// 为了简单起见，我们委托给一个在 ast_valid.go 里的专用检查函数
+	return checkFuncLit(f, ctx)
+}
+
+func (f *FuncLitExpr) Optimize(ctx *OptimizeContext) Node {
+	if f.Body != nil {
+		f.Body = f.Body.Optimize(ctx).(*BlockStmt)
+	}
+	return f
+}

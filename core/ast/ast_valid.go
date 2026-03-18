@@ -27,10 +27,11 @@ type ValidRoot struct {
 }
 
 type ValidContext struct {
-	root    *ValidRoot
-	parent  *ValidContext
-	current Node
-	vars    map[Ident]GoMiniType
+	root        *ValidRoot
+	parent      *ValidContext
+	current     Node
+	vars        map[Ident]GoMiniType
+	closureNode *FuncLitExpr // 当前活动的闭包节点
 }
 
 func NewValidator(node *ProgramStmt) (*ValidContext, error) {
@@ -83,10 +84,11 @@ func (c *ValidContext) Child(b Node) *ValidContext {
 		return c
 	}
 	return &ValidContext{
-		root:    c.root,
-		parent:  c,
-		current: b,
-		vars:    make(map[Ident]GoMiniType),
+		root:        c.root,
+		parent:      c,
+		current:     b,
+		vars:        make(map[Ident]GoMiniType),
+		closureNode: c.closureNode,
 	}
 }
 
@@ -167,13 +169,52 @@ func (c *ValidContext) CheckScope(targetMeta string) (Node, bool) {
 	return nil, false
 }
 
+func (c *ValidContext) CheckAnyScope(targetMetas ...string) (Node, bool) {
+	item := c
+	for item != nil {
+		if item.current != nil {
+			meta := item.current.GetBase().Meta
+			for _, t := range targetMetas {
+				if meta == t {
+					return item.current, true
+				}
+			}
+		}
+		item = item.parent
+	}
+	return nil, false
+}
+
+func (c *ValidContext) IsLocalVariable(variable Ident) bool {
+	_, ok := c.vars[variable]
+	return ok
+}
+
+func addCapture(f *FuncLitExpr, name string) {
+	for _, n := range f.CaptureNames {
+		if n == name {
+			return
+		}
+	}
+	f.CaptureNames = append(f.CaptureNames, name)
+}
+
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 	ctx := c
 	for ctx != nil {
 		if miniType, ok := ctx.vars[variable]; ok {
+			// 如果找到了变量，检查我们是否跨越了闭包边界
+			c2 := c
+			for c2 != ctx {
+				if c2.closureNode != nil && c2.closureNode != ctx.closureNode {
+					addCapture(c2.closureNode, string(variable))
+				}
+				c2 = c2.parent
+			}
 			return miniType, true
 		}
 		if miniType, ok := ctx.root.vars[variable]; ok {
+			// 全局变量无需捕获，因为闭包执行时环境能看到全局
 			return miniType, true
 		}
 		ctx = ctx.parent
@@ -279,4 +320,59 @@ func (c *ValidContext) ImportPackage(path string) error {
 
 func (c *ValidContext) SetLoader(loader func(path string) (*ProgramStmt, error)) {
 	c.root.Loader = loader
+}
+
+func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
+	funcCtx := NewSemanticContext(ctx.Child(f))
+	funcCtx.closureNode = f
+
+	// 1. 检查参数有效性
+	for _, param := range f.Params {
+		if param.Name == "" || !param.Name.Valid(&funcCtx.ValidContext) {
+			return fmt.Errorf("invalid param name: %s", param.Name)
+		}
+		if param.Type.IsVoid() {
+			return fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
+		}
+	}
+
+	// 2. 创建函数作用域并添加参数
+	bodyCtx := funcCtx.Child(f.Body)
+	for _, param := range f.Params {
+		if param.Name != "" {
+			bodyCtx.AddVariable(param.Name, param.Type)
+		}
+	}
+
+	// 注意：因为我们要支持闭包，内部函数体需要能够访问到外部的变量，
+	// 所以我们这里的 funcCtx.parent 不置为 nil（它默认指向当前的 ctx）。
+	// 这使得 bodyCtx 在找不到变量时可以一直向外层作用域查找。
+
+	// 3. 校验函数体
+	semBodyCtx := NewSemanticContext(bodyCtx)
+	if err := f.Body.Check(semBodyCtx); err != nil {
+		return err
+	}
+
+	// 4. 返回路径 analysis
+	// 对于 FuncLit，如果定义了返回值，同样需要确保有 return 语句
+	returnTypes, _ := f.FunctionType.Return.ReadTuple()
+	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
+		// ReturnAnalyzer 需要一个 FunctionStmt，但目前只依赖于 params 和 return。
+		// 由于 ReturnAnalyzer 的签名强依赖 *FunctionStmt，我们可能需要重构或做个 dummy。
+		// 这里临时提供一个检查逻辑，或者修改 ReturnAnalyzer 支持接口/不同类型。
+		// 为简单起见，可以把 FuncLitExpr 包装成临时 FunctionStmt 传进去
+		dummyFn := &FunctionStmt{
+			Name:         "anonymous",
+			FunctionType: f.FunctionType,
+			Body:         f.Body,
+		}
+		analyzer := NewReturnAnalyzer(bodyCtx, dummyFn)
+		if !analyzer.Analyze(f.Body) {
+			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
+			return fmt.Errorf("匿名函数缺少返回语句")
+		}
+	}
+
+	return nil
 }
