@@ -86,12 +86,22 @@ func TestExecutorBasic(t *testing.T) {
 	}
 
 	exec, _ := NewExecutor(prog)
-	err := exec.Execute(context.Background())
+
+	ctx := &StackContext{
+		Context:  context.Background(),
+		Executor: exec,
+		Stack: &Stack{
+			MemoryPtr: make(map[string]*Var),
+			Scope:     "global",
+			Depth:     1,
+		},
+	}
+	err := exec.execStmts(ctx, prog.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res, _ := exec.ctx.Load("res")
+	res, _ := ctx.Load("res")
 	if res.I64 != 50 {
 		t.Errorf("Calculation failed: got %d, want 50", res.I64)
 	}
@@ -136,11 +146,20 @@ func TestControlFlowIfFor(t *testing.T) {
 	}
 
 	exec, _ := NewExecutor(prog)
-	_ = exec.Execute(context.Background())
+	ctx := &StackContext{
+		Context:  context.Background(),
+		Executor: exec,
+		Stack: &Stack{
+			MemoryPtr: make(map[string]*Var),
+			Scope:     "global",
+			Depth:     1,
+		},
+	}
+	_ = exec.execStmts(ctx, prog.Main)
 
-	okVar, _ := exec.ctx.Load("ok")
+	okVar, _ := ctx.Load("ok")
 	if !okVar.Bool {
-		sumVar, _ := exec.ctx.Load("sum")
+		sumVar, _ := ctx.Load("sum")
 		t.Errorf("Control flow failed: sum=%d, ok=%v", sumVar.I64, okVar.Bool)
 	}
 }

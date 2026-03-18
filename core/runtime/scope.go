@@ -240,6 +240,11 @@ func (s *Stack) RunDefers() {
 	s.DeferStack = nil
 }
 
+type handleRef struct {
+	Bridge ffigo.FFIBridge
+	ID     uint32
+}
+
 type StackContext struct {
 	context.Context
 	Program  *Program
@@ -248,11 +253,17 @@ type StackContext struct {
 	Executor interface {
 		ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
 	}
+
+	// 运行时状态 (Session State)
+	StepCount      int64
+	StepLimit      int64
+	ActiveHandles  []handleRef
+	ModuleCache    map[string]*Var
+	LoadingModules map[string]bool
 }
 
 const (
-	ContextKeyMaxStackDepth = "ContextKeyMaxStackDepth"
-	DefaultMaxStackDepth    = 50000
+	DefaultMaxStackDepth = 50000
 )
 
 func (c *StackContext) ScopeApply(scope string) {

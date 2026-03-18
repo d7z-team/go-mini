@@ -18,22 +18,12 @@ type Executor struct {
 	consts  map[string]string
 	funcs   map[ast.Ident]*Var
 	program *ast.ProgramStmt
-	ctx     *StackContext
 
 	routes map[string]FFIRoute // 显式映射外部函数名到 Bridge
 
-	activeHandles  []handleRef
-	moduleCache    map[string]*Var
-	loadingModules map[string]bool
-	Loader         func(path string) (*ast.ProgramStmt, error)
+	Loader func(path string) (*ast.ProgramStmt, error)
 
 	StepLimit int64
-	stepCount int64
-}
-
-type handleRef struct {
-	Bridge ffigo.FFIBridge
-	ID     uint32
 }
 
 type MonitorManager interface {
@@ -73,13 +63,11 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		return nil, errors.New("invalid program")
 	}
 	result := &Executor{
-		program:        program,
-		structs:        make(map[string]*ast.StructStmt),
-		funcs:          make(map[ast.Ident]*Var),
-		consts:         make(map[string]string),
-		routes:         make(map[string]FFIRoute),
-		moduleCache:    make(map[string]*Var),
-		loadingModules: make(map[string]bool),
+		program: program,
+		structs: make(map[string]*ast.StructStmt),
+		funcs:   make(map[ast.Ident]*Var),
+		consts:  make(map[string]string),
+		routes:  make(map[string]FFIRoute),
 	}
 	for ident, stmt := range program.Structs {
 		result.structs[string(ident)] = stmt
@@ -95,17 +83,7 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 }
 
 func (e *Executor) Execute(ctx context.Context) (err error) {
-	defer func() {
-		// Clean up all active handles to prevent memory leaks on VM exit
-		for _, h := range e.activeHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
-			}
-		}
-		e.activeHandles = nil
-	}()
-
-	e.ctx = &StackContext{
+	session := &StackContext{
 		Context:  ctx,
 		Executor: e,
 		Stack: &Stack{
@@ -113,18 +91,30 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 			Scope:     "global",
 			Depth:     1,
 		},
+		StepLimit:      e.StepLimit,
+		ModuleCache:    make(map[string]*Var),
+		LoadingModules: make(map[string]bool),
 	}
 
+	defer func() {
+		// Clean up all active handles to prevent memory leaks on VM exit
+		for _, h := range session.ActiveHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}()
+
 	// 注入内建 nil
-	_ = e.ctx.AddVariable("nil", nil)
+	_ = session.AddVariable("nil", nil)
 
 	// 初始化全局变量
 	for name, expr := range e.program.Variables {
-		val, err := e.ExecExpr(e.ctx, expr)
+		val, err := e.ExecExpr(session, expr)
 		if err != nil {
 			return fmt.Errorf("failed to initialize global var %s: %w", name, err)
 		}
-		_ = e.ctx.AddVariable(string(name), val)
+		_ = session.AddVariable(string(name), val)
 	}
 
 	defer func() {
@@ -142,7 +132,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	}()
 
 	// 1. 执行顶级语句 (Main)
-	if err = e.execStmts(e.ctx, e.program.Main); err != nil {
+	if err = e.execStmts(session, e.program.Main); err != nil {
 		targetErr := err
 		for {
 			if mErr, ok := targetErr.(*MiniRuntimeError); ok {
@@ -152,18 +142,18 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 			}
 		}
 		if pErr, ok := targetErr.(*PanicError); ok {
-			e.ctx.PanicVar = pErr.Value
+			session.PanicVar = pErr.Value
 			err = pErr
 		}
 	}
-	e.ctx.Stack.RunDefers()
+	session.Stack.RunDefers()
 	if err != nil {
 		return err
 	}
 
 	// 2. 自动寻找并执行 main() 入口函数
 	if f, ok := e.program.Functions["main"]; ok {
-		err = e.ctx.WithFuncScope("main", func(old *Stack, c *StackContext) (innerErr error) {
+		err = session.WithFuncScope("main", func(old *Stack, c *StackContext) (innerErr error) {
 			defer func() {
 				c.Stack.RunDefers()
 				if c.PanicVar != nil {
@@ -203,10 +193,10 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 func (e *Executor) execStmts(ctx *StackContext, children []ast.Stmt) error {
 	for _, child := range children {
 		// 检查指令限制
-		if e.StepLimit > 0 {
-			e.stepCount++
-			if e.stepCount > e.StepLimit {
-				return fmt.Errorf("instruction limit exceeded (%d)", e.StepLimit)
+		if ctx.StepLimit > 0 {
+			ctx.StepCount++
+			if ctx.StepCount > ctx.StepLimit {
+				return fmt.Errorf("instruction limit exceeded (%d)", ctx.StepLimit)
 			}
 		}
 
@@ -634,11 +624,11 @@ func (e *Executor) evalFuncLit(ctx *StackContext, n *ast.FuncLitExpr) (*Var, err
 
 func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
 	path := n.Path
-	if v, ok := e.moduleCache[path]; ok {
+	if v, ok := ctx.ModuleCache[path]; ok {
 		return v, nil
 	}
 
-	if e.loadingModules[path] {
+	if ctx.LoadingModules[path] {
 		return nil, fmt.Errorf("circular dependency detected: %s", path)
 	}
 
@@ -646,8 +636,8 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 	if e.Loader != nil {
 		prog, err := e.Loader(path)
 		if err == nil {
-			e.loadingModules[path] = true
-			defer func() { delete(e.loadingModules, path) }()
+			ctx.LoadingModules[path] = true
+			defer func() { delete(ctx.LoadingModules, path) }()
 
 			// Execute module
 			modExecutor, err := NewExecutor(prog)
@@ -656,41 +646,70 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 			}
 			modExecutor.Loader = e.Loader
 			modExecutor.routes = e.routes
-			modExecutor.moduleCache = e.moduleCache
-			modExecutor.loadingModules = e.loadingModules
 
-			err = modExecutor.Execute(ctx.Context)
+			modSession := &StackContext{
+				Context:        ctx.Context,
+				Executor:       modExecutor,
+				Stack:          &Stack{MemoryPtr: make(map[string]*Var), Scope: "global", Depth: 1},
+				StepLimit:      ctx.StepLimit,
+				StepCount:      ctx.StepCount,
+				ModuleCache:    ctx.ModuleCache,
+				LoadingModules: ctx.LoadingModules,
+			}
+
+			// 1. 初始化模块全局变量
+			for name, expr := range prog.Variables {
+				val, err := modExecutor.ExecExpr(modSession, expr)
+				if err != nil {
+					return nil, fmt.Errorf("failed to initialize module var %s: %w", name, err)
+				}
+				_ = modSession.AddVariable(string(name), val)
+			}
+
+			// 2. 执行模块顶级语句
+			err = modExecutor.execStmts(modSession, prog.Main)
+			// Sync step count back
+			ctx.StepCount = modSession.StepCount
+
 			if err != nil {
 				return nil, fmt.Errorf("module %s execution failed: %w", path, err)
 			}
 
 			// Collect exports
 			exports := make(map[string]*Var)
-			// Functions
-			for name, fn := range prog.Functions {
-				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-					exports[string(name)] = &Var{
-						VType: TypeAny,
-						Ref:   fn,
-					}
-				}
-			}
-			// Variables
+			// 导出所有符合规则的 Ident (首字母大写)
+			// 同时检查变量、常量和函数
 			for name := range prog.Variables {
 				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-					v, err := modExecutor.ctx.Load(string(name))
+					v, err := modSession.Load(string(name))
 					if err == nil {
 						exports[string(name)] = v
 					}
 				}
 			}
-			// Constants
+			// 导出函数 (作为闭包)
+			for name, fn := range prog.Functions {
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					exports[string(name)] = &Var{
+						VType: TypeClosure,
+						Ref: &VMClosure{
+							FuncDef: &ast.FuncLitExpr{
+								BaseNode:     fn.BaseNode,
+								FunctionType: fn.FunctionType,
+								Body:         fn.Body,
+							},
+							Upvalues: make(map[string]*Var),
+						},
+					}
+				}
+			}
+			// 导出常量
 			for name, val := range prog.Constants {
 				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 					exports[name] = NewString(val)
 				}
 			}
-			// Structs
+			// 导出结构体定义
 			for name, s := range prog.Structs {
 				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 					exports[string(name)] = &Var{
@@ -703,12 +722,11 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 			res := &Var{
 				VType: TypeModule,
 				Ref: &VMModule{
-					Name:    path,
-					Data:    exports,
-					Context: modExecutor.ctx,
+					Name: path,
+					Data: exports,
 				},
 			}
-			e.moduleCache[path] = res
+			ctx.ModuleCache[path] = res
 			return res, nil
 		}
 	}
@@ -737,7 +755,7 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 
 	if found {
 		res := &Var{VType: TypeModule, Ref: ffiMod}
-		e.moduleCache[path] = res
+		ctx.ModuleCache[path] = res
 		return res, nil
 	}
 
@@ -872,6 +890,13 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 		mod := obj.Ref.(*VMModule)
 		if val, ok := mod.Data[string(n.Property)]; ok {
 			return val, nil
+		}
+		// 实时从模块上下文中加载变量 (处理可变导出变量)
+		if mod.Context != nil {
+			val, err := mod.Context.Load(string(n.Property))
+			if err == nil {
+				return val, nil
+			}
 		}
 		return nil, fmt.Errorf("module member %s not found", n.Property)
 	case TypeAny:
@@ -1824,7 +1849,7 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 		innerType, _ := retType.ReadResult()
 
 		if status == 0 {
-			val, err := e.deserializeVar(reader, innerType, route.Bridge)
+			val, err := e.deserializeVar(ctx, reader, innerType, route.Bridge)
 			if err != nil {
 				return nil, err
 			}
@@ -1834,7 +1859,7 @@ func (e *Executor) evalFFI(ctx *StackContext, route FFIRoute, args []*Var) (*Var
 		return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
 	}
 
-	return e.deserializeVar(reader, retType, route.Bridge)
+	return e.deserializeVar(ctx, reader, retType, route.Bridge)
 }
 
 func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniType) error {
@@ -1995,7 +2020,7 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 	}
 }
 
-func (e *Executor) deserializeAnyToVar(val interface{}, bridge ffigo.FFIBridge) *Var {
+func (e *Executor) deserializeAnyToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
 	if val == nil {
 		return nil
 	}
@@ -2014,19 +2039,19 @@ func (e *Executor) deserializeAnyToVar(val interface{}, bridge ffigo.FFIBridge) 
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
-			e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: v})
+			ctx.ActiveHandles = append(ctx.ActiveHandles, handleRef{Bridge: bridge, ID: v})
 		}
 		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
 	case map[string]interface{}:
 		res := make(map[string]*Var)
 		for k, raw := range v {
-			res[k] = e.deserializeAnyToVar(raw, bridge)
+			res[k] = e.deserializeAnyToVar(ctx, raw, bridge)
 		}
 		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
 	case []interface{}:
 		res := make([]*Var, len(v))
 		for i, raw := range v {
-			res[i] = e.deserializeAnyToVar(raw, bridge)
+			res[i] = e.deserializeAnyToVar(ctx, raw, bridge)
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
 	}
@@ -2044,7 +2069,7 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (s
 	}
 }
 
-func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
+func (e *Executor) deserializeVar(ctx *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
 	if typ.IsVoid() {
 		return nil, nil
 	}
@@ -2056,7 +2081,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 	var err error
 
 	if typ == "Any" {
-		res = e.deserializeAnyToVar(reader.ReadAny(), bridge)
+		res = e.deserializeAnyToVar(ctx, reader.ReadAny(), bridge)
 	} else {
 		switch {
 		case typ == "String":
@@ -2074,7 +2099,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
-				e.activeHandles = append(e.activeHandles, handleRef{Bridge: bridge, ID: id})
+				ctx.ActiveHandles = append(ctx.ActiveHandles, handleRef{Bridge: bridge, ID: id})
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 		case typ.IsArray():
@@ -2082,7 +2107,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			itemType, _ := typ.ReadArrayItemType()
 			arrData := make([]*Var, count)
 			for i := 0; i < count; i++ {
-				val, err := e.deserializeVar(reader, itemType, bridge)
+				val, err := e.deserializeVar(ctx, reader, itemType, bridge)
 				if err != nil {
 					return nil, err
 				}
@@ -2098,7 +2123,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 				if err != nil {
 					return nil, err
 				}
-				val, err := e.deserializeVar(reader, vType, bridge)
+				val, err := e.deserializeVar(ctx, reader, vType, bridge)
 				if err != nil {
 					return nil, err
 				}
@@ -2109,7 +2134,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 			types, _ := typ.ReadTuple()
 			tupleData := make([]*Var, len(types))
 			for i, t := range types {
-				val, err := e.deserializeVar(reader, t, bridge)
+				val, err := e.deserializeVar(ctx, reader, t, bridge)
 				if err != nil {
 					return nil, err
 				}
@@ -2122,7 +2147,7 @@ func (e *Executor) deserializeVar(reader *ffigo.Reader, typ ast.GoMiniType, brid
 					resMap := make(map[string]*Var)
 					for _, fName := range sDef.FieldNames {
 						fType := sDef.Fields[fName]
-						val, err := e.deserializeVar(reader, fType, bridge)
+						val, err := e.deserializeVar(ctx, reader, fType, bridge)
 						if err != nil {
 							return nil, err
 						}

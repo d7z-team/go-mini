@@ -7,6 +7,7 @@ Go-Mini is a high-performance, absolutely isolated Go-like script executor. It i
 - **Absolute Memory Isolation**: No shared pointers between Host and VM.
 - **Zero-Reflection**: The entire execution path (Parser, Validator, Executor) is free of Go's `reflect` package.
 - **Raw-FFI IPC**: High-performance binary communication via `ffigo.Buffer` and `ffigo.Bridge`.
+- **Thread-Safe Execution**: The `Executor` acts as a stateless blueprint. A single compiled `MiniProgram` can be executed concurrently across thousands of host goroutines without locks or data races.
 - **Static Code Generation**: FFI wrappers are generated at compile-time using `cmd/ffigen`.
 - **Data Reduction**: All scalar types are mapped to `Int64` or `Float64` for simplicity.
 - **Reference Semantics**: Script-defined structs and arrays use **reference semantics** for performance. Assignments and method calls do not trigger a deep copy.

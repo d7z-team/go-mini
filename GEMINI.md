@@ -63,6 +63,10 @@ go-mini/
     *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go 风格类型映射为规范格式）。
     *   **零容错**: 执行器在进行 FFI 序列化或类型断言时，应严格匹配规范格式，不应引入 `strings.ToLower` 等宽容性处理以牺牲性能或破坏严谨性。
 
+### VI. 无状态执行与并发安全 (Stateless Execution & Concurrency Safety)
+*   **规则**: `Executor` 必须是绝对无状态的只读蓝图。严禁在 `Executor` 结构体中添加任何特定于单次执行的运行时状态。
+*   **实现**: 所有单次执行的可变状态（如指令计数器 `stepCount`、活跃句柄列表 `activeHandles`、模块缓存 `moduleCache` 等）必须下沉并封装到 `StackContext` (Session) 中。每次调用 `Execute` 都必须在本地栈上创建一个全新的、相互隔离的 `StackContext`，以确保宿主层多协程并发调用的绝对线程安全。
+
 ---
 
 ## 🤖 3. AI 贡献者工作流指南
