@@ -528,6 +528,12 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.ConstRefExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
+	case "import":
+		var raw struct {
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.ImportExpr{BaseNode: baseNode, Path: raw.Path}, nil
 	case "func_lit":
 		var raw struct {
 			Params       []ast.FunctionParam `json:"params,omitempty"`

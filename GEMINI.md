@@ -67,6 +67,10 @@ go-mini/
 *   **规则**: `Executor` 必须是绝对无状态的只读蓝图。严禁在 `Executor` 结构体中添加任何特定于单次执行的运行时状态。
 *   **实现**: 所有单次执行的可变状态（如指令计数器 `stepCount`、活跃句柄列表 `activeHandles`、模块缓存 `moduleCache` 等）必须下沉并封装到 `StackContext` (Session) 中。每次调用 `Execute` 都必须在本地栈上创建一个全新的、相互隔离的 `StackContext`，以确保宿主层多协程并发调用的绝对线程安全。
 
+### VII. AST JSON 双向对称性 (AST JSON Symmetry)
+*   **规则**: 所有的 AST 节点必须 100% 支持 JSON 序列化与反序列化。禁止存在只能从 Go 源码转换而来，却无法从 JSON 恢复的“幽灵”节点。
+*   **实现**: 当在 `core/ast` 目录下新增或修改任何实现了 `Node`、`Expr` 或 `Stmt` 接口的结构体时，不仅要确保其包含正确的 `json` struct tags，还**必须强制在 `core/parser.go` 的 `unmarshalNodeData` 或 `parseExpr` 的 `switch` 分支中实现对应的反序列化逻辑**。这是引擎能够支持跨进程“物理级编译与执行分离”的基石。
+
 ---
 
 ## 🤖 3. AI 贡献者工作流指南

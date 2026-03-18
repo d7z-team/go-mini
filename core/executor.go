@@ -42,6 +42,16 @@ func (p *MiniProgram) GetAst() *ast.ProgramStmt {
 	return p.executor.GetProgram()
 }
 
+// MarshalJSON 序列化当前编译好的程序蓝图，实现物理层面的编译与执行分离
+func (p *MiniProgram) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.executor.GetProgram())
+}
+
+// MarshalIndentJSON 格式化序列化当前程序蓝图
+func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(p.executor.GetProgram(), prefix, indent)
+}
+
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
 		bridges:  make(map[uint32]ffigo.FFIBridge),
@@ -186,6 +196,26 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 
 	optimizeCtx := ast.NewOptimizeContext(validator)
 	program.Optimize(optimizeCtx)
+
+	return o.NewRuntimeByAst(program)
+}
+
+// NewRuntimeByJSON 从序列化后的 JSON AST 数据加载并构建执行环境
+func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
+	node, err := Unmarshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("JSON 反序列化失败: %w", err)
+	}
+
+	program, _, err := ValidateAndOptimizeWithLoader(node, o.Loader, func(v *ast.ValidContext) error {
+		for name, spec := range o.specs {
+			v.AddVariable(name, spec)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("JSON AST 验证优化失败: %w", err)
+	}
 
 	return o.NewRuntimeByAst(program)
 }
