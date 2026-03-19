@@ -57,7 +57,58 @@ func main() {
 }
 ```
 
-### 2. 使用标准库
+### 2. 表达式执行 (Eval)
+
+如果你只需要计算单个 Go 表达式（例如规则引擎场景），可以使用更轻量级的 `Eval` 方法。它不需要 `package` 声明和 `main` 函数，且支持直接传入 Go 原生类型作为环境变量。
+
+```go
+func main() {
+    executor := engine.NewMiniExecutor()
+    
+    // 直接传入 Go 原生类型，引擎会自动进行类型转换和内存隔离（[]byte 会被深度拷贝）
+    env := map[string]interface{}{
+        "a": 10,
+        "b": 20,
+        "data": []byte{1, 2, 3},
+    }
+    
+    // 执行表达式
+    result, err := executor.Eval(context.Background(), "a + b * 2 + int64(data[0])", env)
+    if err != nil {
+        panic(err)
+    }
+    
+    // 使用 Interface() 轻松转换回 Go 原生接口类型
+    fmt.Println("Result:", result.Interface()) // 输出: 51
+}
+```
+
+### 3. 代码片段执行与跨包库调用
+
+`go-mini` 支持将脚本作为“逻辑库”预加载，并通过 `Execute` 执行多行代码片段。
+
+```go
+func main() {
+    executor := engine.NewMiniExecutor()
+
+    // 1. 编译并注册一个不带 main 的库
+    libProg, _ := executor.NewRuntimeByGoCode(`
+        package utils
+        func Add(a, b int) int { return a + b }
+    `)
+    executor.RegisterModule("math", libProg)
+
+    // 2. 执行代码片段，直接 import 已注册的模块
+    code := `
+        import "math"
+        res := math.Add(x, 100)
+        return res
+    `
+    // 注：代码片段中的 return 会被捕获到结果中
+}
+```
+
+### 4. 使用标准库
 
 `go-mini` 默认是“空载”的（没有任何外部能力）。如果你需要让脚本打印日志、读取文件或解析 JSON，你需要注入标准库。
 

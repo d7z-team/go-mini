@@ -96,7 +96,7 @@ func TestExecutorBasic(t *testing.T) {
 			Depth:     1,
 		},
 	}
-	err := exec.execStmts(ctx, prog.Main)
+	err := exec.ExecuteStmts(ctx, prog.Main)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestControlFlowIfFor(t *testing.T) {
 			Depth:     1,
 		},
 	}
-	_ = exec.execStmts(ctx, prog.Main)
+	_ = exec.ExecuteStmts(ctx, prog.Main)
 
 	okVar, _ := ctx.Load("ok")
 	if !okVar.Bool {

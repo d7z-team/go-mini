@@ -118,6 +118,21 @@
     3.  **[x] 模块化与工程化管理**
     *   **[x] 真正的包加载系统 (Module Import)**：提供一个抽象的 Module Loader，支持跨文件调用（例如 `import "utils"` 加载纯脚本文件），解决单文件代码臃肿的问题。
     *   **[x] 内存预分配 (`make`)**：支持使用 `make([]int, 0, 100)` 或预分配容量的 Map，优化大量数据处理时的 GC 压力。
+    *   **[x] 纯表达式执行 (`Eval`)**：支持计算单个 Go 表达式字符串，无需 package 和 main 声明，适用于规则引擎。
+
+    ---
+
+    ## 十、 重构计划：纯表达式执行支持 (Expression Evaluation) [x]
+    目标：支持计算独立的 Go 表达式，复用 FFI 路由和无状态执行器。
+
+    ### Phase 1: 转换器增强 [x]
+    - [x] `converter.go`: 实现 `ConvertExprSource` 方法，调用 `go/parser.ParseExpr`。
+
+    ### Phase 2: API 封装 [x]
+    - [x] `executor.go`: 在 `MiniExecutor` 中提供 `Eval` 接口，自动处理环境注入与结果返回。
+
+    ### Phase 3: 验证与测试 [x]
+    - [x] `eval_test.go`: 验证算术、逻辑及带环境变量的表达式计算。
 
 ---
 

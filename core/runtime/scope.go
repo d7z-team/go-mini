@@ -153,7 +153,50 @@ func (v *Var) ToHandle() (uint32, error) {
 	return v.Handle, nil
 }
 
-func cloneVar(v *Var) *Var {
+// Interface 将 VM 变量转换为 Go 原生接口类型
+func (v *Var) Interface() interface{} {
+	if v == nil {
+		return nil
+	}
+	switch v.VType {
+	case TypeInt:
+		return v.I64
+	case TypeFloat:
+		return v.F64
+	case TypeString:
+		return v.Str
+	case TypeBytes:
+		return v.B
+	case TypeBool:
+		return v.Bool
+	case TypeHandle:
+		return v.Handle
+	case TypeArray:
+		if arr, ok := v.Ref.(*VMArray); ok {
+			res := make([]interface{}, len(arr.Data))
+			for i, item := range arr.Data {
+				res[i] = item.Interface()
+			}
+			return res
+		}
+	case TypeMap:
+		if m, ok := v.Ref.(*VMMap); ok {
+			res := make(map[string]interface{})
+			for k, val := range m.Data {
+				res[k] = val.Interface()
+			}
+			return res
+		}
+	case TypeResult:
+		if v.ResultErr != "" {
+			return errors.New(v.ResultErr)
+		}
+		return v.ResultVal.Interface()
+	}
+	return nil
+}
+
+func (v *Var) Copy() *Var {
 	if v == nil {
 		return nil
 	}
@@ -167,7 +210,7 @@ func cloneVar(v *Var) *Var {
 		Handle:    v.Handle,
 		Bridge:    v.Bridge,
 		Ref:       v.Ref, // Reference structures are shared by pointer
-		ResultVal: cloneVar(v.ResultVal),
+		ResultVal: v.ResultVal.Copy(),
 		ResultErr: v.ResultErr,
 	}
 	if v.B != nil {
@@ -343,7 +386,7 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 }
 
 func (c *StackContext) AddVariable(name string, v *Var) error {
-	c.Stack.MemoryPtr[name] = cloneVar(v)
+	c.Stack.MemoryPtr[name] = v.Copy()
 	return nil
 }
 
@@ -374,7 +417,7 @@ func (c *StackContext) CaptureVar(name string) (*Var, error) {
 	for s != nil {
 		if v, ok := s.MemoryPtr[name]; ok {
 			if v != nil && v.VType != TypeCell {
-				cellValue := cloneVar(v)
+				cellValue := v.Copy()
 				v.VType = TypeCell
 				v.Ref = &Cell{Value: cellValue}
 				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil

@@ -132,7 +132,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	}()
 
 	// 1. 执行顶级语句 (Main)
-	if err = e.execStmts(session, e.program.Main); err != nil {
+	if err = e.ExecuteStmts(session, e.program.Main); err != nil {
 		targetErr := err
 		for {
 			if mErr, ok := targetErr.(*MiniRuntimeError); ok {
@@ -164,7 +164,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 			for _, p := range f.Params {
 				_ = c.NewVar(string(p.Name), p.Type)
 			}
-			execErr := e.execStmts(c, f.Body.Children)
+			execErr := e.ExecuteStmts(c, f.Body.Children)
 			if execErr != nil {
 				targetErr := execErr
 				for {
@@ -190,7 +190,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	return err
 }
 
-func (e *Executor) execStmts(ctx *StackContext, children []ast.Stmt) error {
+func (e *Executor) ExecuteStmts(ctx *StackContext, children []ast.Stmt) error {
 	for _, child := range children {
 		// 检查指令限制
 		if ctx.StepLimit > 0 {
@@ -225,10 +225,10 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 	switch n := s.(type) {
 	case *ast.BlockStmt:
 		if n.Inner {
-			return e.execStmts(ctx, n.Children)
+			return e.ExecuteStmts(ctx, n.Children)
 		}
 		ctx.WithScope("block", func(ctx *StackContext) {
-			err = e.execStmts(ctx, n.Children)
+			err = e.ExecuteStmts(ctx, n.Children)
 		})
 		return err
 	case *ast.GenDeclStmt:
@@ -333,7 +333,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 					}
 
 					// 2. 执行主体
-					bodyErr = e.execStmts(bodyCtx, n.Body.(*ast.BlockStmt).Children)
+					bodyErr = e.ExecuteStmts(bodyCtx, n.Body.(*ast.BlockStmt).Children)
 					if bodyErr == nil && bodyCtx.Interrupt() {
 						// bodyCtx.Stack is currently top, its parent is the for scope
 						bodyCtx.Stack.Parent.interrupt = bodyCtx.Stack.interrupt
@@ -425,7 +425,7 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 							_ = catchCtx.NewVar(string(n.Catch.VarName), "Any")
 							_ = catchCtx.Store(string(n.Catch.VarName), pErr.Value)
 						}
-						err = e.execStmts(catchCtx, n.Catch.Body.Children)
+						err = e.ExecuteStmts(catchCtx, n.Catch.Body.Children)
 					})
 				}
 			}
@@ -596,7 +596,7 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 	case *ast.SliceExpr:
 		return e.evalSliceExpr(ctx, n)
 	case *ast.ImportExpr:
-		return e.evalImportExpr(ctx, n)
+		return e.ImportModule(ctx, n)
 	case *ast.FuncLitExpr:
 		return e.evalFuncLit(ctx, n)
 	}
@@ -622,7 +622,7 @@ func (e *Executor) evalFuncLit(ctx *StackContext, n *ast.FuncLitExpr) (*Var, err
 	return v, nil
 }
 
-func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
+func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
 	path := n.Path
 	if v, ok := ctx.ModuleCache[path]; ok {
 		return v, nil
@@ -667,7 +667,7 @@ func (e *Executor) evalImportExpr(ctx *StackContext, n *ast.ImportExpr) (*Var, e
 			}
 
 			// 2. 执行模块顶级语句
-			err = modExecutor.execStmts(modSession, prog.Main)
+			err = modExecutor.ExecuteStmts(modSession, prog.Main)
 			// Sync step count back
 			ctx.StepCount = modSession.StepCount
 
@@ -1208,7 +1208,7 @@ func (e *Executor) evalRangeStmt(ctx *StackContext, n *ast.RangeStmt, obj *Var) 
 				}
 			}
 
-			err := e.execStmts(bodyCtx, n.Body.Children)
+			err := e.ExecuteStmts(bodyCtx, n.Body.Children)
 			if err != nil {
 				rangeErr = err
 			}
@@ -1300,7 +1300,7 @@ func (e *Executor) evalSwitchStmt(ctx *StackContext, n *ast.SwitchStmt) error {
 			res, _ := e.evalComparison("==", tag, val)
 			if res != nil && res.Bool {
 				found = true
-				if err := e.execStmts(ctx, clause.Body); err != nil {
+				if err := e.ExecuteStmts(ctx, clause.Body); err != nil {
 					return err
 				}
 				break
@@ -1312,7 +1312,7 @@ func (e *Executor) evalSwitchStmt(ctx *StackContext, n *ast.SwitchStmt) error {
 	}
 
 	if !found && defaultClause != nil {
-		return e.execStmts(ctx, defaultClause.Body)
+		return e.ExecuteStmts(ctx, defaultClause.Body)
 	}
 	return nil
 }
@@ -1484,7 +1484,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 		if err != nil {
 			return nil, true, err
 		}
-		v, err := e.evalImportExpr(ctx, &ast.ImportExpr{Path: pathVar.Str})
+		v, err := e.ImportModule(ctx, &ast.ImportExpr{Path: pathVar.Str})
 		return v, true, err
 	case "panic":
 		var val *Var
@@ -1689,7 +1689,7 @@ func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.Funct
 			_ = c.NewVar("__return__", f.Return)
 		}
 
-		execErr := e.execStmts(c, f.Body.Children)
+		execErr := e.ExecuteStmts(c, f.Body.Children)
 		if execErr != nil {
 			targetErr := execErr
 			for {
@@ -1748,7 +1748,7 @@ func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Va
 			_ = c.NewVar("__return__", f.Return)
 		}
 
-		execErr := e.execStmts(c, f.Body.Children)
+		execErr := e.ExecuteStmts(c, f.Body.Children)
 		if execErr != nil {
 			targetErr := execErr
 			for {
@@ -2020,11 +2020,15 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 	}
 }
 
-func (e *Executor) deserializeAnyToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
+func (e *Executor) ToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
 	if val == nil {
 		return nil
 	}
 	switch v := val.(type) {
+	case *Var:
+		return v
+	case int:
+		return NewInt(int64(v))
 	case int64:
 		return NewInt(v)
 	case float64:
@@ -2032,7 +2036,12 @@ func (e *Executor) deserializeAnyToVar(ctx *StackContext, val interface{}, bridg
 	case string:
 		return NewString(v)
 	case []byte:
-		return &Var{VType: TypeBytes, B: v}
+		if v == nil {
+			return nil
+		}
+		buf := make([]byte, len(v))
+		copy(buf, v)
+		return &Var{VType: TypeBytes, B: buf}
 	case bool:
 		return NewBool(v)
 	case uint32:
@@ -2045,13 +2054,13 @@ func (e *Executor) deserializeAnyToVar(ctx *StackContext, val interface{}, bridg
 	case map[string]interface{}:
 		res := make(map[string]*Var)
 		for k, raw := range v {
-			res[k] = e.deserializeAnyToVar(ctx, raw, bridge)
+			res[k] = e.ToVar(ctx, raw, bridge)
 		}
 		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
 	case []interface{}:
 		res := make([]*Var, len(v))
 		for i, raw := range v {
-			res[i] = e.deserializeAnyToVar(ctx, raw, bridge)
+			res[i] = e.ToVar(ctx, raw, bridge)
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
 	}
@@ -2081,7 +2090,7 @@ func (e *Executor) deserializeVar(ctx *StackContext, reader *ffigo.Reader, typ a
 	var err error
 
 	if typ == "Any" {
-		res = e.deserializeAnyToVar(ctx, reader.ReadAny(), bridge)
+		res = e.ToVar(ctx, reader.ReadAny(), bridge)
 	} else {
 		switch {
 		case typ == "String":

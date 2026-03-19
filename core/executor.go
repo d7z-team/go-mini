@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -23,6 +25,7 @@ type MiniExecutor struct {
 	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
 
 	registry *ffigo.HandleRegistry
+	modules  map[string]*ast.ProgramStmt // 预加载的模块蓝图
 }
 
 type MiniProgram struct {
@@ -38,16 +41,54 @@ func (p *MiniProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
 }
 
+// Eval 在当前程序的语境下执行单个 Go 表达式
+// 这允许你调用程序中定义的函数或访问全局变量
+func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
+	converter := ffigo.NewGoToASTConverter()
+	expr, err := converter.ConvertExprSource(exprStr)
+	if err != nil {
+		return nil, fmt.Errorf("表达式解析失败: %w", err)
+	}
+
+	// 创建基于当前程序蓝图的 session
+	session := &runtime.StackContext{
+		Context:        ctx,
+		Executor:       p.executor,
+		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
+		ModuleCache:    make(map[string]*runtime.Var),
+		LoadingModules: make(map[string]bool),
+	}
+
+	// 注入环境
+	_ = session.AddVariable("nil", nil)
+	for k, v := range env {
+		norm, err := normalizeValue(v)
+		if err != nil {
+			return nil, fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
+		}
+		_ = session.AddVariable(k, p.executor.ToVar(session, norm, nil))
+	}
+
+	return p.executor.ExecExpr(session, expr)
+}
+
+// MustEval 类似于 Eval，但在出错时会触发 panic
+func (p *MiniProgram) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
+	res, err := p.Eval(ctx, exprStr, env)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
 func (p *MiniProgram) GetAst() *ast.ProgramStmt {
 	return p.executor.GetProgram()
 }
 
-// MarshalJSON 序列化当前编译好的程序蓝图，实现物理层面的编译与执行分离
 func (p *MiniProgram) MarshalJSON() ([]byte, error) {
 	return json.Marshal(p.executor.GetProgram())
 }
 
-// MarshalIndentJSON 格式化序列化当前程序蓝图
 func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 	return json.MarshalIndent(p.executor.GetProgram(), prefix, indent)
 }
@@ -58,6 +99,7 @@ func NewMiniExecutor() *MiniExecutor {
 		routes:   make(map[string]runtime.FFIRoute),
 		specs:    make(map[ast.Ident]ast.GoMiniType),
 		registry: ffigo.NewHandleRegistry(),
+		modules:  make(map[string]*ast.ProgramStmt),
 	}
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
@@ -77,6 +119,11 @@ func NewMiniExecutor() *MiniExecutor {
 
 func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
 	o.Loader = loader
+}
+
+// RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
+func (o *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
+	o.modules[path] = prog.GetAst()
 }
 
 func (o *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
@@ -157,7 +204,17 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 	if err != nil {
 		return nil, err
 	}
-	executor.Loader = o.Loader
+
+	// 自动合并 Loader，优先查找已注册模块
+	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		if astNode, ok := o.modules[path]; ok {
+			return astNode, nil
+		}
+		if o.Loader != nil {
+			return o.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
 
 	// Pass routes to executor
 	for name, route := range o.routes {
@@ -168,6 +225,91 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 		Source:   "",
 		executor: executor,
 	}, nil
+}
+
+// normalizeValue 将复杂的宿主对象（如 struct）规范化为 VM 可直接处理的类型（map/slice/primitives）。
+// 该函数位于 engine 边界层，允许使用反射以提供极致的开发便利性。
+func normalizeValue(val interface{}) (interface{}, error) {
+	if val == nil {
+		return nil, nil
+	}
+
+	// 检查是否已经是引擎原生变量，若是则直接穿透
+	if _, ok := val.(*runtime.Var); ok {
+		return val, nil
+	}
+
+	v := reflect.ValueOf(val)
+	// 处理指针
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil, nil
+		}
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int(), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(v.Uint()), nil
+	case reflect.Float32, reflect.Float64:
+		return v.Float(), nil
+	case reflect.String:
+		return v.String(), nil
+	case reflect.Bool:
+		return v.Bool(), nil
+	case reflect.Slice, reflect.Array:
+		// 特殊处理 []byte
+		if v.Type().Elem().Kind() == reflect.Uint8 {
+			return v.Bytes(), nil
+		}
+		res := make([]interface{}, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			var err error
+			res[i], err = normalizeValue(v.Index(i).Interface())
+			if err != nil {
+				return nil, err
+			}
+		}
+		return res, nil
+	case reflect.Map:
+		res := make(map[string]interface{})
+		for _, key := range v.MapKeys() {
+			if key.Kind() != reflect.String {
+				return nil, fmt.Errorf("不支持非字符串类型的 Map Key: %v", key.Kind())
+			}
+			var err error
+			res[key.String()], err = normalizeValue(v.MapIndex(key).Interface())
+			if err != nil {
+				return nil, err
+			}
+		}
+		return res, nil
+	case reflect.Struct:
+		res := make(map[string]interface{})
+		t := v.Type()
+		for i := 0; i < v.NumField(); i++ {
+			field := t.Field(i)
+			// 仅处理导出的字段
+			if field.PkgPath != "" {
+				continue
+			}
+			name := field.Name
+			// 优先使用 json 标签作为键名
+			if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
+				name = strings.Split(tag, ",")[0]
+			}
+			var err error
+			res[name], err = normalizeValue(v.Field(i).Interface())
+			if err != nil {
+				return nil, err
+			}
+		}
+		return res, nil
+	default:
+		return nil, fmt.Errorf("不支持将类型 %T 注入脚本环境", val)
+	}
 }
 
 func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
@@ -181,7 +323,17 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 
 	// Validate and Optimize
 	validator, _ := ast.NewValidator(program)
-	validator.SetLoader(o.Loader)
+	// 在验证阶段也要支持已注册模块
+	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+		if astNode, ok := o.modules[path]; ok {
+			return astNode, nil
+		}
+		if o.Loader != nil {
+			return o.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	})
+
 	for name, spec := range o.specs {
 		validator.AddVariable(name, spec)
 	}
@@ -198,6 +350,152 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 	program.Optimize(optimizeCtx)
 
 	return o.NewRuntimeByAst(program)
+}
+
+// Eval 执行单个 Go 表达式字符串
+func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
+	converter := ffigo.NewGoToASTConverter()
+	expr, err := converter.ConvertExprSource(exprStr)
+	if err != nil {
+		return nil, fmt.Errorf("表达式解析失败: %w", err)
+	}
+
+	// 创建最小化的无状态执行器
+	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+		BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"},
+	})
+
+	// 继承模块查找逻辑
+	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		if astNode, ok := o.modules[path]; ok {
+			return astNode, nil
+		}
+		if o.Loader != nil {
+			return o.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
+
+	for name, route := range o.routes {
+		executor.RegisterRoute(name, route)
+	}
+
+	session := &runtime.StackContext{
+		Context:        ctx,
+		Executor:       executor,
+		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
+		ModuleCache:    make(map[string]*runtime.Var),
+		LoadingModules: make(map[string]bool),
+	}
+
+	// 注入环境
+	_ = session.AddVariable("nil", nil)
+	for k, v := range env {
+		norm, err := normalizeValue(v)
+		if err != nil {
+			return nil, fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
+		}
+		_ = session.AddVariable(k, executor.ToVar(session, norm, nil))
+	}
+
+	return executor.ExecExpr(session, expr)
+}
+
+// MustEval 类似于 Eval，但在出错时会触发 panic
+func (o *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
+	res, err := o.Eval(ctx, exprStr, env)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
+// Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量
+func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
+	converter := ffigo.NewGoToASTConverter()
+	stmts, err := converter.ConvertStmtsSource(code)
+	if err != nil {
+		return err
+	}
+
+	// 创建最小化的无状态执行器
+	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+		BaseNode: ast.BaseNode{ID: "snippet", Meta: "boot"},
+	})
+
+	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		if astNode, ok := o.modules[path]; ok {
+			return astNode, nil
+		}
+		if o.Loader != nil {
+			return o.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
+
+	for name, route := range o.routes {
+		executor.RegisterRoute(name, route)
+	}
+
+	session := &runtime.StackContext{
+		Context:        ctx,
+		Executor:       executor,
+		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "snippet", Depth: 1},
+		ModuleCache:    make(map[string]*runtime.Var),
+		LoadingModules: make(map[string]bool),
+	}
+
+	// 注入环境
+	_ = session.AddVariable("nil", nil)
+	for k, v := range env {
+		norm, err := normalizeValue(v)
+		if err != nil {
+			return fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
+		}
+		_ = session.AddVariable(k, executor.ToVar(session, norm, nil))
+	}
+
+	return executor.ExecuteStmts(session, stmts)
+}
+
+// MustExecute 类似于 Execute，但在出错时会触发 panic
+func (o *MiniExecutor) MustExecute(ctx context.Context, code string, env map[string]interface{}) {
+	err := o.Execute(ctx, code, env)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// Import 手动加载一个模块并返回其导出的成员对象
+func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
+	// 创建一个最简的执行器环境来执行加载
+	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+		BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"},
+	})
+
+	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		if astNode, ok := o.modules[path]; ok {
+			return astNode, nil
+		}
+		if o.Loader != nil {
+			return o.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
+
+	for name, route := range o.routes {
+		executor.RegisterRoute(name, route)
+	}
+
+	session := &runtime.StackContext{
+		Context:        ctx,
+		Executor:       executor,
+		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "loader", Depth: 1},
+		ModuleCache:    make(map[string]*runtime.Var),
+		LoadingModules: make(map[string]bool),
+	}
+
+	return executor.ImportModule(session, &ast.ImportExpr{Path: path})
 }
 
 // NewRuntimeByJSON 从序列化后的 JSON AST 数据加载并构建执行环境

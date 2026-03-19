@@ -109,6 +109,26 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 	return program, nil
 }
 
+func (c *GoToASTConverter) ConvertExprSource(code string) (mini_ast.Expr, error) {
+	e, err := parser.ParseExpr(code)
+	if err != nil {
+		return nil, err
+	}
+	return c.convertExpr(e), nil
+}
+
+func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]mini_ast.Stmt, error) {
+	// 包装为完整的函数以便解析
+	wrapper := fmt.Sprintf("package main\nfunc main() {\n%s\n}", code)
+	node, err := c.ConvertSource(wrapper)
+	if err != nil {
+		return nil, err
+	}
+	prog := node.(*mini_ast.ProgramStmt)
+	// 如果转换器已经把 main 提取到了 Main，则直接返回
+	return prog.Main, nil
+}
+
 func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *mini_ast.StructStmt {
 	res := &mini_ast.StructStmt{
 		BaseNode: mini_ast.BaseNode{Meta: "struct"},
