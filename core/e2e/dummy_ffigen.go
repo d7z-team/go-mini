@@ -327,8 +327,8 @@ var MockOS_FFI_Metadata = []struct {
 	{"Open", 1, "function(String) Result<Ptr<File>>"},
 	{"Name", 2, "function(Ptr<File>) String"},
 	{"Stat", 3, "function(Ptr<File>) Result<FileInfo>"},
-	{"Read", 4, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
-	{"Write", 5, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
+	{"Read", 4, "function(Ptr<File>, TypeBytes) Result<Int64>"},
+	{"Write", 5, "function(Ptr<File>, TypeBytes) Result<Int64>"},
 	{"Close", 6, "function(Ptr<File>) Result<Void>"},
 	{"Deep", 7, "function(Nested) Nested"},
 }

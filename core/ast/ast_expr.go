@@ -269,7 +269,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			m.Type = "String"
 			return nil
 		}
-		return errors.New("Result type only has 'val' and 'err' properties")
+		return errors.New("result type only has 'val' and 'err' properties")
 	}
 
 	if !m.Property.Valid(&ctx.ValidContext) {
@@ -298,12 +298,6 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			m.Type = "Any"
 			return nil
 		}
-	}
-
-	// 如果对象本身是 TypeModule 或 Any，直接放行 (动态绑定)
-	if objType == TypeModule || objType == "Any" {
-		m.Type = "Any"
-		return nil
 	}
 
 	return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)

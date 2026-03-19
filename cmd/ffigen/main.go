@@ -590,7 +590,7 @@ func getSpec(funcType *ast.FuncType) string {
 	var params []string
 	if funcType.Params != nil {
 		for i, p := range funcType.Params.List {
-			pType := typeToString(p.Type)
+			pType := toVMType(p.Type)
 			if i == 0 && (pType == "Context" || strings.HasSuffix(pType, ".Context")) {
 				continue
 			}
@@ -613,7 +613,7 @@ func getSpec(funcType *ast.FuncType) string {
 	retType, actualRet, hasErr := "Void", "", false
 	if funcType.Results != nil {
 		for _, r := range funcType.Results.List {
-			t := typeToString(r.Type)
+			t := toVMType(r.Type)
 			if t == "error" {
 				hasErr = true
 			} else if actualRet == "" {
@@ -633,18 +633,18 @@ func getSpec(funcType *ast.FuncType) string {
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), retType)
 }
 
-func typeToString(expr ast.Expr) string {
+func toVMType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		name := t.Name
 		if name == "byte" || name == "uint8" {
 			return "Uint8"
 		}
-		if name == "int" {
-			return "Int"
-		}
-		if name == "int64" {
+		if name == "int" || name == "int64" {
 			return "Int64"
+		}
+		if name == "float64" || name == "float32" {
+			return "Float64"
 		}
 		if name == "string" {
 			return "String"
@@ -657,17 +657,35 @@ func typeToString(expr ast.Expr) string {
 		}
 		return name
 	case *ast.ArrayType:
+		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
+			return "TypeBytes"
+		}
+		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
+	case *ast.MapType:
+		return fmt.Sprintf("Map<%s, %s>", toVMType(t.Key), toVMType(t.Value))
+	case *ast.StarExpr:
+		return fmt.Sprintf("Ptr<%s>", toVMType(t.X))
+	case *ast.Ellipsis:
+		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	default:
+		return "Any"
+	}
+}
+
+func typeToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.ArrayType:
 		return fmt.Sprintf("Array<%s>", typeToString(t.Elt))
 	case *ast.MapType:
 		return fmt.Sprintf("Map<%s, %s>", typeToString(t.Key), typeToString(t.Value))
 	case *ast.StarExpr:
 		return fmt.Sprintf("Ptr<%s>", typeToString(t.X))
 	case *ast.SelectorExpr:
-		sel := t.Sel.Name
-		if sel == "Time" || sel == "Context" {
-			return sel
-		}
-		return sel
+		return t.Sel.Name
 	case *ast.InterfaceType:
 		if t.Methods == nil || len(t.Methods.List) == 0 {
 			return "Any"

@@ -31,14 +31,13 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 
 func (o GoMiniType) IsAny() bool { return o == TypeAny || o == TypeModule || o == TypeClosure }
 
-func (o GoMiniType) IsString() bool { return o == "String" || o == "string" }
-func (o GoMiniType) IsBool() bool   { return o == "Bool" || o == "bool" }
+func (o GoMiniType) IsString() bool { return o == "String" }
+func (o GoMiniType) IsBool() bool   { return o == "Bool" }
 
 func (o GoMiniType) IsNumeric() bool {
 	s := string(o)
 	switch s {
-	case "Int64", "Float64", "Uint8", "Int", "Int8", "Int16", "Int32",
-		"Uint", "Uint16", "Uint32", "Uint64", "Uintptr", "Float32", "Complex64", "Complex128":
+	case "Int64", "Float64":
 		return true
 	}
 	return false
@@ -400,7 +399,7 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 }
 
 func (o GoMiniType) Valid(v *ValidContext) bool {
-	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() {
+	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() || o == "TypeBytes" {
 		return true
 	}
 	if o.IsArray() {

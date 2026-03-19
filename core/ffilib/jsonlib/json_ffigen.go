@@ -113,8 +113,8 @@ var JSON_FFI_Metadata = []struct {
 	MethodID uint32
 	Spec     string
 }{
-	{"Marshal", 1, "function(Any) Result<Array<Uint8>>"},
-	{"Unmarshal", 2, "function(Array<Uint8>) Result<Any>"},
+	{"Marshal", 1, "function(Any) Result<TypeBytes>"},
+	{"Unmarshal", 2, "function(TypeBytes) Result<Any>"},
 }
 
 type JSON_Bridge struct {

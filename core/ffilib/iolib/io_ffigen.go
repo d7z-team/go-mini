@@ -76,7 +76,7 @@ var IO_FFI_Metadata = []struct {
 	MethodID uint32
 	Spec     string
 }{
-	{"ReadAll", 1, "function(Any) Result<Array<Uint8>>"},
+	{"ReadAll", 1, "function(Any) Result<TypeBytes>"},
 }
 
 type IO_Bridge struct {

@@ -1498,7 +1498,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 		res := ctx.PanicVar
 		ctx.PanicVar = nil
 		return res, true, nil
-	case "string":
+	case "String":
 		if len(args) > 0 && args[0] != nil {
 			arg := args[0]
 			switch arg.VType {
@@ -1515,7 +1515,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			}
 		}
 		return NewString(""), true, nil
-	case "[]byte":
+	case "TypeBytes":
 		if len(args) > 0 && args[0] != nil {
 			arg := args[0]
 			switch arg.VType {
@@ -1526,7 +1526,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			}
 		}
 		return NewBytes(nil), true, nil
-	case "int64", "int":
+	case "Int64":
 		if len(args) > 0 && args[0] != nil {
 			arg := args[0]
 			switch arg.VType {
@@ -1545,7 +1545,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			}
 		}
 		return NewInt(0), true, nil
-	case "float64":
+	case "Float64":
 		if len(args) > 0 && args[0] != nil {
 			arg := args[0]
 			switch arg.VType {
@@ -1588,7 +1588,7 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 		tStr := args[0].Str
 		if strings.HasPrefix(tStr, "Map<") {
 			return &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: ast.GoMiniType(tStr)}, true, nil
-		} else if strings.HasPrefix(tStr, "Array<") || tStr == "[]byte" || tStr == "TypeBytes" {
+		} else if strings.HasPrefix(tStr, "Array<") || tStr == "TypeBytes" {
 			length := 0
 			capacity := 0
 			if len(args) > 1 && args[1] != nil {
@@ -1603,8 +1603,8 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			if capacity < length {
 				return nil, true, errors.New("make capacity < length")
 			}
-			if tStr == "[]byte" || tStr == "TypeBytes" {
-				return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: ast.GoMiniType("TypeBytes")}, true, nil
+			if tStr == "TypeBytes" {
+				return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: "TypeBytes"}, true, nil
 			}
 			return &Var{VType: TypeArray, Ref: &VMArray{Data: make([]*Var, length, capacity)}, Type: ast.GoMiniType(tStr)}, true, nil
 		}
@@ -1881,6 +1881,8 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 		switch {
 		case typ == "String":
 			buf.WriteString("")
+		case typ == "Float64":
+			buf.WriteFloat64(0)
 		case typ.IsNumeric():
 			buf.WriteInt64(0)
 		case typ == "Bool":
@@ -2095,13 +2097,13 @@ func (e *Executor) deserializeVar(ctx *StackContext, reader *ffigo.Reader, typ a
 		switch {
 		case typ == "String":
 			res = NewString(reader.ReadString())
-		case typ == "Int64" || typ == "Int" || typ == "Uint32":
+		case typ == "Int64" || typ == "Uint32":
 			res = NewInt(reader.ReadInt64())
 		case typ == "Float64":
 			res = NewFloat(reader.ReadFloat64())
 		case typ == "Bool":
 			res = NewBool(reader.ReadBool())
-		case typ == "TypeBytes" || strings.Contains(string(typ), "Array<Uint8>"):
+		case typ == "TypeBytes":
 			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
 		case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
 			id := reader.ReadUint32()

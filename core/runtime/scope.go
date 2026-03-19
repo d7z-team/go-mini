@@ -74,11 +74,9 @@ type VMHandle struct {
 	Bridge ffigo.FFIBridge
 }
 
-func (h *VMHandle) release() {
-	if h.ID != 0 && h.Bridge != nil {
-		_ = h.Bridge.DestroyHandle(h.ID)
-		h.ID = 0
-	}
+type cleanupArgs struct {
+	ID     uint32
+	Bridge ffigo.FFIBridge
 }
 
 func NewVMHandle(id uint32, bridge ffigo.FFIBridge) *VMHandle {
@@ -86,9 +84,11 @@ func NewVMHandle(id uint32, bridge ffigo.FFIBridge) *VMHandle {
 		return nil
 	}
 	h := &VMHandle{ID: id, Bridge: bridge}
-	runtime.SetFinalizer(h, func(obj *VMHandle) {
-		obj.release()
-	})
+	runtime.AddCleanup(h, func(args cleanupArgs) {
+		if args.ID != 0 && args.Bridge != nil {
+			_ = args.Bridge.DestroyHandle(args.ID)
+		}
+	}, cleanupArgs{ID: id, Bridge: bridge})
 	return h
 }
 
@@ -256,7 +256,7 @@ func NewBool(v bool) *Var {
 }
 
 func NewBytes(v []byte) *Var {
-	res := NewVar("[]byte", TypeBytes)
+	res := NewVar("TypeBytes", TypeBytes)
 	res.B = v
 	return res
 }

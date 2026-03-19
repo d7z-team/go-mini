@@ -104,15 +104,14 @@ func NewMiniExecutor() *MiniExecutor {
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
 	res.specs["recover"] = "function() Any"
-	res.specs["string"] = "function(Any) String"
-	res.specs["[]byte"] = "function(Any) TypeBytes"
+	res.specs["String"] = "function(Any) String"
+	res.specs["TypeBytes"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
 	res.specs["make"] = "function(String, ...Int64) Any"
 	res.specs["append"] = "function(Any, ...Any) Any"
 	res.specs["delete"] = "function(Any, Any) Void"
-	res.specs["int"] = "function(Any) Int64"
-	res.specs["int64"] = "function(Any) Int64"
-	res.specs["float64"] = "function(Any) Float64"
+	res.specs["Int64"] = "function(Any) Int64"
+	res.specs["Float64"] = "function(Any) Float64"
 	res.specs["require"] = "function(String) TypeModule"
 	return res
 }

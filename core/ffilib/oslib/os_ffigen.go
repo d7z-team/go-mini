@@ -268,8 +268,8 @@ var OS_FFI_Metadata = []struct {
 }{
 	{"Open", 1, "function(String) Result<Ptr<File>>"},
 	{"Create", 2, "function(String) Result<Ptr<File>>"},
-	{"ReadFile", 3, "function(String) Result<Array<Uint8>>"},
-	{"WriteFile", 4, "function(String, Array<Uint8>) Result<Void>"},
+	{"ReadFile", 3, "function(String) Result<TypeBytes>"},
+	{"WriteFile", 4, "function(String, TypeBytes) Result<Void>"},
 	{"Remove", 5, "function(String) Result<Void>"},
 	{"Getenv", 6, "function(String) String"},
 	{"Setenv", 7, "function(String, String) Result<Void>"},
@@ -464,8 +464,8 @@ var FileMethods_FFI_Metadata = []struct {
 	MethodID uint32
 	Spec     string
 }{
-	{"Read", 1, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
-	{"Write", 2, "function(Ptr<File>, Array<Uint8>) Result<Int>"},
+	{"Read", 1, "function(Ptr<File>, TypeBytes) Result<Int64>"},
+	{"Write", 2, "function(Ptr<File>, TypeBytes) Result<Int64>"},
 	{"Close", 3, "function(Ptr<File>) Result<Void>"},
 }
 

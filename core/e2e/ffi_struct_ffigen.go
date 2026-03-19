@@ -85,7 +85,7 @@ var MockShapeAPI_FFI_Metadata = []struct {
 	Spec     string
 }{
 	{"GetRect", 1, "function() Rect"},
-	{"Area", 2, "function(Rect) Int"},
+	{"Area", 2, "function(Rect) Int64"},
 }
 
 type MockShapeAPI_Bridge struct {

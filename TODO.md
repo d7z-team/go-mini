@@ -136,6 +136,33 @@
 
 ---
 
+## 十一、 API 易用性与深度隔离加固 [x]
+目标：提供“开箱即用”的宿主交互体验，同时补全最后的内存安全盲区。
+
+### Phase 1: 自动化数据规范化 (Normalization) [x]
+- [x] `engine/executor.go`: 实现 `normalizeValue` 函数，利用反射自动将宿主 `struct` 映射为 VM `TypeMap`。
+- [x] `engine/executor.go`: 注入环境变量前自动执行规范化，并对不支持类型返回明确错误。
+
+### Phase 2: 极致内存隔离 (Deep Copy) [x]
+- [x] `runtime/executor.go`: 在 `ToVar` 中对 `[]byte` 执行物理克隆 (`copy`)，彻底杜绝切片底层数组共享导致的逃逸。
+- [x] `runtime/scope.go`: 实现 `Var.Interface()` 方法，递归地将 VM 内部变量还原为 Go 原生接口类型。
+
+### Phase 3: 规范化类型体系 (Canonical Typing) [x]
+- [x] `ast/ast_types.go`: 严格限制类型匹配，仅允许首字母大写的规范类型（`Int64`, `Float64`, `TypeBytes`）。
+- [x] `ffigen`: 重构代码生成器，强制输出规范化 `Spec` 签名，修复浮点数零值序列化问题。
+
+### Phase 4: 资源清理现代化 (Go 1.24 Cleanup) [x]
+- [x] `runtime/scope.go`: 迁移 Handle 自动回收逻辑至 `runtime.AddCleanup`，消除循环引用泄漏风险并提升 GC 效率。
+
+---
+
+## 十二、 后续演进计划 [ ]
+1.  **[ ] 网络库注入**：实现 `net` 库的 FFI 封装。
+2.  **[ ] 循环引用防御**：在 `normalizeValue` 中增加递归深度限制，防止宿主 Stack Overflow。
+3.  **[ ] 多返回值解析增强**：支持 `a, b = 1, 2` 等标准 Go 赋值语义（目前仅支持函数解构）。
+
+---
+
 ## 八、 重构计划：动态模块化系统 (Dynamic Module System) [x]
 目标：将静态符号合并加载升级为运行时动态 Module 对象加载，以支持多语言前端。
 

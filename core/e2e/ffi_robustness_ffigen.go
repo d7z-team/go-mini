@@ -62,7 +62,7 @@ var MockGeometry_FFI_Metadata = []struct {
 	MethodID uint32
 	Spec     string
 }{
-	{"SumX", 1, "function(Array<RobustPoint>) Int"},
+	{"SumX", 1, "function(Array<RobustPoint>) Int64"},
 }
 
 type MockGeometry_Bridge struct {

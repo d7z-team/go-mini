@@ -500,8 +500,14 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 		// 特殊处理内建函数，它们应该是 ConstRefExpr 以便在验证阶段找到签名
 		switch ex.Name {
-		case "panic", "make", "append", "delete", "len", "string", "int", "int64", "float64", "require":
+		case "panic", "make", "append", "delete", "len", "require":
 			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: mini_ast.Ident(ex.Name)}
+		case "int", "int64":
+			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "Int64"}
+		case "float64":
+			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "Float64"}
+		case "string":
+			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "String"}
 		}
 		return &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(ex.Name)}
 	case *ast.BinaryExpr:
@@ -521,10 +527,10 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 		// 特殊处理类型转换
 		if array, ok := ex.Fun.(*ast.ArrayType); ok {
-			if ident, ok := array.Elt.(*ast.Ident); ok && ident.Name == "byte" {
+			if ident, ok := array.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 				funExpr = &mini_ast.ConstRefExpr{
 					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
-					Name:     "[]byte",
+					Name:     "TypeBytes",
 				}
 			}
 		}
@@ -624,7 +630,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 		return res
 	case *ast.FuncLit:
-		params := []mini_ast.FunctionParam{}
+		var params []mini_ast.FunctionParam
 		if ex.Type.Params != nil {
 			for _, field := range ex.Type.Params.List {
 				typeName := c.typeToString(field.Type)
@@ -730,11 +736,17 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 		if name == "bool" {
 			return "Bool"
 		}
+		if name == "byte" || name == "uint8" {
+			return "Uint8"
+		}
 		if name == "any" || name == "interface{}" {
 			return "Any"
 		}
 		return name
 	case *ast.ArrayType:
+		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
+			return "TypeBytes"
+		}
 		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
 	case *ast.StarExpr:
 		return fmt.Sprintf("Ptr<%s>", c.typeToString(t.X))
