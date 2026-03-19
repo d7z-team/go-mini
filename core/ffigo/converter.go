@@ -5,14 +5,42 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"hash/fnv"
+	"strconv"
 	"strings"
 
-	mini_ast "gopkg.d7z.net/go-mini/core/ast"
+	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
 type GoToASTConverter struct {
 	fset    *token.FileSet
 	imports map[string]string // Alias -> Path
+}
+
+func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
+	if node == nil {
+		return "meta_" + meta
+	}
+	pos := c.fset.Position(node.Pos())
+	h := fnv.New64a()
+	// 组合 文件名:行:列:类型 确保 ID 在代码未改动时绝对稳定
+	fmt.Fprintf(h, "%s:%d:%d:%s", pos.Filename, pos.Line, pos.Column, meta)
+	return strconv.FormatUint(h.Sum64(), 16)
+}
+
+func (c *GoToASTConverter) extractLoc(node ast.Node) *miniast.Position {
+	if node == nil || c.fset == nil {
+		return nil
+	}
+	pos := c.fset.Position(node.Pos())
+	if pos.Line == 0 {
+		return nil
+	}
+	return &miniast.Position{
+		F: pos.Filename,
+		L: pos.Line,
+		C: pos.Column,
+	}
 }
 
 func NewGoToASTConverter() *GoToASTConverter {
@@ -22,7 +50,7 @@ func NewGoToASTConverter() *GoToASTConverter {
 	}
 }
 
-func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
+func (c *GoToASTConverter) ConvertSource(code string) (miniast.Node, error) {
 	f, err := parser.ParseFile(c.fset, "", code, parser.ParseComments)
 	if err != nil {
 		return nil, err
@@ -30,7 +58,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 
 	// 记录导入
 	c.imports = make(map[string]string)
-	var miniImports []mini_ast.ImportSpec
+	var miniImports []miniast.ImportSpec
 	for _, imp := range f.Imports {
 		path := imp.Path.Value[1 : len(imp.Path.Value)-1]
 		var alias string
@@ -42,26 +70,26 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 			alias = parts[len(parts)-1]
 		}
 		c.imports[alias] = path
-		miniImports = append(miniImports, mini_ast.ImportSpec{
+		miniImports = append(miniImports, miniast.ImportSpec{
 			Alias: alias,
 			Path:  path,
 		})
 	}
 
-	program := &mini_ast.ProgramStmt{
-		BaseNode:  mini_ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
+	program := &miniast.ProgramStmt{
+		BaseNode:  miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
 		Package:   f.Name.Name,
 		Constants: make(map[string]string),
-		Variables: make(map[mini_ast.Ident]mini_ast.Expr),
-		Structs:   make(map[mini_ast.Ident]*mini_ast.StructStmt),
-		Functions: make(map[mini_ast.Ident]*mini_ast.FunctionStmt),
+		Variables: make(map[miniast.Ident]miniast.Expr),
+		Structs:   make(map[miniast.Ident]*miniast.StructStmt),
+		Functions: make(map[miniast.Ident]*miniast.FunctionStmt),
 		Imports:   miniImports,
 	}
 
 	// 将导入转换为变量声明 (动态模块对象)
-	for _, imp := range miniImports {
-		program.Variables[mini_ast.Ident(imp.Alias)] = &mini_ast.ImportExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "import", Type: mini_ast.TypeModule},
+	for i, imp := range miniImports {
+		program.Variables[miniast.Ident(imp.Alias)] = &miniast.ImportExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(f.Imports[i], "import"), Meta: "import", Type: miniast.TypeModule},
 			Path:     imp.Path,
 		}
 	}
@@ -76,7 +104,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 				switch s := spec.(type) {
 				case *ast.TypeSpec:
 					if st, ok := s.Type.(*ast.StructType); ok {
-						program.Structs[mini_ast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st)
+						program.Structs[miniast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st)
 					}
 				case *ast.ValueSpec:
 					switch d.Tok {
@@ -94,11 +122,11 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 						}
 					case token.VAR:
 						for i, name := range s.Names {
-							var val mini_ast.Expr
+							var val miniast.Expr
 							if i < len(s.Values) {
 								val = c.convertExpr(s.Values[i])
 							}
-							program.Variables[mini_ast.Ident(name.Name)] = val
+							program.Variables[miniast.Ident(name.Name)] = val
 						}
 					}
 				}
@@ -109,7 +137,7 @@ func (c *GoToASTConverter) ConvertSource(code string) (mini_ast.Node, error) {
 	return program, nil
 }
 
-func (c *GoToASTConverter) ConvertExprSource(code string) (mini_ast.Expr, error) {
+func (c *GoToASTConverter) ConvertExprSource(code string) (miniast.Expr, error) {
 	e, err := parser.ParseExpr(code)
 	if err != nil {
 		return nil, err
@@ -117,38 +145,38 @@ func (c *GoToASTConverter) ConvertExprSource(code string) (mini_ast.Expr, error)
 	return c.convertExpr(e), nil
 }
 
-func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]mini_ast.Stmt, error) {
+func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, error) {
 	// 包装为完整的函数以便解析
 	wrapper := fmt.Sprintf("package main\nfunc main() {\n%s\n}", code)
 	node, err := c.ConvertSource(wrapper)
 	if err != nil {
 		return nil, err
 	}
-	prog := node.(*mini_ast.ProgramStmt)
+	prog := node.(*miniast.ProgramStmt)
 	// 如果转换器已经把 main 提取到了 Main，则直接返回
 	return prog.Main, nil
 }
 
-func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *mini_ast.StructStmt {
-	res := &mini_ast.StructStmt{
-		BaseNode: mini_ast.BaseNode{Meta: "struct"},
-		Name:     mini_ast.Ident(name),
-		Fields:   make(map[mini_ast.Ident]mini_ast.GoMiniType),
+func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *miniast.StructStmt {
+	res := &miniast.StructStmt{
+		BaseNode: miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
+		Name:     miniast.Ident(name),
+		Fields:   make(map[miniast.Ident]miniast.GoMiniType),
 	}
 	for _, field := range s.Fields.List {
 		typeName := c.typeToString(field.Type)
 		for _, fieldName := range field.Names {
-			ident := mini_ast.Ident(fieldName.Name)
-			res.Fields[ident] = mini_ast.GoMiniType(typeName)
+			ident := miniast.Ident(fieldName.Name)
+			res.Fields[ident] = miniast.GoMiniType(typeName)
 			res.FieldNames = append(res.FieldNames, ident)
 		}
 	}
 	return res
 }
 
-func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
+func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	fnName := d.Name.Name
-	var params []mini_ast.FunctionParam
+	var params []miniast.FunctionParam
 
 	// Handle Receiver: func (r T) Name(...) -> __method_T_Name(r T, ...)
 	if d.Recv != nil && len(d.Recv.List) > 0 {
@@ -162,23 +190,23 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
 		fnName = fmt.Sprintf("__method_%s_%s", baseTypeName, fnName)
 
 		if len(recv.Names) > 0 {
-			params = append(params, mini_ast.FunctionParam{
-				Name: mini_ast.Ident(recv.Names[0].Name),
-				Type: mini_ast.GoMiniType(typeName),
+			params = append(params, miniast.FunctionParam{
+				Name: miniast.Ident(recv.Names[0].Name),
+				Type: miniast.GoMiniType(typeName),
 			})
 		} else {
-			params = append(params, mini_ast.FunctionParam{
+			params = append(params, miniast.FunctionParam{
 				Name: "_",
-				Type: mini_ast.GoMiniType(typeName),
+				Type: miniast.GoMiniType(typeName),
 			})
 		}
 	}
 
-	fn := &mini_ast.FunctionStmt{
-		BaseNode: mini_ast.BaseNode{Meta: "function"},
-		Name:     mini_ast.Ident(fnName),
-		Body:     &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}},
-		FunctionType: mini_ast.FunctionType{
+	fn := &miniast.FunctionStmt{
+		BaseNode: miniast.BaseNode{ID: c.genID(d, "function"), Meta: "function", Loc: c.extractLoc(d)},
+		Name:     miniast.Ident(fnName),
+		Body:     &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(d.Body, "block"), Meta: "block", Loc: c.extractLoc(d.Body)}},
+		FunctionType: miniast.FunctionType{
 			Params: params,
 		},
 	}
@@ -190,16 +218,16 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
 				fn.Variadic = true
 			}
 			for _, name := range p.Names {
-				fn.Params = append(fn.Params, mini_ast.FunctionParam{
-					Name: mini_ast.Ident(name.Name),
-					Type: mini_ast.GoMiniType(t),
+				fn.Params = append(fn.Params, miniast.FunctionParam{
+					Name: miniast.Ident(name.Name),
+					Type: miniast.GoMiniType(t),
 				})
 			}
 		}
 	}
 	// Return
 	if d.Type.Results != nil && len(d.Type.Results.List) > 0 {
-		fn.Return = mini_ast.GoMiniType(c.typeToString(d.Type.Results.List[0].Type))
+		fn.Return = miniast.GoMiniType(c.typeToString(d.Type.Results.List[0].Type))
 	} else {
 		fn.Return = "Void"
 	}
@@ -214,19 +242,19 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *mini_ast.FunctionStmt {
 	return fn
 }
 
-func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
+func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 	if s == nil {
 		return nil
 	}
 	switch st := s.(type) {
 	case *ast.ExprStmt:
 		expr := c.convertExpr(st.X)
-		if call, ok := expr.(*mini_ast.CallExprStmt); ok {
+		if call, ok := expr.(*miniast.CallExprStmt); ok {
 			return call
 		}
 		return nil
 	case *ast.ReturnStmt:
-		res := &mini_ast.ReturnStmt{BaseNode: mini_ast.BaseNode{Meta: "return"}}
+		res := &miniast.ReturnStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "return"), Meta: "return", Loc: c.extractLoc(st)}}
 		for _, r := range st.Results {
 			res.Results = append(res.Results, c.convertExpr(r))
 		}
@@ -239,41 +267,41 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		rhs := st.Rhs[0]
 
 		if st.Tok == token.DEFINE { // :=
-			var children []mini_ast.Stmt
-			var lhsExprs []mini_ast.Expr
+			var children []miniast.Stmt
+			var lhsExprs []miniast.Expr
 
 			for _, lhs := range st.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok {
 					// 1. Declare variable
-					children = append(children, &mini_ast.GenDeclStmt{
-						BaseNode: mini_ast.BaseNode{Meta: "decl"},
-						Name:     mini_ast.Ident(ident.Name),
+					children = append(children, &miniast.GenDeclStmt{
+						BaseNode: miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
+						Name:     miniast.Ident(ident.Name),
 						Kind:     "Any",
 					})
 					// 2. Prepare LHS list
-					lhsExprs = append(lhsExprs, &mini_ast.IdentifierExpr{
-						BaseNode: mini_ast.BaseNode{Meta: "identifier"},
-						Name:     mini_ast.Ident(ident.Name),
+					lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
+						BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier"},
+						Name:     miniast.Ident(ident.Name),
 					})
 				}
 			}
 
 			if len(lhsExprs) == 1 {
-				children = append(children, &mini_ast.AssignmentStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+				children = append(children, &miniast.AssignmentStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
 					LHS:      lhsExprs[0],
 					Value:    c.convertExpr(rhs),
 				})
 			} else {
-				children = append(children, &mini_ast.MultiAssignmentStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
+				children = append(children, &miniast.MultiAssignmentStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
 					LHS:      lhsExprs,
 					Value:    c.convertExpr(rhs),
 				})
 			}
 
-			return &mini_ast.BlockStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "block"},
+			return &miniast.BlockStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)},
 				Inner:    true,
 				Children: children,
 			}
@@ -281,18 +309,18 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 		if st.Tok == token.ASSIGN {
 			if len(st.Lhs) == 1 {
-				return &mini_ast.AssignmentStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+				return &miniast.AssignmentStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
 					LHS:      c.convertExpr(st.Lhs[0]),
 					Value:    c.convertExpr(rhs),
 				}
 			}
-			var lhsExprs []mini_ast.Expr
+			var lhsExprs []miniast.Expr
 			for _, l := range st.Lhs {
 				lhsExprs = append(lhsExprs, c.convertExpr(l))
 			}
-			return &mini_ast.MultiAssignmentStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "multi_assignment"},
+			return &miniast.MultiAssignmentStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
 				LHS:      lhsExprs,
 				Value:    c.convertExpr(rhs),
 			}
@@ -315,13 +343,13 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 		if len(st.Lhs) == 1 {
 			lhs := c.convertExpr(st.Lhs[0])
-			return &mini_ast.AssignmentStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "assignment"},
+			return &miniast.AssignmentStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
 				LHS:      lhs,
-				Value: &mini_ast.BinaryExpr{
-					BaseNode: mini_ast.BaseNode{Meta: "binary"},
+				Value: &miniast.BinaryExpr{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "binary"), Meta: "binary"},
 					Left:     lhs,
-					Operator: mini_ast.Ident(c.convertOp(op)),
+					Operator: miniast.Ident(c.convertOp(op)),
 					Right:    c.convertExpr(rhs),
 				},
 			}
@@ -330,28 +358,28 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 	case *ast.DeclStmt:
 		if decl, ok := st.Decl.(*ast.GenDecl); ok && decl.Tok == token.VAR {
-			var children []mini_ast.Stmt
+			var children []miniast.Stmt
 			for _, spec := range decl.Specs {
 				if vSpec, ok := spec.(*ast.ValueSpec); ok {
 					vType := c.typeToString(vSpec.Type)
 					for i, name := range vSpec.Names {
-						children = append(children, &mini_ast.GenDeclStmt{
-							BaseNode: mini_ast.BaseNode{Meta: "decl"},
-							Name:     mini_ast.Ident(name.Name),
-							Kind:     mini_ast.GoMiniType(vType),
+						children = append(children, &miniast.GenDeclStmt{
+							BaseNode: miniast.BaseNode{ID: c.genID(name, "decl"), Meta: "decl", Loc: c.extractLoc(name)},
+							Name:     miniast.Ident(name.Name),
+							Kind:     miniast.GoMiniType(vType),
 						})
 						if i < len(vSpec.Values) {
-							children = append(children, &mini_ast.AssignmentStmt{
-								BaseNode: mini_ast.BaseNode{Meta: "assignment"},
-								LHS:      &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(name.Name)},
+							children = append(children, &miniast.AssignmentStmt{
+								BaseNode: miniast.BaseNode{ID: c.genID(name, "assignment"), Meta: "assignment", Loc: c.extractLoc(name)},
+								LHS:      &miniast.IdentifierExpr{BaseNode: miniast.BaseNode{ID: c.genID(name, "identifier"), Meta: "identifier"}, Name: miniast.Ident(name.Name)},
 								Value:    c.convertExpr(vSpec.Values[i]),
 							})
 						}
 					}
 				}
 			}
-			return &mini_ast.BlockStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "block"},
+			return &miniast.BlockStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)},
 				Inner:    true,
 				Children: children,
 			}
@@ -359,17 +387,17 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		return nil
 
 	case *ast.IfStmt:
-		res := &mini_ast.IfStmt{BaseNode: mini_ast.BaseNode{Meta: "if"}}
+		res := &miniast.IfStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "if"), Meta: "if", Loc: c.extractLoc(st)}}
 		res.Cond = c.convertExpr(st.Cond)
 		res.Body = c.toBlock(st.Body)
 		if st.Else != nil {
 			res.ElseBody = c.toBlock(st.Else)
 		}
 		if st.Init != nil {
-			return &mini_ast.BlockStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "block"},
+			return &miniast.BlockStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)},
 				Inner:    true,
-				Children: []mini_ast.Stmt{
+				Children: []miniast.Stmt{
 					c.convertStmt(st.Init),
 					res,
 				},
@@ -378,7 +406,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		return res
 
 	case *ast.ForStmt:
-		res := &mini_ast.ForStmt{BaseNode: mini_ast.BaseNode{Meta: "for"}}
+		res := &miniast.ForStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "for"), Meta: "for", Loc: c.extractLoc(st)}}
 		if st.Init != nil {
 			res.Init = c.convertStmt(st.Init)
 		}
@@ -392,12 +420,12 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		return res
 
 	case *ast.RangeStmt:
-		res := &mini_ast.RangeStmt{BaseNode: mini_ast.BaseNode{Meta: "range"}}
+		res := &miniast.RangeStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "range"), Meta: "range", Loc: c.extractLoc(st)}}
 		if st.Key != nil {
-			res.Key = mini_ast.Ident(st.Key.(*ast.Ident).Name)
+			res.Key = miniast.Ident(st.Key.(*ast.Ident).Name)
 		}
 		if st.Value != nil {
-			res.Value = mini_ast.Ident(st.Value.(*ast.Ident).Name)
+			res.Value = miniast.Ident(st.Value.(*ast.Ident).Name)
 		}
 		res.X = c.convertExpr(st.X)
 		res.Body = c.toBlock(st.Body)
@@ -405,17 +433,17 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		return res
 
 	case *ast.SwitchStmt:
-		res := &mini_ast.SwitchStmt{BaseNode: mini_ast.BaseNode{Meta: "switch"}}
+		res := &miniast.SwitchStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "switch"), Meta: "switch", Loc: c.extractLoc(st)}}
 		if st.Init != nil {
 			res.Init = c.convertStmt(st.Init)
 		}
 		if st.Tag != nil {
 			res.Tag = c.convertExpr(st.Tag)
 		}
-		res.Body = &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}}
+		res.Body = &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st.Body, "block"), Meta: "block", Loc: c.extractLoc(st.Body)}}
 		for _, stmt := range st.Body.List {
 			if clause, ok := stmt.(*ast.CaseClause); ok {
-				cClause := &mini_ast.CaseClause{BaseNode: mini_ast.BaseNode{Meta: "case"}}
+				cClause := &miniast.CaseClause{BaseNode: miniast.BaseNode{ID: c.genID(clause, "case"), Meta: "case", Loc: c.extractLoc(clause)}}
 				for _, expr := range clause.List {
 					cClause.List = append(cClause.List, c.convertExpr(expr))
 				}
@@ -429,9 +457,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 
 	case *ast.DeferStmt:
 		call := c.convertExpr(st.Call)
-		if cExpr, ok := call.(*mini_ast.CallExprStmt); ok {
-			return &mini_ast.DeferStmt{
-				BaseNode: mini_ast.BaseNode{Meta: "defer"},
+		if cExpr, ok := call.(*miniast.CallExprStmt); ok {
+			return &miniast.DeferStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "defer"), Meta: "defer", Loc: c.extractLoc(st)},
 				Call:     cExpr,
 			}
 		}
@@ -441,16 +469,16 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 		return c.toBlock(st)
 
 	case *ast.IncDecStmt:
-		return &mini_ast.IncDecStmt{
-			BaseNode: mini_ast.BaseNode{Meta: "increment"},
+		return &miniast.IncDecStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(st, "increment"), Meta: "increment", Loc: c.extractLoc(st)},
 			Operand:  c.convertExpr(st.X),
-			Operator: mini_ast.Ident(st.Tok.String()),
+			Operator: miniast.Ident(st.Tok.String()),
 		}
 
 	case *ast.BranchStmt:
 		if st.Tok == token.BREAK || st.Tok == token.CONTINUE {
-			return &mini_ast.InterruptStmt{
-				BaseNode:      mini_ast.BaseNode{Meta: "interrupt"},
+			return &miniast.InterruptStmt{
+				BaseNode:      miniast.BaseNode{ID: c.genID(st, "interrupt"), Meta: "interrupt", Loc: c.extractLoc(st)},
 				InterruptType: st.Tok.String(),
 			}
 		}
@@ -458,9 +486,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) mini_ast.Stmt {
 	return nil
 }
 
-func (c *GoToASTConverter) toBlock(s ast.Stmt) *mini_ast.BlockStmt {
+func (c *GoToASTConverter) toBlock(s ast.Stmt) *miniast.BlockStmt {
 	if b, ok := s.(*ast.BlockStmt); ok {
-		res := &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}}
+		res := &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(b, "block"), Meta: "block", Loc: c.extractLoc(b)}}
 		for _, item := range b.List {
 			if converted := c.convertStmt(item); converted != nil {
 				res.Children = append(res.Children, converted)
@@ -470,12 +498,12 @@ func (c *GoToASTConverter) toBlock(s ast.Stmt) *mini_ast.BlockStmt {
 	}
 	// Wrap single statement
 	if converted := c.convertStmt(s); converted != nil {
-		return &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}, Children: []mini_ast.Stmt{converted}}
+		return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(s, "block"), Meta: "block", Loc: c.extractLoc(s)}, Children: []miniast.Stmt{converted}}
 	}
-	return &mini_ast.BlockStmt{BaseNode: mini_ast.BaseNode{Meta: "block"}}
+	return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(s, "block"), Meta: "block", Loc: c.extractLoc(s)}}
 }
 
-func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
+func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 	if e == nil {
 		return nil
 	}
@@ -493,111 +521,111 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 				val = val[1 : len(val)-1]
 			}
 		}
-		return &mini_ast.LiteralExpr{BaseNode: mini_ast.BaseNode{Meta: "literal", Type: mini_ast.GoMiniType(t)}, Value: val}
+		return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.GoMiniType(t)}, Value: val}
 	case *ast.Ident:
 		if ex.Name == "true" || ex.Name == "false" {
-			return &mini_ast.LiteralExpr{BaseNode: mini_ast.BaseNode{Meta: "literal", Type: "Bool"}, Value: ex.Name}
+			return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: "Bool"}, Value: ex.Name}
 		}
 		// 特殊处理内建函数，它们应该是 ConstRefExpr 以便在验证阶段找到签名
 		switch ex.Name {
 		case "panic", "make", "append", "delete", "len", "require":
-			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: mini_ast.Ident(ex.Name)}
+			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref"}, Name: miniast.Ident(ex.Name)}
 		case "int", "int64":
-			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "Int64"}
+			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref"}, Name: "Int64"}
 		case "float64":
-			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "Float64"}
+			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref"}, Name: "Float64"}
 		case "string":
-			return &mini_ast.ConstRefExpr{BaseNode: mini_ast.BaseNode{Meta: "const_ref"}, Name: "String"}
+			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref"}, Name: "String"}
 		}
-		return &mini_ast.IdentifierExpr{BaseNode: mini_ast.BaseNode{Meta: "identifier"}, Name: mini_ast.Ident(ex.Name)}
+		return &miniast.IdentifierExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "identifier"), Meta: "identifier"}, Name: miniast.Ident(ex.Name)}
 	case *ast.BinaryExpr:
-		return &mini_ast.BinaryExpr{BaseNode: mini_ast.BaseNode{Meta: "binary"}, Left: c.convertExpr(ex.X), Operator: mini_ast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
+		return &miniast.BinaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "binary"), Meta: "binary"}, Left: c.convertExpr(ex.X), Operator: miniast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
 	case *ast.UnaryExpr:
-		return &mini_ast.UnaryExpr{BaseNode: mini_ast.BaseNode{Meta: "unary"}, Operator: mini_ast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
+		return &miniast.UnaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "unary"), Meta: "unary"}, Operator: miniast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
 	case *ast.ParenExpr:
 		return c.convertExpr(ex.X)
 	case *ast.CallExpr:
 		funExpr := c.convertExpr(ex.Fun)
 		// 如果被调者是一个标识符，将其转换为 ConstRefExpr 以匹配 Validator 预期
-		if ident, ok := funExpr.(*mini_ast.IdentifierExpr); ok {
-			funExpr = &mini_ast.ConstRefExpr{
-				BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
+		if ident, ok := funExpr.(*miniast.IdentifierExpr); ok {
+			funExpr = &miniast.ConstRefExpr{
+				BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref"},
 				Name:     ident.Name,
 			}
 		}
 		// 特殊处理类型转换
 		if array, ok := ex.Fun.(*ast.ArrayType); ok {
 			if ident, ok := array.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-				funExpr = &mini_ast.ConstRefExpr{
-					BaseNode: mini_ast.BaseNode{Meta: "const_ref"},
+				funExpr = &miniast.ConstRefExpr{
+					BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref"},
 					Name:     "TypeBytes",
 				}
 			}
 		}
 
-		if ident, ok := funExpr.(*mini_ast.ConstRefExpr); ok && ident.Name == "require" {
+		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok && ident.Name == "require" {
 			if len(ex.Args) == 1 {
 				if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
 					path := lit.Value[1 : len(lit.Value)-1]
-					return &mini_ast.ImportExpr{
-						BaseNode: mini_ast.BaseNode{Meta: "import", Type: mini_ast.TypeModule},
+					return &miniast.ImportExpr{
+						BaseNode: miniast.BaseNode{ID: c.genID(ex, "import"), Meta: "import", Type: miniast.TypeModule},
 						Path:     path,
 					}
 				}
 			}
 		}
 
-		if ident, ok := funExpr.(*mini_ast.ConstRefExpr); ok && ident.Name == "make" {
+		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok && ident.Name == "make" {
 			if len(ex.Args) > 0 {
 				typeArg := c.typeToString(ex.Args[0])
-				args := []mini_ast.Expr{
-					&mini_ast.LiteralExpr{
-						BaseNode: mini_ast.BaseNode{Meta: "literal", Type: "String"},
+				args := []miniast.Expr{
+					&miniast.LiteralExpr{
+						BaseNode: miniast.BaseNode{ID: c.genID(ex.Args[0], "literal"), Meta: "literal", Type: "String"},
 						Value:    typeArg,
 					},
 				}
 				if len(ex.Args) > 1 {
 					args = append(args, c.convertArgs(ex.Args[1:])...)
 				}
-				return &mini_ast.CallExprStmt{
-					BaseNode: mini_ast.BaseNode{Meta: "call"},
+				return &miniast.CallExprStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)},
 					Func:     funExpr,
 					Args:     args,
 				}
 			}
 		}
 
-		return &mini_ast.CallExprStmt{
-			BaseNode: mini_ast.BaseNode{Meta: "call"},
+		return &miniast.CallExprStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)},
 			Func:     funExpr,
 			Args:     c.convertArgs(ex.Args),
 		}
 	case *ast.CompositeLit:
 		typeName := c.typeToString(ex.Type)
-		res := &mini_ast.CompositeExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "composite"},
-			Kind:     mini_ast.Ident(typeName),
-			Values:   make([]mini_ast.CompositeElement, len(ex.Elts)),
+		res := &miniast.CompositeExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "composite"), Meta: "composite", Loc: c.extractLoc(ex)},
+			Kind:     miniast.Ident(typeName),
+			Values:   make([]miniast.CompositeElement, len(ex.Elts)),
 		}
 		for i, elt := range ex.Elts {
 			if kv, ok := elt.(*ast.KeyValueExpr); ok {
-				var keyExpr mini_ast.Expr
+				var keyExpr miniast.Expr
 				if ident, ok := kv.Key.(*ast.Ident); ok {
 					// 结构体字段名不应作为 IdentifierExpr 被 Check
 					// 保持为 nil 或特殊的字面量，由 CompositeExpr.Check 处理
-					keyExpr = &mini_ast.IdentifierExpr{
-						BaseNode: mini_ast.BaseNode{Meta: "identifier"},
-						Name:     mini_ast.Ident(ident.Name),
+					keyExpr = &miniast.IdentifierExpr{
+						BaseNode: miniast.BaseNode{ID: c.genID(ident, "identifier"), Meta: "identifier"},
+						Name:     miniast.Ident(ident.Name),
 					}
 				} else {
 					keyExpr = c.convertExpr(kv.Key)
 				}
-				res.Values[i] = mini_ast.CompositeElement{
+				res.Values[i] = miniast.CompositeElement{
 					Key:   keyExpr,
 					Value: c.convertExpr(kv.Value),
 				}
 			} else {
-				res.Values[i] = mini_ast.CompositeElement{
+				res.Values[i] = miniast.CompositeElement{
 					Value: c.convertExpr(elt),
 				}
 			}
@@ -606,20 +634,20 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 	case *ast.SelectorExpr:
 		// 统一视为对象成员访问（动态绑定）
 		// 包成员现在通过 ImportExpr 映射为局部变量，因此这里 X.Sel 会自动解析
-		return &mini_ast.MemberExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "member"},
+		return &miniast.MemberExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "member"), Meta: "member"},
 			Object:   c.convertExpr(ex.X),
-			Property: mini_ast.Ident(ex.Sel.Name),
+			Property: miniast.Ident(ex.Sel.Name),
 		}
 	case *ast.IndexExpr:
-		return &mini_ast.IndexExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "index"},
+		return &miniast.IndexExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "index"), Meta: "index"},
 			Object:   c.convertExpr(ex.X),
 			Index:    c.convertExpr(ex.Index),
 		}
 	case *ast.SliceExpr:
-		res := &mini_ast.SliceExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "slice"},
+		res := &miniast.SliceExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "slice"), Meta: "slice"},
 			X:        c.convertExpr(ex.X),
 		}
 		if ex.Low != nil {
@@ -630,15 +658,15 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 		}
 		return res
 	case *ast.FuncLit:
-		var params []mini_ast.FunctionParam
+		var params []miniast.FunctionParam
 		if ex.Type.Params != nil {
 			for _, field := range ex.Type.Params.List {
 				typeName := c.typeToString(field.Type)
 				if len(field.Names) == 0 {
-					params = append(params, mini_ast.FunctionParam{Type: mini_ast.GoMiniType(typeName)})
+					params = append(params, miniast.FunctionParam{Type: miniast.GoMiniType(typeName)})
 				} else {
 					for _, name := range field.Names {
-						params = append(params, mini_ast.FunctionParam{Name: mini_ast.Ident(name.Name), Type: mini_ast.GoMiniType(typeName)})
+						params = append(params, miniast.FunctionParam{Name: miniast.Ident(name.Name), Type: miniast.GoMiniType(typeName)})
 					}
 				}
 			}
@@ -648,15 +676,15 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) mini_ast.Expr {
 			retType = c.typeToString(ex.Type.Results.List[0].Type)
 		}
 
-		funcExpr := &mini_ast.FuncLitExpr{
-			BaseNode: mini_ast.BaseNode{Meta: "func_lit"},
-			FunctionType: mini_ast.FunctionType{
+		funcExpr := &miniast.FuncLitExpr{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "func_lit"), Meta: "func_lit", Loc: c.extractLoc(ex)},
+			FunctionType: miniast.FunctionType{
 				Params: params,
-				Return: mini_ast.GoMiniType(retType),
+				Return: miniast.GoMiniType(retType),
 			},
 		}
 		if ex.Body != nil {
-			funcExpr.Body = c.convertStmt(ex.Body).(*mini_ast.BlockStmt)
+			funcExpr.Body = c.convertStmt(ex.Body).(*miniast.BlockStmt)
 			funcExpr.Body.Inner = true
 		}
 		// Capture analysis will be performed during semantic validation (ast_valid.go)
@@ -710,8 +738,8 @@ func (c *GoToASTConverter) convertOp(op token.Token) string {
 	return op.String()
 }
 
-func (c *GoToASTConverter) convertArgs(args []ast.Expr) []mini_ast.Expr {
-	var res []mini_ast.Expr
+func (c *GoToASTConverter) convertArgs(args []ast.Expr) []miniast.Expr {
+	var res []miniast.Expr
 	for _, a := range args {
 		if ca := c.convertExpr(a); ca != nil {
 			res = append(res, ca)

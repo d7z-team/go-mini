@@ -17,7 +17,7 @@ type BinaryExpr struct {
 func (b *BinaryExpr) GetBase() *BaseNode { return &b.BaseNode }
 func (b *BinaryExpr) exprNode()          {}
 
-func tryConstantFold(left, right *LiteralExpr, operator Ident, id, message string) *LiteralExpr {
+func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *LiteralExpr {
 	leftType := left.Type
 	rightType := right.Type
 
@@ -55,10 +55,10 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id, message strin
 		if hasResult {
 			ret := &LiteralExpr{
 				BaseNode: BaseNode{
-					ID:      id,
-					Meta:    "literal",
-					Type:    leftType,
-					Message: message,
+					ID:   id,
+					Meta: "literal",
+					Type: leftType,
+					Loc:  left.Loc,
 				},
 				Value: fmt.Sprintf("%v", result),
 			}
@@ -83,10 +83,10 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id, message strin
 		if hasResult {
 			return &LiteralExpr{
 				BaseNode: BaseNode{
-					ID:      id,
-					Meta:    "literal",
-					Type:    "Bool",
-					Message: message,
+					ID:   id,
+					Meta: "literal",
+					Type: "Bool",
+					Loc:  left.Loc,
 				},
 				Value: strconv.FormatBool(result),
 			}
@@ -165,7 +165,7 @@ func (b *BinaryExpr) Optimize(ctx *OptimizeContext) Node {
 	// 2. 常量折叠
 	if leftLit, ok := b.Left.(*LiteralExpr); ok {
 		if rightLit, ok := b.Right.(*LiteralExpr); ok {
-			if folded := tryConstantFold(leftLit, rightLit, b.Operator, b.ID, b.Message); folded != nil {
+			if folded := tryConstantFold(leftLit, rightLit, b.Operator, b.ID); folded != nil {
 				return folded
 			}
 		}

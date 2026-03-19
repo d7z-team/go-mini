@@ -202,20 +202,20 @@ type BlockStmt struct {
 
 func NewBlock(node Node, args ...Stmt) *BlockStmt {
 	id := "block"
-	var message string
+	var loc *Position
 	if node != nil {
 		id = node.GetBase().ID
-		message = node.GetBase().Message
+		loc = node.GetBase().Loc
 	}
 	if len(args) == 0 {
 		args = []Stmt{}
 	}
 	return &BlockStmt{
 		BaseNode: BaseNode{
-			ID:      id,
-			Meta:    "block",
-			Type:    "Void",
-			Message: message,
+			ID:   id,
+			Meta: "block",
+			Type: "Void",
+			Loc:  loc,
 		},
 		Children: args,
 	}

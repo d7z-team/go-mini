@@ -11,9 +11,9 @@ import (
 
 func unmarshalNode(data []byte) (ast.Node, error) {
 	var typeInfo struct {
-		ID      string `json:"id"`
-		Meta    string `json:"meta"`
-		Message string `json:"message"`
+		ID   string        `json:"id"`
+		Meta string        `json:"meta"`
+		Loc  *ast.Position `json:"loc"`
 	}
 	if err := json.Unmarshal(data, &typeInfo); err != nil {
 		return nil, fmt.Errorf("解析节点类型失败: %w", err)
@@ -21,7 +21,7 @@ func unmarshalNode(data []byte) (ast.Node, error) {
 	if typeInfo.ID == "" {
 		typeInfo.ID = fmt.Sprintf("rid_%d", time.Now().UnixNano())
 	}
-	node, err := unmarshalNodeData(ast.BaseNode{ID: typeInfo.ID, Meta: typeInfo.Meta, Message: typeInfo.Message}, data)
+	node, err := unmarshalNodeData(ast.BaseNode{ID: typeInfo.ID, Meta: typeInfo.Meta, Loc: typeInfo.Loc}, data)
 	if err != nil {
 		return nil, errors.Join(err, fmt.Errorf("解析节点%s(%s)失败: %s", typeInfo.Meta, typeInfo.ID, string(data)))
 	}
@@ -501,7 +501,7 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			raw.Kind = raw.Type
 		}
 		// 隔离架构下直接保留字面量，不包装 Data
-		return &ast.LiteralExpr{BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: ast.GoMiniType(raw.Kind)}, Value: raw.Value}, nil
+		return &ast.LiteralExpr{BaseNode: ast.BaseNode{ID: baseNode.ID, Meta: baseNode.Meta, Type: ast.GoMiniType(raw.Kind), Loc: baseNode.Loc}, Value: raw.Value}, nil
 	case "binary":
 		var raw struct {
 			L  json.RawMessage `json:"left"`

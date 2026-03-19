@@ -109,7 +109,11 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 	ctx := c
 	for ctx != nil && ctx.current != nil {
 		base := ctx.current.GetBase()
-		path = append([]string{fmt.Sprintf("%s#%s", base.Meta, base.ID)}, path...)
+		locStr := ""
+		if base.Loc != nil {
+			locStr = fmt.Sprintf(":%d:%d", base.Loc.L, base.Loc.C)
+		}
+		path = append([]string{fmt.Sprintf("%s#%s%s", base.Meta, base.ID, locStr)}, path...)
 		ctx = ctx.parent
 	}
 	c.root.logs = append(c.root.logs, Logs{Path: path, Message: msg})

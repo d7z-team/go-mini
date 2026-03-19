@@ -64,16 +64,24 @@ func (i Ident) Valid(ctx *ValidContext) bool {
 	return true
 }
 
+// Position 定义物理源码位置
+type Position struct {
+	F string `json:"f,omitempty"` // File: 跨文件时使用
+	L int    `json:"l"`           // Line: 物理行号 (1-based)
+	C int    `json:"c,omitempty"` // Col: 物理列号 (1-based, 可选)
+}
+
 // BaseNode 是所有节点的基类
 type BaseNode struct {
-	ID      string     `json:"id"`
-	Meta    string     `json:"meta"`
-	Type    GoMiniType `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
-	Message string     `json:"message,omitempty"` // 表达式带有的附加信息
+	ID   string     `json:"id"`             // 确定性 ID: 基于 Loc + Meta 的哈希值
+	Meta string     `json:"meta"`           // 反序列化开关: if, call, binary...
+	Type GoMiniType `json:"type,omitempty"` // 表达式为任何类型，否则为 Void
+	Loc  *Position  `json:"loc,omitempty"`  // 源码位置映射: 仅语句和关键表达式包含
 }
 
 func (b *BaseNode) EnsureID(ctx *ValidContext) {
 	if b.ID == "" {
+		// 如果没有通过 Converter 生成确定性 ID，则回退到序列号 ID
 		b.ID = fmt.Sprintf("node_%04d", ctx.NextID())
 	}
 }
