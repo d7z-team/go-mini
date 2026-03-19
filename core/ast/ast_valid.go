@@ -3,6 +3,7 @@ package ast
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Logs struct {
@@ -10,6 +11,10 @@ type Logs struct {
 	Level   string
 	Message string
 }
+
+const (
+	MaxImportDepth = 100 // 静态验证最大导入深度
+)
 
 type ValidRoot struct {
 	logs        []Logs
@@ -287,6 +292,12 @@ func (c *ValidContext) ConstStore(value string) Ident {
 }
 
 func (c *ValidContext) ImportPackage(path string) error {
+	// 1. 路径规范化，防止 "../" 注入
+	path = strings.Trim(path, " \t\n\r")
+	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		return fmt.Errorf("invalid import path: %s", path)
+	}
+
 	if c.root.Loader == nil {
 		return nil // 回退到 FFI 行为
 	}
@@ -294,7 +305,12 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return nil
 	}
 
-	// 检查当前验证链中是否已存在该路径（循环依赖）
+	// 2. 静态验证深度检查，防止栈溢出
+	if len(c.root.importStack) >= MaxImportDepth {
+		return fmt.Errorf("import depth limit exceeded: %s", path)
+	}
+
+	// 3. 循环依赖检查
 	for _, p := range c.root.importStack {
 		if p == path {
 			return fmt.Errorf("circular dependency detected in validation: %s", path)
@@ -315,6 +331,12 @@ func (c *ValidContext) ImportPackage(path string) error {
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
 	err = prog.Check(NewSemanticContext(v))
+	
+	// 合并子模块验证日志
+	if v.root.logs != nil {
+		c.root.logs = append(c.root.logs, v.root.logs...)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to check package %s: %w", path, err)
 	}

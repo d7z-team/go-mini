@@ -492,7 +492,16 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "loader", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
+		ActiveHandles:  make([]runtime.HandleRef, 0),
 	}
+
+	defer func() {
+		for _, h := range session.ActiveHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}()
 
 	return executor.ImportModule(session, &ast.ImportExpr{Path: path})
 }

@@ -42,6 +42,7 @@ type Cell struct {
 type VMClosure struct {
 	FuncDef  *ast.FuncLitExpr // Ast node of the function
 	Upvalues map[string]*Var  // Captured environment variables (should be TypeCell)
+	Context  *StackContext    // 闭包所属的母上下文
 }
 
 type VMMethodValue struct {
@@ -155,7 +156,11 @@ func (v *Var) ToHandle() (uint32, error) {
 
 // Interface 将 VM 变量转换为 Go 原生接口类型
 func (v *Var) Interface() interface{} {
-	if v == nil {
+	return v.interfaceWithDepth(0)
+}
+
+func (v *Var) interfaceWithDepth(depth int) interface{} {
+	if v == nil || depth > 100 {
 		return nil
 	}
 	switch v.VType {
@@ -175,7 +180,7 @@ func (v *Var) Interface() interface{} {
 		if arr, ok := v.Ref.(*VMArray); ok {
 			res := make([]interface{}, len(arr.Data))
 			for i, item := range arr.Data {
-				res[i] = item.Interface()
+				res[i] = item.interfaceWithDepth(depth + 1)
 			}
 			return res
 		}
@@ -183,15 +188,18 @@ func (v *Var) Interface() interface{} {
 		if m, ok := v.Ref.(*VMMap); ok {
 			res := make(map[string]interface{})
 			for k, val := range m.Data {
-				res[k] = val.Interface()
+				res[k] = val.interfaceWithDepth(depth + 1)
 			}
 			return res
 		}
 	case TypeResult:
 		if v.ResultErr != "" {
-			return errors.New(v.ResultErr)
+			return v.ResultErr
 		}
-		return v.ResultVal.Interface()
+		if v.ResultVal != nil {
+			return v.ResultVal.interfaceWithDepth(depth + 1)
+		}
+		return nil
 	}
 	return nil
 }
@@ -283,7 +291,7 @@ func (s *Stack) RunDefers() {
 	s.DeferStack = nil
 }
 
-type handleRef struct {
+type HandleRef struct {
 	Bridge ffigo.FFIBridge
 	ID     uint32
 }
@@ -300,7 +308,7 @@ type StackContext struct {
 	// 运行时状态 (Session State)
 	StepCount      int64
 	StepLimit      int64
-	ActiveHandles  []handleRef
+	ActiveHandles  []HandleRef
 	ModuleCache    map[string]*Var
 	LoadingModules map[string]bool
 }

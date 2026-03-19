@@ -549,6 +549,13 @@ func (e *Executor) assignToLHS(ctx *StackContext, lhsExpr ast.Expr, val *Var) er
 			m := obj.Ref.(*VMMap)
 			m.Data[string(lhs.Property)] = val
 			return nil
+		case TypeModule:
+			mod := obj.Ref.(*VMModule)
+			if mod.Context == nil {
+				return fmt.Errorf("module %s is read-only", mod.Name)
+			}
+			// 必须通过模块的 Store 逻辑进行更新，以确保能够正确处理 TypeCell 并同步到模块内部
+			return mod.Context.Store(string(lhs.Property), val)
 		case TypeAny:
 			if obj.Ref != nil {
 				if m, ok := obj.Ref.(*VMMap); ok {
@@ -573,9 +580,34 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 	case *ast.IdentifierExpr:
 		return ctx.Load(string(n.Name))
 	case *ast.BinaryExpr:
+		// 逻辑运算短路处理
+		op := string(n.Operator)
+		if op == "&&" || op == "And" || op == "||" || op == "Or" {
+			l, err := e.ExecExpr(ctx, n.Left)
+			if err != nil {
+				return nil, err
+			}
+			lb, _ := l.ToBool()
+			if op == "&&" || op == "And" {
+				if !lb {
+					return NewBool(false), nil
+				}
+			} else {
+				if lb {
+					return NewBool(true), nil
+				}
+			}
+			r, err := e.ExecExpr(ctx, n.Right)
+			if err != nil {
+				return nil, err
+			}
+			rb, _ := r.ToBool()
+			return NewBool(rb), nil
+		}
+
 		l, _ := e.ExecExpr(ctx, n.Left)
 		r, _ := e.ExecExpr(ctx, n.Right)
-		return e.evalBinaryExprDirect(string(n.Operator), l, r)
+		return e.evalBinaryExprDirect(op, l, r)
 	case *ast.UnaryExpr:
 		val, _ := e.ExecExpr(ctx, n.Operand)
 		return e.evalUnaryExprDirect(string(n.Operator), val)
@@ -607,6 +639,7 @@ func (e *Executor) evalFuncLit(ctx *StackContext, n *ast.FuncLitExpr) (*Var, err
 	closure := &VMClosure{
 		FuncDef:  n,
 		Upvalues: make(map[string]*Var),
+		Context:  ctx, // 记录创建时的上下文
 	}
 
 	for _, name := range n.CaptureNames {
@@ -623,7 +656,12 @@ func (e *Executor) evalFuncLit(ctx *StackContext, n *ast.FuncLitExpr) (*Var, err
 }
 
 func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
-	path := n.Path
+	// 1. 路径规范化，防止 "../" 注入
+	path := strings.Trim(n.Path, " \t\n\r")
+	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		return nil, fmt.Errorf("invalid import path: %s", path)
+	}
+
 	if v, ok := ctx.ModuleCache[path]; ok {
 		return v, nil
 	}
@@ -632,7 +670,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 		return nil, fmt.Errorf("circular dependency detected: %s", path)
 	}
 
-	// 1. Try script loader
+	// 2. Try script loader
 	if e.Loader != nil {
 		prog, err := e.Loader(path)
 		if err == nil {
@@ -655,6 +693,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 				StepCount:      ctx.StepCount,
 				ModuleCache:    ctx.ModuleCache,
 				LoadingModules: ctx.LoadingModules,
+				ActiveHandles:  make([]HandleRef, 0),
 			}
 
 			// 1. 初始化模块全局变量
@@ -670,6 +709,9 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 			err = modExecutor.ExecuteStmts(modSession, prog.Main)
 			// Sync step count back
 			ctx.StepCount = modSession.StepCount
+
+			// 修复：将子模块产生的句柄合并到主上下文，由主上下文在结束时统一强制清理
+			ctx.ActiveHandles = append(ctx.ActiveHandles, modSession.ActiveHandles...)
 
 			if err != nil {
 				return nil, fmt.Errorf("module %s execution failed: %w", path, err)
@@ -699,6 +741,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 								Body:         fn.Body,
 							},
 							Upvalues: make(map[string]*Var),
+							Context:  modSession, // 绑定模块上下文
 						},
 					}
 				}
@@ -722,17 +765,18 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 			res := &Var{
 				VType: TypeModule,
 				Ref: &VMModule{
-					Name: path,
-					Data: exports,
+					Name:    path,
+					Data:    exports,
+					Context: modSession, // 锚定模块上下文
 				},
 			}
 			ctx.ModuleCache[path] = res
 			return res, nil
-		}
-	}
+			}
+			}
 
-	// 2. Fallback to FFI Virtual Module
-	ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
+			// 3. Fallback to FFI Virtual Module
+			ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
 	found := false
 	prefix1 := path + "."
 	prefix2 := strings.ReplaceAll(path, "/", ".") + "."
@@ -888,17 +932,18 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 		return nil, nil
 	case TypeModule:
 		mod := obj.Ref.(*VMModule)
-		if val, ok := mod.Data[string(n.Property)]; ok {
-			return val, nil
-		}
-		// 实时从模块上下文中加载变量 (处理可变导出变量)
+		// 优先从模块执行上下文中实时加载，以处理闭包捕获和跨模块变量状态同步
 		if mod.Context != nil {
 			val, err := mod.Context.Load(string(n.Property))
 			if err == nil {
 				return val, nil
 			}
 		}
-		return nil, fmt.Errorf("module member %s not found", n.Property)
+		// 回退到导出快照（用于访问函数、常量和结构体定义）
+		if val, ok := mod.Data[string(n.Property)]; ok {
+			return val, nil
+		}
+		return nil, fmt.Errorf("module member %s not found in %s", n.Property, mod.Name)
 	case TypeAny:
 		// 支持动态成员访问
 		if obj.Ref != nil {
@@ -987,6 +1032,14 @@ func (e *Executor) evalLiteral(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
+	// 解包 Cell
+	if l != nil && l.VType == TypeCell {
+		l = l.Ref.(*Cell).Value
+	}
+	if r != nil && r.VType == TypeCell {
+		r = r.Ref.(*Cell).Value
+	}
+
 	isEmpty := func(v *Var) bool {
 		if v == nil {
 			return true
@@ -1044,6 +1097,9 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 			if l.VType == TypeBytes {
 				lStr = string(l.B)
 			}
+			if r.VType != TypeString && r.VType != TypeBytes {
+				return nil, fmt.Errorf("cannot concatenate %v to %v", r.VType, l.VType)
+			}
 			rStr := r.Str
 			if r.VType == TypeBytes {
 				rStr = string(r.B)
@@ -1083,12 +1139,22 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		if useFloat {
 			return NewFloat(lf / rf), nil
 		}
+		// 防止 MinInt64 / -1 导致的 host panic
+		if l.I64 == -9223372036854775808 && r.I64 == -1 {
+			return NewInt(-9223372036854775808), nil
+		}
 		return NewInt(l.I64 / r.I64), nil
 	case "%", "Mod":
-		if r.I64 == 0 {
+		lVal, _ := l.ToInt()
+		rVal, _ := r.ToInt()
+		if rVal == 0 {
 			return nil, errors.New("division by zero")
 		}
-		return NewInt(l.I64 % r.I64), nil
+		// 防止 MinInt64 % -1 导致的 host panic
+		if lVal == -9223372036854775808 && rVal == -1 {
+			return NewInt(0), nil
+		}
+		return NewInt(lVal % rVal), nil
 	}
 	return nil, fmt.Errorf("unsupported arithmetic operator: %s", op)
 }
@@ -1101,6 +1167,10 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	ri, err := r.ToInt()
 	if err != nil {
 		return nil, err
+	}
+
+	if ri < 0 {
+		return nil, fmt.Errorf("negative shift count %d", ri)
 	}
 
 	switch op {
@@ -1321,6 +1391,10 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 	if val == nil {
 		return nil, errors.New("unary op with nil operand")
 	}
+	// 解包 Cell
+	if val.VType == TypeCell {
+		val = val.Ref.(*Cell).Value
+	}
 	switch operator {
 	case "!", "Not":
 		return NewBool(!val.Bool), nil
@@ -1443,7 +1517,21 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 		return nil, errors.New("cannot call nil")
 	}
 
+	// 确定实际执行的上下文：
+	// 1. 优先使用传入的 modCtx (由 MemberExpr 提取)
+	// 2. 其次使用闭包自带的 Context (记录了创建时的母上下文)
+	// 3. 最后回退到当前的调用上下文
+	execCtx := ctx
+	if modCtx != nil {
+		execCtx = modCtx
+	}
+
 	if callable.VType == TypeClosure {
+		closure := callable.Ref.(*VMClosure)
+		if closure.Context != nil && modCtx == nil {
+			execCtx = closure.Context
+		}
+
 		if method, ok := callable.Ref.(*VMMethodValue); ok {
 			fullArgs := make([]*Var, len(args)+1)
 			fullArgs[0] = method.Receiver
@@ -1453,17 +1541,12 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 			}
 			return nil, fmt.Errorf("method route not found: %s", method.Method)
 		}
-		closure := callable.Ref.(*VMClosure)
-		return e.execClosure(ctx, closure, args)
+		return e.execClosure(execCtx, closure, args)
 	}
 
 	// If it has Ref to FunctionStmt, it's a script function
 	if f, ok := callable.Ref.(*ast.FunctionStmt); ok {
-		callCtx := ctx
-		if modCtx != nil {
-			callCtx = modCtx
-		}
-		return e.execInternalFunc(callCtx, string(f.Name), f, args)
+		return e.execInternalFunc(execCtx, string(f.Name), f, args)
 	}
 
 	// If it has Ref to FFIRoute, it's an FFI function
@@ -1593,15 +1676,24 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			capacity := 0
 			if len(args) > 1 && args[1] != nil {
 				lInt, _ := args[1].ToInt()
+				if lInt < 0 {
+					return nil, true, fmt.Errorf("negative length in make: %d", lInt)
+				}
+				if lInt > 10000000 {
+					return nil, true, fmt.Errorf("requested length too large: %d", lInt)
+				}
 				length = int(lInt)
 				capacity = length
 			}
 			if len(args) > 2 && args[2] != nil {
 				cInt, _ := args[2].ToInt()
+				if int(cInt) < length {
+					return nil, true, fmt.Errorf("capacity %d less than length %d", cInt, length)
+				}
+				if cInt > 10000000 {
+					return nil, true, fmt.Errorf("requested capacity too large: %d", cInt)
+				}
 				capacity = int(cInt)
-			}
-			if capacity < length {
-				return nil, true, errors.New("make capacity < length")
 			}
 			if tStr == "TypeBytes" {
 				return &Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: "TypeBytes"}, true, nil
@@ -1631,9 +1723,15 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 					}
 				}
 			}
+			if len(data) > 10000000 {
+				return nil, true, errors.New("slice size limit exceeded in append")
+			}
 			return &Var{VType: TypeBytes, B: data, Type: sliceArg.Type}, true, nil
 		}
 		arr := sliceArg.Ref.(*VMArray)
+		if len(arr.Data)+len(args)-1 > 10000000 {
+			return nil, true, errors.New("array size limit exceeded in append")
+		}
 		data := make([]*Var, len(arr.Data))
 		copy(data, arr.Data)
 		for i := 1; i < len(args); i++ {
@@ -1715,7 +1813,7 @@ func (e *Executor) execInternalFunc(ctx *StackContext, name string, f *ast.Funct
 		}
 
 		if !f.Return.IsVoid() && innerErr == nil {
-			res, _ = c.loadVar("__return__")
+			res, _ = c.Load("__return__")
 		}
 		return innerErr
 	})
@@ -1773,7 +1871,7 @@ func (e *Executor) execClosure(ctx *StackContext, closure *VMClosure, args []*Va
 		}
 
 		if !f.Return.IsVoid() && innerErr == nil {
-			res, _ = c.loadVar("__return__")
+			res, _ = c.Load("__return__")
 		}
 		return innerErr
 	})
@@ -1876,58 +1974,58 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 }
 
 func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
-	if v == nil || (v.VType == TypeAny && v.Ref == nil && v.I64 == 0 && v.Str == "") {
-		// 写入零值，必须确保字节对齐
-		switch {
-		case typ == "String":
-			buf.WriteString("")
-		case typ == "Float64":
-			buf.WriteFloat64(0)
-		case typ.IsNumeric():
-			buf.WriteInt64(0)
-		case typ == "Bool":
-			buf.WriteBool(false)
-		case typ.IsPtr() || typ == "TypeHandle":
-			buf.WriteUint32(0)
-		case typ == "Any":
-			buf.WriteAny(nil)
-		case typ.IsArray():
-			buf.WriteUint32(0)
-		default:
-			if name, ok := typ.StructName(); ok {
-				if sDef, ok := e.program.Structs[name]; ok {
-					for _, fName := range sDef.FieldNames {
-						_ = e.serializeVar(buf, nil, sDef.Fields[fName])
-					}
-					return nil
-				}
-			}
-			buf.WriteAny(nil)
-		}
-		return nil
-	}
-
-	// 特殊处理 Any：使用专用递归序列化
+	// 如果 typ 是 Any，回退到动态序列化
 	if typ == "Any" {
 		e.serializeVarToAny(buf, v)
 		return nil
 	}
 
-	// 正常强类型序列化
-	switch v.VType {
-	case TypeInt:
-		buf.WriteInt64(v.I64)
-	case TypeFloat:
-		buf.WriteFloat64(v.F64)
-	case TypeString:
-		buf.WriteString(v.Str)
-	case TypeBool:
-		buf.WriteBool(v.Bool)
-	case TypeBytes:
-		buf.WriteBytes(v.B)
-	case TypeHandle:
-		buf.WriteUint32(v.Handle)
-	case TypeArray:
+	// 严格按照 typ 类型进行序列化，防止协议层错位
+	switch {
+	case typ == "String":
+		str := ""
+		if v != nil {
+			str = v.Str
+			if v.VType == TypeBytes {
+				str = string(v.B)
+			}
+		}
+		buf.WriteString(str)
+	case typ == "Float64":
+		fVal := 0.0
+		if v != nil {
+			fVal, _ = v.ToFloat()
+		}
+		buf.WriteFloat64(fVal)
+	case typ.IsNumeric():
+		iVal := int64(0)
+		if v != nil {
+			iVal, _ = v.ToInt()
+		}
+		buf.WriteInt64(iVal)
+	case typ == "Bool":
+		bVal := false
+		if v != nil {
+			bVal, _ = v.ToBool()
+		}
+		buf.WriteBool(bVal)
+	case typ == "TypeBytes":
+		var bVal []byte
+		if v != nil {
+			bVal, _ = v.ToBytes()
+		}
+		buf.WriteBytes(bVal)
+	case typ.IsPtr() || typ == "TypeHandle":
+		hVal := uint32(0)
+		if v != nil {
+			hVal, _ = v.ToHandle()
+		}
+		buf.WriteUint32(hVal)
+	case typ.IsArray():
+		if v == nil || v.VType != TypeArray {
+			buf.WriteUint32(0)
+			return nil
+		}
 		arr := v.Ref.(*VMArray)
 		buf.WriteUint32(uint32(len(arr.Data)))
 		itemType, _ := typ.ReadArrayItemType()
@@ -1939,39 +2037,47 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 				return err
 			}
 		}
-	case TypeMap: // 结构体模拟或纯 Map
+	case typ.IsMap():
+		if v == nil || v.VType != TypeMap {
+			buf.WriteUint32(0)
+			return nil
+		}
+		kType, vType, ok := typ.GetMapKeyValueTypes()
+		if ok {
+			vmMap := v.Ref.(*VMMap)
+			buf.WriteUint32(uint32(len(vmMap.Data)))
+			for k, val := range vmMap.Data {
+				if err := e.serializeKey(buf, k, kType); err != nil {
+					return err
+				}
+				if err := e.serializeVar(buf, val, vType); err != nil {
+					return err
+				}
+			}
+		}
+	default:
+		// 结构体序列化
 		if name, ok := typ.StructName(); ok {
 			if sDef, ok := e.program.Structs[name]; ok {
-				m := v.Ref.(*VMMap)
+				var mData map[string]*Var
+				if v != nil && v.VType == TypeMap {
+					mData = v.Ref.(*VMMap).Data
+				}
 				for _, fName := range sDef.FieldNames {
 					fType := sDef.Fields[fName]
-					if err := e.serializeVar(buf, m.Data[string(fName)], fType); err != nil {
+					var fVal *Var
+					if mData != nil {
+						fVal = mData[string(fName)]
+					}
+					if err := e.serializeVar(buf, fVal, fType); err != nil {
 						return err
 					}
 				}
 				return nil
 			}
 		}
-		if typ.IsMap() {
-			kType, vType, ok := typ.GetMapKeyValueTypes()
-			if ok {
-				vmMap := v.Ref.(*VMMap)
-				buf.WriteUint32(uint32(len(vmMap.Data)))
-				for k, val := range vmMap.Data {
-					if err := e.serializeKey(buf, k, kType); err != nil {
-						return err
-					}
-					if err := e.serializeVar(buf, val, vType); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-		}
-		// 回退到动态 Map 序列化（Any 协议）
+		// 其他情况回退到 Any 动态序列化
 		e.serializeVarToAny(buf, v)
-	default:
-		return fmt.Errorf("unsupported serialization type: %v", v.VType)
 	}
 	return nil
 }
@@ -2050,7 +2156,7 @@ func (e *Executor) ToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBri
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
-			ctx.ActiveHandles = append(ctx.ActiveHandles, handleRef{Bridge: bridge, ID: v})
+			ctx.ActiveHandles = append(ctx.ActiveHandles, HandleRef{Bridge: bridge, ID: v})
 		}
 		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
 	case map[string]interface{}:
@@ -2110,7 +2216,7 @@ func (e *Executor) deserializeVar(ctx *StackContext, reader *ffigo.Reader, typ a
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
-				ctx.ActiveHandles = append(ctx.ActiveHandles, handleRef{Bridge: bridge, ID: id})
+				ctx.ActiveHandles = append(ctx.ActiveHandles, HandleRef{Bridge: bridge, ID: id})
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 		case typ.IsArray():

@@ -65,7 +65,7 @@ func (o GoMiniType) IsMap() bool {
 
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
 	s := string(o)
-	if strings.HasPrefix(s, "Array<") {
+	if strings.HasPrefix(s, "Array<") && len(s) > 7 {
 		return GoMiniType(s[6 : len(s)-1]), true
 	}
 	if strings.HasPrefix(s, "...") { // 仅用于兼容处理 Spec 解析
@@ -111,7 +111,7 @@ func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
 }
 
 func (o GoMiniType) ReadResult() (GoMiniType, bool) {
-	if !o.IsResult() {
+	if !o.IsResult() || len(o) < 8 {
 		return "", false
 	}
 	s := string(o)
