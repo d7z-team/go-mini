@@ -881,8 +881,16 @@ func (e *Executor) evalIndexExpr(ctx *StackContext, n *ast.IndexExpr) (*Var, err
 		return nil, err
 	}
 
-	if obj == nil || idx == nil {
+	if obj == nil || (obj.VType == TypeAny && obj.Ref == nil) {
+		// Go 语义：访问 nil map 返回零值
+		if obj != nil {
+			return e.ToVar(ctx, obj.Type.ZeroVar(), nil), nil
+		}
 		return nil, errors.New("index access on nil")
+	}
+
+	if idx == nil {
+		return nil, errors.New("index access with nil index")
 	}
 
 	switch obj.VType {
@@ -1072,27 +1080,10 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 		r = r.Ref.(*Cell).Value
 	}
 
-	isEmpty := func(v *Var) bool {
-		if v == nil {
-			return true
-		}
-		switch v.VType {
-		case TypeAny:
-			return v.Ref == nil && v.I64 == 0 && v.Str == ""
-		case TypeString:
-			return v.Str == ""
-		case TypeHandle:
-			return v.Handle == 0
-		case TypeArray, TypeMap, TypeResult, TypeClosure, TypeModule:
-			return v.Ref == nil && v.ResultVal == nil && v.ResultErr == ""
-		}
-		return false
-	}
-
 	// 允许比较运算的操作数为 nil
 	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
-		isLEmpty := isEmpty(l)
-		isREmpty := isEmpty(r)
+		isLEmpty := isEmptyVar(l)
+		isREmpty := isEmptyVar(r)
 
 		if isLEmpty && isREmpty {
 			return NewBool(operator == "==" || operator == "Eq"), nil
@@ -1220,46 +1211,94 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported bitwise operator: %s", op)
 }
 
+func isEmptyVar(v *Var) bool {
+	if v == nil {
+		return true
+	}
+	switch v.VType {
+	case TypeArray:
+		if arr, ok := v.Ref.(*VMArray); ok {
+			return arr == nil
+		}
+		return v.Ref == nil
+	case TypeMap:
+		if m, ok := v.Ref.(*VMMap); ok {
+			return m == nil
+		}
+		return v.Ref == nil
+	case TypeClosure, TypeModule, TypeResult:
+		return v.Ref == nil && v.ResultVal == nil && v.ResultErr == ""
+	case TypeHandle:
+		return v.Handle == 0
+	case TypeAny:
+		return v.Ref == nil
+	}
+	return false
+}
+
 func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
-	if l.VType == TypeString && r.VType == TypeString {
-		switch op {
-		case "==", "Eq":
-			return NewBool(l.Str == r.Str), nil
-		case "!=", "Neq":
-			return NewBool(l.Str != r.Str), nil
+	// Nil 安全比较
+	lEmpty := isEmptyVar(l)
+	rEmpty := isEmptyVar(r)
+
+	if op == "==" || op == "Eq" {
+		if lEmpty && rEmpty {
+			return NewBool(true), nil
+		}
+		if lEmpty || rEmpty {
+			return NewBool(false), nil
 		}
 	}
-	if l.VType == TypeBool && r.VType == TypeBool {
-		switch op {
-		case "==", "Eq":
-			return NewBool(l.Bool == r.Bool), nil
-		case "!=", "Neq":
-			return NewBool(l.Bool != r.Bool), nil
+	if op == "!=" || op == "Neq" {
+		if lEmpty && rEmpty {
+			return NewBool(false), nil
+		}
+		if lEmpty || rEmpty {
+			return NewBool(true), nil
 		}
 	}
 
-	lf, lErr := l.ToFloat()
-	rf, rErr := r.ToFloat()
-	if lErr == nil && rErr == nil {
-		switch op {
-		case "==", "Eq":
-			return NewBool(lf == rf), nil
-		case "!=", "Neq":
-			return NewBool(lf != rf), nil
-		case "<", "Lt":
-			return NewBool(lf < rf), nil
-		case ">", "Gt":
-			return NewBool(lf > rf), nil
-		case "<=", "Le":
-			return NewBool(lf <= rf), nil
-		case ">=", "Ge":
-			return NewBool(lf >= rf), nil
+	if l != nil && r != nil {
+		if l.VType == TypeString && r.VType == TypeString {
+			switch op {
+			case "==", "Eq":
+				return NewBool(l.Str == r.Str), nil
+			case "!=", "Neq":
+				return NewBool(l.Str != r.Str), nil
+			}
+		}
+		if l.VType == TypeBool && r.VType == TypeBool {
+			switch op {
+			case "==", "Eq":
+				return NewBool(l.Bool == r.Bool), nil
+			case "!=", "Neq":
+				return NewBool(l.Bool != r.Bool), nil
+			}
+		}
+
+		lf, lErr := l.ToFloat()
+		rf, rErr := r.ToFloat()
+		if lErr == nil && rErr == nil {
+			switch op {
+			case "==", "Eq":
+				return NewBool(lf == rf), nil
+			case "!=", "Neq":
+				return NewBool(lf != rf), nil
+			case "<", "Lt":
+				return NewBool(lf < rf), nil
+			case ">", "Gt":
+				return NewBool(lf > rf), nil
+			case "<=", "Le":
+				return NewBool(lf <= rf), nil
+			case ">=", "Ge":
+				return NewBool(lf >= rf), nil
+			}
 		}
 	}
 
 	// 基础比较
 	if op == "==" || op == "Eq" {
-		if l.VType == r.VType {
+		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeModule, TypeClosure:
 				return NewBool(l.Ref == r.Ref), nil
@@ -1270,7 +1309,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 		return NewBool(l == r), nil
 	}
 	if op == "!=" || op == "Neq" {
-		if l.VType == r.VType {
+		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeModule, TypeClosure:
 				return NewBool(l.Ref != r.Ref), nil
@@ -1281,7 +1320,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 		return NewBool(l != r), nil
 	}
 
-	return nil, fmt.Errorf("unsupported comparison %s between %v and %v", op, l.VType, r.VType)
+	return nil, fmt.Errorf("unsupported comparison %s between %v and %v", op, l, r)
 }
 
 func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
@@ -1717,27 +1756,15 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			return nil, true, errors.New("invalid arguments to new")
 		}
 		tStr := args[0].Str
-		// tStr 可能是 Ptr<T>，需要提取 T
 		innerType := tStr
 		if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
 			innerType = tStr[4 : len(tStr)-1]
 		}
 
-		// 获取零值
-		zero := ast.GoMiniType(innerType).ZeroVar()
-		res := e.ToVar(ctx, zero, nil)
-		if res == nil {
-			// 结构体零值初始化：填充所有字段为默认零值
-			mData := make(map[string]*Var)
-			if sDef, ok := e.structs[innerType]; ok {
-				for _, fName := range sDef.FieldNames {
-					fType := sDef.Fields[fName]
-					mData[string(fName)] = e.ToVar(ctx, fType.ZeroVar(), nil)
-				}
-			}
-			res = &Var{VType: TypeMap, Ref: &VMMap{Data: mData}}
+		res := e.initializeType(ctx, ast.GoMiniType(innerType), 0)
+		if res != nil {
+			res.Type = ast.GoMiniType(tStr)
 		}
-		res.Type = ast.GoMiniType(tStr)
 		return res, true, nil
 	case "make":
 		if len(args) < 1 || args[0] == nil || args[0].VType != TypeString {
@@ -2360,3 +2387,31 @@ func (e *Executor) deserializeVar(ctx *StackContext, reader *ffigo.Reader, typ a
 }
 
 func (e *Executor) GetProgram() *ast.ProgramStmt { return e.program }
+
+func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int) *Var {
+	if depth > 10 {
+		return &Var{VType: TypeAny, Type: t}
+	}
+
+	if t.IsPtr() || t.IsArray() || t.IsMap() || t.IsAny() {
+		return &Var{VType: TypeAny, Type: t}
+	}
+
+	// 基础类型
+	zero := t.ZeroVar()
+	res := e.ToVar(ctx, zero, nil)
+	if res != nil {
+		res.Type = t
+		return res
+	}
+
+	// 结构体
+	mData := make(map[string]*Var)
+	if sDef, ok := e.structs[string(t)]; ok {
+		for _, fName := range sDef.FieldNames {
+			fType := sDef.Fields[fName]
+			mData[string(fName)] = e.initializeType(ctx, fType, depth+1)
+		}
+	}
+	return &Var{VType: TypeMap, Ref: &VMMap{Data: mData}, Type: t}
+}

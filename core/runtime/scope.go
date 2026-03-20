@@ -454,7 +454,14 @@ func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
 }
 
 func (c *StackContext) NewVar(name string, kind ast.GoMiniType) error {
-	c.Stack.MemoryPtr[name] = &Var{Type: kind}
+	// 确保变量被正确初始化为零值
+	var v *Var
+	if exec, ok := c.Executor.(*Executor); ok {
+		v = exec.initializeType(c, kind, 0)
+	} else {
+		v = &Var{Type: kind, VType: TypeAny}
+	}
+	c.Stack.MemoryPtr[name] = v
 	return nil
 }
 
@@ -471,6 +478,8 @@ func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContex
 }
 
 func copyVarData(dest, src *Var) {
+	// CRITICAL: Type metadata is shared and can be modified by the script.
+	// FFI bridges MUST perform strict VType and content assertions instead of trusting Type.
 	dest.Type = src.Type
 	dest.VType = src.VType
 	dest.I64 = src.I64

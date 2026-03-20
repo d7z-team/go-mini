@@ -129,12 +129,32 @@ func TestGoStyleTypes(t *testing.T) {
 			package main
 			type Point struct { X int; Y int }
 			func main() {
-				// new(int) 在隔离语义下返回的是一个持有 0 的变量
-                // 注意：目前 go-mini 不支持 *p 这种解引用语法，但 Ptr<T> 在成员访问时是透明的
+				// new(int) 在隔离语义下直接返回零值
 				ps := new(Point)
 				if ps.X != 0 { panic("new struct failed") }
                 ps.X = 100
                 if ps.X != 100 { panic("struct assignment failed") }
+                
+                // 验证引用语义：赋值后应该指向同一个对象
+                ps2 := ps
+                ps2.Y = 200
+                if ps.Y != 200 { panic("struct reference failed") }
+			}`,
+		},
+		{
+			name: "NilComparison",
+			code: `
+			package main
+			func main() {
+				var m map[string]int
+				if m != nil { panic("uninitialized map should be nil") }
+                
+                s := ""
+                if s != "" { panic("empty string comparison failed") }
+                // 在 go-mini 中，空字符串不等于 nil
+                if s == nil { panic("empty string should not be nil") }
+                
+                if nil != nil { panic("nil equality failed") }
 			}`,
 		},
 	}

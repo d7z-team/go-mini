@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -19,6 +20,8 @@ import (
 )
 
 type MiniExecutor struct {
+	mu sync.RWMutex
+
 	Loader  func(path string) (*ast.ProgramStmt, error)
 	bridges map[uint32]ffigo.FFIBridge
 	routes  map[string]runtime.FFIRoute
@@ -57,7 +60,17 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
+		ActiveHandles:  make([]runtime.HandleRef, 0),
 	}
+
+	defer func() {
+		session.Stack.RunDefers()
+		for _, h := range session.ActiveHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}()
 
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
@@ -123,6 +136,8 @@ func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, err
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
 func (o *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.modules[path] = prog.GetAst()
 }
 
@@ -132,6 +147,8 @@ func (o *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
 
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
 func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	returns := "Void"
 	if callFunc, ok := spec.ReadCallFunc(); ok {
 		returns = string(callFunc.Returns)
@@ -144,6 +161,8 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 }
 
 func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.bridges[methodID] = bridge
 }
 
@@ -196,6 +215,8 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
 func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.specs[ast.Ident(name)] = spec
 }
 
@@ -207,6 +228,8 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 
 	// 自动合并 Loader，优先查找已注册模块
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		if astNode, ok := o.modules[path]; ok {
 			return astNode, nil
 		}
@@ -217,6 +240,8 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 	}
 
 	// Pass routes to executor
+	o.mu.RLock()
+	defer o.mu.RUnlock()
 	for name, route := range o.routes {
 		executor.RegisterRoute(name, route)
 	}
@@ -325,6 +350,8 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 	validator, _ := ast.NewValidator(program)
 	// 在验证阶段也要支持已注册模块
 	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		if astNode, ok := o.modules[path]; ok {
 			return astNode, nil
 		}
@@ -334,9 +361,11 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 		return nil, fmt.Errorf("module not found: %s", path)
 	})
 
+	o.mu.RLock()
 	for name, spec := range o.specs {
 		validator.AddVariable(name, spec)
 	}
+	o.mu.RUnlock()
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = program.Check(semanticCtx)
@@ -367,6 +396,8 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 
 	// 继承模块查找逻辑
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		if astNode, ok := o.modules[path]; ok {
 			return astNode, nil
 		}
@@ -376,9 +407,11 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
+	o.mu.RLock()
 	for name, route := range o.routes {
 		executor.RegisterRoute(name, route)
 	}
+	o.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -386,7 +419,17 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
+		ActiveHandles:  make([]runtime.HandleRef, 0),
 	}
+
+	defer func() {
+		session.Stack.RunDefers()
+		for _, h := range session.ActiveHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}()
 
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
@@ -410,7 +453,9 @@ func (o *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[str
 	return res
 }
 
-// Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量
+// Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量。
+// 注意：本方法使用“单次快照模式”，每次调用均创建全新的执行器上下文。
+// 若需持久化的全局变量或复杂的跨模块交互，建议使用 NewRuntimeByGoCode。
 func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
 	converter := ffigo.NewGoToASTConverter()
 	stmts, err := converter.ConvertStmtsSource(code)
@@ -420,16 +465,22 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 
 	// 构建临时程序以便验证
 	program := &ast.ProgramStmt{
-		BaseNode: ast.BaseNode{ID: "snippet", Meta: "boot"},
-		Main:     stmts,
-		Structs:  make(map[ast.Ident]*ast.StructStmt),
+		BaseNode:  ast.BaseNode{ID: "snippet", Meta: "boot"},
+		Main:      stmts,
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Constants: make(map[string]string),
 	}
-	// 注入所有已注册的模块中的结构体，以便在 Snippet 中使用
+	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
+	o.mu.RLock()
 	for _, s := range o.modules {
 		for name, sDef := range s.Structs {
 			program.Structs[name] = sDef
 		}
+		for name, cDef := range s.Constants {
+			program.Constants[name] = cDef
+		}
 	}
+	o.mu.RUnlock()
 
 	// 语义校验
 	v, err := ast.NewValidator(program)
@@ -437,9 +488,12 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		return err
 	}
 	// 注入 FFI 和内建函数规格
+	o.mu.RLock()
 	for name, spec := range o.specs {
 		v.AddVariable(name, spec)
 	}
+	o.mu.RUnlock()
+
 	if err := program.Check(ast.NewSemanticContext(v)); err != nil {
 		return err
 	}
@@ -447,6 +501,8 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	executor, _ := runtime.NewExecutor(program)
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		if astNode, ok := o.modules[path]; ok {
 			return astNode, nil
 		}
@@ -456,9 +512,11 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
+	o.mu.RLock()
 	for name, route := range o.routes {
 		executor.RegisterRoute(name, route)
 	}
+	o.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -466,7 +524,17 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "snippet", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
+		ActiveHandles:  make([]runtime.HandleRef, 0),
 	}
+
+	defer func() {
+		session.Stack.RunDefers()
+		for _, h := range session.ActiveHandles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}()
 
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
@@ -497,6 +565,8 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	})
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		if astNode, ok := o.modules[path]; ok {
 			return astNode, nil
 		}
@@ -506,9 +576,11 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
+	o.mu.RLock()
 	for name, route := range o.routes {
 		executor.RegisterRoute(name, route)
 	}
+	o.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -520,6 +592,7 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	}
 
 	defer func() {
+		session.Stack.RunDefers()
 		for _, h := range session.ActiveHandles {
 			if h.Bridge != nil && h.ID != 0 {
 				_ = h.Bridge.DestroyHandle(h.ID)
@@ -538,6 +611,8 @@ func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 	}
 
 	program, _, err := ValidateAndOptimizeWithLoader(node, o.Loader, func(v *ast.ValidContext) error {
+		o.mu.RLock()
+		defer o.mu.RUnlock()
 		for name, spec := range o.specs {
 			v.AddVariable(name, spec)
 		}
