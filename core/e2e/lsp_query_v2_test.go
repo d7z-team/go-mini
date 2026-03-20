@@ -158,3 +158,41 @@ func main() {
 		t.Errorf("Expected definition at line 2, got line %d", def.GetBase().Loc.L)
 	}
 }
+
+func TestMethodNavigation(t *testing.T) {
+	code := `package main
+type S struct { X Int64 }
+func (s *S) Calc() Int64 { return s.X }
+func main() {
+	s := S{X: 10}
+	res := s.Calc() // Target: 6:11
+}`
+	conv := ffigo.NewGoToASTConverter()
+	prog, err := conv.ConvertSource(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt))
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	parentMap := ast.BuildParentMap(prog)
+
+	// 点击 s.Calc() 中的 Calc (Line 6, Col 11)
+	node := ast.FindNodeAt(prog, 6, 11)
+	if node == nil {
+		t.Fatal("Node at 6:11 not found")
+	}
+	t.Logf("Node at 6:11: %s (%T)", node.GetBase().Meta, node)
+
+	def := ast.FindDefinition(prog, node, parentMap)
+	if def == nil {
+		t.Fatal("Definition of s.Calc not found")
+	}
+
+	// 预期指向方法实现 (Line 3)
+	if def.GetBase().Meta != "function" || def.GetBase().Loc.L != 3 {
+		t.Errorf("Expected definition at line 3 (function), got line %d (%s)", def.GetBase().Loc.L, def.GetBase().Meta)
+	}
+}

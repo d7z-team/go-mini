@@ -43,7 +43,6 @@ func main() {
 	func main() {
 		x := 10
 		y := 20
-		// 返回值会被特殊变量 __return__ 捕获（如果需要）
 	}
 	`
 
@@ -64,13 +63,12 @@ func main() {
 
 ### 2. 表达式执行 (Eval)
 
-如果你只需要计算单个 Go 表达式（例如规则引擎场景），可以使用更轻量级的 `Eval` 方法。它不需要 `package` 声明和 `main` 函数，且支持直接传入 Go 原生类型作为环境变量。
+如果你只需要计算单个 Go 表达式（例如规则引擎场景），可以使用更轻量级的 `Eval` 方法。它支持直接传入 Go 原生类型作为环境变量。
 
 ```go
 func main() {
     executor := engine.NewMiniExecutor()
     
-    // 直接传入 Go 原生类型，引擎会自动进行类型转换和内存隔离（[]byte 会被深度拷贝）
     env := map[string]interface{}{
         "a": 10,
         "b": 20,
@@ -83,25 +81,22 @@ func main() {
         panic(err)
     }
     
-    // 使用 Interface() 轻松转换回 Go 原生接口类型
     fmt.Println("Result:", result.Interface()) // 输出: 51
 }
 ```
 
 ### 3. 数据交互与规范化 (Normalization)
 
-`go-mini` 在宿主边界提供了极高的易用性，它会自动处理 Go 类型与 VM 规范类型之间的转换：
+`go-mini` 自动处理 Go 类型与 VM 规范类型之间的转换：
 
 | Go 类型 | VM 规范类型 | 转换说明 |
 | :--- | :--- | :--- |
-| `int`, `int64`, `uint32` | `Int64` | 自动规约，防止溢出 |
-| `float64`, `float32` | `Float64` | 自动规约 |
+| `int`, `int64` | `Int64` | 自动规约 |
+| `float64` | `Float64` | 自动规约 |
 | `string` | `String` | 值拷贝 |
 | `[]byte` | `TypeBytes` | **强制深度拷贝**，确保物理隔离 |
-| `struct` | `TypeMap` | 递归映射公开字段，优先遵循 `json` 标签 |
+| `struct` | `TypeMap` | 递归映射公开字段（支持 `json` 标签） |
 | `map`, `slice` | `TypeMap`, `TypeArray` | 递归重建容器，实现内存解耦 |
-
-通过 `Var.Interface()` 方法，你可以将执行结果递归地转换回 Go 原生的 `map[string]any` 或 `[]any`。
 
 ### 4. 代码片段执行与符号注入 (Snippet Mode)
 
@@ -119,13 +114,11 @@ func main() {
     `)
     executor.RegisterModule("utils", libProg)
 
-    // 2. 执行代码片段，它可以识别 Point 类型和 Add 函数
+    // 2. 执行代码片段
     code := `
         p := utils.Point{X: 1, Y: 2}
-        res := utils.Add(p.X, 100)
-        return res
+        return utils.Add(p.X, 100)
     `
-    // engine.Execute 会自动注入符号并执行 Check 语义校验
     _ = executor.Execute(context.Background(), code, nil)
 }
 ```
@@ -134,147 +127,118 @@ func main() {
 
 ## 🛡️ 安全与沙盒控制
 
-`go-mini` 提供了强大的控制手段来防止恶意或有缺陷的脚本耗尽宿主资源。
-
 ### 1. 指令步数限制 (Step Limit)
 
-防止死循环（如 `for {}`）耗尽 CPU：
+防止死循环耗尽 CPU：
 
 ```go
 prog, _ := executor.NewRuntimeByGoCode(code)
-
-// 限制脚本最多执行 10000 条基本指令
-prog.SetStepLimit(10000)
-
+prog.SetStepLimit(10000) 
 err := prog.Execute(context.Background())
-// 如果超时，err 将返回 "instruction limit exceeded"
 ```
 
 ### 2. Context 取消与超时
 
-防止长时间阻塞的 FFI 调用（结合 `context.WithTimeout`）：
+防止长时间阻塞的 FFI 调用：
 
 ```go
 ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 defer cancel()
-
-// 如果脚本执行超过 2 秒，将会被安全中断
 err := prog.Execute(ctx)
 ```
 
-### 3. 资源自动回收 (Defer & Handle)
+---
 
-宿主的重量级资源（如文件）在 VM 中以 `TypeHandle`（一个 ID）的形式存在。
-**三层回收保障：**
-1. **显式 Defer**: 脚本内部的 `defer f.Close()` 遵循 Go 标准语义。
-2. **会话兜底**: `Execute/Eval` 结束时，Session 记录的所有 `ActiveHandles` 会被强制回收。
-3. **GC 最终防线**: 利用 Go 1.24 `runtime.AddCleanup`，当变量被销毁且 GC 时自动释放物理资源。
+## 🔌 IDE 与 LSP 集成指南
 
-### 4. 递归分配防御
+`go-mini` 提供了完善的静态分析 API，支撑 IDE 插件开发。
 
-为了防止脚本通过构造循环引用的结构体 AST 来耗尽宿主内存，`initializeType` (即 `new` 操作) 拥有 **10 层最大深度限制**。超过限额的嵌套将返回 `nil`。
+### 1. 全量语义诊断 (Diagnostics)
+
+在编译脚本时，系统将返回 `*ast.MiniAstError`。它包含了一组结构化的日志，支持 4 坐标精准定位。
+
+```go
+prog, err := executor.NewRuntimeByGoCode(invalidCode)
+if err != nil {
+    if astErr, ok := err.(*ast.MiniAstError); ok {
+        for _, log := range astErr.Logs {
+            fmt.Printf("错误: %s, 位置: %d:%d\n", log.Message, log.Node.GetBase().Loc.L, log.Node.GetBase().Loc.C)
+        }
+    }
+}
+```
+
+### 2. 符号跳转与悬浮 (Navigation & Hover)
+
+通过 `MiniProgram` 的高层 API 实现秒级交互：
+
+```go
+// 转到定义
+defNode := prog.GetDefinitionAt(10, 5)
+
+// 获取悬浮提示 (类型签名 + 文档)
+hover := prog.GetHoverAt(10, 5)
+
+// 查找所有引用
+refs := prog.GetReferencesAt(10, 5)
+```
+
+### 3. 性能管理：释放缓存
+
+LSP 相关查询依赖 `ParentMap` 懒加载缓存。若在 IDE 模式下频繁查询后希望释放内存，可调用：
+
+```go
+prog.ReleaseLSPCache() 
+```
 
 ---
 
 ## 🐛 源码级调试器 (Debugger)
 
-`go-mini` 内置了一个零开销、基于阻塞 Channel 实现的源码级调试器。它支持**行断点**、**单步执行 (Step Into)**、**随时暂停/恢复**以及**变量快照导出**，完美支持循环体内的调试以及代码片段 (Snippet) 的相对行号调试。
-
-### 使用方法
-
-通过将 `debugger.Session` 注入到执行的 `Context` 中即可开启调试模式：
+`go-mini` 内置了一个源码级调试器。它支持**行断点**、**单步执行**、**随时暂停**以及**变量快照导出**。
 
 ```go
-import "gopkg.d7z.net/go-mini/core/debugger"
+dbg := debugger.NewSession()
+dbg.AddBreakpoint(5)
 
-func main() {
-    // ... 初始化 prog ...
+ctx := debugger.WithDebugger(context.Background(), dbg)
+go prog.Execute(ctx)
 
-    dbg := debugger.NewSession()
-    dbg.AddBreakpoint(5) // 在 b := 20 处暂停
-
-    ctx := debugger.WithDebugger(context.Background(), dbg)
-
-    // 启动执行
-    go prog.Execute(ctx)
-
-    // 随时暂停执行
-    // 宿主调用 RequestPause 后，VM 将在执行到下一条语句时自动触发事件并进入阻塞状态
-    dbg.RequestPause() 
-
-    // 5. 监听调试事件并控制执行
-    for event := range dbg.EventChan {
-        fmt.Printf("程序暂停在: %d 行\n", event.Loc.L)
-
-        // 打印当前作用域的所有变量快照
-        for name, val := range event.Variables {
-            fmt.Printf("变量 %s = %v\n", name, val)
-        }
-
-        // 发送控制指令解除阻塞 (即恢复执行)
-        // 可以发送 debugger.CmdContinue 或 debugger.CmdStepInto
-        dbg.CommandChan <- debugger.CmdContinue 
-    }
-    }
-    ```
-
-> **注意**：调试器仅对包含**语句 (Statement)** 的执行模式 (`NewRuntimeByGoCode` 和 `Execute`) 有效。由于纯表达式 (`Eval` 模式，如 `1+2`) 底层瞬间求值不包含语句骨干，因此不会被调试器拦截（除非表达式内部调用了用户自定义的脚本函数）。
+for event := range dbg.EventChan {
+    fmt.Printf("暂停在 %d 行, 变量快照: %v\n", event.Loc.L, event.Variables)
+    dbg.CommandChan <- debugger.CmdContinue
+}
+```
 
 ---
 
-## 🛠️ 自定义扩展：使用 FFI 生成器 (`ffigen`)
+## 🛠️ 自定义扩展：FFI 生成器 (`ffigen`)
 
-如果你想让脚本调用你自己的 Go 函数（例如操作数据库、请求网络），你需要使用 `ffigen` 工具。
-
-### 步骤 1：定义接口
-在你的 Go 代码中定义一个接口，并使用注解来指导生成器。
+使用 `ffigen` 极速生成宿主绑定：
 
 ```go
-// mylib/interface.go
-package mylib
-
 // ffigen:module db
 type Database interface {
 	GetUser(id int64) (string, error)
 	SaveData(data []byte) error
 }
 ```
-*   `// ffigen:module <name>`: 指定脚本中 import 的包名。
-*   `// ffigen:methods <TypeName>`: (可选) 用于定义面向对象的方法句柄前缀。
-
-### 步骤 2：设计数据交换语义
-`ffigen` 根据你的接口参数和返回类型自动决定数据交换方式：
-*   **值语义 (T)**：如果方法返回或接收结构体值，`ffigen` 会触发全量二进制序列化。注意：脚本内定义的结构体对应这些对象时采用引用语义。
-*   **句柄语义 (*T)**：如果方法返回或接收指针，`ffigen` 会将其自动注册为 `TypeHandle` (uint32 ID)。VM 无法直接访问其内部字段，只能通过 FFI 方法操作。
 
 ---
 
 ## 📝 脚本语法支持清单
 
-`go-mini` 支持绝大部分常用的 Go 过程式和面向对象语法：
-
-### 1. 基础与数据类型
+### 1. 基础支持
 *   **基本数据类型**：`int`, `int64`, `float64`, `bool`, `string`, `byte`, `[]byte`, `any`。
 *   **容器类型**：动态数组/切片 (`[]T`)，动态字典 (`map[string]T`)。
-*   **内建分配器**：
-    - `make(T, len, cap)`：支持数组和 Map。
-    - `new(T)`：返回深度初始化的零值变量。对于结构体返回引用语义对象（Map 模拟），对于基础类型返回零值（值语义）。
-*   **类型转换**：内置了 `Int64()`, `Float64()`, `String()`, `TypeBytes()`。
+*   **内建分配器**：`make(T, len, cap)`, `new(T)`。
 
 ### 2. 引用语义 (重要)
-为了极致的高性能与物理隔离，脚本内的复合类型（Struct, Array, Map）采用**隐式引用语义**。
-```go
-p1 := Point{X: 1}
-p2 := p1 // p2 与 p1 共享底层数据
-p2.X = 100
-// 此时 p1.X 也是 100
-```
-这在行为上完美契合了 Go 语言通过指针操作结构体的习惯，但在底层彻底消除了指针算术风险。
+脚本内的复合类型（Struct, Array, Map）采用**隐式引用语义**。赋值操作不会触发深度拷贝，行为类似于 Go 指针。
 
 ### 3. 函数与控制流
-*   **函数定义**：支持标准的 `func` 定义、多参数、多返回值、变长参数 (`...any`)。
-*   **匿名函数与闭包**：支持 `func() { ... }` 捕获外部环境变量。
-*   **错误处理**：支持 `panic()` 抛出异常，支持原生 `defer func() { recover() }()` 截获异常。
+*   **函数定义**：支持标准的 `func` 定义、多参数、多返回值、变长参数 (`...any`)、闭包。
+*   **错误处理**：支持 `panic()` 和 `defer/recover()`。
 *   **循环与分支**：完全支持 `if/else`, `for`, `for...range`, `switch/case`, `break/continue`。
 
-*(注意：脚本中不支持并发原语如 `go`, `chan`, `select`，严禁使用原生指针算术计算。)*
+*(注意：脚本中不支持并发原语如 `go`, `chan`，严禁使用原生指针算术计算。)*

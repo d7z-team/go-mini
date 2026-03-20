@@ -258,15 +258,21 @@ func FindDefinition(root Node, target Node, parentMap map[Node]Node) Node {
 			return nil
 		}
 
-		// 2. 找到结构体定义
+		// 2. 找到结构体定义或方法定义
 		prog, ok := root.(*ProgramStmt)
 		if !ok {
 			return nil
 		}
 		typeName := objType.BaseName()
+		
+		// 优先检查是否是方法跳转
+		methodName := fmt.Sprintf("__method_%s_%s", typeName, t.Property)
+		if fn, ok := prog.Functions[Ident(methodName)]; ok {
+			return fn
+		}
+
+		// 其次跳转到结构体定义
 		if st, ok := prog.Structs[Ident(typeName)]; ok {
-			// 如果点击的是属性，我们应该返回属性在结构体中的位置
-			// (目前 StructStmt 中没有记录字段的位置，但我们至少返回结构体定义)
 			return st
 		}
 		return nil

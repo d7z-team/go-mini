@@ -42,6 +42,14 @@ type MiniProgram struct {
 	parentMu  sync.RWMutex // 保护 parentMap 读写（虽然 Program 是只读的，但缓存按需构建）
 }
 
+// ReleaseLSPCache 释放 LSP 相关的缓存（ParentMap 等），以节省内存。
+// 只有在不再需要进行 IDE 交互式查询时建议调用。
+func (p *MiniProgram) ReleaseLSPCache() {
+	p.parentMu.Lock()
+	defer p.parentMu.Unlock()
+	p.parentMap = nil
+}
+
 // GetParent 获取节点的父节点
 func (p *MiniProgram) GetParent(node ast.Node) ast.Node {
 	p.parentMu.RLock()

@@ -60,7 +60,7 @@ go-mini/
 *   **规则**: 核心引擎 (`core/ast`, `core/runtime`) 必须保持语言中立。禁止在底层类型判断逻辑中加入特定前端语言的语法兼容（如 Go 的 `[]T` 或 `map[K]V`）。
 *   **实现**:
     *   **规范化**: 引擎只识别其定义的规范化字符串表达，如 `Array<T>`、`Map<K, V>`、`Ptr<T>` 和 `Result<T>`。所有类型前缀必须首字母大写。
-    *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go 风格类型映射为规范格式）。
+    *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go风格类型映射为规范格式）。
     *   **零容错**: 执行器在进行 FFI 序列化或类型断言时，应严格匹配规范格式，不应引入 `strings.ToLower` 等宽容性处理以牺牲性能或破坏严谨性。
 
 ### VI. 无状态执行与并发安全 (Stateless Execution & Concurrency Safety)
@@ -79,6 +79,12 @@ go-mini/
 ### IX. 递归初始化防御 (Recursive Initialization Defense)
 *   **规则**: 运行时进行类型分配（如 `new`）时，递归深度严禁超过 10 层，以防止恶意的循环结构体定义导致宿主 Stack Overflow。
 
+### X. LSP 支撑与语义完整性 (LSP & Semantic Integrity)
+*   **非阻塞校验**: `Check(ctx *SemanticContext)` 方法严禁使用“一错即死”模式。遇到错误必须通过 `ctx.AddErrorf` 记录并**强制继续**校验后续分支，以确保 IDE 能一次性展示全量诊断信息。
+*   **上下文指针**: `SemanticContext` 必须作为指针传递。严禁对其执行结构体值拷贝，以防止父子作用域间的符号表同步失效。
+*   **坐标精度**: 所有 AST 节点的 `Loc` 必须包含 4 坐标（起始行/列、结束行/列）。禁止生成没有坐标或坐标重叠的虚假节点。
+*   **缓存按需构建**: `MiniProgram` 中的 `ParentMap` 等 LSP 缓存必须遵循懒加载原则，且必须提供显式的释放接口（如 `ReleaseLSPCache`）。
+
 ---
 
 ## 🤖 3. AI 贡献者工作流指南
@@ -93,11 +99,12 @@ go-mini/
 
 ### B. AST & 解析器修改 (`core/ast` & `core/parser.go`)
 1.  **对称性**: 如果你添加了一个新的 AST node (例如 `NewStmt`)，你必须同步更新：
-    *   `core/ast/ast_stmt.go` (结构体定义、`Check()`, `Optimize()`)。
-    *   `core/ffigo/converter.go` (将 Go AST 映射为 Mini AST)。
+    *   `core/ast/ast_stmt.go` (结构体定义、`Check()` 必须支持全量报错、`Optimize()`)。
+    *   `core/ffigo/converter.go` (将 Go AST 映射为 Mini AST，确保 Loc 坐标提取精准)。
     *   `core/parser.go` (`unmarshalNodeData` JSON 反序列化)。
     *   `core/runtime/executor.go` (执行逻辑)。
-2.  **Snippet 模式维护**: 若新增了某种 AST 节点类型，必须确保 `MiniExecutor.Execute` 的符号注入逻辑能完整覆盖到它。
+    *   `core/ast/query.go` (更新 `Walk` 逻辑，确保新节点可被 LSP 遍历)。
+2.  **标识符规范**: AST 中的所有 `Operator` 或 `InterruptType` 必须统一使用 `Ident` 类型（除非该字段纯粹用于 JSON 标识）。
 
 ### C. 添加或修改标准库 (`core/ffilib`)
 1.  **目录结构**: 创建目录 (例如 `core/ffilib/netlib`)。
