@@ -471,6 +471,7 @@ func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContex
 }
 
 func copyVarData(dest, src *Var) {
+	dest.Type = src.Type
 	dest.VType = src.VType
 	dest.I64 = src.I64
 	dest.F64 = src.F64

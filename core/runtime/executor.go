@@ -574,6 +574,9 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 	if ctx == nil {
 		return nil, errors.New("nil context")
 	}
+	if s == nil {
+		return nil, nil
+	}
 	switch n := s.(type) {
 	case *ast.LiteralExpr:
 		return e.evalLiteral(n)
@@ -772,11 +775,11 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 			}
 			ctx.ModuleCache[path] = res
 			return res, nil
-			}
-			}
+		}
+	}
 
-			// 3. Fallback to FFI Virtual Module
-			ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
+	// 3. Fallback to FFI Virtual Module
+	ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
 	found := false
 	prefix1 := path + "."
 	prefix2 := strings.ReplaceAll(path, "/", ".") + "."
@@ -899,7 +902,9 @@ func (e *Executor) evalIndexExpr(ctx *StackContext, n *ast.IndexExpr) (*Var, err
 		if val, ok := m.Data[key]; ok {
 			return val, nil
 		}
-		return nil, nil
+		// 返回该类型的默认零值
+		_, valType, _ := obj.Type.GetMapKeyValueTypes()
+		return e.ToVar(ctx, valType.ZeroVar(), nil), nil
 	}
 	return nil, fmt.Errorf("type %v does not support indexing", obj.VType)
 }
@@ -971,12 +976,26 @@ func (e *Executor) evalMemberExpr(ctx *StackContext, n *ast.MemberExpr) (*Var, e
 }
 
 func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*Var, error) {
-	if n.Type.IsArray() {
+	isArray := n.Type.IsArray()
+	isMap := n.Type.IsMap()
+
+	if isArray {
+		elemType, _ := n.Type.ReadArrayItemType()
 		res := make([]*Var, len(n.Values))
 		for i, v := range n.Values {
 			val, err := e.ExecExpr(ctx, v.Value)
 			if err != nil {
 				return nil, err
+			}
+			if val != nil && (val.Type == "" || val.Type == "Any") {
+				val.Type = elemType
+				if val.VType == TypeAny && val.Ref != nil {
+					if _, ok := val.Ref.(*VMArray); ok {
+						val.VType = TypeArray
+					} else if _, ok := val.Ref.(*VMMap); ok {
+						val.VType = TypeMap
+					}
+				}
 			}
 			res[i] = val
 		}
@@ -985,6 +1004,11 @@ func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*
 
 	// 结构体或 Map 字面量
 	res := make(map[string]*Var)
+	var valType ast.GoMiniType
+	if isMap {
+		_, valType, _ = n.Type.GetMapKeyValueTypes()
+	}
+
 	for _, v := range n.Values {
 		keyName := ""
 		if v.Key != nil {
@@ -997,6 +1021,9 @@ func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*
 					return nil, err
 				}
 				keyName = kVar.Str
+				if kVar.VType == TypeInt {
+					keyName = strconv.FormatInt(kVar.I64, 10)
+				}
 			}
 		}
 
@@ -1004,14 +1031,19 @@ func (e *Executor) evalCompositeExpr(ctx *StackContext, n *ast.CompositeExpr) (*
 		if err != nil {
 			return nil, err
 		}
+		if val != nil && isMap && (val.Type == "" || val.Type == "Any") {
+			val.Type = valType
+			if val.VType == TypeAny && val.Ref != nil {
+				if _, ok := val.Ref.(*VMArray); ok {
+					val.VType = TypeArray
+				} else if _, ok := val.Ref.(*VMMap); ok {
+					val.VType = TypeMap
+				}
+			}
+		}
 		res[keyName] = val
 	}
 
-	if n.Type.IsMap() {
-		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: n.Type}, nil
-	}
-
-	// 默认视为普通结构体对象（在 VM 内部以 Map 形式存储）
 	return &Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: n.Type}, nil
 }
 
@@ -1227,9 +1259,25 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 
 	// 基础比较
 	if op == "==" || op == "Eq" {
+		if l.VType == r.VType {
+			switch l.VType {
+			case TypeArray, TypeMap, TypeModule, TypeClosure:
+				return NewBool(l.Ref == r.Ref), nil
+			case TypeHandle:
+				return NewBool(l.Handle == r.Handle), nil
+			}
+		}
 		return NewBool(l == r), nil
 	}
 	if op == "!=" || op == "Neq" {
+		if l.VType == r.VType {
+			switch l.VType {
+			case TypeArray, TypeMap, TypeModule, TypeClosure:
+				return NewBool(l.Ref != r.Ref), nil
+			case TypeHandle:
+				return NewBool(l.Handle != r.Handle), nil
+			}
+		}
 		return NewBool(l != r), nil
 	}
 
@@ -1527,11 +1575,6 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 	}
 
 	if callable.VType == TypeClosure {
-		closure := callable.Ref.(*VMClosure)
-		if closure.Context != nil && modCtx == nil {
-			execCtx = closure.Context
-		}
-
 		if method, ok := callable.Ref.(*VMMethodValue); ok {
 			fullArgs := make([]*Var, len(args)+1)
 			fullArgs[0] = method.Receiver
@@ -1540,6 +1583,11 @@ func (e *Executor) evalDynamicCall(ctx *StackContext, callable *Var, args []*Var
 				return e.evalFFI(ctx, route, fullArgs)
 			}
 			return nil, fmt.Errorf("method route not found: %s", method.Method)
+		}
+
+		closure := callable.Ref.(*VMClosure)
+		if closure.Context != nil && modCtx == nil {
+			execCtx = closure.Context
 		}
 		return e.execClosure(execCtx, closure, args)
 	}
@@ -1664,6 +1712,33 @@ func (e *Executor) evalIntrinsic(ctx *StackContext, name string, args []*Var, n 
 			}
 		}
 		return NewInt(0), true, nil
+	case "new":
+		if len(args) < 1 || args[0] == nil || args[0].VType != TypeString {
+			return nil, true, errors.New("invalid arguments to new")
+		}
+		tStr := args[0].Str
+		// tStr 可能是 Ptr<T>，需要提取 T
+		innerType := tStr
+		if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
+			innerType = tStr[4 : len(tStr)-1]
+		}
+
+		// 获取零值
+		zero := ast.GoMiniType(innerType).ZeroVar()
+		res := e.ToVar(ctx, zero, nil)
+		if res == nil {
+			// 结构体零值初始化：填充所有字段为默认零值
+			mData := make(map[string]*Var)
+			if sDef, ok := e.structs[innerType]; ok {
+				for _, fName := range sDef.FieldNames {
+					fType := sDef.Fields[fName]
+					mData[string(fName)] = e.ToVar(ctx, fType.ZeroVar(), nil)
+				}
+			}
+			res = &Var{VType: TypeMap, Ref: &VMMap{Data: mData}}
+		}
+		res.Type = ast.GoMiniType(tStr)
+		return res, true, nil
 	case "make":
 		if len(args) < 1 || args[0] == nil || args[0].VType != TypeString {
 			return nil, true, errors.New("invalid arguments to make")

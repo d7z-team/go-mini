@@ -154,7 +154,14 @@ func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, erro
 	}
 	prog := node.(*miniast.ProgramStmt)
 	// 如果转换器已经把 main 提取到了 Main，则直接返回
-	return prog.Main, nil
+	if len(prog.Main) > 0 {
+		return prog.Main, nil
+	}
+	// 否则从 Functions 中寻找 main 函数并提取其主体
+	if mainFunc, ok := prog.Functions["main"]; ok && mainFunc.Body != nil {
+		return mainFunc.Body.Children, nil
+	}
+	return nil, nil
 }
 
 func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType) *miniast.StructStmt {
@@ -563,34 +570,34 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 			}
 		}
 
-		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok && ident.Name == "require" {
-			if len(ex.Args) == 1 {
-				if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					path := lit.Value[1 : len(lit.Value)-1]
-					return &miniast.ImportExpr{
-						BaseNode: miniast.BaseNode{ID: c.genID(ex, "import"), Meta: "import", Type: miniast.TypeModule},
-						Path:     path,
+		// 特殊处理内建函数
+		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok {
+			switch ident.Name {
+			case "make", "new":
+				if len(ex.Args) > 0 {
+					typeArg := c.typeToString(ex.Args[0])
+					args := []miniast.Expr{
+						&miniast.LiteralExpr{
+							BaseNode: miniast.BaseNode{ID: c.genID(ex.Args[0], "literal"), Meta: "literal", Type: "String"},
+							Value:    typeArg,
+						},
+					}
+					args = append(args, c.convertArgs(ex.Args[1:])...)
+					return &miniast.CallExprStmt{
+						BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)},
+						Func:     funExpr,
+						Args:     args,
 					}
 				}
-			}
-		}
-
-		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok && ident.Name == "make" {
-			if len(ex.Args) > 0 {
-				typeArg := c.typeToString(ex.Args[0])
-				args := []miniast.Expr{
-					&miniast.LiteralExpr{
-						BaseNode: miniast.BaseNode{ID: c.genID(ex.Args[0], "literal"), Meta: "literal", Type: "String"},
-						Value:    typeArg,
-					},
-				}
-				if len(ex.Args) > 1 {
-					args = append(args, c.convertArgs(ex.Args[1:])...)
-				}
-				return &miniast.CallExprStmt{
-					BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)},
-					Func:     funExpr,
-					Args:     args,
+			case "require":
+				if len(ex.Args) == 1 {
+					if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+						path := lit.Value[1 : len(lit.Value)-1]
+						return &miniast.ImportExpr{
+							BaseNode: miniast.BaseNode{ID: c.genID(ex, "import"), Meta: "import", Type: miniast.TypeModule},
+							Path:     path,
+						}
+					}
 				}
 			}
 		}
@@ -749,7 +756,16 @@ func (c *GoToASTConverter) convertArgs(args []ast.Expr) []miniast.Expr {
 }
 
 func (c *GoToASTConverter) typeToString(e ast.Expr) string {
+	if e == nil {
+		return ""
+	}
 	switch t := e.(type) {
+	case *ast.BasicLit:
+		val := t.Value
+		if t.Kind == token.STRING && len(val) >= 2 {
+			val = val[1 : len(val)-1]
+		}
+		return val
 	case *ast.Ident:
 		name := t.Name
 		if name == "int" || name == "int64" {

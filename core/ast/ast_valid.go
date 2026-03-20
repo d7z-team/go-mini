@@ -331,7 +331,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
 	err = prog.Check(NewSemanticContext(v))
-	
+
 	// 合并子模块验证日志
 	if v.root.logs != nil {
 		c.root.logs = append(c.root.logs, v.root.logs...)

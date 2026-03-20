@@ -68,3 +68,46 @@ func TestConstAndVar(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReferenceComparison(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	a := make("Array<Int64>", 1)
+	b := a
+	if a != b {
+		panic("array comparison failed")
+	}
+    
+    m := make("Map<String, Int64>")
+    m2 := m
+    if m != m2 {
+        panic("map comparison failed")
+    }
+`
+	err := executor.Execute(context.Background(), code, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGlobalVarInitialization(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+package main
+var res Any
+func main() {
+    res = true
+    if res != true {
+        panic("global var failed")
+    }
+}
+`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = prog.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}

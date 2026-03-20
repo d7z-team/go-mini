@@ -445,3 +445,75 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 }
 
 func (o GoMiniType) IsAssignableTo(target GoMiniType) bool { return o.Equals(target) }
+
+// IsValid 检查类型字符串是否符合规范（基础类型、规范容器格式或带点包路径）
+func (o GoMiniType) IsValid() bool {
+	t := string(o)
+	if t == "" || t == "Void" {
+		return true
+	}
+	switch t {
+	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Error":
+		return true
+	}
+	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {
+		inner, _ := o.GetPtrElementType()
+		return inner.IsValid()
+	}
+	if strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
+		inner, _ := o.ReadArrayItemType()
+		return inner.IsValid()
+	}
+	if strings.HasPrefix(t, "Map<") && strings.HasSuffix(t, ">") {
+		k, v, ok := o.GetMapKeyValueTypes()
+		return ok && k.IsValid() && v.IsValid()
+	}
+	// 允许带包路径的标识符 (pkg.Type)
+	if strings.Contains(t, ".") {
+		return true
+	}
+	// 可能是本地结构体，由 SemanticContext 进一步验证
+	return true
+}
+
+// IsStrictValid 严格检查类型是否为预定义的原语或规范容器格式
+func (o GoMiniType) IsStrictValid() bool {
+	t := string(o)
+	switch t {
+	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int":
+		return true
+	}
+	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {
+		inner, _ := o.GetPtrElementType()
+		return inner.IsStrictValid()
+	}
+	if strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
+		inner, _ := o.ReadArrayItemType()
+		return inner.IsStrictValid()
+	}
+	if strings.HasPrefix(t, "Map<") && strings.HasSuffix(t, ">") {
+		k, v, ok := o.GetMapKeyValueTypes()
+		return ok && k.IsStrictValid() && v.IsStrictValid()
+	}
+	return false
+}
+
+// ZeroVar 返回该类型的默认零值（以 Var 形式）
+// 注意：该方法返回的是一个简单的值对象，复合类型返回 nil Ref 的 Var
+func (o GoMiniType) ZeroVar() interface{} {
+	t := string(o)
+	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || t == "Any" || t == "TypeBytes" {
+		return nil
+	}
+	switch t {
+	case "Int64", "Uint32", "Int32", "Int":
+		return int64(0)
+	case "Float64", "Float32":
+		return 0.0
+	case "String":
+		return ""
+	case "Bool":
+		return false
+	}
+	return nil
+}

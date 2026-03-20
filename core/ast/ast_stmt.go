@@ -91,12 +91,20 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		if !i.Valid(&ctx.ValidContext) {
 			return fmt.Errorf("invalid identifier: %s", i)
 		}
-		if err := stmt.Check(ctx); err != nil {
-			return err
+		if stmt != nil {
+			if err := stmt.Check(ctx); err != nil {
+				return err
+			}
+			// 注册到符号表
+			ctx.root.Global.Fields[i] = stmt.GetBase().Type
+			ctx.AddVariable(i, stmt.GetBase().Type)
+		} else {
+			// 未初始化的全局变量，默认为 Any 或根据声明类型（如果转换器记录了的话）
+			// 目前转换器对于 var x int 这种没有记录类型到 Variables map 里，只记录了 Expr。
+			// 如果 Expr 为 nil，我们默认给它 Any
+			ctx.root.Global.Fields[i] = "Any"
+			ctx.AddVariable(i, "Any")
 		}
-		// 注册到符号表
-		ctx.root.Global.Fields[i] = stmt.GetBase().Type
-		ctx.AddVariable(i, stmt.GetBase().Type)
 	}
 
 	for _, function := range p.Functions {
@@ -123,7 +131,11 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 	// 2. 优化全局变量定义
 	newVars := make(map[Ident]Expr)
 	for i, stmt := range p.Variables {
-		newVars[i] = stmt.Optimize(ctx).(Expr)
+		if stmt != nil {
+			newVars[i] = stmt.Optimize(ctx).(Expr)
+		} else {
+			newVars[i] = nil
+		}
 	}
 	p.Variables = newVars
 
@@ -968,6 +980,13 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 				ident.Name = mangled
 				vType = vt
 				b = true
+			}
+		}
+
+		if b {
+			// 如果左值类型已知且右值是无类型的字面量，预设类型以便推导
+			if sub, ok := a.Value.(*CompositeExpr); ok && sub.Kind == "" {
+				sub.BaseNode.Type = vType
 			}
 		}
 

@@ -108,6 +108,7 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["TypeBytes"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
 	res.specs["make"] = "function(String, ...Int64) Any"
+	res.specs["new"] = "function(String) Any"
 	res.specs["append"] = "function(Any, ...Any) Any"
 	res.specs["delete"] = "function(Any, Any) Void"
 	res.specs["Int64"] = "function(Any) Int64"
@@ -417,10 +418,33 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		return err
 	}
 
-	// 创建最小化的无状态执行器
-	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+	// 构建临时程序以便验证
+	program := &ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "snippet", Meta: "boot"},
-	})
+		Main:     stmts,
+		Structs:  make(map[ast.Ident]*ast.StructStmt),
+	}
+	// 注入所有已注册的模块中的结构体，以便在 Snippet 中使用
+	for _, s := range o.modules {
+		for name, sDef := range s.Structs {
+			program.Structs[name] = sDef
+		}
+	}
+
+	// 语义校验
+	v, err := ast.NewValidator(program)
+	if err != nil {
+		return err
+	}
+	// 注入 FFI 和内建函数规格
+	for name, spec := range o.specs {
+		v.AddVariable(name, spec)
+	}
+	if err := program.Check(ast.NewSemanticContext(v)); err != nil {
+		return err
+	}
+
+	executor, _ := runtime.NewExecutor(program)
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
 		if astNode, ok := o.modules[path]; ok {

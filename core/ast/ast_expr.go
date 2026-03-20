@@ -115,6 +115,30 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 
+	if ident, ok := c.Func.(*ConstRefExpr); ok && (ident.Name == "make" || ident.Name == "new") {
+		if len(c.Args) > 0 {
+			if lit, ok2 := c.Args[0].(*LiteralExpr); ok2 && lit.Type == "String" {
+				t := GoMiniType(lit.Value).Resolve(&ctx.ValidContext)
+				if ident.Name == "make" {
+					if !t.IsStrictValid() {
+						return fmt.Errorf("make: 非法类型 %s", lit.Value)
+					}
+				} else { // new
+					if !t.IsStrictValid() {
+						// 允许自定义结构体 new
+						if _, hasStruct := ctx.GetStruct(Ident(t)); !hasStruct {
+							return fmt.Errorf("new: 非法类型 %s", lit.Value)
+						}
+					}
+					// new(T) 返回 Ptr<T>
+					t = t.ToPtr()
+				}
+				// 更新为解析后的规范类型
+				lit.Value = string(t)
+			}
+		}
+	}
+
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
@@ -325,41 +349,90 @@ func (c *CompositeExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *CompositeExpr) exprNode()          {}
 
 func (c *CompositeExpr) Check(ctx *SemanticContext) error {
-	c.Kind = Ident(GoMiniType(c.Kind).Resolve(&ctx.ValidContext))
-	c.Type = GoMiniType(c.Kind)
-	if c.Kind == "" {
-		return errors.New("复合类型缺少类型标识")
+	if c.Kind != "" {
+		c.Kind = Ident(GoMiniType(c.Kind).Resolve(&ctx.ValidContext))
+		c.Type = GoMiniType(c.Kind)
+	}
+
+	if c.Type == "" {
+		// 尝试从 BaseNode 获取（可能由外层 Check 预设）
+		c.Type = c.BaseNode.Type
+	}
+
+	if c.Type == "" || c.Type == "Any" {
+		// 最后的启发式：根据是否有 Key 判定是 Array 还是 Map
+		hasKey := false
+		for _, v := range c.Values {
+			if v.Key != nil {
+				hasKey = true
+				break
+			}
+		}
+		if hasKey {
+			c.Type = "Map<String, Any>"
+		} else {
+			c.Type = "Array<Any>"
+		}
 	}
 
 	isMap := c.Type.IsMap()
 	isArray := c.Type.IsArray()
+
+	var elemType GoMiniType
+	var keyType GoMiniType
+	var valType GoMiniType
+
+	if isArray {
+		elemType, _ = c.Type.ReadArrayItemType()
+	} else if isMap {
+		keyType, valType, _ = c.Type.GetMapKeyValueTypes()
+	}
+
 	var miniStruct *ValidStruct
 	var hasStruct bool
-	if !isMap && !isArray {
+	if !isMap && !isArray && c.Kind != "" {
 		miniStruct, hasStruct = ctx.GetStruct(c.Kind)
 	}
 
 	for _, elem := range c.Values {
 		if elem.Key != nil {
-			if !isMap && !isArray {
-				// 结构体 Key 必须是字段名，不参与变量 Check
+			if isMap {
+				if sub, ok := elem.Key.(*CompositeExpr); ok && sub.Kind == "" {
+					sub.BaseNode.Type = keyType
+				}
+			} else if !isArray {
+				// 结构体 Key 必须是字段名
 				if ident, ok := elem.Key.(*IdentifierExpr); ok {
 					if hasStruct {
-						if _, ok2 := miniStruct.Fields[ident.Name]; !ok2 {
+						if fieldType, ok2 := miniStruct.Fields[ident.Name]; ok2 {
+							// 记录字段类型以便后续 Value 校验
+							if sub, ok3 := elem.Value.(*CompositeExpr); ok3 && sub.Kind == "" {
+								sub.BaseNode.Type = fieldType
+							}
+						} else {
 							return fmt.Errorf("结构体 %s 不存在字段 %s", c.Kind, ident.Name)
 						}
 					}
-					// 强制标记为已解析，防止任何意外的二次 Check
 					ident.Type = "Any"
-					continue // 跳过 elem.Key.Check
+					goto checkValue
 				}
 			}
 			if err := elem.Key.Check(ctx); err != nil {
 				return err
 			}
 		}
+
+	checkValue:
 		if elem.Value == nil {
 			return errors.New("复合类型元素缺少值")
+		}
+		// 预设子元素类型
+		if sub, ok := elem.Value.(*CompositeExpr); ok && sub.Kind == "" {
+			if isArray {
+				sub.BaseNode.Type = elemType
+			} else if isMap {
+				sub.BaseNode.Type = valType
+			}
 		}
 		if err := elem.Value.Check(ctx); err != nil {
 			return err
