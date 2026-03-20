@@ -33,92 +33,115 @@ func (p *ProgramStmt) GetBase() *BaseNode {
 func (p *ProgramStmt) stmtNode() {}
 
 func (p *ProgramStmt) Check(ctx *SemanticContext) error {
+	var hasError bool
+
 	// 处理模块加载
 	if p.Imports != nil {
 		for _, imp := range p.Imports {
 			if err := ctx.ImportPackage(imp.Path); err != nil {
-				return err
+				ctx.AddErrorf("%s", err.Error())
+				hasError = true
 			}
 		}
 	}
 
-	// 预注册所有导入的包别名，以支持 MemberExpr/StructCallExpr 的静态查找
+	// 预注册所有导入的包别名
 	for alias := range ctx.root.Imports {
 		ctx.AddVariable(Ident(alias), "Package")
 	}
 
 	// 第一遍：预注册所有结构体
 	for _, structDef := range p.Structs {
-		structDef.GetBase().EnsureID(&ctx.ValidContext)
-		if !structDef.PreRegister(&ctx.ValidContext) {
-			return fmt.Errorf("struct %s pre-registration failed", structDef.Name)
+		structDef.GetBase().EnsureID(ctx.ValidContext)
+		if !structDef.PreRegister(ctx.ValidContext) {
+			ctx.AddErrorf("struct %s pre-registration failed", structDef.Name)
+			hasError = true
 		}
 	}
 	for _, stmt := range p.Main {
 		if s, ok := stmt.(*StructStmt); ok {
-			s.GetBase().EnsureID(&ctx.ValidContext)
-			if !s.PreRegister(&ctx.ValidContext) {
-				return fmt.Errorf("struct %s pre-registration failed", s.Name)
+			s.GetBase().EnsureID(ctx.ValidContext)
+			if !s.PreRegister(ctx.ValidContext) {
+				ctx.AddErrorf("struct %s pre-registration failed", s.Name)
+				hasError = true
 			}
 		}
 	}
 
 	// 第二遍：预注册所有函数签名
 	for name, function := range p.Functions {
-		function.GetBase().EnsureID(&ctx.ValidContext)
-		if _, ok := function.PreRegister(&ctx.ValidContext); !ok {
-			return fmt.Errorf("function %s pre-registration failed", name)
+		function.GetBase().EnsureID(ctx.ValidContext)
+		if _, ok := function.PreRegister(ctx.ValidContext); !ok {
+			ctx.AddErrorf("function %s pre-registration failed", name)
+			hasError = true
 		}
 	}
 	for _, stmt := range p.Main {
 		if f, ok := stmt.(*FunctionStmt); ok {
-			f.GetBase().EnsureID(&ctx.ValidContext)
-			if _, ok := f.PreRegister(&ctx.ValidContext); !ok {
-				return fmt.Errorf("function %s pre-registration failed", f.Name)
+			f.GetBase().EnsureID(ctx.ValidContext)
+			if _, ok := f.PreRegister(ctx.ValidContext); !ok {
+				ctx.AddErrorf("function %s pre-registration failed", f.Name)
+				hasError = true
 			}
 		}
 	}
 
-	// 第三遍：全量语义校验（Check）
-	// 注意：这里必须遍历所有路径，不进行任何剪枝优化
+	// 第三遍：全量语义校验
 	for _, structDef := range p.Structs {
+		logCount := len(ctx.Logs())
 		if err := structDef.Check(ctx); err != nil {
-			return err
+			if len(ctx.Logs()) == logCount {
+				ctx.AddErrorf("%s", err.Error())
+			}
+			hasError = true
 		}
 	}
 
 	for i, stmt := range p.Variables {
-		if !i.Valid(&ctx.ValidContext) {
-			return fmt.Errorf("invalid identifier: %s", i)
+		if !i.Valid(ctx.ValidContext) {
+			ctx.AddErrorf("invalid identifier: %s", i)
+			hasError = true
+			continue
 		}
 		if stmt != nil {
+			logCount := len(ctx.Logs())
 			if err := stmt.Check(ctx); err != nil {
-				return err
+				if len(ctx.Logs()) == logCount {
+					ctx.AddErrorf("%s", err.Error())
+				}
+				hasError = true
 			}
-			// 注册到符号表
 			ctx.root.Global.Fields[i] = stmt.GetBase().Type
 			ctx.AddVariable(i, stmt.GetBase().Type)
 		} else {
-			// 未初始化的全局变量，默认为 Any 或根据声明类型（如果转换器记录了的话）
-			// 目前转换器对于 var x int 这种没有记录类型到 Variables map 里，只记录了 Expr。
-			// 如果 Expr 为 nil，我们默认给它 Any
 			ctx.root.Global.Fields[i] = "Any"
 			ctx.AddVariable(i, "Any")
 		}
 	}
 
 	for _, function := range p.Functions {
+		logCount := len(ctx.Logs())
 		if err := function.Check(ctx); err != nil {
-			return err
+			if len(ctx.Logs()) == logCount {
+				ctx.AddErrorf("%s", err.Error())
+			}
+			hasError = true
 		}
 	}
 
 	for _, node := range p.Main {
+		logCount := len(ctx.Logs())
 		if err := node.Check(ctx); err != nil {
-			return err
+			if len(ctx.Logs()) == logCount {
+				ctx.AddErrorf("%s", err.Error())
+			}
+			hasError = true
 		}
 	}
 
+	if hasError {
+		return errors.New("semantic validation failed")
+	}
 	return nil
 }
 
@@ -200,7 +223,6 @@ func (p *ProgramStmt) String() string {
 	encoder := json.NewEncoder(buffer)
 	encoder.SetIndent("", "  ")
 	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
 	_ = encoder.Encode(p)
 	return buffer.String()
 }
@@ -241,16 +263,23 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 		b.Children = make([]Stmt, 0)
 	}
 
-	blockScope := &ctx.ValidContext
+	semCtx := ctx
 	if !b.Inner {
-		blockScope = ctx.Child(b)
+		semCtx = ctx.Child(b)
 	}
-	semCtx := NewSemanticContext(blockScope)
 
+	var hasError bool
 	for _, child := range b.Children {
+		logCount := len(semCtx.Logs())
 		if err := child.Check(semCtx); err != nil {
-			return err
+			if len(semCtx.Logs()) == logCount {
+				semCtx.AddErrorf("%s", err.Error())
+			}
+			hasError = true
 		}
+	}
+	if hasError {
+		return errors.New("block validation failed")
 	}
 	return nil
 }
@@ -312,41 +341,52 @@ func (i *IfStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IfStmt) stmtNode()          {}
 
 func (i *IfStmt) Check(ctx *SemanticContext) error {
-	semCtx := NewSemanticContext(ctx.Child(i))
+	semCtx := ctx.WithNode(i)
+	var hasError bool
 
-	// 1. 检查 Cond 是否为空，Check Cond。
+	// 1. 检查 Cond
 	if i.Cond == nil {
-		return errors.New("if语句缺少条件表达式")
-	}
-	if err := i.Cond.Check(semCtx); err != nil {
-		return err
-	}
-
-	// 2. 检查 Cond 类型是否为 Bool，无法推导或非 Bool 则报错。
-	condType := i.Cond.GetBase().Type
-	if condType == "" {
-		return errors.New("if条件表达式类型无法推导")
-	}
-	if !condType.Equals("Bool") {
-		return fmt.Errorf("if表达式不是返回Bool类型, 实际为 %s", condType)
-	}
-
-	// 3. 检查 Body 是否为空，Check Body。
-	if i.Body == nil {
-		return errors.New("if语句缺少主体")
-	}
-	if err := i.Body.Check(semCtx); err != nil {
-		return err
-	}
-
-	// 4. 如果有 ElseBody，Check ElseBody。
-	if i.ElseBody != nil {
-		if err := i.ElseBody.Check(semCtx); err != nil {
-			return err
+		err := errors.New("if语句缺少条件表达式")
+		semCtx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else {
+		if err := i.Cond.Check(semCtx); err != nil {
+			hasError = true
+		} else {
+			condType := i.Cond.GetBase().Type
+			if condType == "" {
+				err := errors.New("if条件表达式类型无法推导")
+				semCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			} else if !condType.Equals("Bool") {
+				err := fmt.Errorf("if表达式不是返回Bool类型, 实际为 %s", condType)
+				semCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
 		}
 	}
 
-	// 5. 必须全量遍历所有分支。
+	// 2. 检查 Body
+	if i.Body == nil {
+		err := errors.New("if语句缺少主体")
+		semCtx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else {
+		if err := i.Body.Check(semCtx); err != nil {
+			hasError = true
+		}
+	}
+
+	// 3. 检查 ElseBody
+	if i.ElseBody != nil {
+		if err := i.ElseBody.Check(semCtx); err != nil {
+			hasError = true
+		}
+	}
+
+	if hasError {
+		return errors.New("if statement validation failed")
+	}
 	return nil
 }
 
@@ -391,42 +431,52 @@ func (f *ForStmt) GetBase() *BaseNode { return &f.BaseNode }
 func (f *ForStmt) stmtNode()          {}
 
 func (f *ForStmt) Check(ctx *SemanticContext) error {
-	semCtx := NewSemanticContext(ctx.Child(f))
+	semCtx := ctx.WithNode(f)
+	var hasError bool
 
 	if f.Init != nil {
 		if err := f.Init.Check(semCtx); err != nil {
-			return err
+			hasError = true
 		}
 	}
 
 	if f.Cond != nil {
 		if err := f.Cond.Check(semCtx); err != nil {
-			return err
-		}
-		condType := f.Cond.GetBase().Type
-		if condType != "" && !condType.Equals("Bool") {
-			return fmt.Errorf("for循环条件必须是Bool类型, 实际为 %s", condType)
+			hasError = true
+		} else {
+			condType := f.Cond.GetBase().Type
+			if condType != "" && !condType.Equals("Bool") {
+				err := fmt.Errorf("for循环条件必须是Bool类型, 实际为 %s", condType)
+				semCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
 		}
 	}
 
 	if f.Update != nil {
 		if err := f.Update.Check(semCtx); err != nil {
-			return err
+			hasError = true
 		}
 	}
 
 	if f.Body == nil {
-		return errors.New("for循环缺少主体")
+		err := errors.New("for循环缺少主体")
+		semCtx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else {
+		if err := f.Body.Check(semCtx); err != nil {
+			hasError = true
+		}
+		if _, ok := f.Body.(*BlockStmt); !ok {
+			err := errors.New("循环主体不是 block")
+			semCtx.AddErrorf("%s", err.Error())
+			hasError = true
+		}
 	}
 
-	if err := f.Body.Check(semCtx); err != nil {
-		return err
+	if hasError {
+		return errors.New("for statement validation failed")
 	}
-
-	if _, ok := f.Body.(*BlockStmt); !ok {
-		return errors.New("循环主体不是 block")
-	}
-
 	f.Type = "Void"
 	return nil
 }
@@ -455,19 +505,22 @@ func (r *ReturnStmt) GetBase() *BaseNode { return &r.BaseNode }
 func (r *ReturnStmt) stmtNode()          {}
 
 func (r *ReturnStmt) Check(ctx *SemanticContext) error {
+	var hasError bool
 	if r.Results == nil {
 		r.Results = make([]Expr, 0)
 	}
 
 	for _, result := range r.Results {
 		if err := result.Check(ctx); err != nil {
-			return err
+			hasError = true
 		}
 	}
 
 	scope, b := ctx.CheckAnyScope("function", "func_lit")
 	if !b {
-		return errors.New("return 语句只能在函数中使用")
+		err := errors.New("return 语句只能在函数中使用")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	var expectedReturn GoMiniType
@@ -476,11 +529,15 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 	} else if expr, ok := scope.(*FuncLitExpr); ok {
 		expectedReturn = expr.Return
 	} else {
-		return errors.New("未知的函数范围类型")
+		err := errors.New("未知的函数范围类型")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if expectedReturn.IsVoid() && len(r.Results) != 0 {
-		return errors.New("当前函数不存在返回值")
+		err := errors.New("当前函数不存在返回值")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if len(r.Results) > 0 {
@@ -496,10 +553,15 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 		}
 
 		if !tType.Equals(expectedReturn) {
-			return fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
+			err := fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 	}
 
+	if hasError {
+		return errors.New("return statement validation failed")
+	}
 	r.Type = "Void"
 	return nil
 }
@@ -523,9 +585,14 @@ func (d *DeferStmt) stmtNode()          {}
 func (d *DeferStmt) Check(ctx *SemanticContext) error {
 	d.Type = "Void"
 	if d.Call == nil {
-		return errors.New("defer 语句缺少调用表达式")
+		err := errors.New("defer 语句缺少调用表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	return d.Call.Check(ctx)
+	if err := d.Call.Check(ctx); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
@@ -548,19 +615,31 @@ func (r *RangeStmt) stmtNode()          {}
 
 func (r *RangeStmt) Check(ctx *SemanticContext) error {
 	r.Type = "Void"
+	var hasError bool
 	if r.X == nil {
-		return errors.New("range 语句缺少对象")
-	}
-	if err := r.X.Check(ctx); err != nil {
-		return err
-	}
-	objType := r.X.GetBase().Type
-	if !objType.IsArray() && !objType.IsMap() && !objType.IsAny() {
-		return fmt.Errorf("range 语句不支持类型 %s", objType)
+		err := errors.New("range 语句缺少对象")
+		ctx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else {
+		if err := r.X.Check(ctx); err != nil {
+			hasError = true
+		} else {
+			objType := r.X.GetBase().Type
+			if !objType.IsArray() && !objType.IsMap() && !objType.IsAny() {
+				err := fmt.Errorf("range 语句不支持类型 %s", objType)
+				ctx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
+		}
 	}
 
-	// 注册循环变量
-	inner := NewSemanticContext(ctx.Child(r.Body))
+	// 即使头部报错，也要尝试注册变量并校验 Body
+	objType := GoMiniType("Any")
+	if r.X != nil {
+		objType = r.X.GetBase().Type
+	}
+
+	inner := ctx.Child(r.Body)
 	if r.Key != "" {
 		kType := GoMiniType("Int64")
 		if objType.IsMap() {
@@ -578,7 +657,14 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 		inner.AddVariable(r.Value, vType)
 	}
 
-	return r.Body.Check(inner)
+	if err := r.Body.Check(inner); err != nil {
+		hasError = true
+	}
+
+	if hasError {
+		return errors.New("range statement validation failed")
+	}
+	return nil
 }
 
 func (r *RangeStmt) Optimize(ctx *OptimizeContext) Node {
@@ -600,28 +686,44 @@ func (s *SwitchStmt) stmtNode()          {}
 
 func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	s.Type = "Void"
-	inner := NewSemanticContext(ctx.Child(s.Body))
+	inner := ctx.Child(s.Body)
+	var hasError bool
+
 	if s.Init != nil {
 		if err := s.Init.Check(inner); err != nil {
-			return err
+			hasError = true
 		}
 	}
 	tagType := GoMiniType("Bool")
 	if s.Tag != nil {
 		if err := s.Tag.Check(inner); err != nil {
-			return err
+			hasError = true
+		} else {
+			tagType = s.Tag.GetBase().Type
 		}
-		tagType = s.Tag.GetBase().Type
+	}
+
+	if s.Body == nil {
+		err := errors.New("switch 语句缺少主体")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	for _, child := range s.Body.Children {
 		clause, ok := child.(*CaseClause)
 		if !ok {
-			return fmt.Errorf("switch 语句只能包含 CaseClause, 得到 %T", child)
+			err := fmt.Errorf("switch 语句只能包含 CaseClause, 得到 %T", child)
+			ctx.AddErrorf("%s", err.Error())
+			hasError = true
+			continue
 		}
 		if err := clause.CheckWithTag(inner, tagType); err != nil {
-			return err
+			hasError = true
 		}
+	}
+
+	if hasError {
+		return errors.New("switch statement validation failed")
 	}
 	return nil
 }
@@ -653,20 +755,28 @@ func (c *CaseClause) Check(ctx *SemanticContext) error {
 
 func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) error {
 	c.Type = "Void"
+	var hasError bool
 	for i, expr := range c.List {
 		if err := expr.Check(ctx); err != nil {
-			return err
+			hasError = true
+		} else {
+			if !expr.GetBase().Type.IsAssignableTo(tagType) {
+				err := fmt.Errorf("case 类型不匹配: 期望 %s, 实际 %s", tagType, expr.GetBase().Type)
+				ctx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
+			c.List[i] = expr.Optimize(NewOptimizeContext(ctx.ValidContext)).(Expr)
 		}
-		if !expr.GetBase().Type.IsAssignableTo(tagType) {
-			return fmt.Errorf("case 类型不匹配: 期望 %s, 实际 %s", tagType, expr.GetBase().Type)
-		}
-		c.List[i] = expr.Optimize(NewOptimizeContext(&ctx.ValidContext)).(Expr)
 	}
 	for i, stmt := range c.Body {
 		if err := stmt.Check(ctx); err != nil {
-			return err
+			hasError = true
+		} else {
+			c.Body[i] = stmt.Optimize(NewOptimizeContext(ctx.ValidContext)).(Stmt)
 		}
-		c.Body[i] = stmt.Optimize(NewOptimizeContext(&ctx.ValidContext)).(Stmt)
+	}
+	if hasError {
+		return errors.New("case clause validation failed")
 	}
 	return nil
 }
@@ -682,6 +792,7 @@ type FunctionStmt struct {
 	Scope        Ident      `json:"scope,omitempty"` // 函数的作用域
 	Name         Ident      `json:"name"`
 	Body         *BlockStmt `json:"body"` // 函数结构体
+	Doc          string     `json:"doc,omitempty"`
 }
 
 // PreRegister 预注册函数签名 (用于支持相互递归)
@@ -763,17 +874,22 @@ func (f *FunctionStmt) stmtNode()          {}
 func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 	// 注意：PreRegister 必须在此之前由 ProgramStmt.Check 调用过。
 
-	funcCtx := NewSemanticContext(ctx.Child(f))
+	funcCtx := ctx.Child(f)
 	// 函数注册应该是全局注册
 	funcCtx.parent = nil
 
+	var hasError bool
 	// 1. 检查参数有效性
 	for _, param := range f.Params {
-		if param.Name == "" || !param.Name.Valid(&funcCtx.ValidContext) {
-			return fmt.Errorf("invalid param name: %s", param.Name)
+		if param.Name == "" || !param.Name.Valid(funcCtx.ValidContext) {
+			err := fmt.Errorf("invalid param name: %s", param.Name)
+			funcCtx.AddErrorf("%s", err.Error())
+			hasError = true
 		}
 		if param.Type.IsVoid() {
-			return fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
+			err := fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
+			funcCtx.AddErrorf("%s", err.Error())
+			hasError = true
 		}
 	}
 
@@ -790,21 +906,26 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 	ctx.root.program.Functions[f.Name] = f
 
 	// 4. 校验函数体
-	semBodyCtx := NewSemanticContext(bodyCtx)
+	semBodyCtx := bodyCtx
 	if err := f.Body.Check(semBodyCtx); err != nil {
-		return err
+		hasError = true
 	}
 
 	// 5. 返回路径 analysis
 	retType := f.Return
 	if retType != "" && !retType.IsVoid() {
-		analyzer := NewReturnAnalyzer(&funcCtx.ValidContext, retType)
+		analyzer := NewReturnAnalyzer(funcCtx.ValidContext, retType)
 		if !analyzer.Analyze(f.Body) {
-			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
-			return fmt.Errorf("函数 %s 缺少返回语句", f.Name)
+			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
+			err := fmt.Errorf("函数 %s 缺少返回语句", f.Name)
+			funcCtx.AddErrorf("%s", err.Error())
+			hasError = true
 		}
 	}
 
+	if hasError {
+		return errors.New("function validation failed")
+	}
 	return nil
 }
 
@@ -827,10 +948,14 @@ func (m *MultiAssignmentStmt) stmtNode()          {}
 func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 	m.Type = "Void"
 	if len(m.LHS) == 0 {
-		return errors.New("multi assignment missing LHS")
+		err := errors.New("multi assignment missing LHS")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	if m.Value == nil {
-		return errors.New("multi assignment missing value")
+		err := errors.New("multi assignment missing value")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if err := m.Value.Check(ctx); err != nil {
@@ -843,15 +968,11 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 	if valType.IsTuple() {
 		elementTypes, _ = valType.ReadTuple()
 	} else if valType.IsArray() {
-		// If it's an array, we can't statically know the length,
-		// but we know all elements have the same type.
-		// For simplicity, we allow destructuring if LHS count is known.
 		itemType, _ := valType.ReadArrayItemType()
 		for i := 0; i < len(m.LHS); i++ {
 			elementTypes = append(elementTypes, itemType)
 		}
 	} else if valType.IsResult() {
-		// Result decomposes into [val, err]
 		resType, _ := valType.ReadResult()
 		elementTypes = []GoMiniType{resType, "String"}
 	} else if valType.IsAny() {
@@ -859,29 +980,35 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 			elementTypes = append(elementTypes, "Any")
 		}
 	} else {
-		return fmt.Errorf("cannot destructure non-composite type: %s", valType)
+		err := fmt.Errorf("cannot destructure non-composite type: %s", valType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if len(m.LHS) != len(elementTypes) {
-		return fmt.Errorf("assignment count mismatch: %d = %d", len(m.LHS), len(elementTypes))
+		err := fmt.Errorf("assignment count mismatch: %d = %d", len(m.LHS), len(elementTypes))
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
+	var hasError bool
 	for i, lhs := range m.LHS {
 		targetType := elementTypes[i]
 
 		if ident, ok := lhs.(*IdentifierExpr); ok {
-			ident.Name = ident.Name.Resolve(&ctx.ValidContext)
+			ident.Name = ident.Name.Resolve(ctx.ValidContext)
 			vType, exists := ctx.GetVariable(ident.Name)
 
 			if !exists {
-				// Type inference for new variables
 				if !targetType.IsVoid() {
 					ctx.AddVariable(ident.Name, targetType)
 					ident.Type = targetType
 				}
 			} else {
 				if !targetType.IsAssignableTo(vType) {
-					return fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
+					err := fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
 				}
 				if vType == "Any" && targetType != "Any" {
 					ctx.UpdateVariable(ident.Name, targetType)
@@ -890,15 +1017,21 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 			}
 		} else {
 			if err := lhs.Check(ctx); err != nil {
-				return err
-			}
-			lhsType := lhs.GetBase().Type
-			if !targetType.IsAssignableTo(lhsType) {
-				return fmt.Errorf("assignment type mismatch at index %d: LHS is %s, RHS is %s", i, lhsType, targetType)
+				hasError = true
+			} else {
+				lhsType := lhs.GetBase().Type
+				if !targetType.IsAssignableTo(lhsType) {
+					err := fmt.Errorf("assignment type mismatch at index %d: LHS is %s, RHS is %s", i, lhsType, targetType)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
+				}
 			}
 		}
 	}
 
+	if hasError {
+		return errors.New("multi assignment validation failed")
+	}
 	return nil
 }
 
@@ -920,8 +1053,9 @@ type GenDeclStmt struct {
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
 func (g *GenDeclStmt) stmtNode()          {}
 func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(g)
 	g.Type = "Void"
-	g.Name = g.Name.Resolve(&ctx.ValidContext)
+	g.Name = g.Name.Resolve(ctx.ValidContext)
 
 	// 处理顶级变量命名空间
 	if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -930,15 +1064,25 @@ func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	if !g.Name.Valid(&ctx.ValidContext) {
-		return fmt.Errorf("invalid identifier: %s", g.Name)
+	if !g.Name.Valid(ctx.ValidContext) {
+		err := fmt.Errorf("invalid identifier: %s", g.Name)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	g.Kind = g.Kind.Resolve(&ctx.ValidContext)
-	if !g.Kind.Valid(&ctx.ValidContext) {
-		return fmt.Errorf("invalid type: %s", g.Kind)
+	g.Kind = g.Kind.Resolve(ctx.ValidContext)
+	if !g.Kind.Valid(ctx.ValidContext) {
+		err := fmt.Errorf("invalid type: %s", g.Kind)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	if ctx.IsLocalVariable(g.Name) {
-		return fmt.Errorf("variable %s already exists in current scope", g.Name)
+		if ctx.parent == nil {
+			ctx.AddVariable(g.Name, g.Kind)
+			return nil
+		}
+		err := fmt.Errorf("variable %s already exists in current scope", g.Name)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	ctx.AddVariable(g.Name, g.Kind)
 	return nil
@@ -959,19 +1103,23 @@ func (a *AssignmentStmt) GetBase() *BaseNode { return &a.BaseNode }
 func (a *AssignmentStmt) stmtNode()          {}
 
 // DeferStmt, RangeStmt, SwitchStmt are defined earlier
-
 func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(a)
 	a.Type = "Void"
 	if a.LHS == nil {
-		return errors.New("赋值语句缺少左值")
+		err := errors.New("赋值语句缺少左值")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	if a.Value == nil {
-		return errors.New("赋值语句缺少值")
+		err := errors.New("赋值语句缺少值")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	// 特殊处理左值为 IdentifierExpr，因为可能涉及隐式声明
 	if ident, ok := a.LHS.(*IdentifierExpr); ok {
-		ident.Name = ident.Name.Resolve(&ctx.ValidContext)
+		ident.Name = ident.Name.Resolve(ctx.ValidContext)
 
 		vType, b := ctx.GetVariable(ident.Name)
 		if !b && !strings.Contains(string(ident.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -995,15 +1143,21 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		}
 		miniType := a.Value.GetBase().Type
 		if miniType.IsEmpty() {
-			return errors.New("无法推导类型")
+			err := errors.New("无法推导类型")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if miniType.IsVoid() {
-			return fmt.Errorf("类型 (%s) 不支持赋值", miniType)
+			err := fmt.Errorf("类型 (%s) 不支持赋值", miniType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 
 		if b {
 			if !miniType.IsAssignableTo(vType) {
-				return fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+				ctx.AddErrorf("%s", err.Error())
+				return err
 			}
 			if vType == "Any" && miniType != "Any" {
 				ctx.UpdateVariable(ident.Name, miniType)
@@ -1034,7 +1188,9 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	lhsType := a.LHS.GetBase().Type
 	valType := a.Value.GetBase().Type
 	if !valType.IsAssignableTo(lhsType) {
-		return fmt.Errorf("赋值类型不匹配: 左值类型为 %s，右值类型为 %s", lhsType, valType)
+		err := fmt.Errorf("赋值类型不匹配: 左值类型为 %s，右值类型为 %s", lhsType, valType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	return nil
@@ -1067,11 +1223,15 @@ func (i *InterruptStmt) stmtNode()          {}
 
 func (i *InterruptStmt) Check(ctx *SemanticContext) error {
 	if i.InterruptType != "break" && i.InterruptType != "continue" {
-		return fmt.Errorf("无效的中断类型: %s", i.InterruptType)
+		err := fmt.Errorf("无效的中断类型: %s", i.InterruptType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if _, ok := ctx.CheckScope("for"); !ok {
-		return fmt.Errorf("%s 语句只能在循环中使用", i.InterruptType)
+		err := fmt.Errorf("%s 语句只能在循环中使用", i.InterruptType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	i.Type = "Void"
@@ -1095,25 +1255,32 @@ func (t *TryStmt) stmtNode()          {}
 
 func (t *TryStmt) Check(ctx *SemanticContext) error {
 	t.Type = "Void"
+	var hasError bool
 	if t.Body == nil {
-		return errors.New("try 语句缺少主体")
-	}
-	if err := t.Body.Check(ctx); err != nil {
-		return err
+		err := errors.New("try 语句缺少主体")
+		ctx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else {
+		if err := t.Body.Check(ctx); err != nil {
+			hasError = true
+		}
 	}
 	if t.Catch != nil {
-		inner := NewSemanticContext(ctx.Child(t.Catch))
+		inner := ctx.Child(t.Catch)
 		if t.Catch.VarName != "" {
 			inner.AddVariable(t.Catch.VarName, "Any")
 		}
 		if err := t.Catch.Body.Check(inner); err != nil {
-			return err
+			hasError = true
 		}
 	}
 	if t.Finally != nil {
 		if err := t.Finally.Check(ctx); err != nil {
-			return err
+			hasError = true
 		}
+	}
+	if hasError {
+		return errors.New("try statement validation failed")
 	}
 	return nil
 }
@@ -1149,6 +1316,7 @@ type StructStmt struct {
 	Name       Ident                `json:"name"`
 	Fields     map[Ident]GoMiniType `json:"fields"`
 	FieldNames []Ident              `json:"field_names,omitempty"`
+	Doc        string               `json:"doc,omitempty"`
 }
 
 // PreRegister 预注册结构体 (用于支持相互引用)
@@ -1160,7 +1328,6 @@ func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
 	// 提前注册一个空结构体，以支持自引用或循环引用
 	if v, ok := ctx.root.structs[s.Name]; ok {
 		// 检查是否已经定义了字段 (如果是 PreRegister 占位，Fields 通常为空)
-		// 这里简单处理：如果已经有字段了，说明重复定义了
 		if len(v.Fields) > 0 || len(v.Methods) > 0 {
 			ctx.AddErrorf("struct %s 已被定义", s.Name)
 			return false
@@ -1179,16 +1346,14 @@ func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StructStmt) stmtNode()          {}
 
 func (s *StructStmt) Check(ctx *SemanticContext) error {
-	// 注意：PreRegister 必须在此之前由 ProgramStmt.Check 调用过。
-
-	// 1. 检查是否已经完全定义过，防止重复定义
 	if v, ok := ctx.root.structs[s.Name]; ok {
 		if v.Defined {
-			return fmt.Errorf("struct %s 已被定义", s.Name)
+			err := fmt.Errorf("struct %s 已被定义", s.Name)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 	}
 
-	// 2. 遍历字段，进行类型解析与合法性检查
 	if len(s.FieldNames) == 0 {
 		for fieldName := range s.Fields {
 			s.FieldNames = append(s.FieldNames, fieldName)
@@ -1198,22 +1363,32 @@ func (s *StructStmt) Check(ctx *SemanticContext) error {
 		})
 	}
 
+	var hasError bool
 	for _, fieldName := range s.FieldNames {
 		fieldType := s.Fields[fieldName]
-		s.Fields[fieldName] = fieldType.Resolve(&ctx.ValidContext)
-		if !fieldName.Valid(&ctx.ValidContext) {
-			return fmt.Errorf("invalid field name: %s", fieldName)
+		s.Fields[fieldName] = fieldType.Resolve(ctx.ValidContext)
+		if !fieldName.Valid(ctx.ValidContext) {
+			err := fmt.Errorf("invalid field name: %s", fieldName)
+			ctx.AddErrorf("%s", err.Error())
+			hasError = true
 		}
-		if !s.Fields[fieldName].Valid(&ctx.ValidContext) {
-			return fmt.Errorf("invalid field type for %s: %s", fieldName, fieldType)
+		if !s.Fields[fieldName].Valid(ctx.ValidContext) {
+			err := fmt.Errorf("invalid field type for %s: %s", fieldName, fieldType)
+			ctx.AddErrorf("%s", err.Error())
+			hasError = true
 		}
 	}
 
-	// 3. 填充定义到上下文
 	if err := ctx.AddStructDefine(s.Name, s.Fields); err != nil {
-		return fmt.Errorf("定义struct失败: %v", err)
+		err2 := fmt.Errorf("定义struct失败: %v", err)
+		ctx.AddErrorf("%s", err2.Error())
+		return err2
 	}
 	ctx.root.structs[s.Name].Defined = true
+
+	if hasError {
+		return errors.New("struct validation failed")
+	}
 
 	s.Type = "Void"
 	ctx.root.program.Structs[s.Name] = s

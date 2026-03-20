@@ -116,7 +116,7 @@ func TestNestedFFIPath(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	// 模拟注册一个嵌套路径的 FFI
-	executor.RegisterFFI("net.http.Get", nil, 1, "function(String) String")
+	executor.RegisterFFI("net.http.Get", nil, 1, "function(String) String", "")
 
 	code := `
 	package main

@@ -20,12 +20,19 @@ type Node interface {
 
 // SemanticContext 语义检查上下文
 type SemanticContext struct {
-	ValidContext // 继承原有的 ValidContext 功能
-	// 后续可以增加符号表、类型栈等专门用于 Check 的字段
+	*ValidContext // 持有指针，避免值拷贝导致的符号表同步失效
 }
 
 func NewSemanticContext(ctx *ValidContext) *SemanticContext {
-	return &SemanticContext{ValidContext: *ctx}
+	return &SemanticContext{ValidContext: ctx}
+}
+
+func (c *SemanticContext) Child(b Node) *SemanticContext {
+	return NewSemanticContext(c.ValidContext.Child(b))
+}
+
+func (c *SemanticContext) WithNode(b Node) *SemanticContext {
+	return NewSemanticContext(c.ValidContext.WithNode(b))
 }
 
 // OptimizeContext 优化上下文
@@ -66,9 +73,11 @@ func (i Ident) Valid(ctx *ValidContext) bool {
 
 // Position 定义物理源码位置
 type Position struct {
-	F string `json:"f,omitempty"` // File: 跨文件时使用
-	L int    `json:"l"`           // Line: 物理行号 (1-based)
-	C int    `json:"c,omitempty"` // Col: 物理列号 (1-based, 可选)
+	F  string `json:"f,omitempty"`  // File: 跨文件时使用
+	L  int    `json:"l"`           // Line: 物理起始行号 (1-based)
+	C  int    `json:"c,omitempty"` // Col: 物理起始列号 (1-based, 可选)
+	EL int    `json:"el"`          // EndLine: 物理结束行号 (1-based)
+	EC int    `json:"ec,omitempty"` // EndCol: 物理结束列号 (1-based, 可选)
 }
 
 // BaseNode 是所有节点的基类

@@ -57,8 +57,9 @@ var Errors_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"New", 1, "function(String) Result<Void>"},
+	{"New", 1, "function(String) Result<Void>", ""},
 }
 
 type Errors_Bridge struct {
@@ -78,7 +79,7 @@ func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterErrors(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl Errors, registry *ffigo.HandleRegistry) {
 	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
 	prefix := "errors"
@@ -87,6 +88,6 @@ func RegisterErrors(executor interface {
 		sep = "_"
 	}
 	for _, m := range Errors_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

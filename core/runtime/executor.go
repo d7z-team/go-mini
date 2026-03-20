@@ -244,6 +244,8 @@ func (e *Executor) execStmt(ctx *StackContext, s ast.Stmt) (err error) {
 	}()
 
 	switch n := s.(type) {
+	case *ast.BadStmt:
+		return errors.New("cannot execute BadStmt: AST contains syntax errors")
 	case *ast.BlockStmt:
 		if n.Inner {
 			return e.ExecuteStmts(ctx, n.Children)
@@ -599,6 +601,8 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (v *Var, err error) {
 		return nil, nil
 	}
 	switch n := s.(type) {
+	case *ast.BadExpr:
+		return nil, errors.New("cannot evaluate BadExpr: AST contains syntax errors")
 	case *ast.LiteralExpr:
 		return e.evalLiteral(n)
 	case *ast.IdentifierExpr:

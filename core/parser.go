@@ -490,6 +490,18 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		n.Value, _ = parseExpr(raw.Val)
 		return n, nil
+	case "bad_expr":
+		var raw struct {
+			RawText string `json:"raw_text"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.BadExpr{BaseNode: baseNode, RawText: raw.RawText}, nil
+	case "bad_stmt":
+		var raw struct {
+			RawText string `json:"raw_text"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.BadStmt{BaseNode: baseNode, RawText: raw.RawText}, nil
 	case "literal":
 		var raw struct {
 			Kind  string `json:"kind"`

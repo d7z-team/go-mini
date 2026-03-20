@@ -554,12 +554,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	}
 	fmt.Fprintf(&sb, "\tdefault:\n\t\treturn nil, fmt.Errorf(\"unknown method ID %%d\", methodID)\n\t}\n}\n")
 
-	fmt.Fprintf(&sb, "var %s_FFI_Metadata = []struct {\n\tName     string\n\tMethodID uint32\n\tSpec     string\n}{\n", name)
+	fmt.Fprintf(&sb, "var %s_FFI_Metadata = []struct {\n\tName     string\n\tMethodID uint32\n\tSpec     string\n\tDoc      string\n}{\n", name)
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
 		}
-		fmt.Fprintf(&sb, "\t{\"%s\", %d, \"%s\"},\n", method.Names[0].Name, i+1, getSpec(method.Type.(*ast.FuncType)))
+		doc := ""
+		if method.Doc != nil {
+			doc = strings.ReplaceAll(method.Doc.Text(), "\"", "\\\"")
+			doc = strings.ReplaceAll(doc, "\n", " ")
+			doc = strings.TrimSpace(doc)
+		}
+		fmt.Fprintf(&sb, "\t{\"%s\", %d, \"%s\", \"%s\"},\n", method.Names[0].Name, i+1, getSpec(method.Type.(*ast.FuncType)), doc)
 	}
 	fmt.Fprintf(&sb, "}\n\n")
 
@@ -569,18 +575,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
 	if fixedPrefix != "" {
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, name)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n", fixedPrefix)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
-		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n")
 	} else {
-		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, name)
+		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n", name)
-		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))\n\t}\n}\n")
+		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n")
 	}
 
 	return sb.String()

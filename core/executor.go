@@ -34,7 +34,79 @@ type MiniExecutor struct {
 
 type MiniProgram struct {
 	Source   string
+	Program  *ast.ProgramStmt
 	executor *runtime.Executor
+
+	// LSP / Debugger 支撑
+	parentMap map[ast.Node]ast.Node
+	parentMu  sync.RWMutex // 保护 parentMap 读写（虽然 Program 是只读的，但缓存按需构建）
+}
+
+// GetParent 获取节点的父节点
+func (p *MiniProgram) GetParent(node ast.Node) ast.Node {
+	p.parentMu.RLock()
+	if p.parentMap != nil {
+		if parent, ok := p.parentMap[node]; ok {
+			p.parentMu.RUnlock()
+			return parent
+		}
+	}
+	p.parentMu.RUnlock()
+
+	p.parentMu.Lock()
+	defer p.parentMu.Unlock()
+	if p.parentMap == nil {
+		p.parentMap = ast.BuildParentMap(p.Program)
+	}
+	return p.parentMap[node]
+}
+
+// BuildAllCache 预构建所有缓存
+func (p *MiniProgram) BuildAllCache() {
+	p.parentMu.Lock()
+	defer p.parentMu.Unlock()
+	if p.parentMap == nil {
+		p.parentMap = ast.BuildParentMap(p.Program)
+	}
+}
+
+// GetNodeAt 获取指定位置的节点
+func (p *MiniProgram) GetNodeAt(line, col int) ast.Node {
+	return ast.FindNodeAt(p.Program, line, col)
+}
+
+// GetDefinitionAt 获取指定位置符号的定义
+func (p *MiniProgram) GetDefinitionAt(line, col int) ast.Node {
+	node := p.GetNodeAt(line, col)
+	if node == nil {
+		return nil
+	}
+	p.BuildAllCache() // 确保 parentMap 已就绪
+	return ast.FindDefinition(p.Program, node, p.parentMap)
+}
+
+// GetHoverAt 获取指定位置符号的悬浮信息
+func (p *MiniProgram) GetHoverAt(line, col int) *ast.HoverInfo {
+	node := p.GetNodeAt(line, col)
+	if node == nil {
+		return nil
+	}
+	p.BuildAllCache()
+	return ast.FindHoverInfo(p.Program, node, p.parentMap)
+}
+
+// GetReferencesAt 获取指定位置符号的所有引用
+func (p *MiniProgram) GetReferencesAt(line, col int) []ast.Node {
+	node := p.GetNodeAt(line, col)
+	if node == nil {
+		return nil
+	}
+	p.BuildAllCache()
+	def := ast.FindDefinition(p.Program, node, p.parentMap)
+	if def == nil {
+		return nil
+	}
+	return ast.FindAllReferences(p.Program, def, p.parentMap)
 }
 
 func (p *MiniProgram) SetStepLimit(limit int64) {
@@ -148,7 +220,7 @@ func (o *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
 }
 
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
-func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType) {
+func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	returns := "Void"
@@ -156,7 +228,7 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 		returns = string(callFunc.Returns)
 	}
 
-	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec)}
+	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec), Doc: doc}
 	if spec != "" {
 		o.specs[ast.Ident(name)] = spec
 	}
@@ -250,6 +322,7 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 
 	return &MiniProgram{
 		Source:   "",
+		Program:  program,
 		executor: executor,
 	}, nil
 }
@@ -372,15 +445,18 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = program.Check(semanticCtx)
 	if err != nil {
-		// Serialize program for debug
-		data, _ := json.MarshalIndent(program, "", "  ")
-		return nil, fmt.Errorf("验证失败:\n\n%s\n\n%w", string(data), err)
+		return nil, &ast.MiniAstError{Err: err, Logs: validator.Logs(), Node: program}
 	}
 
 	optimizeCtx := ast.NewOptimizeContext(validator)
 	program.Optimize(optimizeCtx)
 
-	return o.NewRuntimeByAst(program)
+	res, err := o.NewRuntimeByAst(program)
+	if err != nil {
+		return nil, err
+	}
+	res.Source = code
+	return res, nil
 }
 
 // Eval 执行单个 Go 表达式字符串
@@ -615,7 +691,7 @@ func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		return nil, fmt.Errorf("JSON 反序列化失败: %w", err)
 	}
 
-	program, _, err := ValidateAndOptimizeWithLoader(node, o.Loader, func(v *ast.ValidContext) error {
+	program, logs, err := ValidateAndOptimizeWithLoader(node, o.Loader, func(v *ast.ValidContext) error {
 		o.mu.RLock()
 		defer o.mu.RUnlock()
 		for name, spec := range o.specs {
@@ -624,8 +700,136 @@ func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("JSON AST 验证优化失败: %w", err)
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 	}
 
 	return o.NewRuntimeByAst(program)
+}
+
+// ----------------------------------------------------------------------------
+// LSP Metadata Export
+// ----------------------------------------------------------------------------
+
+type ExportedMetadata struct {
+	Builtins  map[string]string          `json:"builtins"`  // 内置函数名 -> 签名
+	Modules   map[string]*ExportedModule `json:"modules"`   // 模块名 -> 模块信息
+	Constants map[string]string          `json:"constants"` // 全局常量
+}
+
+type ExportedModule struct {
+	Functions map[string]string          `json:"functions"` // 函数名 -> 签名
+	Structs   map[string]*ExportedStruct `json:"structs"`   // 结构体名 -> 结构体信息
+	Constants map[string]string          `json:"constants"` // 模块内常量
+	Doc       string                     `json:"doc,omitempty"`
+}
+
+type ExportedStruct struct {
+	Fields  map[string]string `json:"fields"`  // 字段名 -> 类型
+	Methods map[string]string `json:"methods"` // 方法名 -> 签名
+	Doc     string            `json:"doc,omitempty"`
+}
+
+// ExportMetadata 导出当前执行器中注册的所有符号，供 IDE 和 LSP 提供代码补全
+func (o *MiniExecutor) ExportMetadata() string {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+
+	meta := &ExportedMetadata{
+		Builtins:  make(map[string]string),
+		Modules:   make(map[string]*ExportedModule),
+		Constants: make(map[string]string),
+	}
+
+	getModule := func(name string) *ExportedModule {
+		if _, ok := meta.Modules[name]; !ok {
+			meta.Modules[name] = &ExportedModule{
+				Functions: make(map[string]string),
+				Structs:   make(map[string]*ExportedStruct),
+				Constants: make(map[string]string),
+			}
+		}
+		return meta.Modules[name]
+	}
+
+	getStruct := func(modName, structName string) *ExportedStruct {
+		mod := getModule(modName)
+		if _, ok := mod.Structs[structName]; !ok {
+			mod.Structs[structName] = &ExportedStruct{
+				Fields:  make(map[string]string),
+				Methods: make(map[string]string),
+			}
+		}
+		return mod.Structs[structName]
+	}
+
+	// 1. 处理 Builtins 和 全局 Specs
+	for name, spec := range o.specs {
+		sName := string(name)
+		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
+			meta.Builtins[sName] = string(spec)
+		}
+	}
+
+	// 2. 处理 FFI Routes 和 Methods
+	for routeName, route := range o.routes {
+		if strings.HasPrefix(routeName, "__method_") {
+			// __method_TypeName_MethodName
+			parts := strings.Split(routeName, "_")
+			if len(parts) >= 5 { // ["", "", "method", "TypeName", "MethodName"]
+				typeName := parts[3]
+				methodName := strings.Join(parts[4:], "_")
+				sig := route.Spec
+				if route.Doc != "" {
+					sig += " // " + strings.ReplaceAll(route.Doc, "\n", " ")
+				}
+				// FFI 结构体通常归属于 "__ffi__"
+				st := getStruct("__ffi__", typeName)
+				st.Methods[methodName] = sig
+			}
+		} else if strings.Contains(routeName, ".") {
+			parts := strings.SplitN(routeName, ".", 2)
+			modName, funcName := parts[0], parts[1]
+			sig := route.Spec
+			if route.Doc != "" {
+				sig += " // " + strings.ReplaceAll(route.Doc, "\n", " ")
+			}
+			getModule(modName).Functions[funcName] = sig
+		}
+	}
+
+	// 3. 处理已加载的 Modules (脚本模块)
+	for modName, prog := range o.modules {
+		mod := getModule(modName)
+		// 导出函数
+		for fnName, fnStmt := range prog.Functions {
+			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' {
+				// 我们需要一种方式导出函数文档，目前 ExportedModule.Functions 只是 map[string]string (name -> sig)
+				// 临时将文档附加到签名后面，或者未来重构 ExportedModule.Functions
+				sig := string(fnStmt.FunctionType.MiniType())
+				if fnStmt.Doc != "" {
+					sig = sig + " // " + strings.ReplaceAll(fnStmt.Doc, "\n", " ")
+				}
+				mod.Functions[string(fnName)] = sig
+			}
+		}
+		// 导出结构体
+		for stName, stStmt := range prog.Structs {
+			if len(stName) > 0 && stName[0] >= 'A' && stName[0] <= 'Z' {
+				st := getStruct(modName, string(stName))
+				st.Doc = stStmt.Doc
+				for fName, fType := range stStmt.Fields {
+					st.Fields[string(fName)] = string(fType)
+				}
+			}
+		}
+		// 导出常量
+		for cName, cVal := range prog.Constants {
+			if len(cName) > 0 && cName[0] >= 'A' && cName[0] <= 'Z' {
+				mod.Constants[cName] = cVal
+			}
+		}
+	}
+
+	data, _ := json.MarshalIndent(meta, "", "  ")
+	return string(data)
 }

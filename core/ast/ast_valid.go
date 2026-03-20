@@ -7,6 +7,7 @@ import (
 )
 
 type Logs struct {
+	Node    Node
 	Path    []string
 	Level   string
 	Message string
@@ -78,6 +79,8 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 	}
 	// 注入内建 nil
 	v.root.vars["nil"] = "Any"
+	v.root.vars["true"] = "Bool"
+	v.root.vars["false"] = "Bool"
 	return v, nil
 }
 
@@ -97,6 +100,19 @@ func (c *ValidContext) Child(b Node) *ValidContext {
 	}
 }
 
+func (c *ValidContext) WithNode(b Node) *ValidContext {
+	if b != nil {
+		b.GetBase().EnsureID(c)
+	}
+	return &ValidContext{
+		root:        c.root,
+		parent:      c.parent, // 共享父级
+		current:     b,
+		vars:        c.vars, // 共享变量映射
+		closureNode: c.closureNode,
+	}
+}
+
 type ValidStruct struct {
 	Fields  map[Ident]GoMiniType
 	Methods map[Ident]CallFunctionType
@@ -112,7 +128,11 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 	path := make([]string, 0)
 	msg := fmt.Sprintf(message, args...)
 	ctx := c
+	var firstNode Node
 	for ctx != nil && ctx.current != nil {
+		if firstNode == nil {
+			firstNode = ctx.current
+		}
 		base := ctx.current.GetBase()
 		locStr := ""
 		if base.Loc != nil {
@@ -121,7 +141,7 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 		path = append([]string{fmt.Sprintf("%s#%s%s", base.Meta, base.ID, locStr)}, path...)
 		ctx = ctx.parent
 	}
-	c.root.logs = append(c.root.logs, Logs{Path: path, Message: msg})
+	c.root.logs = append(c.root.logs, Logs{Node: firstNode, Path: path, Message: msg})
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
@@ -349,12 +369,12 @@ func (c *ValidContext) SetLoader(loader func(path string) (*ProgramStmt, error))
 }
 
 func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
-	funcCtx := NewSemanticContext(ctx.Child(f))
+	funcCtx := ctx.Child(f)
 	funcCtx.closureNode = f
 
 	// 1. 检查参数有效性
 	for _, param := range f.Params {
-		if param.Name == "" || !param.Name.Valid(&funcCtx.ValidContext) {
+		if param.Name == "" || !param.Name.Valid(funcCtx.ValidContext) {
 			return fmt.Errorf("invalid param name: %s", param.Name)
 		}
 		if param.Type.IsVoid() {
@@ -370,23 +390,18 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 		}
 	}
 
-	// 注意：因为我们要支持闭包，内部函数体需要能够访问到外部的变量，
-	// 所以我们这里的 funcCtx.parent 不置为 nil（它默认指向当前的 ctx）。
-	// 这使得 bodyCtx 在找不到变量时可以一直向外层作用域查找。
-
 	// 3. 校验函数体
-	semBodyCtx := NewSemanticContext(bodyCtx)
+	semBodyCtx := bodyCtx
 	if err := f.Body.Check(semBodyCtx); err != nil {
 		return err
 	}
 
 	// 4. 返回路径 analysis
-	// 对于 FuncLit，如果定义了返回值，同样需要确保有 return 语句
 	returnTypes, _ := f.FunctionType.Return.ReadTuple()
 	if len(returnTypes) > 0 && !(len(returnTypes) == 1 && returnTypes[0].IsVoid()) {
-		analyzer := NewReturnAnalyzer(bodyCtx, f.Return)
+		analyzer := NewReturnAnalyzer(bodyCtx.ValidContext, f.Return)
 		if !analyzer.Analyze(f.Body) {
-			analyzer.AddReturnPathErrorsToContext(&funcCtx.ValidContext)
+			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
 			return errors.New("匿名函数缺少返回语句")
 		}
 	}

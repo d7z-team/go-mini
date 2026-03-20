@@ -127,12 +127,13 @@ var Time_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Now", 1, "function() String"},
-	{"Unix", 2, "function() Int64"},
-	{"UnixNano", 3, "function() Int64"},
-	{"Sleep", 4, "function(Int64) Void"},
-	{"Since", 5, "function(Int64) Int64"},
+	{"Now", 1, "function() String", ""},
+	{"Unix", 2, "function() Int64", ""},
+	{"UnixNano", 3, "function() Int64", ""},
+	{"Sleep", 4, "function(Int64) Void", ""},
+	{"Since", 5, "function(Int64) Int64", ""},
 }
 
 type Time_Bridge struct {
@@ -152,7 +153,7 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterTime(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl Time, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: impl, Registry: registry}
 	prefix := "time"
@@ -161,6 +162,6 @@ func RegisterTime(executor interface {
 		sep = "_"
 	}
 	for _, m := range Time_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

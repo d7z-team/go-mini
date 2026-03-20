@@ -63,8 +63,9 @@ var PrinterAPI_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Println", 1, "function(...Any) Void"},
+	{"Println", 1, "function(...Any) Void", ""},
 }
 
 type PrinterAPI_Bridge struct {
@@ -84,7 +85,7 @@ func (b *PrinterAPI_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterE2EPrinterAPILibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, prefix string, impl PrinterAPI, registry *ffigo.HandleRegistry) {
 	bridge := &PrinterAPI_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -92,6 +93,6 @@ func RegisterE2EPrinterAPILibrary(executor interface {
 		sep = "_"
 	}
 	for _, m := range PrinterAPI_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

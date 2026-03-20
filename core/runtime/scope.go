@@ -472,6 +472,9 @@ func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
 }
 
 func (c *StackContext) NewVar(name string, kind ast.GoMiniType) error {
+	if _, ok := c.Stack.MemoryPtr[name]; ok {
+		return nil
+	}
 	// 确保变量被正确初始化为零值
 	var v *Var
 	if exec, ok := c.Executor.(*Executor); ok {

@@ -75,8 +75,9 @@ var IO_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"ReadAll", 1, "function(Any) Result<TypeBytes>"},
+	{"ReadAll", 1, "function(Any) Result<TypeBytes>", ""},
 }
 
 type IO_Bridge struct {
@@ -96,7 +97,7 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterIO(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
 	prefix := "io"
@@ -105,6 +106,6 @@ func RegisterIO(executor interface {
 		sep = "_"
 	}
 	for _, m := range IO_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

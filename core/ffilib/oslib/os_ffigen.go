@@ -265,14 +265,15 @@ var OS_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Open", 1, "function(String) Result<Ptr<File>>"},
-	{"Create", 2, "function(String) Result<Ptr<File>>"},
-	{"ReadFile", 3, "function(String) Result<TypeBytes>"},
-	{"WriteFile", 4, "function(String, TypeBytes) Result<Void>"},
-	{"Remove", 5, "function(String) Result<Void>"},
-	{"Getenv", 6, "function(String) String"},
-	{"Setenv", 7, "function(String, String) Result<Void>"},
+	{"Open", 1, "function(String) Result<Ptr<File>>", ""},
+	{"Create", 2, "function(String) Result<Ptr<File>>", ""},
+	{"ReadFile", 3, "function(String) Result<TypeBytes>", ""},
+	{"WriteFile", 4, "function(String, TypeBytes) Result<Void>", ""},
+	{"Remove", 5, "function(String) Result<Void>", ""},
+	{"Getenv", 6, "function(String) String", ""},
+	{"Setenv", 7, "function(String, String) Result<Void>", ""},
 }
 
 type OS_Bridge struct {
@@ -292,7 +293,7 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterOS(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
 	prefix := "os"
@@ -301,7 +302,7 @@ func RegisterOS(executor interface {
 		sep = "_"
 	}
 	for _, m := range OS_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
 
@@ -463,10 +464,11 @@ var FileMethods_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Read", 1, "function(Ptr<File>, TypeBytes) Result<Int64>"},
-	{"Write", 2, "function(Ptr<File>, TypeBytes) Result<Int64>"},
-	{"Close", 3, "function(Ptr<File>) Result<Void>"},
+	{"Read", 1, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
+	{"Write", 2, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
+	{"Close", 3, "function(Ptr<File>) Result<Void>", ""},
 }
 
 type FileMethods_Bridge struct {
@@ -486,7 +488,7 @@ func (b *FileMethods_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterFileMethods(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl FileMethods, registry *ffigo.HandleRegistry) {
 	bridge := &FileMethods_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_File"
@@ -495,6 +497,6 @@ func RegisterFileMethods(executor interface {
 		sep = "_"
 	}
 	for _, m := range FileMethods_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

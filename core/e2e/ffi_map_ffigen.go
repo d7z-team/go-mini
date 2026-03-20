@@ -245,11 +245,12 @@ var MapTest_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"EchoMap", 1, "function(Map<String, String>) Result<Map<String, String>>"},
-	{"GetMap", 2, "function() Result<Map<String, Int64>>"},
-	{"ProcessMap", 3, "function(Map<String, Int64>) Result<Int64>"},
-	{"EchoIntMap", 4, "function(Map<Int64, String>) Result<Map<Int64, String>>"},
+	{"EchoMap", 1, "function(Map<String, String>) Result<Map<String, String>>", ""},
+	{"GetMap", 2, "function() Result<Map<String, Int64>>", ""},
+	{"ProcessMap", 3, "function(Map<String, Int64>) Result<Int64>", ""},
+	{"EchoIntMap", 4, "function(Map<Int64, String>) Result<Map<Int64, String>>", ""},
 }
 
 type MapTest_Bridge struct {
@@ -269,7 +270,7 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterE2EMapTestLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
 	bridge := &MapTest_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -277,6 +278,6 @@ func RegisterE2EMapTestLibrary(executor interface {
 		sep = "_"
 	}
 	for _, m := range MapTest_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

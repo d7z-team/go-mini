@@ -61,8 +61,9 @@ var MockGeometry_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"SumX", 1, "function(Array<RobustPoint>) Int64"},
+	{"SumX", 1, "function(Array<RobustPoint>) Int64", ""},
 }
 
 type MockGeometry_Bridge struct {
@@ -82,7 +83,7 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterE2EMockGeometryLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -90,6 +91,6 @@ func RegisterE2EMockGeometryLibrary(executor interface {
 		sep = "_"
 	}
 	for _, m := range MockGeometry_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

@@ -83,9 +83,10 @@ var MockShapeAPI_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"GetRect", 1, "function() Rect"},
-	{"Area", 2, "function(Rect) Int64"},
+	{"GetRect", 1, "function() Rect", ""},
+	{"Area", 2, "function(Rect) Int64", ""},
 }
 
 type MockShapeAPI_Bridge struct {
@@ -105,7 +106,7 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterE2EMockShapeAPILibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -113,6 +114,6 @@ func RegisterE2EMockShapeAPILibrary(executor interface {
 		sep = "_"
 	}
 	for _, m := range MockShapeAPI_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

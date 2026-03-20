@@ -323,14 +323,15 @@ var MockOS_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Open", 1, "function(String) Result<Ptr<File>>"},
-	{"Name", 2, "function(Ptr<File>) String"},
-	{"Stat", 3, "function(Ptr<File>) Result<FileInfo>"},
-	{"Read", 4, "function(Ptr<File>, TypeBytes) Result<Int64>"},
-	{"Write", 5, "function(Ptr<File>, TypeBytes) Result<Int64>"},
-	{"Close", 6, "function(Ptr<File>) Result<Void>"},
-	{"Deep", 7, "function(Nested) Nested"},
+	{"Open", 1, "function(String) Result<Ptr<File>>", ""},
+	{"Name", 2, "function(Ptr<File>) String", ""},
+	{"Stat", 3, "function(Ptr<File>) Result<FileInfo>", ""},
+	{"Read", 4, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
+	{"Write", 5, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
+	{"Close", 6, "function(Ptr<File>) Result<Void>", ""},
+	{"Deep", 7, "function(Nested) Nested", ""},
 }
 
 type MockOS_Bridge struct {
@@ -350,7 +351,7 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterE2EMockOSLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, prefix string, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -358,7 +359,7 @@ func RegisterE2EMockOSLibrary(executor interface {
 		sep = "_"
 	}
 	for _, m := range MockOS_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
 
@@ -428,9 +429,10 @@ var ContextMock_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"WithContext", 1, "function(String) String"},
-	{"WithoutContext", 2, "function(String) String"},
+	{"WithContext", 1, "function(String) String", ""},
+	{"WithoutContext", 2, "function(String) String", ""},
 }
 
 type ContextMock_Bridge struct {
@@ -450,7 +452,7 @@ func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterContextMock(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl ContextMock, registry *ffigo.HandleRegistry) {
 	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
 	prefix := "ctx_test"
@@ -459,7 +461,7 @@ func RegisterContextMock(executor interface {
 		sep = "_"
 	}
 	for _, m := range ContextMock_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
 
@@ -587,11 +589,12 @@ var NativeMock_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"GetStruct", 1, "function() NativeStruct"},
-	{"GetPtr", 2, "function() Ptr<NativeStruct>"},
-	{"SetStruct", 3, "function(NativeStruct) Int64"},
-	{"SetPtr", 4, "function(Ptr<NativeStruct>) Int64"},
+	{"GetStruct", 1, "function() NativeStruct", ""},
+	{"GetPtr", 2, "function() Ptr<NativeStruct>", ""},
+	{"SetStruct", 3, "function(NativeStruct) Int64", ""},
+	{"SetPtr", 4, "function(Ptr<NativeStruct>) Int64", ""},
 }
 
 type NativeMock_Bridge struct {
@@ -611,7 +614,7 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterNativeMock(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
 	prefix := "native"
@@ -620,6 +623,6 @@ func RegisterNativeMock(executor interface {
 		sep = "_"
 	}
 	for _, m := range NativeMock_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }

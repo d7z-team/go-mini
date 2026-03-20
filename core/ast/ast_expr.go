@@ -15,8 +15,8 @@ func (c *IdentifierExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *IdentifierExpr) exprNode()          {}
 
 func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
-	c.Name = c.Name.Resolve(&ctx.ValidContext)
-	if !c.Name.Valid(&ctx.ValidContext) {
+	c.Name = c.Name.Resolve(ctx.ValidContext)
+	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 	vtp, b := ctx.GetVariable(c.Name)
@@ -47,8 +47,8 @@ func (c *ConstRefExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *ConstRefExpr) exprNode()          {}
 
 func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
-	c.Name = c.Name.Resolve(&ctx.ValidContext)
-	if !c.Name.Valid(&ctx.ValidContext) {
+	c.Name = c.Name.Resolve(ctx.ValidContext)
+	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 	if vtp, b := ctx.GetVariable(c.Name); b {
@@ -108,55 +108,66 @@ func (c *CallExprStmt) stmtNode()          {}
 
 func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if c.Func == nil {
-		return errors.New("函数调用缺少函数名")
-	}
-
-	if err := c.Func.Check(ctx); err != nil {
+		err := errors.New("函数调用缺少函数名")
+		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
 
+	funcErr := c.Func.Check(ctx)
+	
+	// 无论函数名是否能解析成功，我们都必须校验参数，以便填充 LSP 所需的类型信息
+	var argsError bool
+
+	// 特殊处理 make/new 的类型参数解析
 	if ident, ok := c.Func.(*ConstRefExpr); ok && (ident.Name == "make" || ident.Name == "new") {
 		if len(c.Args) > 0 {
 			if lit, ok2 := c.Args[0].(*LiteralExpr); ok2 && lit.Type == "String" {
-				t := GoMiniType(lit.Value).Resolve(&ctx.ValidContext)
+				t := GoMiniType(lit.Value).Resolve(ctx.ValidContext)
 				if ident.Name == "make" {
 					if !t.IsStrictValid() {
-						return fmt.Errorf("make: 非法类型 %s", lit.Value)
+						ctx.AddErrorf("make: 非法类型 %s", lit.Value)
+						argsError = true
 					}
 				} else { // new
 					if !t.IsStrictValid() {
-						// 允许自定义结构体 new
 						if _, hasStruct := ctx.GetStruct(Ident(t)); !hasStruct {
-							return fmt.Errorf("new: 非法类型 %s", lit.Value)
+							ctx.AddErrorf("new: 非法类型 %s", lit.Value)
+							argsError = true
 						}
 					}
-					// new(T) 返回 Ptr<T>
 					t = t.ToPtr()
 				}
-				// 更新为解析后的规范类型
 				lit.Value = string(t)
 			}
 		}
+	}
+
+	for _, arg := range c.Args {
+		if err := arg.Check(ctx); err != nil {
+			argsError = true
+		}
+	}
+
+	if funcErr != nil {
+		return funcErr
 	}
 
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
 			c.Type = "Any"
-			for _, arg := range c.Args {
-				if err := arg.Check(ctx); err != nil {
-					return err
-				}
+			if argsError {
+				return errors.New("invalid arguments")
 			}
 			return nil
 		}
-		return fmt.Errorf("对象(%s)不是函数", c.Func.GetBase().Type)
+		err := fmt.Errorf("对象(%s)不是函数", c.Func.GetBase().Type)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
-	for _, arg := range c.Args {
-		if err := arg.Check(ctx); err != nil {
-			return err
-		}
+	if argsError {
+		return errors.New("invalid arguments")
 	}
 
 	// 语义校验：参数数量和基本类型匹配
@@ -296,14 +307,14 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return errors.New("result type only has 'val' and 'err' properties")
 	}
 
-	if !m.Property.Valid(&ctx.ValidContext) {
+	if !m.Property.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid property: %s", m.Property)
 	}
 
 	// 尝试作为结构体访问
-	structName, isStruct := m.Object.GetBase().Type.StructName()
-	if isStruct {
-		miniStruct, b := ctx.GetStruct(structName)
+	typeName := objType.BaseName()
+	if typeName != "" {
+		miniStruct, b := ctx.GetStruct(Ident(typeName))
 		if b {
 			met, b := miniStruct.Fields[m.Property]
 			if !b {
@@ -316,7 +327,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				m.Type = met
 				return nil
 			}
-		} else if strings.Contains(string(structName), ".") {
+		} else if strings.Contains(string(typeName), ".") {
 			// 如果是跨包的结构体（例如 lib.Point），由于在隔离架构下不静态合并符号表，
 			// 在编译期无法得知其完整定义，因此放行作为动态成员访问
 			m.Type = "Any"
@@ -350,7 +361,7 @@ func (c *CompositeExpr) exprNode()          {}
 
 func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	if c.Kind != "" {
-		c.Kind = Ident(GoMiniType(c.Kind).Resolve(&ctx.ValidContext))
+		c.Kind = Ident(GoMiniType(c.Kind).Resolve(ctx.ValidContext))
 		c.Type = GoMiniType(c.Kind)
 	}
 

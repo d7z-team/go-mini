@@ -239,7 +239,7 @@ func (l *LiteralExpr) GetBase() *BaseNode { return &l.BaseNode }
 func (l *LiteralExpr) exprNode()          {}
 
 func (l *LiteralExpr) Check(ctx *SemanticContext) error {
-	l.Type = l.Type.Resolve(&ctx.ValidContext)
+	l.Type = l.Type.Resolve(ctx.ValidContext)
 	if l.Type == "" {
 		return errors.New("missing type for literal")
 	}

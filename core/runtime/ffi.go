@@ -10,4 +10,5 @@ type FFIRoute struct {
 	MethodID uint32
 	Returns  string
 	Spec     string
+	Doc      string
 }

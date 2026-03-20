@@ -16,6 +16,21 @@ const (
 
 func (o GoMiniType) IsEmpty() bool { return o == "" }
 
+// BaseName 提取类型的基准名称 (例如 Ptr<MyStruct> -> MyStruct)
+func (o GoMiniType) BaseName() string {
+	s := string(o)
+	if strings.HasPrefix(s, "Ptr<") {
+		return GoMiniType(s[4 : len(s)-1]).BaseName()
+	}
+	if strings.HasPrefix(s, "Array<") {
+		return GoMiniType(s[6 : len(s)-1]).BaseName()
+	}
+	if strings.HasPrefix(s, "Result<") {
+		return GoMiniType(s[7 : len(s)-1]).BaseName()
+	}
+	return s
+}
+
 func (o GoMiniType) IsVoid() bool {
 	return o == "Void" || o == ""
 }

@@ -317,14 +317,15 @@ var Fmt_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
+	Doc      string
 }{
-	{"Print", 1, "function(...Any) Void"},
-	{"Println", 2, "function(...Any) Void"},
-	{"Printf", 3, "function(String, ...Any) Void"},
-	{"Sprintf", 4, "function(String, ...Any) String"},
-	{"Fprint", 5, "function(Any, ...Any) Void"},
-	{"Fprintf", 6, "function(Any, String, ...Any) Void"},
-	{"Fprintln", 7, "function(Any, ...Any) Void"},
+	{"Print", 1, "function(...Any) Void", ""},
+	{"Println", 2, "function(...Any) Void", ""},
+	{"Printf", 3, "function(String, ...Any) Void", ""},
+	{"Sprintf", 4, "function(String, ...Any) String", ""},
+	{"Fprint", 5, "function(Any, ...Any) Void", ""},
+	{"Fprintf", 6, "function(Any, String, ...Any) Void", ""},
+	{"Fprintln", 7, "function(Any, ...Any) Void", ""},
 }
 
 type Fmt_Bridge struct {
@@ -344,7 +345,7 @@ func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterFmt(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType)
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl Fmt, registry *ffigo.HandleRegistry) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
 	prefix := "fmt"
@@ -353,6 +354,6 @@ func RegisterFmt(executor interface {
 		sep = "_"
 	}
 	for _, m := range Fmt_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec))
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
