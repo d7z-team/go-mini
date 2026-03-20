@@ -107,7 +107,6 @@
 2.  **[ ] 健壮性与异常处理**
     *   **[x] 脚本级错误恢复 (`recover` / Try-Catch)**：支持在脚本层级截获异常，防止局部异常导致整个引擎/任务崩溃，增强脚本容错性。
         *   *评估*: **难度: 中**。通过引入 `PanicError` 冒泡机制和 `TryStmt` AST 原语，可以同时兼容 Go 的 `defer-recover` 动态异常模型和 JS/Java 的 `try-catch` 词法异常模型。
-        *   *多语言兼容性: 高 (双轨制)*。底层引擎提供 `TryStmt` (Body, Catch, Finally) 原语，同时在函数作用域层级配合 `DeferStack` 实现 `recover()` 状态读取。
         *   *实施路径*:
             - [x] `ast_stmt.go`: 新增 `TryStmt` 节点。
             - [x] `runtime/scope.go`: 扩展 `Stack` 以支持 `PanicVar` 寄存器。
@@ -116,7 +115,7 @@
             - [x] `runtime/executor.go`: 实现 `TryStmt` 执行逻辑。
             - [x] `ffigo/converter.go`: 修复了 IfStmt 的 Init 转换，支持了 recover() 的语义路径。
     3.  **[x] 模块化与工程化管理**
-    *   **[x] 真正的包加载系统 (Module Import)**：提供一个抽象的 Module Loader，支持跨文件调用（例如 `import "utils"` 加载纯脚本文件），解决单文件代码臃肿的问题。
+    *   **[x] 真正的包加载系统 (Module Import)**：提供一个抽象特 Module Loader，支持跨文件调用（例如 `import "utils"` 加载纯脚本文件），解决单文件代码臃肿的问题。
     *   **[x] 内存预分配 (`make`)**：支持使用 `make([]int, 0, 100)` 或预分配容量的 Map，优化大量数据处理时的 GC 压力。
     *   **[x] 纯表达式执行 (`Eval`)**：支持计算单个 Go 表达式字符串，无需 package 和 main 声明，适用于规则引擎。
 
@@ -156,55 +155,26 @@
 
 ---
 
-## 十二、 后续演进计划 [ ]
+## 十二、 语义完备性与高并发安全加固 (Current Focus) [x]
+目标：在维持无状态隔离架构的前提下，提供更接近 Go 语法的开发体验，并保障生产级并发稳定性。
+
+### Phase 1: 引用语义与 `new(T)` 深度初始化 [x]
+- [x] `runtime/executor.go`: 实现了 `initializeType` 递归函数，支持 `new(Struct)` 时的深度零值展开。
+- [x] `runtime/executor.go`: 为递归初始化增加了 **10 层深度限制**，防御恶意 AST 导致的 Stack Overflow。
+- [x] `ast/ast_expr.go`: 加固了 `make` 和 `new` 的编译期校验，禁止对结构体执行 `make`。
+
+### Phase 2: 高并发安全保障 [x]
+- [x] `engine/executor.go`: 为 `MiniExecutor` 引入 `sync.RWMutex`。
+- [x] `engine/executor.go`: 在 `RegisterFFI`、`RegisterModule` 及所有读路径（`Eval`, `Execute`）中实现了完整的读写锁保护。
+
+### Phase 3: 极致鲁棒性与资源安全 [x]
+- [x] `runtime/executor.go`: 统一了 `isEmptyVar` 助手函数，实现了 Nil 安全的比较运算，消除了空字符串歧义。
+- [x] `engine/executor.go`: 在 Snippet 模式（`Execute`）边界引入了 **Handle 生命周期强制清理**，防止 FD 泄露。
+- [x] `runtime/executor.go`: 实现了 Nil 容器（Map/Array）访问的自动零值返回，对齐 Go 原生语义。
+
+---
+
+## 十三、 后续演进计划 [ ]
 1.  **[ ] 网络库注入**：实现 `net` 库的 FFI 封装。
-2.  **[ ] 循环引用防御**：在 `normalizeValue` 中增加递归深度限制，防止宿主 Stack Overflow。
-3.  **[ ] 多返回值解析增强**：支持 `a, b = 1, 2` 等标准 Go 赋值语义（目前仅支持函数解构）。
-
----
-
-## 八、 重构计划：动态模块化系统 (Dynamic Module System) [x]
-目标：将静态符号合并加载升级为运行时动态 Module 对象加载，以支持多语言前端。
-
-### Phase 1: 核心数据结构扩展 [x]
-- [x] `ast_types.go`: 引入 `TypeModule` 原语。
-- [x] `scope.go`: 引入 `VMModule` 结构，包含 `Exports map[string]*Var`。
-
-### Phase 2: AST 转换器解耦 (Converter) [x]
-- [x] `converter.go`: 停止名称重整（Name Mangling）。将 `pkg.Func()` 从 `ConstRefExpr("pkg.Func")` 转换为标准的 `MemberExpr`（对象为 pkg，属性为 Func）。
-- [x] 将 import 语句视为在顶层作用域声明一个类型为 `TypeModule` 的变量。
-
-### Phase 3: 验证器重构 (Validator) [x]
-- [x] `ast_valid.go`: 删除 `ImportPackage` 中的符号全局展平合并逻辑。
-- [x] 修改 `Check` 逻辑：当对 `TypeModule` 进行 `MemberExpr` 访问时，予以放行（动态方法调用）或推导类型。
-
-### Phase 4: 运行时隔离执行 (Executor) [x]
-- [x] `executor.go`: 引入 `ModuleCache`。
-- [x] 模块运行时加载：遇到 import 时，创建全新 `StackContext` 执行目 标模块，收集其公开的函数和变量，封箱为 `VMModule` 注入当前环境变量。
-- [x] FFI 模块重构：将 `executor.RegisterFFI` 注册的扁平符号（如 `fmt.Println`）在引擎启动时自动打包为 `VMModule("fmt")`。
-
----
-
-## 九、 重构计划：闭包与匿名函数支持 (Closures) [x]
-目标：支持带捕获的匿名函数，实现 `Cell` 引用装箱以平衡性能与完备性。
-
-### Phase 1: 核心运行时数据结构改造 [x]
-- [x] `scope.go`: 引入 `Cell` 机制与 `VMClosure` 结构体。
-- [x] `ast_types.go`: 扩展 `TypeFunc` 和 `TypeClosure` 常量。
-
-### Phase 2: AST 语法树与解析器支持 [x]
-- [x] `ast_expr.go`: 新增 `FuncLitExpr` AST 节点。
-- [x] `ast_valid.go`: 为 `FuncLitExpr` 添加 `Check()` 验证。
-- [x] `parser.go`: JSON 反序列化支持。
-
-### Phase 3: Go 源码转换器增强 (Converter) [x]
-- [x] `converter.go`: 转换 `*ast.FuncLit`，实现自由变量捕获分析（Upvalue 分析），并将其记录在 `FuncLitExpr` 节点上。
-
-### Phase 4: 执行引擎 (Executor) 的闭包实例化与调用 [x]
-- [x] `executor.go`: 实现 `evalFuncLit` 创建 `VMClosure` 并按需装箱 (`Cell`)。
-- [x] 变量读写逻辑适配：在读写变量时支持穿透 `Cell`。
-- [x] `evalCallExpr` 适配：支持 `VMClosure` 的环境注入与调用。
-
-### Phase 5: 测试验证与性能基准 [x]
-- [x] 闭包正确性测试（捕获、多实例、深层嵌套）。
-
+2.  **[ ] 性能调优**：针对常用的 Map 成员访问进行指令级缓存优化。
+3.  **[ ] 多平台分发验证**：测试编译后的 JSON AST 在跨架构（ARM/WASM）环境下的执行一致性。

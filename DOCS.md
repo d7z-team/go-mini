@@ -11,8 +11,9 @@
 *   **自动化数据映射**：宿主可以直接注入 Go `struct`，引擎会自动利用反射将其规范化为 VM 可识别的 Map（支持 `json` 标签）。
 *   **原生 Go 语法**：脚本完全使用 Go 语言语法编写，无需学习新的领域特定语言 (DSL)。
 *   **零反射高性能**：底层通信基于编译期生成的路由代码和二进制序列化，彻底摒弃 `reflect` 包，性能极佳。
-*   **高并发与线程安全**：执行器采用无状态蓝图 (Stateless Blueprint) 设计。同一个编译好的脚本可以在成千上万个宿主 Goroutine 中并发执行，互不干扰，绝无竞态。
-*   **资源防泄漏**：内置指令计数器 (`StepLimit`)、上下文感知 (`context.Context`) 和严格的句柄 (Handle) 自动回收机制。
+*   **高并发与线程安全**：执行器采用**无状态蓝图 (Stateless Blueprint)** 设计。同一个编译好的脚本可以在成千上万个宿主 Goroutine 中并发执行，互不干扰。`MiniExecutor` 内部持有读写锁保护符号表。
+*   **物理分发能力**：脚本蓝图（AST）完全可序列化为 JSON。你可以在中心节点编译脚本，通过网络分发到任意边缘节点，实现零成本恢复执行。
+*   **资源防泄漏**：内置指令计数器 (`StepLimit`)、上下文感知 (`context.Context`) 和严格的句柄 (Handle) 自动回收机制。即便脚本 Panic，打开的文件描述符也会在会话结束时被强制销毁。
 *   **易扩展的 FFI**：通过附带的 `ffigen` 工具，极速生成自定义的宿主-脚本绑定。
 
 ---
@@ -102,87 +103,30 @@ func main() {
 
 通过 `Var.Interface()` 方法，你可以将执行结果递归地转换回 Go 原生的 `map[string]any` 或 `[]any`。
 
-### 4. 代码片段执行与跨包库调用
+### 4. 代码片段执行与符号注入 (Snippet Mode)
 
-`go-mini` 支持将脚本作为“逻辑库”预加载，并通过 `Execute` 执行多行代码片段。
+`go-mini` 支持执行不完整的代码片段，并能自动“偷取”已注册模块的符号。
 
 ```go
 func main() {
     executor := engine.NewMiniExecutor()
 
-    // 1. 编译并注册一个不带 main 的库
+    // 1. 注册一个工具库
     libProg, _ := executor.NewRuntimeByGoCode(`
         package utils
+        type Point struct { X, Y int }
         func Add(a, b int) int { return a + b }
     `)
-    executor.RegisterModule("math", libProg)
+    executor.RegisterModule("utils", libProg)
 
-    // 2. 执行代码片段，直接 import 已注册的模块
+    // 2. 执行代码片段，它可以识别 Point 类型和 Add 函数
     code := `
-        import "math"
-        res := math.Add(x, 100)
+        p := utils.Point{X: 1, Y: 2}
+        res := utils.Add(p.X, 100)
         return res
     `
-    // 注：代码片段中的 return 会被捕获到结果中
-}
-```
-
-### 4. 使用标准库
-
-`go-mini` 默认是“空载”的（没有任何外部能力）。如果你需要让脚本打印日志、读取文件或解析 JSON，你需要注入标准库。
-
-```go
-package main
-
-import (
-	"context"
-	engine "gopkg.d7z.net/go-mini/core"
-)
-
-func main() {
-	executor := engine.NewMiniExecutor()
-	
-	// 注入 fmt, os, io, json, time 等标准库的 FFI 绑定
-	executor.InjectStandardLibraries()
-
-	code := `
-	package main
-	import "os"
-	import "fmt"
-
-	func main() {
-		// 使用 os.Create 创建文件，返回 Result<Ptr<File>>
-		res := os.Create("hello.txt")
-		if res.err != nil {
-			panic(res.err)
-		}
-		f := res.val
-
-		// 面向对象风格的方法调用：写入数据
-		f.Write([]byte("Hello from Go-Mini OOP!"))
-		
-		// 也可以使用扩展的 fmt 包写入句柄
-		fmt.Fprintf(f, "Formatted count: %d", 100)
-		
-		// 关闭文件
-		f.Close()
-
-		// 使用 io 包读取全量数据
-		openRes := os.Open("hello.txt")
-		dataRes := io.ReadAll(openRes.val)
-		fmt.Println("Content:", string(dataRes.val))
-		
-		// 环境变量操作
-		os.Setenv("SCRIPT_RUN", "true")
-		fmt.Println("Env:", os.Getenv("SCRIPT_RUN"))
-
-		// 清理
-		os.Remove("hello.txt")
-	}
-	`
-
-	prog, _ := executor.NewRuntimeByGoCode(code)
-	_ = prog.Execute(context.Background())
+    // engine.Execute 会自动注入符号并执行 Check 语义校验
+    _ = executor.Execute(context.Background(), code, nil)
 }
 ```
 
@@ -220,7 +164,15 @@ err := prog.Execute(ctx)
 
 ### 3. 资源自动回收 (Defer & Handle)
 
-宿主的重量级资源（如文件）在 VM 中以 `TypeHandle`（一个 ID）的形式存在。即使脚本中途 Panic 或被强制中断，引擎也会在退出时自动通知宿主销毁所有分配的 Handle，绝不泄漏宿主 FD。
+宿主的重量级资源（如文件）在 VM 中以 `TypeHandle`（一个 ID）的形式存在。
+**三层回收保障：**
+1. **显式 Defer**: 脚本内部的 `defer f.Close()` 遵循 Go 标准语义。
+2. **会话兜底**: `Execute/Eval` 结束时，Session 记录的所有 `ActiveHandles` 会被强制回收。
+3. **GC 最终防线**: 利用 Go 1.24 `runtime.AddCleanup`，当变量被销毁且 GC 时自动释放物理资源。
+
+### 4. 递归分配防御
+
+为了防止脚本通过构造循环引用的结构体 AST 来耗尽宿主内存，`initializeType` (即 `new` 操作) 拥有 **10 层最大深度限制**。超过限额的嵌套将返回 `nil`。
 
 ---
 
@@ -246,32 +198,8 @@ type Database interface {
 
 ### 步骤 2：设计数据交换语义
 `ffigen` 根据你的接口参数和返回类型自动决定数据交换方式：
-*   **值语义 (T)**：如果方法返回或接收结构体值，`ffigen` 会触发全量二进制序列化。这适用于纯数据对象。注意：脚本内定义的结构体对应这些对象时采用引用语义。
-*   **句柄语义 (*T)**：如果方法返回或接收指针，`ffigen` 会将其自动注册为 `TypeHandle` (uint32 ID)。VM 无法直接访问其内部字段，只能通过 FFI 方法操作。这适用于有状态的资源（如数据库连接、文件描述符）。
-
-### 步骤 3：生成绑定代码
-使用 `ffigen` 工具：
-
-```bash
-go run ./cmd/ffigen -pkg mylib -out mylib_ffigen.go interface.go
-```
-
-### 步骤 3：实现并注册
-```go
-// 宿主逻辑
-type MyDatabaseImpl struct {}
-func (db *MyDatabaseImpl) GetUser(id int64) (string, error) { return "Alice", nil }
-func (db *MyDatabaseImpl) SaveData(data []byte) error { return nil }
-
-func main() {
-	executor := engine.NewMiniExecutor()
-
-	// 使用生成的精简注册函数
-	mylib.RegisterDatabase(executor, &MyDatabaseImpl{}, executor.HandleRegistry())
-}
-```
-现在脚本里就可以 `import "db"` 并直接调用 `db.GetUser(1)` 了。
-
+*   **值语义 (T)**：如果方法返回或接收结构体值，`ffigen` 会触发全量二进制序列化。注意：脚本内定义的结构体对应这些对象时采用引用语义。
+*   **句柄语义 (*T)**：如果方法返回或接收指针，`ffigen` 会将其自动注册为 `TypeHandle` (uint32 ID)。VM 无法直接访问其内部字段，只能通过 FFI 方法操作。
 
 ---
 
@@ -280,35 +208,27 @@ func main() {
 `go-mini` 支持绝大部分常用的 Go 过程式和面向对象语法：
 
 ### 1. 基础与数据类型
-*   **基本数据类型**：`int` (规范为 `Int64`), `int64`, `float64` (规范为 `Float64`), `bool` (规范为 `Bool`), `string` (规范为 `String`), `byte`, `[]byte` (规范为 `TypeBytes`), `any` (规范为 `Any`)。
-*   **容器类型**：动态数组/切片 (`[]T`, 映射为 `Array<T>`)，动态字典 (`map[string]T`, 映射为 `Map<String, T>`)。
-*   **结构体**：支持自定义 `type struct { ... }` 及其复合字面量初始化（内部以 `TypeMap` 存储）。
-*   **类型转换**：内置了 `Int64()`, `Float64()`, `String()`, `TypeBytes()` 用于基础类型间的显式转换（兼容 Go 风格的小写函数名）。
+*   **基本数据类型**：`int`, `int64`, `float64`, `bool`, `string`, `byte`, `[]byte`, `any`。
+*   **容器类型**：动态数组/切片 (`[]T`)，动态字典 (`map[string]T`)。
+*   **内建分配器**：
+    - `make(T, len, cap)`：支持数组和 Map。
+    - `new(T)`：返回深度初始化的零值变量。对于结构体返回引用语义对象（Map 模拟），对于基础类型返回零值（值语义）。
+*   **类型转换**：内置了 `Int64()`, `Float64()`, `String()`, `TypeBytes()`。
 
-### 2. 函数与面向对象 (OOP)
-*   **函数定义**：支持标准的 `func` 定义，包括多参数和多返回值。
-*   **变长参数 (Variadic)**：支持定义和调用接收不定数量参数的函数，例如 `func sum(args ...int) int`。
-*   **方法接收者 (Method Receivers)**：完全支持为结构体定义方法，例如 `func (p Person) GetAge() int`，支持通过 `p.GetAge()` 调用（引擎底层采用无反射的轻量级路由，性能极高）。
+### 2. 引用语义 (重要)
+为了极致的高性能与物理隔离，脚本内的复合类型（Struct, Array, Map）采用**隐式引用语义**。
+```go
+p1 := Point{X: 1}
+p2 := p1 // p2 与 p1 共享底层数据
+p2.X = 100
+// 此时 p1.X 也是 100
+```
+这在行为上完美契合了 Go 语言通过指针操作结构体的习惯，但在底层彻底消除了指针算术风险。
 
-### 3. 控制流与变量操作
-*   **变量声明**：支持标准 `var` 声明和短变量声明 `:=`（支持类型自动推导）。
-*   **多变量解构赋值**：支持通过 `a, b := f()` 来解构函数的多返回值，也支持复杂的混合赋值分发（如 `arr[1], p.X = 10, 20`）。
-*   **自增与自减**：`++` 和 `--`（不仅支持普通变量，还支持结构体成员 `p.Age++` 和数组/Map 索引）。
-*   **条件与循环**：
-    *   `if / else`
-    *   `for` (经典三段式)
-    *   `for ... range` (支持遍历数组和字典)
-    *   `switch / case / default`
-    *   `break / continue`
+### 3. 函数与控制流
+*   **函数定义**：支持标准的 `func` 定义、多参数、多返回值、变长参数 (`...any`)。
+*   **匿名函数与闭包**：支持 `func() { ... }` 捕获外部环境变量。
+*   **错误处理**：支持 `panic()` 抛出异常，支持原生 `defer func() { recover() }()` 截获异常。
+*   **循环与分支**：完全支持 `if/else`, `for`, `for...range`, `switch/case`, `break/continue`。
 
-### 4. 高级操作与错误处理
-*   **引用语义**：**重要**。为了性能优化，脚本内定义的结构体和数组采用**引用语义**。赋值（`a := b`）或将对象作为方法接收者时，修改其中一个变量会影响另一个。
-*   **Context 数据传递**：执行脚本时通过 `Execute(ctx)` 传入的 Context 会自动透传给所有带 `context.Context` 参数的 FFI 方法。这允许宿主程序动态向脚本调用链注入数据（通过 `context.WithValue`）。
-*   **时间与计算**：`time` 标准库支持 `time.UnixNano()` 和 `time.Since(ns)`，允许脚本进行高精度的执行时间统计。
-*   **内存预分配**：支持通过 `make([]int, len, cap)` 或 `make(map[string]any)` 预分配内存。
-*   **动态集合操作**：内建支持 `append(slice, ...items)` 用于向数组追加元素，支持 `delete(map, key)` 用于从字典中移除键值对。
-*   **模块与包加载系统**：支持 `import "pkg"`。执行器内置了真正的动态模块加载器，允许脚本引用其他脚本文件，共享导出（首字母大写）的常量、变量、结构体和函数。
-*   **错误处理**：对于业务预期错误，可通过标准的 `Result` 对象 (`res.val`, `res.err`) 与多变量解构完美结合处理。对于致命异常，支持通过 `panic()` 抛出，并且完全支持原生 Go 语法的 `defer func() { recover() }()` 在脚本层级截获异常，防止局部错误导致整个任务崩溃。底层 AST 亦支持跨语言的 `Try-Catch` 词法异常原语。
-*   **资源清理**：支持 `defer` 语句，执行顺序遵循标准的 LIFO（后进先出）。
-
-*(注意：由于绝对隔离原则，脚本中不支持并发原语如 `go`, `chan`, `select`，严禁使用 `&` 和 `*` 进行原生指针算术计算。)*
+*(注意：脚本中不支持并发原语如 `go`, `chan`, `select`，严禁使用原生指针算术计算。)*

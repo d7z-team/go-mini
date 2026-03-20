@@ -66,10 +66,18 @@ go-mini/
 ### VI. 无状态执行与并发安全 (Stateless Execution & Concurrency Safety)
 *   **规则**: `Executor` 必须是绝对无状态的只读蓝图。严禁在 `Executor` 结构体中添加任何特定于单次执行的运行时状态。
 *   **实现**: 所有单次执行的可变状态（如指令计数器 `stepCount`、活跃句柄列表 `activeHandles`、模块缓存 `moduleCache` 等）必须下沉并封装到 `StackContext` (Session) 中。每次调用 `Execute` 都必须在本地栈上创建一个全新的、相互隔离的 `StackContext`，以确保宿主层多协程并发调用的绝对线程安全。
+*   **并发保护**: `MiniExecutor`（宿主层容器）在动态注册模块或 FFI 路由时，必须持有 `sync.RWMutex` 以防止并发 Map 读写崩溃。
 
 ### VII. AST JSON 双向对称性 (AST JSON Symmetry)
 *   **规则**: 所有的 AST 节点必须 100% 支持 JSON 序列化与反序列化。禁止存在只能从 Go 源码转换而来，却无法从 JSON 恢复的“幽灵”节点。
 *   **实现**: 当在 `core/ast` 目录下新增或修改任何实现了 `Node`、`Expr` 或 `Stmt` 接口的结构体时，不仅要确保其包含正确的 `json` struct tags，还**必须强制在 `core/parser.go` 的 `unmarshalNodeData` 或 `parseExpr` 的 `switch` 分支中实现对应的反序列化逻辑**。这是引擎能够支持跨进程“物理级编译与执行分离”的基石。
+
+### VIII. 资源生命周期自动回收 (Automatic Handle Cleanup)
+*   **规则**: 任何执行会话产生的宿主句柄（Handle）必须有明确的生命周期终点。
+*   **兜底**: `Execute` 和 `Eval` 接口必须在 `defer` 中显式清理 `ActiveHandles` 和运行 `RunDefers()`，防止因脚本异常导致的系统资源（如文件描述符 FD）泄露。
+
+### IX. 递归初始化防御 (Recursive Initialization Defense)
+*   **规则**: 运行时进行类型分配（如 `new`）时，递归深度严禁超过 10 层，以防止恶意的循环结构体定义导致宿主 Stack Overflow。
 
 ---
 
@@ -79,16 +87,17 @@ go-mini/
 
 ### A. 执行引擎修改 (`core/runtime`)
 1.  **类型安全第一**: 在添加新的操作符或内置函数时，**始终**使用 `runtime.Var` 上的安全访问器 (`v.ToInt()`, `v.ToFloat()`, `v.ToBool()`, `v.ToBytes()`)。在没有断言 `v.VType == TypeInt` 的情况下，绝不直接读取 `v.I64`。
-2.  **资源限制**: 每一个新的 AST `Stmt` 评估循环都必须遵守 `StepLimit` (指令计数器)，并检查 `ctx.Context.Err()`，以防止 CPU 耗尽和死循环。
-3.  **Defer & Panic**: 确保任何新的执行作用域在退出时都正确调用了 `ctx.Stack.RunDefers()`，以防止宿主机文件描述符 (FD) 泄漏。
+2.  **Nil 安全判定**: 在 `evalComparison` 或 `evalIntrinsic` 中添加逻辑时，必须通过全局助手函数 `isEmptyVar` 进行 Nil 安全判定，防止宿主 Panic。
+3.  **资源限制**: 每一个新的 AST `Stmt` 评估循环都必须遵守 `StepLimit` (指令计数器)，并检查 `ctx.Context.Err()`，以防止 CPU 耗尽和死循环。
+4.  **Defer & Panic**: 确保任何新的执行作用域在退出时都正确调用了 `ctx.Stack.RunDefers()`，以防止宿主机文件描述符 (FD) 泄漏。
 
 ### B. AST & 解析器修改 (`core/ast` & `core/parser.go`)
-1.  **对称性**: 如果你添加了一个新的 AST 节点 (例如 `NewStmt`)，你必须同步更新：
+1.  **对称性**: 如果你添加了一个新的 AST node (例如 `NewStmt`)，你必须同步更新：
     *   `core/ast/ast_stmt.go` (结构体定义、`Check()`, `Optimize()`)。
     *   `core/ffigo/converter.go` (将 Go AST 映射为 Mini AST)。
     *   `core/parser.go` (`unmarshalNodeData` JSON 反序列化)。
     *   `core/runtime/executor.go` (执行逻辑)。
-2.  **没有“幽灵”节点**: 不要将 `todo: expr %T` 或 `panic("not implemented")` 遗留在执行器中。如果一个 AST 节点存在，它要么必须是完全可执行的，要么必须被验证器严格阻拦。
+2.  **Snippet 模式维护**: 若新增了某种 AST 节点类型，必须确保 `MiniExecutor.Execute` 的符号注入逻辑能完整覆盖到它。
 
 ### C. 添加或修改标准库 (`core/ffilib`)
 1.  **目录结构**: 创建目录 (例如 `core/ffilib/netlib`)。
@@ -98,8 +107,9 @@ go-mini/
 3.  **生成指令**: 在 `interface.go` 首行添加 `//go:generate` 指令：
     `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -out <name>_ffigen.go interface.go`
 4.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。
-5.  **触发生成**: 运行 `make gen`。
-6.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中使用生成的简洁 API 注入（如 `RegisterOS(o, impl, reg)`）。
+5.  **元数据安全**: Bridge 层**严禁信任** `Var.Type` 字符串，必须基于 `VType` 枚举进行严格的硬断言。
+6.  **触发生成**: 运行 `make gen`。
+7.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中使用生成的简洁 API 注入（如 `RegisterOS(o, impl, reg)`）。
 
 ### D. 测试 (`core/e2e`)
 1.  **强制要求**: 每个 Bug 修复或功能实现都必须在 `core/e2e/` 中附带一个测试。
