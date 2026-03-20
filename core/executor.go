@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
@@ -61,6 +62,7 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
 		ActiveHandles:  make([]runtime.HandleRef, 0),
+		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
@@ -420,6 +422,7 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
 		ActiveHandles:  make([]runtime.HandleRef, 0),
+		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
@@ -525,6 +528,7 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
 		ActiveHandles:  make([]runtime.HandleRef, 0),
+		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
@@ -589,6 +593,7 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
 		ActiveHandles:  make([]runtime.HandleRef, 0),
+		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {

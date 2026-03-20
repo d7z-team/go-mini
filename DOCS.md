@@ -176,6 +176,52 @@ err := prog.Execute(ctx)
 
 ---
 
+## 🐛 源码级调试器 (Debugger)
+
+`go-mini` 内置了一个零开销、基于阻塞 Channel 实现的源码级调试器。它支持**行断点**、**单步执行 (Step Into)**、**随时暂停/恢复**以及**变量快照导出**，完美支持循环体内的调试以及代码片段 (Snippet) 的相对行号调试。
+
+### 使用方法
+
+通过将 `debugger.Session` 注入到执行的 `Context` 中即可开启调试模式：
+
+```go
+import "gopkg.d7z.net/go-mini/core/debugger"
+
+func main() {
+    // ... 初始化 prog ...
+
+    dbg := debugger.NewSession()
+    dbg.AddBreakpoint(5) // 在 b := 20 处暂停
+
+    ctx := debugger.WithDebugger(context.Background(), dbg)
+
+    // 启动执行
+    go prog.Execute(ctx)
+
+    // 随时暂停执行
+    // 宿主调用 RequestPause 后，VM 将在执行到下一条语句时自动触发事件并进入阻塞状态
+    dbg.RequestPause() 
+
+    // 5. 监听调试事件并控制执行
+    for event := range dbg.EventChan {
+        fmt.Printf("程序暂停在: %d 行\n", event.Loc.L)
+
+        // 打印当前作用域的所有变量快照
+        for name, val := range event.Variables {
+            fmt.Printf("变量 %s = %v\n", name, val)
+        }
+
+        // 发送控制指令解除阻塞 (即恢复执行)
+        // 可以发送 debugger.CmdContinue 或 debugger.CmdStepInto
+        dbg.CommandChan <- debugger.CmdContinue 
+    }
+    }
+    ```
+
+> **注意**：调试器仅对包含**语句 (Statement)** 的执行模式 (`NewRuntimeByGoCode` 和 `Execute`) 有效。由于纯表达式 (`Eval` 模式，如 `1+2`) 底层瞬间求值不包含语句骨干，因此不会被调试器拦截（除非表达式内部调用了用户自定义的脚本函数）。
+
+---
+
 ## 🛠️ 自定义扩展：使用 FFI 生成器 (`ffigen`)
 
 如果你想让脚本调用你自己的 Go 函数（例如操作数据库、请求网络），你需要使用 `ffigen` 工具。

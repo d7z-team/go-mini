@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -94,6 +95,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		StepLimit:      e.StepLimit,
 		ModuleCache:    make(map[string]*Var),
 		LoadingModules: make(map[string]bool),
+		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
@@ -204,6 +206,25 @@ func (e *Executor) ExecuteStmts(ctx *StackContext, children []ast.Stmt) error {
 		if err := ctx.Context.Err(); err != nil {
 			return err
 		}
+
+		// --- Debugger Hook ---
+		if ctx.Debugger != nil {
+			loc := child.GetBase().Loc
+			if loc != nil {
+				if ctx.Debugger.ShouldTrigger(loc.L) {
+					ctx.Debugger.SetStepping(false)
+					ctx.Debugger.EventChan <- &debugger.Event{
+						Loc:       loc,
+						Variables: ctx.Stack.DumpVariables(),
+					}
+					cmd := <-ctx.Debugger.CommandChan
+					if cmd == debugger.CmdStepInto {
+						ctx.Debugger.SetStepping(true)
+					}
+				}
+			}
+		}
+		// --- Debugger Hook 结束 ---
 
 		if ctx.Interrupt() {
 			return nil

@@ -8,6 +8,7 @@ import (
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -311,11 +312,28 @@ type StackContext struct {
 	ActiveHandles  []HandleRef
 	ModuleCache    map[string]*Var
 	LoadingModules map[string]bool
+
+	// 调试会话 (Debugger Session)
+	Debugger *debugger.Session
 }
 
 const (
 	DefaultMaxStackDepth = 50000
 )
+
+func (s *Stack) DumpVariables() map[string]string {
+	result := make(map[string]string)
+	curr := s
+	for curr != nil {
+		for name, variable := range curr.MemoryPtr {
+			if _, exists := result[name]; !exists {
+				result[name] = fmt.Sprintf("%v", variable.Interface())
+			}
+		}
+		curr = curr.Parent
+	}
+	return result
+}
 
 func (c *StackContext) ScopeApply(scope string) {
 	newDepth := 1
