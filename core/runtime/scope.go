@@ -14,6 +14,38 @@ import (
 
 type VarType byte
 
+func (v VarType) String() string {
+	switch v {
+	case TypeInt:
+		return "Int64"
+	case TypeFloat:
+		return "Float64"
+	case TypeString:
+		return "String"
+	case TypeBytes:
+		return "TypeBytes"
+	case TypeBool:
+		return "Bool"
+	case TypeMap:
+		return "Map"
+	case TypeArray:
+		return "Array"
+	case TypeHandle:
+		return "Handle"
+	case TypeResult:
+		return "Result"
+	case TypeModule:
+		return "Module"
+	case TypeClosure:
+		return "Closure"
+	case TypeCell:
+		return "Cell"
+	case TypeAny:
+		return "Any"
+	}
+	return "Unknown"
+}
+
 const (
 	TypeInt   VarType = iota // Always int64
 	TypeFloat                // Always float64
@@ -315,6 +347,11 @@ type StackContext struct {
 
 	// 调试会话 (Debugger Session)
 	Debugger *debugger.Session
+
+	// 迭代执行器状态 (Iterative Executor State)
+	TaskStack  []Task
+	ValueStack *ValueStack
+	UnwindMode UnwindMode
 }
 
 const (
