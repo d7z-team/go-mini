@@ -35,8 +35,8 @@ func main() {
 	t.Logf("DefNode at 2:5: %s (%T)", defNode.GetBase().Meta, defNode)
 
 	refs := ast.FindAllReferences(prog, defNode, parentMap)
-	
-	// 预期引用点: 
+
+	// 预期引用点:
 	// 1. Line 2 (定义本身目前也被计入)
 	// 2. Line 4 (a = 2)
 	// 3. Line 5 (print(a))

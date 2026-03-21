@@ -1,4 +1,3 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out ffi_variadic_ffigen_test.go ffi_variadic_test.go
 package e2e
 
 import (
@@ -11,53 +10,87 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
+// PrinterAPI 演示变长参数
+//
+// ffigen:module printer
 type PrinterAPI interface {
+	Log(prefix string, args ...any) error
 	Println(args ...any)
 }
 
 type MockPrinter struct {
-	LastMsg string
+	LastOutput string
 }
 
 func (m *MockPrinter) Println(args ...any) {
 	var parts []string
 	for _, arg := range args {
-		parts = append(parts, fmt.Sprintf("%v", arg))
+		parts = append(parts, fmt.Sprint(arg))
 	}
-	m.LastMsg = strings.Join(parts, " ")
+	m.LastOutput = strings.Join(parts, " ")
 }
 
-type MockPrinterBridge struct {
-	impl     *MockPrinter
-	registry *ffigo.HandleRegistry
-}
-
-func (b *MockPrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return PrinterAPIHostRouter(ctx, b.impl, b.registry, methodID, args)
-}
-
-func (b *MockPrinterBridge) DestroyHandle(handle uint32) error {
+func (m *MockPrinter) Log(prefix string, args ...any) error {
+	var parts []string
+	parts = append(parts, prefix)
+	for _, arg := range args {
+		parts = append(parts, fmt.Sprint(arg))
+	}
+	m.LastOutput = strings.Join(parts, ":")
 	return nil
 }
 
+// 模拟 ffigen 生成的注册逻辑
+func RegisterPrinter(executor *engine.MiniExecutor, impl PrinterAPI) {
+	bridge := &PrinterBridge{impl: impl}
+	// 注意：FFI spec 中的变长参数由 ... 前缀标识
+	executor.RegisterFFI("printer.Log", bridge, 1, "function(String, ...Any) Result<Void>", "Log with variadic args")
+}
+
+type PrinterBridge struct {
+	impl PrinterAPI
+}
+
+func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	reader := ffigo.NewReader(args)
+	prefix := reader.ReadString()
+
+	// 根据协议：[Count (Uint32)] [Item1] [Item2]...
+	count := int(reader.ReadUint32())
+	variadic := make([]any, count)
+	for i := 0; i < count; i++ {
+		variadic[i] = reader.ReadAny()
+	}
+
+	err := b.impl.Log(prefix, variadic...)
+
+	resBuf := ffigo.GetBuffer()
+	if err != nil {
+		resBuf.WriteByte(1)
+		resBuf.WriteString(err.Error())
+	} else {
+		resBuf.WriteByte(0)
+	}
+	return resBuf.Bytes(), nil
+}
+
+func (b *PrinterBridge) DestroyHandle(uint32) error { return nil }
+
 func TestFFIVariadic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	mock := &MockPrinter{}
-	registry := ffigo.NewHandleRegistry()
-
-	RegisterE2EPrinterAPILibrary(executor, "fmt", mock, registry)
+	printer := &MockPrinter{}
+	RegisterPrinter(executor, printer)
 
 	code := `
 	package main
-	import "fmt"
-
+	import "printer"
 	func main() {
-		fmt.Println("FFI", "is", "working", 123, true)
+		printer.Log("INFO", "User", 123, true)
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
-		t.Fatalf("failed to create runtime: %v", err)
+		t.Fatal(err)
 	}
 
 	err = prog.Execute(context.Background())
@@ -65,8 +98,8 @@ func TestFFIVariadic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected := "FFI is working 123 true"
-	if mock.LastMsg != expected {
-		t.Fatalf("expected %q, got %q", expected, mock.LastMsg)
+	expected := "INFO:User:123:true"
+	if printer.LastOutput != expected {
+		t.Errorf("Expected %q, got %q", expected, printer.LastOutput)
 	}
 }

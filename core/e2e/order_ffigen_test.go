@@ -1,0 +1,74 @@
+package e2e
+
+import (
+	"context"
+	"testing"
+
+	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffilib/ordertest"
+)
+
+func TestOrderFFIGen(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+	impl := ordertest.NewOrderImpl()
+
+	// 1. 注册模块级函数和方法集
+	for _, m := range ordertest.OrderService_FFI_Metadata {
+		if m.Name == "New" {
+			executor.RegisterFFI("order."+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		} else {
+			executor.RegisterFFI("__method_Order_"+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
+	}
+
+	code := `
+	package main
+	import "order"
+	import "fmt"
+
+	func main() {
+		// 1. 创建订单
+		res := order.New("ORD-FFIGEN")
+		if res.err != nil {
+			panic("New order failed: " + res.err)
+		}
+		
+		// 2. 获取句柄
+		o := res.val
+		
+		// 3. 添加商品
+		o.AddItem("Apple Vision Pro", 3499.0)
+		o.AddItem("MacBook Pro", 1999.0)
+		
+		// 4. 计算总价
+		totalRes := o.GetTotal()
+		total := totalRes.val
+		if total != 5498.0 {
+			panic("total mismatch")
+		}
+		
+		// 5. 关闭并验证
+		o.Close()
+		
+		// 6. 尝试在关闭后添加
+		res2 := o.AddItem("Broken", 1.0)
+		if res2.err == nil {
+			panic("should have caught error for closed order")
+		}
+		
+		fmt.Println("Complex Business Object Verified, Total:", total)
+	}
+	`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = prog.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}

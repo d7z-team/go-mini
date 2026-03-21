@@ -78,9 +78,9 @@ func main() {}`
 		name      string
 		defLine   int
 	}{
-		{4, 14, "param1", 3},   // param1 in localVar := ...
+		{4, 14, "param1", 3},    // param1 in localVar := ...
 		{4, 23, "globalVar", 2}, // globalVar in localVar := ... (in program root)
-		{6, 9, "i", 5},         // i in print(i) (loop var)
+		{6, 9, "i", 5},          // i in print(i) (loop var)
 		{6, 13, "localVar", 4},  // localVar in print(i + localVar)
 	}
 
@@ -90,7 +90,7 @@ func main() {}`
 			t.Errorf("At %d:%d: node not found", tt.line, tt.col)
 			continue
 		}
-		
+
 		ident, ok := node.(*ast.IdentifierExpr)
 		if !ok {
 			t.Errorf("At %d:%d: expected identifier %s, got %T (%s)", tt.line, tt.col, tt.name, node, node.GetBase().Meta)

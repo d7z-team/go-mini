@@ -253,7 +253,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		data := task.Data.(map[string]interface{})
 		oldStack := data["oldStack"].(*Stack)
 		hasReturn := data["hasReturn"].(bool)
-		
+
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
 			if hasReturn {
@@ -268,7 +268,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			}
 			return true, nil
 		}
-		
+
 		// If it's a panic, still restore the stack and continue unwinding
 		session.Stack = oldStack
 		if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
@@ -449,6 +449,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			for i, v := range rawElements {
 				if v != nil {
 					elements[i] = v.Copy()
+				} else {
+					elements[i] = nil
 				}
 			}
 		case TypeResult:
@@ -654,13 +656,22 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				name = string(member.Property)
 			} else {
 				receiver = obj
+				// 健壮的基础类型提取逻辑，消除 Ptr<T> 或 *T 带来的干扰，防止出现 "Result<" 这种残余
 				tName := string(obj.Type)
 				if tName == "" {
 					tName = obj.VType.String()
 				}
-				tName = strings.TrimPrefix(tName, "Ptr<")
-				tName = strings.TrimPrefix(tName, "*")
-				tName = strings.TrimSuffix(tName, ">")
+				for {
+					if strings.HasPrefix(tName, "Ptr<") && strings.HasSuffix(tName, ">") {
+						tName = tName[4 : len(tName)-1]
+						continue
+					}
+					if strings.HasPrefix(tName, "*") {
+						tName = tName[1:]
+						continue
+					}
+					break
+				}
 				name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
 			}
 		} else {
@@ -1457,7 +1468,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 					return e.assignToLHSDesc(session, &LHSMember{Obj: valVar, Property: desc.Property}, val)
 				}
 			}
-			return fmt.Errorf("type Handle does not support member assignment")
+			return errors.New("type Handle does not support member assignment")
 		case TypeAny:
 			if obj.Ref != nil {
 				if m, ok := obj.Ref.(*VMMap); ok {

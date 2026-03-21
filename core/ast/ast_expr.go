@@ -154,7 +154,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 	funcErr := c.Func.Check(ctx)
-	
+
 	// 无论函数名是否能解析成功，我们都必须校验参数，以便填充 LSP 所需的类型信息
 	var argsError bool
 
@@ -367,7 +367,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				m.Type = met
 				return nil
 			}
-		} else if strings.Contains(string(typeName), ".") {
+		} else if strings.Contains(typeName, ".") {
 			// 如果是跨包的结构体（例如 lib.Point），由于在隔离架构下不静态合并符号表，
 			// 在编译期无法得知其完整定义，因此放行作为动态成员访问
 			m.Type = "Any"

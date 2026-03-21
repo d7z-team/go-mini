@@ -147,8 +147,8 @@ func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte
 	r := a % bVal
 
 	buf := ffigo.GetBuffer()
-	buf.WriteInt64(q)
-	buf.WriteInt64(r)
+	buf.WriteAny(q)
+	buf.WriteAny(r)
 	return buf.Bytes(), nil
 }
 

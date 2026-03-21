@@ -156,7 +156,7 @@ func (v *findNodeVisitor) Visit(node Node) Visitor {
 	base := node.GetBase()
 	if base != nil && base.Loc != nil {
 		loc := base.Loc
-		
+
 		if isInside(v.targetLine, v.targetCol, loc) {
 			// 如果命中，记录该节点。由于 Walk 是深度优先遍历，
 			// 后命中的节点一定是更小的子节点，所以我们直接更新 bestNode。
@@ -229,7 +229,7 @@ func BuildParentMap(root Node) map[Node]Node {
 // ----------------------------------------------------------------------------
 
 // FindDefinition 根据标识符表达式查找其定义的原始位置
-func FindDefinition(root Node, target Node, parentMap map[Node]Node) Node {
+func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 	if target == nil || parentMap == nil {
 		return nil
 	}
@@ -264,7 +264,7 @@ func FindDefinition(root Node, target Node, parentMap map[Node]Node) Node {
 			return nil
 		}
 		typeName := objType.BaseName()
-		
+
 		// 优先检查是否是方法跳转
 		methodName := fmt.Sprintf("__method_%s_%s", typeName, t.Property)
 		if fn, ok := prog.Functions[Ident(methodName)]; ok {
@@ -276,7 +276,7 @@ func FindDefinition(root Node, target Node, parentMap map[Node]Node) Node {
 			return st
 		}
 		return nil
-		return nil
+
 	}
 
 	name := string(ident.Name)
@@ -383,7 +383,7 @@ func findInStmt(s Stmt, name string) Node {
 }
 
 // FindAllReferences 查找所有引用该定义的地方
-func FindAllReferences(root Node, def Node, parentMap map[Node]Node) []Node {
+func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 	var refs []Node
 	// 确保我们拿到的是真正的定义节点
 	if ident, ok := def.(*IdentifierExpr); ok {
@@ -404,7 +404,7 @@ func FindAllReferences(root Node, def Node, parentMap map[Node]Node) []Node {
 		if node == nil {
 			return true
 		}
-		
+
 		base := node.GetBase()
 		if base != nil && base.ID != "" {
 			if visitedIds[base.ID] {
@@ -412,7 +412,7 @@ func FindAllReferences(root Node, def Node, parentMap map[Node]Node) []Node {
 			}
 			visitedIds[base.ID] = true
 		}
-		
+
 		// 如果节点本身就是定义节点
 		if node == def {
 			refs = append(refs, node)
@@ -445,13 +445,13 @@ type HoverInfo struct {
 }
 
 // FindHoverInfo 获取符号的悬浮提示信息
-func FindHoverInfo(root Node, target Node, parentMap map[Node]Node) *HoverInfo {
+func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 	if target == nil {
 		return nil
 	}
 
 	var ident *IdentifierExpr
-	
+
 	// 针对不同类型的节点，寻找其核心标识符
 	switch t := target.(type) {
 	case *IdentifierExpr:

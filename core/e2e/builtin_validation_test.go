@@ -10,7 +10,7 @@ import (
 
 func TestInvalidMakeCompileError(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	
+
 	t.Run("String Literal as Type", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r == nil {

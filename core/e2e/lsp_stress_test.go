@@ -29,7 +29,7 @@ func main() {
 	_ = prog.Check(semanticCtx)
 
 	logs := validator.Logs()
-	
+
 	// 我们预期至少捕获到 4 个主要错误
 	expectedErrors := []string{
 		"UnknownType",
@@ -76,7 +76,7 @@ func main() {
 	if node == nil {
 		t.Fatal("Expected node at empty line, got nil")
 	}
-	
+
 	// 预期返回的是包含该空行的最接近的容器，即 BlockStmt
 	if node.GetBase().Meta != "block" {
 		t.Errorf("Expected block at empty line, got %s", node.GetBase().Meta)

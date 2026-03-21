@@ -58,7 +58,7 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 			if r.VType != TypeString && r.VType != TypeBytes {
 				return nil, fmt.Errorf("cannot concatenate %v to %v", r.VType, l.VType)
 			}
-			
+
 			// Both are bytes, return bytes
 			if l.VType == TypeBytes && r.VType == TypeBytes {
 				resB := make([]byte, len(l.B)+len(r.B))
@@ -744,7 +744,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				innerType = tStr[4 : len(tStr)-1]
 			}
 			val := e.initializeType(session, ast.GoMiniType(innerType), 0)
-			
+
 			// For internal "heap" simulation, we can use a non-zero handle ID.
 			// Since we only need it to be non-nil for the test, and ideally it should
 			// point to something that can be dereferenced or used later.
@@ -755,7 +755,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			}
 			internalID := uint32(hLen + 1000000)
 			session.AddHandle(nil, internalID)
-			
+
 			res := &Var{
 				VType:  TypeHandle,
 				Handle: internalID,
@@ -897,6 +897,19 @@ func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []
 	if err != nil {
 		return err
 	}
+
+	// Handle Tuple destructuring at push time
+	if res != nil && res.VType == TypeArray && ast.GoMiniType(route.Returns).IsTuple() {
+		// arr := res.Ref.(*VMArray)
+		// Push elements in reverse order so they are popped in correct order if needed,
+		// but wait, OpMultiAssign expects them in order?
+		// Actually, if we have q, r := math.DivMod(10, 3)
+		// The converter generates a MultiAssignmentStmt.
+		// OpMultiAssign pops the RHS value.
+		// If RHS is a TypeArray (Tuple), it will be destructured inside OpMultiAssign.
+		// So we SHOULD push it as a single Array.
+	}
+
 	session.ValueStack.Push(res)
 	return nil
 }

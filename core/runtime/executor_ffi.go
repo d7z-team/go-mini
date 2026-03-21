@@ -127,6 +127,12 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 			fVal, _ = v.ToFloat()
 		}
 		buf.WriteFloat64(fVal)
+	case typ == "Uint32" || typ == "uint32" || typ == "Int32" || typ == "int32":
+		iVal := int64(0)
+		if v != nil {
+			iVal, _ = v.ToInt()
+		}
+		buf.WriteUint32(uint32(iVal))
 	case typ.IsNumeric():
 		iVal := int64(0)
 		if v != nil {
@@ -159,9 +165,6 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 		arr := v.Ref.(*VMArray)
 		buf.WriteUint32(uint32(len(arr.Data)))
 		itemType, _ := typ.ReadArrayItemType()
-		if itemType == "" {
-			itemType = "Any"
-		}
 		for _, item := range arr.Data {
 			if err := e.serializeVar(buf, item, itemType); err != nil {
 				return err
@@ -185,6 +188,24 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 				}
 			}
 		}
+	case typ.IsTuple():
+		types, _ := typ.ReadTuple()
+		if v == nil || v.VType != TypeArray {
+			for range types {
+				buf.WriteAny(nil)
+			}
+			return nil
+		}
+		arr := v.Ref.(*VMArray)
+		for i, t := range types {
+			var arg *Var
+			if i < len(arr.Data) {
+				arg = arr.Data[i]
+			}
+			if err := e.serializeVar(buf, arg, t); err != nil {
+				return err
+			}
+		}
 	default:
 		// 结构体序列化
 		if name, ok := typ.StructName(); ok {
@@ -205,6 +226,11 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 				}
 				return nil
 			}
+		}
+		// Custom named types (like 'Order') that are handles
+		if v != nil && v.VType == TypeHandle {
+			buf.WriteUint32(v.Handle)
+			return nil
 		}
 		// 其他情况回退到 Any 动态序列化
 		e.serializeVarToAny(buf, v)
@@ -240,14 +266,14 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 		buf.WriteAny(v.Handle)
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
-		buf.WriteByte(8) // TypeTagArray
+		buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUint32(uint32(len(arr.Data)))
 		for _, item := range arr.Data {
 			e.serializeVarToAnyWithDepth(buf, item, depth+1)
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
-		buf.WriteByte(7) // TypeTagMap
+		buf.WriteByte(ffigo.TypeTagMap)
 		buf.WriteUint32(uint32(len(vmMap.Data)))
 		for k, val := range vmMap.Data {
 			buf.WriteString(k)
@@ -279,7 +305,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		}
 		buf := make([]byte, len(v))
 		copy(buf, v)
-		return &Var{VType: TypeBytes, B: buf}
+		return NewBytes(buf)
 	case bool:
 		return NewBool(v)
 	case uint32:
@@ -301,8 +327,9 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			res[i] = e.ToVar(session, raw, bridge)
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
+	default:
+		return &Var{VType: TypeAny, Ref: v}
 	}
-	return nil
 }
 
 func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (string, error) {
@@ -333,8 +360,10 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 		switch {
 		case typ == "String":
 			res = NewString(reader.ReadString())
-		case typ == "Int64" || typ == "Uint32":
+		case typ == "Int64" || typ == "int" || typ == "int64":
 			res = NewInt(reader.ReadInt64())
+		case typ == "Uint32" || typ == "uint32" || typ == "Int32" || typ == "int32":
+			res = NewInt(int64(reader.ReadUint32()))
 		case typ == "Float64":
 			res = NewFloat(reader.ReadFloat64())
 		case typ == "Bool":
@@ -381,9 +410,10 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			types, _ := typ.ReadTuple()
 			tupleData := make([]*Var, len(types))
 			for i, t := range types {
-				val, err := e.deserializeVar(session, reader, t, bridge)
-				if err != nil {
-					return nil, err
+				// Use ReadAny/ToVar to handle tagged data from bridge
+				val := e.ToVar(session, reader.ReadAny(), bridge)
+				if val != nil {
+					val.Type = t
 				}
 				tupleData[i] = val
 			}
@@ -403,6 +433,17 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 					res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
 					break
 				}
+			}
+			// Fallback: If it's an unknown named type, assume it's an opaque handle (Uint32)
+			if reader.Available() >= 4 {
+				id := reader.ReadUint32()
+				var h *VMHandle
+				if id != 0 {
+					h = NewVMHandle(id, bridge)
+					session.AddHandle(bridge, id)
+				}
+				res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
+				break
 			}
 			return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 		}

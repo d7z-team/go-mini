@@ -138,6 +138,8 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		fmt.Fprintf(sb, "\t%s.WriteAny(%s)\n", bufName, prefix)
 	case "bool", "Bool":
 		fmt.Fprintf(sb, "\t%s.WriteBool(%s)\n", bufName, prefix)
+	case "float64", "Float64":
+		fmt.Fprintf(sb, "\t%s.WriteFloat64(float64(%s))\n", bufName, prefix)
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUint32(uint32(len(%s)))\n", bufName, prefix)
@@ -208,6 +210,8 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 		fmt.Fprintf(sb, "\t%s = %s.ReadBytes()\n", varName, readerName)
 	case "bool", "Bool":
 		fmt.Fprintf(sb, "\t%s = %s.ReadBool()\n", varName, readerName)
+	case "float64", "Float64":
+		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
 			fmt.Fprintf(sb, "\t\trawVal := %s.ReadAny()\n", readerName)
@@ -393,7 +397,16 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					continue
 				}
 				for _, pName := range param.Names {
-					emitWrite(&sb, pName.Name, typeToString(param.Type), structs, "buf", false)
+					pType := typeToString(param.Type)
+					if _, ok := param.Type.(*ast.Ellipsis); ok {
+						itemType, _ := readArrayItemType(pType)
+						fmt.Fprintf(&sb, "\tbuf.WriteUint32(uint32(len(%s)))\n", pName.Name)
+						fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
+						emitWrite(&sb, "item", itemType, structs, "buf", false)
+						fmt.Fprintf(&sb, "\t}\n")
+					} else {
+						emitWrite(&sb, pName.Name, pType, structs, "buf", false)
+					}
 				}
 			}
 		}
@@ -715,6 +728,8 @@ func zeroValue(t string) string {
 		return "\"\""
 	case "Bool", "bool":
 		return "false"
+	case "Float64", "float64":
+		return "0.0"
 	case "TypeBytes":
 		return "nil"
 	default:

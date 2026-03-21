@@ -74,9 +74,9 @@ func (i Ident) Valid(ctx *ValidContext) bool {
 // Position 定义物理源码位置
 type Position struct {
 	F  string `json:"f,omitempty"`  // File: 跨文件时使用
-	L  int    `json:"l"`           // Line: 物理起始行号 (1-based)
-	C  int    `json:"c,omitempty"` // Col: 物理起始列号 (1-based, 可选)
-	EL int    `json:"el"`          // EndLine: 物理结束行号 (1-based)
+	L  int    `json:"l"`            // Line: 物理起始行号 (1-based)
+	C  int    `json:"c,omitempty"`  // Col: 物理起始列号 (1-based, 可选)
+	EL int    `json:"el"`           // EndLine: 物理结束行号 (1-based)
 	EC int    `json:"ec,omitempty"` // EndCol: 物理结束列号 (1-based, 可选)
 }
 

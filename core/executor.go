@@ -149,6 +149,9 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		LoadingModules: make(map[string]bool),
 		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
 		Debugger:       debugger.GetDebugger(ctx),
+		TaskStack:      make([]runtime.Task, 0, 64),
+		ValueStack:     &runtime.ValueStack{},
+		UnwindMode:     runtime.UnwindNone,
 	}
 
 	defer func() {
