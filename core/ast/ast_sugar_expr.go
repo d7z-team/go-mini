@@ -147,7 +147,9 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if b.Operator == "And" || b.Operator == "Or" || b.Operator == "Eq" || b.Operator == "Neq" ||
-		b.Operator == "Lt" || b.Operator == "Gt" || b.Operator == "Le" || b.Operator == "Ge" {
+		b.Operator == "Lt" || b.Operator == "Gt" || b.Operator == "Le" || b.Operator == "Ge" ||
+		b.Operator == "&&" || b.Operator == "||" || b.Operator == "==" || b.Operator == "!=" ||
+		b.Operator == "<" || b.Operator == ">" || b.Operator == "<=" || b.Operator == ">=" {
 		b.Type = "Bool"
 	} else {
 		// 在隔离架构下，标量运算结果类型等于左操作数类型（规约后）

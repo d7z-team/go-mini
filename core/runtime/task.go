@@ -78,12 +78,12 @@ type RangeData struct {
 }
 
 type ImportData struct {
-	Path        string
-	OldExecutor interface{}
-	OldStack    *Stack
-	OldTaskStack []Task
+	Path          string
+	OldExecutor   interface{}
+	OldStack      *Stack
+	OldTaskStack  []Task
 	OldValueStack *ValueStack
-	ModSession  *StackContext
+	ModSession    *StackContext
 }
 
 // ValueStack represents a stack of values for expression evaluation
@@ -122,16 +122,16 @@ func (vs *ValueStack) Clear() {
 // Data structures for Task Data field
 
 // LHS Descriptors
-type LHS_Env struct {
+type LHSEnv struct {
 	Name string
 }
 
-type LHS_Index struct {
+type LHSIndex struct {
 	Obj   *Var
 	Index *Var
 }
 
-type LHS_Member struct {
+type LHSMember struct {
 	Obj      *Var
 	Property string
 }

@@ -27,7 +27,9 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
-		return fmt.Errorf("变量 %s 不存在", c.Name)
+		err := fmt.Errorf("变量 %s 不存在", c.Name)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	c.Type = vtp

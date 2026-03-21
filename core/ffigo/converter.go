@@ -306,10 +306,6 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		}
 		return res
 	case *ast.AssignStmt:
-		if len(st.Rhs) != 1 {
-			return nil
-		}
-		rhs := st.Rhs[0]
 		if st.Tok == token.DEFINE {
 			var children []miniast.Stmt
 			var lhsExprs []miniast.Expr
@@ -326,47 +322,82 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 					})
 				}
 			}
+
+			var rhsExpr miniast.Expr
+			if len(st.Rhs) == 1 {
+				rhsExpr = c.convertExpr(st.Rhs[0])
+			} else {
+				// Create a composite expr for multiple RHS values
+				comp := &miniast.CompositeExpr{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
+					Kind:     "Array<Any>",
+				}
+				for _, r := range st.Rhs {
+					comp.Values = append(comp.Values, miniast.CompositeElement{Value: c.convertExpr(r)})
+				}
+				rhsExpr = comp
+			}
+
 			if len(lhsExprs) == 1 {
 				children = append(children, &miniast.AssignmentStmt{
 					BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
 					LHS:      lhsExprs[0],
-					Value:    c.convertExpr(rhs),
+					Value:    rhsExpr,
 				})
 			} else {
 				children = append(children, &miniast.MultiAssignmentStmt{
 					BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
 					LHS:      lhsExprs,
-					Value:    c.convertExpr(rhs),
+					Value:    rhsExpr,
 				})
 			}
 			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: true, Children: children}
 		}
 		if st.Tok == token.ASSIGN {
+			var rhsExpr miniast.Expr
+			if len(st.Rhs) == 1 {
+				rhsExpr = c.convertExpr(st.Rhs[0])
+			} else {
+				comp := &miniast.CompositeExpr{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
+					Kind:     "Array<Any>",
+				}
+				for _, r := range st.Rhs {
+					comp.Values = append(comp.Values, miniast.CompositeElement{Value: c.convertExpr(r)})
+				}
+				rhsExpr = comp
+			}
+
 			if len(st.Lhs) == 1 {
-				return &miniast.AssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)}, LHS: c.convertExpr(st.Lhs[0]), Value: c.convertExpr(rhs)}
+				return &miniast.AssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)}, LHS: c.convertExpr(st.Lhs[0]), Value: rhsExpr}
 			}
 			var lhsExprs []miniast.Expr
 			for _, l := range st.Lhs {
 				lhsExprs = append(lhsExprs, c.convertExpr(l))
 			}
-			return &miniast.MultiAssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)}, LHS: lhsExprs, Value: c.convertExpr(rhs)}
+			return &miniast.MultiAssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)}, LHS: lhsExprs, Value: rhsExpr}
 		}
 		var op token.Token
 		switch st.Tok {
-		case token.ADD_ASSIGN: op = token.ADD
-		case token.SUB_ASSIGN: op = token.SUB
-		case token.MUL_ASSIGN: op = token.MUL
-		case token.QUO_ASSIGN: op = token.QUO
-		default: return nil
+		case token.ADD_ASSIGN:
+			op = token.ADD
+		case token.SUB_ASSIGN:
+			op = token.SUB
+		case token.MUL_ASSIGN:
+			op = token.MUL
+		case token.QUO_ASSIGN:
+			op = token.QUO
+		default:
+			return nil
 		}
-		if len(st.Lhs) == 1 {
+		if len(st.Lhs) == 1 && len(st.Rhs) == 1 {
 			lhs := c.convertExpr(st.Lhs[0])
 			return &miniast.AssignmentStmt{
 				BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
 				LHS:      lhs,
 				Value: &miniast.BinaryExpr{
 					BaseNode: miniast.BaseNode{ID: c.genID(st, "binary"), Meta: "binary", Loc: c.extractLoc(st)},
-					Left:     lhs, Operator: miniast.Ident(c.convertOp(op)), Right:    c.convertExpr(rhs),
+					Left:     lhs, Operator: miniast.Ident(c.convertOp(op)), Right: c.convertExpr(st.Rhs[0]),
 				},
 			}
 		}

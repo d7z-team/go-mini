@@ -453,13 +453,18 @@ func (c *StackContext) AddVariable(name string, v *Var) error {
 	return nil
 }
 
+func (c *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32) {
+	c.ActiveHandles = append(c.ActiveHandles, HandleRef{Bridge: bridge, ID: id})
+}
+
 func (c *StackContext) Load(name string) (*Var, error) {
 	v, err := c.loadVar(name)
 	if err != nil {
 		return nil, err
 	}
 	if v != nil && v.VType == TypeCell {
-		return v.Ref.(*Cell).Value, nil
+		val := v.Ref.(*Cell).Value
+		return val, nil
 	}
 	return v, nil
 }

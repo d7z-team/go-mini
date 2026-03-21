@@ -83,6 +83,17 @@ func TestBuiltins(t *testing.T) {
 		if float64(s2) != 3.14 {
 			panic("string to float conversion failed")
 		}
+
+		// 6. Test new on pointer type (stripped Ptr<...>)
+		p := new(*int64)
+		if p == nil {
+			// This part should NOT be reached if p is properly initialized to TypeHandle(0)
+			// because handle(0) == nil should be true.
+			// Wait, if p == nil is TRUE, then it PANICS.
+			// But we WANT p to be non-nil because new() should return a valid pointer.
+			// In go, new(*int) returns a **int, which is NOT nil.
+			panic("new on pointer failed")
+		}
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

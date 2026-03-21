@@ -111,4 +111,52 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("MultiAssignment", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			a, b := 1, 2
+			a, b = b, a
+			if a != 2 || b != 1 {
+				panic("multi assignment failed")
+			}
+		}
+		`
+		runtime, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("compile failed: %v", err)
+		}
+		err = runtime.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("multi assignment test failed: %v", err)
+		}
+	})
+
+	t.Run("Assignment Evaluation Order (LHS before RHS)", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			order := ""
+			f := func() int64 { order = order + "L"; return 0 }
+			g := func() int64 { order = order + "R"; return 1 }
+			
+			arr := make([]int64, 2)
+			// Go 规范：LHS 先求值，RHS 后求值
+			arr[f()] = g()
+			
+			if order != "LR" {
+				panic("assignment order failed: expected LR, got " + order)
+			}
+		}
+		`
+		runtime, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("compile failed: %v", err)
+		}
+		err = runtime.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("assignment order test failed: %v", err)
+		}
+	})
 }

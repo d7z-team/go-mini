@@ -127,7 +127,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	// 压入执行入口任务: Main 块
 	session.TaskStack = append(session.TaskStack, Task{
-		Op: OpCallBoundary, 
+		Op:   OpCallBoundary,
 		Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
 	})
 	for i := len(e.program.Main) - 1; i >= 0; i-- {
@@ -149,7 +149,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	// 自动寻找并执行 main() 入口函数
 	if f, ok := e.program.Functions["main"]; ok {
 		session.TaskStack = append(session.TaskStack, Task{
-			Op: OpCallBoundary, 
+			Op:   OpCallBoundary,
 			Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
 		})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Node: f, Data: nil}) // args=nil
@@ -166,13 +166,13 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 }
 
 // Unwind State Machine
-func (e *Executor) handleUnwind(session *StackContext, task *Task) bool {
-	if task.Op == OpScopeExit || task.Op == OpForScopeExit {
+func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error) {
+	if task.Op == OpScopeExit || task.Op == OpForScopeExit || task.Op == OpFinally {
 		prevMode := session.UnwindMode
 		session.UnwindMode = UnwindNone
 		session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: prevMode})
 		session.TaskStack = append(session.TaskStack, *task)
-		return true 
+		return true, nil
 	}
 
 	if task.Op == OpRunDefers {
@@ -180,15 +180,15 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) bool {
 			prevMode := session.UnwindMode
 			session.UnwindMode = UnwindNone
 			session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: prevMode})
-			
+
 			defers := session.Stack.DeferStack
 			session.Stack.DeferStack = nil
 			for _, fn := range defers {
 				fn()
 			}
-			return true
+			return true, nil
 		}
-		return false
+		return false, nil
 	}
 
 	if task.Op == OpCatchBoundary && session.UnwindMode == UnwindPanic {
@@ -202,13 +202,13 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) bool {
 			Data: session.PanicVar,
 		})
 		session.PanicVar = nil
-		return true // Resume normal execution within Catch
+		return true, nil // Resume normal execution within Catch
 	}
 
 	if task.Op == OpLoopContinue {
 		if session.UnwindMode == UnwindContinue {
 			session.UnwindMode = UnwindNone
-			return true
+			return true, nil
 		}
 	}
 
@@ -216,14 +216,14 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) bool {
 		if session.UnwindMode == UnwindContinue {
 			session.UnwindMode = UnwindNone
 			session.TaskStack = append(session.TaskStack, *task)
-			return true
+			return true, nil
 		}
 	}
 
 	if task.Op == OpLoopBoundary {
 		if session.UnwindMode == UnwindBreak || session.UnwindMode == UnwindContinue {
 			session.UnwindMode = UnwindNone
-			return true
+			return true, nil
 		}
 	}
 
@@ -231,15 +231,23 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) bool {
 		data := task.Data.(map[string]interface{})
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
-			e.dispatch(session, *task)
-			return true
+			if err := e.dispatch(session, *task); err != nil {
+				return false, err
+			}
+			return true, nil
 		}
 		oldStack := data["oldStack"].(*Stack)
 		session.Stack = oldStack
-		return false
+		// Restore executor if saved (cross-module calls) during panic unwind
+		if oldExec, ok := data["oldExec"]; ok {
+			session.Executor = oldExec.(interface {
+				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+			})
+		}
+		return false, nil
 	}
 
-	return false 
+	return false, nil
 }
 
 // 供解卷状态恢复使用
@@ -339,8 +347,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ScopeExit()
 		return nil
 	case OpAssign:
-		lhsDesc := session.ValueStack.Pop().Ref
 		val := session.ValueStack.Pop()
+		lhsDescVar := session.ValueStack.Pop()
+		lhsDesc := lhsDescVar.Ref
 		return e.assignToLHSDesc(session, lhsDesc, val)
 	case OpDoCall:
 		f := task.Node.(*ast.FunctionStmt)
@@ -354,11 +363,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}, args, nil)
 	case OpMultiAssign:
 		lhsCount := task.Data.(int)
+		val := session.ValueStack.Pop()
 		descs := make([]interface{}, lhsCount)
 		for i := lhsCount - 1; i >= 0; i-- {
 			descs[i] = session.ValueStack.Pop().Ref
 		}
-		val := session.ValueStack.Pop()
 
 		if val == nil {
 			return errors.New("multi assignment: RHS evaluated to nil")
@@ -367,7 +376,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var elements []*Var
 		switch val.VType {
 		case TypeArray:
-			elements = val.Ref.(*VMArray).Data
+			rawElements := val.Ref.(*VMArray).Data
+			// Snapshot to prevent issues with self-assignment like a, b = b, a
+			elements = make([]*Var, len(rawElements))
+			for i, v := range rawElements {
+				if v != nil {
+					elements[i] = v.Copy()
+				}
+			}
 		case TypeResult:
 			errVar := NewString(val.ResultErr)
 			if val.ResultErr == "" {
@@ -404,9 +420,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpInterrupt:
 		interruptType := task.Data.(string)
-		if interruptType == "break" {
+		switch interruptType {
+		case "break":
 			session.UnwindMode = UnwindBreak
-		} else if interruptType == "continue" {
+		case "continue":
 			session.UnwindMode = UnwindContinue
 		}
 		return nil
@@ -418,7 +435,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if obj != nil && obj.VType == TypeCell {
 			obj = obj.Ref.(*Cell).Value
 		}
-		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHS_Index{Obj: obj, Index: idx}})
+		// idx also needs to be unwrapped and copied to ensure it's stable
+		if idx != nil && idx.VType == TypeCell {
+			idx = idx.Ref.(*Cell).Value
+		}
+		if idx != nil {
+			idx = idx.Copy()
+		}
+		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSIndex{Obj: obj, Index: idx}})
 		return nil
 	case OpEvalLHSMember:
 		prop := task.Data.(string)
@@ -426,7 +450,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if obj != nil && obj.VType == TypeCell {
 			obj = obj.Ref.(*Cell).Value
 		}
-		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHS_Member{Obj: obj, Property: prop}})
+		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: prop}})
 		return nil
 	case OpIndex:
 		idx := session.ValueStack.Pop()
@@ -458,6 +482,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			elemType, _ := n.Type.ReadArrayItemType()
 			res := make([]*Var, len(n.Values))
 			// ValueStack has [V1, V2, ..., VN]
+			// So we must pop in reverse: V_N first, then V_N-1...
 			for i := len(n.Values) - 1; i >= 0; i-- {
 				val := session.ValueStack.Pop()
 				if val != nil && (val.Type == "" || val.Type == "Any") {
@@ -486,7 +511,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// So we must pop in reverse order: V_i then K_i
 		for i := len(n.Values) - 1; i >= 0; i-- {
 			v := n.Values[i]
-			
+
 			val := session.ValueStack.Pop()
 			if val != nil && isMap && (val.Type == "" || val.Type == "Any") {
 				val.Type = valType
@@ -498,7 +523,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					}
 				}
 			}
-			
+
 			keyName := ""
 			var keyVal *Var
 			if v.Key != nil {
@@ -527,7 +552,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			low = session.ValueStack.Pop()
 		}
 		obj = session.ValueStack.Pop()
-		
+
 		res, err := e.evalSliceExprDirect(session, obj, low, high)
 		if err != nil {
 			return err
@@ -601,7 +626,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		oldStack := dataMap["oldStack"].(*Stack)
 		hasReturn := dataMap["hasReturn"].(bool)
-		
+
+		// Restore executor if saved (cross-module calls)
+		if oldExec, ok := dataMap["oldExec"]; ok {
+			session.Executor = oldExec.(interface {
+				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+			})
+		}
+
 		var retVal *Var
 		if hasReturn {
 			retVal, _ = session.Load("__return__")
@@ -722,12 +754,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			val = rData.Obj.Ref.(*VMMap).Data[k]
 		}
 		rData.Index++
-		
+
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: rData.Stmt.Body})
 		session.TaskStack = append(session.TaskStack, Task{
-			Op: OpRangeScopeEnter, 
+			Op:   OpRangeScopeEnter,
 			Data: map[string]interface{}{"rData": rData, "key": key, "val": val},
 		})
 		return nil
@@ -763,7 +795,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			tag = NewBool(true)
 		}
 		session.TaskStack = append(session.TaskStack, Task{
-			Op: OpSwitchNextCase,
+			Op:   OpSwitchNextCase,
 			Node: n,
 			Data: map[string]interface{}{"tag": tag, "idx": 0},
 		})
@@ -773,7 +805,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		n := task.Node.(*ast.SwitchStmt)
 		tag := data["tag"].(*Var)
 		idx := data["idx"].(int)
-		
+
 		if idx >= len(n.Body.Children) {
 			var defaultClause *ast.CaseClause
 			for _, child := range n.Body.Children {
@@ -788,16 +820,16 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			return nil
 		}
-		
+
 		clause := n.Body.Children[idx].(*ast.CaseClause)
 		if clause.List == nil {
 			data["idx"] = idx + 1
 			session.TaskStack = append(session.TaskStack, task)
 			return nil
 		}
-		
+
 		session.TaskStack = append(session.TaskStack, Task{
-			Op: OpSwitchMatchCase,
+			Op:   OpSwitchMatchCase,
 			Node: clause,
 			Data: map[string]interface{}{"tag": tag, "switchTask": task, "exprIdx": 0},
 		})
@@ -808,7 +840,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		tag := data["tag"].(*Var)
 		switchTask := data["switchTask"].(Task)
 		exprIdx := data["exprIdx"].(int)
-		
+
 		if exprIdx > 0 {
 			val := session.ValueStack.Pop()
 			res, _ := e.evalComparison("==", tag, val)
@@ -817,14 +849,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				return nil
 			}
 		}
-		
+
 		if exprIdx < len(clause.List) {
 			data["exprIdx"] = exprIdx + 1
 			session.TaskStack = append(session.TaskStack, task)
 			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: clause.List[exprIdx]})
 			return nil
 		}
-		
+
 		nextData := switchTask.Data.(map[string]interface{})
 		nextData["idx"] = nextData["idx"].(int) + 1
 		session.TaskStack = append(session.TaskStack, switchTask)
@@ -863,10 +895,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return session.AddVariable(name, val)
 	case OpResumeUnwind:
 		mode := task.Data.(UnwindMode)
-		if mode == UnwindPanic && session.PanicVar == nil {
-			session.UnwindMode = UnwindReturn
-		} else {
-			session.UnwindMode = mode
+		if session.UnwindMode == UnwindNone {
+			if mode == UnwindPanic && session.PanicVar == nil {
+				session.UnwindMode = UnwindReturn
+			} else {
+				session.UnwindMode = mode
+			}
 		}
 		return nil
 	case OpImportInit:
@@ -913,10 +947,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.TaskStack = append(session.TaskStack, Task{
 					Op: OpImportDone,
 					Data: &ImportData{
-						Path:          path,
-						OldExecutor:   session.Executor,
-						OldStack:      session.Stack,
-						ModSession:    modSession,
+						Path:        path,
+						OldExecutor: session.Executor,
+						OldStack:    session.Stack,
+						ModSession:  modSession,
 					},
 				})
 
@@ -942,7 +976,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				for i := len(prog.Main) - 1; i >= 0; i-- {
 					session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: prog.Main[i]})
 				}
-				
+
 				return nil
 			}
 		}
@@ -982,13 +1016,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		path := data.Path
 		modSession := data.ModSession
 		prog := modSession.Executor.(*Executor).program
-		
+
 		delete(session.LoadingModules, path)
 
 		exports := make(map[string]*Var)
 		for name := range prog.Variables {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				v, err := session.Load(string(name))
+				v, err := modSession.Load(string(name))
 				if err == nil {
 					exports[string(name)] = v
 				}
@@ -1024,7 +1058,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
-		modSession.Stack = session.Stack
+		// modSession.Stack should remain its own global stack for future member access to module variables
+		// modSession.Stack = session.Stack <--- REMOVED THIS LINE
 
 		// Restore session
 		session.Executor = data.OldExecutor.(interface {
@@ -1045,7 +1080,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ModuleCache[path] = res
 		session.ValueStack.Push(res)
 		return nil
-	// TODO: implement other ops
+		// TODO: implement other ops
 	}
 	return fmt.Errorf("unhandled opcode: %v", task.Op)
 }
@@ -1068,15 +1103,15 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 		return session.NewVar(string(n.Name), n.Kind)
 	case *ast.AssignmentStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpAssign})
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.LHS})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Value})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.LHS})
 	case *ast.MultiAssignmentStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpMultiAssign, Data: len(n.LHS)})
-		// push LHS in reverse order so they execute left-to-right after RHS is evaluated
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Value})
+		// push LHS in reverse order so they execute left-to-right
 		for i := len(n.LHS) - 1; i >= 0; i-- {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.LHS[i]})
 		}
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Value})
 	case *ast.IncDecStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpIncDec, Data: string(n.Operator)})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.Operand})
@@ -1128,9 +1163,11 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 			}
 		})
 	case *ast.CallExprStmt:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpPop})
+		if !n.GetBase().Type.IsVoid() {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpPop})
+		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n})
-	// TODO: implement other statements
+		// TODO: implement other statements
 	}
 	return nil
 }
@@ -1138,7 +1175,7 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 	switch lhs := lhsExpr.(type) {
 	case *ast.IdentifierExpr:
-		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHS_Env{Name: string(lhs.Name)}})
+		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSEnv{Name: string(lhs.Name)}})
 		return nil
 	case *ast.IndexExpr:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSIndex})
@@ -1166,7 +1203,7 @@ func (e *Executor) scheduleForBody(session *StackContext, n *ast.ForStmt) {
 
 func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op string) error {
 	switch desc := lhsDesc.(type) {
-	case *LHS_Env:
+	case *LHSEnv:
 		v, err := session.Load(desc.Name)
 		if err != nil {
 			return err
@@ -1179,7 +1216,7 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 			}
 		}
 		return nil
-	case *LHS_Index:
+	case *LHSIndex:
 		obj := desc.Obj
 		idx := desc.Index
 		if obj == nil || idx == nil {
@@ -1240,7 +1277,7 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 			}
 		}
 		return nil
-	case *LHS_Member:
+	case *LHSMember:
 		obj := desc.Obj
 		if obj == nil {
 			return nil
@@ -1275,9 +1312,9 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 
 func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, val *Var) error {
 	switch desc := lhsDesc.(type) {
-	case *LHS_Env:
+	case *LHSEnv:
 		return session.Store(desc.Name, val)
-	case *LHS_Index:
+	case *LHSIndex:
 		obj := desc.Obj
 		idx := desc.Index
 		if obj == nil || idx == nil {
@@ -1321,7 +1358,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			}
 		}
 		return fmt.Errorf("type %v does not support index assignment", obj.VType)
-	case *LHS_Member:
+	case *LHSMember:
 		obj := desc.Obj
 		if obj == nil {
 			return errors.New("member assignment on nil object")
@@ -1338,6 +1375,13 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 				return fmt.Errorf("module %s is read-only", mod.Name)
 			}
 			return mod.Context.Store(desc.Property, val)
+		case TypeHandle:
+			if obj.Ref != nil {
+				if valVar, ok := obj.Ref.(*Var); ok {
+					return e.assignToLHSDesc(session, &LHSMember{Obj: valVar, Property: desc.Property}, val)
+				}
+			}
+			return fmt.Errorf("type Handle does not support member assignment")
 		case TypeAny:
 			if obj.Ref != nil {
 				if m, ok := obj.Ref.(*VMMap); ok {
@@ -1452,7 +1496,7 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		session.ValueStack.Push(v)
 	case *ast.ImportExpr:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpImportInit, Node: n})
-	// TODO: implement other expressions
+		// TODO: implement other expressions
 	}
 	return nil
 }
@@ -1489,8 +1533,8 @@ func (e *Executor) Run(session *StackContext) error {
 		}
 
 		if session.UnwindMode != UnwindNone {
-			if e.handleUnwind(session, &task) {
-				// Intercepted, next iteration will execute newly pushed tasks or resume normal execution
+			if _, err := e.handleUnwind(session, &task); err != nil {
+				return err
 			}
 			continue
 		}
@@ -1532,7 +1576,7 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	}
 
 	err := e.Run(session)
-	
+
 	session.TaskStack = oldTasks
 	session.ValueStack = oldValues
 	session.UnwindMode = oldUnwind
@@ -1540,22 +1584,22 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 }
 
 func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
-    oldTasks := ctx.TaskStack
-    oldValues := ctx.ValueStack
-    oldUnwind := ctx.UnwindMode
-    
-    ctx.TaskStack = []Task{{Op: OpImportInit, Node: n}}
-    ctx.ValueStack = &ValueStack{}
-    ctx.UnwindMode = UnwindNone
-    
-    err := e.Run(ctx)
-    var res *Var
-    if err == nil {
-        res = ctx.ValueStack.Pop()
-    }
-    
-    ctx.TaskStack = oldTasks
-    ctx.ValueStack = oldValues
-    ctx.UnwindMode = oldUnwind
-    return res, err
+	oldTasks := ctx.TaskStack
+	oldValues := ctx.ValueStack
+	oldUnwind := ctx.UnwindMode
+
+	ctx.TaskStack = []Task{{Op: OpImportInit, Node: n}}
+	ctx.ValueStack = &ValueStack{}
+	ctx.UnwindMode = UnwindNone
+
+	err := e.Run(ctx)
+	var res *Var
+	if err == nil {
+		res = ctx.ValueStack.Pop()
+	}
+
+	ctx.TaskStack = oldTasks
+	ctx.ValueStack = oldValues
+	ctx.UnwindMode = oldUnwind
+	return res, err
 }
