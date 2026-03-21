@@ -548,6 +548,15 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.ConstRefExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
+	case "assert":
+		var raw struct {
+			X    json.RawMessage `json:"x"`
+			Type ast.GoMiniType  `json:"assert_type"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.TypeAssertExpr{BaseNode: baseNode, Type: raw.Type}
+		n.X, _ = parseExpr(raw.X)
+		return n, nil
 	case "import":
 		var raw struct {
 			Path string `json:"path"`

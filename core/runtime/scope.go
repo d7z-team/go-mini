@@ -43,6 +43,8 @@ func (v VarType) String() string {
 		return "Cell"
 	case TypeAny:
 		return "Any"
+	case TypeInterface:
+		return "Interface"
 	}
 	return "Unknown"
 }
@@ -61,7 +63,13 @@ const (
 	TypeClosure // Anonymous function with captured environment
 	TypeCell    // Boxed variable for closure capture
 	TypeAny     // Placeholder for unknown/dynamic
+	TypeInterface
 )
+
+type VMInterface struct {
+	Target  *Var
+	Methods map[string]*ast.FunctionType // Allowed methods with their signatures
+}
 
 type VMModule struct {
 	Name    string
@@ -259,6 +267,15 @@ func (v *Var) Copy() *Var {
 		res.B = make([]byte, len(v.B))
 		copy(res.B, v.B)
 	}
+	if v.VType == TypeInterface {
+		if inter, ok := v.Ref.(*VMInterface); ok {
+			res.Ref = &VMInterface{
+				Target:  inter.Target.Copy(),
+				Methods: inter.Methods,
+			}
+		}
+	}
+
 	if v.stack.Value() != nil {
 		res.stack = weak.Make(v.stack.Value())
 	}
@@ -341,6 +358,8 @@ type StackContext struct {
 	PanicVar *Var // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
 	Executor interface {
 		ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+		CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+		InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 	}
 
 	// 运行时状态 (Session State)
@@ -460,10 +479,17 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 		return c.AddVariable(variable, expr)
 	}
 
-	// Copy data only, keep original metadata if strictly typed
-	// But if original type was Any, allow it to become the specific type
 	if v.Type == "Any" && expr.Type != "Any" {
 		v.Type = expr.Type
+	}
+
+	if v.Type.IsInterface() && !expr.Type.IsInterface() {
+		// Perform satisfaction check and wrapping
+		wrapped, err := c.Executor.CheckSatisfaction(expr, v.Type)
+		if err != nil {
+			return err
+		}
+		expr = wrapped
 	}
 
 	v.VType = expr.VType
@@ -631,8 +657,6 @@ func isEmptyVar(v *Var) bool {
 			return m == nil
 		}
 		return v.Ref == nil
-	case TypeClosure, TypeModule, TypeResult:
-		return v.Ref == nil && v.ResultVal == nil && v.ResultErr == ""
 	case TypeHandle:
 		return v.Handle == 0
 	case TypeAny:

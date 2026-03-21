@@ -20,6 +20,7 @@ const (
 type ValidRoot struct {
 	logs        []Logs
 	structs     map[Ident]*ValidStruct
+	interfaces  map[Ident]*InterfaceStmt
 	program     *ProgramStmt
 	Global      *ValidStruct
 	id          uint64
@@ -59,9 +60,10 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 
 	v := &ValidContext{
 		root: &ValidRoot{
-			program: node,
-			logs:    make([]Logs, 0),
-			structs: make(map[Ident]*ValidStruct),
+			program:    node,
+			logs:       make([]Logs, 0),
+			structs:    make(map[Ident]*ValidStruct),
+			interfaces: make(map[Ident]*InterfaceStmt),
 			Global: &ValidStruct{
 				Fields:  make(map[Ident]GoMiniType),
 				Methods: make(map[Ident]CallFunctionType),
@@ -77,6 +79,11 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 		current: node,
 		vars:    make(map[Ident]GoMiniType),
 	}
+	// 注入命名接口
+	for ident, stmt := range node.Interfaces {
+		v.root.interfaces[ident] = stmt
+	}
+
 	// 注入内建 nil
 	v.root.vars["nil"] = "Any"
 	v.root.vars["true"] = "Bool"
@@ -162,6 +169,17 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 	if GoMiniType(ident).IsPtr() {
 		elem, _ := GoMiniType(ident).ReadArrayItemType()
 		return c.GetStruct(Ident(elem))
+	}
+	return nil, false
+}
+
+func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
+	ctx := c
+	for ctx != nil {
+		if miniType, ok := ctx.root.interfaces[ident]; ok {
+			return miniType, true
+		}
+		ctx = ctx.parent
 	}
 	return nil, false
 }

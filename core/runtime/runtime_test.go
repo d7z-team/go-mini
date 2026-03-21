@@ -86,24 +86,14 @@ func TestExecutorBasic(t *testing.T) {
 	}
 
 	exec, _ := NewExecutor(prog)
-
-	ctx := &StackContext{
-		Context:  context.Background(),
-		Executor: exec,
-		Stack: &Stack{
-			MemoryPtr: make(map[string]*Var),
-			Scope:     "global",
-			Depth:     1,
-		},
-	}
-	err := exec.ExecuteStmts(ctx, prog.Main)
+	err := exec.Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res, _ := ctx.Load("res")
-	if res.I64 != 50 {
-		t.Errorf("Calculation failed: got %d, want 50", res.I64)
+	res, _ := exec.lastSession.Load("res")
+	if res == nil || res.I64 != 50 {
+		t.Errorf("Calculation failed: got %v, want 50", res)
 	}
 }
 
@@ -146,20 +136,14 @@ func TestControlFlowIfFor(t *testing.T) {
 	}
 
 	exec, _ := NewExecutor(prog)
-	ctx := &StackContext{
-		Context:  context.Background(),
-		Executor: exec,
-		Stack: &Stack{
-			MemoryPtr: make(map[string]*Var),
-			Scope:     "global",
-			Depth:     1,
-		},
+	err := exec.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	_ = exec.ExecuteStmts(ctx, prog.Main)
 
-	okVar, _ := ctx.Load("ok")
-	if !okVar.Bool {
-		sumVar, _ := ctx.Load("sum")
-		t.Errorf("Control flow failed: sum=%d, ok=%v", sumVar.I64, okVar.Bool)
+	okVar, _ := exec.lastSession.Load("ok")
+	if okVar == nil || !okVar.Bool {
+		sumVar, _ := exec.lastSession.Load("sum")
+		t.Errorf("Control flow failed: sum=%v, ok=%v", sumVar, okVar)
 	}
 }

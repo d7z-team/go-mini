@@ -73,6 +73,70 @@ func (o GoMiniType) IsResult() bool {
 	return strings.HasPrefix(s, "Result<")
 }
 
+func (o GoMiniType) IsInterface() bool {
+	s := strings.TrimSpace(string(o))
+	return strings.HasPrefix(s, "interface") && strings.Contains(s, "{") && strings.HasSuffix(s, "}")
+}
+
+func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
+	if !o.IsInterface() {
+		return nil, false
+	}
+	s := strings.TrimSpace(string(o))
+	start := strings.Index(s, "{")
+	inner := s[start+1 : len(s)-1]
+	if strings.TrimSpace(inner) == "" {
+		return map[string]*FunctionType{}, true
+	}
+	// 支持分号作为主要分隔符，内部可能含有逗号
+	parts := strings.Split(inner, ";")
+	methods := make(map[string]*FunctionType)
+	for _, p := range parts {
+		m := strings.TrimSpace(p)
+		if m != "" {
+			// 解析方法名和签名：Read(Array<Uint8>, Int64) String
+			name := m
+			var sig *FunctionType
+			if idx := strings.Index(m, "("); idx != -1 {
+				name = strings.TrimSpace(m[:idx])
+				// 寻找括号配对
+				parenCount := 0
+				endIdx := -1
+				for i := idx; i < len(m); i++ {
+					if m[i] == '(' {
+						parenCount++
+					} else if m[i] == ')' {
+						parenCount--
+						if parenCount == 0 {
+							endIdx = i
+							break
+						}
+					}
+				}
+				if endIdx != -1 {
+					sigStr := "function" + m[idx:endIdx+1]
+					retPart := strings.TrimSpace(m[endIdx+1:])
+					if retPart != "" {
+						sigStr += " " + retPart
+					}
+					if f, ok := GoMiniType(sigStr).ReadFunc(); ok {
+						sig = f
+					}
+				}
+			}
+			// 如果没有显式签名，视为通用函数
+			if sig == nil {
+				sig = &FunctionType{Return: "Any"}
+			} else if sig.Return == "Void" {
+				// 对于接口方法，如果没有写返回值，通常期望是 Any (兼容动态对象)
+				sig.Return = "Any"
+			}
+			methods[name] = sig
+		}
+	}
+	return methods, true
+}
+
 func (o GoMiniType) IsMap() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Map<")
@@ -425,6 +489,12 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 		elem, ok := o.GetPtrElementType()
 		return ok && elem.Resolve(v).Valid(v)
 	}
+	if o.IsInterface() {
+		return true
+	}
+	if _, ok := v.GetInterface(Ident(o)); ok {
+		return true
+	}
 	_, ok := v.GetStruct(Ident(o))
 	return ok
 }
@@ -459,7 +529,28 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 	return pVar, true
 }
 
-func (o GoMiniType) IsAssignableTo(target GoMiniType) bool { return o.Equals(target) }
+func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
+	if o.Equals(target) {
+		return true
+	}
+	if target.IsInterface() {
+		if o.IsInterface() {
+			// 如果双方都是接口，检查 o 是否包含了 target 的所有方法
+			oMethods, _ := o.ReadInterfaceMethods()
+			targetMethods, _ := target.ReadInterfaceMethods()
+			for name := range targetMethods {
+				if _, ok := oMethods[name]; !ok {
+					return false
+				}
+				// 暂时只检查方法名存在，未来可进一步检查签名兼容性
+			}
+			return true
+		}
+		// 允许非接口类型赋值给接口（由运行时进一步校验鸭子类型）
+		return true
+	}
+	return o.Equals(target)
+}
 
 // IsValid 检查类型字符串是否符合规范（基础类型、规范容器格式或带点包路径）
 func (o GoMiniType) IsValid() bool {
@@ -482,6 +573,9 @@ func (o GoMiniType) IsValid() bool {
 	if strings.HasPrefix(t, "Map<") && strings.HasSuffix(t, ">") {
 		k, v, ok := o.GetMapKeyValueTypes()
 		return ok && k.IsValid() && v.IsValid()
+	}
+	if o.IsInterface() {
+		return true
 	}
 	// 允许带包路径的标识符 (pkg.Type)
 	if strings.Contains(t, ".") {

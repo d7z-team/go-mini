@@ -17,15 +17,35 @@ type ImportSpec struct {
 
 // ProgramStmt 程序启动
 type ProgramStmt struct {
-	BaseNode  `json:",inline"`
-	Package   string                  `json:"package,omitempty"` // 包名，默认为main
-	Imports   []ImportSpec            `json:"imports,omitempty"` // 导入列表
-	Constants map[string]string       `json:"constants"`         // 常量表
-	Variables map[Ident]Expr          `json:"variables"`         // 声明的全局变量
-	Structs   map[Ident]*StructStmt   `json:"structs"`           // 声明的对象 (对象)
-	Functions map[Ident]*FunctionStmt `json:"functions"`         // 声明的函数 (解构为无作用域函数)
-	Main      []Stmt                  `json:"main"`              // 入口点 （如果没有内容则代表为 lib）
+	BaseNode   `json:",inline"`
+	Package    string                   `json:"package,omitempty"` // 包名，默认为main
+	Imports    []ImportSpec             `json:"imports,omitempty"` // 导入列表
+	Constants  map[string]string        `json:"constants"`         // 常量表
+	Variables  map[Ident]Expr           `json:"variables"`         // 声明的全局变量
+	Structs    map[Ident]*StructStmt    `json:"structs"`           // 声明的对象 (对象)
+	Interfaces map[Ident]*InterfaceStmt `json:"interfaces"`        // 声明的接口
+	Functions  map[Ident]*FunctionStmt  `json:"functions"`         // 声明的函数 (解构为无作用域函数)
+	Main       []Stmt                   `json:"main"`              // 入口点 （如果没有内容则代表为 lib）
 }
+
+// InterfaceStmt 表示接口定义
+type InterfaceStmt struct {
+	BaseNode `json:",inline"`
+	Name     Ident      `json:"name"`
+	Type     GoMiniType `json:"type"` // "interface{...}"
+}
+
+func (i *InterfaceStmt) GetBase() *BaseNode { return &i.BaseNode }
+func (i *InterfaceStmt) stmtNode()          {}
+
+func (i *InterfaceStmt) Check(ctx *SemanticContext) error {
+	if !i.Type.IsValid() {
+		return fmt.Errorf("invalid interface type: %s", i.Type)
+	}
+	return nil
+}
+
+func (i *InterfaceStmt) Optimize(ctx *OptimizeContext) Node { return i }
 
 func (p *ProgramStmt) GetBase() *BaseNode {
 	return &p.BaseNode

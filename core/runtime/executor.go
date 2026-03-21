@@ -16,10 +16,11 @@ import (
 )
 
 type Executor struct {
-	structs map[string]*ast.StructStmt
-	consts  map[string]string
-	funcs   map[ast.Ident]*Var
-	program *ast.ProgramStmt
+	structs    map[string]*ast.StructStmt
+	interfaces map[string]*ast.InterfaceStmt
+	consts     map[string]string
+	funcs      map[ast.Ident]*Var
+	program    *ast.ProgramStmt
 
 	routes map[string]FFIRoute
 
@@ -27,8 +28,9 @@ type Executor struct {
 
 	StepLimit int64
 
-	mu          sync.RWMutex
-	lastSession *StackContext
+	interfaceCache map[ast.GoMiniType]map[string]*ast.FunctionType
+	mu             sync.RWMutex
+	lastSession    *StackContext
 }
 
 func (e *Executor) LastSession() *StackContext {
@@ -42,14 +44,23 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		return nil, errors.New("invalid program")
 	}
 	result := &Executor{
-		program: program,
-		structs: make(map[string]*ast.StructStmt),
-		funcs:   make(map[ast.Ident]*Var),
-		consts:  make(map[string]string),
-		routes:  make(map[string]FFIRoute),
+		program:        program,
+		structs:        make(map[string]*ast.StructStmt),
+		interfaces:     make(map[string]*ast.InterfaceStmt),
+		funcs:          make(map[ast.Ident]*Var),
+		consts:         make(map[string]string),
+		routes:         make(map[string]FFIRoute),
+		interfaceCache: make(map[ast.GoMiniType]map[string]*ast.FunctionType),
 	}
-	for ident, stmt := range program.Structs {
-		result.structs[string(ident)] = stmt
+	if program.Structs != nil {
+		for ident, stmt := range program.Structs {
+			result.structs[string(ident)] = stmt
+		}
+	}
+	if program.Interfaces != nil {
+		for ident, stmt := range program.Interfaces {
+			result.interfaces[string(ident)] = stmt
+		}
 	}
 	for s, s2 := range program.Constants {
 		result.consts[s] = s2
@@ -78,6 +89,214 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
 	}
 
 	res := ctx.ValueStack.Pop()
+	ctx.TaskStack = oldTasks
+	ctx.ValueStack = oldValues
+	return res, nil
+}
+
+func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error) {
+	if val == nil {
+		return nil, errors.New("cannot assign nil to interface")
+	}
+
+	actualInterfaceType := interfaceType
+	if !interfaceType.IsInterface() {
+		// Resolve named interface
+		if iStmt, ok := e.interfaces[string(interfaceType)]; ok {
+			actualInterfaceType = iStmt.Type
+		} else {
+			return nil, fmt.Errorf("interface %s not defined", interfaceType)
+		}
+	}
+
+	e.mu.RLock()
+	methods, ok := e.interfaceCache[actualInterfaceType]
+	e.mu.RUnlock()
+
+	if !ok {
+		parsedMethods, ok := actualInterfaceType.ReadInterfaceMethods()
+		if !ok {
+			return nil, fmt.Errorf("invalid interface type: %s", actualInterfaceType)
+		}
+		methods = parsedMethods
+		e.mu.Lock()
+		e.interfaceCache[actualInterfaceType] = methods
+		e.mu.Unlock()
+	}
+
+	for name, sig := range methods {
+		if !e.hasMethodWithSignature(val, name, sig) {
+			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", val.VType, interfaceType, name)
+		}
+	}
+
+	return &Var{
+		Type:  interfaceType,
+		VType: TypeInterface,
+		Ref: &VMInterface{
+			Target:  val.Copy(),
+			Methods: methods,
+		},
+	}, nil
+}
+
+func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *ast.FunctionType) bool {
+	if val == nil {
+		return false
+	}
+
+	// 穿透 TypeAny
+	if val.VType == TypeAny && val.Ref != nil {
+		if inner, ok := val.Ref.(*Var); ok {
+			return e.hasMethodWithSignature(inner, name, expectedSig)
+		}
+	}
+
+	switch val.VType {
+	case TypeHandle:
+		tName := string(val.Type)
+		tName = strings.TrimPrefix(tName, "Ptr<")
+		tName = strings.TrimPrefix(tName, "*")
+		tName = strings.TrimSuffix(tName, ">")
+		methodName := fmt.Sprintf("__method_%s_%s", tName, name)
+		if route, ok := e.routes[methodName]; ok {
+			// 校验 FFI 签名
+			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
+				return e.isSignatureCompatible(fType, expectedSig)
+			}
+			return true // 兜底：如果没拿到签名但路由存在，暂且通过
+		}
+	case TypeMap:
+		if m, ok := val.Ref.(*VMMap); ok {
+			if v, ok := m.Data[name]; ok {
+				return e.isCallableCompatible(v, expectedSig)
+			}
+		}
+		// 检查 Mangle 后的脚本方法
+		tName := string(val.Type)
+		if tName != "" && tName != "Any" {
+			mName := fmt.Sprintf("__method_%s_%s", tName, name)
+			if f, ok := e.program.Functions[ast.Ident(mName)]; ok {
+				return e.isSignatureCompatible(&f.FunctionType, expectedSig)
+			}
+		}
+	case TypeModule:
+		if mod, ok := val.Ref.(*VMModule); ok {
+			var v *Var
+			if mod.Context != nil {
+				if vLoad, err := mod.Context.Load(name); err == nil {
+					v = vLoad
+				}
+			}
+			if v == nil {
+				v = mod.Data[name]
+			}
+			if v != nil {
+				return e.isCallableCompatible(v, expectedSig)
+			}
+		}
+	case TypeInterface:
+		if inter, ok := val.Ref.(*VMInterface); ok {
+			if sig, ok := inter.Methods[name]; ok {
+				return e.isSignatureCompatible(sig, expectedSig)
+			}
+		}
+	}
+	return false
+}
+
+func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
+	if v.VType == TypeClosure {
+		if cl, ok := v.Ref.(*VMClosure); ok {
+			return e.isSignatureCompatible(&cl.FuncDef.FunctionType, expectedSig)
+		}
+	}
+	if v.VType == TypeAny && v.Ref != nil {
+		if route, ok := v.Ref.(FFIRoute); ok {
+			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
+				return e.isSignatureCompatible(fType, expectedSig)
+			}
+		}
+		if inner, ok := v.Ref.(*Var); ok {
+			return e.isCallableCompatible(inner, expectedSig)
+		}
+	}
+	return true // 默认放行，由运行期进一步处理
+}
+
+func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) bool {
+	// 如果 expected 是 interface{Method} 这种没有详细签名的（默认 Return: Any），直接放行
+	if expected.Return == "Any" && len(expected.Params) == 0 && !expected.Variadic {
+		return true
+	}
+
+	// 参数数量校验
+	if !actual.Variadic && expected.Variadic {
+		return false
+	}
+	if !actual.Variadic && len(actual.Params) != len(expected.Params) {
+		return false
+	}
+
+	// 参数类型校验
+	for i := range expected.Params {
+		var actType ast.GoMiniType = "Any"
+		if i < len(actual.Params) {
+			actType = actual.Params[i].Type
+		} else if actual.Variadic {
+			actType = actual.Params[len(actual.Params)-1].Type
+		}
+
+		if !expected.Params[i].Type.IsAssignableTo(actType) {
+			return false
+		}
+	}
+
+	// 返回值兼容性
+	if actual.Return == "Void" && expected.Return == "Any" {
+		return true
+	}
+	return actual.Return.IsAssignableTo(expected.Return)
+}
+
+func (e *Executor) hasMethod(val *Var, name string) bool {
+	return e.hasMethodWithSignature(val, name, &ast.FunctionType{Return: "Any"})
+}
+
+func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error) {
+	if callable == nil {
+		return nil, errors.New("cannot invoke nil callable")
+	}
+
+	// Save old task stack and value stack
+	oldTasks := ctx.TaskStack
+	oldValues := ctx.ValueStack
+	ctx.TaskStack = nil
+	ctx.ValueStack = &ValueStack{}
+
+	// Prepare the call
+	err := e.invokeCall(ctx, &ast.CallExprStmt{}, "", nil, nil, callable, args)
+	if err != nil {
+		ctx.TaskStack = oldTasks
+		ctx.ValueStack = oldValues
+		return nil, err
+	}
+
+	// Run until the call returns (indicated by OpCallBoundary)
+	err = e.Run(ctx)
+	if err != nil {
+		ctx.TaskStack = oldTasks
+		ctx.ValueStack = oldValues
+		return nil, err
+	}
+
+	// Get result
+	var res *Var
+	if ctx.ValueStack.Len() > 0 {
+		res = ctx.ValueStack.Pop()
+	}
+
+	// Restore old stacks
 	ctx.TaskStack = oldTasks
 	ctx.ValueStack = oldValues
 	return res, nil
@@ -122,9 +341,16 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	// 初始化全局变量 (临时递归求值)
 	for name, expr := range e.program.Variables {
-		val, err := e.ExecExpr(session, expr)
-		if err != nil {
-			return fmt.Errorf("failed to initialize global var %s: %w", name, err)
+		var val *Var
+		if expr != nil {
+			v, err := e.ExecExpr(session, expr)
+			if err != nil {
+				return fmt.Errorf("failed to initialize global var %s: %w", name, err)
+			}
+			val = v
+		} else {
+			// 如果没有初值，则初始化为零值变量 (Any 类型)
+			val = &Var{VType: TypeAny, Type: "Any"}
 		}
 		_ = session.AddVariable(string(name), val)
 	}
@@ -142,11 +368,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		}
 	}()
 
-	// 压入执行入口任务: Main 块
-	session.TaskStack = append(session.TaskStack, Task{
-		Op:   OpCallBoundary,
-		Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
-	})
+	// 压入执行入口任务: Main 块 (包初始化逻辑)
 	for i := len(e.program.Main) - 1; i >= 0; i-- {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: e.program.Main[i]})
 	}
@@ -242,6 +464,8 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		data := task.Data.(*ImportData)
 		session.Executor = data.OldExecutor.(interface {
 			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+			CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+			InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 		})
 		session.Stack = data.OldStack
 		delete(session.LoadingModules, data.Path)
@@ -264,6 +488,8 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
 				session.Executor = oldExec.(interface {
 					ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+					CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+					InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 				})
 			}
 			return true, nil
@@ -274,6 +500,8 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
 			session.Executor = oldExec.(interface {
 				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 			})
 		}
 		return false, nil
@@ -309,6 +537,8 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		if oldExec, ok := data["oldExec"]; ok {
 			session.Executor = oldExec.(interface {
 				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 			})
 		}
 		return false, nil
@@ -651,28 +881,27 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			if obj == nil {
 				return errors.New("calling method on nil object")
 			}
-			if obj.VType == TypeModule {
-				mod = obj.Ref.(*VMModule)
+
+			// Use unified member evaluation logic
+			res, err := e.evalMemberExprDirect(session, obj, string(member.Property))
+			if err != nil {
+				return err
+			}
+
+			if res != nil && res.VType == TypeClosure {
+				if mv, ok := res.Ref.(*VMMethodValue); ok {
+					receiver = mv.Receiver
+					name = mv.Method
+				} else {
+					callable = res
+				}
+			} else if res != nil && res.VType == TypeModule {
+				mod = res.Ref.(*VMModule)
 				name = string(member.Property)
+			} else if res != nil {
+				callable = res
 			} else {
-				receiver = obj
-				// 健壮的基础类型提取逻辑，消除 Ptr<T> 或 *T 带来的干扰，防止出现 "Result<" 这种残余
-				tName := string(obj.Type)
-				if tName == "" {
-					tName = obj.VType.String()
-				}
-				for {
-					if strings.HasPrefix(tName, "Ptr<") && strings.HasSuffix(tName, ">") {
-						tName = tName[4 : len(tName)-1]
-						continue
-					}
-					if strings.HasPrefix(tName, "*") {
-						tName = tName[1:]
-						continue
-					}
-					break
-				}
-				name = fmt.Sprintf("__method_%s_%s", tName, member.Property)
+				return fmt.Errorf("property %s is not a callable function on %v", member.Property, obj.VType)
 			}
 		} else {
 			callable = session.ValueStack.Pop()
@@ -709,6 +938,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if oldExec, ok := dataMap["oldExec"]; ok {
 			session.Executor = oldExec.(interface {
 				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 			})
 		}
 
@@ -726,6 +957,15 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
 		}
+		return nil
+	case OpAssert:
+		val := session.ValueStack.Pop()
+		targetType := task.Node.(*ast.TypeAssertExpr).Type
+		res, err := e.CheckSatisfaction(val, targetType)
+		if err != nil {
+			return fmt.Errorf("interface conversion: %v", err)
+		}
+		session.ValueStack.Push(res)
 		return nil
 	case OpRunDefers:
 		if len(session.Stack.DeferStack) > 0 {
@@ -1025,10 +1265,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.TaskStack = append(session.TaskStack, Task{
 					Op: OpImportDone,
 					Data: &ImportData{
-						Path:        path,
-						OldExecutor: session.Executor,
-						OldStack:    session.Stack,
-						ModSession:  modSession,
+						Path:          path,
+						OldExecutor:   session.Executor,
+						OldStack:      session.Stack,
+						OldTaskStack:  session.TaskStack,
+						OldValueStack: session.ValueStack,
+						ModSession:    modSession,
 					},
 				})
 
@@ -1142,8 +1384,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// Restore session
 		session.Executor = data.OldExecutor.(interface {
 			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+			CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+			InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
 		})
 		session.Stack = data.OldStack
+		session.TaskStack = data.OldTaskStack
+		session.ValueStack = data.OldValueStack
 		session.UnwindMode = UnwindNone
 
 		res := &Var{
@@ -1178,6 +1424,11 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpScopeEnter, Data: "block"})
 		}
 	case *ast.GenDeclStmt:
+		if session.Stack.Depth == 1 && session.Stack.Scope == "global" {
+			if _, ok := session.Stack.MemoryPtr[string(n.Name)]; ok {
+				return nil
+			}
+		}
 		return session.NewVar(string(n.Name), n.Kind)
 	case *ast.AssignmentStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpAssign})
@@ -1521,6 +1772,9 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 	case *ast.MemberExpr:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpMember, Data: string(n.Property)})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Object})
+	case *ast.TypeAssertExpr:
+		session.TaskStack = append(session.TaskStack, Task{Op: OpAssert, Node: n})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.X})
 	case *ast.CompositeExpr:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpComposite, Node: n})
 		for i := len(n.Values) - 1; i >= 0; i-- {
@@ -1673,6 +1927,15 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	session.TaskStack = []Task{}
 	session.ValueStack = &ValueStack{}
 	session.UnwindMode = UnwindNone
+	if session.ActiveHandles == nil {
+		session.ActiveHandles = &HandleTracker{Handles: make([]HandleRef, 0, 64)}
+	}
+	if session.ModuleCache == nil {
+		session.ModuleCache = make(map[string]*Var)
+	}
+	if session.LoadingModules == nil {
+		session.LoadingModules = make(map[string]bool)
+	}
 
 	for i := len(stmts) - 1; i >= 0; i-- {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: stmts[i]})
@@ -1694,6 +1957,15 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	ctx.TaskStack = []Task{{Op: OpImportInit, Node: n}}
 	ctx.ValueStack = &ValueStack{}
 	ctx.UnwindMode = UnwindNone
+	if ctx.ActiveHandles == nil {
+		ctx.ActiveHandles = &HandleTracker{Handles: make([]HandleRef, 0, 64)}
+	}
+	if ctx.ModuleCache == nil {
+		ctx.ModuleCache = make(map[string]*Var)
+	}
+	if ctx.LoadingModules == nil {
+		ctx.LoadingModules = make(map[string]bool)
+	}
 
 	err := e.Run(ctx)
 	var res *Var

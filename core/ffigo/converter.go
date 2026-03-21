@@ -107,12 +107,13 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 	}
 
 	program := &miniast.ProgramStmt{
-		BaseNode:  miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
-		Constants: make(map[string]string),
-		Variables: make(map[miniast.Ident]miniast.Expr),
-		Structs:   make(map[miniast.Ident]*miniast.StructStmt),
-		Functions: make(map[miniast.Ident]*miniast.FunctionStmt),
-		Imports:   miniImports,
+		BaseNode:   miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
+		Constants:  make(map[string]string),
+		Variables:  make(map[miniast.Ident]miniast.Expr),
+		Structs:    make(map[miniast.Ident]*miniast.StructStmt),
+		Interfaces: make(map[miniast.Ident]*miniast.InterfaceStmt),
+		Functions:  make(map[miniast.Ident]*miniast.FunctionStmt),
+		Imports:    miniImports,
 	}
 	if f != nil {
 		program.Package = f.Name.Name
@@ -143,6 +144,17 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 								doc = d.Doc.Text()
 							}
 							program.Structs[miniast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st, doc)
+						} else if it, ok := s.Type.(*ast.InterfaceType); ok {
+							program.Interfaces[miniast.Ident(s.Name.Name)] = &miniast.InterfaceStmt{
+								BaseNode: miniast.BaseNode{
+									ID:   c.genID(s, "interface"),
+									Meta: "interface",
+									Type: "Void",
+									Loc:  c.extractLoc(s),
+								},
+								Name: miniast.Ident(s.Name.Name),
+								Type: miniast.GoMiniType(c.typeToString(it)),
+							}
 						}
 					case *ast.ValueSpec:
 						switch d.Tok {
@@ -558,6 +570,16 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 		return &miniast.BinaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "binary"), Meta: "binary", Loc: c.extractLoc(ex)}, Left: c.convertExpr(ex.X), Operator: miniast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
 	case *ast.UnaryExpr:
 		return &miniast.UnaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "unary"), Meta: "unary", Loc: c.extractLoc(ex)}, Operator: miniast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
+	case *ast.TypeAssertExpr:
+		return &miniast.TypeAssertExpr{
+			BaseNode: miniast.BaseNode{
+				ID:   c.genID(ex, "assert"),
+				Meta: "assert",
+				Loc:  c.extractLoc(ex),
+			},
+			X:    c.convertExpr(ex.X),
+			Type: miniast.GoMiniType(c.typeToString(ex.Type)),
+		}
 	case *ast.ParenExpr:
 		return c.convertExpr(ex.X)
 	case *ast.CallExpr:
@@ -761,6 +783,48 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 		return fmt.Sprintf("%s.%s", c.typeToString(t.X), t.Sel.Name)
 	case *ast.Ellipsis:
 		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
+	case *ast.InterfaceType:
+		var methods []string
+		if t.Methods != nil {
+			for _, m := range t.Methods.List {
+				if len(m.Names) > 0 {
+					// 提取方法签名：Read(String) String
+					var params []string
+					var returns string
+					if fn, ok := m.Type.(*ast.FuncType); ok {
+						if fn.Params != nil {
+							for _, p := range fn.Params.List {
+								pType := c.typeToString(p.Type)
+								// 处理可能的多个参数共享一个类型的情况: (a, b int)
+								count := len(p.Names)
+								if count == 0 {
+									count = 1
+								}
+								for i := 0; i < count; i++ {
+									params = append(params, pType)
+								}
+							}
+						}
+						if fn.Results != nil && len(fn.Results.List) > 0 {
+							returns = " " + c.typeToString(fn.Results.List[0].Type)
+						} else {
+							returns = " Any" // 默认为 Any 以支持接口灵活匹配
+						}
+					}
+					sig := fmt.Sprintf("(%s)%s", strings.Join(params, ","), returns)
+					for _, name := range m.Names {
+						methods = append(methods, name.Name+sig)
+					}
+				} else {
+					// 可能是嵌入接口或者不带括号的方法名
+					methods = append(methods, c.typeToString(m.Type))
+				}
+			}
+		}
+		if len(methods) == 0 {
+			return "Any"
+		}
+		return fmt.Sprintf("interface{%s}", strings.Join(methods, ";"))
 	}
 	return "Any"
 }

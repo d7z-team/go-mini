@@ -308,10 +308,7 @@ func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
-	if obj == nil || (obj.VType == TypeAny && obj.Ref == nil) {
-		if obj != nil {
-			return e.ToVar(ctx, obj.Type.ZeroVar(), nil), nil
-		}
+	if obj == nil || isEmptyVar(obj) {
 		return nil, errors.New("index access on nil")
 	}
 
@@ -343,11 +340,27 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 }
 
 func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property string) (*Var, error) {
-	if obj == nil {
-		return nil, errors.New("member access on nil object")
+	if obj == nil || isEmptyVar(obj) {
+		return nil, fmt.Errorf("member access on nil object: %s", property)
 	}
 	if obj.VType == TypeCell {
 		obj = obj.Ref.(*Cell).Value
+	}
+
+	// 穿透 TypeAny
+	if obj.VType == TypeAny && obj.Ref != nil {
+		if inner, ok := obj.Ref.(*Var); ok {
+			return e.evalMemberExprDirect(nil, inner, property)
+		}
+	}
+
+	if obj.VType == TypeInterface {
+		inter := obj.Ref.(*VMInterface)
+		if _, ok := inter.Methods[property]; !ok {
+			return nil, fmt.Errorf("method %s not in interface contract %s", property, obj.Type)
+		}
+		// Forward to target
+		return e.evalMemberExprDirect(nil, inter.Target, property)
 	}
 
 	switch obj.VType {
@@ -365,6 +378,18 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		m := obj.Ref.(*VMMap)
 		if val, ok := m.Data[property]; ok {
 			return val, nil
+		}
+		// Try to look up as a method if it has a type name
+		tName := string(obj.Type)
+		if tName != "" && tName != "Any" && !strings.HasPrefix(tName, "Map<") {
+			methodName := fmt.Sprintf("__method_%s_%s", tName, property)
+			if _, ok := e.routes[methodName]; ok {
+				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+			}
+			// Also check internal functions
+			if _, ok := e.program.Functions[ast.Ident(methodName)]; ok {
+				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+			}
 		}
 		return nil, nil
 	case TypeHandle:
@@ -767,15 +792,26 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 		}
 	}
 
-	// 2. Closure / Method Value
-	if callable != nil && callable.VType == TypeClosure {
-		switch ref := callable.Ref.(type) {
-		case *VMClosure:
-			return e.setupFuncCall(session, "closure", ref.FuncDef, args, ref)
-		case *VMMethodValue:
-			// Resolve as FFI method
-			if route, ok := e.routes[ref.Method]; ok {
-				return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
+	// 2. Closure / Method Value / FFI Route
+	if callable != nil {
+		c := callable
+		if c.VType == TypeAny && c.Ref != nil {
+			if v, ok := c.Ref.(*Var); ok && v.VType == TypeClosure {
+				c = v
+			} else if route, ok := c.Ref.(FFIRoute); ok {
+				return e.evalFFIAndPush(session, route, args)
+			}
+		}
+
+		if c.VType == TypeClosure {
+			switch ref := c.Ref.(type) {
+			case *VMClosure:
+				return e.setupFuncCall(session, "closure", ref.FuncDef, args, ref)
+			case *VMMethodValue:
+				// Resolve as FFI method
+				if route, ok := e.routes[ref.Method]; ok {
+					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
+				}
 			}
 		}
 	}
@@ -921,6 +957,10 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 
 	if t.IsPtr() {
 		return &Var{VType: TypeHandle, Handle: 0, Type: t}
+	}
+
+	if t.IsInterface() {
+		return &Var{VType: TypeInterface, Type: t, Ref: nil}
 	}
 
 	if t.IsArray() || t.IsMap() || t.IsAny() {

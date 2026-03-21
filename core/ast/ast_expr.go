@@ -86,6 +86,36 @@ type ConstRefExpr struct {
 func (c *ConstRefExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *ConstRefExpr) exprNode()          {}
 
+// TypeAssertExpr 表示类型断言表达式 x.(Type)
+type TypeAssertExpr struct {
+	BaseNode
+	X    Expr       `json:"x"`
+	Type GoMiniType `json:"assert_type"`
+}
+
+func (t *TypeAssertExpr) GetBase() *BaseNode { return &t.BaseNode }
+func (t *TypeAssertExpr) exprNode()          {}
+
+func (t *TypeAssertExpr) Check(ctx *SemanticContext) error {
+	if t.X == nil {
+		return errors.New("类型断言缺少对象")
+	}
+	if err := t.X.Check(ctx); err != nil {
+		return err
+	}
+	if !t.Type.Valid(ctx.ValidContext) {
+		return fmt.Errorf("无效的断言类型: %s", t.Type)
+	}
+	// 断言后的类型即为目标类型
+	t.BaseNode.Type = t.Type
+	return nil
+}
+
+func (t *TypeAssertExpr) Optimize(ctx *OptimizeContext) Node {
+	t.X = t.X.Optimize(ctx).(Expr)
+	return t
+}
+
 func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 	c.Name = c.Name.Resolve(ctx.ValidContext)
 	if !c.Name.Valid(ctx.ValidContext) {
@@ -322,6 +352,25 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if objType == TypeModule || objType == "Any" {
 		m.Type = "Any"
 		return nil
+	}
+
+	if objType.IsInterface() {
+		methods, _ := objType.ReadInterfaceMethods()
+		if sig, ok := methods[string(m.Property)]; ok {
+			m.Type = sig.MiniType() // 使用解析出的完整签名类型
+			return nil
+		}
+		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+	}
+
+	// 检查是否为命名接口
+	if iStmt, ok := ctx.GetInterface(Ident(objType)); ok {
+		methods, _ := iStmt.Type.ReadInterfaceMethods()
+		if sig, ok := methods[string(m.Property)]; ok {
+			m.Type = sig.MiniType()
+			return nil
+		}
+		return fmt.Errorf("interface %s does not support member access to %s", objType, m.Property)
 	}
 
 	if objType.IsMap() {

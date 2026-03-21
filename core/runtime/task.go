@@ -51,6 +51,7 @@ const (
 	OpSwitchMatchCase
 	OpCatchScopeEnter
 	OpInitVar
+	OpAssert
 )
 
 type UnwindMode int

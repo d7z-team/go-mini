@@ -131,6 +131,10 @@ func (p *MiniProgram) LastSession() *runtime.StackContext {
 	return p.executor.LastSession()
 }
 
+func (p *MiniProgram) InvokeCallable(ctx *runtime.StackContext, callable *runtime.Var, args []*runtime.Var) (*runtime.Var, error) {
+	return p.executor.InvokeCallable(ctx, callable, args)
+}
+
 // Eval 在当前程序的语境下执行单个 Go 表达式
 // 这允许你调用程序中定义的函数或访问全局变量
 func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
