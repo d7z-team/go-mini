@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -50,6 +51,15 @@ func (p *MiniProgram) ReleaseLSPCache() {
 	p.parentMu.Lock()
 	defer p.parentMu.Unlock()
 	p.parentMap = nil
+}
+
+// ToVar 将 Go 侧数据转换为脚本侧 Var。主要用于宿主注入。
+func (p *MiniProgram) ToVar(ctx *runtime.StackContext, val interface{}, bridge ffigo.FFIBridge) *runtime.Var {
+	return p.executor.ToVar(ctx, val, bridge)
+}
+
+func (p *MiniProgram) Executor() *runtime.Executor {
+	return p.executor
 }
 
 // GetParent 获取节点的父节点
@@ -125,6 +135,11 @@ func (p *MiniProgram) SetStepLimit(limit int64) {
 
 func (p *MiniProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
+}
+
+// ExecuteWithEnv 执行脚本，并允许注入初始环境变量
+func (p *MiniProgram) ExecuteWithEnv(ctx context.Context, env map[string]*runtime.Var) error {
+	return p.executor.ExecuteWithEnv(ctx, env)
 }
 
 func (p *MiniProgram) LastSession() *runtime.StackContext {
@@ -271,6 +286,10 @@ func (b *BridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) 
 	return b.Router(ctx, methodID, args)
 }
 
+func (b *BridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, errors.New("Invoke not supported on BridgeWrapper")
+}
+
 func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
 	return nil // Base wrapper doesn't manage registry
 }
@@ -282,6 +301,10 @@ type HandleBridgeWrapper struct {
 
 func (b *HandleBridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	return b.Router(ctx, b.Registry, methodID, args)
+}
+
+func (b *HandleBridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, errors.New("Invoke not supported on HandleBridgeWrapper")
 }
 
 func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {

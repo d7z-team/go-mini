@@ -57,8 +57,14 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 		}
 	}
 
-	// 呼叫 Bridge
-	retData, err := route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
+	// 发起 FFI 调用
+	var retData []byte
+	var err error
+	if route.MethodID == 0 {
+		retData, err = route.Bridge.Invoke(session.Context, route.Name, buf.Bytes())
+	} else {
+		retData, err = route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +78,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	retType := ast.GoMiniType(route.Returns)
 
 	// 检查是否是 Result<T> 类型
-	if retType.IsResult() {
+	if retType.IsResult() && len(retData) > 0 {
 		status := reader.ReadByte() // 0: Success, 1: Error
 		innerType, _ := retType.ReadResult()
 
@@ -169,6 +175,20 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 			if err := e.serializeVar(buf, item, itemType); err != nil {
 				return err
 			}
+		}
+	case typ.IsInterface():
+		if v == nil || v.VType != TypeInterface || v.Ref == nil {
+			buf.WriteInterface(0, nil)
+			return nil
+		}
+		if iface, ok := v.Ref.(*VMInterface); ok {
+			methods := make(map[string]string)
+			for k, v := range iface.Methods {
+				methods[k] = v.String()
+			}
+			buf.WriteInterface(iface.Target.Handle, methods)
+		} else {
+			buf.WriteInterface(0, nil)
 		}
 	case typ.IsMap():
 		if v == nil || v.VType != TypeMap {
@@ -279,6 +299,20 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 			buf.WriteString(k)
 			e.serializeVarToAnyWithDepth(buf, val, depth+1)
 		}
+	case TypeInterface:
+		if v.Ref == nil {
+			buf.WriteInterface(0, nil)
+			return
+		}
+		if iface, ok := v.Ref.(*VMInterface); ok {
+			methods := make(map[string]string)
+			for k, v := range iface.Methods {
+				methods[k] = v.String()
+			}
+			buf.WriteInterface(iface.Target.Handle, methods)
+		} else {
+			buf.WriteInterface(0, nil)
+		}
 	default:
 		buf.WriteAny(nil)
 	}
@@ -314,7 +348,39 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			h = NewVMHandle(v, bridge)
 			session.AddHandle(bridge, v)
 		}
-		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
+		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
+	case ffigo.InterfaceData:
+		var ifaceStr strings.Builder
+		ifaceStr.WriteString("interface{")
+		for k, sig := range v.Methods {
+			// 简单的安全性过滤：方法名不能包含特殊字符
+			if strings.ContainsAny(k, "{};() ") {
+				continue
+			}
+			ifaceStr.WriteString(k)
+			if strings.HasPrefix(sig, "function(") {
+				ifaceStr.WriteString(strings.TrimPrefix(sig, "function"))
+			} else {
+				ifaceStr.WriteString(sig)
+			}
+			ifaceStr.WriteString(";")
+		}
+		ifaceStr.WriteString("}")
+		methods, _ := ast.GoMiniType(ifaceStr.String()).ReadInterfaceMethods()
+
+		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge, Type: "TypeHandle"}
+		if v.Handle != 0 {
+			target.Ref = NewVMHandle(v.Handle, bridge)
+			session.AddHandle(bridge, v.Handle)
+		}
+		return &Var{
+			VType: TypeInterface,
+			Ref: &VMInterface{
+				Target:  target,
+				Methods: methods,
+			},
+			Bridge: bridge,
+		}
 	case map[string]interface{}:
 		res := make(map[string]*Var)
 		for k, raw := range v {

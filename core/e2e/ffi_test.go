@@ -25,6 +25,10 @@ func (b *MockFmtBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	return nil, fmt.Errorf("unknown method %d", methodID)
 }
 
+func (b *MockFmtBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (b *MockFmtBridge) DestroyHandle(handle uint32) error {
 	return nil
 }

@@ -65,7 +65,16 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 	return v_0, nil
 }
 
-func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Marshal":
+			methodID = MethodID_JSON_Marshal
+		case "Unmarshal":
+			methodID = MethodID_JSON_Unmarshal
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_JSON_Marshal:
@@ -124,7 +133,11 @@ type JSON_Bridge struct {
 }
 
 func (b *JSON_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return JSONHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return JSONHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *JSON_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return JSONHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *JSON_Bridge) DestroyHandle(handle uint32) error {

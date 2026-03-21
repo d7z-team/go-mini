@@ -87,7 +87,22 @@ func (p *TimeProxy) Since(ctx context.Context, ns int64) int64 {
 	return v_0
 }
 
-func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Now":
+			methodID = MethodID_Time_Now
+		case "Unix":
+			methodID = MethodID_Time_Unix
+		case "UnixNano":
+			methodID = MethodID_Time_UnixNano
+		case "Sleep":
+			methodID = MethodID_Time_Sleep
+		case "Since":
+			methodID = MethodID_Time_Since
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Time_Now:
@@ -142,7 +157,11 @@ type Time_Bridge struct {
 }
 
 func (b *Time_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return TimeHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return TimeHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *Time_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return TimeHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *Time_Bridge) DestroyHandle(handle uint32) error {

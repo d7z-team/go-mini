@@ -167,7 +167,26 @@ func (p *OSProxy) Setenv(ctx context.Context, key string, value string) error {
 	return nil
 }
 
-func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Open":
+			methodID = MethodID_OS_Open
+		case "Create":
+			methodID = MethodID_OS_Create
+		case "ReadFile":
+			methodID = MethodID_OS_ReadFile
+		case "WriteFile":
+			methodID = MethodID_OS_WriteFile
+		case "Remove":
+			methodID = MethodID_OS_Remove
+		case "Getenv":
+			methodID = MethodID_OS_Getenv
+		case "Setenv":
+			methodID = MethodID_OS_Setenv
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_OS_Open:
@@ -282,7 +301,11 @@ type OS_Bridge struct {
 }
 
 func (b *OS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return OSHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return OSHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *OS_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return OSHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *OS_Bridge) DestroyHandle(handle uint32) error {
@@ -392,7 +415,18 @@ func (p *FileMethodsProxy) Close(ctx context.Context, f *File) error {
 	return nil
 }
 
-func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Read":
+			methodID = MethodID_FileMethods_Read
+		case "Write":
+			methodID = MethodID_FileMethods_Write
+		case "Close":
+			methodID = MethodID_FileMethods_Close
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_FileMethods_Read:
@@ -477,7 +511,11 @@ type FileMethods_Bridge struct {
 }
 
 func (b *FileMethods_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FileMethodsHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return FileMethodsHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *FileMethods_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return FileMethodsHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *FileMethods_Bridge) DestroyHandle(handle uint32) error {

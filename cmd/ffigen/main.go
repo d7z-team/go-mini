@@ -125,6 +125,21 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		}
 		return
 	}
+	if strings.HasPrefix(pType, "interface{") {
+		// 接口序列化：Handle + 方法列表
+		fmt.Fprintf(sb, "\t\tmethods := make(map[string]string)\n")
+		fmt.Fprintf(sb, "\t\t// TODO: 获取 Go 接口方法集并填充 methods (核心反向代理支持)\n")
+		if isHost {
+			fmt.Fprintf(sb, "\t\t%s.WriteInterface(registry.Register(%s), methods)\n", bufName, prefix)
+		} else {
+			fmt.Fprintf(sb, "\t\tif p.registry != nil {\n")
+			fmt.Fprintf(sb, "\t\t\t%s.WriteInterface(p.registry.Register(%s), methods)\n", bufName, prefix)
+			fmt.Fprintf(sb, "\t\t} else {\n")
+			fmt.Fprintf(sb, "\t\t\t%s.WriteInterface(0, nil)\n", bufName)
+			fmt.Fprintf(sb, "\t\t}\n")
+		}
+		return
+	}
 	switch pType {
 	case "Uint32", "uint32", "Int32", "int32":
 		fmt.Fprintf(sb, "\t%s.WriteUint32(uint32(%s))\n", bufName, prefix)
@@ -195,6 +210,15 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 			fmt.Fprintf(sb, "\t\t\t}\n")
 			fmt.Fprintf(sb, "\t\t}\n")
 		}
+		return
+	}
+	if strings.HasPrefix(pType, "interface{") {
+		// 接口反序列化：Handle + 方法列表
+		fmt.Fprintf(sb, "\t\tif h, m := %s.ReadInterface(); h != 0 {\n", readerName)
+		fmt.Fprintf(sb, "\t\t\t// TODO: 创建脚本到 Go 的反向代理 (Reverse Proxy)\n")
+		fmt.Fprintf(sb, "\t\t\t_ = h\n")
+		fmt.Fprintf(sb, "\t\t\t_ = m\n")
+		fmt.Fprintf(sb, "\t\t}\n")
 		return
 	}
 	switch pType {
@@ -489,7 +513,20 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "}\n\n")
 	}
 
-	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {\n", name, name)
+	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {\n", name, name)
+	fmt.Fprintf(&sb, "\tif methodID == 0 && methodName != \"\" {\n")
+	fmt.Fprintf(&sb, "\t\tswitch methodName {\n")
+	for _, method := range iface.Methods.List {
+		if len(method.Names) == 0 {
+			continue
+		}
+		methodName := method.Names[0].Name
+		fmt.Fprintf(&sb, "\t\tcase \"%s\":\n", methodName)
+		fmt.Fprintf(&sb, "\t\t\tmethodID = MethodID_%s_%s\n", name, methodName)
+	}
+	fmt.Fprintf(&sb, "\t\t}\n")
+	fmt.Fprintf(&sb, "\t}\n\n")
+
 	fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n\tswitch methodID {\n")
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
@@ -584,7 +621,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name)
-	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, args)\n}\n\n", name)
+	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, \"\", args)\n}\n\n", name)
+	fmt.Fprintf(&sb, "func (b *%s_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {\n", name)
+	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, method, args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
 	if fixedPrefix != "" {

@@ -46,6 +46,10 @@ func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	return nil, nil
 }
 
+func (b *ComplexBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (b *ComplexBridge) DestroyHandle(handle uint32) error { return nil }
 
 func TestFFISerializationEdgeCases(t *testing.T) {

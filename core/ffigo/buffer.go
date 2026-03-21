@@ -77,16 +77,27 @@ type Reader struct {
 }
 
 const (
-	TypeTagUnknown byte = 0
-	TypeTagInt64   byte = 1
-	TypeTagFloat64 byte = 2
-	TypeTagString  byte = 3
-	TypeTagBytes   byte = 4
-	TypeTagBool    byte = 5
-	TypeTagHandle  byte = 6
-	TypeTagMap     byte = 7
-	TypeTagArray   byte = 8
+	TypeTagUnknown   byte = 0
+	TypeTagInt64     byte = 1
+	TypeTagFloat64   byte = 2
+	TypeTagString    byte = 3
+	TypeTagBytes     byte = 4
+	TypeTagBool      byte = 5
+	TypeTagHandle    byte = 6
+	TypeTagMap       byte = 7
+	TypeTagArray     byte = 8
+	TypeTagInterface byte = 9
 )
+
+func (b *Buffer) WriteInterface(handle uint32, methods map[string]string) {
+	b.WriteByte(TypeTagInterface)
+	b.WriteUint32(handle)
+	b.WriteUint32(uint32(len(methods)))
+	for k, v := range methods {
+		b.WriteString(k)
+		b.WriteString(v)
+	}
+}
 
 func (b *Buffer) WriteAny(v interface{}) {
 	if v == nil {
@@ -165,9 +176,33 @@ func (r *Reader) ReadAny() interface{} {
 			a[i] = r.ReadAny()
 		}
 		return a
+	case TypeTagInterface:
+		h, m := r.ReadInterface()
+		return InterfaceData{Handle: h, Methods: m}
 	default:
 		return nil
 	}
+}
+
+type InterfaceData struct {
+	Handle  uint32
+	Methods map[string]string
+}
+
+func (r *Reader) ReadInterface() (uint32, map[string]string) {
+	handle := r.ReadUint32()
+	count := r.ReadUint32()
+	if count > 1024 {
+		// 安全限制：一个接口不应有超过 1024 个方法
+		return handle, nil
+	}
+	methods := make(map[string]string)
+	for i := uint32(0); i < count; i++ {
+		k := r.ReadString()
+		v := r.ReadString()
+		methods[k] = v
+	}
+	return handle, methods
 }
 
 func NewReader(data []byte) *Reader {

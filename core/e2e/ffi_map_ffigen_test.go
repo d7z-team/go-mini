@@ -147,7 +147,20 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 	return v_0, nil
 }
 
-func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "EchoMap":
+			methodID = MethodID_MapTest_EchoMap
+		case "GetMap":
+			methodID = MethodID_MapTest_GetMap
+		case "ProcessMap":
+			methodID = MethodID_MapTest_ProcessMap
+		case "EchoIntMap":
+			methodID = MethodID_MapTest_EchoIntMap
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_MapTest_EchoMap:
@@ -259,7 +272,11 @@ type MapTest_Bridge struct {
 }
 
 func (b *MapTest_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return MapTestHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return MapTestHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *MapTest_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return MapTestHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {

@@ -299,6 +299,10 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, args []*Var)
 }
 
 func (e *Executor) Execute(ctx context.Context) (err error) {
+	return e.ExecuteWithEnv(ctx, nil)
+}
+
+func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
 	session := &StackContext{
 		Context:  ctx,
 		Executor: e,
@@ -332,9 +336,6 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		}
 	}()
 
-	// 注入内建 nil
-	_ = session.AddVariable("nil", nil)
-
 	// 初始化全局变量 (临时递归求值)
 	for name, expr := range e.program.Variables {
 		var val *Var
@@ -349,6 +350,14 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 			val = &Var{VType: TypeAny, Type: "Any"}
 		}
 		_ = session.AddVariable(string(name), val)
+	}
+
+	// 注入内建 nil
+	_ = session.AddVariable("nil", nil)
+
+	// 注入环境变量 (放到后面，允许覆盖脚本定义的同名全局变量)
+	for k, v := range env {
+		_ = session.AddVariable(k, v)
 	}
 
 	defer func() {

@@ -117,7 +117,20 @@ func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
 	return nil
 }
 
-func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "New":
+			methodID = MethodID_OrderService_New
+		case "AddItem":
+			methodID = MethodID_OrderService_AddItem
+		case "GetTotal":
+			methodID = MethodID_OrderService_GetTotal
+		case "Close":
+			methodID = MethodID_OrderService_Close
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_OrderService_New:
@@ -215,7 +228,11 @@ type OrderService_Bridge struct {
 }
 
 func (b *OrderService_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *OrderService_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {

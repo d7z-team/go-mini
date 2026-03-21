@@ -152,4 +152,8 @@ func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte
 	return buf.Bytes(), nil
 }
 
+func (b *mockTupleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (b *mockTupleBridge) DestroyHandle(handle uint32) error { return nil }

@@ -33,7 +33,14 @@ func (p *ErrorsProxy) New(ctx context.Context, text string) error {
 	return nil
 }
 
-func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "New":
+			methodID = MethodID_Errors_New
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Errors_New:
@@ -68,7 +75,11 @@ type Errors_Bridge struct {
 }
 
 func (b *Errors_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ErrorsHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return ErrorsHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *Errors_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return ErrorsHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *Errors_Bridge) DestroyHandle(handle uint32) error {

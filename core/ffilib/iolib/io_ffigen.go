@@ -41,7 +41,14 @@ func (p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 	return v_0, nil
 }
 
-func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "ReadAll":
+			methodID = MethodID_IO_ReadAll
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_IO_ReadAll:
@@ -86,7 +93,11 @@ type IO_Bridge struct {
 }
 
 func (b *IO_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return IOHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return IOHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *IO_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return IOHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *IO_Bridge) DestroyHandle(handle uint32) error {

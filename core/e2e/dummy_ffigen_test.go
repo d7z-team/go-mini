@@ -194,7 +194,26 @@ func (p *MockOSProxy) Deep(ctx context.Context, n Nested) Nested {
 	return v_0
 }
 
-func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Open":
+			methodID = MethodID_MockOS_Open
+		case "Name":
+			methodID = MethodID_MockOS_Name
+		case "Stat":
+			methodID = MethodID_MockOS_Stat
+		case "Read":
+			methodID = MethodID_MockOS_Read
+		case "Write":
+			methodID = MethodID_MockOS_Write
+		case "Close":
+			methodID = MethodID_MockOS_Close
+		case "Deep":
+			methodID = MethodID_MockOS_Deep
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_MockOS_Open:
@@ -340,7 +359,11 @@ type MockOS_Bridge struct {
 }
 
 func (b *MockOS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return MockOSHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return MockOSHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *MockOS_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return MockOSHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
@@ -403,7 +426,16 @@ func (p *ContextMockProxy) WithoutContext(ctx context.Context, val string) strin
 	return v_0
 }
 
-func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "WithContext":
+			methodID = MethodID_ContextMock_WithContext
+		case "WithoutContext":
+			methodID = MethodID_ContextMock_WithoutContext
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_ContextMock_WithContext:
@@ -441,7 +473,11 @@ type ContextMock_Bridge struct {
 }
 
 func (b *ContextMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ContextMockHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return ContextMockHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *ContextMock_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return ContextMockHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
@@ -545,7 +581,20 @@ func (p *NativeMockProxy) SetPtr(ctx context.Context, s *NativeStruct) int64 {
 	return v_0
 }
 
-func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "GetStruct":
+			methodID = MethodID_NativeMock_GetStruct
+		case "GetPtr":
+			methodID = MethodID_NativeMock_GetPtr
+		case "SetStruct":
+			methodID = MethodID_NativeMock_SetStruct
+		case "SetPtr":
+			methodID = MethodID_NativeMock_SetPtr
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_NativeMock_GetStruct:
@@ -603,7 +652,11 @@ type NativeMock_Bridge struct {
 }
 
 func (b *NativeMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return NativeMockHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return NativeMockHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *NativeMock_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return NativeMockHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {

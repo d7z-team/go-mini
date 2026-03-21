@@ -132,7 +132,26 @@ func (p *FmtProxy) Fprintln(ctx context.Context, w any, args ...any) {
 	return
 }
 
-func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error) {
+func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Print":
+			methodID = MethodID_Fmt_Print
+		case "Println":
+			methodID = MethodID_Fmt_Println
+		case "Printf":
+			methodID = MethodID_Fmt_Printf
+		case "Sprintf":
+			methodID = MethodID_Fmt_Sprintf
+		case "Fprint":
+			methodID = MethodID_Fmt_Fprint
+		case "Fprintf":
+			methodID = MethodID_Fmt_Fprintf
+		case "Fprintln":
+			methodID = MethodID_Fmt_Fprintln
+		}
+	}
+
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Fmt_Print:
@@ -334,7 +353,11 @@ type Fmt_Bridge struct {
 }
 
 func (b *Fmt_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FmtHostRouter(ctx, b.Impl, b.Registry, methodID, args)
+	return FmtHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *Fmt_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return FmtHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
 func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {

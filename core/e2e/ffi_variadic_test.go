@@ -74,6 +74,10 @@ func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	return resBuf.Bytes(), nil
 }
 
+func (b *PrinterBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, nil
+}
+
 func (b *PrinterBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIVariadic(t *testing.T) {

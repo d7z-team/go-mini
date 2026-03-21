@@ -356,11 +356,20 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 
 	if obj.VType == TypeInterface {
 		inter := obj.Ref.(*VMInterface)
-		if _, ok := inter.Methods[property]; !ok {
+		sig, ok := inter.Methods[property]
+		if !ok {
 			return nil, fmt.Errorf("method %s not in interface contract %s", property, obj.Type)
 		}
-		// Forward to target
-		return e.evalMemberExprDirect(nil, inter.Target, property)
+		// 如果 Target 是一个 FFI Handle，我们需要一个通用的路由方式
+		// 我们可以利用 VMMethodValue，但在 Invoke 时需要知道这是个 FFI 调用
+		return &Var{
+			VType: TypeClosure,
+			Ref: &VMMethodValue{
+				Receiver: inter.Target,
+				Method:   property, // 对于 FFI 接口，直接存方法名
+			},
+			Type: ast.GoMiniType(sig.String()),
+		}, nil
 	}
 
 	switch obj.VType {
@@ -422,6 +431,11 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		}
 		if val, ok := mod.Data[property]; ok {
 			return val, nil
+		}
+		// Fallback to FFI routes
+		routeKey := fmt.Sprintf("%s.%s", mod.Name, property)
+		if route, ok := e.routes[routeKey]; ok {
+			return &Var{VType: TypeAny, Ref: route}, nil
 		}
 		return nil, fmt.Errorf("module member %s not found in %s", property, mod.Name)
 	case TypeAny:
@@ -812,6 +826,24 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				if route, ok := e.routes[ref.Method]; ok {
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
 				}
+				// 动态 FFI 路由：如果 Receiver 是一个带 Bridge 的 Handle，直接发起调用
+				if ref.Receiver != nil && ref.Receiver.VType == TypeHandle && ref.Receiver.Bridge != nil {
+					// 构造临时路由。注意：这里我们暂时假设返回值为 Any。
+					// 完善的做法是：如果 callable 带有签名信息，可以从中提取。
+					route := FFIRoute{
+						Bridge:   ref.Receiver.Bridge,
+						MethodID: 0, // 对于接口调用，通常我们传方法名字符串
+						Name:     ref.Method,
+						Returns:  "Any", // 默认
+					}
+					// 如果 c 有类型信息且是接口方法签名
+					if c.Type != "" {
+						if ft, ok := c.Type.ReadFunc(); ok {
+							route.Returns = string(ft.Return)
+						}
+					}
+					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
+				}
 			}
 		}
 	}
@@ -823,6 +855,36 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 	}
 	if route, ok := e.routes[routeKey]; ok {
 		return e.evalFFIAndPush(session, route, args)
+	}
+
+	// 3a. Dynamic FFI Call for Handles (Interfaces)
+	if receiver != nil && receiver.VType == TypeHandle && receiver.Bridge != nil && name != "" {
+		route := FFIRoute{
+			Bridge:   receiver.Bridge,
+			MethodID: 0,
+			Name:     name,
+			Returns:  "Any",
+		}
+		// If we had the signature, we could set route.Returns here
+		return e.evalFFIAndPush(session, route, args)
+	}
+
+	// 3b. Dynamic Method Call for Maps (Interfaces)
+	if receiver != nil && receiver.VType == TypeMap && name != "" {
+		m := receiver.Ref.(*VMMap)
+		if val, ok := m.Data[name]; ok {
+			// Found it! It could be a closure stored in the map.
+			return e.invokeCall(session, nil, "", nil, nil, val, args)
+		}
+	}
+
+	// 3c. Dynamic Method Call for Modules (Interfaces)
+	if receiver != nil && receiver.VType == TypeModule && name != "" {
+		mod := receiver.Ref.(*VMModule)
+		routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
+		if route, ok := e.routes[routeKey]; ok {
+			return e.evalFFIAndPush(session, route, args)
+		}
 	}
 
 	// 4. Module Function Call
