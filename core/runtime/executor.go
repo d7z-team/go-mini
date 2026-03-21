@@ -259,7 +259,7 @@ func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) boo
 	return actual.Return.IsAssignableTo(expected.Return)
 }
 
-func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error) {
+func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName string, args []*Var) (*Var, error) {
 	if callable == nil {
 		return nil, errors.New("cannot invoke nil callable")
 	}
@@ -271,7 +271,16 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, args []*Var)
 	ctx.ValueStack = &ValueStack{}
 
 	// Prepare the call
-	err := e.invokeCall(ctx, &ast.CallExprStmt{}, "", nil, nil, callable, args)
+	// If methodName is provided, treat callable as receiver
+	var receiver *Var
+	name := methodName
+	actualCallable := callable
+	if methodName != "" {
+		receiver = callable
+		actualCallable = nil
+	}
+
+	err := e.invokeCall(ctx, &ast.CallExprStmt{}, name, receiver, nil, actualCallable, args)
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
@@ -467,11 +476,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	if task.Op == OpImportDone {
 		// Even on panic, we must restore the parent session
 		data := task.Data.(*ImportData)
-		session.Executor = data.OldExecutor.(interface {
-			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-			CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-			InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-		})
+		session.Executor = data.OldExecutor.(ExecutorAPI)
 		session.Stack = data.OldStack
 		delete(session.LoadingModules, data.Path)
 		// Return true to indicate we handled this task, but keep UnwindMode as is to continue unwinding in parent
@@ -491,11 +496,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			}
 			session.Stack = oldStack
 			if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
-				session.Executor = oldExec.(interface {
-					ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-					CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-					InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-				})
+				session.Executor = oldExec.(ExecutorAPI)
 			}
 			return true, nil
 		}
@@ -503,11 +504,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		// If it's a panic, still restore the stack and continue unwinding
 		session.Stack = oldStack
 		if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
-			session.Executor = oldExec.(interface {
-				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-			})
+			session.Executor = oldExec.(ExecutorAPI)
 		}
 		return false, nil
 	}
@@ -540,11 +537,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		session.Stack = oldStack
 		// Restore executor if saved (cross-module calls) during panic unwind
 		if oldExec, ok := data["oldExec"]; ok {
-			session.Executor = oldExec.(interface {
-				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-			})
+			session.Executor = oldExec.(ExecutorAPI)
 		}
 		return false, nil
 	}
@@ -713,8 +706,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		lhsDesc := session.ValueStack.Pop().Ref
 		return e.incDecLHSDesc(session, lhsDesc, op)
 	case OpReturn:
-		hasResult := task.Data.(bool)
-		if hasResult {
+		count := task.Data.(int)
+		if count > 1 {
+			// 多返回值，打包成 Tuple
+			elements := make([]*Var, count)
+			for i := count - 1; i >= 0; i-- {
+				elements[i] = session.ValueStack.Pop()
+			}
+			res := &Var{VType: TypeArray, Ref: &VMArray{Data: elements}}
+			_ = session.Store("__return__", res)
+		} else if count == 1 {
+			// 单返回值
 			res := session.ValueStack.Pop()
 			if res != nil {
 				_ = session.Store("__return__", res)
@@ -941,11 +943,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		// Restore executor if saved (cross-module calls)
 		if oldExec, ok := dataMap["oldExec"]; ok {
-			session.Executor = oldExec.(interface {
-				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-				CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-				InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-			})
+			session.Executor = oldExec.(ExecutorAPI)
 		}
 
 		var retVal *Var
@@ -1175,6 +1173,15 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 				if targetType == "" {
 					continue
+				}
+
+				// 0. Nil 匹配处理
+				if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
+					if targetType == "nil" || targetType == "Any" || targetType == "interface{}" {
+						match = true
+						break
+					}
+					continue // Nil 不匹配具体的非 Any 类型
 				}
 
 				// 1. 基础类型匹配
@@ -1472,11 +1479,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// modSession.Stack = session.Stack <--- REMOVED THIS LINE
 
 		// Restore session
-		session.Executor = data.OldExecutor.(interface {
-			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-			CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-			InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-		})
+		session.Executor = data.OldExecutor.(ExecutorAPI)
 		session.Stack = data.OldStack
 		session.TaskStack = data.OldTaskStack
 		session.ValueStack = data.OldValueStack
@@ -1551,10 +1554,13 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 		session.TaskStack = append(session.TaskStack, Task{Op: OpIncDec, Data: string(n.Operator)})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.Operand})
 	case *ast.ReturnStmt:
-		hasResult := len(n.Results) > 0
-		session.TaskStack = append(session.TaskStack, Task{Op: OpReturn, Data: hasResult})
-		if hasResult {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Results[0]})
+		numResults := len(n.Results)
+		session.TaskStack = append(session.TaskStack, Task{Op: OpReturn, Data: numResults})
+		if numResults > 0 {
+			// 倒序入栈，确保执行顺序为正序
+			for i := numResults - 1; i >= 0; i-- {
+				session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Results[i]})
+			}
 		}
 	case *ast.InterruptStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpInterrupt, Data: n.InterruptType})

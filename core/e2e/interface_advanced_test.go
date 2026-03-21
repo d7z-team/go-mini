@@ -134,8 +134,8 @@ func TestInvokeCallable(t *testing.T) {
 	// 构造参数
 	arg := &runtime.Var{VType: runtime.TypeString, Str: "Hello VM"}
 
-	// 宿主调用 InvokeCallable
-	res, err := runtimeObj.InvokeCallable(session, cbVar, []*runtime.Var{arg})
+	// 3. 执行 InvokeCallable
+	res, err := runtimeObj.InvokeCallable(session, cbVar, "", []*runtime.Var{arg})
 	if err != nil {
 		t.Fatal(err)
 	}

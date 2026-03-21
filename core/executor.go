@@ -62,6 +62,14 @@ func (p *MiniProgram) Executor() *runtime.Executor {
 	return p.executor
 }
 
+func (p *MiniProgram) CheckSatisfaction(val *runtime.Var, interfaceType ast.GoMiniType) (*runtime.Var, error) {
+	return p.executor.CheckSatisfaction(val, interfaceType)
+}
+
+func (p *MiniProgram) ExecExpr(ctx *runtime.StackContext, s ast.Expr) (*runtime.Var, error) {
+	return p.executor.ExecExpr(ctx, s)
+}
+
 // GetParent 获取节点的父节点
 func (p *MiniProgram) GetParent(node ast.Node) ast.Node {
 	p.parentMu.RLock()
@@ -146,8 +154,8 @@ func (p *MiniProgram) LastSession() *runtime.StackContext {
 	return p.executor.LastSession()
 }
 
-func (p *MiniProgram) InvokeCallable(ctx *runtime.StackContext, callable *runtime.Var, args []*runtime.Var) (*runtime.Var, error) {
-	return p.executor.InvokeCallable(ctx, callable, args)
+func (p *MiniProgram) InvokeCallable(ctx *runtime.StackContext, callable *runtime.Var, methodName string, args []*runtime.Var) (*runtime.Var, error) {
+	return p.executor.InvokeCallable(ctx, callable, methodName, args)
 }
 
 // Eval 在当前程序的语境下执行单个 Go 表达式

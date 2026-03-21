@@ -22,6 +22,11 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 
 	if c.IsType {
 		// 处于类型上下文，将其视为类型名
+		// 特殊处理 nil
+		if c.Name == "nil" {
+			c.Type = "nil"
+			return nil
+		}
 		c.Type = GoMiniType(c.Name)
 		return nil
 	}

@@ -109,4 +109,76 @@ func TestTypeSwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+
+	t.Run("NilMatching", func(t *testing.T) {
+		code := `
+		package main
+		
+		func isNil(v Any) Bool {
+			switch v.(type) {
+			case nil:
+				return true
+			default:
+				return false
+			}
+		}
+
+		func main() {
+			var empty Any
+			if !isNil(nil) { panic("nil should be nil") }
+			if !isNil(empty) { panic("uninitialized Any should be nil") }
+			if isNil(10) { panic("10 is not nil") }
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("InterfaceEmbedding", func(t *testing.T) {
+		code := `
+		package main
+		
+		type Reader interface {
+			Read() String
+		}
+
+		type Writer interface {
+			Write(String)
+		}
+
+		type ReadWriter interface {
+			Reader
+			Writer
+		}
+
+		var writeLog String
+
+		func main() {
+			obj := make(map[String]Any)
+			obj["Read"] = func() String { return "data" }
+			obj["Write"] = func(s String) { 
+				writeLog = s
+			}
+			
+			var rw ReadWriter = obj
+			if rw.Read() != "data" { panic("read failed") }
+			rw.Write("hello")
+			if writeLog != "hello" { panic("write failed") }
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 }

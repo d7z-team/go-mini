@@ -351,18 +351,21 @@ type HandleTracker struct {
 	Handles []HandleRef
 }
 
+type ExecutorAPI interface {
+	ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+	CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
+	InvokeCallable(ctx *StackContext, callable *Var, methodName string, args []*Var) (*Var, error)
+	ToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var
+}
+
 type StackContext struct {
-	context.Context
-	Program  *Program
+	Context  context.Context
 	Stack    *Stack
 	PanicVar *Var // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
-	Executor interface {
-		ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-		CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-		InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error)
-	}
+	Executor ExecutorAPI
 
 	// 运行时状态 (Session State)
+
 	StepCount      int64
 	StepLimit      int64
 	ActiveHandles  *HandleTracker
@@ -398,6 +401,14 @@ func (ctx *StackContext) Resume() {
 
 func (ctx *StackContext) IsPaused() bool {
 	return atomic.LoadInt32(&ctx.isPaused) == 1
+}
+
+func (ctx *StackContext) Done() <-chan struct{} {
+	return ctx.Context.Done()
+}
+
+func (ctx *StackContext) Err() error {
+	return ctx.Context.Err()
 }
 
 func (ctx *StackContext) initSignals() {

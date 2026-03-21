@@ -49,7 +49,7 @@ func main() {
 
 ```go
 func main() {
-    prog, _ := executor.NewRuntimeByGoCode(longRunningCode)
+    prog, _ := executor.NewRuntimeByGocode(longRunningCode)
     
     // 在协程中执行
     go prog.Execute(context.Background())
@@ -67,19 +67,6 @@ func main() {
     }
 }
 ```
-
-### 3. 数据交互与规范化
-
-`go-mini` 自动处理 Go 类型与 VM 规范类型之间的转换：
-
-| Go 类型 | VM 规范类型 | 转换说明 |
-| :--- | :--- | :--- |
-| `int`, `int64`, `int32` | `Int64` | 自动规约 |
-| `float64`, `float32` | `Float64` | 自动规约 |
-| `string` | `String` | 值拷贝 |
-| `[]byte` | `TypeBytes` | **强制深度拷贝**，确保物理隔离 |
-| `struct` | `TypeMap` | 递归映射公开字段（支持 `json` 标签） |
-| `pointer` | `TypeHandle` | **句柄映射**，绝对禁止原生地址外泄 |
 
 ---
 
@@ -136,9 +123,7 @@ type OrderService interface {
 }
 ```
 
-运行 `make gen` 后，生成的代码将确保：
-1.  脚本中通过 `o.AddItem` 调用方法。
-2.  `*Order` 宿主指针永远不会暴露给脚本，脚本仅持有其 ID。
+运行 `make gen` 后，生成的代码将确保脚本中通过 `o.AddItem` 调用方法，而 `*Order` 宿主指针永远不会暴露。
 
 ---
 
@@ -148,90 +133,75 @@ type OrderService interface {
 
 ### 1. 接口定义
 
-支持 **命名接口** 和 **匿名接口**：
+支持命名接口、匿名接口以及 **接口嵌入 (Embedding)**：
 
 ```go
-// 命名接口
-type Logger interface {
-    Log(String) String
+type Reader interface {
+    Read() String
 }
 
-func main() {
-    // 匿名接口变量
-    var r interface{ Read() String }
+type Writer interface {
+    Write(String)
+}
+
+// 接口嵌入：自动合并方法集
+type ReadWriter interface {
+    Reader
+    Writer
 }
 ```
 
 ### 2. 隐式实现 (鸭子类型)
 
-任何对象（包括 `Map`、`Struct` 或宿主注入的 `Handle`），只要拥有匹配的方法签名，就自动实现了该接口。
-
-```go
-func main() {
-    obj := make(map[String]Any)
-    obj["Log"] = func(msg String) String {
-        return "Logged: " + msg
-    }
-    
-    // 隐式满足 Logger 接口
-    var l Logger = obj
-    l.Log("hello")
-}
-```
+任何对象只要拥有匹配的方法签名，就自动实现了该接口。支持 `Map`、`Struct` 或是由宿主注入的 `Handle`。
 
 ### 3. 类型断言 (Type Assertion)
 
-支持运行时类型检查和转换：
-
 ```go
-val, ok := i.(Logger)
+val, ok := i.(ReadWriter)
 if ok {
-    val.Log("success")
+    val.Write("data")
 }
-
-// 或者是直接断言 (失败会触发 panic)
-l := i.(Logger)
 ```
 
-### 5. Type Switch
+### 4. Type Switch
 
-Type Switch 提供了一种比 `if-else` 断言更优雅的类型分支处理方式：
+支持带赋值的类型开关以及 **nil 匹配**：
 
 ```go
-func format(v Any) String {
-    // 支持带赋值的类型开关
-    switch x := v.(type) {
-    case Int64:
-        return "Integer: " + String(x)
-    case String:
-        return "String: " + x
-    case Logger:
-        return "Logger Object"
-    default:
-        return "Unknown Type"
-    }
+switch x := v.(type) {
+case nil:
+    return "Object is nil"
+case Int64:
+    return "Integer: " + String(x)
+case ReadWriter:
+    return "IO Object"
+default:
+    return "Unknown"
 }
 ```
 
-**匹配规则**：
-*   **基础类型**：直接匹配变量的底层原始类型（如 `Int64`, `String`, `Bool`）。
-*   **接口类型**：检查变量是否满足该接口定义的契约（鸭子类型匹配）。
-*   **Any**：可以匹配任何非 `nil` 对象。
+### 5. 反向代理 (Reverse Proxy)
 
-### 6. FFI 接口传递
+这是 `go-mini` 最强大的特性之一：**让宿主侧像调用本地对象一样调用脚本实现的功能**。
 
-宿主（Host）可以直接将实现某个接口的 Go 对象返回给脚本。脚本侧会自动识别其拥有的方法集：
+**步骤 1：在 Go 侧定义接口并标注**
+```go
+// ffigen:reverse
+type ScriptHandler interface {
+    OnEvent(name string, data any) error
+}
+```
+
+**步骤 2：生成代码并使用**
+`ffigen` 会生成 `NewScriptHandler_ReverseProxy`。你只需要从脚本拿到实现的 Map，即可包装成原生的 Go 接口对象：
 
 ```go
-// 脚本侧代码
-func main() {
-    // hostLogger 是由宿主侧注入的接口对象
-    res := hostLogger.Log("Hello from VM")
-    fmt.Println(res)
-}
+// Go 侧代码
+proxy := NewScriptHandler_ReverseProxy(program, session, scriptMap, bridge)
+// 像调用普通 Go 对象一样调用脚本！
+err := proxy.OnEvent("login", "user_1")
 ```
-
-**性能提示**：接口方法分发通过内部的 `SatisfactionCache` 进行了优化，首次调用后会缓存匹配关系，极大地提升了动态调用的性能。
 
 ---
 
@@ -239,12 +209,12 @@ func main() {
 
 ### 1. 基础支持
 *   **数据类型**：`int`, `int64`, `float64`, `bool`, `string`, `byte`, `[]byte`, `any`。
+*   **多返回值**：支持 `func f() (int, string) { return 1, "ok" }` 及其在 FFI 中的自动打包。
 *   **容器**：数组/切片 (`[]T`)，字典 (`map[string]T`)。
 *   **指针**：`new(T)`, `*p` (解引用)。
 
 ### 2. 异常处理
-*   **Panic**: 支持 `panic("error")`。
-*   **Recover**: 支持在 `defer` 中使用 `recover()` 捕获异常。
-*   **Try-Catch**: 支持实验性的 `try { ... } catch(e) { ... } finally { ... }` 语法（推荐用于复杂逻辑）。
+*   **Panic/Recover**: 支持完整的异常抛出与捕获。
+*   **Try-Catch**: 实验性的 `try { ... } catch(e) { ... }` 语法。
 
 *(注意：脚本中不支持并发原语如 `go`, `chan`。)*

@@ -14,8 +14,9 @@ import (
 )
 
 type GoToASTConverter struct {
-	fset    *token.FileSet
-	imports map[string]string // Alias -> Path
+	fset       *token.FileSet
+	imports    map[string]string // Alias -> Path
+	interfaces map[string]*ast.InterfaceType
 }
 
 func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
@@ -48,8 +49,9 @@ func (c *GoToASTConverter) extractLoc(node ast.Node) *miniast.Position {
 
 func NewGoToASTConverter() *GoToASTConverter {
 	return &GoToASTConverter{
-		fset:    token.NewFileSet(),
-		imports: make(map[string]string),
+		fset:       token.NewFileSet(),
+		imports:    make(map[string]string),
+		interfaces: make(map[string]*ast.InterfaceType),
 	}
 }
 
@@ -145,6 +147,7 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 							}
 							program.Structs[miniast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st, doc)
 						} else if it, ok := s.Type.(*ast.InterfaceType); ok {
+							c.interfaces[s.Name.Name] = it // 记录接口定义
 							program.Interfaces[miniast.Ident(s.Name.Name)] = &miniast.InterfaceStmt{
 								BaseNode: miniast.BaseNode{
 									ID:   c.genID(s, "interface"),
@@ -722,8 +725,16 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 			}
 		}
 		retType := "Void"
-		if ex.Type.Results != nil && len(ex.Type.Results.List) > 0 {
-			retType = c.typeToString(ex.Type.Results.List[0].Type)
+		if ex.Type.Results != nil {
+			var results []string
+			for _, r := range ex.Type.Results.List {
+				results = append(results, c.typeToString(r.Type))
+			}
+			if len(results) > 1 {
+				retType = "tuple(" + strings.Join(results, ", ") + ")"
+			} else if len(results) == 1 {
+				retType = results[0]
+			}
 		}
 		funcExpr := &miniast.FuncLitExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "func_lit"), Meta: "func_lit", Loc: c.extractLoc(ex)}, FunctionType: miniast.FunctionType{Params: params, Return: miniast.GoMiniType(retType)}}
 		if ex.Body != nil {
@@ -790,7 +801,11 @@ func (c *GoToASTConverter) convertArgs(args []ast.Expr) []miniast.Expr {
 }
 
 func (c *GoToASTConverter) typeToString(e ast.Expr) string {
-	if e == nil {
+	return c.typeToStringWithDepth(e, 0)
+}
+
+func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
+	if e == nil || depth > 10 {
 		return "Any"
 	}
 	switch t := e.(type) {
@@ -802,80 +817,89 @@ func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 		return val
 	case *ast.Ident:
 		name := t.Name
-		if name == "int" || name == "int64" {
+		switch name {
+		case "int", "int64":
 			return "Int64"
-		}
-		if name == "float64" || name == "float32" {
+		case "float64", "float32":
 			return "Float64"
-		}
-		if name == "string" {
+		case "string":
 			return "String"
-		}
-		if name == "bool" {
+		case "bool":
 			return "Bool"
-		}
-		if name == "byte" || name == "uint8" {
+		case "byte", "uint8":
 			return "Uint8"
-		}
-		if name == "any" || name == "interface{}" {
+		case "any", "interface{}":
 			return "Any"
+		}
+		// 检查是否是当前程序中定义的接口名
+		if iface, ok := c.interfaces[name]; ok {
+			return c.expandInterface(iface, depth+1)
 		}
 		return name
 	case *ast.ArrayType:
 		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 			return "TypeBytes"
 		}
-		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
+		return fmt.Sprintf("Array<%s>", c.typeToStringWithDepth(t.Elt, depth+1))
 	case *ast.StarExpr:
-		return fmt.Sprintf("Ptr<%s>", c.typeToString(t.X))
+		return fmt.Sprintf("Ptr<%s>", c.typeToStringWithDepth(t.X, depth+1))
 	case *ast.MapType:
-		return fmt.Sprintf("Map<%s, %s>", c.typeToString(t.Key), c.typeToString(t.Value))
+		return fmt.Sprintf("Map<%s, %s>", c.typeToStringWithDepth(t.Key, depth+1), c.typeToStringWithDepth(t.Value, depth+1))
 	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", c.typeToString(t.X), t.Sel.Name)
+		return fmt.Sprintf("%s.%s", c.typeToStringWithDepth(t.X, depth+1), t.Sel.Name)
 	case *ast.Ellipsis:
-		return fmt.Sprintf("Array<%s>", c.typeToString(t.Elt))
+		return fmt.Sprintf("Array<%s>", c.typeToStringWithDepth(t.Elt, depth+1))
 	case *ast.InterfaceType:
-		var methods []string
-		if t.Methods != nil {
-			for _, m := range t.Methods.List {
-				if len(m.Names) > 0 {
-					// 提取方法签名：Read(String) String
-					var params []string
-					var returns string
-					if fn, ok := m.Type.(*ast.FuncType); ok {
-						if fn.Params != nil {
-							for _, p := range fn.Params.List {
-								pType := c.typeToString(p.Type)
-								// 处理可能的多个参数共享一个类型的情况: (a, b int)
-								count := len(p.Names)
-								if count == 0 {
-									count = 1
-								}
-								for i := 0; i < count; i++ {
-									params = append(params, pType)
-								}
+		return c.expandInterface(t, depth+1)
+	}
+	return "Any"
+}
+
+func (c *GoToASTConverter) expandInterface(t *ast.InterfaceType, depth int) string {
+	var methods []string
+	if t.Methods != nil {
+		for _, m := range t.Methods.List {
+			if len(m.Names) > 0 {
+				// 提取方法签名：Read(String) String
+				var params []string
+				var returns string
+				if fn, ok := m.Type.(*ast.FuncType); ok {
+					if fn.Params != nil {
+						for _, p := range fn.Params.List {
+							pType := c.typeToStringWithDepth(p.Type, depth+1)
+							count := len(p.Names)
+							if count == 0 {
+								count = 1
+							}
+							for i := 0; i < count; i++ {
+								params = append(params, pType)
 							}
 						}
-						if fn.Results != nil && len(fn.Results.List) > 0 {
-							returns = " " + c.typeToString(fn.Results.List[0].Type)
-						} else {
-							returns = " Any" // 默认为 Any 以支持接口灵活匹配
-						}
 					}
-					sig := fmt.Sprintf("(%s)%s", strings.Join(params, ","), returns)
-					for _, name := range m.Names {
-						methods = append(methods, name.Name+sig)
+					if fn.Results != nil && len(fn.Results.List) > 0 {
+						returns = " " + c.typeToStringWithDepth(fn.Results.List[0].Type, depth+1)
+					} else {
+						returns = " Any"
 					}
-				} else {
-					// 可能是嵌入接口或者不带括号的方法名
-					methods = append(methods, c.typeToString(m.Type))
+				}
+				sig := fmt.Sprintf("(%s)%s", strings.Join(params, ","), returns)
+				for _, name := range m.Names {
+					methods = append(methods, name.Name+sig)
+				}
+			} else {
+				// 嵌入接口：递归展开
+				embedded := c.typeToStringWithDepth(m.Type, depth+1)
+				if strings.HasPrefix(embedded, "interface{") {
+					inner := strings.TrimSuffix(strings.TrimPrefix(embedded, "interface{"), "}")
+					if inner != "" {
+						methods = append(methods, strings.Split(inner, ";")...)
+					}
 				}
 			}
 		}
-		if len(methods) == 0 {
-			return "Any"
-		}
-		return fmt.Sprintf("interface{%s}", strings.Join(methods, ";"))
 	}
-	return "Any"
+	if len(methods) == 0 {
+		return "Any"
+	}
+	return fmt.Sprintf("interface{%s}", strings.Join(methods, ";"))
 }

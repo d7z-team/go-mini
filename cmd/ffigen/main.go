@@ -56,8 +56,19 @@ func main() {
 	}
 
 	var interfaces []string
+	anyReverse := false
 	for _, spec := range ifaceSpecs {
-		interfaces = append(interfaces, generateCode(*pkgName, spec, structs))
+		isReverse := false
+		if spec.Doc != nil {
+			for _, line := range spec.Doc.List {
+				if strings.Contains(line.Text, "ffigen:reverse") {
+					isReverse = true
+					anyReverse = true
+					break
+				}
+			}
+		}
+		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse))
 	}
 
 	var sb strings.Builder
@@ -69,6 +80,9 @@ func main() {
 	sb.WriteString("\t\"strings\"\n")
 	sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ffigo\"\n")
 	sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ast\"\n")
+	if anyReverse {
+		sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/runtime\"\n")
+	}
 	sb.WriteString(")\n\n")
 	sb.WriteString(strings.Join(interfaces, "\n"))
 
@@ -332,11 +346,12 @@ func toGoType(pType string) string {
 	return pType
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse bool) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 	var sb strings.Builder
 
+	// 解析模块名和前缀
 	fixedPrefix := ""
 	if spec.Doc != nil {
 		for _, comment := range spec.Doc.List {
@@ -350,7 +365,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 	}
 
+	// 1. 生成基础 ID 和常规 Proxy/Router
 	fmt.Fprintf(&sb, "const (\n")
+	// ... (保持原有 MethodID 生成) ...
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
@@ -641,6 +658,102 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n")
 	}
 
+	// 2. 生成 Reverse Proxy (Script -> Go)
+	if isReverse {
+		fmt.Fprintf(&sb, "type %s_ReverseProxy struct {\n", name)
+		fmt.Fprintf(&sb, "\tprogram  runtime.ExecutorAPI\n")
+		fmt.Fprintf(&sb, "\tctx      *runtime.StackContext\n")
+		fmt.Fprintf(&sb, "\tcallable *runtime.Var\n")
+		fmt.Fprintf(&sb, "\tbridge   ffigo.FFIBridge\n")
+		fmt.Fprintf(&sb, "}\n\n")
+
+		fmt.Fprintf(&sb, "func New%s_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.StackContext, callable *runtime.Var, bridge ffigo.FFIBridge) *%s_ReverseProxy {\n", name, name)
+		fmt.Fprintf(&sb, "\treturn &%s_ReverseProxy{program: program, ctx: ctx, callable: callable, bridge: bridge}\n}\n\n", name)
+
+		for _, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
+			}
+			methodName := method.Names[0].Name
+			funcType := method.Type.(*ast.FuncType)
+
+			// 生成方法签名
+			var paramsList []string
+			var paramNames []string
+			if funcType.Params != nil {
+				for j, p := range funcType.Params.List {
+					pType := toGoType(typeToString(p.Type))
+					if j == 0 && (pType == "context.Context" || strings.HasSuffix(pType, ".Context")) {
+						paramsList = append(paramsList, "ctx "+pType)
+						continue
+					}
+					for _, pn := range p.Names {
+						paramsList = append(paramsList, pn.Name+" "+pType)
+						paramNames = append(paramNames, pn.Name)
+					}
+				}
+			}
+			retType := " "
+			if funcType.Results != nil {
+				var results []string
+				for _, r := range funcType.Results.List {
+					results = append(results, toGoType(typeToString(r.Type)))
+				}
+				if len(results) > 1 {
+					retType = fmt.Sprintf(" (%s) ", strings.Join(results, ", "))
+				} else if len(results) == 1 {
+					retType = " " + results[0] + " "
+				}
+			}
+
+			fmt.Fprintf(&sb, "func (p *%s_ReverseProxy) %s(%s)%s{\n", name, methodName, strings.Join(paramsList, ", "), retType)
+			fmt.Fprintf(&sb, "\targs := make([]*runtime.Var, %d)\n", len(paramNames))
+			for i, pn := range paramNames {
+				fmt.Fprintf(&sb, "\targs[%d] = p.program.ToVar(p.ctx, %s, p.bridge)\n", i, pn)
+			}
+			fmt.Fprintf(&sb, "\tresVar, err := p.program.InvokeCallable(p.ctx, p.callable, \"%s\", args)\n", methodName)
+			fmt.Fprintf(&sb, "\t_ = err\n")
+
+			// 处理返回值
+			if funcType.Results != nil {
+				var retVars []string
+				numResults := len(funcType.Results.List)
+				if numResults > 1 {
+					// 脚本返回 Tuple (Array)
+					fmt.Fprintf(&sb, "\tvar elements []*runtime.Var\n")
+					fmt.Fprintf(&sb, "\tif resVar != nil && resVar.VType == runtime.TypeArray {\n")
+					fmt.Fprintf(&sb, "\t\tif arr, ok := resVar.Ref.(*runtime.VMArray); ok {\n")
+					fmt.Fprintf(&sb, "\t\t\telements = arr.Data\n")
+					fmt.Fprintf(&sb, "\t\t}\n")
+					fmt.Fprintf(&sb, "\t}\n")
+					for i, r := range funcType.Results.List {
+						rType := typeToString(r.Type)
+						goType := toGoType(rType)
+						varName := fmt.Sprintf("ret%d", i)
+						fmt.Fprintf(&sb, "\tvar %s %s = %s\n", varName, goType, zeroValue(goType))
+						fmt.Fprintf(&sb, "\tif %d < len(elements) {\n", i)
+						emitReverseRead(&sb, varName, rType, fmt.Sprintf("elements[%d]", i))
+						fmt.Fprintf(&sb, "\t}\n")
+						retVars = append(retVars, varName)
+					}
+				} else {
+					// 单一返回值
+					r := funcType.Results.List[0]
+					rType := typeToString(r.Type)
+					goType := toGoType(rType)
+					varName := "ret0"
+					fmt.Fprintf(&sb, "\tvar %s %s = %s\n", varName, goType, zeroValue(goType))
+					emitReverseRead(&sb, varName, rType, "resVar")
+					retVars = append(retVars, varName)
+				}
+				fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(retVars, ", "))
+			} else {
+				fmt.Fprintf(&sb, "\treturn\n")
+			}
+			fmt.Fprintf(&sb, "}\n\n")
+		}
+	}
+
 	return sb.String()
 }
 
@@ -668,24 +781,30 @@ func getSpec(funcType *ast.FuncType) string {
 			}
 		}
 	}
-	retType, actualRet, hasErr := "Void", "", false
+	hasErr := false
+	var results []string
 	if funcType.Results != nil {
 		for _, r := range funcType.Results.List {
 			t := toVMType(r.Type)
 			if t == "error" {
 				hasErr = true
-			} else if actualRet == "" {
-				actualRet = t
+			} else {
+				results = append(results, t)
 			}
 		}
 	}
+
+	actualRet := "Void"
+	if len(results) > 1 {
+		actualRet = "tuple(" + strings.Join(results, ", ") + ")"
+	} else if len(results) == 1 {
+		actualRet = results[0]
+	}
+
+	var retType string
 	if hasErr {
-		if actualRet == "" {
-			retType = "Result<Void>"
-		} else {
-			retType = fmt.Sprintf("Result<%s>", actualRet)
-		}
-	} else if actualRet != "" {
+		retType = fmt.Sprintf("Result<%s>", actualRet)
+	} else {
 		retType = actualRet
 	}
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), retType)
@@ -756,8 +875,50 @@ func typeToString(expr ast.Expr) string {
 	}
 }
 
+func emitReverseRead(sb *strings.Builder, varName, pType, sourceName string) {
+	goType := toGoType(pType)
+	if pType == "error" {
+		fmt.Fprintf(sb, "\t\tif %s != nil {\n", sourceName)
+		fmt.Fprintf(sb, "\t\t\tif %s.ResultErr != \"\" {\n", sourceName)
+		fmt.Fprintf(sb, "\t\t\t\t%s = fmt.Errorf(\"%%s\", %s.ResultErr)\n", varName, sourceName)
+		fmt.Fprintf(sb, "\t\t\t} else if raw := %s.Interface(); raw != nil {\n", sourceName)
+		fmt.Fprintf(sb, "\t\t\t\tif s, ok := raw.(string); ok && s != \"\" {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t%s = fmt.Errorf(\"%%s\", s)\n", varName)
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t}\n")
+		return
+	}
+	if pType == "Any" || pType == "any" {
+		fmt.Fprintf(sb, "\t\tif %s != nil {\n", sourceName)
+		fmt.Fprintf(sb, "\t\t\t%s = %s.Interface()\n", varName, sourceName)
+		fmt.Fprintf(sb, "\t\t}\n")
+		return
+	}
+
+	fmt.Fprintf(sb, "\t\tif %s != nil {\n", sourceName)
+	fmt.Fprintf(sb, "\t\t\tif raw := %s.Interface(); raw != nil {\n", sourceName)
+	// 基础类型直接断言
+	switch pType {
+	case "Int64", "int64", "Int", "int":
+		fmt.Fprintf(sb, "\t\t\t\tswitch v := raw.(type) {\n\t\t\t\tcase int64: %s = %s(v)\n\t\t\t\tcase float64: %s = %s(v)\n\t\t\t\t}\n", varName, goType, varName, goType)
+	case "String", "string":
+		fmt.Fprintf(sb, "\t\t\t\tif v, ok := raw.(string); ok { %s = v }\n", varName)
+	case "Bool", "bool":
+		fmt.Fprintf(sb, "\t\t\t\tif v, ok := raw.(bool); ok { %s = v }\n", varName)
+	case "Float64", "float64":
+		fmt.Fprintf(sb, "\t\t\t\tif v, ok := raw.(float64); ok { %s = v }\n", varName)
+	default:
+		// 复杂类型（Struct/Map/Array）需要更精细的处理
+		// 暂时尝试直接断言
+		fmt.Fprintf(sb, "\t\t\t\tif v, ok := raw.(%s); ok { %s = v }\n", goType, varName)
+	}
+	fmt.Fprintf(sb, "\t\t\t}\n")
+	fmt.Fprintf(sb, "\t\t}\n")
+}
+
 func zeroValue(t string) string {
-	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "Array<") || t == "Any" || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") {
+	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "Array<") || t == "Any" || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
 		return "nil"
 	}
 	switch t {

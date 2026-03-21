@@ -874,7 +874,13 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 		m := receiver.Ref.(*VMMap)
 		if val, ok := m.Data[name]; ok {
 			// Found it! It could be a closure stored in the map.
-			return e.invokeCall(session, nil, "", nil, nil, val, args)
+			// IMPORTANT: If we found the method via a receiver, we should strip the receiver
+			// from args if it was automatically prepended by OpCall.
+			actualArgs := args
+			if len(args) > 0 && args[0] == receiver {
+				actualArgs = args[1:]
+			}
+			return e.invokeCall(session, nil, "", nil, nil, val, actualArgs)
 		}
 	}
 
@@ -883,7 +889,11 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 		mod := receiver.Ref.(*VMModule)
 		routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
 		if route, ok := e.routes[routeKey]; ok {
-			return e.evalFFIAndPush(session, route, args)
+			actualArgs := args
+			if len(args) > 0 && args[0] == receiver {
+				actualArgs = args[1:]
+			}
+			return e.evalFFIAndPush(session, route, actualArgs)
 		}
 	}
 
