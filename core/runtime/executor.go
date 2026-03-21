@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/debugger"
@@ -25,6 +26,15 @@ type Executor struct {
 	Loader func(path string) (*ast.ProgramStmt, error)
 
 	StepLimit int64
+
+	mu          sync.RWMutex
+	lastSession *StackContext
+}
+
+func (e *Executor) LastSession() *StackContext {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.lastSession
 }
 
 func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
@@ -91,6 +101,10 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		ValueStack:     &ValueStack{},
 		UnwindMode:     UnwindNone,
 	}
+
+	e.mu.Lock()
+	e.lastSession = session
+	e.mu.Unlock()
 
 	defer func() {
 		// Clean up all active handles to prevent memory leaks on VM exit
@@ -1568,13 +1582,25 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 }
 
 func (e *Executor) Run(session *StackContext) error {
+	session.initSignals()
+
 	for len(session.TaskStack) > 0 {
+		// 暂停与恢复逻辑
+		if session.IsPaused() {
+			select {
+			case <-session.Done():
+				return session.Err()
+			case <-session.resumeSignal:
+				// 继续执行
+			}
+		}
+
 		task := session.TaskStack[len(session.TaskStack)-1]
 		session.TaskStack = session.TaskStack[:len(session.TaskStack)-1]
 
 		if task.Op == OpExec {
+			session.StepCount++
 			if session.StepLimit > 0 {
-				session.StepCount++
 				if session.StepCount > session.StepLimit {
 					return fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
 				}

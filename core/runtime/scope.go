@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync/atomic"
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -356,6 +357,33 @@ type StackContext struct {
 	TaskStack  []Task
 	ValueStack *ValueStack
 	UnwindMode UnwindMode
+
+	// 暂停与恢复控制
+	pauseSignal  chan struct{}
+	resumeSignal chan struct{}
+	isPaused     int32 // 原子操作标志
+}
+
+func (ctx *StackContext) Pause() {
+	atomic.StoreInt32(&ctx.isPaused, 1)
+}
+
+func (ctx *StackContext) Resume() {
+	if atomic.CompareAndSwapInt32(&ctx.isPaused, 1, 0) {
+		select {
+		case ctx.resumeSignal <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (ctx *StackContext) IsPaused() bool {
+	return atomic.LoadInt32(&ctx.isPaused) == 1
+}
+
+func (ctx *StackContext) initSignals() {
+	ctx.pauseSignal = make(chan struct{}, 1)
+	ctx.resumeSignal = make(chan struct{}, 1)
 }
 
 const (

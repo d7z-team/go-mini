@@ -42,6 +42,8 @@ type MiniProgram struct {
 	parentMu  sync.RWMutex // 保护 parentMap 读写（虽然 Program 是只读的，但缓存按需构建）
 }
 
+type StackContext = runtime.StackContext
+
 // ReleaseLSPCache 释放 LSP 相关的缓存（ParentMap 等），以节省内存。
 // 只有在不再需要进行 IDE 交互式查询时建议调用。
 func (p *MiniProgram) ReleaseLSPCache() {
@@ -123,6 +125,10 @@ func (p *MiniProgram) SetStepLimit(limit int64) {
 
 func (p *MiniProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
+}
+
+func (p *MiniProgram) LastSession() *runtime.StackContext {
+	return p.executor.LastSession()
 }
 
 // Eval 在当前程序的语境下执行单个 Go 表达式
