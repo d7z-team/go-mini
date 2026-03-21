@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out dummy_ffigen.go dummy.go coverage_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out dummy_ffigen_test.go dummy_test.go coverage_test.go
 package e2e
 
 import "context"
