@@ -35,11 +35,13 @@ go-mini/
 
 ## 🛡️ 2. 核心架构铁律 (The "Iron Laws")
 
-在修改 `go-mini` 时，你**必须**遵守以下原则。违反这些原则将破坏引擎基础的安全性和性能保证。
+在修改 `go-mini` 时，你**必须**遵守以下原则。违反 these 原则将破坏引擎基础的安全性和性能保证。
 
 ### I. 绝对内存隔离 (Absolute Memory Isolation)
 *   **规则**: VM (Runtime) 和宿主 (Go 环境) **绝不能**共享原生内存指针 (除了在 FFI 调用期间只读的零拷贝 `[]byte` 缓冲区)。
-*   **实现**: 复杂的宿主对象 (如 `os.File`, `net.Conn`) 通过**句柄系统 (Handle System)** 管理。VM 内部永远只持有 `uint32` 的句柄 ID (`TypeHandle`)。
+*   **实现**: 
+    *   **句柄系统 (Handle System)**: 复杂的宿主对象 (如 `os.File`, `net.Conn`) 通过句柄管理。VM 内部永远只持有 `uint32` 的句柄 ID (`TypeHandle`)。
+    *   **沙盒指针 (Sandbox Pointers)**: 脚本层支持 `Ptr<T>` 类型和 `*p` (StarExpr) 运算符。这些指针在 VM 内部映射为 Handle 或隔离容器，解引用操作由引擎拦截并返回数据的受控副本，绝不外泄原生地址。
 *   **安全**: 脚本无法对句柄进行算术运算。`Executor` 在任何操作前会严格验证 `VType`。
 
 ### II. 零反射 (Zero Reflection)
@@ -74,7 +76,8 @@ go-mini/
 
 ### VIII. 资源生命周期自动回收 (Automatic Handle Cleanup)
 *   **规则**: 任何执行会话产生的宿主句柄（Handle）必须有明确的生命周期终点。
-*   **兜底**: `Execute` 和 `Eval` 接口必须在 `defer` 中显式清理 `ActiveHandles` 和运行 `RunDefers()`，防止因脚本异常导致的系统资源（如文件描述符 FD）泄露。
+*   **追踪**: `StackContext` 必须持有 `*HandleTracker` (引用计数或共享追踪器)，确保跨模块调用和闭包中产生的句柄能被根 Session 统一感知。
+*   **兜底**: `Execute` 和 `Eval` 接口必须在 `defer` 中显式清理 `ActiveHandles` 并运行 `RunDefers()`，防止因脚本异常导致的系统资源（如文件描述符 FD）泄露。
 
 ### IX. 递归初始化防御 (Recursive Initialization Defense)
 *   **规则**: 运行时进行类型分配（如 `new`）时，递归深度严禁超过 10 层，以防止恶意的循环结构体定义导致宿主 Stack Overflow。
@@ -110,7 +113,7 @@ go-mini/
 1.  **目录结构**: 创建目录 (例如 `core/ffilib/netlib`)。
 2.  **定义接口**: 在 `interface.go` 中定义接口。
     *   使用 `// ffigen:module <name>` 注解接口以定义包名（如 `fmt`, `os`）。
-    *   使用 `// ffigen:methods <TypeName>` 注解接口以定义面向对象的方法集（如 `File`），这会自动生成 `__method_TypeName_MethodName` 格式的 FFI 路由。
+    *   使用 `// ffigen:methods <TypeName>` 注解接口以定义面向对象的方法集（如 `File`），这会自动生成 `__method_TypeName_MethodName` 格式"`"的 FFI 路由。
 3.  **生成指令**: 在 `interface.go` 首行添加 `//go:generate` 指令：
     `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -out <name>_ffigen.go interface.go`
 4.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。

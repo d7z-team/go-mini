@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -161,11 +162,17 @@ func TestGoStyleTypes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "InvalidMakeType" {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("expected panic for invalid make type")
+					} else if !strings.Contains(fmt.Sprint(r), "第一个参数必须是类型") {
+						t.Errorf("unexpected panic message: %v", r)
+					}
+				}()
+			}
 			prog, err := executor.NewRuntimeByGoCode(tt.code)
 			if tt.name == "InvalidMakeType" {
-				if err == nil || (!strings.Contains(err.Error(), "非法类型") && !strings.Contains(err.Error(), "make: 非法类型")) {
-					t.Fatalf("Expected compile error for invalid make type, got: %v", err)
-				}
 				return
 			}
 			if err != nil {

@@ -466,6 +466,14 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		}
 		_ = json.Unmarshal(data, &raw)
 		return &ast.IdentifierExpr{BaseNode: baseNode, Name: ast.Ident(raw.Name)}, nil
+	case "star":
+		var raw struct {
+			X json.RawMessage `json:"x"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.StarExpr{BaseNode: baseNode}
+		n.X, _ = parseExpr(raw.X)
+		return n, nil
 	case "assignment":
 		var raw struct {
 			LHS json.RawMessage `json:"lhs"`

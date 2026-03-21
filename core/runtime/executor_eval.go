@@ -55,12 +55,22 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	if l.VType != TypeInt && l.VType != TypeFloat {
 		if (op == "+" || op == "Plus" || op == "Add") && (l.VType == TypeString || l.VType == TypeBytes) {
+			if r.VType != TypeString && r.VType != TypeBytes {
+				return nil, fmt.Errorf("cannot concatenate %v to %v", r.VType, l.VType)
+			}
+			
+			// Both are bytes, return bytes
+			if l.VType == TypeBytes && r.VType == TypeBytes {
+				resB := make([]byte, len(l.B)+len(r.B))
+				copy(resB, l.B)
+				copy(resB[len(l.B):], r.B)
+				return NewBytes(resB), nil
+			}
+
+			// At least one is string, return string
 			lStr := l.Str
 			if l.VType == TypeBytes {
 				lStr = string(l.B)
-			}
-			if r.VType != TypeString && r.VType != TypeBytes {
-				return nil, fmt.Errorf("cannot concatenate %v to %v", r.VType, l.VType)
 			}
 			rStr := r.Str
 			if r.VType == TypeBytes {
@@ -270,6 +280,13 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 		if val.VType == TypeInt {
 			return NewInt(^val.I64), nil
 		}
+	case "Dereference":
+		if val.VType == TypeHandle && val.Ref != nil {
+			if res, ok := val.Ref.(*Var); ok {
+				return res, nil
+			}
+		}
+		return nil, fmt.Errorf("cannot dereference type %v", val.VType)
 	}
 	return nil, fmt.Errorf("unsupported unary op %s", operator)
 }
@@ -471,7 +488,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			if typVar != nil && typVar.VType == TypeCell {
 				typVar = typVar.Ref.(*Cell).Value
 			}
-			if typVar == nil || typVar.VType != TypeString {
+			if typVar == nil || (typVar.VType != TypeString && typVar.Type != "String") {
 				return errors.New("make first argument must be a type string")
 			}
 			tStr := typVar.Str
@@ -732,7 +749,11 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			// Since we only need it to be non-nil for the test, and ideally it should
 			// point to something that can be dereferenced or used later.
 			// For now, let's use a unique ID and store it in ActiveHandles with a nil bridge.
-			internalID := uint32(len(session.ActiveHandles) + 1000000)
+			hLen := 0
+			if session.ActiveHandles != nil {
+				hLen = len(session.ActiveHandles.Handles)
+			}
+			internalID := uint32(hLen + 1000000)
 			session.AddHandle(nil, internalID)
 			
 			res := &Var{

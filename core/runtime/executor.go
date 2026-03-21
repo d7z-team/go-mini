@@ -85,6 +85,7 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 		StepLimit:      e.StepLimit,
 		ModuleCache:    make(map[string]*Var),
 		LoadingModules: make(map[string]bool),
+		ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 128)},
 		Debugger:       debugger.GetDebugger(ctx),
 		TaskStack:      make([]Task, 0, 128),
 		ValueStack:     &ValueStack{},
@@ -93,9 +94,11 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 
 	defer func() {
 		// Clean up all active handles to prevent memory leaks on VM exit
-		for _, h := range session.ActiveHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+		if session.ActiveHandles != nil {
+			for _, h := range session.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
 	}()
@@ -135,13 +138,6 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	}
 
 	err = e.Run(session)
-	if err != nil {
-		if pErr, ok := err.(*PanicError); ok {
-			session.PanicVar = pErr.Value
-		}
-	}
-	session.Stack.RunDefers()
-
 	if err != nil {
 		return err
 	}
@@ -227,7 +223,64 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		}
 	}
 
+	if task.Op == OpImportDone {
+		// Even on panic, we must restore the parent session
+		data := task.Data.(*ImportData)
+		session.Executor = data.OldExecutor.(interface {
+			ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+		})
+		session.Stack = data.OldStack
+		delete(session.LoadingModules, data.Path)
+		// Return true to indicate we handled this task, but keep UnwindMode as is to continue unwinding in parent
+		return true, nil
+	}
+
 	if task.Op == OpCallBoundary {
+		data := task.Data.(map[string]interface{})
+		oldStack := data["oldStack"].(*Stack)
+		hasReturn := data["hasReturn"].(bool)
+		
+		if session.UnwindMode == UnwindReturn {
+			session.UnwindMode = UnwindNone
+			if hasReturn {
+				res, _ := session.Load("__return__")
+				session.ValueStack.Push(res)
+			}
+			session.Stack = oldStack
+			if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
+				session.Executor = oldExec.(interface {
+					ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+				})
+			}
+			return true, nil
+		}
+		
+		// If it's a panic, still restore the stack and continue unwinding
+		session.Stack = oldStack
+		if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
+			session.Executor = oldExec.(interface {
+				ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
+			})
+		}
+		return false, nil
+	}
+
+	if task.Op == OpLoopBoundary {
+		if session.UnwindMode == UnwindBreak {
+			session.UnwindMode = UnwindNone
+			return true, nil
+		}
+		if session.UnwindMode == UnwindContinue {
+			session.UnwindMode = UnwindNone
+			if err := e.dispatch(session, *task); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		return false, nil // Continue unwinding if it's a panic/return
+	}
+
+	if task.Op == OpCatchBoundary {
 		data := task.Data.(map[string]interface{})
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
@@ -1186,6 +1239,11 @@ func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSMember, Data: string(lhs.Property)})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.Object})
 		return nil
+	case *ast.StarExpr:
+		// Assignment to dereferenced pointer (*p = val)
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSMember, Data: "__deref__"})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.X})
+		return nil
 	}
 	return fmt.Errorf("unsupported LHS in assignment: %T", lhsExpr)
 }
@@ -1378,6 +1436,10 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 		case TypeHandle:
 			if obj.Ref != nil {
 				if valVar, ok := obj.Ref.(*Var); ok {
+					if desc.Property == "__deref__" {
+						copyVarData(valVar, val)
+						return nil
+					}
 					return e.assignToLHSDesc(session, &LHSMember{Obj: valVar, Property: desc.Property}, val)
 				}
 			}
@@ -1453,6 +1515,10 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		if n.Low != nil {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Low})
 		}
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.X})
+	case *ast.StarExpr:
+		// Dereference load
+		session.TaskStack = append(session.TaskStack, Task{Op: OpApplyUnary, Data: "Dereference"})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.X})
 	case *ast.CallExprStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpCall, Node: n})

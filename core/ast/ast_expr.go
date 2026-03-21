@@ -40,6 +40,44 @@ func (c *IdentifierExpr) Optimize(ctx *OptimizeContext) Node {
 	return c
 }
 
+// StarExpr 表示解引用表达式 (*p)
+type StarExpr struct {
+	BaseNode
+	X Expr `json:"x"`
+}
+
+func (s *StarExpr) GetBase() *BaseNode { return &s.BaseNode }
+func (s *StarExpr) exprNode()          {}
+
+func (s *StarExpr) Check(ctx *SemanticContext) error {
+	if s.X == nil {
+		return errors.New("解引用缺少对象")
+	}
+	if err := s.X.Check(ctx); err != nil {
+		return err
+	}
+	xType := s.X.GetBase().Type
+	if xType.IsPtr() {
+		if elem, ok := xType.GetPtrElementType(); ok {
+			s.Type = elem
+		} else {
+			s.Type = "Any"
+		}
+	} else if xType == "TypeHandle" || xType.IsAny() {
+		s.Type = "Any"
+	} else {
+		err := fmt.Errorf("无法解引用非指针类型: %s", xType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (s *StarExpr) Optimize(ctx *OptimizeContext) Node {
+	s.X = s.X.Optimize(ctx).(Expr)
+	return s
+}
+
 type ConstRefExpr struct {
 	BaseNode
 	Name Ident `json:"name"`

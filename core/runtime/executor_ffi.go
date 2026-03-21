@@ -286,7 +286,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
-			session.ActiveHandles = append(session.ActiveHandles, HandleRef{Bridge: bridge, ID: v})
+			session.AddHandle(bridge, v)
 		}
 		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
 	case map[string]interface{}:
@@ -346,7 +346,7 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
-				session.ActiveHandles = append(session.ActiveHandles, HandleRef{Bridge: bridge, ID: id})
+				session.AddHandle(bridge, id)
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 		case typ.IsArray():

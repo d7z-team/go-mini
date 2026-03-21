@@ -547,8 +547,21 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 			switch ident.Name {
 			case "make", "new":
 				if len(ex.Args) > 0 {
+					// 严格检测：Go 语言中 new/make 的第一个参数必须是类型标识符，不能是值字面量
+					if _, isLit := ex.Args[0].(*ast.BasicLit); isLit {
+						panic(fmt.Errorf("%s 第一个参数必须是类型，不能是字符串字面量", ident.Name))
+					}
+
 					typeArg := c.typeToString(ex.Args[0])
-					args := []miniast.Expr{&miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Args[0], "literal"), Meta: "literal", Type: "String", Loc: c.extractLoc(ex.Args[0])}, Value: typeArg}}
+					args := []miniast.Expr{&miniast.LiteralExpr{
+						BaseNode: miniast.BaseNode{
+							ID:   c.genID(ex.Args[0], "literal"),
+							Meta: "literal",
+							Type: "String",
+							Loc:  c.extractLoc(ex.Args[0]),
+						},
+						Value: typeArg,
+					}}
 					args = append(args, c.convertArgs(ex.Args[1:])...)
 					return &miniast.CallExprStmt{BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)}, Func: funExpr, Args: args}
 				}
@@ -584,6 +597,8 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 		if ex.Low != nil { res.Low = c.convertExpr(ex.Low) }
 		if ex.High != nil { res.High = c.convertExpr(ex.High) }
 		return res
+	case *ast.StarExpr:
+		return &miniast.StarExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "star"), Meta: "star", Loc: c.extractLoc(ex)}, X: c.convertExpr(ex.X)}
 	case *ast.FuncLit:
 		var params []miniast.FunctionParam
 		if ex.Type.Params != nil {

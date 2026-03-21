@@ -329,6 +329,10 @@ type HandleRef struct {
 	ID     uint32
 }
 
+type HandleTracker struct {
+	Handles []HandleRef
+}
+
 type StackContext struct {
 	context.Context
 	Program  *Program
@@ -341,7 +345,7 @@ type StackContext struct {
 	// 运行时状态 (Session State)
 	StepCount      int64
 	StepLimit      int64
-	ActiveHandles  []HandleRef
+	ActiveHandles  *HandleTracker
 	ModuleCache    map[string]*Var
 	LoadingModules map[string]bool
 
@@ -454,7 +458,10 @@ func (c *StackContext) AddVariable(name string, v *Var) error {
 }
 
 func (c *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32) {
-	c.ActiveHandles = append(c.ActiveHandles, HandleRef{Bridge: bridge, ID: id})
+	if c.ActiveHandles == nil {
+		c.ActiveHandles = &HandleTracker{}
+	}
+	c.ActiveHandles.Handles = append(c.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id})
 }
 
 func (c *StackContext) Load(name string) (*Var, error) {

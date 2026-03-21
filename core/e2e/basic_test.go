@@ -72,13 +72,13 @@ func TestConstAndVar(t *testing.T) {
 func TestReferenceComparison(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	code := `
-	a := make("Array<Int64>", 1)
+	a := make([]Int64, 1)
 	b := a
 	if a != b {
 		panic("array comparison failed")
 	}
     
-    m := make("Map<String, Int64>")
+    m := make(map[String]Int64)
     m2 := m
     if m != m2 {
         panic("map comparison failed")

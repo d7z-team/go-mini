@@ -141,15 +141,17 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
-		ActiveHandles:  make([]runtime.HandleRef, 0),
+		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
 		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
 		session.Stack.RunDefers()
-		for _, h := range session.ActiveHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+		if session.ActiveHandles != nil {
+			for _, h := range session.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
 	}()
@@ -505,15 +507,17 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
-		ActiveHandles:  make([]runtime.HandleRef, 0),
+		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
 		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
 		session.Stack.RunDefers()
-		for _, h := range session.ActiveHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+		if session.ActiveHandles != nil {
+			for _, h := range session.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
 	}()
@@ -611,15 +615,17 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "snippet", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
-		ActiveHandles:  make([]runtime.HandleRef, 0),
+		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
 		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
 		session.Stack.RunDefers()
-		for _, h := range session.ActiveHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+		if session.ActiveHandles != nil {
+			for _, h := range session.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
 	}()
@@ -676,15 +682,17 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "loader", Depth: 1},
 		ModuleCache:    make(map[string]*runtime.Var),
 		LoadingModules: make(map[string]bool),
-		ActiveHandles:  make([]runtime.HandleRef, 0),
+		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
 		Debugger:       debugger.GetDebugger(ctx),
 	}
 
 	defer func() {
 		session.Stack.RunDefers()
-		for _, h := range session.ActiveHandles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+		if session.ActiveHandles != nil {
+			for _, h := range session.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
 	}()
