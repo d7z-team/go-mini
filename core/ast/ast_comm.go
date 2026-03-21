@@ -82,10 +82,11 @@ type Position struct {
 
 // BaseNode 是所有节点的基类
 type BaseNode struct {
-	ID   string     `json:"id"`             // 确定性 ID: 基于 Loc + Meta 的哈希值
-	Meta string     `json:"meta"`           // 反序列化开关: if, call, binary...
-	Type GoMiniType `json:"type,omitempty"` // 表达式为任何类型，否则为 Void
-	Loc  *Position  `json:"loc,omitempty"`  // 源码位置映射: 仅语句和关键表达式包含
+	ID     string     `json:"id"`                // 确定性 ID: 基于 Loc + Meta 的哈希值
+	Meta   string     `json:"meta"`              // 反序列化开关: if, call, binary...
+	Type   GoMiniType `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
+	Loc    *Position  `json:"loc,omitempty"`     // 源码位置映射: 仅语句和关键表达式包含
+	IsType bool       `json:"is_type,omitempty"` // 语义标记：标识该节点是否正处于类型上下文（如 case T:）
 }
 
 func (b *BaseNode) EnsureID(ctx *ValidContext) {

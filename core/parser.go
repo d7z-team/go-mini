@@ -309,15 +309,21 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return n, nil
 	case "switch":
 		var raw struct {
-			Init json.RawMessage `json:"init,omitempty"`
-			Tag  json.RawMessage `json:"tag,omitempty"`
-			Body json.RawMessage `json:"body"`
+			Init   json.RawMessage `json:"init,omitempty"`
+			Assign json.RawMessage `json:"assign,omitempty"`
+			Tag    json.RawMessage `json:"tag,omitempty"`
+			Body   json.RawMessage `json:"body"`
+			IsType bool            `json:"is_type,omitempty"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.SwitchStmt{BaseNode: baseNode}
+		n := &ast.SwitchStmt{BaseNode: baseNode, IsType: raw.IsType}
 		if raw.Init != nil {
 			node, _ := unmarshalNode(raw.Init)
 			n.Init = node.(ast.Stmt)
+		}
+		if raw.Assign != nil {
+			node, _ := unmarshalNode(raw.Assign)
+			n.Assign = node.(ast.Stmt)
 		}
 		if raw.Tag != nil {
 			n.Tag, _ = parseExpr(raw.Tag)

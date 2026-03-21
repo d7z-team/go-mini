@@ -19,6 +19,13 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
+
+	if c.IsType {
+		// 处于类型上下文，将其视为类型名
+		c.Type = GoMiniType(c.Name)
+		return nil
+	}
+
 	vtp, b := ctx.GetVariable(c.Name)
 	if !b {
 		// 回退：检查是否为包别名

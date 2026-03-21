@@ -693,9 +693,11 @@ func (r *RangeStmt) Optimize(ctx *OptimizeContext) Node {
 // SwitchStmt 表示 switch 分支语句
 type SwitchStmt struct {
 	BaseNode
-	Init Stmt
-	Tag  Expr
-	Body *BlockStmt // 包含多个 CaseClause
+	Init   Stmt
+	Assign Stmt       // 用于 v := x.(type) 中的赋值部分 (v := x)
+	Tag    Expr       // 对于 Type Switch，Tag 是 x.(type) 中的 x
+	Body   *BlockStmt // 包含多个 CaseClause
+	IsType bool       // 是否是 Type Switch
 }
 
 func (s *SwitchStmt) GetBase() *BaseNode { return &s.BaseNode }
@@ -711,6 +713,13 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 			hasError = true
 		}
 	}
+
+	if s.Assign != nil {
+		if err := s.Assign.Check(inner); err != nil {
+			hasError = true
+		}
+	}
+
 	tagType := GoMiniType("Bool")
 	if s.Tag != nil {
 		if err := s.Tag.Check(inner); err != nil {
@@ -734,8 +743,28 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 			hasError = true
 			continue
 		}
-		if err := clause.CheckWithTag(inner, tagType); err != nil {
-			hasError = true
+		if s.IsType {
+			// 在 Type Switch 中，Case 列表中的表达式应该代表类型
+			for _, expr := range clause.List {
+				if expr == nil {
+					continue
+				}
+				// 标记为类型校验
+				expr.GetBase().IsType = true
+				if err := expr.Check(inner); err != nil {
+					hasError = true
+				}
+			}
+			// 校验 Case 的 Body
+			for _, s := range clause.Body {
+				if err := s.Check(inner); err != nil {
+					hasError = true
+				}
+			}
+		} else {
+			if err := clause.CheckWithTag(inner, tagType); err != nil {
+				hasError = true
+			}
 		}
 	}
 
@@ -749,10 +778,15 @@ func (s *SwitchStmt) Optimize(ctx *OptimizeContext) Node {
 	if s.Init != nil {
 		s.Init = s.Init.Optimize(ctx).(Stmt)
 	}
+	if s.Assign != nil {
+		s.Assign = s.Assign.Optimize(ctx).(Stmt)
+	}
 	if s.Tag != nil {
 		s.Tag = s.Tag.Optimize(ctx).(Expr)
 	}
-	s.Body = s.Body.Optimize(ctx).(*BlockStmt)
+	if s.Body != nil {
+		s.Body = s.Body.Optimize(ctx).(*BlockStmt)
+	}
 	return s
 }
 

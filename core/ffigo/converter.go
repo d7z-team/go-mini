@@ -496,6 +496,57 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			}
 		}
 		return res
+	case *ast.TypeSwitchStmt:
+		res := &miniast.SwitchStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(st, "type_switch"), Meta: "switch", Loc: c.extractLoc(st)},
+			IsType:   true,
+		}
+		if st.Init != nil {
+			res.Init = c.convertStmt(st.Init)
+		}
+
+		// 处理 v := x.(type)
+		if st.Assign != nil {
+			switch ass := st.Assign.(type) {
+			case *ast.AssignStmt:
+				// v := x.(type)
+				if len(ass.Lhs) == 1 && len(ass.Rhs) == 1 {
+					// 提取 x
+					if typeAssert, ok := ass.Rhs[0].(*ast.TypeAssertExpr); ok {
+						res.Tag = c.convertExpr(typeAssert.X)
+						// 构造赋值语句 v := x
+						// 注意：由于是 Type Switch，v 的实际类型在每个 case 中可能不同，
+						// 目前我们简单地把它声明为 Any。
+						res.Assign = c.convertStmt(&ast.AssignStmt{
+							Lhs: ass.Lhs,
+							Tok: ass.Tok,
+							Rhs: []ast.Expr{typeAssert.X},
+						})
+					}
+				}
+			case *ast.ExprStmt:
+				// x.(type) 不带赋值
+				if typeAssert, ok := ass.X.(*ast.TypeAssertExpr); ok {
+					res.Tag = c.convertExpr(typeAssert.X)
+				}
+			}
+		}
+
+		res.Body = &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st.Body, "block"), Meta: "block", Loc: c.extractLoc(st.Body)}}
+		for _, stmt := range st.Body.List {
+			if clause, ok := stmt.(*ast.CaseClause); ok {
+				cClause := &miniast.CaseClause{BaseNode: miniast.BaseNode{ID: c.genID(clause, "case"), Meta: "case", Loc: c.extractLoc(clause)}}
+				for _, expr := range clause.List {
+					// Type Switch 的 Case List 是类型名
+					cClause.List = append(cClause.List, c.convertExpr(expr))
+				}
+				for _, bStmt := range clause.Body {
+					cClause.Body = append(cClause.Body, c.convertStmt(bStmt))
+				}
+				res.Body.Children = append(res.Body.Children, cClause)
+			}
+		}
+		return res
 	case *ast.DeferStmt:
 		call := c.convertExpr(st.Call)
 		if cExpr, ok := call.(*miniast.CallExprStmt); ok {

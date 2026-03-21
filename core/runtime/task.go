@@ -52,6 +52,7 @@ const (
 	OpCatchScopeEnter
 	OpInitVar
 	OpAssert
+	OpPush
 )
 
 type UnwindMode int

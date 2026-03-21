@@ -45,7 +45,7 @@ func main() {
 
 ### 2. 暂停与恢复 (Pause & Resume)
 
-得益于非递归架构，你可以轻松控制脚本的运行节奏。
+得益的内容架构，你可以轻松控制脚本的运行节奏。
 
 ```go
 func main() {
@@ -137,8 +137,101 @@ type OrderService interface {
 ```
 
 运行 `make gen` 后，生成的代码将确保：
-1.  脚本中通过 `o.AddItem` 调用的方法被准确路由。
+1.  脚本中通过 `o.AddItem` 调用方法。
 2.  `*Order` 宿主指针永远不会暴露给脚本，脚本仅持有其 ID。
+
+---
+
+## 💎 Interface (接口) 系统
+
+`go-mini` 提供了一套遵循 Go 语义但经过安全加固的接口系统。它支持鸭子类型（Duck Typing）和运行时动态分发。
+
+### 1. 接口定义
+
+支持 **命名接口** 和 **匿名接口**：
+
+```go
+// 命名接口
+type Logger interface {
+    Log(String) String
+}
+
+func main() {
+    // 匿名接口变量
+    var r interface{ Read() String }
+}
+```
+
+### 2. 隐式实现 (鸭子类型)
+
+任何对象（包括 `Map`、`Struct` 或宿主注入的 `Handle`），只要拥有匹配的方法签名，就自动实现了该接口。
+
+```go
+func main() {
+    obj := make(map[String]Any)
+    obj["Log"] = func(msg String) String {
+        return "Logged: " + msg
+    }
+    
+    // 隐式满足 Logger 接口
+    var l Logger = obj
+    l.Log("hello")
+}
+```
+
+### 3. 类型断言 (Type Assertion)
+
+支持运行时类型检查和转换：
+
+```go
+val, ok := i.(Logger)
+if ok {
+    val.Log("success")
+}
+
+// 或者是直接断言 (失败会触发 panic)
+l := i.(Logger)
+```
+
+### 5. Type Switch
+
+Type Switch 提供了一种比 `if-else` 断言更优雅的类型分支处理方式：
+
+```go
+func format(v Any) String {
+    // 支持带赋值的类型开关
+    switch x := v.(type) {
+    case Int64:
+        return "Integer: " + String(x)
+    case String:
+        return "String: " + x
+    case Logger:
+        return "Logger Object"
+    default:
+        return "Unknown Type"
+    }
+}
+```
+
+**匹配规则**：
+*   **基础类型**：直接匹配变量的底层原始类型（如 `Int64`, `String`, `Bool`）。
+*   **接口类型**：检查变量是否满足该接口定义的契约（鸭子类型匹配）。
+*   **Any**：可以匹配任何非 `nil` 对象。
+
+### 6. FFI 接口传递
+
+宿主（Host）可以直接将实现某个接口的 Go 对象返回给脚本。脚本侧会自动识别其拥有的方法集：
+
+```go
+// 脚本侧代码
+func main() {
+    // hostLogger 是由宿主侧注入的接口对象
+    res := hostLogger.Log("Hello from VM")
+    fmt.Println(res)
+}
+```
+
+**性能提示**：接口方法分发通过内部的 `SatisfactionCache` 进行了优化，首次调用后会缓存匹配关系，极大地提升了动态调用的性能。
 
 ---
 

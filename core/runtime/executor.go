@@ -556,7 +556,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 func (e *Executor) dispatch(session *StackContext, task Task) error {
 	switch task.Op {
 	case OpExec:
-		return e.handleExec(session, task.Node.(ast.Stmt))
+		return e.handleExec(session, task.Node.(ast.Stmt), task.Data)
 	case OpEval:
 		if task.Node == nil {
 			session.ValueStack.Push(nil)
@@ -1117,6 +1117,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			tag = NewBool(true)
 		}
+		// 如果是 v := x.(type)，在这里处理初值绑定（如果需要，或者推迟到 case）
+		// 在 Go 中，v 的类型在每个 case 块中是不同的。
 		session.TaskStack = append(session.TaskStack, Task{
 			Op:   OpSwitchNextCase,
 			Node: n,
@@ -1139,18 +1141,101 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 			}
 			if defaultClause != nil {
+				session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
 				session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: &ast.BlockStmt{Children: defaultClause.Body, Inner: true}})
+				if n.IsType && n.Assign != nil {
+					// 即使是 default，也要绑定变量
+					session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Assign, Data: tag})
+				}
+				if n.IsType {
+					session.TaskStack = append(session.TaskStack, Task{Op: OpScopeEnter, Data: "switch_default"})
+				}
 			}
 			return nil
 		}
 
 		clause := n.Body.Children[idx].(*ast.CaseClause)
 		if clause.List == nil {
+			// 这是 default 分支，索引加 1 并继续下一轮
 			data["idx"] = idx + 1
 			session.TaskStack = append(session.TaskStack, task)
 			return nil
 		}
 
+		if n.IsType {
+			// Type Switch 匹配
+			match := false
+			for _, caseExpr := range clause.List {
+				var targetType ast.GoMiniType
+				if id, ok := caseExpr.(*ast.IdentifierExpr); ok {
+					targetType = ast.GoMiniType(id.Name)
+				} else {
+					targetType = caseExpr.GetBase().Type
+				}
+
+				if targetType == "" {
+					continue
+				}
+
+				// 1. 基础类型匹配
+				switch targetType {
+				case "Int64", "int", "int64":
+					if tag.VType == TypeInt {
+						match = true
+					}
+				case "Float64", "float64":
+					if tag.VType == TypeFloat {
+						match = true
+					}
+				case "String", "string":
+					if tag.VType == TypeString {
+						match = true
+					}
+				case "Bool", "bool":
+					if tag.VType == TypeBool {
+						match = true
+					}
+				case "TypeBytes", "bytes":
+					if tag.VType == TypeBytes {
+						match = true
+					}
+				case "Any", "interface{}":
+					if tag != nil {
+						match = true
+					}
+				}
+
+				if match {
+					break
+				}
+
+				// 2. 接口满足性匹配
+				if targetType.IsInterface() || e.interfaces[string(targetType)] != nil {
+					_, err := e.CheckSatisfaction(tag, targetType)
+					if err == nil {
+						match = true
+						break
+					}
+				}
+			}
+
+			if match {
+				// 关键：所有分支逻辑（包括赋值和主体）都必须在一个统一的 Switch 作用域内
+				session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
+				session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: &ast.BlockStmt{Children: clause.Body, Inner: true}})
+				if n.Assign != nil {
+					session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Assign, Data: tag})
+				}
+				session.TaskStack = append(session.TaskStack, Task{Op: OpScopeEnter, Data: "switch_matched"})
+				return nil
+			}
+			// 没匹配上，继续下一个 case
+			data["idx"] = idx + 1
+			session.TaskStack = append(session.TaskStack, task)
+			return nil
+		}
+
+		// Value Switch (原有逻辑)
 		session.TaskStack = append(session.TaskStack, Task{
 			Op:   OpSwitchMatchCase,
 			Node: clause,
@@ -1409,12 +1494,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ModuleCache[path] = res
 		session.ValueStack.Push(res)
 		return nil
-		// TODO: implement other ops
+	case OpPush:
+		if v, ok := task.Data.(*Var); ok {
+			session.ValueStack.Push(v)
+		} else {
+			session.ValueStack.Push(nil)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unhandled opcode: %v", task.Op)
 	}
-	return fmt.Errorf("unhandled opcode: %v", task.Op)
 }
 
-func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
+func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interface{}) error {
 	switch n := stmt.(type) {
 	case *ast.BadStmt:
 		return errors.New("cannot execute BadStmt: AST contains syntax errors")
@@ -1423,7 +1515,7 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
 		}
 		for i := len(n.Children) - 1; i >= 0; i-- {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Children[i]})
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Children[i], Data: data})
 		}
 		if !n.Inner {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpScopeEnter, Data: "block"})
@@ -1437,6 +1529,15 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt) error {
 		return session.NewVar(string(n.Name), n.Kind)
 	case *ast.AssignmentStmt:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpAssign})
+		if data != nil {
+			if v, ok := data.(*Var); ok {
+				// 正确入栈顺序：OpAssign -> OpPush -> OpEvalLHS
+				// 执行顺序：OpEvalLHS (压入 desc) -> OpPush (压入 val) -> OpAssign (弹 val, 弹 desc)
+				session.TaskStack = append(session.TaskStack, Task{Op: OpPush, Data: v})
+				session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.LHS})
+				return nil
+			}
+		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Value})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Node: n.LHS})
 	case *ast.MultiAssignmentStmt:
