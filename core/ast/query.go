@@ -239,7 +239,7 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 	case *IdentifierExpr:
 		ident = t
 	case *ConstRefExpr:
-		ident = &IdentifierExpr{Name: Ident(t.Name)}
+		ident = &IdentifierExpr{Name: t.Name}
 	case *MemberExpr:
 		// 1. 获取左值对象的推导类型
 		if t.Object == nil {
@@ -276,11 +276,10 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 			return st
 		}
 		return nil
-
 	}
 
 	name := string(ident.Name)
-	curr := Node(target) // 保持原始搜索起点
+	curr := target // 保持原始搜索起点
 
 	for curr != nil {
 		parent := parentMap[curr]
@@ -398,7 +397,7 @@ func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 		return nil
 	}
 
-	visitedIds := make(map[string]bool)
+	visitedIDs := make(map[string]bool)
 
 	Walk(funcVisitor(func(node Node) bool {
 		if node == nil {
@@ -407,10 +406,10 @@ func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 
 		base := node.GetBase()
 		if base != nil && base.ID != "" {
-			if visitedIds[base.ID] {
+			if visitedIDs[base.ID] {
 				return true
 			}
-			visitedIds[base.ID] = true
+			visitedIDs[base.ID] = true
 		}
 
 		// 如果节点本身就是定义节点
@@ -460,14 +459,14 @@ func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 		// 如果是常量引用 (优化后的函数调用等)
 		ident = &IdentifierExpr{
 			BaseNode: t.BaseNode,
-			Name:     Ident(t.Name),
+			Name:     t.Name,
 		}
 	case *CompositeExpr:
 		// 结构体实例化 MyStruct{...}，提取类型标识符
 		if t.Kind != "" {
 			ident = &IdentifierExpr{
 				BaseNode: t.BaseNode, // 借用位置信息
-				Name:     Ident(t.Kind),
+				Name:     t.Kind,
 			}
 		}
 	case *MemberExpr:

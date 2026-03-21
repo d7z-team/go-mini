@@ -609,10 +609,7 @@ func (d *DeferStmt) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	if err := d.Call.Check(ctx); err != nil {
-		return err
-	}
-	return nil
+	return d.Call.Check(ctx)
 }
 
 func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {

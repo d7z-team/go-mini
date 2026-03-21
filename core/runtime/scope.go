@@ -423,36 +423,36 @@ func (s *Stack) DumpVariables() map[string]string {
 	return result
 }
 
-func (c *StackContext) ScopeApply(scope string) {
+func (ctx *StackContext) ScopeApply(scope string) {
 	newDepth := 1
-	if c.Stack != nil {
-		newDepth = c.Stack.Depth + 1
+	if ctx.Stack != nil {
+		newDepth = ctx.Stack.Depth + 1
 	}
 	if newDepth > DefaultMaxStackDepth {
 		panic(errors.New("stack overflow"))
 	}
-	c.Stack = &Stack{
-		Parent:    c.Stack,
+	ctx.Stack = &Stack{
+		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Var),
 		Scope:     scope,
 		Depth:     newDepth,
 	}
 }
 
-func (c *StackContext) WithScope(sType string, child func(ctx *StackContext)) {
-	c.ScopeApply(sType)
-	defer c.ScopeExit()
-	child(c)
+func (ctx *StackContext) WithScope(sType string, child func(ctx *StackContext)) {
+	ctx.ScopeApply(sType)
+	defer ctx.ScopeExit()
+	child(ctx)
 }
 
-func (c *StackContext) ScopeExit() {
-	c.Stack = c.Stack.Parent
+func (ctx *StackContext) ScopeExit() {
+	ctx.Stack = ctx.Stack.Parent
 }
 
-func (c *StackContext) Store(variable string, expr *Var) error {
-	v, err := c.loadVar(variable)
+func (ctx *StackContext) Store(variable string, expr *Var) error {
+	v, err := ctx.loadVar(variable)
 	if err != nil {
-		return c.AddVariable(variable, expr)
+		return ctx.AddVariable(variable, expr)
 	}
 	if v != nil && v.VType == TypeCell {
 		v = v.Ref.(*Cell).Value
@@ -470,13 +470,13 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 			v.ResultVal = nil
 			v.ResultErr = ""
 		} else {
-			return c.AddVariable(variable, nil)
+			return ctx.AddVariable(variable, nil)
 		}
 		return nil
 	}
 
 	if v == nil {
-		return c.AddVariable(variable, expr)
+		return ctx.AddVariable(variable, expr)
 	}
 
 	if v.Type == "Any" && expr.Type != "Any" {
@@ -485,7 +485,7 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 
 	if v.Type.IsInterface() && !expr.Type.IsInterface() {
 		// Perform satisfaction check and wrapping
-		wrapped, err := c.Executor.CheckSatisfaction(expr, v.Type)
+		wrapped, err := ctx.Executor.CheckSatisfaction(expr, v.Type)
 		if err != nil {
 			return err
 		}
@@ -506,20 +506,20 @@ func (c *StackContext) Store(variable string, expr *Var) error {
 	return nil
 }
 
-func (c *StackContext) AddVariable(name string, v *Var) error {
-	c.Stack.MemoryPtr[name] = v.Copy()
+func (ctx *StackContext) AddVariable(name string, v *Var) error {
+	ctx.Stack.MemoryPtr[name] = v.Copy()
 	return nil
 }
 
-func (c *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32) {
-	if c.ActiveHandles == nil {
-		c.ActiveHandles = &HandleTracker{}
+func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32) {
+	if ctx.ActiveHandles == nil {
+		ctx.ActiveHandles = &HandleTracker{}
 	}
-	c.ActiveHandles.Handles = append(c.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id})
+	ctx.ActiveHandles.Handles = append(ctx.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id})
 }
 
-func (c *StackContext) Load(name string) (*Var, error) {
-	v, err := c.loadVar(name)
+func (ctx *StackContext) Load(name string) (*Var, error) {
+	v, err := ctx.loadVar(name)
 	if err != nil {
 		return nil, err
 	}
@@ -530,8 +530,8 @@ func (c *StackContext) Load(name string) (*Var, error) {
 	return v, nil
 }
 
-func (c *StackContext) loadVar(variable string) (*Var, error) {
-	s := c.Stack
+func (ctx *StackContext) loadVar(variable string) (*Var, error) {
+	s := ctx.Stack
 	for s != nil {
 		if v, ok := s.MemoryPtr[variable]; ok {
 			return v, nil
@@ -541,8 +541,8 @@ func (c *StackContext) loadVar(variable string) (*Var, error) {
 	return nil, fmt.Errorf("undefined: %s", variable)
 }
 
-func (c *StackContext) CaptureVar(name string) (*Var, error) {
-	s := c.Stack
+func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
+	s := ctx.Stack
 	for s != nil {
 		if v, ok := s.MemoryPtr[name]; ok {
 			if v != nil && v.VType != TypeCell {
@@ -558,12 +558,12 @@ func (c *StackContext) CaptureVar(name string) (*Var, error) {
 	return nil, fmt.Errorf("undefined capture: %s", name)
 }
 
-func (c *StackContext) Interrupt() bool {
-	return c.Stack != nil && c.Stack.interrupt != ""
+func (ctx *StackContext) Interrupt() bool {
+	return ctx.Stack != nil && ctx.Stack.interrupt != ""
 }
 
-func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
-	s := c.Stack
+func (ctx *StackContext) SetInterrupt(scopeName, interruptType string) error {
+	s := ctx.Stack
 	for s != nil {
 		s.interrupt = interruptType
 		if s.Scope == scopeName {
@@ -574,33 +574,31 @@ func (c *StackContext) SetInterrupt(scopeName, interruptType string) error {
 	return fmt.Errorf("scope %s not found", scopeName)
 }
 
-func (c *StackContext) NewVar(name string, kind ast.GoMiniType) error {
-	if _, ok := c.Stack.MemoryPtr[name]; ok {
+func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
+	if _, ok := ctx.Stack.MemoryPtr[name]; ok {
 		return nil
 	}
 	// 确保变量被正确初始化为零值
 	var v *Var
-	if exec, ok := c.Executor.(*Executor); ok {
-		v = exec.initializeType(c, kind, 0)
-	} else if exec, ok := c.Executor.(*Executor); ok {
-		v = exec.initializeType(c, kind, 0)
+	if exec, ok := ctx.Executor.(*Executor); ok {
+		v = exec.initializeType(ctx, kind, 0)
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
-	c.Stack.MemoryPtr[name] = v
+	ctx.Stack.MemoryPtr[name] = v
 	return nil
 }
 
-func (c *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContext) error) error {
-	old := c.Stack
+func (ctx *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContext) error) error {
+	old := ctx.Stack
 	root := old
 	for root != nil && root.Parent != nil {
 		root = root.Parent
 	}
-	c.Stack = root
-	c.ScopeApply(name)
-	defer func() { c.Stack = old }()
-	return exec(old, c)
+	ctx.Stack = root
+	ctx.ScopeApply(name)
+	defer func() { ctx.Stack = old }()
+	return exec(old, ctx)
 }
 
 func copyVarData(dest, src *Var) {

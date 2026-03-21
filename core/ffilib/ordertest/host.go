@@ -3,7 +3,6 @@ package ordertest
 import (
 	"errors"
 	"fmt"
-	"sync"
 )
 
 type Item struct {
@@ -17,13 +16,10 @@ type Order struct {
 	Closed bool
 }
 
-type OrderImpl struct {
-	mu     sync.RWMutex
-	orders map[uint32]*Order // 这里其实可以不需要，因为 HandleRegistry 会持有引用
-}
+type OrderImpl struct{}
 
 func NewOrderImpl() *OrderImpl {
-	return &OrderImpl{orders: make(map[uint32]*Order)}
+	return &OrderImpl{}
 }
 
 func (b *OrderImpl) New(id string) (*Order, error) {

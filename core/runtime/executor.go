@@ -259,10 +259,6 @@ func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) boo
 	return actual.Return.IsAssignableTo(expected.Return)
 }
 
-func (e *Executor) hasMethod(val *Var, name string) bool {
-	return e.hasMethodWithSignature(val, name, &ast.FunctionType{Return: "Any"})
-}
-
 func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, args []*Var) (*Var, error) {
 	if callable == nil {
 		return nil, errors.New("cannot invoke nil callable")

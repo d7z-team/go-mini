@@ -934,18 +934,6 @@ func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []
 		return err
 	}
 
-	// Handle Tuple destructuring at push time
-	if res != nil && res.VType == TypeArray && ast.GoMiniType(route.Returns).IsTuple() {
-		// arr := res.Ref.(*VMArray)
-		// Push elements in reverse order so they are popped in correct order if needed,
-		// but wait, OpMultiAssign expects them in order?
-		// Actually, if we have q, r := math.DivMod(10, 3)
-		// The converter generates a MultiAssignmentStmt.
-		// OpMultiAssign pops the RHS value.
-		// If RHS is a TypeArray (Tuple), it will be destructured inside OpMultiAssign.
-		// So we SHOULD push it as a single Array.
-	}
-
 	session.ValueStack.Push(res)
 	return nil
 }
