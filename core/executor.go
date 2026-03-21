@@ -35,7 +35,7 @@ type MiniExecutor struct {
 type MiniProgram struct {
 	Source   string
 	Program  *ast.ProgramStmt
-	executor *runtime.IterativeExecutor
+	executor *runtime.Executor
 
 	// LSP / Debugger 支撑
 	parentMap map[ast.Node]ast.Node
@@ -303,7 +303,7 @@ func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
 }
 
 func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
-	executor, err := runtime.NewIterativeExecutor(program)
+	executor, err := runtime.NewExecutor(program)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +476,7 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	}
 
 	// 创建最小化的无状态执行器
-	executor, _ := runtime.NewIterativeExecutor(&ast.ProgramStmt{
+	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"},
 	})
 
@@ -585,7 +585,7 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		return err
 	}
 
-	executor, _ := runtime.NewIterativeExecutor(program)
+	executor, _ := runtime.NewExecutor(program)
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
 		o.mu.RLock()
@@ -648,7 +648,7 @@ func (o *MiniExecutor) MustExecute(ctx context.Context, code string, env map[str
 // Import 手动加载一个模块并返回其导出的成员对象
 func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
 	// 创建一个最简的执行器环境来执行加载
-	executor, _ := runtime.NewIterativeExecutor(&ast.ProgramStmt{
+	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"},
 	})
 

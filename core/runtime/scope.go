@@ -516,6 +516,8 @@ func (c *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	var v *Var
 	if exec, ok := c.Executor.(*Executor); ok {
 		v = exec.initializeType(c, kind, 0)
+	} else if exec, ok := c.Executor.(*Executor); ok {
+		v = exec.initializeType(c, kind, 0)
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
@@ -553,3 +555,48 @@ func copyVarData(dest, src *Var) {
 }
 
 type Program struct{}
+
+type PanicError struct {
+	Value *Var
+}
+
+func (p *PanicError) Error() string {
+	if p.Value != nil && p.Value.VType == TypeString {
+		return "panic: " + p.Value.Str
+	}
+	return "panic"
+}
+
+type MiniRuntimeError struct {
+	BaseNode ast.BaseNode
+	Err      error
+}
+
+func (e *MiniRuntimeError) Error() string {
+	return e.Err.Error()
+}
+
+func isEmptyVar(v *Var) bool {
+	if v == nil {
+		return true
+	}
+	switch v.VType {
+	case TypeArray:
+		if arr, ok := v.Ref.(*VMArray); ok {
+			return arr == nil
+		}
+		return v.Ref == nil
+	case TypeMap:
+		if m, ok := v.Ref.(*VMMap); ok {
+			return m == nil
+		}
+		return v.Ref == nil
+	case TypeClosure, TypeModule, TypeResult:
+		return v.Ref == nil && v.ResultVal == nil && v.ResultErr == ""
+	case TypeHandle:
+		return v.Handle == 0
+	case TypeAny:
+		return v.Ref == nil
+	}
+	return false
+}

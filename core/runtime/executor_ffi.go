@@ -11,7 +11,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-func (e *IterativeExecutor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (*Var, error) {
+func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (*Var, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -92,7 +92,7 @@ func (e *IterativeExecutor) evalFFI(session *StackContext, route FFIRoute, args 
 	return e.deserializeVar(session, reader, retType, route.Bridge)
 }
 
-func (e *IterativeExecutor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniType) error {
+func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniType) error {
 	switch kType {
 	case "String":
 		buf.WriteString(key)
@@ -105,7 +105,7 @@ func (e *IterativeExecutor) serializeKey(buf *ffigo.Buffer, key string, kType as
 	return nil
 }
 
-func (e *IterativeExecutor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
+func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
 	// 如果 typ 是 Any，回退到动态序列化
 	if typ == "Any" {
 		e.serializeVarToAny(buf, v)
@@ -214,11 +214,11 @@ func (e *IterativeExecutor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMi
 	return nil
 }
 
-func (e *IterativeExecutor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
+func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	e.serializeVarToAnyWithDepth(buf, v, 0)
 }
 
-func (e *IterativeExecutor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth int) {
+func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth int) {
 	if depth > 100 {
 		buf.WriteAny(nil)
 		return
@@ -260,7 +260,7 @@ func (e *IterativeExecutor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var
 	}
 }
 
-func (e *IterativeExecutor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
+func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
 	if val == nil {
 		return nil
 	}
@@ -307,7 +307,7 @@ func (e *IterativeExecutor) ToVar(session *StackContext, val interface{}, bridge
 	return nil
 }
 
-func (e *IterativeExecutor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (string, error) {
+func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (string, error) {
 	switch kType {
 	case "String":
 		return reader.ReadString(), nil
@@ -318,7 +318,7 @@ func (e *IterativeExecutor) deserializeKey(reader *ffigo.Reader, kType ast.GoMin
 	}
 }
 
-func (e *IterativeExecutor) deserializeVar(session *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
+func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
 	if typ.IsVoid() {
 		return nil, nil
 	}

@@ -12,7 +12,7 @@ import (
 // isEmptyVar is already defined in executor.go, but we can reuse it since it doesn't have a receiver.
 // Wait, isEmptyVar is private in the package, so we can just use it without redefining it.
 
-func (e *IterativeExecutor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
+func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
 	// 解包 Cell
 	if l != nil && l.VType == TypeCell {
 		l = l.Ref.(*Cell).Value
@@ -52,7 +52,7 @@ func (e *IterativeExecutor) evalBinaryExprDirect(operator string, l, r *Var) (*V
 	return nil, fmt.Errorf("unsupported operator: %s", operator)
 }
 
-func (e *IterativeExecutor) evalArithmetic(op string, l, r *Var) (*Var, error) {
+func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	if l.VType != TypeInt && l.VType != TypeFloat {
 		if (op == "+" || op == "Plus" || op == "Add") && (l.VType == TypeString || l.VType == TypeBytes) {
 			lStr := l.Str
@@ -119,7 +119,7 @@ func (e *IterativeExecutor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported arithmetic operator: %s", op)
 }
 
-func (e *IterativeExecutor) evalBitwise(op string, l, r *Var) (*Var, error) {
+func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	li, err := l.ToInt()
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func (e *IterativeExecutor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported bitwise operator: %s", op)
 }
 
-func (e *IterativeExecutor) evalComparison(op string, l, r *Var) (*Var, error) {
+func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	lEmpty := isEmptyVar(l)
 	rEmpty := isEmptyVar(r)
 
@@ -233,7 +233,7 @@ func (e *IterativeExecutor) evalComparison(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported comparison %s between %v and %v", op, l, r)
 }
 
-func (e *IterativeExecutor) evalLogic(op string, l, r *Var) (*Var, error) {
+func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 	lb, err := l.ToBool()
 	if err != nil {
 		return nil, err
@@ -252,7 +252,7 @@ func (e *IterativeExecutor) evalLogic(op string, l, r *Var) (*Var, error) {
 	return nil, fmt.Errorf("unsupported logic operator: %s", op)
 }
 
-func (e *IterativeExecutor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
+func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
 	if val == nil {
 		return nil, errors.New("unary op with nil operand")
 	}
@@ -274,7 +274,7 @@ func (e *IterativeExecutor) evalUnaryExprDirect(operator string, val *Var) (*Var
 	return nil, fmt.Errorf("unsupported unary op %s", operator)
 }
 
-func (e *IterativeExecutor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
+func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
 	switch n.Type {
 	case "Int64":
 		v, _ := strconv.ParseInt(n.Value, 10, 64)
@@ -290,7 +290,7 @@ func (e *IterativeExecutor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) 
 	return nil, fmt.Errorf("unknown literal %s", n.Type)
 }
 
-func (e *IterativeExecutor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
+func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
 	if obj == nil || (obj.VType == TypeAny && obj.Ref == nil) {
 		if obj != nil {
 			return e.ToVar(ctx, obj.Type.ZeroVar(), nil), nil
@@ -325,7 +325,7 @@ func (e *IterativeExecutor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var
 	return nil, fmt.Errorf("type %v does not support indexing", obj.VType)
 }
 
-func (e *IterativeExecutor) evalMemberExprDirect(ctx *StackContext, obj *Var, property string) (*Var, error) {
+func (e *Executor) evalMemberExprDirect(ctx *StackContext, obj *Var, property string) (*Var, error) {
 	if obj == nil {
 		return nil, errors.New("member access on nil object")
 	}
@@ -393,7 +393,7 @@ func (e *IterativeExecutor) evalMemberExprDirect(ctx *StackContext, obj *Var, pr
 	return nil, fmt.Errorf("type %v does not support member access: %s", obj.VType, property)
 }
 
-func (e *IterativeExecutor) evalSliceExprDirect(ctx *StackContext, obj, lowVar, highVar *Var) (*Var, error) {
+func (e *Executor) evalSliceExprDirect(ctx *StackContext, obj, lowVar, highVar *Var) (*Var, error) {
 	if obj == nil {
 		return nil, errors.New("slice on nil object")
 	}
@@ -439,7 +439,7 @@ func (e *IterativeExecutor) evalSliceExprDirect(ctx *StackContext, obj, lowVar, 
 	return nil, fmt.Errorf("type %v does not support slice operations", obj.VType)
 }
 
-func (e *IterativeExecutor) invokeCall(session *StackContext, n *ast.CallExprStmt, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
+func (e *Executor) invokeCall(session *StackContext, n *ast.CallExprStmt, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
 	// 1. Intrinsics
 	if mod == nil && receiver == nil && callable == nil {
 		switch name {
@@ -762,7 +762,7 @@ func (e *IterativeExecutor) invokeCall(session *StackContext, n *ast.CallExprStm
 	return fmt.Errorf("function or method %s not found", name)
 }
 
-func (e *IterativeExecutor) setupFuncCall(session *StackContext, name string, f *ast.FuncLitExpr, args []*Var, closure *VMClosure) error {
+func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.FuncLitExpr, args []*Var, closure *VMClosure) error {
 	old := session.Stack
 	
 	// Default lexical scope is global
@@ -837,7 +837,7 @@ func (e *IterativeExecutor) setupFuncCall(session *StackContext, name string, f 
 	return nil
 }
 
-func (e *IterativeExecutor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var) error {
+func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var) error {
 	// Let's use the old evalFFI logic
 	res, err := e.evalFFI(session, route, args)
 	if err != nil {
@@ -847,18 +847,12 @@ func (e *IterativeExecutor) evalFFIAndPush(session *StackContext, route FFIRoute
 	return nil
 }
 
-func (e *IterativeExecutor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int) *Var {
+func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int) *Var {
 	if depth > 10 {
 		return &Var{VType: TypeAny, Type: t}
 	}
 
-	if t.IsArray() {
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: make([]*Var, 0)}, Type: t}
-	}
-	if t.IsMap() {
-		return &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: t}
-	}
-	if t.IsPtr() || t.IsAny() {
+	if t.IsArray() || t.IsMap() || t.IsPtr() || t.IsAny() {
 		return &Var{VType: TypeAny, Type: t}
 	}
 
