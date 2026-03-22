@@ -35,7 +35,7 @@ type AdvancedFFIImpl struct {
 	obj *TestObj
 }
 
-func (i *AdvancedFFIImpl) GetSameObject() *TestObj { return i.obj }
+func (i *AdvancedFFIImpl) GetSameObject() *TestObj   { return i.obj }
 func (i *AdvancedFFIImpl) IsSame(a, b *TestObj) bool { return a == b }
 func (i *AdvancedFFIImpl) EchoMap(m map[bool]string) map[float64]bool {
 	res := make(map[float64]bool)

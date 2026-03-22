@@ -10,7 +10,7 @@ import (
 func TestAdvancedFFIExecution(t *testing.T) {
 	obj := &TestObj{Name: "Shared"}
 	impl := &AdvancedFFIImpl{obj: obj}
-	
+
 	executor := engine.NewMiniExecutor()
 	RegisterAdvancedFFI(executor, impl, executor.HandleRegistry())
 

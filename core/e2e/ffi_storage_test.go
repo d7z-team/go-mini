@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/e2e/storagelib"
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/e2e/storagelib"
 )
 
 func TestFFIStorageOverflow(t *testing.T) {

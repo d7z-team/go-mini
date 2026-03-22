@@ -1918,7 +1918,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			return nil
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			key := ""
+			var key string
 			switch idx.VType {
 			case TypeString:
 				key = idx.Str
@@ -1936,7 +1936,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 		case TypeAny:
 			if obj.Ref != nil {
 				if m, ok := obj.Ref.(*VMMap); ok {
-					key := ""
+					var key string
 					switch idx.VType {
 					case TypeString:
 						key = idx.Str

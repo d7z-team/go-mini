@@ -329,7 +329,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		return arr.Data[i], nil
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
-		key := ""
+		var key string
 		switch idx.VType {
 		case TypeString:
 			key = idx.Str

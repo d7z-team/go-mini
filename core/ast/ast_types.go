@@ -103,13 +103,14 @@ func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
 				pCount, aCount := 0, 0
 				endIdx := -1
 				for i := idx; i < len(m); i++ {
-					if m[i] == '(' {
+					switch m[i] {
+					case '(':
 						pCount++
-					} else if m[i] == ')' {
+					case ')':
 						pCount--
-					} else if m[i] == '<' {
+					case '<':
 						aCount++
-					} else if m[i] == '>' {
+					case '>':
 						aCount--
 					}
 					if pCount == 0 && aCount == 0 {
@@ -202,13 +203,14 @@ func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
 	pCount, aCount := 1, 0
 	paramEnd := -1
 	for i := start; i < len(s); i++ {
-		if s[i] == '(' {
+		switch s[i] {
+		case '(':
 			pCount++
-		} else if s[i] == ')' {
+		case ')':
 			pCount--
-		} else if s[i] == '<' {
+		case '<':
 			aCount++
-		} else if s[i] == '>' {
+		case '>':
 			aCount--
 		}
 		if pCount == 0 && aCount == 0 {

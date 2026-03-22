@@ -4,8 +4,8 @@ type StorageImpl struct {
 	Capacity uint32
 }
 
-func (s *StorageImpl) SetCapacity(cap uint32) {
-	s.Capacity = cap
+func (s *StorageImpl) SetCapacity(capacity uint32) {
+	s.Capacity = capacity
 }
 
 func (s *StorageImpl) GetStatus() int16 {

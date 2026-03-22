@@ -4,6 +4,6 @@ package storagelib
 
 // ffigen:module storage
 type StorageAPI interface {
-	SetCapacity(cap uint32)
+	SetCapacity(capacity uint32)
 	GetStatus() int16
 }

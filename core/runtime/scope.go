@@ -560,7 +560,6 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 	v.Bridge = expr.Bridge
 	v.Ref = expr.Ref
 	return nil
-
 }
 
 func (ctx *StackContext) AddVariable(name string, v *Var) error {

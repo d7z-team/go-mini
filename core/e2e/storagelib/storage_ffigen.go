@@ -23,11 +23,11 @@ func NewStorageAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) 
 	return &StorageAPIProxy{bridge: bridge, registry: registry}
 }
 
-func (p *StorageAPIProxy) SetCapacity(cap uint32) {
+func (p *StorageAPIProxy) SetCapacity(capacity uint32) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUvarint(uint64(cap))
+	buf.WriteUvarint(uint64(capacity))
 
 	_, err := p.bridge.Call(context.Background(), MethodID_StorageAPI_SetCapacity, buf.Bytes())
 	_ = err
@@ -66,15 +66,15 @@ func StorageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_StorageAPI_SetCapacity:
-		var cap uint32
+		var capacity uint32
 		{
 			tmp := reqBuf.ReadVarint()
 			if tmp < 0 || tmp > 4294967295 {
 				panic(fmt.Sprintf("ffi: uint32 overflow: %d", tmp))
 			}
-			cap = uint32(tmp)
+			capacity = uint32(tmp)
 		}
-		impl.SetCapacity(cap)
+		impl.SetCapacity(capacity)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_StorageAPI_GetStatus:

@@ -214,10 +214,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 						itemType, _ := readArrayItemType(pType)
 						fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
 						fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
-						emitWrite(&sb, "item", itemType, structs, "buf", false, false)
+						emitWrite(&sb, "item", itemType, structs, "buf", false)
 						fmt.Fprintf(&sb, "\t}\n")
 					} else {
-						emitWrite(&sb, pName.Name, pType, structs, "buf", false, false)
+						emitWrite(&sb, pName.Name, pType, structs, "buf", false)
 					}
 				}
 			}
@@ -276,7 +276,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				varName := fmt.Sprintf("v_%d", i)
 				fmt.Fprintf(&sb, "\tvar %s %s\n", varName, toGoType(rType))
-				emitReadAssign(&sb, varName, rType, structs, "retBuf", false, false)
+				emitReadAssign(&sb, varName, rType, structs, "retBuf", false)
 				retStmt = append(retStmt, varName)
 			}
 		}
@@ -336,7 +336,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 						goType = "[]" + strings.TrimPrefix(goType, "[]")
 					}
 					fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
-					emitReadAssign(&sb, pName.Name, pType, structs, "reqBuf", true, false)
+					emitReadAssign(&sb, pName.Name, pType, structs, "reqBuf", true)
 					if isVariadic {
 						paramVars = append(paramVars, pName.Name+"...")
 					} else {
@@ -372,7 +372,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					fmt.Fprintf(&sb, "\t\t\tresBuf.WriteRawError(\"\", 0)\n")
 					fmt.Fprintf(&sb, "\t\t}\n")
 				} else {
-					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true, false)
+					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)
 				}
 			}
 		}
@@ -511,7 +511,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	return sb.String()
 }
 
-func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*ast.StructType, bufName string, isHost bool, isMapKey bool) {
+func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*ast.StructType, bufName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
 		fmt.Fprintf(sb, "\tif %s == nil {\n", prefix)
 		fmt.Fprintf(sb, "\t\t%s.WriteUvarint(0)\n", bufName)
@@ -562,15 +562,15 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		if itemType, ok := readArrayItemType(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", bufName, prefix)
 			fmt.Fprintf(sb, "\tfor _, item := range %s {\n", prefix)
-			emitWrite(sb, "item", itemType, structs, bufName, isHost, false)
+			emitWrite(sb, "item", itemType, structs, bufName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if kType, vType, ok := readMapKeyValueTypes(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", bufName, prefix)
 			fmt.Fprintf(sb, "\tfor k, v := range %s {\n", prefix)
-			emitWrite(sb, "k", kType, structs, bufName, isHost, true)
-			emitWrite(sb, "v", vType, structs, bufName, isHost, false)
+			emitWrite(sb, "k", kType, structs, bufName, isHost)
+			emitWrite(sb, "v", vType, structs, bufName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
@@ -584,7 +584,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 			sort.Strings(fieldNames)
 			for _, fName := range fieldNames {
 				fType := fieldMap[fName]
-				emitWrite(sb, prefix+"."+fName, fType, structs, bufName, isHost, false)
+				emitWrite(sb, prefix+"."+fName, fType, structs, bufName, isHost)
 			}
 		} else {
 			fmt.Fprintf(sb, "\t// Unknown type for write: %s\n", pType)
@@ -594,7 +594,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 	}
 }
 
-func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[string]*ast.StructType, readerName string, isHost bool, isMapKey bool) {
+func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[string]*ast.StructType, readerName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
 		if isHost {
 			fmt.Fprintf(sb, "\t\tif id := uint32(%s.ReadUvarint()); id != 0 {\n", readerName)
@@ -673,7 +673,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 			fmt.Fprintf(sb, "\tl_%s := int(%s.ReadUvarint())\n", varName, readerName)
 			fmt.Fprintf(sb, "\t%s = make(%s, l_%s)\n", varName, toGoType(pType), varName)
 			fmt.Fprintf(sb, "\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName)
-			emitReadAssign(sb, fmt.Sprintf("%s[i_%s]", varName, varName), itemType, structs, readerName, isHost, false)
+			emitReadAssign(sb, fmt.Sprintf("%s[i_%s]", varName, varName), itemType, structs, readerName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
@@ -683,8 +683,8 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 			fmt.Fprintf(sb, "\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, varName, varName, varName)
 			fmt.Fprintf(sb, "\t\tvar k %s\n", toGoType(kType))
 			fmt.Fprintf(sb, "\t\tvar v %s\n", toGoType(vType))
-			emitReadAssign(sb, "k", kType, structs, readerName, isHost, true)
-			emitReadAssign(sb, "v", vType, structs, readerName, isHost, false)
+			emitReadAssign(sb, "k", kType, structs, readerName, isHost)
+			emitReadAssign(sb, "v", vType, structs, readerName, isHost)
 			fmt.Fprintf(sb, "\t\t%s[k] = v\n", varName)
 			fmt.Fprintf(sb, "\t}\n")
 			return
@@ -699,7 +699,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 			sort.Strings(fieldNames)
 			for _, fName := range fieldNames {
 				fType := fieldMap[fName]
-				emitReadAssign(sb, varName+"."+fName, fType, structs, readerName, isHost, false)
+				emitReadAssign(sb, varName+"."+fName, fType, structs, readerName, isHost)
 			}
 		} else {
 			fmt.Fprintf(sb, "\t// Unknown type for read: %s\n", pType)

@@ -2,13 +2,14 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
-	engine "gopkg.d7z.net/go-mini/core"
 )
 
 // NumericSafetyAPI 定义测试接口
@@ -23,9 +24,9 @@ type NumericSafetyImpl struct {
 	LastVal int64
 }
 
-func (n *NumericSafetyImpl) AcceptInt8(v int8)   { n.LastVal = int64(v) }
+func (n *NumericSafetyImpl) AcceptInt8(v int8)     { n.LastVal = int64(v) }
 func (n *NumericSafetyImpl) AcceptUint16(v uint16) { n.LastVal = int64(v) }
-func (n *NumericSafetyImpl) AcceptInt32(v int32) { n.LastVal = int64(v) }
+func (n *NumericSafetyImpl) AcceptInt32(v int32)   { n.LastVal = int64(v) }
 
 // NumericSafetyBridge 模拟 ffigen 生成的桥接器，包含溢出检查
 type NumericSafetyBridge struct {
@@ -70,7 +71,7 @@ func (b *NumericSafetyBridge) Call(ctx context.Context, methodID uint32, args []
 		b.impl.AcceptInt32(v)
 		return nil, nil
 	}
-	return nil, fmt.Errorf("unknown method")
+	return nil, errors.New("unknown method")
 }
 
 func (b *NumericSafetyBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
