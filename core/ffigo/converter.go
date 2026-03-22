@@ -885,9 +885,17 @@ func (c *GoToASTConverter) expandInterface(t *ast.InterfaceType, depth int) stri
 						}
 					}
 					if fn.Results != nil && len(fn.Results.List) > 0 {
-						returns = " " + c.typeToStringWithDepth(fn.Results.List[0].Type, depth+1)
+						var resTypes []string
+						for _, r := range fn.Results.List {
+							resTypes = append(resTypes, c.typeToStringWithDepth(r.Type, depth+1))
+						}
+						if len(resTypes) > 1 {
+							returns = " tuple(" + strings.Join(resTypes, ", ") + ")"
+						} else {
+							returns = " " + resTypes[0]
+						}
 					} else {
-						returns = " Any"
+						returns = " Void"
 					}
 				}
 				sig := fmt.Sprintf("(%s)%s", strings.Join(params, ","), returns)

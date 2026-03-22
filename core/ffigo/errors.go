@@ -4,16 +4,8 @@ import (
 	"fmt"
 )
 
-// ResultStatus represents the outcome of an FFI call.
-type ResultStatus byte
-
-const (
-	StatusSuccess ResultStatus = 0
-	StatusError   ResultStatus = 1
-)
-
 // WrapError converts a Go error into a format suitable for the FFI Tuple protocol.
-// It ensures that even nil errors are handled (though nil should usually use StatusSuccess).
+// It ensures that even nil errors are handled.
 func WrapError(err error) string {
 	if err == nil {
 		return ""
