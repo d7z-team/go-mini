@@ -185,8 +185,9 @@ func (c *ConstRefExpr) Optimize(ctx *OptimizeContext) Node {
 // CallExprStmt 表示函数调用表达式
 type CallExprStmt struct {
 	BaseNode
-	Func Expr   `json:"func"` // 被调用表达式
-	Args []Expr `json:"args"` // 调用参数
+	Func     Expr   `json:"func"`               // 被调用表达式
+	Args     []Expr `json:"args"`               // 调用参数
+	Ellipsis bool   `json:"ellipsis,omitempty"` // 为 true 时表示 f(args...)
 }
 
 func (c *CallExprStmt) GetBase() *BaseNode { return &c.BaseNode }
@@ -262,18 +263,33 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if fType.Variadic {
 		minParams--
 	}
-	if len(c.Args) < minParams {
-		return fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
-	}
-	if !fType.Variadic && len(fType.Params) > 0 && !fType.Params[len(fType.Params)-1].IsArray() && len(c.Args) > len(fType.Params) {
-		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(fType.Params), len(c.Args))
-	}
 
 	// 校验固定参数部分的类型
 	fixedNum := len(fType.Params)
 	isImplicitArray := len(fType.Params) > 0 && fType.Params[len(fType.Params)-1].IsArray()
 	if fType.Variadic || isImplicitArray {
 		fixedNum--
+	}
+
+	if c.Ellipsis {
+		// 如果使用了 f(args...)，则参数数量必须固定为 1 (针对变长参数函数)
+		// 或者符合被调用函数的参数结构
+		if len(c.Args) == 0 {
+			return errors.New("invalid use of ellipsis with no arguments")
+		}
+		// 校验最后一个参数必须是数组类型
+		lastArgType := c.Args[len(c.Args)-1].GetBase().Type
+		if !lastArgType.IsArray() && !lastArgType.IsAny() {
+			return fmt.Errorf("invalid use of ellipsis with non-array type %s", lastArgType)
+		}
+		goto done // 变长参数展开跳过常规数量检查，运行时处理
+	}
+
+	if len(c.Args) < minParams {
+		return fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
+	}
+	if !fType.Variadic && !isImplicitArray && len(fType.Params) > 0 && len(c.Args) > len(fType.Params) {
+		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(fType.Params), len(c.Args))
 	}
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
@@ -564,6 +580,7 @@ type IndexExpr struct {
 	BaseNode
 	Object Expr `json:"object"`
 	Index  Expr `json:"index"`
+	Multi  bool `json:"multi,omitempty"` // 为 true 时返回 (val, ok) Tuple
 }
 
 func (i *IndexExpr) GetBase() *BaseNode { return &i.BaseNode }
@@ -588,7 +605,11 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 
 	objType := i.Object.GetBase().Type
 	if objType.IsAny() {
-		i.Type = "Any"
+		if i.Multi {
+			i.Type = CreateTupleType("Any", "Bool")
+		} else {
+			i.Type = "Any"
+		}
 		return nil
 	}
 
@@ -599,6 +620,9 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if objType.IsArray() {
+		if i.Multi {
+			return errors.New("数组索引不支持二元解构语法")
+		}
 		if i.Index.GetBase().Type != "Int64" {
 			return fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 		}
@@ -618,7 +642,11 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		if !keyType.Equals(i.Index.GetBase().Type) {
 			return fmt.Errorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
 		}
-		i.Type = valType
+		if i.Multi {
+			i.Type = CreateTupleType(valType, "Bool")
+		} else {
+			i.Type = valType
+		}
 		return nil
 	}
 	return fmt.Errorf("索引访问的对象必须是数组或Map类型，实际为 %s", objType)

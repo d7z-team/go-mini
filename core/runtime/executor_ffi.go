@@ -60,11 +60,20 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	// 发起 FFI 调用
 	var retData []byte
 	var err error
-	if route.MethodID == 0 {
-		retData, err = route.Bridge.Invoke(session.Context, route.Name, buf.Bytes())
-	} else {
-		retData, err = route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
-	}
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = &PanicError{Value: NewString(fmt.Sprintf("FFI panic: %v", r))}
+			}
+		}()
+		if route.MethodID == 0 {
+			retData, err = route.Bridge.Invoke(session.Context, route.Name, buf.Bytes())
+		} else {
+			retData, err = route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
+		}
+	}()
+
 	if err != nil {
 		return nil, err
 	}

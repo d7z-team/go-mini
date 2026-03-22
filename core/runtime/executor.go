@@ -799,6 +799,46 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
+		n := task.Node.(*ast.IndexExpr)
+		if n.Multi {
+			if obj == nil || isEmptyVar(obj) {
+				return errors.New("index access on nil")
+			}
+			if idx == nil {
+				return errors.New("index access with nil index")
+			}
+			if obj.VType == TypeMap {
+				m := obj.Ref.(*VMMap)
+				key := idx.Str
+				if idx.VType == TypeInt {
+					key = strconv.FormatInt(idx.I64, 10)
+				}
+				tuple := make([]*Var, 2)
+				if val, ok := m.Data[key]; ok {
+					tuple[0] = val
+					tuple[1] = NewBool(true)
+				} else {
+					_, valType, _ := obj.Type.GetMapKeyValueTypes()
+					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
+					tuple[1] = NewBool(false)
+				}
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+				return nil
+			}
+			// Fallback for Any
+			if obj.VType == TypeAny && obj.Ref != nil {
+				if inner, ok := obj.Ref.(*Var); ok {
+					// Recursively handle if it's a Map inside Any
+					if inner.VType == TypeMap {
+						// Simple trick: replace obj and re-dispatch
+						session.ValueStack.Push(inner)
+						session.ValueStack.Push(idx)
+						return e.dispatch(session, task)
+					}
+				}
+			}
+			return fmt.Errorf("multi-index only supported for maps, got %v", obj.VType)
+		}
 		res, err := e.evalIndexExprDirect(session, obj, idx)
 		if err != nil {
 			return err
@@ -915,6 +955,27 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		args := make([]*Var, len(n.Args))
 		for i := len(n.Args) - 1; i >= 0; i-- {
 			args[i] = session.ValueStack.Pop()
+		}
+
+		// 处理变长参数展开 f(args...)
+		if n.Ellipsis && len(args) > 0 {
+			last := args[len(args)-1]
+			if last != nil && last.VType == TypeArray {
+				arr := last.Ref.(*VMArray)
+				newArgs := make([]*Var, len(args)-1+len(arr.Data))
+				copy(newArgs, args[:len(args)-1])
+				copy(newArgs[len(args)-1:], arr.Data)
+				args = newArgs
+			} else if last != nil && last.VType == TypeAny && last.Ref != nil {
+				// 支持 Any 包装下的 Array 展开
+				if inner, ok := last.Ref.(*Var); ok && inner.VType == TypeArray {
+					arr := inner.Ref.(*VMArray)
+					newArgs := make([]*Var, len(args)-1+len(arr.Data))
+					copy(newArgs, args[:len(args)-1])
+					copy(newArgs[len(args)-1:], arr.Data)
+					args = newArgs
+				}
+			}
 		}
 
 		if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
@@ -1936,7 +1997,7 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Left})
 		}
 	case *ast.IndexExpr:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpIndex})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpIndex, Node: n})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Index})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Object})
 	case *ast.MemberExpr:

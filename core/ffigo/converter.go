@@ -363,6 +363,8 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 				if len(st.Lhs) == 2 {
 					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
 						ta.Multi = true
+					} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
+						ie.Multi = true
 					}
 				}
 			} else {
@@ -399,6 +401,8 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 				if len(st.Lhs) == 2 {
 					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
 						ta.Multi = true
+					} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
+						ie.Multi = true
 					}
 				}
 			} else {
@@ -709,7 +713,12 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 				}
 			}
 		}
-		return &miniast.CallExprStmt{BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)}, Func: funExpr, Args: c.convertArgs(ex.Args)}
+		return &miniast.CallExprStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)},
+			Func:     funExpr,
+			Args:     c.convertArgs(ex.Args),
+			Ellipsis: ex.Ellipsis.IsValid(),
+		}
 	case *ast.CompositeLit:
 		typeName := c.typeToString(ex.Type)
 		res := &miniast.CompositeExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "composite"), Meta: "composite", Loc: c.extractLoc(ex)}, Kind: miniast.Ident(typeName), Values: make([]miniast.CompositeElement, len(ex.Elts))}
