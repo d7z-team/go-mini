@@ -1,6 +1,7 @@
 package ffigo
 
 import (
+	"reflect"
 	"sync"
 	"sync/atomic"
 )
@@ -43,17 +44,8 @@ func (r *HandleRegistry) Register(obj interface{}) uint32 {
 		return 0
 	}
 
-	// For comparable types, check if we already have an ID
-	isComparable := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				isComparable = false
-			}
-		}()
-		_ = interface{}(obj) == interface{}(obj)
-		isComparable = true
-	}()
+	// Use reflection to check comparability (safe for FFI path)
+	isComparable := reflect.TypeOf(obj).Comparable()
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

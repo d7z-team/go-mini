@@ -576,7 +576,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		}
 		if _, ok := structs[pType]; ok {
 			fieldMap := make(map[string]string)
-			getFields(structs, pType, fieldMap)
+			getFields(structs, pType, fieldMap, 0)
 			var fieldNames []string
 			for fName := range fieldMap {
 				fieldNames = append(fieldNames, fName)
@@ -674,7 +674,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 		}
 		if _, ok := structs[pType]; ok {
 			fieldMap := make(map[string]string)
-			getFields(structs, pType, fieldMap)
+			getFields(structs, pType, fieldMap, 0)
 			var fieldNames []string
 			for fName := range fieldMap {
 				fieldNames = append(fieldNames, fName)
@@ -692,7 +692,10 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 	}
 }
 
-func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[string]string) {
+func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[string]string, depth int) {
+	if depth > 10 {
+		return // Protection against circular embedding
+	}
 	str, ok := structs[strName]
 	if !ok {
 		return
@@ -704,7 +707,7 @@ func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[
 			if strings.HasPrefix(tName, "Ptr<") {
 				tName = tName[4 : len(tName)-1]
 			}
-			getFields(structs, tName, fieldMap)
+			getFields(structs, tName, fieldMap, depth+1)
 		}
 	}
 	// Then, collect from self (shallower level), overwriting deeper ones

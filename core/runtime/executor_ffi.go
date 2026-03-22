@@ -108,13 +108,22 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 	case "String":
 		buf.WriteString(key)
 	case "Int64", "Int", "int", "int64":
-		v, _ := strconv.ParseInt(key, 10, 64)
+		v, err := strconv.ParseInt(key, 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse map key '%s' as Int64: %w", key, err)
+		}
 		buf.WriteVarint(v)
 	case "Bool", "bool":
-		v, _ := strconv.ParseBool(key)
+		v, err := strconv.ParseBool(key)
+		if err != nil {
+			return fmt.Errorf("failed to parse map key '%s' as Bool: %w", key, err)
+		}
 		buf.WriteBool(v)
 	case "Float64", "float64":
-		v, _ := strconv.ParseFloat(key, 64)
+		v, err := strconv.ParseFloat(key, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse map key '%s' as Float64: %w", key, err)
+		}
 		buf.WriteFloat64(v)
 	default:
 		return fmt.Errorf("unsupported map key type: %s", kType)

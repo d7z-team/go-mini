@@ -39,7 +39,9 @@ go-mini/
 
 ### I. 绝对内存隔离 (Absolute Memory Isolation)
 *   **规则**: VM (Runtime) 和宿主 (Go 环境) **绝不能**共享原生内存指针 (除了在 FFI 调用期间只读的零拷贝 `[]byte` 缓冲区)。
+*   **零拷贝安全约束**: FFI 宿主侧实现**严禁**在 `Call` 或 `Invoke` 方法返回后继续持有或访问 `args` 字节数组的引用。任何异步处理必须在返回前完成数据的深拷贝。
 *   **实现**: 
+
     *   **句柄系统 (Handle System)**: 复杂的宿主对象 (如 `os.File`, `net.Conn`) 通过句柄管理。VM 内部永远只持有 `uint32` 的句柄 ID (`TypeHandle`)。
     *   **沙盒指针 (Sandbox Pointers)**: 脚本层支持 `Ptr<T>` 类型和 `*p` (StarExpr) 运算符。这些指针在 VM 内部映射为 Handle 或隔离容器，解引用操作由引擎拦截并返回数据的受控副本，绝不外泄原生地址。
 *   **安全**: 脚本无法对句柄进行算术运算。`Executor` 在任何操作前会严格验证 `VType`。
