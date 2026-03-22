@@ -107,9 +107,15 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 	switch kType {
 	case "String":
 		buf.WriteString(key)
-	case "Int64":
+	case "Int64", "Int", "int", "int64":
 		v, _ := strconv.ParseInt(key, 10, 64)
 		buf.WriteVarint(v)
+	case "Bool", "bool":
+		v, _ := strconv.ParseBool(key)
+		buf.WriteBool(v)
+	case "Float64", "float64":
+		v, _ := strconv.ParseFloat(key, 64)
+		buf.WriteFloat64(v)
 	default:
 		return fmt.Errorf("unsupported map key type: %s", kType)
 	}
@@ -453,8 +459,12 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (s
 	switch kType {
 	case "String":
 		return reader.ReadString(), nil
-	case "Int64":
+	case "Int64", "Int", "int", "int64":
 		return strconv.FormatInt(reader.ReadVarint(), 10), nil
+	case "Bool", "bool":
+		return strconv.FormatBool(reader.ReadBool()), nil
+	case "Float64", "float64":
+		return strconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64), nil
 	default:
 		return "", fmt.Errorf("unsupported map key type: %s", kType)
 	}
@@ -470,6 +480,9 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 
 	var res *Var
 	var err error
+
+	// 规范化类型字符串，防止因空格或不可见字符导致的匹配失败
+	typ = ast.GoMiniType(strings.TrimSpace(string(typ)))
 
 	if typ == "Any" {
 		res = e.ToVar(session, reader.ReadAny(), bridge)
@@ -489,7 +502,7 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			res = e.ToVar(session, reader.ReadRawError(), bridge)
 		case typ == "TypeBytes":
 			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
-		case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":
+		case typ.IsPtr() || typ == "TypeHandle":
 			id := uint32(reader.ReadUvarint())
 			var h *VMHandle
 			if id != 0 {

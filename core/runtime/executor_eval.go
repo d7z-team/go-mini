@@ -329,9 +329,18 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		return arr.Data[i], nil
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
-		key := idx.Str
-		if idx.VType == TypeInt {
+		key := ""
+		switch idx.VType {
+		case TypeString:
+			key = idx.Str
+		case TypeInt:
 			key = strconv.FormatInt(idx.I64, 10)
+		case TypeBool:
+			key = strconv.FormatBool(idx.Bool)
+		case TypeFloat:
+			key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
+		default:
+			return nil, fmt.Errorf("unsupported map key type: %v", idx.VType)
 		}
 		if val, ok := m.Data[key]; ok {
 			return val, nil

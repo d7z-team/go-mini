@@ -276,7 +276,11 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = reqBuf.ReadString()
 		r0, err := impl.Open(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -292,7 +296,11 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = reqBuf.ReadString()
 		r0, err := impl.Create(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -448,10 +456,14 @@ func (p *FileMethodsProxy) Read(f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	if p.registry != nil {
-		buf.WriteUvarint(uint64(p.registry.Register(f)))
-	} else {
+	if f == nil {
 		buf.WriteUvarint(0)
+	} else {
+		if p.registry != nil {
+			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		} else {
+			buf.WriteUvarint(0)
+		}
 	}
 	buf.WriteBytes(b)
 
@@ -486,10 +498,14 @@ func (p *FileMethodsProxy) Write(f *File, b []byte) (int, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	if p.registry != nil {
-		buf.WriteUvarint(uint64(p.registry.Register(f)))
-	} else {
+	if f == nil {
 		buf.WriteUvarint(0)
+	} else {
+		if p.registry != nil {
+			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		} else {
+			buf.WriteUvarint(0)
+		}
 	}
 	buf.WriteBytes(b)
 
@@ -524,10 +540,14 @@ func (p *FileMethodsProxy) Close(f *File) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	if p.registry != nil {
-		buf.WriteUvarint(uint64(p.registry.Register(f)))
-	} else {
+	if f == nil {
 		buf.WriteUvarint(0)
+	} else {
+		if p.registry != nil {
+			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		} else {
+			buf.WriteUvarint(0)
+		}
 	}
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_FileMethods_Close, buf.Bytes())

@@ -9,6 +9,7 @@ import (
 type HandleRegistry struct {
 	mu      sync.RWMutex
 	handles map[uint32]interface{}
+	reverse map[interface{}]uint32 // Reverse lookup for identity (deduplication)
 	nextID  uint32
 }
 
@@ -30,19 +31,44 @@ func (h *ManagedHandle) Release() {
 func NewHandleRegistry() *HandleRegistry {
 	return &HandleRegistry{
 		handles: make(map[uint32]interface{}),
+		reverse: make(map[interface{}]uint32),
 		nextID:  1, // 0 is reserved for invalid/nil handles
 	}
 }
 
 // Register adds an object to the registry and returns its unique ID.
+// If the object is already registered and is comparable, it returns the existing ID.
 func (r *HandleRegistry) Register(obj interface{}) uint32 {
 	if obj == nil {
 		return 0
 	}
+
+	// For comparable types, check if we already have an ID
+	isComparable := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				isComparable = false
+			}
+		}()
+		_ = interface{}(obj) == interface{}(obj)
+		isComparable = true
+	}()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if isComparable {
+		if id, ok := r.reverse[obj]; ok {
+			return id
+		}
+	}
+
 	id := atomic.AddUint32(&r.nextID, 1)
 	r.handles[id] = obj
+	if isComparable {
+		r.reverse[obj] = id
+	}
 	return id
 }
 
@@ -70,5 +96,8 @@ func (r *HandleRegistry) Get(id uint32) (interface{}, bool) {
 func (r *HandleRegistry) Remove(id uint32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.handles, id)
+	if obj, ok := r.handles[id]; ok {
+		delete(r.reverse, obj)
+		delete(r.handles, id)
+	}
 }

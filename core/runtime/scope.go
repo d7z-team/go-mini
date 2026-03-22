@@ -550,6 +550,7 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 	}
 
 	v.VType = expr.VType
+	v.Type = expr.Type
 	v.I64 = expr.I64
 	v.F64 = expr.F64
 	v.Str = expr.Str
@@ -559,6 +560,7 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 	v.Bridge = expr.Bridge
 	v.Ref = expr.Ref
 	return nil
+
 }
 
 func (ctx *StackContext) AddVariable(name string, v *Var) error {

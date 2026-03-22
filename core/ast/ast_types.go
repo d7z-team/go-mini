@@ -100,17 +100,21 @@ func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
 			if idx := strings.Index(m, "("); idx != -1 {
 				name = strings.TrimSpace(m[:idx])
 				// 寻找括号配对
-				parenCount := 0
+				pCount, aCount := 0, 0
 				endIdx := -1
 				for i := idx; i < len(m); i++ {
 					if m[i] == '(' {
-						parenCount++
+						pCount++
 					} else if m[i] == ')' {
-						parenCount--
-						if parenCount == 0 {
-							endIdx = i
-							break
-						}
+						pCount--
+					} else if m[i] == '<' {
+						aCount++
+					} else if m[i] == '>' {
+						aCount--
+					}
+					if pCount == 0 && aCount == 0 {
+						endIdx = i
+						break
 					}
 				}
 				if endIdx != -1 {
@@ -195,17 +199,21 @@ func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
 		return nil, false
 	}
 	start := len("function(")
-	parenCount := 1
+	pCount, aCount := 1, 0
 	paramEnd := -1
 	for i := start; i < len(s); i++ {
 		if s[i] == '(' {
-			parenCount++
+			pCount++
 		} else if s[i] == ')' {
-			parenCount--
-			if parenCount == 0 {
-				paramEnd = i
-				break
-			}
+			pCount--
+		} else if s[i] == '<' {
+			aCount++
+		} else if s[i] == '>' {
+			aCount--
+		}
+		if pCount == 0 && aCount == 0 {
+			paramEnd = i
+			break
 		}
 	}
 	if paramEnd == -1 {

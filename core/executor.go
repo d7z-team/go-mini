@@ -270,11 +270,12 @@ func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	returns := "Void"
-	if callFunc, ok := spec.ReadCallFunc(); ok {
+	callFunc, ok := spec.ReadCallFunc()
+	if ok {
 		returns = string(callFunc.Returns)
 	}
 
-	o.routes[name] = runtime.FFIRoute{Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec), Doc: doc}
+	o.routes[name] = runtime.FFIRoute{Name: name, Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec), Doc: doc}
 	if spec != "" {
 		o.specs[ast.Ident(name)] = spec
 	}
