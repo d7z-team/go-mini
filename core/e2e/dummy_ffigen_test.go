@@ -113,7 +113,7 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 FileInfo
 	v_0.Name = retBuf.ReadString()
-	v_0.Size = uint32(retBuf.ReadUvarint())
+	v_0.Size = int64(retBuf.ReadVarint())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -132,7 +132,7 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Read(f *File, b []byte) (int, error) {
+func (p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -154,8 +154,8 @@ func (p *MockOSProxy) Read(f *File, b []byte) (int, error) {
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	v_0 = int(retBuf.ReadVarint())
+	var v_0 int64
+	v_0 = int64(retBuf.ReadVarint())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -174,7 +174,7 @@ func (p *MockOSProxy) Read(f *File, b []byte) (int, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Write(f *File, b []byte) (int, error) {
+func (p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -196,8 +196,8 @@ func (p *MockOSProxy) Write(f *File, b []byte) (int, error) {
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	v_0 = int(retBuf.ReadVarint())
+	var v_0 int64
+	v_0 = int64(retBuf.ReadVarint())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -260,7 +260,7 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(n.Info.Name)
-	buf.WriteUvarint(uint64(n.Info.Size))
+	buf.WriteVarint(int64(n.Info.Size))
 	buf.WriteVarint(int64(n.Level))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Deep, buf.Bytes())
@@ -269,8 +269,8 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Nested
 	v_0.Info.Name = retBuf.ReadString()
-	v_0.Info.Size = uint32(retBuf.ReadUvarint())
-	v_0.Level = int(retBuf.ReadVarint())
+	v_0.Info.Size = int64(retBuf.ReadVarint())
+	v_0.Level = int64(retBuf.ReadVarint())
 	return v_0
 }
 
@@ -341,7 +341,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		r0, err := impl.Stat(f)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0.Name)
-		resBuf.WriteUvarint(uint64(r0.Size))
+		resBuf.WriteVarint(int64(r0.Size))
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -424,12 +424,12 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Deep:
 		var n Nested
 		n.Info.Name = reqBuf.ReadString()
-		n.Info.Size = uint32(reqBuf.ReadUvarint())
-		n.Level = int(reqBuf.ReadVarint())
+		n.Info.Size = int64(reqBuf.ReadVarint())
+		n.Level = int64(reqBuf.ReadVarint())
 		r0 := impl.Deep(n)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0.Info.Name)
-		resBuf.WriteUvarint(uint64(r0.Info.Size))
+		resBuf.WriteVarint(int64(r0.Info.Size))
 		resBuf.WriteVarint(int64(r0.Level))
 		return resBuf.Bytes(), nil
 	default:

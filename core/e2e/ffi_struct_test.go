@@ -6,8 +6,8 @@ import (
 )
 
 type Point struct {
-	X int
-	Y int
+	X int64
+	Y int64
 }
 
 type Rect struct {
@@ -16,7 +16,7 @@ type Rect struct {
 }
 type MockShapeAPI interface {
 	GetRect() Rect
-	Area(r Rect) int
+	Area(r Rect) int64
 }
 
 type MockShapeHost struct{}
@@ -25,7 +25,7 @@ func (m *MockShapeHost) GetRect() Rect {
 	return Rect{A: Point{10, 20}, B: Point{30, 40}}
 }
 
-func (m *MockShapeHost) Area(r Rect) int {
+func (m *MockShapeHost) Area(r Rect) int64 {
 	return (r.B.X - r.A.X) * (r.B.Y - r.A.Y)
 }
 

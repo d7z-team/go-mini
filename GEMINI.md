@@ -67,22 +67,22 @@ go-mini/
     *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go风格类型映射为规范格式）。
     *   **零容错**: 执行器在进行 FFI 序列化或类型断言时，应严格匹配规范格式，不应引入 `strings.ToLower` 等宽容性处理以牺牲性能或破坏严谨性。
 
-### VI. 无状态执行与并发安全 (Stateless Execution & Concurrency Safety)
-*   **规则**: `Executor` 必须是绝对无状态的只读蓝图。严禁在 `Executor` 结构体中添加任何特定于单次执行的运行时状态。
-*   **实现**: 所有单次执行的可变状态（如指令计数器 `stepCount`、活跃句柄列表 `activeHandles`、模块缓存 `moduleCache` 等）必须下沉并封装到 `StackContext` (Session) 中。每次调用 `Execute` 都必须在本地栈上创建一个全新的、相互隔离的 `StackContext`，以确保宿主层多协程并发调用的绝对线程安全。
-*   **并发保护**: `MiniExecutor`（宿主层容器）在动态注册模块或 FFI 路由时，必须持有 `sync.RWMutex` 以防止并发 Map 读写崩溃。
+### VI. 高信任度执行与并发安全 (High-Trust Execution & Concurrency Safety)
+*   **信任原则**: 引擎假设所有运行的脚本及其产生的数据结构都是可信任的。**严禁**在执行路径或序列化路径中引入人为的递归深度限制或对象大小限制。开发者应通过 `StepLimit` 或 OS 进程级资源控制来管理极端情况。
+*   **无状态执行**: `Executor` 必须是绝对无状态的只读蓝图。严禁在 `Executor` 结构体中添加任何特定于单次执行的运行时状态。
+*   **实现**: 所有单次执行的可变状态必须下沉并封装到 `StackContext` (Session) 中。
 
-### VII. AST JSON 双向对称性 (AST JSON Symmetry)
-*   **规则**: 所有的 AST 节点必须 100% 支持 JSON 序列化与反序列化。禁止存在只能从 Go 源码转换而来，却无法从 JSON 恢复的“幽灵”节点。
-*   **实现**: 当在 `core/ast` 目录下新增或修改任何实现了 `Node`、`Expr` 或 `Stmt` 接口的结构体时，不仅要确保其包含正确的 `json` struct tags，还**必须强制在 `core/parser.go` 的 `unmarshalNodeData` 或 `parseExpr` 的 `switch` 分支中实现对应的反序列化逻辑**。这是引擎能够支持跨进程“物理级编译与执行分离”的基石。
+### VII. 数值类型硬约束 (Strict Numerical Constraints)
+*   **规则**: FFI 边界仅支持 `Int64` 和 `Float64` 两种数值原语。
+*   **禁止隐式转换**: 严禁在 Bridge 层进行 `int32`, `uint32`, `byte` 到 VM 类型的隐式映射。所有不符合 `Int64/Float64` 规范的接口必须在 `ffigen` 阶段报错，强制开发者显式进行类型转换。
 
-### VIII. 资源生命周期自动回收 (Automatic Handle Cleanup)
-*   **规则**: 任何执行会话产生的宿主句柄（Handle）必须有明确的生命周期终点。
-*   **追踪**: `StackContext` 必须持有 `*HandleTracker` (引用计数或共享追踪器)，确保跨模块调用和闭包中产生的句柄能被根 Session 统一感知。
-*   **兜底**: `Execute` 和 `Eval` 接口必须在 `defer` 中显式清理 `ActiveHandles` 并运行 `RunDefers()`，防止因脚本异常导致的系统资源（如文件描述符 FD）泄露。
+### VIII. 异步 FFI 约束 (Async FFI Constraints)
+*   **规则**: FFI 宿主实现必须同步执行。
+*   **零拷贝安全**: 严禁在 `Call` 或 `Invoke` 方法返回后继续访问 `args` 字节数组。若需异步处理，必须在返回前对数据进行深拷贝。
 
-### IX. 递归初始化防御 (Recursive Initialization Defense)
-*   **规则**: 运行时进行类型分配（如 `new`）时，递归深度严禁超过 10 层，以防止恶意的循环结构体定义导致宿主 Stack Overflow。
+### IX. 句柄生命周期自动回收 (Automatic Handle Cleanup / Weak Refs)
+*   **弱引用管理**: `HandleRegistry` 使用 Go 1.24+ 的弱引用机制管理句柄。当脚本端不再持有句柄且 Host 侧无强引用时，对象应能被自动 GC。
+*   **追踪**: `StackContext` 持有共享追踪器，确保执行会话产生的句柄能在 `defer` 中被批量清理。
 
 ### X. LSP 支撑与语义完整性 (LSP & Semantic Integrity)
 *   **非阻塞校验**: `Check(ctx *SemanticContext)` 方法严禁使用“一错即死”模式。遇到错误必须通过 `ctx.AddErrorf` 记录并**强制继续**校验后续分支，以确保 IDE 能一次性展示全量诊断信息。

@@ -10,19 +10,19 @@ import (
 )
 
 type RobustPoint struct {
-	X int
-	Y int
+	X int64
+	Y int64
 }
 
 type MockGeometry interface {
-	SumX(points []RobustPoint) int
+	SumX(points []RobustPoint) int64
 }
 
 type MockGeo struct{}
 
-func (m *MockGeo) SumX(points []RobustPoint) int {
+func (m *MockGeo) SumX(points []RobustPoint) int64 {
 	fmt.Printf("Host received points: %+v\n", points) //nolint:forbidigo // allowed for testing
-	sum := 0
+	var sum int64
 	for _, p := range points {
 		sum += p.X
 	}

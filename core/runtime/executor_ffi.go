@@ -61,6 +61,22 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	var retData []byte
 	var err error
 
+	// 硬编码拦截内置扩展路由
+	if route.MethodID == 999 && route.Name == "errors.is" {
+		if len(args) == 2 {
+			errVar := args[0]
+			targetHandle := args[1]
+			match := false
+			if errVar != nil && errVar.VType == TypeError {
+				if errObj, ok := errVar.Ref.(*VMError); ok {
+					hVal, _ := targetHandle.ToHandle()
+					match = errObj.Handle == hVal
+				}
+			}
+			return NewBool(match), nil
+		}
+	}
+
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -296,14 +312,6 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
-	e.serializeVarToAnyWithDepth(buf, v, 0)
-}
-
-func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth int) {
-	if depth > 100 {
-		buf.WriteAny(nil)
-		return
-	}
 	if v == nil {
 		buf.WriteAny(nil)
 		return
@@ -333,7 +341,7 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 		buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUvarint(uint64(len(arr.Data)))
 		for _, item := range arr.Data {
-			e.serializeVarToAnyWithDepth(buf, item, depth+1)
+			e.serializeVarToAny(buf, item)
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
@@ -341,7 +349,7 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 		buf.WriteUvarint(uint64(len(vmMap.Data)))
 		for k, val := range vmMap.Data {
 			buf.WriteString(k)
-			e.serializeVarToAnyWithDepth(buf, val, depth+1)
+			e.serializeVarToAny(buf, val)
 		}
 	case TypeInterface:
 		if v.Ref == nil {

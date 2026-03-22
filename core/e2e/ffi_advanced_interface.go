@@ -28,7 +28,7 @@ type BaseStruct struct {
 
 type EmbeddedStruct struct {
 	BaseStruct // Embedded
-	ExtraField int
+	ExtraField int64
 }
 
 type AdvancedFFIImpl struct {

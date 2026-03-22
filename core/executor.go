@@ -331,6 +331,7 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 
 	// 3. Inject errors
 	errorslib.RegisterErrors(o, &errorslib.ErrorsHost{}, o.registry)
+	o.RegisterFFI("errors.is", nil, 999, "function(Error, TypeHandle) Bool", "Check if an error matches a target handle")
 
 	// 4. Inject io
 	iolib.RegisterIO(o, &iolib.IOHost{}, o.registry)

@@ -46,18 +46,20 @@ func (h *OSHost) Setenv(key, value string) error {
 
 type FileMethodsHost struct{}
 
-func (h *FileMethodsHost) Read(f *File, b []byte) (int, error) {
+func (h *FileMethodsHost) Read(f *File, b []byte) (int64, error) {
 	if f == nil {
 		return 0, os.ErrInvalid
 	}
-	return ((*os.File)(unsafe.Pointer(f))).Read(b)
+	n, err := ((*os.File)(unsafe.Pointer(f))).Read(b)
+	return int64(n), err
 }
 
-func (h *FileMethodsHost) Write(f *File, b []byte) (int, error) {
+func (h *FileMethodsHost) Write(f *File, b []byte) (int64, error) {
 	if f == nil {
 		return 0, os.ErrInvalid
 	}
-	return ((*os.File)(unsafe.Pointer(f))).Write(b)
+	n, err := ((*os.File)(unsafe.Pointer(f))).Write(b)
+	return int64(n), err
 }
 
 func (h *FileMethodsHost) Close(f *File) error {

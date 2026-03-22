@@ -116,7 +116,7 @@ func (p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 EmbeddedStruct
 	v_0.BaseField = retBuf.ReadString()
-	v_0.ExtraField = int(retBuf.ReadVarint())
+	v_0.ExtraField = int64(retBuf.ReadVarint())
 	return v_0
 }
 
@@ -188,7 +188,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	case MethodID_AdvancedFFI_EchoEmbedded:
 		var e EmbeddedStruct
 		e.BaseField = reqBuf.ReadString()
-		e.ExtraField = int(reqBuf.ReadVarint())
+		e.ExtraField = int64(reqBuf.ReadVarint())
 		r0 := impl.EchoEmbedded(e)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0.BaseField)

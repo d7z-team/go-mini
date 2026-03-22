@@ -544,9 +544,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		return
 	}
 	switch pType {
-	case "Uint32", "uint32", "Int32", "int32":
-		fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(%s))\n", bufName, prefix)
-	case "int", "Int", "Int64", "int64":
+	case "Int64", "int64":
 		fmt.Fprintf(sb, "\t%s.WriteVarint(int64(%s))\n", bufName, prefix)
 	case "string", "String":
 		fmt.Fprintf(sb, "\t%s.WriteString(%s)\n", bufName, prefix)
@@ -576,7 +574,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		}
 		if _, ok := structs[pType]; ok {
 			fieldMap := make(map[string]string)
-			getFields(structs, pType, fieldMap, 0)
+			getFields(structs, pType, fieldMap)
 			var fieldNames []string
 			for fName := range fieldMap {
 				fieldNames = append(fieldNames, fName)
@@ -622,11 +620,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 		return
 	}
 	switch pType {
-	case "Uint32", "uint32", "Int32", "int32":
-		fmt.Fprintf(sb, "\t%s = %s(%s.ReadUvarint())\n", varName, toGoType(pType), readerName)
-	case "int", "Int", "Int64", "int64":
-		fmt.Fprintf(sb, "\t%s = %s(%s.ReadVarint())\n", varName, toGoType(pType), readerName)
-	case "Uint8", "byte", "uint8":
+	case "Int64", "int64":
 		fmt.Fprintf(sb, "\t%s = %s(%s.ReadVarint())\n", varName, toGoType(pType), readerName)
 	case "string", "String":
 		fmt.Fprintf(sb, "\t%s = %s.ReadString()\n", varName, readerName)
@@ -674,7 +668,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 		}
 		if _, ok := structs[pType]; ok {
 			fieldMap := make(map[string]string)
-			getFields(structs, pType, fieldMap, 0)
+			getFields(structs, pType, fieldMap)
 			var fieldNames []string
 			for fName := range fieldMap {
 				fieldNames = append(fieldNames, fName)
@@ -692,10 +686,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 	}
 }
 
-func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[string]string, depth int) {
-	if depth > 10 {
-		return // Protection against circular embedding
-	}
+func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[string]string) {
 	str, ok := structs[strName]
 	if !ok {
 		return
@@ -707,7 +698,7 @@ func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[
 			if strings.HasPrefix(tName, "Ptr<") {
 				tName = tName[4 : len(tName)-1]
 			}
-			getFields(structs, tName, fieldMap, depth+1)
+			getFields(structs, tName, fieldMap)
 		}
 	}
 	// Then, collect from self (shallower level), overwriting deeper ones
@@ -772,13 +763,10 @@ func toVMType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		name := t.Name
-		if name == "byte" || name == "uint8" {
-			return "Uint8"
-		}
-		if name == "int" || name == "int64" {
+		if name == "int64" {
 			return "Int64"
 		}
-		if name == "float64" || name == "float32" {
+		if name == "float64" {
 			return "Float64"
 		}
 		if name == "string" {
@@ -863,7 +851,7 @@ func emitReverseRead(sb *strings.Builder, varName, pType, sourceName string) {
 	fmt.Fprintf(sb, "\t\tif %s != nil {\n", sourceName)
 	fmt.Fprintf(sb, "\t\t\tif raw := %s.Interface(); raw != nil {\n", sourceName)
 	switch pType {
-	case "Int64", "int64", "Int", "int":
+	case "Int64", "int64":
 		fmt.Fprintf(sb, "\t\t\t\tswitch v := raw.(type) {\n\t\t\t\tcase int64: %s = %s(v)\n\t\t\t\tcase float64: %s = %s(v)\n\t\t\t\t}\n", varName, goType, varName, goType)
 	case "String", "string":
 		fmt.Fprintf(sb, "\t\t\t\tif v, ok := raw.(string); ok { %s = v }\n", varName)

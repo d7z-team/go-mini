@@ -452,7 +452,7 @@ func NewFileMethodsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 	return &FileMethodsProxy{bridge: bridge, registry: registry}
 }
 
-func (p *FileMethodsProxy) Read(f *File, b []byte) (int, error) {
+func (p *FileMethodsProxy) Read(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -474,8 +474,8 @@ func (p *FileMethodsProxy) Read(f *File, b []byte) (int, error) {
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	v_0 = int(retBuf.ReadVarint())
+	var v_0 int64
+	v_0 = int64(retBuf.ReadVarint())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -494,7 +494,7 @@ func (p *FileMethodsProxy) Read(f *File, b []byte) (int, error) {
 	return v_0, err_1
 }
 
-func (p *FileMethodsProxy) Write(f *File, b []byte) (int, error) {
+func (p *FileMethodsProxy) Write(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -516,8 +516,8 @@ func (p *FileMethodsProxy) Write(f *File, b []byte) (int, error) {
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	v_0 = int(retBuf.ReadVarint())
+	var v_0 int64
+	v_0 = int64(retBuf.ReadVarint())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()

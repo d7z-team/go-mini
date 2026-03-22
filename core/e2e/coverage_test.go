@@ -33,14 +33,14 @@ func (m *CoverageMockOS) Stat(f *File) (FileInfo, error) {
 	return FileInfo{Size: 123, Name: f.Name}, nil
 }
 
-func (m *CoverageMockOS) Read(f *File, b []byte) (int, error) {
+func (m *CoverageMockOS) Read(f *File, b []byte) (int64, error) {
 	copy(b, "hello")
 	return 5, nil
 }
 
-func (m *CoverageMockOS) Write(f *File, b []byte) (int, error) {
+func (m *CoverageMockOS) Write(f *File, b []byte) (int64, error) {
 	m.LastBuffer = append([]byte(nil), b...)
-	return len(b), nil
+	return int64(len(b)), nil
 }
 
 func (m *CoverageMockOS) Close(f *File) error {

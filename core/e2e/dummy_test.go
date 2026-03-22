@@ -8,21 +8,21 @@ type File struct {
 }
 
 type FileInfo struct {
-	Size uint32
+	Size int64
 	Name string
 }
 
 type Nested struct {
 	Info  FileInfo
-	Level int
+	Level int64
 }
 
 type MockOS interface {
 	Open(name string) (*File, error)
 	Name(f *File) string
 	Stat(f *File) (FileInfo, error)
-	Read(f *File, b []byte) (int, error)
-	Write(f *File, b []byte) (int, error)
+	Read(f *File, b []byte) (int64, error)
+	Write(f *File, b []byte) (int64, error)
 	Close(f *File) error
 	Deep(n Nested) Nested
 }

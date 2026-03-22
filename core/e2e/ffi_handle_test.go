@@ -27,11 +27,11 @@ func (m *HandleMockOS) Stat(f *File) (FileInfo, error) {
 	return FileInfo{Size: 100, Name: f.Name}, nil
 }
 
-func (m *HandleMockOS) Read(f *File, b []byte) (int, error) {
+func (m *HandleMockOS) Read(f *File, b []byte) (int64, error) {
 	return 0, nil
 }
 
-func (m *HandleMockOS) Write(f *File, b []byte) (int, error) {
+func (m *HandleMockOS) Write(f *File, b []byte) (int64, error) {
 	return 0, nil
 }
 

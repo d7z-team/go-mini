@@ -23,7 +23,7 @@ type OS interface {
 //
 // ffigen:methods File
 type FileMethods interface {
-	Read(f *File, b []byte) (int, error)
-	Write(f *File, b []byte) (int, error)
+	Read(f *File, b []byte) (int64, error)
+	Write(f *File, b []byte) (int64, error)
 	Close(f *File) error
 }
