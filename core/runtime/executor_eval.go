@@ -57,7 +57,6 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		if op == "+" || op == "Plus" || op == "Add" {
 			// 字符串拼接尝试：仅限字符串和字节
 			if l.VType == TypeString || l.VType == TypeBytes || r.VType == TypeString || r.VType == TypeBytes {
-
 				// 如果两个都是字节，返回字节
 				if l.VType == TypeBytes && r.VType == TypeBytes {
 					resB := make([]byte, len(l.B)+len(r.B))

@@ -324,10 +324,11 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 done:
-c.Type = fType.Returns
+	c.Type = fType.Returns
 
-return nil
+	return nil
 }
+
 func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 	c.Func = c.Func.Optimize(ctx).(Expr)
 	for i, arg := range c.Args {
