@@ -390,8 +390,15 @@ type ExecutorAPI interface {
 }
 
 type StackContext struct {
-	Context  context.Context
-	Stack    *Stack
+	// Context is the host-provided context, strictly for FFI use.
+	// VM kernel should check 'status' instead of Context.Err() for performance.
+	Context context.Context
+	Stack   *Stack
+
+	// status represents the execution state (Fake Context)
+	// 0: Running, 1: Aborted/Cancelled, 2: Paused
+	status int32
+
 	PanicVar *Var // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
 	Executor ExecutorAPI
 
@@ -411,18 +418,24 @@ type StackContext struct {
 	ValueStack *ValueStack
 	UnwindMode UnwindMode
 
-	// 暂停与恢复控制
-	pauseSignal  chan struct{}
+	// resumeSignal is used to unblock the execution loop after a pause.
 	resumeSignal chan struct{}
-	isPaused     int32 // 原子操作标志
+}
+
+func (ctx *StackContext) Abort() {
+	atomic.StoreInt32(&ctx.status, 1)
+}
+
+func (ctx *StackContext) Aborted() bool {
+	return atomic.LoadInt32(&ctx.status) == 1
 }
 
 func (ctx *StackContext) Pause() {
-	atomic.StoreInt32(&ctx.isPaused, 1)
+	atomic.CompareAndSwapInt32(&ctx.status, 0, 2)
 }
 
 func (ctx *StackContext) Resume() {
-	if atomic.CompareAndSwapInt32(&ctx.isPaused, 1, 0) {
+	if atomic.CompareAndSwapInt32(&ctx.status, 2, 0) {
 		select {
 		case ctx.resumeSignal <- struct{}{}:
 		default:
@@ -431,20 +444,24 @@ func (ctx *StackContext) Resume() {
 }
 
 func (ctx *StackContext) IsPaused() bool {
-	return atomic.LoadInt32(&ctx.isPaused) == 1
+	return atomic.LoadInt32(&ctx.status) == 2
 }
 
 func (ctx *StackContext) Done() <-chan struct{} {
-	return ctx.Context.Done()
+	if ctx.Context != nil {
+		return ctx.Context.Done()
+	}
+	return nil
 }
 
 func (ctx *StackContext) Err() error {
-	return ctx.Context.Err()
-}
-
-func (ctx *StackContext) initSignals() {
-	ctx.pauseSignal = make(chan struct{}, 1)
-	ctx.resumeSignal = make(chan struct{}, 1)
+	if ctx.Aborted() {
+		if ctx.Context != nil {
+			return ctx.Context.Err()
+		}
+		return context.Canceled
+	}
+	return nil
 }
 
 const (

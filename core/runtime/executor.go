@@ -360,6 +360,21 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 		TaskStack:      make([]Task, 0, 128),
 		ValueStack:     &ValueStack{},
 		UnwindMode:     UnwindNone,
+		resumeSignal:   make(chan struct{}, 1),
+	}
+
+	// Setup Context Bridge (Fake Context logic)
+	// Propagate host cancellation to VM internal status bit.
+	if ctx != nil && ctx.Done() != nil {
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-ctx.Done():
+				session.Abort()
+			case <-done:
+			}
+		}()
 	}
 
 	e.mu.Lock()
@@ -375,9 +390,11 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 				}
 			}
 		}
+		// Ensure all defers are run
+		session.Stack.RunDefers()
 	}()
 
-	// 初始化全局变量 (临时递归求值)
+	// 注入环境变量
 	for name, expr := range e.program.Variables {
 		var val *Var
 		if expr != nil {
@@ -2082,16 +2099,14 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 }
 
 func (e *Executor) Run(session *StackContext) error {
-	session.initSignals()
-
 	for len(session.TaskStack) > 0 {
-		// 暂停与恢复逻辑
+		// Pause/Resume Logic (Fake Context)
 		if session.IsPaused() {
 			select {
 			case <-session.Done():
 				return session.Err()
 			case <-session.resumeSignal:
-				// 继续执行
+				// Continue execution
 			}
 		}
 
@@ -2105,8 +2120,9 @@ func (e *Executor) Run(session *StackContext) error {
 					return fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
 				}
 			}
-			if err := session.Context.Err(); err != nil {
-				return err
+			// Use high-performance internal signaling (Fake Context)
+			if session.Aborted() {
+				return session.Err()
 			}
 			if session.Debugger != nil {
 				loc := task.Node.GetBase().Loc
