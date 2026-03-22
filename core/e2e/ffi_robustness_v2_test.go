@@ -21,16 +21,16 @@ func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	// 期望接收到零值或复杂嵌套数据
 	switch methodID {
 	case 1: // TestZeroValues(int, string, bool, ptr)
-		i := reader.ReadInt64()
+		i := reader.ReadVarint()
 		s := reader.ReadString()
 		bl := reader.ReadBool()
-		ptr := reader.ReadUint32()
+		ptr := uint32(reader.ReadUvarint())
 		if i != 0 || s != "" || bl != false || ptr != 0 {
 			b.t.Errorf("Expected zero values, got: %d, %q, %v, %d", i, s, bl, ptr)
 		}
 	case 2: // TestNested(ComplexNested)
 		// 解析嵌套 Map
-		count := reader.ReadUint32()
+		count := reader.ReadUvarint()
 		if count != 1 {
 			b.t.Errorf("Expected map count 1, got %d", count)
 		}
@@ -38,7 +38,7 @@ func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 		if k != "key" {
 			b.t.Errorf("Expected key 'key', got %q", k)
 		}
-		arrLen := reader.ReadUint32()
+		arrLen := reader.ReadUvarint()
 		if arrLen != 2 {
 			b.t.Errorf("Expected array len 2, got %d", arrLen)
 		}

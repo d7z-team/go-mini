@@ -55,8 +55,8 @@ func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	reader := ffigo.NewReader(args)
 	prefix := reader.ReadString()
 
-	// 根据协议：[Count (Uint32)] [Item1] [Item2]...
-	count := int(reader.ReadUint32())
+	// 根据标准化协议：[Count (Uvarint)] [Item1] [Item2]...
+	count := int(reader.ReadUvarint())
 	variadic := make([]any, count)
 	for i := 0; i < count; i++ {
 		variadic[i] = reader.ReadAny()
@@ -65,7 +65,11 @@ func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	err := b.impl.Log(prefix, variadic...)
 
 	resBuf := ffigo.GetBuffer()
-	resBuf.WriteString(ffigo.WrapError(err))
+	if err != nil {
+		resBuf.WriteRawError(err.Error(), 0)
+	} else {
+		resBuf.WriteRawError("", 0)
+	}
 	return resBuf.Bytes(), nil
 }
 

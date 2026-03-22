@@ -18,13 +18,17 @@ type ErrorsProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *ErrorsProxy) New(ctx context.Context, text string) error {
+func NewErrorsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Errors {
+	return &ErrorsProxy{bridge: bridge, registry: registry}
+}
+
+func (p *ErrorsProxy) New(text string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(text)
 
-	retData, err := p.bridge.Call(ctx, MethodID_Errors_New, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -32,19 +36,18 @@ func (p *ErrorsProxy) New(ctx context.Context, text string) error {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
-					err_0 = fmt.Errorf("%s", ed.Message)
+					err_0 = ed
 				}
 			} else {
-				err_0 = fmt.Errorf("%s", ed.Message)
+				err_0 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_0 = fmt.Errorf("%s", s)
 		}
 	}
 	return err_0
@@ -67,12 +70,12 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	default:

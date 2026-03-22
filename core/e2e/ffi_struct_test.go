@@ -2,7 +2,6 @@
 package e2e
 
 import (
-	"context"
 	"testing"
 )
 
@@ -33,14 +32,13 @@ func (m *MockShapeHost) Area(r Rect) int {
 func TestFFIStruct(t *testing.T) {
 	impl := &MockShapeHost{}
 	proxy := &MockShapeAPIProxy{bridge: &MockShapeAPI_Bridge{Impl: impl}}
-	ctx := context.Background()
 
-	rect := proxy.GetRect(ctx)
+	rect := proxy.GetRect()
 	if rect.A.X != 10 || rect.A.Y != 20 || rect.B.X != 30 || rect.B.Y != 40 {
 		t.Fatalf("GetRect failed: %+v", rect)
 	}
 
-	area := proxy.Area(ctx, rect)
+	area := proxy.Area(rect)
 	if area != 400 {
 		t.Fatalf("Area failed: %d", area)
 	}

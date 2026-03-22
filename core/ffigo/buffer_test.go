@@ -9,8 +9,8 @@ func TestBufferAndReader(t *testing.T) {
 	buf := GetBuffer()
 	defer ReleaseBuffer(buf)
 
-	buf.WriteUint32(123)
-	buf.WriteInt64(-456)
+	buf.WriteUvarint(123)
+	buf.WriteVarint(-456)
 	buf.WriteFloat64(3.14)
 	buf.WriteBool(true)
 	buf.WriteString("hello")
@@ -18,11 +18,11 @@ func TestBufferAndReader(t *testing.T) {
 
 	reader := NewReader(buf.Bytes())
 
-	if v := reader.ReadUint32(); v != 123 {
-		t.Errorf("ReadUint32() = %v, want 123", v)
+	if v := reader.ReadUvarint(); v != 123 {
+		t.Errorf("ReadUvarint() = %v, want 123", v)
 	}
-	if v := reader.ReadInt64(); v != -456 {
-		t.Errorf("ReadInt64() = %v, want -456", v)
+	if v := reader.ReadVarint(); v != -456 {
+		t.Errorf("ReadVarint() = %v, want -456", v)
 	}
 	if v := reader.ReadFloat64(); v != 3.14 {
 		t.Errorf("ReadFloat64() = %v, want 3.14", v)
@@ -45,7 +45,10 @@ func TestZeroCopyBytes(t *testing.T) {
 	data := []byte("large data payload")
 	buf.WriteBytes(data)
 
-	reader := NewReader(buf.Bytes())
+	// 获取写入后的原始 buffer
+	rawBuf := buf.Bytes()
+
+	reader := NewReader(rawBuf)
 	readData := reader.ReadBytes()
 
 	// Verify content
@@ -53,12 +56,19 @@ func TestZeroCopyBytes(t *testing.T) {
 		t.Fatal("data mismatch")
 	}
 
-	// Verify it's a slice of the original buffer (Zero-copy)
-	// We can check if the underlying array pointer is within the buffer's range
-	// But simpler: modifying the readData should (if it were shared) modify the buffer.
-	// Actually, Reader returns a slice of r.buf.
+	// 修改读取到的数据
 	readData[0] = 'X'
-	if buf.Bytes()[4] != 'X' { // 4 is the offset after Uint32 length
+
+	// 验证原始 buffer 是否也被修改（证明是零拷贝切片）
+	// 注意：由于使用了 Varint，数据的起始位置取决于长度字段的编码长度
+	found := false
+	for _, b := range rawBuf {
+		if b == 'X' {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Errorf("Expected zero-copy slice, but modification didn't reflect in buffer")
 	}
 }

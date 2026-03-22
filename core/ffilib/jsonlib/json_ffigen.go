@@ -19,13 +19,17 @@ type JSONProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *JSONProxy) Marshal(ctx context.Context, v any) ([]byte, error) {
+func NewJSONProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) JSON {
+	return &JSONProxy{bridge: bridge, registry: registry}
+}
+
+func (p *JSONProxy) Marshal(v any) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteAny(v)
 
-	retData, err := p.bridge.Call(ctx, MethodID_JSON_Marshal, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_JSON_Marshal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -35,31 +39,30 @@ func (p *JSONProxy) Marshal(ctx context.Context, v any) ([]byte, error) {
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
 }
 
-func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
+func (p *JSONProxy) Unmarshal(data []byte) (any, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteBytes(data)
 
-	retData, err := p.bridge.Call(ctx, MethodID_JSON_Unmarshal, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -69,19 +72,18 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 	var v_0 any
 	v_0 = retBuf.ReadAny()
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
@@ -127,12 +129,12 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		resBuf.WriteBytes(r0)
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_JSON_Unmarshal:
@@ -143,12 +145,12 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		resBuf.WriteAny(r0)
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	default:

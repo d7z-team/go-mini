@@ -86,9 +86,8 @@ func TestFFIHandle(t *testing.T) {
 	// 4. Test Proxy Direct Use
 	bridge := &MockOS_Bridge{Impl: mock, Registry: registry}
 	proxy := &MockOSProxy{bridge: bridge, registry: registry}
-	ctx := context.Background()
 
-	f, err := proxy.Open(ctx, "proxy.txt")
+	f, err := proxy.Open("proxy.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,16 +95,16 @@ func TestFFIHandle(t *testing.T) {
 		t.Fatal("wrong name")
 	}
 
-	name := proxy.Name(ctx, f)
+	name := proxy.Name(f)
 	if name != "proxy.txt" {
 		t.Fatal("wrong name")
 	}
 
-	err = proxy.Close(ctx, f)
+	err = proxy.Close(f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if proxy.Name(ctx, f) != "closed" {
+	if proxy.Name(f) != "closed" {
 		t.Fatal("close failed")
 	}
 }

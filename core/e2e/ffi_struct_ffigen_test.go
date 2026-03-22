@@ -19,37 +19,41 @@ type MockShapeAPIProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *MockShapeAPIProxy) GetRect(ctx context.Context) Rect {
+func NewMockShapeAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MockShapeAPI {
+	return &MockShapeAPIProxy{bridge: bridge, registry: registry}
+}
+
+func (p *MockShapeAPIProxy) GetRect() Rect {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(ctx, MethodID_MockShapeAPI_GetRect, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_MockShapeAPI_GetRect, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Rect
-	v_0.A.X = int(retBuf.ReadInt64())
-	v_0.A.Y = int(retBuf.ReadInt64())
-	v_0.B.X = int(retBuf.ReadInt64())
-	v_0.B.Y = int(retBuf.ReadInt64())
+	v_0.A.X = int(retBuf.ReadVarint())
+	v_0.A.Y = int(retBuf.ReadVarint())
+	v_0.B.X = int(retBuf.ReadVarint())
+	v_0.B.Y = int(retBuf.ReadVarint())
 	return v_0
 }
 
-func (p *MockShapeAPIProxy) Area(ctx context.Context, r Rect) int {
+func (p *MockShapeAPIProxy) Area(r Rect) int {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteInt64(int64(r.A.X))
-	buf.WriteInt64(int64(r.A.Y))
-	buf.WriteInt64(int64(r.B.X))
-	buf.WriteInt64(int64(r.B.Y))
+	buf.WriteVarint(int64(r.A.X))
+	buf.WriteVarint(int64(r.A.Y))
+	buf.WriteVarint(int64(r.B.X))
+	buf.WriteVarint(int64(r.B.Y))
 
-	retData, err := p.bridge.Call(ctx, MethodID_MockShapeAPI_Area, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_MockShapeAPI_Area, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int
-	v_0 = int(retBuf.ReadInt64())
+	v_0 = int(retBuf.ReadVarint())
 	return v_0
 }
 
@@ -68,20 +72,20 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	case MethodID_MockShapeAPI_GetRect:
 		r0 := impl.GetRect()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0.A.X))
-		resBuf.WriteInt64(int64(r0.A.Y))
-		resBuf.WriteInt64(int64(r0.B.X))
-		resBuf.WriteInt64(int64(r0.B.Y))
+		resBuf.WriteVarint(int64(r0.A.X))
+		resBuf.WriteVarint(int64(r0.A.Y))
+		resBuf.WriteVarint(int64(r0.B.X))
+		resBuf.WriteVarint(int64(r0.B.Y))
 		return resBuf.Bytes(), nil
 	case MethodID_MockShapeAPI_Area:
 		var r Rect
-		r.A.X = int(reqBuf.ReadInt64())
-		r.A.Y = int(reqBuf.ReadInt64())
-		r.B.X = int(reqBuf.ReadInt64())
-		r.B.Y = int(reqBuf.ReadInt64())
+		r.A.X = int(reqBuf.ReadVarint())
+		r.A.Y = int(reqBuf.ReadVarint())
+		r.B.X = int(reqBuf.ReadVarint())
+		r.B.Y = int(reqBuf.ReadVarint())
 		r0 := impl.Area(r)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)

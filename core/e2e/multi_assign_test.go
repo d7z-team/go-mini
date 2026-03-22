@@ -140,15 +140,15 @@ type mockTupleBridge struct{}
 
 func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	reader := ffigo.NewReader(args)
-	a := reader.ReadInt64()
-	bVal := reader.ReadInt64()
+	a := reader.ReadVarint()
+	bVal := reader.ReadVarint()
 
 	q := a / bVal
 	r := a % bVal
 
 	buf := ffigo.GetBuffer()
-	buf.WriteInt64(q)
-	buf.WriteInt64(r)
+	buf.WriteVarint(q)
+	buf.WriteVarint(r)
 	return buf.Bytes(), nil
 }
 

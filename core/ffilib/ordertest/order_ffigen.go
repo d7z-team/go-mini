@@ -21,13 +21,17 @@ type OrderServiceProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) {
+func NewOrderServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) OrderService {
+	return &OrderServiceProxy{bridge: bridge, registry: registry}
+}
+
+func (p *OrderServiceProxy) New(id string) (*Order, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(id)
 
-	retData, err := p.bridge.Call(ctx, MethodID_OrderService_New, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_New, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -35,7 +39,7 @@ func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) 
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Order
-	if id := retBuf.ReadUint32(); id != 0 {
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if p.registry != nil {
 			if obj, ok := p.registry.Get(id); ok {
 				v_0 = obj.(*Order)
@@ -43,37 +47,36 @@ func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) 
 		}
 	}
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
 }
 
-func (p *OrderServiceProxy) AddItem(ctx context.Context, o *Order, name string, price float64) error {
+func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if p.registry != nil {
-		buf.WriteUint32(p.registry.Register(o))
+		buf.WriteUvarint(uint64(p.registry.Register(o)))
 	} else {
-		buf.WriteUint32(0)
+		buf.WriteUvarint(0)
 	}
 	buf.WriteString(name)
 	buf.WriteFloat64(float64(price))
 
-	retData, err := p.bridge.Call(ctx, MethodID_OrderService_AddItem, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -81,35 +84,34 @@ func (p *OrderServiceProxy) AddItem(ctx context.Context, o *Order, name string, 
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
-					err_0 = fmt.Errorf("%s", ed.Message)
+					err_0 = ed
 				}
 			} else {
-				err_0 = fmt.Errorf("%s", ed.Message)
+				err_0 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_0 = fmt.Errorf("%s", s)
 		}
 	}
 	return err_0
 }
 
-func (p *OrderServiceProxy) GetTotal(ctx context.Context, o *Order) (float64, error) {
+func (p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if p.registry != nil {
-		buf.WriteUint32(p.registry.Register(o))
+		buf.WriteUvarint(uint64(p.registry.Register(o)))
 	} else {
-		buf.WriteUint32(0)
+		buf.WriteUvarint(0)
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_OrderService_GetTotal, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -119,35 +121,34 @@ func (p *OrderServiceProxy) GetTotal(ctx context.Context, o *Order) (float64, er
 	var v_0 float64
 	v_0 = retBuf.ReadFloat64()
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
 }
 
-func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
+func (p *OrderServiceProxy) Close(o *Order) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if p.registry != nil {
-		buf.WriteUint32(p.registry.Register(o))
+		buf.WriteUvarint(uint64(p.registry.Register(o)))
 	} else {
-		buf.WriteUint32(0)
+		buf.WriteUvarint(0)
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_OrderService_Close, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_Close, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -155,19 +156,18 @@ func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
-					err_0 = fmt.Errorf("%s", ed.Message)
+					err_0 = ed
 				}
 			} else {
-				err_0 = fmt.Errorf("%s", ed.Message)
+				err_0 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_0 = fmt.Errorf("%s", s)
 		}
 	}
 	return err_0
@@ -194,20 +194,20 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		id = reqBuf.ReadString()
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUint32(registry.Register(r0))
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
 		var o *Order
-		if id := reqBuf.ReadUint32(); id != 0 {
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
 				o = obj.(*Order)
 			} else {
@@ -222,17 +222,17 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
 		var o *Order
-		if id := reqBuf.ReadUint32(); id != 0 {
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
 				o = obj.(*Order)
 			} else {
@@ -244,17 +244,17 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		resBuf.WriteFloat64(float64(r0))
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
 		var o *Order
-		if id := reqBuf.ReadUint32(); id != 0 {
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
 				o = obj.(*Order)
 			} else {
@@ -265,12 +265,12 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	default:

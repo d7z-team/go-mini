@@ -22,11 +22,15 @@ type TimeProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *TimeProxy) Now(ctx context.Context) string {
+func NewTimeProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Time {
+	return &TimeProxy{bridge: bridge, registry: registry}
+}
+
+func (p *TimeProxy) Now() string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(ctx, MethodID_Time_Now, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Now, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -35,55 +39,55 @@ func (p *TimeProxy) Now(ctx context.Context) string {
 	return v_0
 }
 
-func (p *TimeProxy) Unix(ctx context.Context) int64 {
+func (p *TimeProxy) Unix() int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(ctx, MethodID_Time_Unix, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Unix, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadInt64())
+	v_0 = int64(retBuf.ReadVarint())
 	return v_0
 }
 
-func (p *TimeProxy) UnixNano(ctx context.Context) int64 {
+func (p *TimeProxy) UnixNano() int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(ctx, MethodID_Time_UnixNano, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_Time_UnixNano, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadInt64())
+	v_0 = int64(retBuf.ReadVarint())
 	return v_0
 }
 
-func (p *TimeProxy) Sleep(ctx context.Context, ns int64) {
+func (p *TimeProxy) Sleep(ns int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteInt64(int64(ns))
+	buf.WriteVarint(int64(ns))
 
-	_, err := p.bridge.Call(ctx, MethodID_Time_Sleep, buf.Bytes())
+	_, err := p.bridge.Call(context.Background(), MethodID_Time_Sleep, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *TimeProxy) Since(ctx context.Context, ns int64) int64 {
+func (p *TimeProxy) Since(ns int64) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteInt64(int64(ns))
+	buf.WriteVarint(int64(ns))
 
-	retData, err := p.bridge.Call(ctx, MethodID_Time_Since, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Since, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadInt64())
+	v_0 = int64(retBuf.ReadVarint())
 	return v_0
 }
 
@@ -113,25 +117,25 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 	case MethodID_Time_Unix:
 		r0 := impl.Unix()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Time_UnixNano:
 		r0 := impl.UnixNano()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Sleep:
 		var ns int64
-		ns = int64(reqBuf.ReadInt64())
+		ns = int64(reqBuf.ReadVarint())
 		impl.Sleep(ns)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Since:
 		var ns int64
-		ns = int64(reqBuf.ReadInt64())
+		ns = int64(reqBuf.ReadVarint())
 		r0 := impl.Since(ns)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)

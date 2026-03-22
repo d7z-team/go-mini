@@ -6,75 +6,9 @@ import (
 	"sync"
 )
 
-// Buffer 是一个用于高性能序列化 FFI 参数的字节缓冲区
-type Buffer struct {
-	buf []byte
-}
-
-var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return &Buffer{buf: make([]byte, 0, 128)}
-	},
-}
-
-// GetBuffer 从池中获取一个 Buffer
-func GetBuffer() *Buffer {
-	buf := bufferPool.Get().(*Buffer)
-	buf.buf = buf.buf[:0]
-	return buf
-}
-
-// ReleaseBuffer 将 Buffer 放回池中
-func ReleaseBuffer(b *Buffer) {
-	if cap(b.buf) < 65536 {
-		bufferPool.Put(b)
-	}
-}
-
-// Bytes 返回缓冲区的字节切片
-func (b *Buffer) Bytes() []byte {
-	return b.buf
-}
-
-func (b *Buffer) WriteByte(v byte) {
-	b.buf = append(b.buf, v)
-}
-
-func (b *Buffer) WriteUint32(v uint32) {
-	b.buf = binary.LittleEndian.AppendUint32(b.buf, v)
-}
-
-func (b *Buffer) WriteInt64(v int64) {
-	b.buf = binary.LittleEndian.AppendUint64(b.buf, uint64(v))
-}
-
-func (b *Buffer) WriteFloat64(v float64) {
-	b.buf = binary.LittleEndian.AppendUint64(b.buf, math.Float64bits(v))
-}
-
-func (b *Buffer) WriteBool(v bool) {
-	if v {
-		b.buf = append(b.buf, 1)
-	} else {
-		b.buf = append(b.buf, 0)
-	}
-}
-
-func (b *Buffer) WriteString(v string) {
-	b.WriteUint32(uint32(len(v)))
-	b.buf = append(b.buf, v...)
-}
-
-func (b *Buffer) WriteBytes(v []byte) {
-	b.WriteUint32(uint32(len(v)))
-	b.buf = append(b.buf, v...)
-}
-
-// Reader 是用于从 FFI 参数字节流中读取数据的读取器
-type Reader struct {
-	buf    []byte
-	offset int
-}
+// =============================================================================
+// Wire Format Constants
+// =============================================================================
 
 const (
 	TypeTagUnknown   byte = 0
@@ -90,73 +24,237 @@ const (
 	TypeTagError     byte = 10
 )
 
-func (b *Buffer) WriteError(msg string, handle uint32) {
-	b.WriteByte(TypeTagError)
-	b.WriteString(msg)
-	b.WriteUint32(handle)
+// =============================================================================
+// Buffer - Raw & Tagged Serializer
+// =============================================================================
+
+type Buffer struct {
+	buf []byte
 }
 
-func (b *Buffer) WriteInterface(handle uint32, methods map[string]string) {
-	b.WriteByte(TypeTagInterface)
-	b.WriteUint32(handle)
-	b.WriteUint32(uint32(len(methods)))
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return &Buffer{buf: make([]byte, 0, 512)}
+	},
+}
+
+func GetBuffer() *Buffer {
+	b := bufferPool.Get().(*Buffer)
+	b.buf = b.buf[:0]
+	return b
+}
+
+func ReleaseBuffer(b *Buffer) {
+	if cap(b.buf) < 65536 {
+		bufferPool.Put(b)
+	}
+}
+
+func (b *Buffer) Bytes() []byte { return b.buf }
+func (b *Buffer) Len() int      { return len(b.buf) }
+
+// --- Raw Primitive Writers (Base128 Varint for efficiency) ---
+
+func (b *Buffer) WriteByte(v byte) {
+	b.buf = append(b.buf, v)
+}
+
+func (b *Buffer) WriteUvarint(v uint64) {
+	b.buf = binary.AppendUvarint(b.buf, v)
+}
+
+func (b *Buffer) WriteVarint(v int64) {
+	b.buf = binary.AppendVarint(b.buf, v)
+}
+
+func (b *Buffer) WriteFloat64(v float64) {
+	b.buf = binary.LittleEndian.AppendUint64(b.buf, math.Float64bits(v))
+}
+
+func (b *Buffer) WriteBool(v bool) {
+	if v {
+		b.buf = append(b.buf, 1)
+	} else {
+		b.buf = append(b.buf, 0)
+	}
+}
+
+// --- Raw Component Writers (Length-prefixed) ---
+
+func (b *Buffer) WriteString(v string) {
+	b.WriteUvarint(uint64(len(v)))
+	b.buf = append(b.buf, v...)
+}
+
+func (b *Buffer) WriteBytes(v []byte) {
+	b.WriteUvarint(uint64(len(v)))
+	b.buf = append(b.buf, v...)
+}
+
+// --- Raw Structural Writers (No Tags here, caller handles tags) ---
+
+func (b *Buffer) WriteRawError(msg string, handle uint32) {
+	b.WriteString(msg)
+	b.WriteUvarint(uint64(handle))
+}
+
+func (b *Buffer) WriteRawInterface(handle uint32, methods map[string]string) {
+	b.WriteUvarint(uint64(handle))
+	b.WriteUvarint(uint64(len(methods)))
 	for k, v := range methods {
 		b.WriteString(k)
 		b.WriteString(v)
 	}
 }
 
+// --- Tagged Writer (Self-describing Recursive Entry) ---
+
 func (b *Buffer) WriteAny(v interface{}) {
 	if v == nil {
-		b.buf = append(b.buf, TypeTagUnknown)
+		b.WriteByte(TypeTagUnknown)
 		return
 	}
 	switch val := v.(type) {
 	case int64:
-		b.buf = append(b.buf, TypeTagInt64)
-		b.WriteInt64(val)
+		b.WriteByte(TypeTagInt64)
+		b.WriteVarint(val)
 	case int:
-		b.buf = append(b.buf, TypeTagInt64)
-		b.WriteInt64(int64(val))
-	case uint32:
-		b.buf = append(b.buf, TypeTagHandle)
-		b.WriteUint32(val)
+		b.WriteByte(TypeTagInt64)
+		b.WriteVarint(int64(val))
 	case float64:
-		b.buf = append(b.buf, TypeTagFloat64)
+		b.WriteByte(TypeTagFloat64)
 		b.WriteFloat64(val)
 	case string:
-		b.buf = append(b.buf, TypeTagString)
+		b.WriteByte(TypeTagString)
 		b.WriteString(val)
 	case []byte:
-		b.buf = append(b.buf, TypeTagBytes)
+		b.WriteByte(TypeTagBytes)
 		b.WriteBytes(val)
 	case bool:
-		b.buf = append(b.buf, TypeTagBool)
+		b.WriteByte(TypeTagBool)
 		b.WriteBool(val)
+	case uint32:
+		b.WriteByte(TypeTagHandle)
+		b.WriteUvarint(uint64(val))
 	case map[string]interface{}:
-		b.buf = append(b.buf, TypeTagMap)
-		b.WriteUint32(uint32(len(val)))
+		b.WriteByte(TypeTagMap)
+		b.WriteUvarint(uint64(len(val)))
 		for k, v := range val {
 			b.WriteString(k)
 			b.WriteAny(v)
 		}
 	case []interface{}:
-		b.buf = append(b.buf, TypeTagArray)
-		b.WriteUint32(uint32(len(val)))
+		b.WriteByte(TypeTagArray)
+		b.WriteUvarint(uint64(len(val)))
 		for _, v := range val {
 			b.WriteAny(v)
 		}
+	case ErrorData:
+		b.WriteByte(TypeTagError)
+		b.WriteRawError(val.Message, val.Handle)
+	case InterfaceData:
+		b.WriteByte(TypeTagInterface)
+		b.WriteRawInterface(val.Handle, val.Methods)
+	case error:
+		b.WriteByte(TypeTagError)
+		b.WriteRawError(val.Error(), 0)
 	default:
-		b.buf = append(b.buf, TypeTagUnknown)
+		b.WriteByte(TypeTagUnknown)
 	}
 }
 
-func (r *Reader) ReadAny() interface{} {
-	tag := r.buf[r.offset]
+// =============================================================================
+// Reader - High-performance Decoupled Deserializer
+// =============================================================================
+
+type Reader struct {
+	buf    []byte
+	offset int
+}
+
+func NewReader(data []byte) *Reader {
+	return &Reader{buf: data, offset: 0}
+}
+
+func (r *Reader) Available() int { return len(r.buf) - r.offset }
+
+// --- Raw Primitive Readers ---
+
+func (r *Reader) ReadByte() byte {
+	v := r.buf[r.offset]
 	r.offset++
+	return v
+}
+
+func (r *Reader) ReadUvarint() uint64 {
+	v, n := binary.Uvarint(r.buf[r.offset:])
+	r.offset += n
+	return v
+}
+
+func (r *Reader) ReadVarint() int64 {
+	v, n := binary.Varint(r.buf[r.offset:])
+	r.offset += n
+	return v
+}
+
+func (r *Reader) ReadFloat64() float64 {
+	v := binary.LittleEndian.Uint64(r.buf[r.offset:])
+	r.offset += 8
+	return math.Float64frombits(v)
+}
+
+func (r *Reader) ReadBool() bool {
+	return r.ReadByte() != 0
+}
+
+func (r *Reader) ReadString() string {
+	l := int(r.ReadUvarint())
+	v := string(r.buf[r.offset : r.offset+l])
+	r.offset += l
+	return v
+}
+
+func (r *Reader) ReadBytes() []byte {
+	l := int(r.ReadUvarint())
+	v := r.buf[r.offset : r.offset+l]
+	r.offset += l
+	return v
+}
+
+// --- Raw Structural Readers ---
+
+func (r *Reader) ReadRawError() ErrorData {
+	msg := r.ReadString()
+	handle := uint32(r.ReadUvarint())
+	return ErrorData{Message: msg, Handle: handle}
+}
+
+func (r *Reader) ReadRawInterface() InterfaceData {
+	handle := uint32(r.ReadUvarint())
+	count := int(r.ReadUvarint())
+	if count > 1024 {
+		count = 1024
+	}
+	methods := make(map[string]string)
+	for i := 0; i < count; i++ {
+		k := r.ReadString()
+		v := r.ReadString()
+		methods[k] = v
+	}
+	return InterfaceData{Handle: handle, Methods: methods}
+}
+
+// --- Tagged Reader ---
+
+func (r *Reader) ReadAny() interface{} {
+	if r.Available() == 0 {
+		return nil
+	}
+	tag := r.ReadByte()
 	switch tag {
 	case TypeTagInt64:
-		return r.ReadInt64()
+		return r.ReadVarint()
 	case TypeTagFloat64:
 		return r.ReadFloat64()
 	case TypeTagString:
@@ -166,9 +264,9 @@ func (r *Reader) ReadAny() interface{} {
 	case TypeTagBool:
 		return r.ReadBool()
 	case TypeTagHandle:
-		return r.ReadUint32()
+		return uint32(r.ReadUvarint())
 	case TypeTagMap:
-		count := int(r.ReadUint32())
+		count := int(r.ReadUvarint())
 		m := make(map[string]interface{})
 		for i := 0; i < count; i++ {
 			k := r.ReadString()
@@ -177,23 +275,24 @@ func (r *Reader) ReadAny() interface{} {
 		}
 		return m
 	case TypeTagArray:
-		count := int(r.ReadUint32())
+		count := int(r.ReadUvarint())
 		a := make([]interface{}, count)
 		for i := 0; i < count; i++ {
 			a[i] = r.ReadAny()
 		}
 		return a
 	case TypeTagInterface:
-		h, m := r.ReadInterface()
-		return InterfaceData{Handle: h, Methods: m}
+		return r.ReadRawInterface()
 	case TypeTagError:
-		msg := r.ReadString()
-		h := r.ReadUint32()
-		return ErrorData{Message: msg, Handle: h}
+		return r.ReadRawError()
 	default:
 		return nil
 	}
 }
+
+// =============================================================================
+// Core Data Structures
+// =============================================================================
 
 type InterfaceData struct {
 	Handle  uint32
@@ -205,75 +304,4 @@ type ErrorData struct {
 	Handle  uint32
 }
 
-func (e ErrorData) Error() string {
-	return e.Message
-}
-
-func (r *Reader) ReadInterface() (uint32, map[string]string) {
-	handle := r.ReadUint32()
-	count := r.ReadUint32()
-	if count > 1024 {
-		// 安全限制：一个接口不应有超过 1024 个方法
-		return handle, nil
-	}
-	methods := make(map[string]string)
-	for i := uint32(0); i < count; i++ {
-		k := r.ReadString()
-		v := r.ReadString()
-		methods[k] = v
-	}
-	return handle, methods
-}
-
-func NewReader(data []byte) *Reader {
-	return &Reader{buf: data, offset: 0}
-}
-
-func (r *Reader) ReadByte() byte {
-	v := r.buf[r.offset]
-	r.offset++
-	return v
-}
-
-func (r *Reader) ReadUint32() uint32 {
-	v := binary.LittleEndian.Uint32(r.buf[r.offset:])
-	r.offset += 4
-	return v
-}
-
-func (r *Reader) ReadInt64() int64 {
-	v := binary.LittleEndian.Uint64(r.buf[r.offset:])
-	r.offset += 8
-	return int64(v)
-}
-
-func (r *Reader) ReadFloat64() float64 {
-	v := binary.LittleEndian.Uint64(r.buf[r.offset:])
-	r.offset += 8
-	return math.Float64frombits(v)
-}
-
-func (r *Reader) ReadBool() bool {
-	v := r.buf[r.offset] == 1
-	r.offset++
-	return v
-}
-
-func (r *Reader) ReadString() string {
-	l := int(r.ReadUint32())
-	v := string(r.buf[r.offset : r.offset+l])
-	r.offset += l
-	return v
-}
-
-func (r *Reader) ReadBytes() []byte {
-	l := int(r.ReadUint32())
-	// 返回原数组的切片引用，实现零拷贝读取
-	v := r.buf[r.offset : r.offset+l]
-	r.offset += l
-	return v
-}
-
-func (r *Reader) Available() int {
-	return len(r.buf) - r.offset
-}
+func (e ErrorData) Error() string { return e.Message }

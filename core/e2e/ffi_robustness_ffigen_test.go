@@ -18,22 +18,26 @@ type MockGeometryProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
-func (p *MockGeometryProxy) SumX(ctx context.Context, points []RobustPoint) int {
+func NewMockGeometryProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MockGeometry {
+	return &MockGeometryProxy{bridge: bridge, registry: registry}
+}
+
+func (p *MockGeometryProxy) SumX(points []RobustPoint) int {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUint32(uint32(len(points)))
+	buf.WriteUvarint(uint64(len(points)))
 	for _, item := range points {
-		buf.WriteInt64(int64(item.X))
-		buf.WriteInt64(int64(item.Y))
+		buf.WriteVarint(int64(item.X))
+		buf.WriteVarint(int64(item.Y))
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_MockGeometry_SumX, buf.Bytes())
+	retData, err := p.bridge.Call(context.Background(), MethodID_MockGeometry_SumX, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int
-	v_0 = int(retBuf.ReadInt64())
+	v_0 = int(retBuf.ReadVarint())
 	return v_0
 }
 
@@ -49,15 +53,15 @@ func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	switch methodID {
 	case MethodID_MockGeometry_SumX:
 		var points []RobustPoint
-		l_points := int(reqBuf.ReadUint32())
+		l_points := int(reqBuf.ReadUvarint())
 		points = make([]RobustPoint, l_points)
 		for i_points := 0; i_points < l_points; i_points++ {
-			points[i_points].X = int(reqBuf.ReadInt64())
-			points[i_points].Y = int(reqBuf.ReadInt64())
+			points[i_points].X = int(reqBuf.ReadVarint())
+			points[i_points].Y = int(reqBuf.ReadVarint())
 		}
 		r0 := impl.SumX(points)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)

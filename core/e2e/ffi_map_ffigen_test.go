@@ -21,11 +21,15 @@ type MapTestProxy struct {
 	registry *ffigo.HandleRegistry
 }
 
+func NewMapTestProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MapTest {
+	return &MapTestProxy{bridge: bridge, registry: registry}
+}
+
 func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUint32(uint32(len(m)))
+	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
 		buf.WriteString(k)
 		buf.WriteString(v)
@@ -39,7 +43,7 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 map[string]string
-	l_v_0 := int(retBuf.ReadUint32())
+	l_v_0 := int(retBuf.ReadUvarint())
 	v_0 = make(map[string]string)
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k string
@@ -49,19 +53,18 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 		v_0[k] = v
 	}
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
@@ -79,29 +82,28 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 map[string]int64
-	l_v_0 := int(retBuf.ReadUint32())
+	l_v_0 := int(retBuf.ReadUvarint())
 	v_0 = make(map[string]int64)
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k string
 		var v int64
 		k = retBuf.ReadString()
-		v = int64(retBuf.ReadInt64())
+		v = int64(retBuf.ReadVarint())
 		v_0[k] = v
 	}
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
@@ -111,10 +113,10 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUint32(uint32(len(m)))
+	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
 		buf.WriteString(k)
-		buf.WriteInt64(int64(v))
+		buf.WriteVarint(int64(v))
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, buf.Bytes())
@@ -125,21 +127,20 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadInt64())
+	v_0 = int64(retBuf.ReadVarint())
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
@@ -149,9 +150,9 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteUint32(uint32(len(m)))
+	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteInt64(int64(k))
+		buf.WriteVarint(int64(k))
 		buf.WriteString(v)
 	}
 
@@ -163,29 +164,28 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 map[int64]string
-	l_v_0 := int(retBuf.ReadUint32())
+	l_v_0 := int(retBuf.ReadUvarint())
 	v_0 = make(map[int64]string)
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k int64
 		var v string
-		k = int64(retBuf.ReadInt64())
+		k = int64(retBuf.ReadVarint())
 		v = retBuf.ReadString()
 		v_0[k] = v
 	}
 	var err_1 error
-	if rawErr := retBuf.ReadAny(); rawErr != nil {
-		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && p.registry != nil {
 				if obj, ok := p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
-					err_1 = fmt.Errorf("%s", ed.Message)
+					err_1 = ed
 				}
 			} else {
-				err_1 = fmt.Errorf("%s", ed.Message)
+				err_1 = ed
 			}
-		} else if s, ok := rawErr.(string); ok && s != "" {
-			err_1 = fmt.Errorf("%s", s)
 		}
 	}
 	return v_0, err_1
@@ -209,7 +209,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	switch methodID {
 	case MethodID_MapTest_EchoMap:
 		var m map[string]string
-		l_m := int(reqBuf.ReadUint32())
+		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[string]string)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
@@ -220,89 +220,89 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		}
 		r0, err := impl.EchoMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUint32(uint32(len(r0)))
+		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
 			resBuf.WriteString(k)
 			resBuf.WriteString(v)
 		}
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_GetMap:
 		r0, err := impl.GetMap(ctx)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUint32(uint32(len(r0)))
+		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
 			resBuf.WriteString(k)
-			resBuf.WriteInt64(int64(v))
+			resBuf.WriteVarint(int64(v))
 		}
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_ProcessMap:
 		var m map[string]int64
-		l_m := int(reqBuf.ReadUint32())
+		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[string]int64)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
 			var v int64
 			k = reqBuf.ReadString()
-			v = int64(reqBuf.ReadInt64())
+			v = int64(reqBuf.ReadVarint())
 			m[k] = v
 		}
 		r0, err := impl.ProcessMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteVarint(int64(r0))
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_EchoIntMap:
 		var m map[int64]string
-		l_m := int(reqBuf.ReadUint32())
+		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[int64]string)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k int64
 			var v string
-			k = int64(reqBuf.ReadInt64())
+			k = int64(reqBuf.ReadVarint())
 			v = reqBuf.ReadString()
 			m[k] = v
 		}
 		r0, err := impl.EchoIntMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUint32(uint32(len(r0)))
+		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
-			resBuf.WriteInt64(int64(k))
+			resBuf.WriteVarint(int64(k))
 			resBuf.WriteString(v)
 		}
 		if err != nil {
 			if registry != nil {
-				resBuf.WriteError(err.Error(), registry.Register(err))
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
 			} else {
-				resBuf.WriteError(err.Error(), 0)
+				resBuf.WriteRawError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteByte(ffigo.TypeTagUnknown)
+			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
 	default:
