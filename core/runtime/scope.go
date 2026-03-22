@@ -236,15 +236,15 @@ func (v *Var) Copy() *Var {
 		return nil
 	}
 	res := &Var{
-		Type:      v.Type,
-		VType:     v.VType,
-		I64:       v.I64,
-		F64:       v.F64,
-		Str:       v.Str,
-		Bool:      v.Bool,
-		Handle:    v.Handle,
-		Bridge:    v.Bridge,
-		Ref:       v.Ref, // Reference structures are shared by pointer
+		Type:   v.Type,
+		VType:  v.VType,
+		I64:    v.I64,
+		F64:    v.F64,
+		Str:    v.Str,
+		Bool:   v.Bool,
+		Handle: v.Handle,
+		Bridge: v.Bridge,
+		Ref:    v.Ref, // Reference structures are shared by pointer
 	}
 	if v.B != nil {
 		res.B = make([]byte, len(v.B))

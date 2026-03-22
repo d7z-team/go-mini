@@ -19,6 +19,7 @@ const (
 
 type ValidRoot struct {
 	logs        []Logs
+	types       map[Ident]GoMiniType
 	structs     map[Ident]*ValidStruct
 	interfaces  map[Ident]*InterfaceStmt
 	program     *ProgramStmt
@@ -62,6 +63,7 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 		root: &ValidRoot{
 			program:    node,
 			logs:       make([]Logs, 0),
+			types:      make(map[Ident]GoMiniType),
 			structs:    make(map[Ident]*ValidStruct),
 			interfaces: make(map[Ident]*InterfaceStmt),
 			Global: &ValidStruct{
@@ -82,6 +84,16 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 	// 注入命名接口
 	for ident, stmt := range node.Interfaces {
 		v.root.interfaces[ident] = stmt
+	}
+
+	// 注入命名类型
+	for ident, t := range node.Types {
+		v.root.types[ident] = t
+	}
+
+	// 注入函数
+	for ident, fn := range node.Functions {
+		v.root.vars[ident] = fn.FunctionType.MiniType()
 	}
 
 	// 注入内建 nil
@@ -149,6 +161,17 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 		ctx = ctx.parent
 	}
 	c.root.logs = append(c.root.logs, Logs{Node: firstNode, Path: path, Message: msg})
+}
+
+func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
+	ctx := c
+	for ctx != nil {
+		if t, ok := ctx.root.types[ident]; ok {
+			return t, true
+		}
+		ctx = ctx.parent
+	}
+	return "", false
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {

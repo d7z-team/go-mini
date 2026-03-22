@@ -101,8 +101,9 @@ func (c *ConstRefExpr) exprNode()          {}
 // TypeAssertExpr 表示类型断言表达式 x.(Type)
 type TypeAssertExpr struct {
 	BaseNode
-	X    Expr       `json:"x"`
-	Type GoMiniType `json:"assert_type"`
+	X     Expr       `json:"x"`
+	Type  GoMiniType `json:"assert_type"`
+	Multi bool       `json:"multi,omitempty"` // 为 true 时返回 (val, ok) Tuple
 }
 
 func (t *TypeAssertExpr) GetBase() *BaseNode { return &t.BaseNode }
@@ -119,7 +120,11 @@ func (t *TypeAssertExpr) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("无效的断言类型: %s", t.Type)
 	}
 	// 断言后的类型即为目标类型
-	t.BaseNode.Type = t.Type
+	if t.Multi {
+		t.BaseNode.Type = CreateTupleType(t.Type, "Bool")
+	} else {
+		t.BaseNode.Type = t.Type
+	}
 	return nil
 }
 

@@ -18,6 +18,7 @@ import (
 type Executor struct {
 	structs    map[string]*ast.StructStmt
 	interfaces map[string]*ast.InterfaceStmt
+	types      map[string]ast.GoMiniType
 	consts     map[string]string
 	funcs      map[ast.Ident]*Var
 	program    *ast.ProgramStmt
@@ -47,6 +48,7 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		program:        program,
 		structs:        make(map[string]*ast.StructStmt),
 		interfaces:     make(map[string]*ast.InterfaceStmt),
+		types:          make(map[string]ast.GoMiniType),
 		funcs:          make(map[ast.Ident]*Var),
 		consts:         make(map[string]string),
 		routes:         make(map[string]FFIRoute),
@@ -60,6 +62,11 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	if program.Interfaces != nil {
 		for ident, stmt := range program.Interfaces {
 			result.interfaces[string(ident)] = stmt
+		}
+	}
+	if program.Types != nil {
+		for ident, t := range program.Types {
+			result.types[string(ident)] = t
 		}
 	}
 	for s, s2 := range program.Constants {
@@ -99,13 +106,38 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		return nil, errors.New("cannot assign nil to interface")
 	}
 
+	// 1. Exact match (handles named types and primitives directly)
+	if val.Type.Equals(interfaceType) {
+		return val.Copy(), nil
+	}
+
+	// 2. Any penetration
+	inner := val
+	if val.VType == TypeAny && val.Ref != nil {
+		if v, ok := val.Ref.(*Var); ok {
+			inner = v
+		}
+	}
+	if inner.Type.Equals(interfaceType) {
+		return inner.Copy(), nil
+	}
+
 	actualInterfaceType := interfaceType
 	if !interfaceType.IsInterface() {
-		// Resolve named interface
+		// 3. Resolve named type ONLY if it could be an interface or struct
+		if actual, ok := e.types[string(interfaceType)]; ok {
+			if actual.IsInterface() {
+				return e.CheckSatisfaction(val, actual)
+			}
+			// If it's a struct alias, we'll find it below via structs map
+		}
+
+		// 4. Resolve named interface
 		if iStmt, ok := e.interfaces[string(interfaceType)]; ok {
 			actualInterfaceType = iStmt.Type
 		} else {
-			return nil, fmt.Errorf("interface %s not defined", interfaceType)
+			// If it wasn't an exact match and isn't an interface, it fails (like Go)
+			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.Type, interfaceType)
 		}
 	}
 
@@ -125,8 +157,8 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	}
 
 	for name, sig := range methods {
-		if !e.hasMethodWithSignature(val, name, sig) {
-			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", val.VType, interfaceType, name)
+		if !e.hasMethodWithSignature(inner, name, sig) {
+			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, name)
 		}
 	}
 
@@ -134,7 +166,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		Type:  interfaceType,
 		VType: TypeInterface,
 		Ref: &VMInterface{
-			Target:  val.Copy(),
+			Target:  inner.Copy(),
 			Methods: methods,
 		},
 	}, nil
@@ -644,6 +676,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpAssign:
 		val := session.ValueStack.Pop()
 		lhsDescVar := session.ValueStack.Pop()
+		if lhsDescVar == nil {
+			return nil
+		}
 		lhsDesc := lhsDescVar.Ref
 		return e.assignToLHSDesc(session, lhsDesc, val)
 	case OpDoCall:
@@ -661,7 +696,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		val := session.ValueStack.Pop()
 		descs := make([]interface{}, lhsCount)
 		for i := lhsCount - 1; i >= 0; i-- {
-			descs[i] = session.ValueStack.Pop().Ref
+			descVar := session.ValueStack.Pop()
+			if descVar != nil {
+				descs[i] = descVar.Ref
+			} else {
+				descs[i] = nil
+			}
 		}
 
 		if val == nil {
@@ -728,6 +768,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpEvalLHS:
+		if task.Node == nil {
+			session.ValueStack.Push(nil)
+			return nil
+		}
 		return e.evalLHS(session, task.Node.(ast.Expr))
 	case OpEvalLHSIndex:
 		idx := session.ValueStack.Pop()
@@ -957,8 +1001,25 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpAssert:
 		val := session.ValueStack.Pop()
-		targetType := task.Node.(*ast.TypeAssertExpr).Type
+		n := task.Node.(*ast.TypeAssertExpr)
+		targetType := n.Type
 		res, err := e.CheckSatisfaction(val, targetType)
+		if n.Multi {
+			if err != nil {
+				// 返回 (nil, false)
+				tuple := make([]*Var, 2)
+				tuple[0] = nil
+				tuple[1] = NewBool(false)
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+			} else {
+				// 返回 (res, true)
+				tuple := make([]*Var, 2)
+				tuple[0] = res
+				tuple[1] = NewBool(true)
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+			}
+			return nil
+		}
 		if err != nil {
 			return fmt.Errorf("interface conversion: %v", err)
 		}
@@ -1751,6 +1812,9 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 }
 
 func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, val *Var) error {
+	if lhsDesc == nil {
+		return nil
+	}
 	switch desc := lhsDesc.(type) {
 	case *LHSEnv:
 		return session.Store(desc.Name, val)

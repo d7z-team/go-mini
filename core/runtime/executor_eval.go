@@ -1005,29 +1005,39 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 		return &Var{VType: TypeAny, Type: t}
 	}
 
-	if t.IsPtr() {
+	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
+	shape := t
+	for {
+		if actual, ok := e.types[string(shape)]; ok {
+			shape = actual
+			continue
+		}
+		break
+	}
+
+	if shape.IsPtr() {
 		return &Var{VType: TypeHandle, Handle: 0, Type: t}
 	}
 
-	if t.IsInterface() {
+	if shape.IsInterface() {
 		return &Var{VType: TypeInterface, Type: t, Ref: nil}
 	}
 
-	if t.IsArray() || t.IsMap() || t.IsAny() {
+	if shape.IsArray() || shape.IsMap() || shape.IsAny() {
 		return &Var{VType: TypeAny, Type: t}
 	}
 
-	// 基础类型
-	zero := t.ZeroVar()
+	// 基础类型初始化
+	zero := shape.ZeroVar()
 	res := e.ToVar(ctx, zero, nil)
 	if res != nil {
-		res.Type = t
+		res.Type = t // 还原为用户请求的命名类型
 		return res
 	}
 
-	// 结构体
+	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.structs[string(t)]; ok {
+	if sDef, ok := e.structs[string(shape)]; ok {
 		for _, fName := range sDef.FieldNames {
 			fType := sDef.Fields[fName]
 			mData[string(fName)] = e.initializeType(ctx, fType, depth+1)

@@ -172,6 +172,13 @@
 - [x] `engine/executor.go`: 在 Snippet 模式（`Execute`）边界引入了 **Handle 生命周期强制清理**，防止 FD 泄露。
 - [x] `runtime/executor.go`: 实现了 Nil 容器（Map/Array）访问的自动零值返回，对齐 Go 原生语义。
 
+### Phase 4: Go 语义深度对齐 (Semantics Alignment) [x]
+- [x] **命名类型支持**：实现了 `type MyInt int64` 在 AST、验证器和运行时的全链路支持。
+- [x] **作用域隔离优化**：修复了 `if/switch` 初始化语句的变量污染问题，强制开启独立作用域。
+- [x] **短变量重声明**：优化了 `:=` 在同一作用域下的幂等性，支持 `a, err := f1(); b, err := f2()` 模式。
+- [x] **二元类型断言**：实现了 `v, ok := x.(T)` 语法，支持安全类型转换而不触发 Panic。
+- [x] **基础类型断言**：扩展了 `CheckSatisfaction` 以支持对 Any 包装的原语类型执行断言。
+
 ---
 
 ## 十三、 后续演进计划 [ ]

@@ -25,7 +25,9 @@ func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
 	}
 	pos := c.fset.Position(node.Pos())
 	h := fnv.New64a()
-	fmt.Fprintf(h, "%s:%d:%d:%s", pos.Filename, pos.Line, pos.Column, meta)
+	// Using string concatenation is much faster than fmt.Fprintf for simple strings
+	posStr := pos.Filename + ":" + strconv.Itoa(pos.Line) + ":" + strconv.Itoa(pos.Column) + ":" + meta
+	h.Write([]byte(posStr))
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
@@ -112,6 +114,7 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 		BaseNode:   miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
 		Constants:  make(map[string]string),
 		Variables:  make(map[miniast.Ident]miniast.Expr),
+		Types:      make(map[miniast.Ident]miniast.GoMiniType),
 		Structs:    make(map[miniast.Ident]*miniast.StructStmt),
 		Interfaces: make(map[miniast.Ident]*miniast.InterfaceStmt),
 		Functions:  make(map[miniast.Ident]*miniast.FunctionStmt),
@@ -158,6 +161,9 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 								Name: miniast.Ident(s.Name.Name),
 								Type: miniast.GoMiniType(c.typeToString(it)),
 							}
+						} else {
+							// 基础类型别名 (type MyInt int64)
+							program.Types[miniast.Ident(s.Name.Name)] = miniast.GoMiniType(c.typeToString(s.Type))
 						}
 					case *ast.ValueSpec:
 						switch d.Tok {
@@ -334,21 +340,31 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			var lhsExprs []miniast.Expr
 			for _, lhs := range st.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok {
-					children = append(children, &miniast.GenDeclStmt{
-						BaseNode: miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
-						Name:     miniast.Ident(ident.Name),
-						Kind:     "Any",
-					})
-					lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
-						BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier", Loc: c.extractLoc(lhs)},
-						Name:     miniast.Ident(ident.Name),
-					})
+					if ident.Name != "_" {
+						children = append(children, &miniast.GenDeclStmt{
+							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
+							Name:     miniast.Ident(ident.Name),
+							Kind:     "Any",
+						})
+						lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
+							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier", Loc: c.extractLoc(lhs)},
+							Name:     miniast.Ident(ident.Name),
+						})
+					} else {
+						// Skip evaluation for blank identifier
+						lhsExprs = append(lhsExprs, nil)
+					}
 				}
 			}
 
 			var rhsExpr miniast.Expr
 			if len(st.Rhs) == 1 {
 				rhsExpr = c.convertExpr(st.Rhs[0])
+				if len(st.Lhs) == 2 {
+					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
+						ta.Multi = true
+					}
+				}
 			} else {
 				// Create a composite expr for multiple RHS values
 				comp := &miniast.CompositeExpr{
@@ -380,6 +396,11 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			var rhsExpr miniast.Expr
 			if len(st.Rhs) == 1 {
 				rhsExpr = c.convertExpr(st.Rhs[0])
+				if len(st.Lhs) == 2 {
+					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
+						ta.Multi = true
+					}
+				}
 			} else {
 				comp := &miniast.CompositeExpr{
 					BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
@@ -457,7 +478,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			res.ElseBody = c.toBlock(st.Else)
 		}
 		if st.Init != nil {
-			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: true, Children: []miniast.Stmt{c.convertStmt(st.Init), res}}
+			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: false, Children: []miniast.Stmt{c.convertStmt(st.Init), res}}
 		}
 		return res
 	case *ast.ForStmt:
@@ -505,6 +526,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 				}
 				res.Body.Children = append(res.Body.Children, cClause)
 			}
+		}
+		if st.Init != nil {
+			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: false, Children: []miniast.Stmt{c.convertStmt(st.Init), res}}
 		}
 		return res
 	case *ast.TypeSwitchStmt:
@@ -718,6 +742,8 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 		return res
 	case *ast.StarExpr:
 		return &miniast.StarExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "star"), Meta: "star", Loc: c.extractLoc(ex)}, X: c.convertExpr(ex.X)}
+	case *ast.Ellipsis:
+		return c.convertExpr(ex.Elt)
 	case *ast.FuncLit:
 		var params []miniast.FunctionParam
 		if ex.Type.Params != nil {
@@ -848,15 +874,15 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 			return "TypeBytes"
 		}
-		return fmt.Sprintf("Array<%s>", c.typeToStringWithDepth(t.Elt, depth+1))
+		return "Array<" + c.typeToStringWithDepth(t.Elt, depth+1) + ">"
 	case *ast.StarExpr:
-		return fmt.Sprintf("Ptr<%s>", c.typeToStringWithDepth(t.X, depth+1))
+		return "Ptr<" + c.typeToStringWithDepth(t.X, depth+1) + ">"
 	case *ast.MapType:
-		return fmt.Sprintf("Map<%s, %s>", c.typeToStringWithDepth(t.Key, depth+1), c.typeToStringWithDepth(t.Value, depth+1))
+		return "Map<" + c.typeToStringWithDepth(t.Key, depth+1) + ", " + c.typeToStringWithDepth(t.Value, depth+1) + ">"
 	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", c.typeToStringWithDepth(t.X, depth+1), t.Sel.Name)
+		return c.typeToStringWithDepth(t.X, depth+1) + "." + t.Sel.Name
 	case *ast.Ellipsis:
-		return fmt.Sprintf("Array<%s>", c.typeToStringWithDepth(t.Elt, depth+1))
+		return "Array<" + c.typeToStringWithDepth(t.Elt, depth+1) + ">"
 	case *ast.InterfaceType:
 		return c.expandInterface(t, depth+1)
 	}

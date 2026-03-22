@@ -22,6 +22,7 @@ type ProgramStmt struct {
 	Imports    []ImportSpec             `json:"imports,omitempty"` // 导入列表
 	Constants  map[string]string        `json:"constants"`         // 常量表
 	Variables  map[Ident]Expr           `json:"variables"`         // 声明的全局变量
+	Types      map[Ident]GoMiniType     `json:"types"`             // 命名类型定义 (type MyInt int64)
 	Structs    map[Ident]*StructStmt    `json:"structs"`           // 声明的对象 (对象)
 	Interfaces map[Ident]*InterfaceStmt `json:"interfaces"`        // 声明的接口
 	Functions  map[Ident]*FunctionStmt  `json:"functions"`         // 声明的函数 (解构为无作用域函数)
@@ -1042,6 +1043,10 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 	var hasError bool
 	for i, lhs := range m.LHS {
 		targetType := elementTypes[i]
+		if lhs == nil {
+			// Skip check for blank identifier
+			continue
+		}
 
 		if ident, ok := lhs.(*IdentifierExpr); ok {
 			ident.Name = ident.Name.Resolve(ctx.ValidContext)
@@ -1085,7 +1090,9 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 
 func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 	for i, lhs := range m.LHS {
-		m.LHS[i] = lhs.Optimize(ctx).(Expr)
+		if lhs != nil {
+			m.LHS[i] = lhs.Optimize(ctx).(Expr)
+		}
 	}
 	m.Value = m.Value.Optimize(ctx).(Expr)
 	return m
@@ -1128,9 +1135,11 @@ func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 			ctx.AddVariable(g.Name, g.Kind)
 			return nil
 		}
-		err := fmt.Errorf("variable %s already exists in current scope", g.Name)
-		ctx.AddErrorf("%s", err.Error())
-		return err
+		// Allow "re-declaration" if we are in a local scope to support a, err := f1(); b, err := f2()
+		// Go allows this as long as there is at least one new variable.
+		// In go-mini, we relax this to always allow re-decl in local scope for now,
+		// relying on the executor's idempotency.
+		return nil
 	}
 	ctx.AddVariable(g.Name, g.Kind)
 	return nil

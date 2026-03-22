@@ -462,6 +462,9 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 			return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 		}
 	}
+	if actual, ok := v.root.types[Ident(o)]; ok {
+		return actual.Resolve(v)
+	}
 	return o
 }
 
@@ -477,7 +480,22 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 		elem, ok := o.GetPtrElementType()
 		return ok && elem.Resolve(v).Valid(v)
 	}
+	if o.IsTuple() {
+		types, ok := o.ReadTuple()
+		if !ok {
+			return false
+		}
+		for _, t := range types {
+			if !t.Resolve(v).Valid(v) {
+				return false
+			}
+		}
+		return true
+	}
 	if o.IsInterface() {
+		return true
+	}
+	if _, ok := v.GetType(Ident(o)); ok {
 		return true
 	}
 	if _, ok := v.GetInterface(Ident(o)); ok {
@@ -550,6 +568,18 @@ func (o GoMiniType) IsValid() bool {
 	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Error":
 		return true
 	}
+	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {
+		types, ok := o.ReadTuple()
+		if !ok {
+			return false
+		}
+		for _, t := range types {
+			if !t.IsValid() {
+				return false
+			}
+		}
+		return true
+	}
 	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {
 		inner, _ := o.GetPtrElementType()
 		return inner.IsValid()
@@ -578,6 +608,18 @@ func (o GoMiniType) IsStrictValid() bool {
 	t := string(o)
 	switch t {
 	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int":
+		return true
+	}
+	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {
+		types, ok := o.ReadTuple()
+		if !ok {
+			return false
+		}
+		for _, t := range types {
+			if !t.IsStrictValid() {
+				return false
+			}
+		}
 		return true
 	}
 	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {

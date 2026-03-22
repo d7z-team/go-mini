@@ -86,6 +86,7 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 			BaseNode:  ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
 			Constants: make(map[string]string),
 			Variables: make(map[ast.Ident]ast.Expr),
+			Types:     make(map[ast.Ident]ast.GoMiniType),
 			Structs:   make(map[ast.Ident]*ast.StructStmt),
 			Functions: make(map[ast.Ident]*ast.FunctionStmt),
 			Main:      make([]ast.Stmt, 0),
@@ -127,6 +128,7 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			Imports   []ast.ImportSpec           `json:"imports,omitempty"`
 			Constants map[string]string          `json:"constants"`
 			Variables map[string]json.RawMessage `json:"variables"`
+			Types     map[string]ast.GoMiniType  `json:"types"`
 			Structs   map[string]json.RawMessage `json:"structs"`
 			Functions map[string]json.RawMessage `json:"functions"`
 			Main      []json.RawMessage          `json:"main"`
@@ -140,8 +142,12 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			Imports:   raw.Imports,
 			Constants: raw.Constants,
 			Variables: make(map[ast.Ident]ast.Expr),
+			Types:     make(map[ast.Ident]ast.GoMiniType),
 			Structs:   make(map[ast.Ident]*ast.StructStmt),
 			Functions: make(map[ast.Ident]*ast.FunctionStmt),
+		}
+		for k, v := range raw.Types {
+			result.Types[ast.Ident(k)] = v
 		}
 		for k, vData := range raw.Variables {
 			vNode, _ := parseExpr(vData)
