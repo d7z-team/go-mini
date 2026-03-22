@@ -113,7 +113,10 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 FileInfo
 	v_0.Name = retBuf.ReadString()
-	v_0.Size = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.Size = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -155,7 +158,10 @@ func (p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -197,7 +203,10 @@ func (p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -269,8 +278,14 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Nested
 	v_0.Info.Name = retBuf.ReadString()
-	v_0.Info.Size = int64(retBuf.ReadVarint())
-	v_0.Level = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.Info.Size = int64(tmp)
+	}
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.Level = int64(tmp)
+	}
 	return v_0
 }
 
@@ -424,8 +439,14 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Deep:
 		var n Nested
 		n.Info.Name = reqBuf.ReadString()
-		n.Info.Size = int64(reqBuf.ReadVarint())
-		n.Level = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			n.Info.Size = int64(tmp)
+		}
+		{
+			tmp := reqBuf.ReadVarint()
+			n.Level = int64(tmp)
+		}
 		r0 := impl.Deep(n)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0.Info.Name)
@@ -630,7 +651,10 @@ func (p *NativeMockProxy) GetStruct() NativeStruct {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 NativeStruct
 	v_0.Msg = retBuf.ReadString()
-	v_0.Value = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.Value = int64(tmp)
+	}
 	return v_0
 }
 
@@ -665,7 +689,10 @@ func (p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -688,7 +715,10 @@ func (p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -726,7 +756,10 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case MethodID_NativeMock_SetStruct:
 		var s NativeStruct
 		s.Msg = reqBuf.ReadString()
-		s.Value = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			s.Value = int64(tmp)
+		}
 		r0 := impl.SetStruct(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))

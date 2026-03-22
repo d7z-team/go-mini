@@ -54,7 +54,12 @@ go-mini/
 *   **规则**: 不要试图将每种 Go 类型都映射到 VM 中。
 *   **实现**: VM 只理解原语：`TypeInt` (int64), `TypeFloat` (float64), `TypeString`, `TypeBool`, `TypeBytes` ([]byte), `TypeArray`, `TypeMap`, `TypeHandle`, 以及 `TypeAny`。
 *   **引用语义约定**: 所有的复合类型（Array, Map, 以及由 Map 模拟的 Struct）在 VM 内部传递时均采用**引用语义**。赋值操作或方法调用不会触发深度拷贝。
-*   **转换**: `GoToASTConverter` 在执行前负责 Go 类型到 VM 类型的“降维” (例如 `int32` -> `Int64`)。
+*   **数值降维映射**: 为了兼容标准 Go 脚本，`converter.go` 负责将多种 Go 数值类型映射到 VM 核心原语：
+    *   **Int64**: 涵盖 `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint16`, `uint32`。
+    *   **Float64**: 涵盖 `float32`, `float64`。
+    *   **例外**: `uint64` 暂不映射，以避免符号溢出风险。
+*   **转换**: `GoToASTConverter` 在执行前负责 Go 类型到 VM 类型的上述“降维”映射。
+
 
 ### IV. 泛型错误协议 (`Tuple<T, String>`)
 *   **规则**: 可能失败的 FFI 函数返回 `Tuple`，其中最后一个元素为 `String` 类型的错误信息。
@@ -123,9 +128,14 @@ go-mini/
 6.  **触发生成**: 运行 `make gen`。
 7.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中使用生成的简洁 API 注入（如 `RegisterOS(o, impl, reg)`）。
 
-### D. 测试 (`core/e2e`)
-1.  **强制要求**: 每个 Bug 修复或功能实现都必须在 `core/e2e/` 中附带一个测试。
-2.  **鲁棒性**: 在测试 VM 逻辑时，编写实际的 Go 脚本字符串，通过 `NewRuntimeByGoCode` 编译并执行它们。除非专门测试解析器，否则不要在测试中手动构造 AST。
+### D. 测试与验证 (`core/e2e`)
+1.  **强制要求**: 每个 Bug 修复、功能实现或重构都必须在 `core/e2e/` 中附带一个测试。
+2.  **编写模式**:
+    *   **脚本化测试**: 编写实际的 Go 脚本字符串，通过 `engine.NewMiniExecutor().NewRuntimeByGoCode(code)` 编译。
+    *   **执行方式**: 使用 `vm.Eval(context.Background(), "main()", nil)` 调用脚本中的函数。
+    *   **断言验证**: 直接访问返回的 `*runtime.Var` 的核心字段（如 `v.I64`, `v.F64`, `v.Str`）进行断言。
+    *   **鲁棒性**: 除非专门测试解析器或 AST，否则不要手动构造 AST 节点。
+3.  **示例参考**: 参见 `core/e2e/numeric_mapping_test.go`。
 
 ---
 

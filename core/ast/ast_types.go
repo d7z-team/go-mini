@@ -595,7 +595,7 @@ func (o GoMiniType) IsValid() bool {
 		return true
 	}
 	switch t {
-	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Error":
+	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Int8", "Int16", "Uint16", "Uint32", "Uint", "Error":
 		return true
 	}
 	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {
@@ -637,7 +637,7 @@ func (o GoMiniType) IsValid() bool {
 func (o GoMiniType) IsStrictValid() bool {
 	t := string(o)
 	switch t {
-	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int":
+	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Int8", "Int16", "Uint16", "Uint32", "Uint":
 		return true
 	}
 	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {

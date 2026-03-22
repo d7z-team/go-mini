@@ -475,7 +475,10 @@ func (p *FileMethodsProxy) Read(f *File, b []byte) (int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -517,7 +520,10 @@ func (p *FileMethodsProxy) Write(f *File, b []byte) (int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()

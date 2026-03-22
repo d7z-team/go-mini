@@ -861,7 +861,7 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	case *ast.Ident:
 		name := t.Name
 		switch name {
-		case "int", "int64":
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint16", "uint32":
 			return "Int64"
 		case "float64", "float32":
 			return "Float64"

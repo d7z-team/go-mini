@@ -6,7 +6,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffilib/ordertest"
+	"gopkg.d7z.net/go-mini/core/e2e/ordertest"
 )
 
 func TestOrderFFIGen(t *testing.T) {

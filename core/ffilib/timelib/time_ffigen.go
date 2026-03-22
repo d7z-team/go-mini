@@ -48,7 +48,10 @@ func (p *TimeProxy) Unix() int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -61,7 +64,10 @@ func (p *TimeProxy) UnixNano() int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -87,7 +93,10 @@ func (p *TimeProxy) Since(ns int64) int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -126,13 +135,19 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Sleep:
 		var ns int64
-		ns = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			ns = int64(tmp)
+		}
 		impl.Sleep(ns)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Since:
 		var ns int64
-		ns = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			ns = int64(tmp)
+		}
 		r0 := impl.Since(ns)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))

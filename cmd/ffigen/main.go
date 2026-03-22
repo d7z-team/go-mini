@@ -544,8 +544,10 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		return
 	}
 	switch pType {
-	case "Int64", "int64":
+	case "Int64", "int64", "Int32", "int32", "Int16", "int16", "Int8", "int8", "Int", "int":
 		fmt.Fprintf(sb, "\t%s.WriteVarint(int64(%s))\n", bufName, prefix)
+	case "Uint32", "uint32", "Uint16", "uint16", "Uint8", "uint8", "Uint", "uint", "Uint64", "uint64":
+		fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(%s))\n", bufName, prefix)
 	case "string", "String":
 		fmt.Fprintf(sb, "\t%s.WriteString(%s)\n", bufName, prefix)
 	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
@@ -554,7 +556,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, structs map[string]*as
 		fmt.Fprintf(sb, "\t%s.WriteAny(%s)\n", bufName, prefix)
 	case "bool", "Bool":
 		fmt.Fprintf(sb, "\t%s.WriteBool(%s)\n", bufName, prefix)
-	case "float64", "Float64":
+	case "float64", "Float64", "float32", "Float32":
 		fmt.Fprintf(sb, "\t%s.WriteFloat64(float64(%s))\n", bufName, prefix)
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
@@ -620,15 +622,36 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 		return
 	}
 	switch pType {
-	case "Int64", "int64":
-		fmt.Fprintf(sb, "\t%s = %s(%s.ReadVarint())\n", varName, toGoType(pType), readerName)
+	case "Int64", "int64", "Int32", "int32", "Uint32", "uint32", "Int", "int", "Int8", "int8", "Int16", "int16", "Uint16", "uint16", "Uint8", "uint8", "uint", "Uint":
+		goType := toGoType(pType)
+		fmt.Fprintf(sb, "\t{\n")
+		fmt.Fprintf(sb, "\t\ttmp := %s.ReadVarint()\n", readerName)
+		// 针对不同类型生成边界检查
+		switch goType {
+		case "int8":
+			fmt.Fprintf(sb, "\t\tif tmp < -128 || tmp > 127 { panic(fmt.Sprintf(\"ffi: int8 overflow: %%d\", tmp)) }\n")
+		case "int16":
+			fmt.Fprintf(sb, "\t\tif tmp < -32768 || tmp > 32767 { panic(fmt.Sprintf(\"ffi: int16 overflow: %%d\", tmp)) }\n")
+		case "int32":
+			fmt.Fprintf(sb, "\t\tif tmp < -2147483648 || tmp > 2147483647 { panic(fmt.Sprintf(\"ffi: int32 overflow: %%d\", tmp)) }\n")
+		case "uint8":
+			fmt.Fprintf(sb, "\t\tif tmp < 0 || tmp > 255 { panic(fmt.Sprintf(\"ffi: uint8 overflow: %%d\", tmp)) }\n")
+		case "uint16":
+			fmt.Fprintf(sb, "\t\tif tmp < 0 || tmp > 65535 { panic(fmt.Sprintf(\"ffi: uint16 overflow: %%d\", tmp)) }\n")
+		case "uint32":
+			fmt.Fprintf(sb, "\t\tif tmp < 0 || tmp > 4294967295 { panic(fmt.Sprintf(\"ffi: uint32 overflow: %%d\", tmp)) }\n")
+		case "uint", "uint64":
+			fmt.Fprintf(sb, "\t\tif tmp < 0 { panic(fmt.Sprintf(\"ffi: uint overflow: %%d\", tmp)) }\n")
+		}
+		fmt.Fprintf(sb, "\t\t%s = %s(tmp)\n", varName, goType)
+		fmt.Fprintf(sb, "\t}\n")
 	case "string", "String":
 		fmt.Fprintf(sb, "\t%s = %s.ReadString()\n", varName, readerName)
 	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
 		fmt.Fprintf(sb, "\t%s = %s.ReadBytes()\n", varName, readerName)
 	case "bool", "Bool":
 		fmt.Fprintf(sb, "\t%s = %s.ReadBool()\n", varName, readerName)
-	case "float64", "Float64":
+	case "float64", "Float64", "float32", "Float32":
 		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
@@ -763,20 +786,21 @@ func toVMType(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
 		name := t.Name
-		if name == "int64" {
+		switch name {
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint16", "uint32":
 			return "Int64"
-		}
-		if name == "float64" {
+		case "float64", "float32":
 			return "Float64"
-		}
-		if name == "string" {
+		case "string":
 			return "String"
-		}
-		if name == "bool" {
+		case "bool":
 			return "Bool"
-		}
-		if name == "any" || name == "interface{}" {
+		case "byte", "uint8":
+			return "Uint8"
+		case "any", "interface{}":
 			return "Any"
+		case "error":
+			return "Error"
 		}
 		return name
 	case *ast.ArrayType:
@@ -887,20 +911,30 @@ func toGoType(pType string) string {
 	switch pType {
 	case "Uint32", "uint32":
 		return "uint32"
+	case "Uint16", "uint16":
+		return "uint16"
 	case "Uint8", "byte", "uint8":
 		return "uint8"
-	case "int", "Int":
+	case "Int", "int":
 		return "int"
 	case "Int64", "int64":
 		return "int64"
 	case "Int32", "int32":
 		return "int32"
+	case "Int16", "int16":
+		return "int16"
+	case "Int8", "int8":
+		return "int8"
+	case "Uint", "uint":
+		return "uint"
 	case "String", "string":
 		return "string"
 	case "Bool", "bool":
 		return "bool"
 	case "Float64", "float64":
 		return "float64"
+	case "Float32", "float32":
+		return "float32"
 	case "context.Context", "Context":
 		return "context.Context"
 	case "Any", "any", "interface{}":

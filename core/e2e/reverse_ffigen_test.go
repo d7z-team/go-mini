@@ -37,7 +37,10 @@ func (p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -72,7 +75,10 @@ func (p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -107,9 +113,15 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 	switch methodID {
 	case MethodID_ScriptCalculator_Add:
 		var a int64
-		a = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			a = int64(tmp)
+		}
 		var b int64
-		b = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			b = int64(tmp)
+		}
 		r0 := impl.Add(a, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -118,16 +130,25 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 		var prefix string
 		prefix = reqBuf.ReadString()
 		var val int64
-		val = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			val = int64(tmp)
+		}
 		r0 := impl.Format(prefix, val)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0)
 		return resBuf.Bytes(), nil
 	case MethodID_ScriptCalculator_Divide:
 		var a int64
-		a = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			a = int64(tmp)
+		}
 		var b int64
-		b = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			b = int64(tmp)
+		}
 		r0, err := impl.Divide(a, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))

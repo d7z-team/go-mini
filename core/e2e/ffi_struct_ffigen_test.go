@@ -32,10 +32,22 @@ func (p *MockShapeAPIProxy) GetRect() Rect {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Rect
-	v_0.A.X = int64(retBuf.ReadVarint())
-	v_0.A.Y = int64(retBuf.ReadVarint())
-	v_0.B.X = int64(retBuf.ReadVarint())
-	v_0.B.Y = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.A.X = int64(tmp)
+	}
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.A.Y = int64(tmp)
+	}
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.B.X = int64(tmp)
+	}
+	{
+		tmp := retBuf.ReadVarint()
+		v_0.B.Y = int64(tmp)
+	}
 	return v_0
 }
 
@@ -53,7 +65,10 @@ func (p *MockShapeAPIProxy) Area(r Rect) int64 {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
-	v_0 = int64(retBuf.ReadVarint())
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
@@ -79,10 +94,22 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_MockShapeAPI_Area:
 		var r Rect
-		r.A.X = int64(reqBuf.ReadVarint())
-		r.A.Y = int64(reqBuf.ReadVarint())
-		r.B.X = int64(reqBuf.ReadVarint())
-		r.B.Y = int64(reqBuf.ReadVarint())
+		{
+			tmp := reqBuf.ReadVarint()
+			r.A.X = int64(tmp)
+		}
+		{
+			tmp := reqBuf.ReadVarint()
+			r.A.Y = int64(tmp)
+		}
+		{
+			tmp := reqBuf.ReadVarint()
+			r.B.X = int64(tmp)
+		}
+		{
+			tmp := reqBuf.ReadVarint()
+			r.B.Y = int64(tmp)
+		}
 		r0 := impl.Area(r)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
