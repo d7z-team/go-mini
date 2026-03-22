@@ -49,8 +49,20 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 		v_0[k] = v
 	}
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -77,8 +89,20 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 		v_0[k] = v
 	}
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -103,8 +127,20 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	var v_0 int64
 	v_0 = int64(retBuf.ReadInt64())
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -137,8 +173,20 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 		v_0[k] = v
 	}
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -177,7 +225,15 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteString(k)
 			resBuf.WriteString(v)
 		}
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_GetMap:
 		r0, err := impl.GetMap(ctx)
@@ -187,7 +243,15 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteString(k)
 			resBuf.WriteInt64(int64(v))
 		}
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_ProcessMap:
 		var m map[string]int64
@@ -203,7 +267,15 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		r0, err := impl.ProcessMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteInt64(int64(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_EchoIntMap:
 		var m map[int64]string
@@ -223,7 +295,15 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteInt64(int64(k))
 			resBuf.WriteString(v)
 		}
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -236,10 +316,10 @@ var MapTest_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"EchoMap", 1, "function(Map<String, String>) tuple(Map<String, String>, String)", ""},
-	{"GetMap", 2, "function() tuple(Map<String, Int64>, String)", ""},
-	{"ProcessMap", 3, "function(Map<String, Int64>) tuple(Int64, String)", ""},
-	{"EchoIntMap", 4, "function(Map<Int64, String>) tuple(Map<Int64, String>, String)", ""},
+	{"EchoMap", 1, "function(Map<String, String>) tuple(Map<String, String>, Error)", ""},
+	{"GetMap", 2, "function() tuple(Map<String, Int64>, Error)", ""},
+	{"ProcessMap", 3, "function(Map<String, Int64>) tuple(Int64, Error)", ""},
+	{"EchoIntMap", 4, "function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", ""},
 }
 
 type MapTest_Bridge struct {

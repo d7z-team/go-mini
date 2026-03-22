@@ -539,6 +539,10 @@ func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
 	if o.Equals(target) {
 		return true
 	}
+	// 特殊兼容性：String 与 Error 互换 (为了支持旧的 error 字符串模型)
+	if (o.IsString() && target == "Error") || (o == "Error" && target.IsString()) {
+		return true
+	}
 	if target.IsInterface() {
 		if o.IsInterface() {
 			// 如果双方都是接口，检查 o 是否包含了 target 的所有方法

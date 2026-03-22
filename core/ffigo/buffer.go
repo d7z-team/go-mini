@@ -87,7 +87,14 @@ const (
 	TypeTagMap       byte = 7
 	TypeTagArray     byte = 8
 	TypeTagInterface byte = 9
+	TypeTagError     byte = 10
 )
+
+func (b *Buffer) WriteError(msg string, handle uint32) {
+	b.WriteByte(TypeTagError)
+	b.WriteString(msg)
+	b.WriteUint32(handle)
+}
 
 func (b *Buffer) WriteInterface(handle uint32, methods map[string]string) {
 	b.WriteByte(TypeTagInterface)
@@ -179,6 +186,10 @@ func (r *Reader) ReadAny() interface{} {
 	case TypeTagInterface:
 		h, m := r.ReadInterface()
 		return InterfaceData{Handle: h, Methods: m}
+	case TypeTagError:
+		msg := r.ReadString()
+		h := r.ReadUint32()
+		return ErrorData{Message: msg, Handle: h}
 	default:
 		return nil
 	}
@@ -187,6 +198,15 @@ func (r *Reader) ReadAny() interface{} {
 type InterfaceData struct {
 	Handle  uint32
 	Methods map[string]string
+}
+
+type ErrorData struct {
+	Message string
+	Handle  uint32
+}
+
+func (e ErrorData) Error() string {
+	return e.Message
 }
 
 func (r *Reader) ReadInterface() (uint32, map[string]string) {

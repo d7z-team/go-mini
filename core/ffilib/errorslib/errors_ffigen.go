@@ -32,8 +32,20 @@ func (p *ErrorsProxy) New(ctx context.Context, text string) error {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
-		err_0 = fmt.Errorf("%s", errMsg_0)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_0 = obj.(error)
+				} else {
+					err_0 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_0 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_0 = fmt.Errorf("%s", s)
+		}
 	}
 	return err_0
 }
@@ -53,7 +65,15 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		text = reqBuf.ReadString()
 		err := impl.New(text)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -66,7 +86,7 @@ var Errors_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"New", 1, "function(String) String", ""},
+	{"New", 1, "function(String) Error", ""},
 }
 
 type Errors_Bridge struct {

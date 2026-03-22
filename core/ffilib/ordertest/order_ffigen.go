@@ -43,8 +43,20 @@ func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) 
 		}
 	}
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -69,8 +81,20 @@ func (p *OrderServiceProxy) AddItem(ctx context.Context, o *Order, name string, 
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
-		err_0 = fmt.Errorf("%s", errMsg_0)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_0 = obj.(error)
+				} else {
+					err_0 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_0 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_0 = fmt.Errorf("%s", s)
+		}
 	}
 	return err_0
 }
@@ -95,8 +119,20 @@ func (p *OrderServiceProxy) GetTotal(ctx context.Context, o *Order) (float64, er
 	var v_0 float64
 	v_0 = retBuf.ReadFloat64()
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -119,8 +155,20 @@ func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
-		err_0 = fmt.Errorf("%s", errMsg_0)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_0 = obj.(error)
+				} else {
+					err_0 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_0 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_0 = fmt.Errorf("%s", s)
+		}
 	}
 	return err_0
 }
@@ -147,7 +195,15 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUint32(registry.Register(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
 		var o *Order
@@ -164,7 +220,15 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		price = reqBuf.ReadFloat64()
 		err := impl.AddItem(o, name, price)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
 		var o *Order
@@ -178,7 +242,15 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		r0, err := impl.GetTotal(o)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
 		var o *Order
@@ -191,7 +263,15 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		}
 		err := impl.Close(o)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -204,10 +284,10 @@ var OrderService_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"New", 1, "function(String) tuple(Ptr<Order>, String)", "New 创建新订单"},
-	{"AddItem", 2, "function(Ptr<Order>, String, Float64) String", "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, "function(Ptr<Order>) tuple(Float64, String)", "GetTotal 获取总价"},
-	{"Close", 4, "function(Ptr<Order>) String", "Close 关闭订单"},
+	{"New", 1, "function(String) tuple(Ptr<Order>, Error)", "New 创建新订单"},
+	{"AddItem", 2, "function(Ptr<Order>, String, Float64) Error", "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, "function(Ptr<Order>) tuple(Float64, Error)", "GetTotal 获取总价"},
+	{"Close", 4, "function(Ptr<Order>) Error", "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {

@@ -160,13 +160,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -179,13 +190,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -200,13 +222,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -221,13 +254,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -238,13 +282,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	case MethodID_Fmt_Fprint:
 		var w any
 		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
+		switch rv := rawVal.(type) {
+		case uint32:
+			if obj, ok := registry.Get(rv); ok {
 				w = obj
 			} else {
-				w = rawVal
+				w = rv
 			}
-		} else {
+		case ffigo.ErrorData:
+			if rv.Handle != 0 {
+				if obj, ok := registry.Get(rv.Handle); ok {
+					w = obj
+				} else {
+					w = rv
+				}
+			} else {
+				w = rv
+			}
+		default:
 			w = rawVal
 		}
 		var args []any
@@ -252,13 +307,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -268,13 +334,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	case MethodID_Fmt_Fprintf:
 		var w any
 		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
+		switch rv := rawVal.(type) {
+		case uint32:
+			if obj, ok := registry.Get(rv); ok {
 				w = obj
 			} else {
-				w = rawVal
+				w = rv
 			}
-		} else {
+		case ffigo.ErrorData:
+			if rv.Handle != 0 {
+				if obj, ok := registry.Get(rv.Handle); ok {
+					w = obj
+				} else {
+					w = rv
+				}
+			} else {
+				w = rv
+			}
+		default:
 			w = rawVal
 		}
 		var format string
@@ -284,13 +361,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}
@@ -300,13 +388,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	case MethodID_Fmt_Fprintln:
 		var w any
 		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
+		switch rv := rawVal.(type) {
+		case uint32:
+			if obj, ok := registry.Get(rv); ok {
 				w = obj
 			} else {
-				w = rawVal
+				w = rv
 			}
-		} else {
+		case ffigo.ErrorData:
+			if rv.Handle != 0 {
+				if obj, ok := registry.Get(rv.Handle); ok {
+					w = obj
+				} else {
+					w = rv
+				}
+			} else {
+				w = rv
+			}
+		default:
 			w = rawVal
 		}
 		var args []any
@@ -314,13 +413,24 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal := reqBuf.ReadAny()
-			if id, ok := rawVal.(uint32); ok {
-				if obj, ok := registry.Get(id); ok {
+			switch rv := rawVal.(type) {
+			case uint32:
+				if obj, ok := registry.Get(rv); ok {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rawVal
+					args[i_args] = rv
 				}
-			} else {
+			case ffigo.ErrorData:
+				if rv.Handle != 0 {
+					if obj, ok := registry.Get(rv.Handle); ok {
+						args[i_args] = obj
+					} else {
+						args[i_args] = rv
+					}
+				} else {
+					args[i_args] = rv
+				}
+			default:
 				args[i_args] = rawVal
 			}
 		}

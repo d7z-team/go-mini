@@ -46,8 +46,20 @@ func (p *MockOSProxy) Open(ctx context.Context, name string) (*File, error) {
 		}
 	}
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -92,8 +104,20 @@ func (p *MockOSProxy) Stat(ctx context.Context, f *File) (FileInfo, error) {
 	v_0.Name = retBuf.ReadString()
 	v_0.Size = uint32(retBuf.ReadUint32())
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -119,8 +143,20 @@ func (p *MockOSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) 
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -146,8 +182,20 @@ func (p *MockOSProxy) Write(ctx context.Context, f *File, b []byte) (int, error)
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -170,8 +218,20 @@ func (p *MockOSProxy) Close(ctx context.Context, f *File) error {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
-	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
-		err_0 = fmt.Errorf("%s", errMsg_0)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_0 = obj.(error)
+				} else {
+					err_0 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_0 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_0 = fmt.Errorf("%s", s)
+		}
 	}
 	return err_0
 }
@@ -223,7 +283,15 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUint32(registry.Register(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Name:
 		var f *File
@@ -251,7 +319,15 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(r0.Name)
 		resBuf.WriteUint32(uint32(r0.Size))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Read:
 		var f *File
@@ -267,7 +343,15 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteInt64(int64(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Write:
 		var f *File
@@ -283,7 +367,15 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteInt64(int64(r0))
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Close:
 		var f *File
@@ -296,7 +388,15 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Deep:
 		var n Nested
@@ -320,12 +420,12 @@ var MockOS_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Open", 1, "function(String) tuple(Ptr<File>, String)", ""},
+	{"Open", 1, "function(String) tuple(Ptr<File>, Error)", ""},
 	{"Name", 2, "function(Ptr<File>) String", ""},
-	{"Stat", 3, "function(Ptr<File>) tuple(FileInfo, String)", ""},
-	{"Read", 4, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
-	{"Write", 5, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
-	{"Close", 6, "function(Ptr<File>) String", ""},
+	{"Stat", 3, "function(Ptr<File>) tuple(FileInfo, Error)", ""},
+	{"Read", 4, "function(Ptr<File>, TypeBytes) tuple(Int64, Error)", ""},
+	{"Write", 5, "function(Ptr<File>, TypeBytes) tuple(Int64, Error)", ""},
+	{"Close", 6, "function(Ptr<File>) Error", ""},
 	{"Deep", 7, "function(Nested) Nested", ""},
 }
 

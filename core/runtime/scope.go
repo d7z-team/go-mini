@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"weak"
 
@@ -43,8 +44,22 @@ func (v VarType) String() string {
 		return "Any"
 	case TypeInterface:
 		return "Interface"
+	case TypeError:
+		return "Error"
 	}
 	return "Unknown"
+}
+
+// VMError represents a structured error that satisfies the error interface.
+type VMError struct {
+	Message string          // Static message
+	Cause   *Var            // Internal cause (if any)
+	Handle  uint32          // Host side handle (if any)
+	Bridge  ffigo.FFIBridge // Bridge for host side handle
+}
+
+func (e *VMError) Error() string {
+	return e.Message
 }
 
 const (
@@ -61,6 +76,7 @@ const (
 	TypeCell    // Boxed variable for closure capture
 	TypeAny     // Placeholder for unknown/dynamic
 	TypeInterface
+	TypeError
 )
 
 type VMInterface struct {
@@ -189,6 +205,34 @@ func (v *Var) ToHandle() (uint32, error) {
 	return v.Handle, nil
 }
 
+func (v *Var) ToError() (string, error) {
+	if v == nil {
+		return "", errors.New("accessing nil variable")
+	}
+	switch v.VType {
+	case TypeError:
+		if err, ok := v.Ref.(*VMError); ok {
+			return err.Message, nil
+		}
+	case TypeString:
+		return v.Str, nil
+	case TypeAny:
+		if v.Ref != nil {
+			if ed, ok := v.Ref.(ffigo.ErrorData); ok {
+				return ed.Message, nil
+			}
+			return fmt.Sprintf("%v", v.Interface()), nil
+		}
+	case TypeInt:
+		return strconv.FormatInt(v.I64, 10), nil
+	case TypeFloat:
+		return strconv.FormatFloat(v.F64, 'f', -1, 64), nil
+	case TypeBool:
+		return strconv.FormatBool(v.Bool), nil
+	}
+	return "", fmt.Errorf("type mismatch: expected Error or String compatible type, got %v", v.VType)
+}
+
 // Interface 将 VM 变量转换为 Go 原生接口类型
 func (v *Var) Interface() interface{} {
 	return v.interfaceWithDepth(0)
@@ -226,6 +270,10 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 				res[k] = val.interfaceWithDepth(depth + 1)
 			}
 			return res
+		}
+	case TypeError:
+		if err, ok := v.Ref.(*VMError); ok {
+			return err
 		}
 	}
 	return nil
@@ -613,8 +661,11 @@ type PanicError struct {
 }
 
 func (p *PanicError) Error() string {
-	if p.Value != nil && p.Value.VType == TypeString {
-		return "panic: " + p.Value.Str
+	if p.Value != nil {
+		s, _ := p.Value.ToError()
+		if s != "" {
+			return "panic: " + s
+		}
 	}
 	return "panic"
 }

@@ -132,6 +132,9 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 			if v.VType == TypeBytes {
 				str = string(v.B)
 			}
+			if v.VType == TypeError {
+				str, _ = v.ToError()
+			}
 		}
 		buf.WriteString(str)
 	case typ == "Float64":
@@ -158,6 +161,18 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 			bVal, _ = v.ToBool()
 		}
 		buf.WriteBool(bVal)
+	case typ == "Error" || typ == "error":
+		msg := ""
+		handle := uint32(0)
+		if v != nil {
+			msg, _ = v.ToError()
+			if v.VType == TypeError {
+				if err, ok := v.Ref.(*VMError); ok {
+					handle = err.Handle
+				}
+			}
+		}
+		buf.WriteError(msg, handle)
 	case typ == "TypeBytes":
 		var bVal []byte
 		if v != nil {
@@ -289,6 +304,12 @@ func (e *Executor) serializeVarToAnyWithDepth(buf *ffigo.Buffer, v *Var, depth i
 		buf.WriteAny(v.B)
 	case TypeBool:
 		buf.WriteAny(v.Bool)
+	case TypeError:
+		if err, ok := v.Ref.(*VMError); ok {
+			buf.WriteError(err.Message, err.Handle)
+		} else {
+			buf.WriteAny(nil)
+		}
 	case TypeHandle:
 		buf.WriteAny(v.Handle)
 	case TypeArray:
@@ -388,6 +409,22 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			},
 			Bridge: bridge,
 		}
+	case ffigo.ErrorData:
+		errObj := &VMError{
+			Message: v.Message,
+			Handle:  v.Handle,
+			Bridge:  bridge,
+		}
+		if v.Handle != 0 {
+			session.AddHandle(bridge, v.Handle)
+		}
+		return &Var{
+			VType:  TypeError,
+			Ref:    errObj,
+			Bridge: bridge,
+			Handle: v.Handle,
+			Type:   "Error",
+		}
 	case map[string]interface{}:
 		res := make(map[string]*Var)
 		for k, raw := range v {
@@ -441,6 +478,8 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			res = NewFloat(reader.ReadFloat64())
 		case typ == "Bool":
 			res = NewBool(reader.ReadBool())
+		case typ == "Error" || typ == "error":
+			res = e.ToVar(session, reader.ReadAny(), bridge)
 		case typ == "TypeBytes":
 			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
 		case strings.HasPrefix(string(typ), "Ptr<") || typ == "TypeHandle":

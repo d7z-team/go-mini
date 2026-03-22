@@ -253,14 +253,14 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, structs map[stri
 	case "Any", "any":
 		if isHost {
 			fmt.Fprintf(sb, "\t\trawVal := %s.ReadAny()\n", readerName)
-			fmt.Fprintf(sb, "\t\tif id, ok := rawVal.(uint32); ok {\n")
-			fmt.Fprintf(sb, "\t\t\tif obj, ok := registry.Get(id); ok {\n")
-			fmt.Fprintf(sb, "\t\t\t\t%s = obj\n", varName)
-			fmt.Fprintf(sb, "\t\t\t} else {\n")
-			fmt.Fprintf(sb, "\t\t\t\t%s = rawVal\n", varName)
-			fmt.Fprintf(sb, "\t\t\t}\n")
-			fmt.Fprintf(sb, "\t\t} else {\n")
-			fmt.Fprintf(sb, "\t\t\t%s = rawVal\n", varName)
+			fmt.Fprintf(sb, "\t\tswitch rv := rawVal.(type) {\n")
+			fmt.Fprintf(sb, "\t\tcase uint32:\n")
+			fmt.Fprintf(sb, "\t\t\tif obj, ok := registry.Get(rv); ok { %s = obj } else { %s = rv }\n", varName, varName)
+			fmt.Fprintf(sb, "\t\tcase ffigo.ErrorData:\n")
+			fmt.Fprintf(sb, "\t\t\tif rv.Handle != 0 {\n")
+			fmt.Fprintf(sb, "\t\t\t\tif obj, ok := registry.Get(rv.Handle); ok { %s = obj } else { %s = rv }\n", varName, varName)
+			fmt.Fprintf(sb, "\t\t\t} else { %s = rv }\n", varName)
+			fmt.Fprintf(sb, "\t\tdefault: %s = rawVal\n", varName)
 			fmt.Fprintf(sb, "\t\t}\n")
 		} else {
 			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
@@ -490,7 +490,16 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				rType := typeToString(result.Type)
 				if rType == "error" {
 					fmt.Fprintf(&sb, "\tvar err_%d error\n", i)
-					fmt.Fprintf(&sb, "\tif errMsg_%d := retBuf.ReadString(); errMsg_%d != \"\" {\n\t\terr_%d = fmt.Errorf(\"%%s\", errMsg_%d)\n\t}\n", i, i, i, i)
+					fmt.Fprintf(&sb, "\tif rawErr := retBuf.ReadAny(); rawErr != nil {\n")
+					fmt.Fprintf(&sb, "\t\tif ed, ok := rawErr.(ffigo.ErrorData); ok {\n")
+					fmt.Fprintf(&sb, "\t\t\tif ed.Handle != 0 && p.registry != nil {\n")
+					fmt.Fprintf(&sb, "\t\t\t\tif obj, ok := p.registry.Get(ed.Handle); ok {\n")
+					fmt.Fprintf(&sb, "\t\t\t\t\terr_%d = obj.(error)\n", i)
+					fmt.Fprintf(&sb, "\t\t\t\t} else { err_%d = fmt.Errorf(\"%%s\", ed.Message) }\n", i)
+					fmt.Fprintf(&sb, "\t\t\t} else { err_%d = fmt.Errorf(\"%%s\", ed.Message) }\n", i)
+					fmt.Fprintf(&sb, "\t\t} else if s, ok := rawErr.(string); ok && s != \"\" {\n")
+					fmt.Fprintf(&sb, "\t\t\terr_%d = fmt.Errorf(\"%%s\", s)\n", i)
+					fmt.Fprintf(&sb, "\t\t}\n\t}\n")
 					retStmt = append(retStmt, fmt.Sprintf("err_%d", i))
 					continue
 				}
@@ -582,7 +591,15 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
 				if typeToString(result.Type) == "error" {
-					fmt.Fprintf(&sb, "\t\tresBuf.WriteString(ffigo.WrapError(err))\n")
+					fmt.Fprintf(&sb, "\t\tif err != nil {\n")
+					fmt.Fprintf(&sb, "\t\t\tif registry != nil {\n")
+					fmt.Fprintf(&sb, "\t\t\t\tresBuf.WriteError(err.Error(), registry.Register(err))\n")
+					fmt.Fprintf(&sb, "\t\t\t} else {\n")
+					fmt.Fprintf(&sb, "\t\t\t\tresBuf.WriteError(err.Error(), 0)\n")
+					fmt.Fprintf(&sb, "\t\t\t}\n")
+					fmt.Fprintf(&sb, "\t\t} else {\n")
+					fmt.Fprintf(&sb, "\t\t\tresBuf.WriteAny(\"\")\n")
+					fmt.Fprintf(&sb, "\t\t}\n")
 				} else {
 					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)
 				}
@@ -757,7 +774,7 @@ func getSpec(funcType *ast.FuncType) string {
 		for _, r := range funcType.Results.List {
 			t := toVMType(r.Type)
 			if t == "error" {
-				results = append(results, "String")
+				results = append(results, "Error")
 			} else {
 				results = append(results, t)
 			}

@@ -34,8 +34,20 @@ func (p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
 	var err_1 error
-	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
-		err_1 = fmt.Errorf("%s", errMsg_1)
+	if rawErr := retBuf.ReadAny(); rawErr != nil {
+		if ed, ok := rawErr.(ffigo.ErrorData); ok {
+			if ed.Handle != 0 && p.registry != nil {
+				if obj, ok := p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = fmt.Errorf("%s", ed.Message)
+				}
+			} else {
+				err_1 = fmt.Errorf("%s", ed.Message)
+			}
+		} else if s, ok := rawErr.(string); ok && s != "" {
+			err_1 = fmt.Errorf("%s", s)
+		}
 	}
 	return v_0, err_1
 }
@@ -53,19 +65,38 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 	case MethodID_IO_ReadAll:
 		var r any
 		rawVal := reqBuf.ReadAny()
-		if id, ok := rawVal.(uint32); ok {
-			if obj, ok := registry.Get(id); ok {
+		switch rv := rawVal.(type) {
+		case uint32:
+			if obj, ok := registry.Get(rv); ok {
 				r = obj
 			} else {
-				r = rawVal
+				r = rv
 			}
-		} else {
+		case ffigo.ErrorData:
+			if rv.Handle != 0 {
+				if obj, ok := registry.Get(rv.Handle); ok {
+					r = obj
+				} else {
+					r = rv
+				}
+			} else {
+				r = rv
+			}
+		default:
 			r = rawVal
 		}
 		r0, err := impl.ReadAll(r)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
-		resBuf.WriteString(ffigo.WrapError(err))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteAny("")
+		}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -78,7 +109,7 @@ var IO_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"ReadAll", 1, "function(Any) tuple(TypeBytes, String)", ""},
+	{"ReadAll", 1, "function(Any) tuple(TypeBytes, Error)", ""},
 }
 
 type IO_Bridge struct {

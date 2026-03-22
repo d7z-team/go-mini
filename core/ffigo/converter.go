@@ -865,8 +865,10 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 			return "Int64"
 		case "float64", "float32":
 			return "Float64"
-		case "string", "error":
+		case "string":
 			return "String"
+		case "error":
+			return "Error"
 		case "bool":
 			return "Bool"
 		case "byte", "uint8":

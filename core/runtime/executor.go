@@ -1326,6 +1326,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					if tag != nil {
 						match = true
 					}
+				case "Error", "error":
+					if tag.VType == TypeError {
+						match = true
+					}
 				}
 
 				if match {

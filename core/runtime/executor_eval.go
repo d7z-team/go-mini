@@ -54,29 +54,24 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	if l.VType != TypeInt && l.VType != TypeFloat {
-		if (op == "+" || op == "Plus" || op == "Add") && (l.VType == TypeString || l.VType == TypeBytes) {
-			if r.VType != TypeString && r.VType != TypeBytes {
-				return nil, fmt.Errorf("cannot concatenate %v to %v", r.VType, l.VType)
-			}
+		if op == "+" || op == "Plus" || op == "Add" {
+			// 字符串拼接尝试：如果任意一方是字符串/错误/字节/Any
+			if l.VType == TypeString || l.VType == TypeBytes || l.VType == TypeError || l.VType == TypeAny ||
+				r.VType == TypeString || r.VType == TypeBytes || r.VType == TypeError || r.VType == TypeAny {
 
-			// Both are bytes, return bytes
-			if l.VType == TypeBytes && r.VType == TypeBytes {
-				resB := make([]byte, len(l.B)+len(r.B))
-				copy(resB, l.B)
-				copy(resB[len(l.B):], r.B)
-				return NewBytes(resB), nil
-			}
+				// 如果两个都是字节，返回字节
+				if l.VType == TypeBytes && r.VType == TypeBytes {
+					resB := make([]byte, len(l.B)+len(r.B))
+					copy(resB, l.B)
+					copy(resB[len(l.B):], r.B)
+					return NewBytes(resB), nil
+				}
 
-			// At least one is string, return string
-			lStr := l.Str
-			if l.VType == TypeBytes {
-				lStr = string(l.B)
+				// 否则按字符串拼接
+				lStr, _ := l.ToError()
+				rStr, _ := r.ToError()
+				return NewString(lStr + rStr), nil
 			}
-			rStr := r.Str
-			if r.VType == TypeBytes {
-				rStr = string(r.B)
-			}
-			return NewString(lStr + rStr), nil
 		}
 		return nil, fmt.Errorf("arithmetic operation %s on non-numeric type %v", op, l.VType)
 	}
@@ -180,12 +175,14 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	}
 
 	if l != nil && r != nil {
-		if l.VType == TypeString && r.VType == TypeString {
+		if (l.VType == TypeString || l.VType == TypeError) && (r.VType == TypeString || r.VType == TypeError) {
+			lStr, _ := l.ToError()
+			rStr, _ := r.ToError()
 			switch op {
 			case "==", "Eq":
-				return NewBool(l.Str == r.Str), nil
+				return NewBool(lStr == rStr), nil
 			case "!=", "Neq":
-				return NewBool(l.Str != r.Str), nil
+				return NewBool(lStr != rStr), nil
 			}
 		}
 		if l.VType == TypeBool && r.VType == TypeBool {
@@ -373,6 +370,10 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	}
 
 	switch obj.VType {
+	case TypeError:
+		if property == "Error" {
+			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: "Error"}}, nil
+		}
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
 		if val, ok := m.Data[property]; ok {
@@ -506,6 +507,14 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 }
 
 func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
+	// 0. 特殊类型方法 (Built-in methods on Error)
+	if receiver != nil && receiver.VType == TypeError && name == "Error" {
+		if errObj, ok := receiver.Ref.(*VMError); ok {
+			session.ValueStack.Push(NewString(errObj.Message))
+			return nil
+		}
+	}
+
 	// 1. Intrinsics
 	if mod == nil && receiver == nil && callable == nil {
 		switch name {
