@@ -286,7 +286,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Create:
@@ -302,7 +302,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_ReadFile:
@@ -318,7 +318,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_WriteFile:
@@ -335,7 +335,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Remove:
@@ -350,7 +350,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Getenv:
@@ -374,7 +374,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -591,7 +591,7 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_FileMethods_Write:
@@ -615,7 +615,7 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_FileMethods_Close:
@@ -636,7 +636,7 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:

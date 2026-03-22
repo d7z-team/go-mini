@@ -598,7 +598,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					fmt.Fprintf(&sb, "\t\t\t\tresBuf.WriteError(err.Error(), 0)\n")
 					fmt.Fprintf(&sb, "\t\t\t}\n")
 					fmt.Fprintf(&sb, "\t\t} else {\n")
-					fmt.Fprintf(&sb, "\t\t\tresBuf.WriteAny(\"\")\n")
+					fmt.Fprintf(&sb, "\t\t\tresBuf.WriteByte(ffigo.TypeTagUnknown)\n")
 					fmt.Fprintf(&sb, "\t\t}\n")
 				} else {
 					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)

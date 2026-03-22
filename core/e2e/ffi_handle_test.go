@@ -57,7 +57,7 @@ func TestFFIHandle(t *testing.T) {
 
 	func main() {
 		file, err := os.Open("test.txt")
-		if err != "" { panic(err) }
+		if err != nil { panic(err) }
 		
 		name := os.Name(file)
 		if name != "test.txt" {
@@ -65,7 +65,7 @@ func TestFFIHandle(t *testing.T) {
 		}
 
 		errC := os.Close(file)
-		if errC != "" { panic("close failed: " + errC) }
+		if errC != nil { panic("close failed: " + errC.Error()) }
 		
 		nameAfterClose := os.Name(file)
 		if nameAfterClose != "closed" {

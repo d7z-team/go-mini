@@ -26,12 +26,12 @@ func TestJSONLibrary(t *testing.T) {
 		}
 		
 		jsonBytes, err := json.Marshal(data)
-		if err != "" { panic("marshal failed: " + err) }
+		if err != nil { panic("marshal failed: " + err.Error()) }
 		fmt.Println("Marshaled JSON:", string(jsonBytes))
 
 		// 2. 测试 Unmarshal
 		obj, err1 := json.Unmarshal(jsonBytes)
-		if err1 != "" { panic("unmarshal failed: " + err1) }
+		if err1 != nil { panic("unmarshal failed: " + err1.Error()) }
 		if obj.name != "mini" { panic("unmarshal name mismatch") }
 		if obj.version != 1 { panic("unmarshal version mismatch") }
 		if obj.alive != true { panic("unmarshal alive mismatch") }

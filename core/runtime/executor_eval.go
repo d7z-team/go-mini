@@ -55,9 +55,8 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	if l.VType != TypeInt && l.VType != TypeFloat {
 		if op == "+" || op == "Plus" || op == "Add" {
-			// 字符串拼接尝试：如果任意一方是字符串/错误/字节/Any
-			if l.VType == TypeString || l.VType == TypeBytes || l.VType == TypeError || l.VType == TypeAny ||
-				r.VType == TypeString || r.VType == TypeBytes || r.VType == TypeError || r.VType == TypeAny {
+			// 字符串拼接尝试：仅限字符串和字节
+			if l.VType == TypeString || l.VType == TypeBytes || r.VType == TypeString || r.VType == TypeBytes {
 
 				// 如果两个都是字节，返回字节
 				if l.VType == TypeBytes && r.VType == TypeBytes {
@@ -67,7 +66,7 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 					return NewBytes(resB), nil
 				}
 
-				// 否则按字符串拼接
+				// 否则按字符串拼接 (TypeError 将不再进入此分支)
 				lStr, _ := l.ToError()
 				rStr, _ := r.ToError()
 				return NewString(lStr + rStr), nil
@@ -175,7 +174,15 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	}
 
 	if l != nil && r != nil {
-		if (l.VType == TypeString || l.VType == TypeError) && (r.VType == TypeString || r.VType == TypeError) {
+		if l.VType == TypeString && r.VType == TypeString {
+			switch op {
+			case "==", "Eq":
+				return NewBool(l.Str == r.Str), nil
+			case "!=", "Neq":
+				return NewBool(l.Str != r.Str), nil
+			}
+		}
+		if l.VType == TypeError && r.VType == TypeError {
 			lStr, _ := l.ToError()
 			rStr, _ := r.ToError()
 			switch op {

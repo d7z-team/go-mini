@@ -202,7 +202,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
@@ -227,7 +227,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
@@ -249,7 +249,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
@@ -270,7 +270,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:

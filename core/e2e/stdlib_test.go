@@ -25,14 +25,14 @@ func TestStdlibInjection(t *testing.T) {
 		
 		// Test OS WriteFile
 		errW := os.WriteFile(fileName, []byte(content))
-		if errW != "" {
-			panic("write failed: " + errW)
+		if errW != nil {
+			panic("write failed: " + errW.Error())
 		}
 		
 		// Test OS ReadFile
 		data, errR := os.ReadFile(fileName)
-		if errR != "" {
-			panic("read failed: " + errR)
+		if errR != nil {
+			panic("read failed: " + errR.Error())
 		}
 		
 		if string(data) != content {
@@ -41,8 +41,8 @@ func TestStdlibInjection(t *testing.T) {
 		
 		// Cleanup
 		errRm := os.Remove(fileName)
-		if errRm != "" {
-			panic("remove failed: " + errRm)
+		if errRm != nil {
+			panic("remove failed: " + errRm.Error())
 		}
 		fmt.Println("Stdlib test completed successfully.")
 	}

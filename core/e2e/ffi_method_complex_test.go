@@ -17,10 +17,10 @@ func TestFFIMethodComplex(t *testing.T) {
 		func main() {
 			// 1. 创建两个文件
 			f1, err := os.Create("complex_1.txt")
-			if err != "" { panic(err) }
+			if err != nil { panic(err) }
 
 			f2, err1 := os.Create("complex_2.txt")
-			if err1 != "" { panic(err1) }
+			if err1 != nil { panic(err1) }
 
 			// 2. 交叉写入
 			f1.Write([]byte("file 1 content"))
@@ -32,9 +32,9 @@ func TestFFIMethodComplex(t *testing.T) {
 
 			// 4. 验证内容
 			data1, err2 := os.ReadFile("complex_1.txt")
-			if err2 != "" { panic(err2) }
+			if err2 != nil { panic(err2) }
 			data2, err3 := os.ReadFile("complex_2.txt")
-			if err3 != "" { panic(err3) }
+			if err3 != nil { panic(err3) }
 			
 			if string(data1) != "file 1 content" {
 				panic("f1 content mismatch")

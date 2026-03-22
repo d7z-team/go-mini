@@ -181,7 +181,7 @@ func TestInterfaceAnyPenetration(t *testing.T) {
 	func main() {
 		// json.Unmarshal 返回的是 (Any, string)，里面包裹的是真正的脚本 Map (TypeAny -> TypeMap)
 		data, err := json.Unmarshal([]byte(` + "`" + `{"name": "mini", "Read": "captured"}` + "`" + `))
-		if err != "" { panic(err) }
+		if err != nil { panic(err) }
 		
 		// 我们手工给 data (TypeAny) 注入一个方法模拟复杂场景
 		data["Read"] = func() String { return "from nested" }

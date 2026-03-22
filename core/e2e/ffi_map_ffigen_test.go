@@ -232,7 +232,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_GetMap:
@@ -250,7 +250,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_ProcessMap:
@@ -274,7 +274,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_EchoIntMap:
@@ -302,7 +302,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:

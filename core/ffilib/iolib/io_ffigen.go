@@ -95,7 +95,7 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:

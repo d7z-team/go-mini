@@ -290,7 +290,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Name:
@@ -326,7 +326,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Read:
@@ -350,7 +350,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Write:
@@ -374,7 +374,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Close:
@@ -395,7 +395,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Deep:

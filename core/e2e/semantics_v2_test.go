@@ -74,7 +74,7 @@ func TestSemanticsV2(t *testing.T) {
 		import "os"
 		func main() {
 			f, err := os.Create("method_val.txt")
-			if err != "" { panic(err) }
+			if err != nil { panic(err) }
 			
 			// 提取方法为变量
 			writeFn := f.Write
@@ -85,7 +85,7 @@ func TestSemanticsV2(t *testing.T) {
 			
 			// 验证
 			data, err1 := os.ReadFile("method_val.txt")
-			if err1 != "" { panic(err1) }
+			if err1 != nil { panic(err1) }
 			if string(data) != "Hello Method Value" {
 				panic("method value call failed: " + string(data))
 			}

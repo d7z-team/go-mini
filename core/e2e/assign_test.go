@@ -92,7 +92,7 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		func main() {
 			// json返回的是包装在Any里的Map
 			obj, err := json.Unmarshal([]byte(` + "`" + `{"config":{"enabled":false}}` + "`" + `))
-			if err != "" { panic(err) }
+			if err != nil { panic(err) }
 			obj.config.enabled = true
 			
 			if obj.config.enabled != true { panic("member assign failed") }

@@ -69,16 +69,16 @@ func TestFFICoverage(t *testing.T) {
 	func main() {
 		// 1. 测试读写
 		h2, err := os.Open("test.txt")
-		if err != "" { panic(err) }
+		if err != nil { panic(err) }
 
 		buf := []byte("payload")
 		n, err1 := os.Write(h2, buf)
-		if err1 != "" { panic(err1) }
+		if err1 != nil { panic(err1) }
 		if n != 7 { panic("write length mismatch") }
 
 		readBuf := []byte(".....")
 		rn, err2 := os.Read(h2, readBuf)
-		if err2 != "" { panic(err2) }
+		if err2 != nil { panic(err2) }
 		if rn != 5 { panic("read length mismatch") }
 
 		// 2. 测试标准库已注入的方法覆盖
@@ -114,7 +114,7 @@ func TestFFIErrorPropagation(t *testing.T) {
 	import "os"
 	func main() { 
 		_, err := os.Open("missing")
-		if err != "" {
+		if err != nil {
 			panic(err)
 		}
 	}`

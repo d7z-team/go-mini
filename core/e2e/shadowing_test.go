@@ -12,17 +12,17 @@ func TestShadowingInDefine(t *testing.T) {
 	code := `
 	package main
 	
-	func getValues() (Int64, String) {
-		return 42, ""
+	func getValues() (Int64, error) {
+		return 42, nil
 	}
 	
 	func main() {
 		a, err := getValues()
-		if err != "" { panic(err) }
+		if err != nil { panic(err) }
 		
 		// This should be allowed in Go: 'err' is reassigned, 'b' is new.
 		b, err := getValues()
-		if err != "" { panic(err) }
+		if err != nil { panic(err) }
 		
 		if a != 42 || b != 42 {
 			panic("wrong values")

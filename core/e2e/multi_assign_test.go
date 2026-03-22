@@ -20,8 +20,8 @@ func TestMultiAssignment(t *testing.T) {
 			// 1. Test Result destructuring (val, err)
 			// Use backticks for raw string to avoid escape hell
 			v, err := json.Unmarshal([]byte(` + "`" + `{"age": 25}` + "`" + `))
-			if err != "" {
-				panic("Unmarshal failed: " + err)
+			if err != nil {
+				panic("Unmarshal failed: " + err.Error())
 			}
 			
 			if v.age != 25 {
@@ -30,7 +30,7 @@ func TestMultiAssignment(t *testing.T) {
 
 			// 2. Test failed Unmarshal
 			v2, err2 := json.Unmarshal([]byte("{invalid}"))
-			if err2 == "" {
+			if err2 == nil {
 				panic("Should have failed")
 			}
 		}

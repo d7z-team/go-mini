@@ -57,7 +57,7 @@ func TestTypeMapRobustness(t *testing.T) {
 			import "fmt"
 			func main() {
 				val, err := json.Unmarshal([]byte(` + "`" + `{"meta":{"code":200}}` + "`" + `))
-				if err != "" { panic(err) }
+				if err != nil { panic(err) }
 				if val.meta.code != 200 {
 					panic("result map access failed")
 				}
@@ -93,7 +93,7 @@ func TestTypeMapRobustness(t *testing.T) {
 			func main() {
 				// 通过 json.Unmarshal 获得一个真正的 Any 类型标量
 				a, err := json.Unmarshal([]byte("123"))
-				if err != "" { panic(err) }
+				if err != nil { panic(err) }
 				if a.something != nil {
 					panic("scalar member access should be nil")
 				}

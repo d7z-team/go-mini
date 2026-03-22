@@ -324,18 +324,10 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 done:
-	c.Type = fType.Returns
-	// 自动解包 (T, Error) 为 T
-	if c.Type.IsTuple() {
-		types, ok := c.Type.ReadTuple()
-		if ok && len(types) == 2 && types[1] == "Error" {
-			c.Type = types[0]
-		}
-	}
+c.Type = fType.Returns
 
-	return nil
+return nil
 }
-
 func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 	c.Func = c.Func.Optimize(ctx).(Expr)
 	for i, arg := range c.Args {
@@ -385,6 +377,13 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if objType == TypeModule || objType == "Any" {
 		m.Type = "Any"
 		return nil
+	}
+
+	if objType == "Error" {
+		if m.Property == "Error" {
+			m.Type = "function() String"
+			return nil
+		}
 	}
 
 	if objType.IsInterface() {

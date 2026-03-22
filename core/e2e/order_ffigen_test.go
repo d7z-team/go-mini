@@ -31,8 +31,8 @@ func TestOrderFFIGen(t *testing.T) {
 	func main() {
 		// 1. 创建订单
 		o, err := order.New("ORD-FFIGEN")
-		if err != "" {
-			panic("New order failed: " + err)
+		if err != nil {
+			panic("New order failed: " + err.Error())
 		}
 		
 		// 3. 添加商品
@@ -41,7 +41,7 @@ func TestOrderFFIGen(t *testing.T) {
 		
 		// 4. 计算总价
 		total, err1 := o.GetTotal()
-		if err1 != "" { panic(err1) }
+		if err1 != nil { panic(err1.Error()) }
 		if total != 5498.0 {
 			panic("total mismatch")
 		}
@@ -51,7 +51,7 @@ func TestOrderFFIGen(t *testing.T) {
 		
 		// 6. 尝试在关闭后添加
 		err2 := o.AddItem("Broken", 1.0)
-		if err2 == "" {
+		if err2 == nil {
 			panic("should have caught error for closed order")
 		}
 		

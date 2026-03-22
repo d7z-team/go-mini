@@ -14,22 +14,22 @@ func TestOSMethods(t *testing.T) {
 		import "os"
 		func main() {
 			f, err = os.Create("test_methods.txt")
-			if err != "" {
+			if err != nil {
 				panic(err)
 			}
 			
 			_, err = f.Write([]byte("hello ffigen"))
-			if err != "" {
+			if err != nil {
 				panic(err)
 			}
 			
 			err = f.Close()
-			if err != "" {
+			if err != nil {
 				panic(err)
 			}
 
 			data, err = os.ReadFile("test_methods.txt")
-			if err != "" {
+			if err != nil {
 				panic(err)
 			}
 
@@ -38,7 +38,7 @@ func TestOSMethods(t *testing.T) {
 			}
 			
 			err = os.Remove("test_methods.txt")
-			if err != "" {
+			if err != nil {
 				panic(err)
 			}
 		}

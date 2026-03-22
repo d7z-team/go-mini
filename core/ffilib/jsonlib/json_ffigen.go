@@ -132,7 +132,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_JSON_Unmarshal:
@@ -148,7 +148,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 				resBuf.WriteError(err.Error(), 0)
 			}
 		} else {
-			resBuf.WriteAny("")
+			resBuf.WriteByte(ffigo.TypeTagUnknown)
 		}
 		return resBuf.Bytes(), nil
 	default:

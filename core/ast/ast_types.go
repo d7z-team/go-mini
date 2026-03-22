@@ -344,6 +344,7 @@ func (o GoMiniType) ReadTuple() ([]GoMiniType, bool) {
 	}
 	var types []GoMiniType
 	for _, part := range splitByComma(inner) {
+		part = strings.TrimSpace(part)
 		if part != "" {
 			types = append(types, GoMiniType(part))
 		}
@@ -406,6 +407,19 @@ func (o GoMiniType) Equals(other GoMiniType) bool {
 		otherElem, _ := other.GetPtrElementType()
 		return oElem.Equals(otherElem)
 	}
+	if o.IsTuple() && other.IsTuple() {
+		oTypes, _ := o.ReadTuple()
+		otherTypes, _ := other.ReadTuple()
+		if len(oTypes) != len(otherTypes) {
+			return false
+		}
+		for i := range oTypes {
+			if !oTypes[i].Equals(otherTypes[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	return string(o) == string(other)
 }
 
@@ -454,6 +468,14 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsPtr() {
 		elem, _ := o.GetPtrElementType()
 		return elem.Resolve(v).ToPtr()
+	}
+	if o.IsTuple() {
+		types, _ := o.ReadTuple()
+		resolved := make([]GoMiniType, len(types))
+		for i, t := range types {
+			resolved[i] = t.Resolve(v)
+		}
+		return CreateTupleType(resolved...)
 	}
 	s := string(o)
 	if strings.Contains(s, ".") {
@@ -537,10 +559,6 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 
 func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
 	if o.Equals(target) {
-		return true
-	}
-	// 特殊兼容性：String 与 Error 互换 (为了支持旧的 error 字符串模型)
-	if (o.IsString() && target == "Error") || (o == "Error" && target.IsString()) {
 		return true
 	}
 	if target.IsInterface() {
