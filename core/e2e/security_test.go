@@ -46,9 +46,8 @@ func TestSecurityAndAuditability(t *testing.T) {
 		package main
 		import "os"
 		func main() {
-			// 在封闭架构中，os.Open 返回 Result<TypeHandle>
-			res := os.Open("test.txt")
-			h := res.val
+			// 在封闭架构中，os.Open 返回 (TypeHandle, string)
+			h, err := os.Open("test.txt")
 			// 尝试对 Handle 进行加法运算，应该触发 evalArithmetic 的类型校验
 			bad := h + 1 
 		}

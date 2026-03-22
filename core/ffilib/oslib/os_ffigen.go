@@ -37,11 +37,6 @@ func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 *File
 	if id := retBuf.ReadUint32(); id != 0 {
 		if p.registry != nil {
@@ -50,7 +45,11 @@ func (p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 			}
 		}
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
@@ -66,11 +65,6 @@ func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 *File
 	if id := retBuf.ReadUint32(); id != 0 {
 		if p.registry != nil {
@@ -79,7 +73,11 @@ func (p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 			}
 		}
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
@@ -95,14 +93,13 @@ func (p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) error {
@@ -118,7 +115,12 @@ func (p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) error
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func (p *OSProxy) Remove(ctx context.Context, name string) error {
@@ -133,7 +135,12 @@ func (p *OSProxy) Remove(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func (p *OSProxy) Getenv(ctx context.Context, key string) string {
@@ -164,7 +171,12 @@ func (p *OSProxy) Setenv(ctx context.Context, key string, value string) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -194,39 +206,24 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = reqBuf.ReadString()
 		r0, err := impl.Open(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(registry.Register(r0))
-		}
+		resBuf.WriteUint32(registry.Register(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Create:
 		var name string
 		name = reqBuf.ReadString()
 		r0, err := impl.Create(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(registry.Register(r0))
-		}
+		resBuf.WriteUint32(registry.Register(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OS_ReadFile:
 		var name string
 		name = reqBuf.ReadString()
 		r0, err := impl.ReadFile(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteBytes(r0)
-		}
+		resBuf.WriteBytes(r0)
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OS_WriteFile:
 		var name string
@@ -235,24 +232,14 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		data = reqBuf.ReadBytes()
 		err := impl.WriteFile(ctx, name, data)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Remove:
 		var name string
 		name = reqBuf.ReadString()
 		err := impl.Remove(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OS_Getenv:
 		var key string
@@ -268,12 +255,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		value = reqBuf.ReadString()
 		err := impl.Setenv(key, value)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -286,13 +268,13 @@ var OS_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Open", 1, "function(String) Result<Ptr<File>>", ""},
-	{"Create", 2, "function(String) Result<Ptr<File>>", ""},
-	{"ReadFile", 3, "function(String) Result<TypeBytes>", ""},
-	{"WriteFile", 4, "function(String, TypeBytes) Result<Void>", ""},
-	{"Remove", 5, "function(String) Result<Void>", ""},
+	{"Open", 1, "function(String) tuple(Ptr<File>, String)", ""},
+	{"Create", 2, "function(String) tuple(Ptr<File>, String)", ""},
+	{"ReadFile", 3, "function(String) tuple(TypeBytes, String)", ""},
+	{"WriteFile", 4, "function(String, TypeBytes) String", ""},
+	{"Remove", 5, "function(String) String", ""},
 	{"Getenv", 6, "function(String) String", ""},
-	{"Setenv", 7, "function(String, String) Result<Void>", ""},
+	{"Setenv", 7, "function(String, String) String", ""},
 }
 
 type OS_Bridge struct {
@@ -358,14 +340,13 @@ func (p *FileMethodsProxy) Read(ctx context.Context, f *File, b []byte) (int, er
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *FileMethodsProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
@@ -386,14 +367,13 @@ func (p *FileMethodsProxy) Write(ctx context.Context, f *File, b []byte) (int, e
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *FileMethodsProxy) Close(ctx context.Context, f *File) error {
@@ -412,7 +392,12 @@ func (p *FileMethodsProxy) Close(ctx context.Context, f *File) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -442,13 +427,8 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 		b = reqBuf.ReadBytes()
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_FileMethods_Write:
 		var f *File
@@ -463,13 +443,8 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 		b = reqBuf.ReadBytes()
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_FileMethods_Close:
 		var f *File
@@ -482,12 +457,7 @@ func FileMethodsHostRouter(ctx context.Context, impl FileMethods, registry *ffig
 		}
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -500,9 +470,9 @@ var FileMethods_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Read", 1, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
-	{"Write", 2, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
-	{"Close", 3, "function(Ptr<File>) Result<Void>", ""},
+	{"Read", 1, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
+	{"Write", 2, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
+	{"Close", 3, "function(Ptr<File>) String", ""},
 }
 
 type FileMethods_Bridge struct {

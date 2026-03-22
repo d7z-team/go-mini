@@ -24,26 +24,25 @@ func TestStdlibInjection(t *testing.T) {
 		content := "Hello from Go-Mini Stdlib!"
 		
 		// Test OS WriteFile
-		resW := os.WriteFile(fileName, []byte(content))
-		if resW.err != nil {
-			panic("write failed: " + resW.err)
+		errW := os.WriteFile(fileName, []byte(content))
+		if errW != "" {
+			panic("write failed: " + errW)
 		}
 		
 		// Test OS ReadFile
-		resR := os.ReadFile(fileName)
-		if resR.err != nil {
-			panic("read failed: " + resR.err)
+		data, errR := os.ReadFile(fileName)
+		if errR != "" {
+			panic("read failed: " + errR)
 		}
-		data := resR.val
 		
 		if string(data) != content {
 			panic("content mismatch")
 		}
 		
 		// Cleanup
-		resRm := os.Remove(fileName)
-		if resRm.err != nil {
-			panic("remove failed")
+		errRm := os.Remove(fileName)
+		if errRm != "" {
+			panic("remove failed: " + errRm)
 		}
 		fmt.Println("Stdlib test completed successfully.")
 	}

@@ -681,12 +681,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					elements[i] = nil
 				}
 			}
-		case TypeResult:
-			errVar := NewString(val.ResultErr)
-			if val.ResultErr == "" {
-				errVar = nil
-			}
-			elements = []*Var{val.ResultVal, errVar}
 		default:
 			return fmt.Errorf("cannot destructure type %v", val.VType)
 		}

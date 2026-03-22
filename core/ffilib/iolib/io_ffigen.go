@@ -31,14 +31,13 @@ func (p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -65,13 +64,8 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		}
 		r0, err := impl.ReadAll(r)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteBytes(r0)
-		}
+		resBuf.WriteBytes(r0)
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -84,7 +78,7 @@ var IO_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"ReadAll", 1, "function(Any) Result<TypeBytes>", ""},
+	{"ReadAll", 1, "function(Any) tuple(TypeBytes, String)", ""},
 }
 
 type IO_Bridge struct {

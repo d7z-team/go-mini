@@ -320,9 +320,6 @@ func toGoType(pType string) string {
 	if strings.HasPrefix(pType, "Ptr<") && strings.HasSuffix(pType, ">") {
 		return "*" + toGoType(pType[4:len(pType)-1])
 	}
-	if strings.HasPrefix(pType, "Result<") && strings.HasSuffix(pType, ">") {
-		return toGoType(pType[7 : len(pType)-1])
-	}
 	switch pType {
 	case "Int64", "int64":
 		return "int64"
@@ -453,12 +450,8 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		needsRetBuf := false
-		if funcType.Results != nil {
-			for _, result := range funcType.Results.List {
-				if typeToString(result.Type) != "error" {
-					needsRetBuf = true
-				}
-			}
+		if funcType.Results != nil && len(funcType.Results.List) > 0 {
+			needsRetBuf = true
 		}
 
 		if needsRetBuf || hasErr {
@@ -489,23 +482,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 		if needsRetBuf {
 			fmt.Fprintf(&sb, "\tretBuf := ffigo.NewReader(retData)\n")
-			if hasErr {
-				fmt.Fprintf(&sb, "\tstatus := retBuf.ReadByte()\n\tif status != 0 {\n\t\terrMsg := retBuf.ReadString()\n\t\treturn ")
-				if funcType.Results != nil {
-					for j, result := range funcType.Results.List {
-						rType := typeToString(result.Type)
-						if rType == "error" {
-							fmt.Fprintf(&sb, "fmt.Errorf(\"%%s\", errMsg)")
-						} else {
-							fmt.Fprintf(&sb, "%s", zeroValue(toGoType(rType)))
-						}
-						if j < len(funcType.Results.List)-1 {
-							fmt.Fprintf(&sb, ", ")
-						}
-					}
-				}
-				fmt.Fprintf(&sb, "\n\t}\n")
-			}
 		}
 
 		var retStmt []string
@@ -513,7 +489,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			for i, result := range funcType.Results.List {
 				rType := typeToString(result.Type)
 				if rType == "error" {
-					retStmt = append(retStmt, "nil")
+					fmt.Fprintf(&sb, "\tvar err_%d error\n", i)
+					fmt.Fprintf(&sb, "\tif errMsg_%d := retBuf.ReadString(); errMsg_%d != \"\" {\n\t\terr_%d = fmt.Errorf(\"%%s\", errMsg_%d)\n\t}\n", i, i, i, i)
+					retStmt = append(retStmt, fmt.Sprintf("err_%d", i))
 					continue
 				}
 				varName := fmt.Sprintf("v_%d", i)
@@ -588,11 +566,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 		}
 		var retVars []string
-		var hasErr bool
 		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
 				if typeToString(result.Type) == "error" {
-					hasErr = true
 					retVars = append(retVars, "err")
 				} else {
 					retVars = append(retVars, fmt.Sprintf("r%d", i))
@@ -603,18 +579,13 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fmt.Fprintf(&sb, "\t\timpl.%s(%s)\n", methodName, strings.Join(paramVars, ", "))
 		}
 		fmt.Fprintf(&sb, "\t\tresBuf := ffigo.GetBuffer()\n")
-		if hasErr {
-			fmt.Fprintf(&sb, "\t\tif err != nil {\n\t\t\tresBuf.WriteByte(1)\n\t\t\tresBuf.WriteString(ffigo.WrapError(err))\n\t\t} else {\n\t\t\tresBuf.WriteByte(0)\n")
+		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
-				if typeToString(result.Type) != "error" {
+				if typeToString(result.Type) == "error" {
+					fmt.Fprintf(&sb, "\t\tresBuf.WriteString(ffigo.WrapError(err))\n")
+				} else {
 					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)
-					break
 				}
-			}
-			fmt.Fprintf(&sb, "\t\t}\n")
-		} else if funcType.Results != nil {
-			for i, result := range funcType.Results.List {
-				emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), structs, "resBuf", true)
 			}
 		}
 		fmt.Fprintf(&sb, "\t\treturn resBuf.Bytes(), nil\n")
@@ -781,13 +752,12 @@ func getSpec(funcType *ast.FuncType) string {
 			}
 		}
 	}
-	hasErr := false
 	var results []string
 	if funcType.Results != nil {
 		for _, r := range funcType.Results.List {
 			t := toVMType(r.Type)
 			if t == "error" {
-				hasErr = true
+				results = append(results, "String")
 			} else {
 				results = append(results, t)
 			}
@@ -801,13 +771,7 @@ func getSpec(funcType *ast.FuncType) string {
 		actualRet = results[0]
 	}
 
-	var retType string
-	if hasErr {
-		retType = fmt.Sprintf("Result<%s>", actualRet)
-	} else {
-		retType = actualRet
-	}
-	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), retType)
+	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
 }
 
 func toVMType(expr ast.Expr) string {
@@ -879,9 +843,7 @@ func emitReverseRead(sb *strings.Builder, varName, pType, sourceName string) {
 	goType := toGoType(pType)
 	if pType == "error" {
 		fmt.Fprintf(sb, "\t\tif %s != nil {\n", sourceName)
-		fmt.Fprintf(sb, "\t\t\tif %s.ResultErr != \"\" {\n", sourceName)
-		fmt.Fprintf(sb, "\t\t\t\t%s = fmt.Errorf(\"%%s\", %s.ResultErr)\n", varName, sourceName)
-		fmt.Fprintf(sb, "\t\t\t} else if raw := %s.Interface(); raw != nil {\n", sourceName)
+		fmt.Fprintf(sb, "\t\t\tif raw := %s.Interface(); raw != nil {\n", sourceName)
 		fmt.Fprintf(sb, "\t\t\t\tif s, ok := raw.(string); ok && s != \"\" {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\t%s = fmt.Errorf(\"%%s\", s)\n", varName)
 		fmt.Fprintf(sb, "\t\t\t\t}\n")

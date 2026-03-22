@@ -34,11 +34,6 @@ func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) 
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 *Order
 	if id := retBuf.ReadUint32(); id != 0 {
 		if p.registry != nil {
@@ -47,7 +42,11 @@ func (p *OrderServiceProxy) New(ctx context.Context, id string) (*Order, error) 
 			}
 		}
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *OrderServiceProxy) AddItem(ctx context.Context, o *Order, name string, price float64) error {
@@ -68,7 +67,12 @@ func (p *OrderServiceProxy) AddItem(ctx context.Context, o *Order, name string, 
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func (p *OrderServiceProxy) GetTotal(ctx context.Context, o *Order) (float64, error) {
@@ -88,14 +92,13 @@ func (p *OrderServiceProxy) GetTotal(ctx context.Context, o *Order) (float64, er
 		return 0.0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0.0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 float64
 	v_0 = retBuf.ReadFloat64()
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
@@ -114,7 +117,12 @@ func (p *OrderServiceProxy) Close(ctx context.Context, o *Order) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -138,13 +146,8 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		id = reqBuf.ReadString()
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(registry.Register(r0))
-		}
+		resBuf.WriteUint32(registry.Register(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
 		var o *Order
@@ -161,12 +164,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		price = reqBuf.ReadFloat64()
 		err := impl.AddItem(o, name, price)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
 		var o *Order
@@ -179,13 +177,8 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		}
 		r0, err := impl.GetTotal(o)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteFloat64(float64(r0))
-		}
+		resBuf.WriteFloat64(float64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
 		var o *Order
@@ -198,12 +191,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		}
 		err := impl.Close(o)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -216,10 +204,10 @@ var OrderService_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"New", 1, "function(String) Result<Ptr<Order>>", "New 创建新订单"},
-	{"AddItem", 2, "function(Ptr<Order>, String, Float64) Result<Void>", "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, "function(Ptr<Order>) Result<Float64>", "GetTotal 获取总价"},
-	{"Close", 4, "function(Ptr<Order>) Result<Void>", "Close 关闭订单"},
+	{"New", 1, "function(String) tuple(Ptr<Order>, String)", "New 创建新订单"},
+	{"AddItem", 2, "function(Ptr<Order>, String, Float64) String", "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, "function(Ptr<Order>) tuple(Float64, String)", "GetTotal 获取总价"},
+	{"Close", 4, "function(Ptr<Order>) String", "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {

@@ -33,8 +33,6 @@ func (v VarType) String() string {
 		return "Array"
 	case TypeHandle:
 		return "Handle"
-	case TypeResult:
-		return "Result"
 	case TypeModule:
 		return "Module"
 	case TypeClosure:
@@ -58,7 +56,6 @@ const (
 	TypeMap     // Internal VM Map (string keys only)
 	TypeArray   // Internal VM Array ([]*Var)
 	TypeHandle  // Host resource ID (uint32)
-	TypeResult  // Standard result type (val, err)
 	TypeModule  // Dynamic module object
 	TypeClosure // Anonymous function with captured environment
 	TypeCell    // Boxed variable for closure capture
@@ -103,10 +100,6 @@ type Var struct {
 	Handle uint32
 	Bridge ffigo.FFIBridge
 	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
-
-	// Result fields
-	ResultVal *Var
-	ResultErr string
 
 	stack weak.Pointer[Stack]
 }
@@ -234,14 +227,6 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 			}
 			return res
 		}
-	case TypeResult:
-		if v.ResultErr != "" {
-			return v.ResultErr
-		}
-		if v.ResultVal != nil {
-			return v.ResultVal.interfaceWithDepth(depth + 1)
-		}
-		return nil
 	}
 	return nil
 }
@@ -260,8 +245,6 @@ func (v *Var) Copy() *Var {
 		Handle:    v.Handle,
 		Bridge:    v.Bridge,
 		Ref:       v.Ref, // Reference structures are shared by pointer
-		ResultVal: v.ResultVal.Copy(),
-		ResultErr: v.ResultErr,
 	}
 	if v.B != nil {
 		res.B = make([]byte, len(v.B))
@@ -478,8 +461,6 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 			v.Bool = false
 			v.Handle = 0
 			v.Ref = nil
-			v.ResultVal = nil
-			v.ResultErr = ""
 		} else {
 			return ctx.AddVariable(variable, nil)
 		}
@@ -512,8 +493,6 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 	v.Handle = expr.Handle
 	v.Bridge = expr.Bridge
 	v.Ref = expr.Ref
-	v.ResultVal = expr.ResultVal
-	v.ResultErr = expr.ResultErr
 	return nil
 }
 
@@ -625,8 +604,6 @@ func copyVarData(dest, src *Var) {
 	dest.Handle = src.Handle
 	dest.Bridge = src.Bridge
 	dest.Ref = src.Ref
-	dest.ResultVal = src.ResultVal
-	dest.ResultErr = src.ResultErr
 }
 
 type Program struct{}

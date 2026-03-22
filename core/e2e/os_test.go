@@ -13,35 +13,33 @@ func TestOSMethods(t *testing.T) {
 		package main
 		import "os"
 		func main() {
-			resC = os.Create("test_methods.txt")
-			if resC.err != nil {
-				panic(resC.err)
-			}
-			f = resC.val
-			
-			resW = f.Write([]byte("hello ffigen"))
-			if resW.err != nil {
-				panic(resW.err)
+			f, err = os.Create("test_methods.txt")
+			if err != "" {
+				panic(err)
 			}
 			
-			resCl = f.Close()
-			if resCl.err != nil {
-				panic(resCl.err)
+			_, err = f.Write([]byte("hello ffigen"))
+			if err != "" {
+				panic(err)
+			}
+			
+			err = f.Close()
+			if err != "" {
+				panic(err)
 			}
 
-			resR = os.ReadFile("test_methods.txt")
-			if resR.err != nil {
-				panic(resR.err)
+			data, err = os.ReadFile("test_methods.txt")
+			if err != "" {
+				panic(err)
 			}
-			data = resR.val
 
 			if string(data) != "hello ffigen" {
 				panic("unexpected data: " + string(data))
 			}
 			
-			resRm = os.Remove("test_methods.txt")
-			if resRm.err != nil {
-				panic(resRm.err)
+			err = os.Remove("test_methods.txt")
+			if err != "" {
+				panic(err)
 			}
 		}
 	`

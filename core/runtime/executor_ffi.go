@@ -77,20 +77,18 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	reader := ffigo.NewReader(retData)
 	retType := ast.GoMiniType(route.Returns)
 
-	// 检查是否是 Result<T> 类型
-	if retType.IsResult() && len(retData) > 0 {
-		status := reader.ReadByte() // 0: Success, 1: Error
-		innerType, _ := retType.ReadResult()
-
-		if status == 0 {
-			val, err := e.deserializeVar(session, reader, innerType, route.Bridge)
+	// 检查是否是 Tuple
+	if retType.IsTuple() {
+		types, _ := retType.ReadTuple()
+		tupleData := make([]*Var, len(types))
+		for i, t := range types {
+			val, err := e.deserializeVar(session, reader, t, route.Bridge)
 			if err != nil {
 				return nil, err
 			}
-			return &Var{VType: TypeResult, ResultVal: val, Type: retType}, nil
+			tupleData[i] = val
 		}
-		errMsg := reader.ReadString()
-		return &Var{VType: TypeResult, ResultErr: errMsg, Type: retType}, nil
+		return &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}, Type: retType}, nil
 	}
 
 	return e.deserializeVar(session, reader, retType, route.Bridge)
@@ -476,10 +474,9 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			types, _ := typ.ReadTuple()
 			tupleData := make([]*Var, len(types))
 			for i, t := range types {
-				// Use ReadAny/ToVar to handle tagged data from bridge
-				val := e.ToVar(session, reader.ReadAny(), bridge)
-				if val != nil {
-					val.Type = t
+				val, err := e.deserializeVar(session, reader, t, bridge)
+				if err != nil {
+					return nil, err
 				}
 				tupleData[i] = val
 			}

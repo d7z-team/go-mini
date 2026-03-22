@@ -40,18 +40,21 @@ func TestFFIMap(t *testing.T) {
 	import "e2e"
 	func main() {
 		m1 := map[string]string{ "hello": "world", "foo": "bar" }
-		m2 := e2e.EchoMap(m1)
-		if m2.val["hello"] != "world" {
+		m2, err := e2e.EchoMap(m1)
+		if err != "" { panic(err) }
+		if m2["hello"] != "world" {
 			panic("m2[hello] mismatch")
 		}
 
-		m3 := e2e.GetMap()
-		if m3.val["a"] != 1 || m3.val["b"] != 2 {
+		m3, err1 := e2e.GetMap()
+		if err1 != "" { panic(err1) }
+		if m3["a"] != 1 || m3["b"] != 2 {
 			panic("m3 mismatch")
 		}
 
-		s := e2e.ProcessMap(m3.val)
-		if s.val != 3 {
+		s, err2 := e2e.ProcessMap(m3)
+		if err2 != "" { panic(err2) }
+		if s != 3 {
 			panic("sum mismatch")
 		}
 	}

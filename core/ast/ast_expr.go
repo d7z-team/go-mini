@@ -389,23 +389,13 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		_, vType, ok := objType.GetMapKeyValueTypes()
 		if ok {
 			m.Type = vType
-		} else {
-			m.Type = "Any"
+			return nil
 		}
-		return nil
 	}
 
-	if objType.IsResult() {
-		if m.Property == "val" {
-			valType, _ := objType.ReadResult()
-			m.Type = valType
-			return nil
-		}
-		if m.Property == "err" {
-			m.Type = "String"
-			return nil
-		}
-		return errors.New("result type only has 'val' and 'err' properties")
+	if objType.IsAny() {
+		m.Type = "Any"
+		return nil
 	}
 
 	if !m.Property.Valid(ctx.ValidContext) {

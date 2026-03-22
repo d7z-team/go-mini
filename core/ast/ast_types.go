@@ -25,8 +25,13 @@ func (o GoMiniType) BaseName() string {
 	if strings.HasPrefix(s, "Array<") {
 		return GoMiniType(s[6 : len(s)-1]).BaseName()
 	}
-	if strings.HasPrefix(s, "Result<") {
-		return GoMiniType(s[7 : len(s)-1]).BaseName()
+	if strings.HasPrefix(s, "Map<") {
+		// Just take the value type for base
+		_, v, _ := o.GetMapKeyValueTypes()
+		return v.BaseName()
+	}
+	if strings.HasPrefix(s, "Ptr<") {
+		return GoMiniType(s[4 : len(s)-1]).BaseName()
 	}
 	return s
 }
@@ -66,11 +71,6 @@ func (o GoMiniType) IsPtr() bool {
 func (o GoMiniType) IsArray() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Array<")
-}
-
-func (o GoMiniType) IsResult() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "Result<")
 }
 
 func (o GoMiniType) IsInterface() bool {
@@ -187,18 +187,6 @@ func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok boo
 
 func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
 	return GoMiniType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
-}
-
-func (o GoMiniType) ReadResult() (GoMiniType, bool) {
-	if !o.IsResult() || len(o) < 8 {
-		return "", false
-	}
-	s := string(o)
-	return GoMiniType(s[7 : len(s)-1]), true
-}
-
-func CreateResultType(elementType GoMiniType) GoMiniType {
-	return GoMiniType(fmt.Sprintf("Result<%s>", elementType))
 }
 
 func (o GoMiniType) ReadFunc() (*FunctionType, bool) {

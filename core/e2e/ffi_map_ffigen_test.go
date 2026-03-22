@@ -38,11 +38,6 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 		return map[string]string{}, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return map[string]string{}, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 map[string]string
 	l_v_0 := int(retBuf.ReadUint32())
 	v_0 = make(map[string]string)
@@ -53,7 +48,11 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 		v = retBuf.ReadString()
 		v_0[k] = v
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
@@ -67,11 +66,6 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 		return map[string]int64{}, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return map[string]int64{}, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 map[string]int64
 	l_v_0 := int(retBuf.ReadUint32())
 	v_0 = make(map[string]int64)
@@ -82,7 +76,11 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 		v = int64(retBuf.ReadInt64())
 		v_0[k] = v
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
@@ -102,14 +100,13 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int64
 	v_0 = int64(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
@@ -129,11 +126,6 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 		return map[int64]string{}, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return map[int64]string{}, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 map[int64]string
 	l_v_0 := int(retBuf.ReadUint32())
 	v_0 = make(map[int64]string)
@@ -144,7 +136,11 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 		v = retBuf.ReadString()
 		v_0[k] = v
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -176,32 +172,22 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		}
 		r0, err := impl.EchoMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(uint32(len(r0)))
-			for k, v := range r0 {
-				resBuf.WriteString(k)
-				resBuf.WriteString(v)
-			}
+		resBuf.WriteUint32(uint32(len(r0)))
+		for k, v := range r0 {
+			resBuf.WriteString(k)
+			resBuf.WriteString(v)
 		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_GetMap:
 		r0, err := impl.GetMap(ctx)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(uint32(len(r0)))
-			for k, v := range r0 {
-				resBuf.WriteString(k)
-				resBuf.WriteInt64(int64(v))
-			}
+		resBuf.WriteUint32(uint32(len(r0)))
+		for k, v := range r0 {
+			resBuf.WriteString(k)
+			resBuf.WriteInt64(int64(v))
 		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_ProcessMap:
 		var m map[string]int64
@@ -216,13 +202,8 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		}
 		r0, err := impl.ProcessMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MapTest_EchoIntMap:
 		var m map[int64]string
@@ -237,17 +218,12 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		}
 		r0, err := impl.EchoIntMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(uint32(len(r0)))
-			for k, v := range r0 {
-				resBuf.WriteInt64(int64(k))
-				resBuf.WriteString(v)
-			}
+		resBuf.WriteUint32(uint32(len(r0)))
+		for k, v := range r0 {
+			resBuf.WriteInt64(int64(k))
+			resBuf.WriteString(v)
 		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -260,10 +236,10 @@ var MapTest_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"EchoMap", 1, "function(Map<String, String>) Result<Map<String, String>>", ""},
-	{"GetMap", 2, "function() Result<Map<String, Int64>>", ""},
-	{"ProcessMap", 3, "function(Map<String, Int64>) Result<Int64>", ""},
-	{"EchoIntMap", 4, "function(Map<Int64, String>) Result<Map<Int64, String>>", ""},
+	{"EchoMap", 1, "function(Map<String, String>) tuple(Map<String, String>, String)", ""},
+	{"GetMap", 2, "function() tuple(Map<String, Int64>, String)", ""},
+	{"ProcessMap", 3, "function(Map<String, Int64>) tuple(Int64, String)", ""},
+	{"EchoIntMap", 4, "function(Map<Int64, String>) tuple(Map<Int64, String>, String)", ""},
 }
 
 type MapTest_Bridge struct {

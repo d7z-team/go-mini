@@ -32,14 +32,13 @@ func (p *JSONProxy) Marshal(ctx context.Context, v any) ([]byte, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 []byte
 	v_0 = retBuf.ReadBytes()
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
@@ -55,14 +54,13 @@ func (p *JSONProxy) Unmarshal(ctx context.Context, data []byte) (any, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 any
 	v_0 = retBuf.ReadAny()
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -91,26 +89,16 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		}
 		r0, err := impl.Marshal(v)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteBytes(r0)
-		}
+		resBuf.WriteBytes(r0)
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_JSON_Unmarshal:
 		var data []byte
 		data = reqBuf.ReadBytes()
 		r0, err := impl.Unmarshal(data)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteAny(r0)
-		}
+		resBuf.WriteAny(r0)
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -123,8 +111,8 @@ var JSON_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Marshal", 1, "function(Any) Result<TypeBytes>", ""},
-	{"Unmarshal", 2, "function(TypeBytes) Result<Any>", ""},
+	{"Marshal", 1, "function(Any) tuple(TypeBytes, String)", ""},
+	{"Unmarshal", 2, "function(TypeBytes) tuple(Any, String)", ""},
 }
 
 type JSON_Bridge struct {

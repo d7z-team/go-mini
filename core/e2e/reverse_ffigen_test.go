@@ -67,14 +67,13 @@ func (p *ScriptCalculatorProxy) Divide(ctx context.Context, a int, b int) (int, 
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -116,13 +115,8 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 		b = int(reqBuf.ReadInt64())
 		r0, err := impl.Divide(a, b)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -137,7 +131,7 @@ var ScriptCalculator_FFI_Metadata = []struct {
 }{
 	{"Add", 1, "function(Int64, Int64) Int64", ""},
 	{"Format", 2, "function(String, Int64) String", ""},
-	{"Divide", 3, "function(Int64, Int64) Result<Int64>", ""},
+	{"Divide", 3, "function(Int64, Int64) tuple(Int64, String)", ""},
 }
 
 type ScriptCalculator_Bridge struct {
@@ -249,9 +243,7 @@ func (p *ScriptCalculator_ReverseProxy) Divide(a int, b int) (int, error) {
 	var ret1 error = nil
 	if 1 < len(elements) {
 		if elements[1] != nil {
-			if elements[1].ResultErr != "" {
-				ret1 = fmt.Errorf("%s", elements[1].ResultErr)
-			} else if raw := elements[1].Interface(); raw != nil {
+			if raw := elements[1].Interface(); raw != nil {
 				if s, ok := raw.(string); ok && s != "" {
 					ret1 = fmt.Errorf("%s", s)
 				}

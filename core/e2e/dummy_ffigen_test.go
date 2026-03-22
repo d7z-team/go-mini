@@ -37,11 +37,6 @@ func (p *MockOSProxy) Open(ctx context.Context, name string) (*File, error) {
 		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return nil, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 *File
 	if id := retBuf.ReadUint32(); id != 0 {
 		if p.registry != nil {
@@ -50,7 +45,11 @@ func (p *MockOSProxy) Open(ctx context.Context, name string) (*File, error) {
 			}
 		}
 	}
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MockOSProxy) Name(ctx context.Context, f *File) string {
@@ -89,15 +88,14 @@ func (p *MockOSProxy) Stat(ctx context.Context, f *File) (FileInfo, error) {
 		return FileInfo{}, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return FileInfo{}, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 FileInfo
 	v_0.Name = retBuf.ReadString()
 	v_0.Size = uint32(retBuf.ReadUint32())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MockOSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) {
@@ -118,14 +116,13 @@ func (p *MockOSProxy) Read(ctx context.Context, f *File, b []byte) (int, error) 
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MockOSProxy) Write(ctx context.Context, f *File, b []byte) (int, error) {
@@ -146,14 +143,13 @@ func (p *MockOSProxy) Write(ctx context.Context, f *File, b []byte) (int, error)
 		return 0, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	status := retBuf.ReadByte()
-	if status != 0 {
-		errMsg := retBuf.ReadString()
-		return 0, fmt.Errorf("%s", errMsg)
-	}
 	var v_0 int
 	v_0 = int(retBuf.ReadInt64())
-	return v_0, nil
+	var err_1 error
+	if errMsg_1 := retBuf.ReadString(); errMsg_1 != "" {
+		err_1 = fmt.Errorf("%s", errMsg_1)
+	}
+	return v_0, err_1
 }
 
 func (p *MockOSProxy) Close(ctx context.Context, f *File) error {
@@ -172,7 +168,12 @@ func (p *MockOSProxy) Close(ctx context.Context, f *File) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	retBuf := ffigo.NewReader(retData)
+	var err_0 error
+	if errMsg_0 := retBuf.ReadString(); errMsg_0 != "" {
+		err_0 = fmt.Errorf("%s", errMsg_0)
+	}
+	return err_0
 }
 
 func (p *MockOSProxy) Deep(ctx context.Context, n Nested) Nested {
@@ -221,13 +222,8 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		name = reqBuf.ReadString()
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteUint32(registry.Register(r0))
-		}
+		resBuf.WriteUint32(registry.Register(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Name:
 		var f *File
@@ -253,14 +249,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		r0, err := impl.Stat(f)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteString(r0.Name)
-			resBuf.WriteUint32(uint32(r0.Size))
-		}
+		resBuf.WriteString(r0.Name)
+		resBuf.WriteUint32(uint32(r0.Size))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Read:
 		var f *File
@@ -275,13 +266,8 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		b = reqBuf.ReadBytes()
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Write:
 		var f *File
@@ -296,13 +282,8 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		b = reqBuf.ReadBytes()
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-			resBuf.WriteInt64(int64(r0))
-		}
+		resBuf.WriteInt64(int64(r0))
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Close:
 		var f *File
@@ -315,12 +296,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			resBuf.WriteByte(1)
-			resBuf.WriteString(ffigo.WrapError(err))
-		} else {
-			resBuf.WriteByte(0)
-		}
+		resBuf.WriteString(ffigo.WrapError(err))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Deep:
 		var n Nested
@@ -344,12 +320,12 @@ var MockOS_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Open", 1, "function(String) Result<Ptr<File>>", ""},
+	{"Open", 1, "function(String) tuple(Ptr<File>, String)", ""},
 	{"Name", 2, "function(Ptr<File>) String", ""},
-	{"Stat", 3, "function(Ptr<File>) Result<FileInfo>", ""},
-	{"Read", 4, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
-	{"Write", 5, "function(Ptr<File>, TypeBytes) Result<Int64>", ""},
-	{"Close", 6, "function(Ptr<File>) Result<Void>", ""},
+	{"Stat", 3, "function(Ptr<File>) tuple(FileInfo, String)", ""},
+	{"Read", 4, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
+	{"Write", 5, "function(Ptr<File>, TypeBytes) tuple(Int64, String)", ""},
+	{"Close", 6, "function(Ptr<File>) String", ""},
 	{"Deep", 7, "function(Nested) Nested", ""},
 }
 

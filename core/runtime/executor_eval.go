@@ -373,16 +373,6 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	}
 
 	switch obj.VType {
-	case TypeResult:
-		if property == "val" {
-			return obj.ResultVal, nil
-		}
-		if property == "err" {
-			if obj.ResultErr == "" {
-				return nil, nil
-			}
-			return NewString(obj.ResultErr), nil
-		}
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
 		if val, ok := m.Data[property]; ok {

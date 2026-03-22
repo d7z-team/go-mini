@@ -20,7 +20,7 @@ func TestMultiAssignment(t *testing.T) {
 			// 1. Test Result destructuring (val, err)
 			// Use backticks for raw string to avoid escape hell
 			v, err := json.Unmarshal([]byte(` + "`" + `{"age": 25}` + "`" + `))
-			if err != nil {
+			if err != "" {
 				panic("Unmarshal failed: " + err)
 			}
 			
@@ -30,7 +30,7 @@ func TestMultiAssignment(t *testing.T) {
 
 			// 2. Test failed Unmarshal
 			v2, err2 := json.Unmarshal([]byte("{invalid}"))
-			if err2 == nil {
+			if err2 == "" {
 				panic("Should have failed")
 			}
 		}
@@ -147,8 +147,8 @@ func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte
 	r := a % bVal
 
 	buf := ffigo.GetBuffer()
-	buf.WriteAny(q)
-	buf.WriteAny(r)
+	buf.WriteInt64(q)
+	buf.WriteInt64(r)
 	return buf.Bytes(), nil
 }
 

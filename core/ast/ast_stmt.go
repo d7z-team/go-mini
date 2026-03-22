@@ -1023,9 +1023,6 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 		for i := 0; i < len(m.LHS); i++ {
 			elementTypes = append(elementTypes, itemType)
 		}
-	} else if valType.IsResult() {
-		resType, _ := valType.ReadResult()
-		elementTypes = []GoMiniType{resType, "String"}
 	} else if valType.IsAny() {
 		for i := 0; i < len(m.LHS); i++ {
 			elementTypes = append(elementTypes, "Any")

@@ -287,7 +287,15 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 		}
 	}
 	if d.Type.Results != nil && len(d.Type.Results.List) > 0 {
-		fn.Return = miniast.GoMiniType(c.typeToString(d.Type.Results.List[0].Type))
+		var returns []string
+		for _, r := range d.Type.Results.List {
+			returns = append(returns, c.typeToString(r.Type))
+		}
+		if len(returns) > 1 {
+			fn.Return = miniast.GoMiniType(fmt.Sprintf("tuple(%s)", strings.Join(returns, ", ")))
+		} else {
+			fn.Return = miniast.GoMiniType(returns[0])
+		}
 	} else {
 		fn.Return = "Void"
 	}
@@ -822,7 +830,7 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 			return "Int64"
 		case "float64", "float32":
 			return "Float64"
-		case "string":
+		case "string", "error":
 			return "String"
 		case "bool":
 			return "Bool"

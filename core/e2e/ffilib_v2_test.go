@@ -22,20 +22,18 @@ func TestFFILibV2(t *testing.T) {
 			if os.Getenv("GO_MINI_TEST") != "rocks" { panic("os.Getenv failed") }
 
 			// 2. 测试 fmt.Fprintf 和 io.ReadAll 的联动
-			resC = os.Create("v2_test.txt")
-			f = resC.val
+			f, err = os.Create("v2_test.txt")
 			
 			// 向文件句柄写入
 			fmt.Fprintf(f, "Hello %s %d", "Mini", 2026)
 			f.Close()
 
 			// 3. 测试 iolib.ReadAll (模拟读取刚才的文件)
-			resO = os.Open("v2_test.txt")
-			f2 = resO.val
+			f2, err = os.Open("v2_test.txt")
 			
-			resData = io.ReadAll(f2)
-			if string(resData.val) != "Hello Mini 2026" {
-				panic("io.ReadAll content mismatch: " + string(resData.val))
+			resData, err = io.ReadAll(f2)
+			if string(resData) != "Hello Mini 2026" {
+				panic("io.ReadAll content mismatch: " + string(resData))
 			}
 			f2.Close()
 

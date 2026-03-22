@@ -72,8 +72,8 @@ func TestIntKeyMap(t *testing.T) {
 	import "e2e"
 	func main() {
 		m1 := map[Int64]String{ "1": "one", "2": "two" }
-		m2 := e2e.EchoIntMap(m1)
-		if m2.val[1] != "one" || m2.val[2] != "two" {
+		m2, err := e2e.EchoIntMap(m1)
+		if m2[1] != "one" || m2[2] != "two" {
 			panic("m2 mismatch")
 		}
 	}

@@ -12,7 +12,7 @@ const (
 	StatusError   ResultStatus = 1
 )
 
-// WrapError converts a Go error into a format suitable for the FFI Result<T> protocol.
+// WrapError converts a Go error into a format suitable for the FFI Tuple protocol.
 // It ensures that even nil errors are handled (though nil should usually use StatusSuccess).
 func WrapError(err error) string {
 	if err == nil {

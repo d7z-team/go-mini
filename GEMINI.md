@@ -50,18 +50,18 @@ go-mini/
 
 ### III. 封闭类型系统 (Closed Type System / Data Reduction)
 *   **规则**: 不要试图将每种 Go 类型都映射到 VM 中。
-*   **实现**: VM 只理解原语：`TypeInt` (int64), `TypeFloat` (float64), `TypeString`, `TypeBool`, `TypeBytes` ([]byte), `TypeArray`, `TypeMap`, `TypeResult`, `TypeHandle`, 以及 `TypeAny`。
+*   **实现**: VM 只理解原语：`TypeInt` (int64), `TypeFloat` (float64), `TypeString`, `TypeBool`, `TypeBytes` ([]byte), `TypeArray`, `TypeMap`, `TypeHandle`, 以及 `TypeAny`。
 *   **引用语义约定**: 所有的复合类型（Array, Map, 以及由 Map 模拟的 Struct）在 VM 内部传递时均采用**引用语义**。赋值操作或方法调用不会触发深度拷贝。
 *   **转换**: `GoToASTConverter` 在执行前负责 Go 类型到 VM 类型的“降维” (例如 `int32` -> `Int64`)。
 
-### IV. 泛型错误协议 (`Result<T>`)
-*   **规则**: 可能失败的 FFI 函数必须返回 `Result` 包装器。
-*   **实现**: VM 原生理解 `TypeResult`。访问 Result 对象的 `.val` 或 `.err` 是一项内置的 VM 功能，而不是结构体字段访问。FFI 响应使用 `[StatusByte][Payload]` 二进制格式。
+### IV. 泛型错误协议 (`Tuple<T, String>`)
+*   **规则**: 可能失败的 FFI 函数返回 `Tuple`，其中最后一个元素为 `String` 类型的错误信息。
+*   **实现**: 引擎使用多返回值解构来处理 FFI 错误。Host 侧如果发生严重故障或 Panic，可以触发脚本级的原生 Panic。
 
 ### V. 语言中立与规范化表达 (Language Neutrality & Canonical Representation)
 *   **规则**: 核心引擎 (`core/ast`, `core/runtime`) 必须保持语言中立。禁止在底层类型判断逻辑中加入特定前端语言的语法兼容（如 Go 的 `[]T` 或 `map[K]V`）。
 *   **实现**:
-    *   **规范化**: 引擎只识别其定义的规范化字符串表达，如 `Array<T>`、`Map<K, V>`、`Ptr<T>` 和 `Result<T>`。所有类型前缀必须首字母大写。
+    *   **规范化**: 引擎只识别其定义的规范化字符串表达，如 `Array<T>`、`Map<K, V>`、`Ptr<T>` 和 `Tuple<T...>`。所有类型前缀必须首字母大写。
     *   **职责上移**: 任何前端特有的语法糖转换（Normalization）必须在转换层完成（例如在 `core/ffigo/converter.go` 中将 Go风格类型映射为规范格式）。
     *   **零容错**: 执行器在进行 FFI 序列化或类型断言时，应严格匹配规范格式，不应引入 `strings.ToLower` 等宽容性处理以牺牲性能或破坏严谨性。
 

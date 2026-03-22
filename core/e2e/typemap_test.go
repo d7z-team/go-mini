@@ -56,9 +56,9 @@ func TestTypeMapRobustness(t *testing.T) {
 			import "json"
 			import "fmt"
 			func main() {
-				res := json.Unmarshal([]byte(` + "`" + `{"meta":{"code":200}}` + "`" + `))
-				if res.err != nil { panic(res.err) }
-				if res.val.meta.code != 200 {
+				val, err := json.Unmarshal([]byte(` + "`" + `{"meta":{"code":200}}` + "`" + `))
+				if err != "" { panic(err) }
+				if val.meta.code != 200 {
 					panic("result map access failed")
 				}
 				fmt.Println("Result map access OK")
@@ -92,9 +92,8 @@ func TestTypeMapRobustness(t *testing.T) {
 			import "fmt"
 			func main() {
 				// 通过 json.Unmarshal 获得一个真正的 Any 类型标量
-				res := json.Unmarshal([]byte("123"))
-				if res.err != nil { panic(res.err) }
-				a := res.val
+				a, err := json.Unmarshal([]byte("123"))
+				if err != "" { panic(err) }
 				if a.something != nil {
 					panic("scalar member access should be nil")
 				}

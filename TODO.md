@@ -77,14 +77,14 @@
     *   **[x] 实现 FFI 路由分发**：支持 `RegisterFFI` 动态绑定外部 Bridge。
     *   **[x] 数据序列化/反序列化**：在执行引擎内实现 `evalFFI` 字节流转换。
 5.  **[x] 源码适配转换器 (Converter)**：实现 `GoToASTConverter` 跑通 Go 源码测试。
-6.  **[x] 错误处理协议重构 (Generic Result<T>)**
-    *   **[x] 类型系统支持**：在 `ast.GoMiniType` 中实现 `Result<T>` 泛型解析逻辑。
-    *   **[x] 运行时变量支持**：在 `runtime.Var` 中实现 `TypeResult` 专用存储与访问逻辑。
-    *   **[x] FFI 协议升级**：实现 `[Status][Payload]` 序列化协议，升级 `evalFFI` 自动装箱。
-    *   **[x] 生成器同步**：升级 `ffigen` 以支持生成基于 `Result<T>` 的 Router 与 Proxy.
+6.  **[x] 错误处理协议重构 (Generic Tuple<T, String>)**
+    *   **[x] 类型系统支持**：在 `ast.GoMiniType` 中实现 `Tuple<T...>` 泛型解析逻辑。
+    *   **[x] 运行时变量支持**：在 `runtime.Var` 中实现多返回值解构逻辑。
+    *   **[x] FFI 协议升级**：实现紧凑序列化协议，升级 `evalFFI` 自动打包 Tuple。
+    *   **[x] 生成器同步**：升级 `ffigen` 以支持生成基于 `Tuple` 的 Router 与 Proxy.
     *   **[x] 动态容器支持**：实现 `TypeMap` 的完整 FFI 序列化，支持非结构体的纯 Map 传输。
 7.  **标准库全量生成与迁移 (Migration)**
-    *   **[x] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Result<T>` 契约。 [x]
+    *   **[x] 核心库迁移**：将 `os`, `fmt`, `io` 等接口全面迁移至 `Tuple<T, String>` 契约。 [x]
     *   **[x] 关键库注入**：实现 `json`, `time` 库的 FFI 封装。 [x]
     *   **[x] 运行安全增强**：在解释器循环中增加对 `context.Context` 取消信号的感知。 [x]
     *   **[x] 补充复杂场景测试**：已通过 robustness_test 验证字段排序、Any 包装及 Nil 比较。 [x]

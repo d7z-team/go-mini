@@ -91,8 +91,8 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		import "fmt"
 		func main() {
 			// json返回的是包装在Any里的Map
-			res := json.Unmarshal([]byte(` + "`" + `{"config":{"enabled":false}}` + "`" + `))
-			obj := res.val
+			obj, err := json.Unmarshal([]byte(` + "`" + `{"config":{"enabled":false}}` + "`" + `))
+			if err != "" { panic(err) }
 			obj.config.enabled = true
 			
 			if obj.config.enabled != true { panic("member assign failed") }

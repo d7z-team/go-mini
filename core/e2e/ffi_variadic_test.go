@@ -44,7 +44,7 @@ func (m *MockPrinter) Log(prefix string, args ...any) error {
 func RegisterPrinter(executor *engine.MiniExecutor, impl PrinterAPI) {
 	bridge := &PrinterBridge{impl: impl}
 	// 注意：FFI spec 中的变长参数由 ... 前缀标识
-	executor.RegisterFFI("printer.Log", bridge, 1, "function(String, ...Any) Result<Void>", "Log with variadic args")
+	executor.RegisterFFI("printer.Log", bridge, 1, "function(String, ...Any) tuple(Void, String)", "Log with variadic args")
 }
 
 type PrinterBridge struct {
@@ -65,12 +65,7 @@ func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	err := b.impl.Log(prefix, variadic...)
 
 	resBuf := ffigo.GetBuffer()
-	if err != nil {
-		resBuf.WriteByte(1)
-		resBuf.WriteString(err.Error())
-	} else {
-		resBuf.WriteByte(0)
-	}
+	resBuf.WriteString(ffigo.WrapError(err))
 	return resBuf.Bytes(), nil
 }
 
