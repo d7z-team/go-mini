@@ -407,7 +407,8 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 			// 如果没有初值，则初始化为零值变量 (Any 类型)
 			val = &Var{VType: TypeAny, Type: "Any"}
 		}
-		_ = session.AddVariable(string(name), val)
+		// 确保变量已存储到内存中 (直接操作内存字典以避开 AddVariable 的 Copy 逻辑，适合初始化)
+		session.Stack.MemoryPtr[string(name)] = val
 	}
 
 	// 注入内建 nil

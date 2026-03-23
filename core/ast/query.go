@@ -89,6 +89,8 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Call)
 	case *IncDecStmt:
 		Walk(v, n.Operand)
+	case *ExpressionStmt:
+		Walk(v, n.X)
 	case *AssignmentStmt:
 		Walk(v, n.LHS)
 		Walk(v, n.Value)
@@ -276,6 +278,10 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 		if st, ok := prog.Structs[Ident(typeName)]; ok {
 			return st
 		}
+		return nil
+	}
+
+	if ident == nil {
 		return nil
 	}
 
@@ -551,36 +557,47 @@ var miniKeywords = []string{
 }
 
 var miniBuiltins = map[string]string{
-	"len":    "function(Any) Int64",
-	"append": "function(Array<Any>, Any) Array<Any>",
-	"make":   "function(Type, ...Int64) Any",
-	"new":    "function(Type) Ptr<Any>",
-	"panic":  "function(Any) Void",
-	"print":  "function(...Any) Void",
-	"printf": "function(String, ...Any) Void",
+	"len":     "function(Any) Int64",
+	"append":  "function(Array<Any>, Any) Array<Any>",
+	"make":    "function(Type, ...Int64) Any",
+	"new":     "function(Type) Ptr<Any>",
+	"panic":   "function(Any) Void",
+	"print":   "function(...Any) Void",
+	"println": "function(...Any) Void",
 }
 
 // FindCompletionsAt 获取指定位置的代码补全建议
 func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	node := FindNodeAt(root, line, col)
 
-	if node == nil {
-		node = root
-	}
-
 	pMap := BuildParentMap(root)
 
-	// 特殊处理：如果 FindNodeAt 没找到或者找到了父级节点，
-	// 尝试检查是否在进行成员访问 (obj.)
-	if node == root || col > 1 {
-		// 检查当前行 col-1 是否是点号，或者 col 处是点号
-		// 这里由于拿不到源码字符串，我们尝试寻找 col-1 处的节点
-		prevNode := FindNodeAt(root, line, col-1)
-		if prevNode != nil && prevNode != root {
-			if node == root {
-				node = prevNode
+	// 特殊处理：如果找到的是容器节点（如 BlockStmt 或 ProgramStmt），
+	// 或者根本没找到节点，说明光标可能紧跟在一个标识符或点号后面。
+	// 我们尝试向左偏移 1 到 2 个字符来定位前导标识符。
+	if node == nil || node == root {
+		for offset := 1; offset <= 2; offset++ {
+			if col-offset >= 1 {
+				prev := FindNodeAt(root, line, col-offset)
+				if prev != nil && prev != root {
+					node = prev
+					break
+				}
 			}
 		}
+	} else {
+		// 如果找到的是容器节点，也尝试偏移
+		switch node.(type) {
+		case *BlockStmt, *ProgramStmt:
+			prev := FindNodeAt(root, line, col-1)
+			if prev != nil && prev != root {
+				node = prev
+			}
+		}
+	}
+
+	if node == nil {
+		node = root
 	}
 
 	var scopeObj interface{}
@@ -606,15 +623,33 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 		return nil
 	}
 
-
 	items := make([]CompletionItem, 0)
 	seen := make(map[string]bool)
 
 	// -------------------------------------------------------------------------
 	// 1. 成员补全 (a.B)
 	// -------------------------------------------------------------------------
+	// 如果当前节点本身就是 MemberExpr
 	if sel, ok := node.(*MemberExpr); ok {
-		return getMemberCompletions(ctx, sel.Object, seen)
+		return getMemberCompletions(ctx, sel.Object)
+	}
+
+	// 启发式：如果当前节点是 IdentifierExpr，且它的父节点是 MemberExpr 的 Object
+	if parent, ok := pMap[node]; ok {
+		if sel, ok := parent.(*MemberExpr); ok && sel.Object == node {
+			return getMemberCompletions(ctx, sel.Object)
+		}
+	}
+
+	// 启发式：如果我们正在输入 "fmt."，此时 node 可能是 "fmt" 这个 IdentifierExpr。
+	// 虽然我们不知道后面是否有点号，但如果在当前作用域中 "fmt" 是个 Package，
+	// 且补全请求就在该标识符紧随其后的位置，通常用户就是想要成员补全。
+	if id, ok := node.(*IdentifierExpr); ok {
+		if t, ok := ctx.GetVariable(id.Name); ok && t == "Package" {
+			// 只有当光标在标识符之后才触发成员补全
+			// 注意：这里是一个近似判断
+			return getMemberCompletions(ctx, id)
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -625,9 +660,11 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	if !node.GetBase().IsType {
 		for _, kw := range miniKeywords {
 			items = append(items, CompletionItem{Label: kw, Kind: "keyword"})
+			seen[kw] = true
 		}
 		for name, t := range miniBuiltins {
 			items = append(items, CompletionItem{Label: name, Kind: "builtin", Type: GoMiniType(t)})
+			seen[name] = true
 		}
 	}
 
@@ -696,9 +733,10 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	return items
 }
 
-func getMemberCompletions(ctx *ValidContext, obj Expr, seen map[string]bool) []CompletionItem {
+func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 	items := make([]CompletionItem, 0)
 	objType := obj.GetBase().Type
+
 	if objType == "" || objType == "Any" { // 也尝试推导 Any 类型
 		// 尝试推导
 		if id, ok := obj.(*IdentifierExpr); ok {
@@ -708,7 +746,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr, seen map[string]bool) []C
 		}
 	}
 
-	if objType == "" || objType == "Package" {
+	if objType == "" || objType == "Package" || objType == TypeModule {
 		// 检查是否是包名
 		if id, ok := obj.(*IdentifierExpr); ok {
 			pkgName := string(id.Name)
@@ -725,7 +763,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr, seen map[string]bool) []C
 				}
 			}
 		}
-		if objType == "Package" {
+		if objType == "Package" || objType == TypeModule {
 			return items
 		}
 	}

@@ -35,4 +35,27 @@ func (i *IncDecStmt) Optimize(ctx *OptimizeContext) Node {
 	return i
 }
 
+// ExpressionStmt 表示一个纯表达式语句
+type ExpressionStmt struct {
+	BaseNode
+	X Expr `json:"x"`
+}
+
+func (e *ExpressionStmt) GetBase() *BaseNode { return &e.BaseNode }
+func (e *ExpressionStmt) stmtNode()          {}
+
+func (e *ExpressionStmt) Check(ctx *SemanticContext) error {
+	if e.X == nil {
+		return errors.New("expression statement is missing expression")
+	}
+	return e.X.Check(ctx)
+}
+
+func (e *ExpressionStmt) Optimize(ctx *OptimizeContext) Node {
+	if e.X != nil {
+		e.X = e.X.Optimize(ctx).(Expr)
+	}
+	return e
+}
+
 // 注意: SwitchStmt 和 RangeStmt 已迁移至 ast_stmt.go

@@ -54,9 +54,12 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 		}
 	}
 
-	pkgName := node.Package
-	if pkgName == "" {
-		pkgName = "main"
+	pkgName := "main"
+	if node != nil {
+		pkgName = node.Package
+		if pkgName == "" {
+			pkgName = "main"
+		}
 	}
 
 	v := &ValidContext{

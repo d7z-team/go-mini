@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Go-Mini",
+  "scopeName": "source.mini",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#types" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.mini", "match": "//.*" },
+        { "name": "comment.block.mini", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "keywords": {
+      "patterns": [{
+        "name": "keyword.control.mini",
+        "match": "\\b(if|else|for|range|switch|case|default|return|defer|go|try|catch|finally|throw|break|continue|fallthrough|package|import|func|var|type|struct|interface)\\b"
+      }]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.mini", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.mini" }] },
+        { "name": "string.quoted.raw.mini", "begin": "`", "end": "`" }
+      ]
+    },
+    "numbers": {
+      "patterns": [{
+        "name": "constant.numeric.mini",
+        "match": "\\b\\d+(\\.\\d+)?\\b"
+      }]
+    },
+    "types": {
+      "patterns": [{
+        "name": "entity.name.type.mini",
+        "match": "\\b(Int64|Float64|String|Bool|Any|Void|TypeBytes|TypeModule|TypeClosure|Ptr|Array|Map)\\b"
+      }]
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "name": "go-mini",
+  "displayName": "Go-Mini Language Support",
+  "description": "Rich language support for the go-mini scripting engine.",
+  "version": "0.0.1",
+  "publisher": "go-mini",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:go-mini"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "go-mini",
+        "aliases": [
+          "Go-Mini",
+          "mini"
+        ],
+        "extensions": [
+          ".mini"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "go-mini",
+        "scopeName": "source.mini",
+        "path": "./syntaxes/go-mini.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Go-Mini",
+      "properties": {
+        "go-mini.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the lsp-server binary. If empty, uses the built-in binary."
+        },
+        "go-mini.exec.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the mini-exec binary. If empty, uses the built-in binary."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "go-mini.restartServer",
+        "title": "Go-Mini: Restart Language Server"
+      },
+      {
+        "command": "go-mini.runFile",
+        "title": "Go-Mini: Run Current File",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "go-mini.runFile",
+          "group": "navigation",
+          "when": "resourceExtname == .mini"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "go-mini.runFile",
+          "group": "navigation",
+          "when": "resourceExtname == .mini"
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://gopkg.d7z.net/go-mini"
+  }
+}

@@ -3,6 +3,9 @@ package fmtlib
 import (
 	"fmt"
 	"io"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type FmtHost struct{}
@@ -39,4 +42,14 @@ func (h *FmtHost) Fprintln(w any, args ...any) {
 	if writer, ok := w.(io.Writer); ok {
 		fmt.Fprintln(writer, args...)
 	}
+}
+
+// RegisterFmtAliases 注册全局的 print 和 println 别名
+func RegisterFmtAliases(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+}, impl Fmt, registry *ffigo.HandleRegistry,
+) {
+	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
+	executor.RegisterFFI("print", bridge, MethodID_Fmt_Print, "function(...Any) Void", "Print values to stdout")
+	executor.RegisterFFI("println", bridge, MethodID_Fmt_Println, "function(...Any) Void", "Print values to stdout with newline")
 }

@@ -248,6 +248,13 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 			n.Results = append(n.Results, r)
 		}
 		return n, nil
+	case "expr_stmt":
+		var raw struct {
+			X json.RawMessage `json:"x"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		expr, _ := parseExpr(raw.X)
+		return &ast.ExpressionStmt{BaseNode: baseNode, X: expr}, nil
 	case "function":
 		var raw struct {
 			Name   string `json:"name"`

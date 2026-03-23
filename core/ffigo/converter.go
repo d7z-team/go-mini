@@ -7,6 +7,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"hash/fnv"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -20,7 +21,7 @@ type GoToASTConverter struct {
 }
 
 func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
-	if node == nil {
+	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) {
 		return "meta_" + meta
 	}
 	pos := c.fset.Position(node.Pos())
@@ -32,7 +33,7 @@ func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
 }
 
 func (c *GoToASTConverter) extractLoc(node ast.Node) *miniast.Position {
-	if node == nil || c.fset == nil {
+	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) || c.fset == nil {
 		return nil
 	}
 	start := c.fset.Position(node.Pos())
@@ -94,6 +95,9 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 	var miniImports []miniast.ImportSpec
 	if f != nil {
 		for _, imp := range f.Imports {
+			if len(imp.Path.Value) < 2 {
+				continue
+			}
 			path := imp.Path.Value[1 : len(imp.Path.Value)-1]
 			var alias string
 			if imp.Name != nil {
@@ -327,7 +331,10 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if call, ok := expr.(*miniast.CallExprStmt); ok {
 			return call
 		}
-		return nil
+		return &miniast.ExpressionStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(st, "expr_stmt"), Meta: "expr_stmt", Loc: c.extractLoc(st)},
+			X:        expr,
+		}
 	case *ast.ReturnStmt:
 		res := &miniast.ReturnStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "return"), Meta: "return", Loc: c.extractLoc(st)}}
 		for _, r := range st.Results {
@@ -707,7 +714,11 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 			case "require":
 				if len(ex.Args) == 1 {
 					if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						path := lit.Value[1 : len(lit.Value)-1]
+						val := lit.Value
+						path := ""
+						if len(val) >= 2 {
+							path = val[1 : len(val)-1]
+						}
 						return &miniast.ImportExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "import"), Meta: "import", Type: miniast.TypeModule}, Path: path}
 					}
 				}

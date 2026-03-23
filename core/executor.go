@@ -252,6 +252,8 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["Int64"] = "function(Any) Int64"
 	res.specs["Float64"] = "function(Any) Float64"
 	res.specs["require"] = "function(String) TypeModule"
+	res.specs["print"] = "function(...Any) Void"
+	res.specs["println"] = "function(...Any) Void"
 	return res
 }
 
@@ -328,7 +330,9 @@ func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
 
 func (o *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject fmt
-	fmtlib.RegisterFmt(o, &fmtlib.FmtHost{}, o.registry)
+	fmtImpl := &fmtlib.FmtHost{}
+	fmtlib.RegisterFmt(o, fmtImpl, o.registry)
+	fmtlib.RegisterFmtAliases(o, fmtImpl, o.registry)
 
 	// 2. Inject os
 	oslib.RegisterOS(o, &oslib.OSHost{}, o.registry)
@@ -346,6 +350,17 @@ func (o *MiniExecutor) InjectStandardLibraries() {
 
 	// 6. Inject time
 	timelib.RegisterTime(o, &timelib.TimeHost{}, o.registry)
+}
+
+// GetExportedSpecs 返回所有注册的 FFI 函数签名
+func (o *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	res := make(map[ast.Ident]ast.GoMiniType)
+	for k, v := range o.specs {
+		res[k] = v
+	}
+	return res
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
@@ -474,10 +489,63 @@ func normalizeValue(val interface{}) (interface{}, error) {
 }
 
 func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
+	prog, _, err := o.newMiniProgramByGoCode(code, false)
+	return prog, err
+}
+
+func (o *MiniExecutor) NewMiniProgramByGoCodeTolerant(code string) (*MiniProgram, []error) {
+	prog, errs, _ := o.newMiniProgramByGoCode(code, true)
+	return prog, errs
+}
+
+func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
+	o.mu.RLock()
+	specs := make(map[ast.Ident]ast.GoMiniType)
+	for k, v := range o.specs {
+		specs[k] = v
+	}
+	o.mu.RUnlock()
+
+	// Validate
+	validator, _ := ast.NewValidator(program, specs)
+	validator.SetLoader(o.Loader)
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	var errs []error
+	if err := program.Check(semanticCtx); err != nil {
+		errs = append(errs, err)
+	}
+
+	optimizeCtx := ast.NewOptimizeContext(validator)
+	program.Optimize(optimizeCtx)
+
+	res, rErr := o.NewRuntimeByAst(program)
+	if rErr != nil {
+		errs = append(errs, rErr)
+		res = &MiniProgram{
+			Program:  program,
+			executor: &runtime.Executor{},
+		}
+	}
+	return res, errs
+}
+
+func (o *MiniExecutor) newMiniProgramByGoCode(code string, tolerant bool) (*MiniProgram, []error, error) {
 	converter := ffigo.NewGoToASTConverter()
-	node, err := converter.ConvertSource(code)
-	if err != nil {
-		return nil, err
+	var node ast.Node
+	var errs []error
+	if tolerant {
+		node, errs = converter.ConvertSourceTolerant(code)
+	} else {
+		var err error
+		node, err = converter.ConvertSource(code)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if node == nil {
+		return nil, errs, errors.New("failed to parse source")
 	}
 
 	program := node.(*ast.ProgramStmt)
@@ -505,20 +573,33 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 	})
 
 	semanticCtx := ast.NewSemanticContext(validator)
-	err = program.Check(semanticCtx)
+	err := program.Check(semanticCtx)
 	if err != nil {
-		return nil, &ast.MiniAstError{Err: err, Logs: validator.Logs(), Node: program}
+		if !tolerant {
+			return nil, nil, &ast.MiniAstError{Err: err, Logs: validator.Logs(), Node: program}
+		}
+		errs = append(errs, err)
 	}
 
 	optimizeCtx := ast.NewOptimizeContext(validator)
 	program.Optimize(optimizeCtx)
 
-	res, err := o.NewRuntimeByAst(program)
-	if err != nil {
-		return nil, err
+	res, rErr := o.NewRuntimeByAst(program)
+	if rErr != nil {
+		if !tolerant {
+			return nil, nil, rErr
+		}
+		errs = append(errs, rErr)
+		// 创建一个仅包含 AST 的半成品 MiniProgram 供 LSP 使用
+		res = &MiniProgram{
+			Program:  program,
+			executor: &runtime.Executor{}, // 空执行器
+		}
 	}
-	res.Source = code
-	return res, nil
+	if res != nil {
+		res.Source = code
+	}
+	return res, errs, nil
 }
 
 // Eval 执行单个 Go 表达式字符串
