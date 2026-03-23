@@ -387,6 +387,18 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		}
 	}
 
+	if objType == "Package" {
+		if id, ok := m.Object.(*IdentifierExpr); ok {
+			fullPath := string(id.Name) + "." + string(m.Property)
+			if t, ok := ctx.GetVariable(Ident(fullPath)); ok {
+				m.Type = t
+				return nil
+			}
+		}
+		m.Type = "Any"
+		return nil
+	}
+
 	if objType.IsInterface() {
 		methods, _ := objType.ReadInterfaceMethods()
 		if sig, ok := methods[string(m.Property)]; ok {

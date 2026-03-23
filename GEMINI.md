@@ -95,6 +95,13 @@ go-mini/
 *   **坐标精度**: 所有 AST 节点的 `Loc` 必须包含 4 坐标（起始行/列、结束行/列）。禁止生成没有坐标或坐标重叠的虚假节点。
 *   **缓存按需构建**: `MiniProgram` 中的 `ParentMap` 等 LSP 缓存必须遵循懒加载原则，且必须提供显式的释放接口（如 `ReleaseLSPCache`）。
 
+### XI. 代码补全与上下文感知 (Code Completion & Context Awareness)
+*   **作用域持久化 (Scope Persistence)**: 所有 AST 节点在经过 `Check` 校验后，必须通过 `Child` 或 `WithNode` 将当前的 `ValidContext` 持久化绑定到自身的 `Scope` 属性上。这确保了在查询时，任何 AST 节点都能瞬间追溯到其环境中的所有可见符号。
+*   **宿主元数据桥接 (FFI Metadata Bridging)**: 执行引擎中注册的 FFI 函数与包（如 `os.ReadFile`）必须在校验前完整注入到根作用域 (`ValidRoot.vars`) 中。如果标识符包含点号（`.`），其前缀应当被自动推断并注册为 `Package` 类型，以支持成员访问补全。
+*   **精准的类型回溯**: 对于 `MemberExpr` (如 `obj.Field` 或 `pkg.Func`) 的补全，应当首先推导左侧 `Object` 的类型，并在该类型对应的结构体 (`structs`)、接口 (`interfaces`) 或 包前缀 中精确搜索可用成员。
+*   **基于光标推断 (Cursor-based Discovery)**: 补全引擎应使用启发式的节点查找算法（如通过 `FindNodeAt`，并在必要时回退到前一个字符或向上遍历 `ParentMap`）来准确定位光标所在的语义上下文。
+*   **上下文感知过滤 (Context Filtering)**: 补全结果必须区分上下文。例如，在标记为 `IsType=true` 的类型声明位置，应当过滤掉常规的变量、函数、关键字和内置函数，只保留结构体、接口和模块/包名。
+
 ---
 
 ## 🤖 3. AI 贡献者工作流指南

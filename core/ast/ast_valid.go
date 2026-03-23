@@ -42,7 +42,7 @@ type ValidContext struct {
 	closureNode *FuncLitExpr // 当前活动的闭包节点
 }
 
-func NewValidator(node *ProgramStmt) (*ValidContext, error) {
+func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*ValidContext, error) {
 	imports := make(map[string]string)
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
@@ -81,6 +81,21 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 		current: node,
 		vars:    make(map[Ident]GoMiniType),
 	}
+	if node != nil {
+		node.GetBase().Scope = v
+	}
+	// 注入外部 FFI 符号 (如 os.ReadFile)
+	for ident, t := range externalSpecs {
+		v.root.vars[ident] = t
+		// 如果包含点号，自动注册包名前缀为 Package 类型以支持校验
+		sName := string(ident)
+		if idx := strings.Index(sName, "."); idx != -1 {
+			pkg := Ident(sName[:idx])
+			if _, ok := v.root.vars[pkg]; !ok {
+				v.root.vars[pkg] = "Package"
+			}
+		}
+	}
 	// 注入命名接口
 	for ident, stmt := range node.Interfaces {
 		v.root.interfaces[ident] = stmt
@@ -105,31 +120,41 @@ func NewValidator(node *ProgramStmt) (*ValidContext, error) {
 
 func (c *ValidContext) Child(b Node) *ValidContext {
 	if b != nil {
-		b.GetBase().EnsureID(c)
+		base := b.GetBase()
+		base.EnsureID(c)
 	}
 	if c.current == b {
 		return c
 	}
-	return &ValidContext{
+	newCtx := &ValidContext{
 		root:        c.root,
 		parent:      c,
 		current:     b,
 		vars:        make(map[Ident]GoMiniType),
 		closureNode: c.closureNode,
 	}
+	if b != nil {
+		b.GetBase().Scope = newCtx
+	}
+	return newCtx
 }
 
 func (c *ValidContext) WithNode(b Node) *ValidContext {
 	if b != nil {
-		b.GetBase().EnsureID(c)
+		base := b.GetBase()
+		base.EnsureID(c)
 	}
-	return &ValidContext{
+	newCtx := &ValidContext{
 		root:        c.root,
 		parent:      c.parent, // 共享父级
 		current:     b,
 		vars:        c.vars, // 共享变量映射
 		closureNode: c.closureNode,
 	}
+	if b != nil {
+		b.GetBase().Scope = newCtx
+	}
+	return newCtx
 }
 
 type ValidStruct struct {
@@ -387,7 +412,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidator(prog)
+	v, _ := NewValidator(prog, nil)
 	v.root.Path = path
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈

@@ -2,6 +2,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Visitor 定义了 AST 遍历者的接口
@@ -528,4 +529,226 @@ func (f funcVisitor) Visit(node Node) Visitor {
 		return f
 	}
 	return f
+}
+
+// ----------------------------------------------------------------------------
+// 代码补全 (Code Completion)
+// ----------------------------------------------------------------------------
+
+// CompletionItem 包含代码补全建议
+type CompletionItem struct {
+	Label string     `json:"label"`
+	Kind  string     `json:"kind"` // var, func, struct, interface, package, keyword, builtin, field, method
+	Type  GoMiniType `json:"type,omitempty"`
+	Doc   string     `json:"doc,omitempty"`
+}
+
+var miniKeywords = []string{
+	"package", "import", "func", "var", "type", "struct", "interface",
+	"if", "else", "for", "range", "switch", "case", "default",
+	"return", "defer", "go", "try", "catch", "finally", "throw",
+	"break", "continue", "fallthrough",
+}
+
+var miniBuiltins = map[string]string{
+	"len":    "function(Any) Int64",
+	"append": "function(Array<Any>, Any) Array<Any>",
+	"make":   "function(Type, ...Int64) Any",
+	"new":    "function(Type) Ptr<Any>",
+	"panic":  "function(Any) Void",
+	"print":  "function(...Any) Void",
+	"printf": "function(String, ...Any) Void",
+}
+
+// FindCompletionsAt 获取指定位置的代码补全建议
+func FindCompletionsAt(root Node, line, col int) []CompletionItem {
+	node := FindNodeAt(root, line, col)
+
+	if node == nil {
+		node = root
+	}
+
+	pMap := BuildParentMap(root)
+
+	// 特殊处理：如果 FindNodeAt 没找到或者找到了父级节点，
+	// 尝试检查是否在进行成员访问 (obj.)
+	if node == root || col > 1 {
+		// 检查当前行 col-1 是否是点号，或者 col 处是点号
+		// 这里由于拿不到源码字符串，我们尝试寻找 col-1 处的节点
+		prevNode := FindNodeAt(root, line, col-1)
+		if prevNode != nil && prevNode != root {
+			if node == root {
+				node = prevNode
+			}
+		}
+	}
+
+	var scopeObj interface{}
+	currScopeNode := node
+	for currScopeNode != nil {
+		scopeObj = currScopeNode.GetBase().Scope
+		if scopeObj != nil {
+			break
+		}
+		currScopeNode = pMap[currScopeNode]
+	}
+
+	if scopeObj == nil {
+		scopeObj = root.GetBase().Scope
+	}
+
+	if scopeObj == nil {
+		return nil
+	}
+
+	ctx, ok := scopeObj.(*ValidContext)
+	if !ok {
+		return nil
+	}
+
+
+	items := make([]CompletionItem, 0)
+	seen := make(map[string]bool)
+
+	// -------------------------------------------------------------------------
+	// 1. 成员补全 (a.B)
+	// -------------------------------------------------------------------------
+	if sel, ok := node.(*MemberExpr); ok {
+		return getMemberCompletions(ctx, sel.Object, seen)
+	}
+
+	// -------------------------------------------------------------------------
+	// 2. 正常作用域补全
+	// -------------------------------------------------------------------------
+
+	// 2.1 关键字和内置函数 (仅在非类型上下文中)
+	if !node.GetBase().IsType {
+		for _, kw := range miniKeywords {
+			items = append(items, CompletionItem{Label: kw, Kind: "keyword"})
+		}
+		for name, t := range miniBuiltins {
+			items = append(items, CompletionItem{Label: name, Kind: "builtin", Type: GoMiniType(t)})
+		}
+	}
+
+	// 2.2 向上爬升作用域收集局部变量、参数和闭包变量
+	curr := ctx
+	for curr != nil {
+		for name, t := range curr.vars {
+			if !seen[string(name)] {
+				kind := "var"
+				if strings.HasPrefix(string(t), "function") {
+					kind = "func"
+				}
+				// 如果是类型上下文，只显示类型或模块
+				if node.GetBase().IsType && kind != "struct" && kind != "interface" {
+					continue
+				}
+				items = append(items, CompletionItem{Label: string(name), Kind: kind, Type: t})
+				seen[string(name)] = true
+			}
+		}
+		curr = curr.parent
+	}
+
+	// 2.3 收集全局符号 (FFI, 全局函数, 全局变量)
+	for name, t := range ctx.root.vars {
+		// 处理包名前缀 (如 os.ReadFile) -> 提取包名作为补全建议
+		sName := string(name)
+		if idx := strings.Index(sName, "."); idx != -1 {
+			pkg := sName[:idx]
+			if !seen[pkg] {
+				items = append(items, CompletionItem{Label: pkg, Kind: "package"})
+				seen[pkg] = true
+			}
+			continue
+		}
+
+		if !seen[sName] {
+			kind := "var"
+			if string(t) == "Package" {
+				kind = "package"
+			} else if strings.HasPrefix(string(t), "function") {
+				kind = "func"
+			}
+			if node.GetBase().IsType {
+				continue
+			}
+			items = append(items, CompletionItem{Label: sName, Kind: kind, Type: t})
+			seen[sName] = true
+		}
+	}
+
+	// 2.4 收集结构体和接口 (总是显示)
+	for name := range ctx.root.structs {
+		if !seen[string(name)] {
+			items = append(items, CompletionItem{Label: string(name), Kind: "struct"})
+			seen[string(name)] = true
+		}
+	}
+	for name := range ctx.root.interfaces {
+		if !seen[string(name)] {
+			items = append(items, CompletionItem{Label: string(name), Kind: "interface"})
+			seen[string(name)] = true
+		}
+	}
+
+	return items
+}
+
+func getMemberCompletions(ctx *ValidContext, obj Expr, seen map[string]bool) []CompletionItem {
+	items := make([]CompletionItem, 0)
+	objType := obj.GetBase().Type
+	if objType == "" || objType == "Any" { // 也尝试推导 Any 类型
+		// 尝试推导
+		if id, ok := obj.(*IdentifierExpr); ok {
+			if t, ok := ctx.GetVariable(id.Name); ok {
+				objType = t
+			}
+		}
+	}
+
+	if objType == "" || objType == "Package" {
+		// 检查是否是包名
+		if id, ok := obj.(*IdentifierExpr); ok {
+			pkgName := string(id.Name)
+			// 寻找所有以 pkgName. 开头的全局变量 (FFI)
+			for name, t := range ctx.root.vars {
+				sName := string(name)
+				if strings.HasPrefix(sName, pkgName+".") {
+					label := sName[len(pkgName)+1:]
+					kind := "var"
+					if strings.HasPrefix(string(t), "function") {
+						kind = "func"
+					}
+					items = append(items, CompletionItem{Label: label, Kind: kind, Type: t})
+				}
+			}
+		}
+		if objType == "Package" {
+			return items
+		}
+	}
+
+	typeName := objType.BaseName()
+	// 1. 查找结构体成员
+	if st, ok := ctx.root.structs[Ident(typeName)]; ok {
+		for f, t := range st.Fields {
+			items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
+		}
+		for m, t := range st.Methods {
+			items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: t.MiniType()})
+		}
+	}
+
+	// 2. 查找接口成员
+	if it, ok := ctx.root.interfaces[Ident(typeName)]; ok {
+		if methods, ok := it.Type.ReadInterfaceMethods(); ok {
+			for m, t := range methods {
+				items = append(items, CompletionItem{Label: m, Kind: "method", Type: t.MiniType()})
+			}
+		}
+	}
+
+	return items
 }

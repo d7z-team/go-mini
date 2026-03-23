@@ -137,6 +137,11 @@ func (p *MiniProgram) GetReferencesAt(line, col int) []ast.Node {
 	return ast.FindAllReferences(p.Program, def, p.parentMap)
 }
 
+// GetCompletionsAt 获取指定位置的代码补全建议
+func (p *MiniProgram) GetCompletionsAt(line, col int) []ast.CompletionItem {
+	return ast.FindCompletionsAt(p.Program, line, col)
+}
+
 func (p *MiniProgram) SetStepLimit(limit int64) {
 	p.executor.StepLimit = limit
 }
@@ -477,8 +482,15 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 
 	program := node.(*ast.ProgramStmt)
 
+	o.mu.RLock()
+	specs := make(map[ast.Ident]ast.GoMiniType)
+	for k, v := range o.specs {
+		specs[k] = v
+	}
+	o.mu.RUnlock()
+
 	// Validate and Optimize
-	validator, _ := ast.NewValidator(program)
+	validator, _ := ast.NewValidator(program, specs)
 	// 在验证阶段也要支持已注册模块
 	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
 		o.mu.RLock()
@@ -491,12 +503,6 @@ func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	})
-
-	o.mu.RLock()
-	for name, spec := range o.specs {
-		validator.AddVariable(name, spec)
-	}
-	o.mu.RUnlock()
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = program.Check(semanticCtx)
@@ -619,17 +625,18 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	o.mu.RUnlock()
 
+	o.mu.RLock()
+	specs := make(map[ast.Ident]ast.GoMiniType)
+	for k, v := range o.specs {
+		specs[k] = v
+	}
+	o.mu.RUnlock()
+
 	// 语义校验
-	v, err := ast.NewValidator(program)
+	v, err := ast.NewValidator(program, specs)
 	if err != nil {
 		return err
 	}
-	// 注入 FFI 和内建函数规格
-	o.mu.RLock()
-	for name, spec := range o.specs {
-		v.AddVariable(name, spec)
-	}
-	o.mu.RUnlock()
 
 	if err := program.Check(ast.NewSemanticContext(v)); err != nil {
 		return err

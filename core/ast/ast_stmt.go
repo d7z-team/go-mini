@@ -68,7 +68,7 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 
 	// 预注册所有导入的包别名
 	for alias := range ctx.root.Imports {
-		ctx.AddVariable(Ident(alias), "Package")
+		ctx.root.vars[Ident(alias)] = "Package"
 	}
 
 	// 第一遍：预注册所有结构体

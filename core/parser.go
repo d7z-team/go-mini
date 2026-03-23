@@ -95,7 +95,7 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 			rootBlock.Main = block.Children
 		}
 	}
-	ctx, err := ast.NewValidator(rootBlock)
+	ctx, err := ast.NewValidator(rootBlock, nil)
 	if err != nil {
 		return nil, nil, err
 	}

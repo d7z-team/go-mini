@@ -19,7 +19,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt))
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
