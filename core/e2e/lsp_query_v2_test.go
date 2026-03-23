@@ -20,7 +20,7 @@ func main() {
 	f()
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func main() {
 	res := MyFunc(1, 2)
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func main() {
 	print(s.X) // Target: 5:10
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func main() {
 	res := s.Calc() // Target: 6:11
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}

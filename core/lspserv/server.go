@@ -39,7 +39,7 @@ func (s *LSPServer) UpdateSession(uri, code string) ([]Diagnostic, error) {
 	// 1. 尝试获取包名（简单正则或初步解析）
 	pkgName := "main"
 	converter := ffigo.NewGoToASTConverter()
-	node, _ := converter.ConvertSourceTolerant(code)
+	node, _ := converter.ConvertSourceTolerant(uri, code)
 	if prog, ok := node.(*ast.ProgramStmt); ok && prog.Package != "" {
 		pkgName = prog.Package
 	}
@@ -70,8 +70,9 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 	var combinedNode *ast.ProgramStmt
 	converter := ffigo.NewGoToASTConverter()
 
-	for _, code := range pkg.files {
-		node, _ := converter.ConvertSourceTolerant(code)
+	for uri, code := range pkg.files {
+		node, _ := converter.ConvertSourceTolerant(uri, code)
+
 		if prog, ok := node.(*ast.ProgramStmt); ok {
 			if combinedNode == nil {
 				combinedNode = prog

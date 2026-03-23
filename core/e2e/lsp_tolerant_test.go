@@ -15,7 +15,7 @@ func main() {
 	b := a + 
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, errs := conv.ConvertSourceTolerant(code)
+	prog, errs := conv.ConvertSourceTolerant("snippet", code)
 
 	if len(errs) == 0 {
 		t.Fatal("Expected syntax errors, got none")

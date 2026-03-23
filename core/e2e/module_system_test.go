@@ -34,7 +34,7 @@ func TestModuleComprehensive(t *testing.T) {
 			}
 			`
 			converter := ffigo.NewGoToASTConverter()
-			node, err := converter.ConvertSource(code)
+			node, err := converter.ConvertSource("snippet", code)
 			if err != nil {
 				return nil, err
 			}
@@ -96,7 +96,7 @@ func TestCircularDependency(t *testing.T) {
 			return nil, errors.New("not found")
 		}
 		converter := ffigo.NewGoToASTConverter()
-		node, _ := converter.ConvertSource(code)
+		node, _ := converter.ConvertSource("snippet", code)
 		return node.(*ast.ProgramStmt), nil
 	})
 

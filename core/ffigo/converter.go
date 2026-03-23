@@ -58,24 +58,24 @@ func NewGoToASTConverter() *GoToASTConverter {
 	}
 }
 
-func (c *GoToASTConverter) ConvertSource(code string) (miniast.Node, error) {
-	node, errs := c.convert(code, false)
+func (c *GoToASTConverter) ConvertSource(filename, code string) (miniast.Node, error) {
+	node, errs := c.convert(filename, code, false)
 	if len(errs) > 0 {
 		return nil, errs[0]
 	}
 	return node, nil
 }
 
-func (c *GoToASTConverter) ConvertSourceTolerant(code string) (miniast.Node, []error) {
-	return c.convert(code, true)
+func (c *GoToASTConverter) ConvertSourceTolerant(filename, code string) (miniast.Node, []error) {
+	return c.convert(filename, code, true)
 }
 
-func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []error) {
+func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (miniast.Node, []error) {
 	mode := parser.ParseComments
 	if tolerant {
 		mode |= parser.AllErrors
 	}
-	f, err := parser.ParseFile(c.fset, "", code, mode)
+	f, err := parser.ParseFile(c.fset, filename, code, mode)
 	var errs []error
 	if err != nil {
 		if f == nil && !tolerant {
@@ -98,7 +98,12 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 			if len(imp.Path.Value) < 2 {
 				continue
 			}
-			path := imp.Path.Value[1 : len(imp.Path.Value)-1]
+			path := imp.Path.Value
+			if unquoted, err := strconv.Unquote(path); err == nil {
+				path = unquoted
+			} else {
+				path = path[1 : len(path)-1]
+			}
 			var alias string
 			if imp.Name != nil {
 				alias = imp.Name.Name
@@ -177,7 +182,11 @@ func (c *GoToASTConverter) convert(code string, tolerant bool) (miniast.Node, []
 									if lit, ok := s.Values[i].(*ast.BasicLit); ok {
 										val := lit.Value
 										if lit.Kind == token.STRING && len(val) >= 2 {
-											val = val[1 : len(val)-1]
+											if unquoted, err := strconv.Unquote(val); err == nil {
+												val = unquoted
+											} else {
+												val = val[1 : len(val)-1]
+											}
 										}
 										program.Constants[name.Name] = val
 									}
@@ -223,7 +232,7 @@ func (c *GoToASTConverter) ConvertExprSource(code string) (miniast.Expr, error) 
 
 func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, error) {
 	wrapper := fmt.Sprintf("package main\nfunc main() {\n%s\n}", code)
-	node, err := c.ConvertSource(wrapper)
+	node, err := c.ConvertSource("snippet", wrapper)
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +653,11 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 			t = "Float64"
 		case token.STRING:
 			if len(val) >= 2 {
-				val = val[1 : len(val)-1]
+				if unquoted, err := strconv.Unquote(val); err == nil {
+					val = unquoted
+				} else {
+					val = val[1 : len(val)-1]
+				}
 			}
 		}
 		return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.GoMiniType(t), Loc: c.extractLoc(ex)}, Value: val}
@@ -717,7 +730,11 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 						val := lit.Value
 						path := ""
 						if len(val) >= 2 {
-							path = val[1 : len(val)-1]
+							if unquoted, err := strconv.Unquote(val); err == nil {
+								path = unquoted
+							} else {
+								path = val[1 : len(val)-1]
+							}
 						}
 						return &miniast.ImportExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "import"), Meta: "import", Type: miniast.TypeModule}, Path: path}
 					}
@@ -866,7 +883,11 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	case *ast.BasicLit:
 		val := t.Value
 		if t.Kind == token.STRING && len(val) >= 2 {
-			val = val[1 : len(val)-1]
+			if unquoted, err := strconv.Unquote(val); err == nil {
+				val = unquoted
+			} else {
+				val = val[1 : len(val)-1]
+			}
 		}
 		return val
 	case *ast.Ident:

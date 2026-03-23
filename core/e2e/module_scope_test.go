@@ -29,7 +29,7 @@ func TestModulePrivateScope(t *testing.T) {
 			}
 			`
 			converter := ffigo.NewGoToASTConverter()
-			node, _ := converter.ConvertSource(code)
+			node, _ := converter.ConvertSource("snippet", code)
 			return node.(*ast.ProgramStmt), nil
 		}
 		return nil, fmt.Errorf("module not found: %s", path)

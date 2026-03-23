@@ -19,7 +19,7 @@ func main() {
 	UnknownFunc() // Error 4: Undefined function
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func main() {
 	b := 2
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func main() {
 	print(a) // Target 2 (Line 9)
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func main() {
 	f()
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}

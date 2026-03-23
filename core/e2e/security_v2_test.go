@@ -49,7 +49,7 @@ func TestImportDepthLimit(t *testing.T) {
 		next := fmt.Sprintf("m%d", depth)
 		code := fmt.Sprintf("package %s; import \"%s\"; func Run() {}", path, next)
 		converter := ffigo.NewGoToASTConverter()
-		node, _ := converter.ConvertSource(code)
+		node, _ := converter.ConvertSource("snippet", code)
 		return node.(*ast.ProgramStmt), nil
 	})
 

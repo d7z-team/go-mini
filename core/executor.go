@@ -489,12 +489,22 @@ func normalizeValue(val interface{}) (interface{}, error) {
 }
 
 func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
-	prog, _, err := o.newMiniProgramByGoCode(code, false)
+	prog, _, err := o.newMiniProgramByGoCode("snippet", code, false)
+	return prog, err
+}
+
+func (o *MiniExecutor) NewRuntimeByGoFile(filename, code string) (*MiniProgram, error) {
+	prog, _, err := o.newMiniProgramByGoCode(filename, code, false)
 	return prog, err
 }
 
 func (o *MiniExecutor) NewMiniProgramByGoCodeTolerant(code string) (*MiniProgram, []error) {
-	prog, errs, _ := o.newMiniProgramByGoCode(code, true)
+	prog, errs, _ := o.newMiniProgramByGoCode("snippet", code, true)
+	return prog, errs
+}
+
+func (o *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*MiniProgram, []error) {
+	prog, errs, _ := o.newMiniProgramByGoCode(filename, code, true)
 	return prog, errs
 }
 
@@ -530,15 +540,15 @@ func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 	return res, errs
 }
 
-func (o *MiniExecutor) newMiniProgramByGoCode(code string, tolerant bool) (*MiniProgram, []error, error) {
+func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
 	converter := ffigo.NewGoToASTConverter()
 	var node ast.Node
 	var errs []error
 	if tolerant {
-		node, errs = converter.ConvertSourceTolerant(code)
+		node, errs = converter.ConvertSourceTolerant(filename, code)
 	} else {
 		var err error
-		node, err = converter.ConvertSource(code)
+		node, err = converter.ConvertSource(filename, code)
 		if err != nil {
 			return nil, nil, err
 		}

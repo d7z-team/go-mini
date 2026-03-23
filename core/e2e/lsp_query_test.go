@@ -15,7 +15,7 @@ func main() {
 	fmt.Println(b)
 }`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func MyFunc(param1 int) {
 }
 func main() {}`
 	conv := ffigo.NewGoToASTConverter()
-	prog, err := conv.ConvertSource(code)
+	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
 	}

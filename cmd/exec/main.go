@@ -32,7 +32,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		node, err := converter.ConvertSource(string(content))
+		node, err := converter.ConvertSource(arg, string(content))
 		if err != nil {
 			fmt.Printf("Error converting file %s: %v\n", arg, err)
 			os.Exit(1)
@@ -57,7 +57,7 @@ func main() {
 	// 执行程序（内部会自动初始化全局变量并寻找 main() 函数运行）
 	err = runtime.Execute(context.Background())
 	if err != nil {
-		fmt.Printf("Execution error: %v\n", err)
+		fmt.Printf("%s\n", err.Error())
 		os.Exit(1)
 	}
 }

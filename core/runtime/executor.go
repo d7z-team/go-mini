@@ -740,11 +740,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 			}
 		default:
-			return fmt.Errorf("cannot destructure type %v", val.VType)
+			return &VMError{Message: fmt.Sprintf("cannot destructure type %v", val.VType), IsPanic: true}
 		}
 
 		if len(elements) < lhsCount {
-			return fmt.Errorf("multi assignment: not enough elements to destructure (need %d, got %d)", lhsCount, len(elements))
+			return &VMError{Message: fmt.Sprintf("multi assignment: not enough elements to destructure (need %d, got %d)", lhsCount, len(elements)), IsPanic: true}
 		}
 
 		for i := 0; i < lhsCount; i++ {
@@ -1771,7 +1771,7 @@ func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.X})
 		return nil
 	}
-	return fmt.Errorf("unsupported LHS in assignment: %T", lhsExpr)
+	return &VMError{Message: fmt.Sprintf("unsupported LHS in assignment: %T", lhsExpr), IsPanic: true}
 }
 
 func (e *Executor) scheduleForBody(session *StackContext, n *ast.ForStmt) {
@@ -1891,7 +1891,7 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 		}
 		return nil
 	}
-	return fmt.Errorf("unsupported LHS descriptor: %T", lhsDesc)
+	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhsDesc), IsPanic: true}
 }
 
 func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, val *Var) error {
@@ -1913,7 +1913,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			arr := obj.Ref.(*VMArray)
 			i := int(idx.I64)
 			if i < 0 || i >= len(arr.Data) {
-				return fmt.Errorf("index out of range: %d", i)
+				return &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 			}
 			arr.Data[i] = val
 			return nil
@@ -1930,7 +1930,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			case TypeFloat:
 				key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
 			default:
-				return fmt.Errorf("unsupported map key type: %v", idx.VType)
+				return &VMError{Message: fmt.Sprintf("unsupported map key type: %v", idx.VType), IsPanic: true}
 			}
 			m.Data[key] = val
 			return nil
@@ -1948,7 +1948,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 					case TypeFloat:
 						key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
 					default:
-						return fmt.Errorf("unsupported map key type: %v", idx.VType)
+						return &VMError{Message: fmt.Sprintf("unsupported map key type: %v", idx.VType), IsPanic: true}
 					}
 					m.Data[key] = val
 					return nil
@@ -1958,7 +1958,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 						arr.Data[i] = val
 						return nil
 					}
-					return fmt.Errorf("index out of range: %d", i)
+					return &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 				}
 			}
 		}
@@ -1977,7 +1977,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 		case TypeModule:
 			mod := obj.Ref.(*VMModule)
 			if mod.Context == nil {
-				return fmt.Errorf("module %s is read-only", mod.Name)
+				return &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
 			}
 			return mod.Context.Store(desc.Property, val)
 		case TypeHandle:
@@ -2002,7 +2002,7 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 		}
 		return fmt.Errorf("type %v does not support member assignment", obj.VType)
 	}
-	return fmt.Errorf("unsupported LHS descriptor: %T", lhsDesc)
+	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhsDesc), IsPanic: true}
 }
 
 func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
@@ -2167,20 +2167,50 @@ func (e *Executor) Run(session *StackContext) error {
 		}
 
 		if err := e.dispatch(session, task); err != nil {
-			var pErr *PanicError
-			if errors.As(err, &pErr) {
-				session.PanicVar = pErr.Value
-				session.UnwindMode = UnwindPanic
+			frames := session.GenerateStackTrace(&task)
+			var vme *VMError
+			if errors.As(err, &vme) {
+				if len(vme.Frames) == 0 {
+					vme.Frames = frames
+				}
+				if vme.IsPanic {
+					session.PanicVar = vme.Value
+					session.PanicMessage = vme.Message
+					session.PanicTrace = vme.Frames
+					session.UnwindMode = UnwindPanic
+				} else {
+					return vme
+				}
 			} else {
-				return err
+				// Wrap unexpected errors into VMError
+				return &VMError{
+					Message: err.Error(),
+					Frames:  frames,
+					Cause:   err,
+				}
 			}
 		}
 	}
 	if session.UnwindMode == UnwindPanic {
-		if session.PanicVar != nil {
-			return &PanicError{Value: session.PanicVar}
+		frames := session.PanicTrace
+		if len(frames) == 0 {
+			frames = session.GenerateStackTrace(nil)
 		}
-		return errors.New("unhandled panic")
+		message := session.PanicMessage
+		if message == "" {
+			message = "unhandled panic"
+		}
+		if session.PanicVar != nil {
+			if s, err := session.PanicVar.ToError(); err == nil {
+				message = s
+			}
+		}
+		return &VMError{
+			Message: message,
+			Value:   session.PanicVar,
+			Frames:  frames,
+			IsPanic: true,
+		}
 	}
 	return nil
 }

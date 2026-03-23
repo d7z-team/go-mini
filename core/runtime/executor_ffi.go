@@ -80,7 +80,8 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				err = &PanicError{Value: NewString(fmt.Sprintf("FFI panic: %v", r))}
+				msg := fmt.Sprintf("FFI panic: %v", r)
+				err = &VMError{Value: NewString(msg), Message: msg, IsPanic: true}
 			}
 		}()
 		if route.MethodID == 0 {
@@ -91,7 +92,17 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	}()
 
 	if err != nil {
-		return nil, err
+		if vme, ok := err.(*VMError); ok {
+			vme.IsPanic = true
+			return nil, vme
+		}
+		// 将宿主 Error 包装为 Panic
+		return nil, &VMError{
+			Message: err.Error(),
+			Value:   NewString(err.Error()),
+			IsPanic: true,
+			Cause:   err,
+		}
 	}
 
 	// 解析返回值

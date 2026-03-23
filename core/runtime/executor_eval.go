@@ -35,7 +35,7 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 	}
 
 	if l == nil || r == nil {
-		return nil, errors.New("binary op with nil operand")
+		return nil, &VMError{Message: "binary op with nil operand", IsPanic: true}
 	}
 
 	switch operator {
@@ -49,7 +49,7 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 		return e.evalLogic(operator, l, r)
 	}
 
-	return nil, fmt.Errorf("unsupported operator: %s", operator)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported operator: %s", operator), IsPanic: true}
 }
 
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
@@ -71,10 +71,10 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 				return NewString(lStr + rStr), nil
 			}
 		}
-		return nil, fmt.Errorf("arithmetic operation %s on non-numeric type %v", op, l.VType)
+		return nil, &VMError{Message: fmt.Sprintf("arithmetic operation %s on non-numeric type %v", op, l.VType), IsPanic: true}
 	}
 	if r.VType != TypeInt && r.VType != TypeFloat {
-		return nil, fmt.Errorf("arithmetic operation %s on non-numeric type %v", op, r.VType)
+		return nil, &VMError{Message: fmt.Sprintf("arithmetic operation %s on non-numeric type %v", op, r.VType), IsPanic: true}
 	}
 
 	lf, _ := l.ToFloat()
@@ -99,7 +99,7 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		return NewInt(l.I64 * r.I64), nil
 	case "/", "Div":
 		if rf == 0 {
-			return nil, errors.New("division by zero")
+			return nil, &VMError{Message: "division by zero", IsPanic: true}
 		}
 		if useFloat {
 			return NewFloat(lf / rf), nil
@@ -112,14 +112,14 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		lVal, _ := l.ToInt()
 		rVal, _ := r.ToInt()
 		if rVal == 0 {
-			return nil, errors.New("division by zero")
+			return nil, &VMError{Message: "division by zero", IsPanic: true}
 		}
 		if lVal == -9223372036854775808 && rVal == -1 {
 			return NewInt(0), nil
 		}
 		return NewInt(lVal % rVal), nil
 	}
-	return nil, fmt.Errorf("unsupported arithmetic operator: %s", op)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported arithmetic operator: %s", op), IsPanic: true}
 }
 
 func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
@@ -133,7 +133,7 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	}
 
 	if ri < 0 {
-		return nil, fmt.Errorf("negative shift count %d", ri)
+		return nil, &VMError{Message: fmt.Sprintf("negative shift count %d", ri), IsPanic: true}
 	}
 
 	switch op {
@@ -148,7 +148,7 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	case ">>", "Rsh":
 		return NewInt(li >> uint(ri)), nil
 	}
-	return nil, fmt.Errorf("unsupported bitwise operator: %s", op)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported bitwise operator: %s", op), IsPanic: true}
 }
 
 func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
@@ -243,7 +243,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 		return NewBool(l != r), nil
 	}
 
-	return nil, fmt.Errorf("unsupported comparison %s between %v and %v", op, l, r)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported comparison %s between %v and %v", op, l, r), IsPanic: true}
 }
 
 func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
@@ -262,12 +262,12 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 	case "||", "Or":
 		return NewBool(lb || rb), nil
 	}
-	return nil, fmt.Errorf("unsupported logic operator: %s", op)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported logic operator: %s", op), IsPanic: true}
 }
 
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
 	if val == nil {
-		return nil, errors.New("unary op with nil operand")
+		return nil, &VMError{Message: "unary op with nil operand", IsPanic: true}
 	}
 	if val.VType == TypeCell {
 		val = val.Ref.(*Cell).Value
@@ -289,9 +289,9 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 				return res, nil
 			}
 		}
-		return nil, fmt.Errorf("cannot dereference type %v", val.VType)
+		return nil, &VMError{Message: fmt.Sprintf("cannot dereference type %v", val.VType), IsPanic: true}
 	}
-	return nil, fmt.Errorf("unsupported unary op %s", operator)
+	return nil, &VMError{Message: fmt.Sprintf("unsupported unary op %s", operator), IsPanic: true}
 }
 
 func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
@@ -307,16 +307,16 @@ func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
 	case "Bool":
 		return NewBool(n.Value == "true"), nil
 	}
-	return nil, fmt.Errorf("unknown literal %s", n.Type)
+	return nil, &VMError{Message: fmt.Sprintf("unknown literal %s", n.Type), IsPanic: true}
 }
 
 func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
 	if obj == nil || isEmptyVar(obj) {
-		return nil, errors.New("index access on nil")
+		return nil, &VMError{Message: "index access on nil", IsPanic: true}
 	}
 
 	if idx == nil {
-		return nil, errors.New("index access with nil index")
+		return nil, &VMError{Message: "index access with nil index", IsPanic: true}
 	}
 
 	switch obj.VType {
@@ -324,7 +324,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		arr := obj.Ref.(*VMArray)
 		i := int(idx.I64)
 		if i < 0 || i >= len(arr.Data) {
-			return nil, fmt.Errorf("index out of range: %d", i)
+			return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 		}
 		return arr.Data[i], nil
 	case TypeMap:
@@ -340,7 +340,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		case TypeFloat:
 			key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
 		default:
-			return nil, fmt.Errorf("unsupported map key type: %v", idx.VType)
+			return nil, &VMError{Message: fmt.Sprintf("unsupported map key type: %v", idx.VType), IsPanic: true}
 		}
 		if val, ok := m.Data[key]; ok {
 			return val, nil
@@ -348,12 +348,12 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		_, valType, _ := obj.Type.GetMapKeyValueTypes()
 		return e.ToVar(ctx, valType.ZeroVar(), nil), nil
 	}
-	return nil, fmt.Errorf("type %v does not support indexing", obj.VType)
+	return nil, &VMError{Message: fmt.Sprintf("type %v does not support indexing", obj.VType), IsPanic: true}
 }
 
 func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property string) (*Var, error) {
 	if obj == nil || isEmptyVar(obj) {
-		return nil, fmt.Errorf("member access on nil object: %s", property)
+		return nil, &VMError{Message: fmt.Sprintf("member access on nil object: %s", property), IsPanic: true}
 	}
 	if obj.VType == TypeCell {
 		obj = obj.Ref.(*Cell).Value
@@ -370,7 +370,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		inter := obj.Ref.(*VMInterface)
 		sig, ok := inter.Methods[property]
 		if !ok {
-			return nil, fmt.Errorf("method %s not in interface contract %s", property, obj.Type)
+			return nil, &VMError{Message: fmt.Sprintf("method %s not in interface contract %s", property, obj.Type), IsPanic: true}
 		}
 		// 如果 Target 是一个 FFI Handle，我们需要一个通用的路由方式
 		// 我们可以利用 VMMethodValue，但在 Invoke 时需要知道这是个 FFI 调用
@@ -443,7 +443,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if route, ok := e.routes[routeKey]; ok {
 			return &Var{VType: TypeAny, Ref: route}, nil
 		}
-		return nil, fmt.Errorf("module member %s not found in %s", property, mod.Name)
+		return nil, &VMError{Message: fmt.Sprintf("module member %s not found in %s", property, mod.Name), IsPanic: true}
 	case TypeAny:
 		if obj.Ref != nil {
 			if m, ok := obj.Ref.(*VMMap); ok {
@@ -472,12 +472,12 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		return nil, nil
 	}
 
-	return nil, fmt.Errorf("type %v does not support member access: %s", obj.VType, property)
+	return nil, &VMError{Message: fmt.Sprintf("type %v does not support member access: %s", obj.VType, property), IsPanic: true}
 }
 
 func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Var) (*Var, error) {
 	if obj == nil {
-		return nil, errors.New("slice on nil object")
+		return nil, &VMError{Message: "slice on nil object", IsPanic: true}
 	}
 
 	low, high := 0, -1
@@ -495,7 +495,7 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 			high = l
 		}
 		if low < 0 || high < low || high > l {
-			return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l)
+			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
 		return NewBytes(obj.B[low:high]), nil
 	case TypeString:
@@ -504,7 +504,7 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 			high = l
 		}
 		if low < 0 || high < low || high > l {
-			return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l)
+			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
 		return NewString(obj.Str[low:high]), nil
 	case TypeArray:
@@ -514,11 +514,11 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 			high = l
 		}
 		if low < 0 || high < low || high > l {
-			return nil, fmt.Errorf("slice bounds out of range [%d:%d] with capacity %d", low, high, l)
+			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
 		return &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Data[low:high]}, Type: obj.Type}, nil
 	}
-	return nil, fmt.Errorf("type %v does not support slice operations", obj.VType)
+	return nil, &VMError{Message: fmt.Sprintf("type %v does not support slice operations", obj.VType), IsPanic: true}
 }
 
 func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
@@ -535,14 +535,14 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 		switch name {
 		case "make":
 			if len(args) == 0 {
-				return errors.New("make requires at least 1 argument")
+				return &VMError{Message: "make requires at least 1 argument", IsPanic: true}
 			}
 			typVar := args[0]
 			if typVar != nil && typVar.VType == TypeCell {
 				typVar = typVar.Ref.(*Cell).Value
 			}
 			if typVar == nil || (typVar.VType != TypeString && typVar.Type != "String") {
-				return errors.New("make first argument must be a type string")
+				return &VMError{Message: "make first argument must be a type string", IsPanic: true}
 			}
 			tStr := typVar.Str
 			t := ast.GoMiniType(tStr)
@@ -556,10 +556,10 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				if len(args) > 1 && args[1] != nil {
 					lInt, _ := args[1].ToInt()
 					if lInt < 0 {
-						return fmt.Errorf("negative length in make: %d", lInt)
+						return &VMError{Message: fmt.Sprintf("negative length in make: %d", lInt), IsPanic: true}
 					}
 					if lInt > 10000000 {
-						return fmt.Errorf("requested length too large: %d", lInt)
+						return &VMError{Message: fmt.Sprintf("requested length too large: %d", lInt), IsPanic: true}
 					}
 					length = int(lInt)
 					capacity = length
@@ -567,10 +567,10 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				if len(args) > 2 && args[2] != nil {
 					cInt, _ := args[2].ToInt()
 					if int(cInt) < length {
-						return fmt.Errorf("capacity %d less than length %d", cInt, length)
+						return &VMError{Message: fmt.Sprintf("capacity %d less than length %d", cInt, length), IsPanic: true}
 					}
 					if cInt > 10000000 {
-						return fmt.Errorf("requested capacity too large: %d", cInt)
+						return &VMError{Message: fmt.Sprintf("requested capacity too large: %d", cInt), IsPanic: true}
 					}
 					capacity = int(cInt)
 				}
@@ -592,7 +592,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			return nil
 		case "len":
 			if len(args) != 1 || args[0] == nil {
-				return errors.New("len requires exactly 1 argument")
+				return &VMError{Message: "len requires exactly 1 argument", IsPanic: true}
 			}
 			obj := args[0]
 			if obj.VType == TypeCell {
@@ -626,10 +626,10 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				session.ValueStack.Push(NewInt(int64(len(obj.Ref.(*VMMap).Data))))
 				return nil
 			}
-			return fmt.Errorf("invalid argument for len: %v", obj.VType)
+			return &VMError{Message: fmt.Sprintf("invalid argument for len: %v", obj.VType), IsPanic: true}
 		case "append":
 			if len(args) < 2 || args[0] == nil {
-				return errors.New("append requires at least 2 arguments")
+				return &VMError{Message: "append requires at least 2 arguments", IsPanic: true}
 			}
 			switch args[0].VType {
 			case TypeArray:
@@ -651,10 +651,10 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				session.ValueStack.Push(&Var{VType: TypeBytes, B: buf, Type: args[0].Type})
 				return nil
 			}
-			return errors.New("append requires array or bytes as first argument")
+			return &VMError{Message: "append requires array or bytes as first argument", IsPanic: true}
 		case "delete":
 			if len(args) != 2 || args[0] == nil || args[1] == nil {
-				return errors.New("delete requires map and key")
+				return &VMError{Message: "delete requires map and key", IsPanic: true}
 			}
 			obj := args[0]
 			if obj.VType == TypeAny && obj.Ref != nil {
@@ -678,7 +678,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				session.ValueStack.Push(nil) // Void return
 				return nil
 			}
-			return errors.New("delete requires map")
+			return &VMError{Message: "delete requires map", IsPanic: true}
 		case "panic":
 			var val *Var
 			if len(args) > 0 {
@@ -686,10 +686,17 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			} else {
 				val = NewString("panic")
 			}
-			return &PanicError{Value: val}
+			msg, _ := val.ToError()
+			return &VMError{Value: val, Message: msg, IsPanic: true}
 		case "recover":
 			res := session.PanicVar
 			session.PanicVar = nil
+			session.PanicMessage = ""
+			session.PanicTrace = nil
+			session.UnwindMode = UnwindNone
+			if res == nil {
+				res = &Var{VType: TypeAny}
+			}
 			session.ValueStack.Push(res)
 			return nil
 		case "String":
@@ -789,7 +796,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			return nil
 		case "new":
 			if len(args) < 1 || args[0] == nil || (args[0].VType != TypeString && args[0].Type != "String") {
-				return errors.New("new requires a type string as argument")
+				return &VMError{Message: "new requires a type string as argument", IsPanic: true}
 			}
 			tStr := args[0].Str
 			innerType := tStr
@@ -930,10 +937,10 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 	}
 
 	if callable != nil {
-		return fmt.Errorf("type %v is not callable", callable.VType)
+		return &VMError{Message: fmt.Sprintf("type %v is not callable", callable.VType), IsPanic: true}
 	}
 
-	return fmt.Errorf("function or method %s not found", name)
+	return &VMError{Message: fmt.Sprintf("function or method %s not found", name), IsPanic: true}
 }
 
 func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.FuncLitExpr, args []*Var, closure *VMClosure) error {

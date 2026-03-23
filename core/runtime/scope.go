@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"weak"
 
@@ -50,16 +51,42 @@ func (v VarType) String() string {
 	return "Unknown"
 }
 
-// VMError represents a structured error that satisfies the error interface.
+// StackFrame represents a single frame in the virtual machine's stack trace.
+type StackFrame struct {
+	Filename string `json:"filename"`
+	Function string `json:"function"`
+	Line     int    `json:"line"`
+	Column   int    `json:"column"`
+}
+
+// VMError is the unified error type for all go-mini runtime failures and panics.
 type VMError struct {
-	Message string          // Static message
-	Cause   *Var            // Internal cause (if any)
-	Handle  uint32          // Host side handle (if any)
-	Bridge  ffigo.FFIBridge // Bridge for host side handle
+	Message string          `json:"message"`
+	Value   *Var            `json:"value,omitempty"` // Present if it's a panic(value)
+	Frames  []StackFrame    `json:"frames"`
+	IsPanic bool            `json:"is_panic"`
+	Cause   error           `json:"-"` // Underlying Go error if any
+	Handle  uint32          `json:"handle,omitempty"`
+	Bridge  ffigo.FFIBridge `json:"-"`
 }
 
 func (e *VMError) Error() string {
-	return e.Message
+	var sb strings.Builder
+	if e.IsPanic {
+		sb.WriteString("panic: ")
+	}
+	sb.WriteString(e.Message)
+	if len(e.Frames) > 0 {
+		sb.WriteString("\ngoroutine (mini) [running]:")
+		for _, f := range e.Frames {
+			sb.WriteString(fmt.Sprintf("\n%s()\n\t%s:%d:%d", f.Function, f.Filename, f.Line, f.Column))
+		}
+	}
+	return sb.String()
+}
+
+func (e *VMError) Unwrap() error {
+	return e.Cause
 }
 
 const (
@@ -399,8 +426,10 @@ type StackContext struct {
 	// 0: Running, 1: Aborted/Cancelled, 2: Paused
 	status int32
 
-	PanicVar *Var // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
-	Executor ExecutorAPI
+	PanicVar     *Var         // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
+	PanicMessage string       // 存储发生 panic 时的文本消息
+	PanicTrace   []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
+	Executor     ExecutorAPI
 
 	// 运行时状态 (Session State)
 
@@ -672,29 +701,61 @@ func copyVarData(dest, src *Var) {
 	dest.Ref = src.Ref
 }
 
-type Program struct{}
+func (ctx *StackContext) GenerateStackTrace(current *Task) []StackFrame {
+	var frames []StackFrame
 
-type PanicError struct {
-	Value *Var
-}
+	// 1. Add current frame
+	if current != nil && current.Node != nil && current.Node.GetBase() != nil && current.Node.GetBase().Loc != nil {
+		loc := current.Node.GetBase().Loc
+		funcName := "main"
+		if ctx.Stack != nil && ctx.Stack.Scope != "" {
+			funcName = ctx.Stack.Scope
+		}
+		frames = append(frames, StackFrame{
+			Filename: loc.F,
+			Function: funcName,
+			Line:     loc.L,
+			Column:   loc.C,
+		})
+	}
 
-func (p *PanicError) Error() string {
-	if p.Value != nil {
-		s, _ := p.Value.ToError()
-		if s != "" {
-			return "panic: " + s
+	// 2. Reconstruct previous frames from TaskStack
+	for i := len(ctx.TaskStack) - 1; i >= 0; i-- {
+		task := ctx.TaskStack[i]
+		if task.Op == OpCallBoundary {
+			data, ok := task.Data.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			callNode, _ := data["callNode"].(ast.Node)
+			if callNode != nil && callNode.GetBase() != nil && callNode.GetBase().Loc != nil {
+				loc := callNode.GetBase().Loc
+				callerName := "main"
+				for j := i - 1; j >= 0; j-- {
+					if ctx.TaskStack[j].Op == OpCallBoundary {
+						if d2, ok := ctx.TaskStack[j].Data.(map[string]interface{}); ok {
+							if name, ok := d2["name"].(string); ok && name != "" {
+								callerName = name
+							}
+							break
+						}
+					}
+				}
+				frames = append(frames, StackFrame{
+					Filename: loc.F,
+					Function: callerName,
+					Line:     loc.L,
+					Column:   loc.C,
+				})
+			}
+		}
+		if len(frames) > 20 {
+			break
 		}
 	}
-	return "panic"
-}
 
-type MiniRuntimeError struct {
-	BaseNode ast.BaseNode
-	Err      error
-}
-
-func (e *MiniRuntimeError) Error() string {
-	return e.Err.Error()
+	return frames
 }
 
 func isEmptyVar(v *Var) bool {
@@ -719,3 +780,5 @@ func isEmptyVar(v *Var) bool {
 	}
 	return false
 }
+
+type Program struct{}
