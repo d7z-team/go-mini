@@ -346,6 +346,13 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			buf.WriteAny(nil)
 		}
 	case TypeHandle:
+		if v.Bridge == nil && v.Ref != nil {
+			if inner, ok := v.Ref.(*Var); ok {
+				buf.WriteByte(ffigo.TypeTagPointer)
+				e.serializeVarToAny(buf, inner)
+				return
+			}
+		}
 		buf.WriteAny(v.Handle)
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
@@ -356,7 +363,13 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
-		buf.WriteByte(ffigo.TypeTagMap)
+		// 启发式判断：如果有具体类型且不是 Map<，则视为 Struct
+		isStruct := !v.Type.IsEmpty() && !v.Type.IsMap() && v.Type != "Any"
+		if isStruct {
+			buf.WriteByte(ffigo.TypeTagStruct)
+		} else {
+			buf.WriteByte(ffigo.TypeTagMap)
+		}
 		buf.WriteUvarint(uint64(len(vmMap.Data)))
 		for k, val := range vmMap.Data {
 			buf.WriteString(k)

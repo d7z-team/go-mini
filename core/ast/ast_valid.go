@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 type Logs struct {
@@ -18,20 +19,22 @@ const (
 )
 
 type ValidRoot struct {
-	logs        []Logs
-	types       map[Ident]GoMiniType
-	structs     map[Ident]*ValidStruct
-	interfaces  map[Ident]*InterfaceStmt
-	program     *ProgramStmt
-	Global      *ValidStruct
-	id          uint64
-	Path        string // 模块的导入路径
-	Package     string
-	Imports     map[string]string
-	vars        map[Ident]GoMiniType
-	Loader      func(path string) (*ProgramStmt, error)
-	Imported    map[string]bool
-	importStack []string
+	mu            sync.RWMutex
+	logs          []Logs
+	types         map[Ident]GoMiniType
+	structs       map[Ident]*ValidStruct
+	interfaces    map[Ident]*InterfaceStmt
+	program       *ProgramStmt
+	Global        *ValidStruct
+	id            uint64
+	Path          string // 模块的导入路径
+	Package       string
+	Imports       map[string]string
+	vars          map[Ident]GoMiniType
+	Loader        func(path string) (*ProgramStmt, error)
+	Imported      map[string]bool
+	ImportedRoots map[string]*ValidRoot
+	importStack   []string
 }
 
 type ValidContext struct {
@@ -73,12 +76,13 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 				Fields:  make(map[Ident]GoMiniType),
 				Methods: make(map[Ident]CallFunctionType),
 			},
-			Package:     pkgName,
-			Path:        pkgName, // 默认为包名
-			Imports:     imports,
-			vars:        make(map[Ident]GoMiniType),
-			Imported:    make(map[string]bool),
-			importStack: make([]string, 0),
+			Package:       pkgName,
+			Path:          pkgName, // 默认为包名
+			Imports:       imports,
+			vars:          make(map[Ident]GoMiniType),
+			Imported:      make(map[string]bool),
+			ImportedRoots: make(map[string]*ValidRoot),
+			importStack:   make([]string, 0),
 		},
 		parent:  nil,
 		current: node,
@@ -203,6 +207,16 @@ func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
+	s := string(ident)
+	if strings.Contains(s, ".") {
+		parts := strings.SplitN(s, ".", 2)
+		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
+			if st, ok := root.structs[Ident(parts[1])]; ok {
+				return st, true
+			}
+		}
+	}
+
 	ctx := c
 	for ctx != nil {
 		if miniType, ok := ctx.root.structs[ident]; ok {
@@ -225,6 +239,16 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 }
 
 func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
+	s := string(ident)
+	if strings.Contains(s, ".") {
+		parts := strings.SplitN(s, ".", 2)
+		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
+			if it, ok := root.interfaces[Ident(parts[1])]; ok {
+				return it, true
+			}
+		}
+	}
+
 	ctx := c
 	for ctx != nil {
 		if miniType, ok := ctx.root.interfaces[ident]; ok {
@@ -298,6 +322,16 @@ func addCapture(f *FuncLitExpr, name string) {
 }
 
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
+	s := string(variable)
+	if strings.Contains(s, ".") {
+		parts := strings.SplitN(s, ".", 2)
+		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
+			if vt, ok := root.vars[Ident(parts[1])]; ok {
+				return vt, true
+			}
+		}
+	}
+
 	ctx := c
 	for ctx != nil {
 		if miniType, ok := ctx.vars[variable]; ok {
@@ -321,6 +355,16 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 }
 
 func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
+	s := string(fc)
+	if strings.Contains(s, ".") {
+		parts := strings.SplitN(s, ".", 2)
+		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
+			if fn, ok := root.Global.Methods[Ident(parts[1])]; ok {
+				return &fn, true
+			}
+		}
+	}
+
 	ctx := c
 	for ctx != nil {
 		if miniType, ok := ctx.root.Global.Methods[fc]; ok {
@@ -431,6 +475,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return fmt.Errorf("failed to check package %s", path)
 	}
 
+	c.root.ImportedRoots[path] = v.root
 	return nil
 }
 

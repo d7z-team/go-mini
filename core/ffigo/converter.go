@@ -359,7 +359,21 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			inferredType := "Any"
 			if len(st.Rhs) == 1 {
 				if comp, ok := st.Rhs[0].(*ast.CompositeLit); ok {
-					inferredType = c.typeToString(comp.Type)
+					fullType := miniast.GoMiniType(c.typeToString(comp.Type))
+					if len(st.Lhs) > 1 {
+						// 多重赋值：如果右值是容器，则推导元素类型
+						if fullType.IsArray() {
+							if elem, ok := fullType.ReadArrayItemType(); ok {
+								inferredType = string(elem)
+							}
+						} else if fullType.IsMap() {
+							if _, val, ok := fullType.GetMapKeyValueTypes(); ok {
+								inferredType = string(val)
+							}
+						}
+					} else {
+						inferredType = string(fullType)
+					}
 				}
 			}
 

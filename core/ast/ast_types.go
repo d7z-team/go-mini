@@ -52,8 +52,8 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 func (o GoMiniType) IsAny() bool { return o == TypeAny || o == TypeModule || o == TypeClosure }
 
 func (o GoMiniType) IsString() bool { return o == "String" }
+func (o GoMiniType) IsInt() bool    { return o == "Int64" }
 func (o GoMiniType) IsBool() bool   { return o == "Bool" }
-
 func (o GoMiniType) IsNumeric() bool {
 	s := string(o)
 	switch s {
@@ -477,6 +477,10 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		elem, _ := o.ReadArrayItemType()
 		return CreateArrayType(elem.Resolve(v))
 	}
+	if o.IsMap() {
+		k, val, _ := o.GetMapKeyValueTypes()
+		return GoMiniType(fmt.Sprintf("Map<%s, %s>", k.Resolve(v), val.Resolve(v)))
+	}
 	if o.IsPtr() {
 		elem, _ := o.GetPtrElementType()
 		return elem.Resolve(v).ToPtr()
@@ -498,6 +502,8 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 				return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 			}
 		}
+		// 如果前缀不在导入表中，可能是 FFI 或动态注入的包名，保留原始形式
+		return o
 	}
 	if v != nil && v.root != nil {
 		if actual, ok := v.root.types[Ident(o)]; ok {

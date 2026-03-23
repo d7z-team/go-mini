@@ -2,7 +2,9 @@ package ffigo
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +24,8 @@ const (
 	TypeTagArray     byte = 8
 	TypeTagInterface byte = 9
 	TypeTagError     byte = 10
+	TypeTagStruct    byte = 11
+	TypeTagPointer   byte = 12
 )
 
 // =============================================================================
@@ -285,6 +289,16 @@ func (r *Reader) ReadAny() interface{} {
 		return r.ReadRawInterface()
 	case TypeTagError:
 		return r.ReadRawError()
+	case TypeTagStruct:
+		count := int(r.ReadUvarint())
+		fields := make([]StructField, count)
+		for i := 0; i < count; i++ {
+			fields[i].Name = r.ReadString()
+			fields[i].Value = r.ReadAny()
+		}
+		return &VMStruct{Fields: fields}
+	case TypeTagPointer:
+		return &VMPointer{Value: r.ReadAny()}
 	default:
 		return nil
 	}
@@ -293,6 +307,38 @@ func (r *Reader) ReadAny() interface{} {
 // =============================================================================
 // Core Data Structures
 // =============================================================================
+
+type StructField struct {
+	Name  string
+	Value interface{}
+}
+
+type VMStruct struct {
+	Fields []StructField
+}
+
+func (s *VMStruct) String() string {
+	var buf strings.Builder
+	buf.WriteString("{")
+	for i, f := range s.Fields {
+		if i > 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(f.Name)
+		buf.WriteString(":")
+		buf.WriteString(fmt.Sprintf("%v", f.Value))
+	}
+	buf.WriteString("}")
+	return buf.String()
+}
+
+type VMPointer struct {
+	Value interface{}
+}
+
+func (p *VMPointer) String() string {
+	return "&" + fmt.Sprintf("%v", p.Value)
+}
 
 type InterfaceData struct {
 	Handle  uint32

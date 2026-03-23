@@ -523,18 +523,56 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if c.Type == "" || c.Type == "Any" {
-		// 最后的启发式：根据是否有 Key 判定是 Array 还是 Map
+		// 最后的启发式：根据是否有 Key 判定是 Array 还是 Map，并尝试细化元素类型
 		hasKey := false
-		for _, v := range c.Values {
+		var commonValType GoMiniType
+		var commonKeyType GoMiniType
+		allSameVal := true
+		allSameKey := true
+
+		for i, v := range c.Values {
 			if v.Key != nil {
 				hasKey = true
-				break
+				if err := v.Key.Check(ctx); err == nil {
+					kt := v.Key.GetBase().Type
+					if i == 0 {
+						commonKeyType = kt
+					} else if !kt.Equals(commonKeyType) {
+						allSameKey = false
+					}
+				}
+			} else {
+				allSameKey = false
+			}
+
+			if v.Value != nil {
+				if err := v.Value.Check(ctx); err == nil {
+					vt := v.Value.GetBase().Type
+					if i == 0 {
+						commonValType = vt
+					} else if !vt.Equals(commonValType) {
+						allSameVal = false
+					}
+				}
 			}
 		}
+
 		if hasKey {
-			c.Type = "Map<String, Any>"
+			finalKey := GoMiniType("String")
+			if allSameKey && !commonKeyType.IsEmpty() {
+				finalKey = commonKeyType
+			}
+			finalVal := GoMiniType("Any")
+			if allSameVal && !commonValType.IsEmpty() {
+				finalVal = commonValType
+			}
+			c.Type = GoMiniType(fmt.Sprintf("Map<%s, %s>", finalKey, finalVal))
 		} else {
-			c.Type = "Array<Any>"
+			finalVal := GoMiniType("Any")
+			if allSameVal && !commonValType.IsEmpty() && len(c.Values) > 0 {
+				finalVal = commonValType
+			}
+			c.Type = CreateArrayType(finalVal)
 		}
 	}
 

@@ -596,6 +596,39 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 }
 
 // 供解卷状态恢复使用
+func (e *Executor) varToMapKey(v *Var) (string, error) {
+	if v == nil {
+		return "", errors.New("map key is nil")
+	}
+	switch v.VType {
+	case TypeString:
+		return v.Str, nil
+	case TypeInt:
+		return strconv.FormatInt(v.I64, 10), nil
+	case TypeBool:
+		return strconv.FormatBool(v.Bool), nil
+	case TypeFloat:
+		return strconv.FormatFloat(v.F64, 'f', -1, 64), nil
+	}
+	return "", fmt.Errorf("unsupported map key type: %v", v.VType)
+}
+
+func (e *Executor) mapKeyToVar(k string, keyType ast.GoMiniType) *Var {
+	if keyType.IsInt() {
+		val, _ := strconv.ParseInt(k, 10, 64)
+		return NewInt(val)
+	}
+	if keyType.IsBool() {
+		val, _ := strconv.ParseBool(k)
+		return NewBool(val)
+	}
+	if keyType.IsNumeric() && !keyType.IsInt() {
+		val, _ := strconv.ParseFloat(k, 64)
+		return NewFloat(val)
+	}
+	return NewString(k)
+}
+
 func (e *Executor) dispatch(session *StackContext, task Task) error {
 	switch task.Op {
 	case OpExec:
@@ -827,9 +860,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			if obj.VType == TypeMap {
 				m := obj.Ref.(*VMMap)
-				key := idx.Str
-				if idx.VType == TypeInt {
-					key = strconv.FormatInt(idx.I64, 10)
+				key, err := e.varToMapKey(idx)
+				if err != nil {
+					return err
 				}
 				tuple := make([]*Var, 2)
 				if val, ok := m.Data[key]; ok {
@@ -1205,7 +1238,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			val = rData.Obj.Ref.(*VMArray).Data[rData.Index]
 		} else {
 			k := rData.Keys[rData.Index]
-			key = NewString(k)
+			keyType, _, _ := rData.Obj.Type.GetMapKeyValueTypes()
+			key = e.mapKeyToVar(k, keyType)
 			val = rData.Obj.Ref.(*VMMap).Data[k]
 		}
 		rData.Index++
@@ -1919,36 +1953,18 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			return nil
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			var key string
-			switch idx.VType {
-			case TypeString:
-				key = idx.Str
-			case TypeInt:
-				key = strconv.FormatInt(idx.I64, 10)
-			case TypeBool:
-				key = strconv.FormatBool(idx.Bool)
-			case TypeFloat:
-				key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
-			default:
-				return &VMError{Message: fmt.Sprintf("unsupported map key type: %v", idx.VType), IsPanic: true}
+			key, err := e.varToMapKey(idx)
+			if err != nil {
+				return err
 			}
 			m.Data[key] = val
 			return nil
 		case TypeAny:
 			if obj.Ref != nil {
 				if m, ok := obj.Ref.(*VMMap); ok {
-					var key string
-					switch idx.VType {
-					case TypeString:
-						key = idx.Str
-					case TypeInt:
-						key = strconv.FormatInt(idx.I64, 10)
-					case TypeBool:
-						key = strconv.FormatBool(idx.Bool)
-					case TypeFloat:
-						key = strconv.FormatFloat(idx.F64, 'f', -1, 64)
-					default:
-						return &VMError{Message: fmt.Sprintf("unsupported map key type: %v", idx.VType), IsPanic: true}
+					key, err := e.varToMapKey(idx)
+					if err != nil {
+						return err
 					}
 					m.Data[key] = val
 					return nil
