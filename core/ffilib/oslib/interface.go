@@ -7,7 +7,7 @@ import "context"
 type File struct{}
 
 // OS 接口定义了文件系统操作
-//
+
 // ffigen:module os
 type OS interface {
 	Open(ctx context.Context, name string) (*File, error)
@@ -20,7 +20,7 @@ type OS interface {
 }
 
 // FileMethods 接口定义了文件句柄的方法
-//
+
 // ffigen:methods File
 type FileMethods interface {
 	Read(f *File, b []byte) (int64, error)

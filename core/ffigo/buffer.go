@@ -8,9 +8,7 @@ import (
 	"sync"
 )
 
-// =============================================================================
 // Wire Format Constants
-// =============================================================================
 
 const (
 	TypeTagUnknown   byte = 0
@@ -28,9 +26,7 @@ const (
 	TypeTagPointer   byte = 12
 )
 
-// =============================================================================
 // Buffer - Raw & Tagged Serializer
-// =============================================================================
 
 type Buffer struct {
 	buf []byte
@@ -57,8 +53,6 @@ func ReleaseBuffer(b *Buffer) {
 func (b *Buffer) Bytes() []byte { return b.buf }
 func (b *Buffer) Len() int      { return len(b.buf) }
 
-// --- Raw Primitive Writers (Base128 Varint for efficiency) ---
-
 func (b *Buffer) WriteByte(v byte) {
 	b.buf = append(b.buf, v)
 }
@@ -83,8 +77,6 @@ func (b *Buffer) WriteBool(v bool) {
 	}
 }
 
-// --- Raw Component Writers (Length-prefixed) ---
-
 func (b *Buffer) WriteString(v string) {
 	b.WriteUvarint(uint64(len(v)))
 	b.buf = append(b.buf, v...)
@@ -94,8 +86,6 @@ func (b *Buffer) WriteBytes(v []byte) {
 	b.WriteUvarint(uint64(len(v)))
 	b.buf = append(b.buf, v...)
 }
-
-// --- Raw Structural Writers (No Tags here, caller handles tags) ---
 
 func (b *Buffer) WriteRawError(msg string, handle uint32) {
 	b.WriteString(msg)
@@ -110,8 +100,6 @@ func (b *Buffer) WriteRawInterface(handle uint32, methods map[string]string) {
 		b.WriteString(v)
 	}
 }
-
-// --- Tagged Writer (Self-describing Recursive Entry) ---
 
 func (b *Buffer) WriteAny(v interface{}) {
 	if v == nil {
@@ -167,9 +155,7 @@ func (b *Buffer) WriteAny(v interface{}) {
 	}
 }
 
-// =============================================================================
 // Reader - High-performance Decoupled Deserializer
-// =============================================================================
 
 type Reader struct {
 	buf    []byte
@@ -181,8 +167,6 @@ func NewReader(data []byte) *Reader {
 }
 
 func (r *Reader) Available() int { return len(r.buf) - r.offset }
-
-// --- Raw Primitive Readers ---
 
 func (r *Reader) ReadByte() byte {
 	v := r.buf[r.offset]
@@ -226,8 +210,6 @@ func (r *Reader) ReadBytes() []byte {
 	return v
 }
 
-// --- Raw Structural Readers ---
-
 func (r *Reader) ReadRawError() ErrorData {
 	msg := r.ReadString()
 	handle := uint32(r.ReadUvarint())
@@ -248,8 +230,6 @@ func (r *Reader) ReadRawInterface() InterfaceData {
 	}
 	return InterfaceData{Handle: handle, Methods: methods}
 }
-
-// --- Tagged Reader ---
 
 func (r *Reader) ReadAny() interface{} {
 	if r.Available() == 0 {
@@ -304,9 +284,7 @@ func (r *Reader) ReadAny() interface{} {
 	}
 }
 
-// =============================================================================
 // Core Data Structures
-// =============================================================================
 
 type StructField struct {
 	Name  string

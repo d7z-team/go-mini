@@ -2,7 +2,7 @@
 package jsonlib
 
 // JSON 接口定义了 JSON 操作
-//
+
 // ffigen:module json
 type JSON interface {
 	Marshal(v any) ([]byte, error)

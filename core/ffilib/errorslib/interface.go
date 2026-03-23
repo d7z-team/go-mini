@@ -2,7 +2,7 @@
 package errorslib
 
 // Errors 接口定义了错误创建操作
-//
+
 // ffigen:module errors
 type Errors interface {
 	New(text string) error

@@ -440,7 +440,6 @@ type StackContext struct {
 	ModuleCache    map[string]*Var
 	LoadingModules map[string]bool
 
-	// 调试会话 (Debugger Session)
 	Debugger *debugger.Session
 
 	// 迭代执行器状态 (Iterative Executor State)

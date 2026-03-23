@@ -179,7 +179,6 @@ func TestGoStyleTypes(t *testing.T) {
 				t.Fatalf("Compile failed: %v", err)
 			}
 
-			// 调试打印：验证转换后的 AST 是否为规范化形式
 			// astJSON, _ := prog.MarshalIndentJSON("", "  ")
 			// t.Logf("Normalized AST: %s", string(astJSON))
 

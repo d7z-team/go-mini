@@ -200,9 +200,7 @@ func FindNodeAt(root Node, line, col int) Node {
 	return visitor.bestNode
 }
 
-// ----------------------------------------------------------------------------
 // 父节点索引 (Parent Mapping)
-// ----------------------------------------------------------------------------
 
 type parentMapVisitor struct {
 	parentMap map[Node]Node
@@ -227,9 +225,7 @@ func BuildParentMap(root Node) map[Node]Node {
 	return parentMap
 }
 
-// ----------------------------------------------------------------------------
 // 符号定义查找 (Definition Lookup)
-// ----------------------------------------------------------------------------
 
 // FindDefinition 根据标识符表达式查找其定义的原始位置
 func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
@@ -537,9 +533,7 @@ func (f funcVisitor) Visit(node Node) Visitor {
 	return f
 }
 
-// ----------------------------------------------------------------------------
 // 代码补全 (Code Completion)
-// ----------------------------------------------------------------------------
 
 // CompletionItem 包含代码补全建议
 type CompletionItem struct {
@@ -626,9 +620,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	items := make([]CompletionItem, 0)
 	seen := make(map[string]bool)
 
-	// -------------------------------------------------------------------------
 	// 1. 成员补全 (a.B)
-	// -------------------------------------------------------------------------
 	// 如果当前节点本身就是 MemberExpr
 	if sel, ok := node.(*MemberExpr); ok {
 		return getMemberCompletions(ctx, sel.Object)
@@ -652,9 +644,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// 2. 正常作用域补全
-	// -------------------------------------------------------------------------
 
 	// 2.1 关键字和内置函数 (仅在非类型上下文中)
 	if !node.GetBase().IsType {

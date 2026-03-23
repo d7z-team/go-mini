@@ -2,7 +2,7 @@
 package fmtlib
 
 // Fmt 接口定义了格式化输出操作
-//
+
 // ffigen:module fmt
 type Fmt interface {
 	Print(args ...any)

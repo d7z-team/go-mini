@@ -51,9 +51,7 @@ func (e *MiniAstError) Error() string {
 	return e.Err.Error() + decode.String()
 }
 
-// ----------------------------------------------------------------------------
 // LSP 容错分析节点 (Fault-Tolerant AST Nodes)
-// ----------------------------------------------------------------------------
 
 // BadExpr 表示解析失败的表达式，用于 IDE 容错分析
 type BadExpr struct {

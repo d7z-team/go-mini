@@ -11,7 +11,7 @@ import (
 )
 
 // PrinterAPI 演示变长参数
-//
+
 // ffigen:module printer
 type PrinterAPI interface {
 	Log(prefix string, args ...any) error

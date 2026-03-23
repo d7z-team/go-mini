@@ -866,9 +866,7 @@ func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 	return o.NewRuntimeByAst(program)
 }
 
-// ----------------------------------------------------------------------------
 // LSP Metadata Export
-// ----------------------------------------------------------------------------
 
 type ExportedMetadata struct {
 	Builtins  map[string]string          `json:"builtins"`  // 内置函数名 -> 签名
@@ -964,7 +962,7 @@ func (o *MiniExecutor) ExportMetadata() string {
 		for fnName, fnStmt := range prog.Functions {
 			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' {
 				// 我们需要一种方式导出函数文档，目前 ExportedModule.Functions 只是 map[string]string (name -> sig)
-				// 临时将文档附加到签名后面，或者未来重构 ExportedModule.Functions
+
 				sig := string(fnStmt.FunctionType.MiniType())
 				if fnStmt.Doc != "" {
 					sig = sig + " // " + strings.ReplaceAll(fnStmt.Doc, "\n", " ")

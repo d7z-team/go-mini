@@ -28,7 +28,7 @@ type MockOS interface {
 }
 
 // ContextMock 验证 Context 传递
-//
+
 // ffigen:module ctx_test
 type ContextMock interface {
 	WithContext(ctx context.Context, key string) string
@@ -41,7 +41,7 @@ type NativeStruct struct {
 }
 
 // NativeMock 验证原生对象注入
-//
+
 // ffigen:module native
 type NativeMock interface {
 	GetStruct() NativeStruct

@@ -1780,7 +1780,6 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 			session.TaskStack = append(session.TaskStack, Task{Op: OpPop})
 		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n})
-		// TODO: implement other statements
 	}
 	return nil
 }
@@ -2128,7 +2127,6 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		session.ValueStack.Push(v)
 	case *ast.ImportExpr:
 		session.TaskStack = append(session.TaskStack, Task{Op: OpImportInit, Node: n})
-		// TODO: implement other expressions
 	}
 	return nil
 }
