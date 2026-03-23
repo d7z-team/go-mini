@@ -112,9 +112,29 @@ defNode := prog.GetDefinitionAt(10, 5)
 
 ## 🛠️ 自定义扩展：FFI 生成器 (`ffigen`)
 
-使用 `ffigen` 将复杂的业务对象注入脚本。它会自动处理对象到句柄的转换：
+使用 `ffigen` 将复杂的业务对象注入脚本。它会自动解析 Go 接口，并生成零反射的高性能桥接代码（包括参数序列化、路由分发和句柄管理）。
+
+### 1. 命令行用法
+
+你可以直接通过 `go run` 或是编译后的 `ffigen` 二进制文件运行生成器：
+
+```bash
+ffigen -pkg <包名> -out <输出文件> <输入文件>
+```
+
+**参数说明**：
+*   `-pkg`: 指定生成的 Go 代码所属的包名（必须）。
+*   `-out`: 指定生成的 Go 代码的文件名（必须）。
+*   `<输入文件>`: 包含有 `// ffigen:` 注解的 Go 接口定义文件（必须）。
+
+### 2. 通过 go:generate 自动生成 (推荐)
+
+最标准的做法是在你的接口文件顶部添加 `//go:generate` 指令，并将其集成到项目的 `make gen` 流程中。
 
 ```go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
+package orderlib
+
 // ffigen:module order
 // ffigen:methods Order
 type OrderService interface {
@@ -123,7 +143,52 @@ type OrderService interface {
 }
 ```
 
-运行 `make gen` 后，生成的代码将确保脚本中通过 `o.AddItem` 调用方法，而 `*Order` 宿主指针永远不会暴露。
+此时，你只需在项目根目录运行：
+```bash
+make gen
+```
+生成器会自动扫描所有带有 `//go:generate` 的文件并输出 `order_ffigen.go`。
+
+生成的代码将提供类似 `RegisterOrder` 的注入函数，并确保脚本中通过 `o.AddItem` 调用方法时，底层的 `*Order` 宿主指针安全地作为不透明句柄 (Handle) 传递，永远不会直接暴露给脚本环境。
+
+### 3. 注册到执行引擎
+
+生成代码后，你需要在你的宿主程序中实现该接口，并将其注册到 `MiniExecutor` 中：
+
+```go
+package main
+
+import (
+	"context"
+	engine "gopkg.d7z.net/go-mini/core"
+	"your-project/orderlib"
+)
+
+// 1. 实现你定义的接口
+type MyOrderImpl struct{}
+
+func (m *MyOrderImpl) New(id string) (*orderlib.Order, error) {
+	// ... 你的业务逻辑
+	return &orderlib.Order{}, nil
+}
+
+func (m *MyOrderImpl) AddItem(o *orderlib.Order, name string, price float64) error {
+    // ... 你的业务逻辑
+	return nil
+}
+
+func main() {
+	executor := engine.NewMiniExecutor()
+	
+	// 2. 初始化句柄注册表（用于管理生命周期）
+	registry := ffigo.NewHandleRegistry()
+
+	// 3. 注入 FFI 实现
+	orderlib.RegisterOrder(executor, &MyOrderImpl{}, registry)
+	
+	// 之后你的脚本就可以调用 order.New 和 o.AddItem 了
+}
+```
 
 ---
 
