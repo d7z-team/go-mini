@@ -68,4 +68,4 @@ lint-fix: gen
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
 
 test: gen
-	@go test -v -coverprofile=coverage.txt ./...
+	@go test -v -coverprofile=coverage.txt ./... -timeout 10s

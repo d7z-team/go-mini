@@ -77,8 +77,9 @@ func (e *VMError) Error() string {
 	}
 	sb.WriteString(e.Message)
 	if len(e.Frames) > 0 {
-		sb.WriteString("\ngoroutine (mini) [running]:")
+		sb.WriteString("\n\ngoroutine (mini) [running]:")
 		for _, f := range e.Frames {
+			// VSCode 终端匹配模式： path:line:col
 			sb.WriteString(fmt.Sprintf("\n%s()\n\t%s:%d:%d", f.Function, f.Filename, f.Line, f.Column))
 		}
 	}

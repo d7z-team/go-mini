@@ -468,6 +468,8 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsEmpty() {
 		return o
 	}
+
+	// 1. 处理已有的规范化逻辑
 	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() || o == "TypeBytes" {
 		return o
 	}
@@ -487,15 +489,20 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		}
 		return CreateTupleType(resolved...)
 	}
+
 	s := string(o)
 	if strings.Contains(s, ".") {
 		parts := strings.SplitN(s, ".", 2)
-		if realPkg, ok := v.root.Imports[parts[0]]; ok {
-			return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+		if v != nil && v.root != nil {
+			if realPkg, ok := v.root.Imports[parts[0]]; ok {
+				return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+			}
 		}
 	}
-	if actual, ok := v.root.types[Ident(o)]; ok {
-		return actual.Resolve(v)
+	if v != nil && v.root != nil {
+		if actual, ok := v.root.types[Ident(o)]; ok {
+			return actual.Resolve(v)
+		}
 	}
 	return o
 }

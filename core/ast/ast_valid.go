@@ -427,7 +427,8 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to check package %s: %w", path, err)
+		// 返回简单错误，避免将完整的 MiniAstError 嵌套导致 O(2^N) 的字符串拼接爆炸
+		return fmt.Errorf("failed to check package %s", path)
 	}
 
 	return nil

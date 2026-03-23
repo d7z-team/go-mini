@@ -16,14 +16,6 @@ type Range struct {
 	End   Position `json:"end"`
 }
 
-// Diagnostic 对应 LSP 的 Diagnostic
-type Diagnostic struct {
-	Range    Range  `json:"range"`
-	Severity int    `json:"severity,omitempty"` // 1: Error, 2: Warning
-	Source   string `json:"source,omitempty"`
-	Message  string `json:"message"`
-}
-
 // CompletionItem 对应 LSP 的 CompletionItem
 type CompletionItem struct {
 	Label         string `json:"label"`
@@ -99,10 +91,23 @@ type MarkupContent struct {
 	Value string `json:"value"`
 }
 
-// Location 对应 LSP 的 Location (用于跳转定义)
+// Location 对应 LSP 的 Location
 type Location struct {
 	URI   string `json:"uri"`
 	Range Range  `json:"range"`
+}
+
+type DiagnosticRelatedInformation struct {
+	Location Location `json:"location"`
+	Message  string   `json:"message"`
+}
+
+type Diagnostic struct {
+	Range              Range                          `json:"range"`
+	Severity           int                            `json:"severity,omitempty"`
+	Source             string                         `json:"source,omitempty"`
+	Message            string                         `json:"message"`
+	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
 }
 
 // FromInternalPos 将 go-mini 的 1-based Position 转换为 LSP 的 0-based Position

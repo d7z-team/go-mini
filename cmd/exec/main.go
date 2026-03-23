@@ -47,15 +47,30 @@ func main() {
 		}
 	}
 
-	// 2. 创建运行时并运行
-	runtime, err := executor.NewRuntimeByAst(rootProgram)
-	if err != nil {
-		fmt.Printf("Runtime initialization error: %v\n", err)
+	// 2. 语义校验和创建运行时
+	runtime, errs := executor.NewMiniProgramByAstTolerant(rootProgram)
+	if len(errs) > 0 {
+		fmt.Println("Semantic validation failed:")
+		for _, e := range errs {
+			if astErr, ok := e.(*ast.MiniAstError); ok {
+				for _, log := range astErr.Logs {
+					loc := log.Node.GetBase().Loc
+					fmt.Printf("[%s:%d:%d] %s\n", loc.F, loc.L, loc.C, log.Message)
+				}
+			} else {
+				fmt.Println(e.Error())
+			}
+		}
+		os.Exit(1)
+	}
+
+	if runtime == nil {
+		fmt.Printf("Runtime initialization failed.\n")
 		os.Exit(1)
 	}
 
 	// 执行程序（内部会自动初始化全局变量并寻找 main() 函数运行）
-	err = runtime.Execute(context.Background())
+	err := runtime.Execute(context.Background())
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())
 		os.Exit(1)

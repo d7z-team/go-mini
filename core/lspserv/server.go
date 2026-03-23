@@ -1,12 +1,14 @@
 package lspserv
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // LSPServer 是嵌入式 LSP 服务核心
@@ -96,14 +98,44 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 	for _, err := range errs {
 		if astErr, ok := err.(*ast.MiniAstError); ok {
 			for _, log := range astErr.Logs {
-				// 仅返回属于当前编辑文件的错误 (这里简化处理，对比文件名或ID)
 				loc := log.Node.GetBase().Loc
-				diagnostics = append(diagnostics, Diagnostic{
+				diag := Diagnostic{
 					Range:    FromInternalPos(loc),
 					Severity: 1,
 					Source:   "go-mini",
 					Message:  log.Message,
-				})
+				}
+				diagnostics = append(diagnostics, diag)
+			}
+		} else {
+			// 处理其他类型的运行时或执行错误
+			var vme *runtime.VMError
+			if errors.As(err, &vme) {
+				diag := Diagnostic{
+					Range:    FromInternalPos(&ast.Position{L: 1, C: 1}), // 默认位置
+					Severity: 1,
+					Source:   "go-mini-runtime",
+					Message:  vme.Message,
+				}
+				if len(vme.Frames) > 0 {
+					diag.Range = FromInternalPos(&ast.Position{
+						L: vme.Frames[0].Line,
+						C: vme.Frames[0].Column,
+					})
+					for _, f := range vme.Frames {
+						diag.RelatedInformation = append(diag.RelatedInformation, DiagnosticRelatedInformation{
+							Location: Location{
+								URI: f.Filename,
+								Range: FromInternalPos(&ast.Position{
+									L: f.Line, C: f.Column,
+									EL: f.Line, EC: f.Column + 1,
+								}),
+							},
+							Message: fmt.Sprintf("at %s()", f.Function),
+						})
+					}
+				}
+				diagnostics = append(diagnostics, diag)
 			}
 		}
 	}

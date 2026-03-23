@@ -354,13 +354,22 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if st.Tok == token.DEFINE {
 			var children []miniast.Stmt
 			var lhsExprs []miniast.Expr
+
+			// 尝试推导右值类型
+			inferredType := "Any"
+			if len(st.Rhs) == 1 {
+				if comp, ok := st.Rhs[0].(*ast.CompositeLit); ok {
+					inferredType = c.typeToString(comp.Type)
+				}
+			}
+
 			for _, lhs := range st.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok {
 					if ident.Name != "_" {
 						children = append(children, &miniast.GenDeclStmt{
 							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
 							Name:     miniast.Ident(ident.Name),
-							Kind:     "Any",
+							Kind:     miniast.GoMiniType(inferredType),
 						})
 						lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
 							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier", Loc: c.extractLoc(lhs)},

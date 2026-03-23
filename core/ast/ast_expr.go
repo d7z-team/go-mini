@@ -644,6 +644,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	}
 
 	objType := i.Object.GetBase().Type
+
 	if objType.IsAny() {
 		if i.Multi {
 			i.Type = CreateTupleType("Any", "Bool")
@@ -677,10 +678,14 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	if objType.IsMap() {
 		keyType, valType, ok := objType.GetMapKeyValueTypes()
 		if !ok {
-			return fmt.Errorf("无法获取Map类型信息: %s", objType)
+			err := fmt.Errorf("无法获取Map类型信息: %s", objType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if !keyType.Equals(i.Index.GetBase().Type) {
-			return fmt.Errorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
+			err := fmt.Errorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
+			ctx.WithNode(i.Index).AddErrorf("%s", err.Error())
+			return err
 		}
 		if i.Multi {
 			i.Type = CreateTupleType(valType, "Bool")
