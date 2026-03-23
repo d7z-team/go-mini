@@ -86,7 +86,13 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 }
 
 func (s *StarExpr) Optimize(ctx *OptimizeContext) Node {
-	s.X = s.X.Optimize(ctx).(Expr)
+	if s.X != nil {
+		if opt := s.X.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				s.X = val
+			}
+		}
+	}
 	return s
 }
 
@@ -129,7 +135,13 @@ func (t *TypeAssertExpr) Check(ctx *SemanticContext) error {
 }
 
 func (t *TypeAssertExpr) Optimize(ctx *OptimizeContext) Node {
-	t.X = t.X.Optimize(ctx).(Expr)
+	if t.X != nil {
+		if opt := t.X.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				t.X = val
+			}
+		}
+	}
 	return t
 }
 
@@ -330,20 +342,30 @@ done:
 }
 
 func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
-	c.Func = c.Func.Optimize(ctx).(Expr)
+	if c.Func != nil {
+		if opt := c.Func.Optimize(ctx); opt != nil {
+			c.Func = opt.(Expr)
+		}
+	}
 	for i, arg := range c.Args {
-		c.Args[i] = arg.Optimize(ctx).(Expr)
+		if arg != nil {
+			if opt := arg.Optimize(ctx); opt != nil {
+				c.Args[i] = opt.(Expr)
+			}
+		}
 	}
 
-	fType, ok := c.Func.GetBase().Type.ReadCallFunc()
-	if ok && fType != nil {
-		for i, param := range fType.Params {
-			if i < len(c.Args) {
-				arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
-				if ptr, b2 := param.AutoPtr(arg); b2 {
-					c.Args[i] = ptr
-				} else {
-					c.Args[i] = arg
+	if c.Func != nil && c.Func.GetBase() != nil {
+		fType, ok := c.Func.GetBase().Type.ReadCallFunc()
+		if ok && fType != nil {
+			for i, param := range fType.Params {
+				if i < len(c.Args) && c.Args[i] != nil {
+					arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
+					if ptr, b2 := param.AutoPtr(arg); b2 {
+						c.Args[i] = ptr
+					} else {
+						c.Args[i] = arg
+					}
 				}
 			}
 		}
@@ -463,7 +485,13 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 }
 
 func (m *MemberExpr) Optimize(ctx *OptimizeContext) Node {
-	m.Object = m.Object.Optimize(ctx).(Expr)
+	if m.Object != nil {
+		if opt := m.Object.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				m.Object = val
+			}
+		}
+	}
 	return m
 }
 
@@ -665,8 +693,20 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 }
 
 func (i *IndexExpr) Optimize(ctx *OptimizeContext) Node {
-	i.Object = i.Object.Optimize(ctx).(Expr)
-	i.Index = i.Index.Optimize(ctx).(Expr)
+	if i.Object != nil {
+		if opt := i.Object.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				i.Object = val
+			}
+		}
+	}
+	if i.Index != nil {
+		if opt := i.Index.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				i.Index = val
+			}
+		}
+	}
 	return i
 }
 
@@ -715,12 +755,30 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 }
 
 func (s *SliceExpr) Optimize(ctx *OptimizeContext) Node {
-	s.X = s.X.Optimize(ctx).(Expr)
+	if s.X != nil {
+		if opt := s.X.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				s.X = val
+			}
+		}
+	}
 	if s.Low != nil {
-		s.Low = s.Low.Optimize(ctx).(Expr)
+		if s.Low != nil {
+			if opt := s.Low.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					s.Low = val
+				}
+			}
+		}
 	}
 	if s.High != nil {
-		s.High = s.High.Optimize(ctx).(Expr)
+		if s.High != nil {
+			if opt := s.High.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					s.High = val
+				}
+			}
+		}
 	}
 	return s
 }
@@ -747,7 +805,10 @@ func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
 
 func (f *FuncLitExpr) Optimize(ctx *OptimizeContext) Node {
 	if f.Body != nil {
-		f.Body = f.Body.Optimize(ctx).(*BlockStmt)
+		opt := f.Body.Optimize(ctx)
+		if val, ok := opt.(*BlockStmt); ok {
+			f.Body = val
+		}
 	}
 	return f
 }

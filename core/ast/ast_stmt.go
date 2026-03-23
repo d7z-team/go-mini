@@ -169,14 +169,25 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 	// 1. 优化结构体定义
 	for i, structDef := range p.Structs {
-		p.Structs[i] = structDef.Optimize(ctx).(*StructStmt)
+		if structDef != nil {
+			opt := structDef.Optimize(ctx)
+			p.Structs[i] = opt.(*StructStmt)
+		}
 	}
 
 	// 2. 优化全局变量定义
 	newVars := make(map[Ident]Expr)
 	for i, stmt := range p.Variables {
 		if stmt != nil {
-			newVars[i] = stmt.Optimize(ctx).(Expr)
+			if opt := stmt.Optimize(ctx); opt != nil {
+				if expr, ok := opt.(Expr); ok {
+					newVars[i] = expr
+				} else {
+					newVars[i] = nil
+				}
+			} else {
+				newVars[i] = nil
+			}
 		} else {
 			newVars[i] = nil
 		}
@@ -185,13 +196,18 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 
 	// 3. 优化函数定义
 	for i, funcs := range p.Functions {
-		optimized := funcs.Optimize(ctx)
-		p.Functions[i] = optimized.(*FunctionStmt)
+		if funcs != nil {
+			opt := funcs.Optimize(ctx)
+			p.Functions[i] = opt.(*FunctionStmt)
+		}
 	}
 
 	// 4. 处理 Main 块中的语句，并执行定义提取
 	var newMain []Stmt
 	for _, node := range p.Main {
+		if node == nil {
+			continue
+		}
 		optimized := node.Optimize(ctx)
 		if optimized == nil {
 			continue
@@ -413,7 +429,13 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 
 func (i *IfStmt) Optimize(ctx *OptimizeContext) Node {
 	// 1. Optimize Cond。
-	i.Cond = i.Cond.Optimize(ctx).(Expr)
+	if i.Cond != nil {
+		if opt := i.Cond.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				i.Cond = val
+			}
+		}
+	}
 
 	// 2. 如果 Cond 是 LiteralExpr 且 Value 为 "true"，直接返回 Optimize 后的 Body。
 	if lit, ok := i.Cond.(*LiteralExpr); ok && lit.Type == "Bool" && lit.Value == "true" {
@@ -429,7 +451,12 @@ func (i *IfStmt) Optimize(ctx *OptimizeContext) Node {
 	}
 
 	// 4. 递归 Optimize Body 和 ElseBody。
-	i.Body = i.Body.Optimize(ctx).(*BlockStmt)
+	if i.Body != nil {
+		opt := i.Body.Optimize(ctx)
+		if val, ok := opt.(*BlockStmt); ok {
+			i.Body = val
+		}
+	}
 	if i.ElseBody != nil {
 		optimizedElse := i.ElseBody.Optimize(ctx)
 		i.ElseBody = optimizedElse.(*BlockStmt)
@@ -504,15 +531,40 @@ func (f *ForStmt) Check(ctx *SemanticContext) error {
 
 func (f *ForStmt) Optimize(ctx *OptimizeContext) Node {
 	if f.Init != nil {
-		f.Init = f.Init.Optimize(ctx).(Stmt)
+		if f.Init != nil {
+			if opt := f.Init.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Stmt); ok {
+					f.Init = val
+				}
+			}
+		}
 	}
 	if f.Cond != nil {
-		f.Cond = f.Cond.Optimize(ctx).(Expr)
+		if f.Cond != nil {
+			if opt := f.Cond.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					f.Cond = val
+				}
+			}
+		}
 	}
 	if f.Update != nil {
-		f.Update = f.Update.Optimize(ctx).(Stmt)
+		if f.Update != nil {
+			if opt := f.Update.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Stmt); ok {
+					f.Update = val
+				}
+			}
+		}
 	}
-	f.Body = f.Body.Optimize(ctx).(Stmt)
+	if f.Body != nil {
+		opt := f.Body.Optimize(ctx)
+		{
+			if val, ok := opt.(Stmt); ok {
+				f.Body = val
+			}
+		}
+	}
 	return f
 }
 
@@ -589,7 +641,13 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 
 func (r *ReturnStmt) Optimize(ctx *OptimizeContext) Node {
 	for i, result := range r.Results {
-		r.Results[i] = result.Optimize(ctx).(Expr)
+		if result != nil {
+			if opt := result.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					r.Results[i] = val
+				}
+			}
+		}
 	}
 	return r
 }
@@ -614,7 +672,13 @@ func (d *DeferStmt) Check(ctx *SemanticContext) error {
 }
 
 func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
-	d.Call = d.Call.Optimize(ctx).(Expr)
+	if d.Call != nil {
+		if opt := d.Call.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				d.Call = val
+			}
+		}
+	}
 	return d
 }
 
@@ -686,8 +750,21 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 }
 
 func (r *RangeStmt) Optimize(ctx *OptimizeContext) Node {
-	r.X = r.X.Optimize(ctx).(Expr)
-	r.Body = r.Body.Optimize(ctx).(*BlockStmt)
+	if r.X != nil {
+		if opt := r.X.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				r.X = val
+			}
+		}
+	}
+	if r.Body != nil {
+		opt := r.Body.Optimize(ctx)
+		{
+			if val, ok := opt.(*BlockStmt); ok {
+				r.Body = val
+			}
+		}
+	}
 	return r
 }
 
@@ -777,16 +854,41 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 
 func (s *SwitchStmt) Optimize(ctx *OptimizeContext) Node {
 	if s.Init != nil {
-		s.Init = s.Init.Optimize(ctx).(Stmt)
+		if s.Init != nil {
+			if opt := s.Init.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Stmt); ok {
+					s.Init = val
+				}
+			}
+		}
 	}
 	if s.Assign != nil {
-		s.Assign = s.Assign.Optimize(ctx).(Stmt)
+		if s.Assign != nil {
+			if opt := s.Assign.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Stmt); ok {
+					s.Assign = val
+				}
+			}
+		}
 	}
 	if s.Tag != nil {
-		s.Tag = s.Tag.Optimize(ctx).(Expr)
+		if s.Tag != nil {
+			if opt := s.Tag.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					s.Tag = val
+				}
+			}
+		}
 	}
 	if s.Body != nil {
-		s.Body = s.Body.Optimize(ctx).(*BlockStmt)
+		if s.Body != nil {
+			opt := s.Body.Optimize(ctx)
+			{
+				if val, ok := opt.(*BlockStmt); ok {
+					s.Body = val
+				}
+			}
+		}
 	}
 	return s
 }
@@ -982,8 +1084,15 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 }
 
 func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
-	f.Body = f.Body.Optimize(ctx).(*BlockStmt)
-	f.Body.Inner = true
+	if f.Body != nil {
+		opt := f.Body.Optimize(ctx)
+		{
+			if block, ok := opt.(*BlockStmt); ok {
+				f.Body = block
+				f.Body.Inner = true
+			}
+		}
+	}
 	return f
 }
 
@@ -1091,10 +1200,22 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 	for i, lhs := range m.LHS {
 		if lhs != nil {
-			m.LHS[i] = lhs.Optimize(ctx).(Expr)
+			if lhs != nil {
+				if opt := lhs.Optimize(ctx); opt != nil {
+					if val, ok := opt.(Expr); ok {
+						m.LHS[i] = val
+					}
+				}
+			}
 		}
 	}
-	m.Value = m.Value.Optimize(ctx).(Expr)
+	if m.Value != nil {
+		if opt := m.Value.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				m.Value = val
+			}
+		}
+	}
 	return m
 }
 
@@ -1254,8 +1375,20 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 }
 
 func (a *AssignmentStmt) Optimize(ctx *OptimizeContext) Node {
-	a.LHS = a.LHS.Optimize(ctx).(Expr)
-	a.Value = a.Value.Optimize(ctx).(Expr)
+	if a.LHS != nil {
+		if opt := a.LHS.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				a.LHS = val
+			}
+		}
+	}
+	if a.Value != nil {
+		if opt := a.Value.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				a.Value = val
+			}
+		}
+	}
 
 	lhsType := a.LHS.GetBase().Type
 	valType := a.Value.GetBase().Type
@@ -1343,12 +1476,31 @@ func (t *TryStmt) Check(ctx *SemanticContext) error {
 }
 
 func (t *TryStmt) Optimize(ctx *OptimizeContext) Node {
-	t.Body = t.Body.Optimize(ctx).(*BlockStmt)
+	if t.Body != nil {
+		opt := t.Body.Optimize(ctx)
+		{
+			if val, ok := opt.(*BlockStmt); ok {
+				t.Body = val
+			}
+		}
+	}
 	if t.Catch != nil {
-		t.Catch.Body = t.Catch.Body.Optimize(ctx).(*BlockStmt)
+		if t.Catch.Body != nil {
+			opt := t.Catch.Body.Optimize(ctx)
+			if val, ok := opt.(*BlockStmt); ok {
+				t.Catch.Body = val
+			}
+		}
 	}
 	if t.Finally != nil {
-		t.Finally = t.Finally.Optimize(ctx).(*BlockStmt)
+		if t.Finally != nil {
+			opt := t.Finally.Optimize(ctx)
+			{
+				if val, ok := opt.(*BlockStmt); ok {
+					t.Finally = val
+				}
+			}
+		}
 	}
 	return t
 }

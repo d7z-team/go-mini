@@ -161,8 +161,20 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 
 func (b *BinaryExpr) Optimize(ctx *OptimizeContext) Node {
 	// 1. 递归优化子节点
-	b.Left = b.Left.Optimize(ctx).(Expr)
-	b.Right = b.Right.Optimize(ctx).(Expr)
+	if b.Left != nil {
+		if opt := b.Left.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				b.Left = val
+			}
+		}
+	}
+	if b.Right != nil {
+		if opt := b.Right.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				b.Right = val
+			}
+		}
+	}
 
 	// 2. 常量折叠
 	if leftLit, ok := b.Left.(*LiteralExpr); ok {
@@ -221,7 +233,13 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 }
 
 func (u *UnaryExpr) Optimize(ctx *OptimizeContext) Node {
-	u.Operand = u.Operand.Optimize(ctx).(Expr)
+	if u.Operand != nil {
+		if opt := u.Operand.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				u.Operand = val
+			}
+		}
+	}
 
 	if u.Operator == "Plus" {
 		return u.Operand

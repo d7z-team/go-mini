@@ -31,7 +31,13 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 }
 
 func (i *IncDecStmt) Optimize(ctx *OptimizeContext) Node {
-	i.Operand = i.Operand.Optimize(ctx).(Expr)
+	if i.Operand != nil {
+		if opt := i.Operand.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				i.Operand = val
+			}
+		}
+	}
 	return i
 }
 
@@ -53,7 +59,13 @@ func (e *ExpressionStmt) Check(ctx *SemanticContext) error {
 
 func (e *ExpressionStmt) Optimize(ctx *OptimizeContext) Node {
 	if e.X != nil {
-		e.X = e.X.Optimize(ctx).(Expr)
+		if e.X != nil {
+			if opt := e.X.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					e.X = val
+				}
+			}
+		}
 	}
 	return e
 }
