@@ -103,7 +103,7 @@ var BrowserModule_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"OpenBrowser", 1, "function(String) tuple(Ptr<other.Browser>, Error)", ""},
+	{"OpenBrowser", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>, Error)", ""},
 }
 
 type BrowserModule_Bridge struct {
@@ -247,7 +247,7 @@ var BrowserService_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"NewPage", 1, "function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error)", ""},
+	{"NewPage", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error)", ""},
 }
 
 type BrowserService_Bridge struct {
@@ -274,7 +274,7 @@ func RegisterBrowserService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
-	prefix := "__method_other.Browser"
+	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -401,7 +401,7 @@ var PageService_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Locator", 1, "function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error)", ""},
+	{"Locator", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error)", ""},
 }
 
 type PageService_Bridge struct {
@@ -428,7 +428,7 @@ func RegisterPageService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
-	prefix := "__method_other.Page"
+	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -532,7 +532,7 @@ var CdpSelectorService_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Click", 1, "function(Ptr<other.CdpSelector>) Error", ""},
+	{"Click", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error", ""},
 }
 
 type CdpSelectorService_Bridge struct {
@@ -559,7 +559,7 @@ func RegisterCdpSelectorService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
-	prefix := "__method_other.CdpSelector"
+	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"

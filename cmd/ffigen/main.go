@@ -20,8 +20,9 @@ var (
 	outFile = flag.String("out", "", "output file")
 
 	// 类型推导上下文
-	typeInfo *types.Info
-	fset     *token.FileSet
+	typeInfo     *types.Info
+	fset         *token.FileSet
+	knownImports map[string]string
 )
 
 func main() {
@@ -53,7 +54,7 @@ func main() {
 
 	var ifaceSpecs []*ast.TypeSpec
 	structs := make(map[string]*ast.StructType)
-	knownImports := make(map[string]string)
+	knownImports = make(map[string]string)
 
 	for _, node := range files {
 		for _, imp := range node.Imports {
@@ -216,7 +217,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				for i, p := range parts {
 					if p == "ffigen:methods" && i+1 < len(parts) {
 						methodsPrefix = parts[i+1]
-						fixedPrefix = "__method_" + parts[i+1]
+						fixedPrefix = "__method_" + resolveCanonicalType(methodsPrefix)
 						break
 					}
 				}
@@ -250,6 +251,8 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			receiverType := typeToString(funcType.Params.List[paramIdx].Type)
 			receiverTypeClean := strings.TrimPrefix(receiverType, "Ptr<")
 			receiverTypeClean = strings.TrimSuffix(receiverTypeClean, ">")
+
+			// Validation should still use the Go-source visible name (e.g. other.Page)
 			if receiverTypeClean != methodsPrefix {
 				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' method '%s' expects receiver type '%s', but ffigen:methods specifies '%s'. Please ensure the ffigen:methods prefix exactly matches the receiver type (including package prefix).", name, method.Names[0].Name, receiverTypeClean, methodsPrefix))
 			}
@@ -925,6 +928,18 @@ func getSpec(funcType *ast.FuncType) string {
 	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
 }
 
+func resolveCanonicalType(name string) string {
+	if !strings.Contains(name, ".") {
+		return name
+	}
+	parts := strings.SplitN(name, ".", 2)
+	prefix := parts[0]
+	if fullPath, ok := knownImports[prefix]; ok {
+		return fullPath + "." + parts[1]
+	}
+	return name
+}
+
 func toVMType(expr ast.Expr) string {
 	if bt := resolveToBasicType(expr); bt != "" {
 		switch {
@@ -957,7 +972,7 @@ func toVMType(expr ast.Expr) string {
 		case "error":
 			return "Error"
 		}
-		return name
+		return resolveCanonicalType(name)
 	case *ast.ArrayType:
 		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 			return "TypeBytes"
@@ -970,10 +985,13 @@ func toVMType(expr ast.Expr) string {
 	case *ast.Ellipsis:
 		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
 	case *ast.SelectorExpr:
+		name := ""
 		if x, ok := t.X.(*ast.Ident); ok {
-			return x.Name + "." + t.Sel.Name
+			name = x.Name + "." + t.Sel.Name
+		} else {
+			name = t.Sel.Name
 		}
-		return t.Sel.Name
+		return resolveCanonicalType(name)
 	default:
 		return "Any"
 	}
