@@ -50,9 +50,10 @@ go-mini/
 *   **规则**: 执行路径 (`core/runtime` 和 `core/ast`) 中**禁止**使用 `reflect` 包。
 *   **实现**: 所有动态 FFI 调用都通过静态生成的代码 (`ffigen`) 路由，使用整数 `MethodID` 和字节数组载荷 (payload)。
 
-### III. 封闭类型系统 (Closed Type System / Data Reduction)
+### III. 封闭类型系统与全路径标识 (Closed Type System / Full-Path Identity)
 *   **规则**: 不要试图将每种 Go 类型都映射到 VM 中。
 *   **实现**: VM 只理解原语：`TypeInt` (int64), `TypeFloat` (float64), `TypeString`, `TypeBool`, `TypeBytes` ([]byte), `TypeArray`, `TypeMap`, `TypeHandle`, 以及 `TypeAny`。
+*   **全路径唯一标识**: 为了彻底杜绝不同包中同名类型的冲突，`ffigen` 生成的 `TypeHandle` 必须使用其 **Go 完整导入路径** (Canonical Path) 作为唯一 ID（例如 `github.com/.../pkg.Type`）。
 *   **引用语义约定**: 所有的复合类型（Array, Map, 以及由 Map 模拟的 Struct）在 VM 内部传递时均采用**引用语义**。赋值操作或方法调用不会触发深度拷贝。
 *   **数值降维映射**: 为了兼容标准 Go 脚本，`converter.go` 负责将多种 Go 数值类型映射到 VM 核心原语：
     *   **Int64**: 涵盖 `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint16`, `uint32`。
@@ -123,17 +124,18 @@ go-mini/
     *   `core/ast/query.go` (更新 `Walk` 逻辑，确保新节点可被 LSP 遍历)。
 2.  **标识符规范**: AST 中的所有 `Operator` 或 `InterruptType` 必须统一使用 `Ident` 类型（除非该字段纯粹用于 JSON 标识）。
 
-### C. 添加或修改标准库 (`core/ffilib`)
+### C. 添加或修改标准库 / FFI (`core/ffilib`)
 1.  **目录结构**: 创建目录 (例如 `core/ffilib/netlib`)。
-2.  **定义接口**: 在 `interface.go` 中定义接口。
-    *   使用 `// ffigen:module <name>` 注解接口以定义包名（如 `fmt`, `os`）。
-    *   使用 `// ffigen:methods <TypeName>` 注解接口以定义面向对象的方法集（如 `File`），这会自动生成 `__method_TypeName_MethodName` 格式"`"的 FFI 路由。
-3.  **生成指令**: 在 `interface.go` 首行添加 `//go:generate` 指令：
+2.  **定义接口或结构体**: 
+    *   **接口模式**: 在 `interface.go` 中定义接口。使用 `// ffigen:module <name>` 或 `// ffigen:methods <FullTypeName>`。
+    *   **结构体模式**: 直接在 `struct` 上标注 `// ffigen:methods`。`ffigen` 会自动导出所有公开方法。
+3.  **全路径安全**: 始终推荐在 `ffigen:methods` 中包含包名前缀（如 `ops.Page`）。`ffigen` 会自动将其解析为 Canonical Path 以确保路由唯一。
+4.  **生成指令**: 在文件首行添加 `//go:generate` 指令：
     `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -out <name>_ffigen.go interface.go`
-4.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。
-5.  **元数据安全**: Bridge 层**严禁信任** `Var.Type` 字符串，必须基于 `VType` 枚举进行严格的硬断言。
-6.  **触发生成**: 运行 `make gen`。
-7.  **注入执行器**: 在 `core/executor.go` (`InjectStandardLibraries`) 中使用生成的简洁 API 注入（如 `RegisterOS(o, impl, reg)`）。
+5.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。
+6.  **元数据安全**: Bridge 层**严禁信任** `Var.Type` 字符串，必须基于 `VType` 枚举进行严格的硬断言。
+7.  **触发生成**: 运行 `make gen`。
+8.  **注入执行器**: 调用生成的 `RegisterXXX` 函数注入执行器。
 
 ### D. 测试与验证 (`core/e2e`)
 1.  **强制要求**: 每个 Bug 修复、功能实现或重构都必须在 `core/e2e/` 中附带一个测试。

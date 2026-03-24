@@ -73,13 +73,48 @@ func main() {
 			if gd, ok := n.(*ast.GenDecl); ok {
 				for _, spec := range gd.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-							if typeSpec.Doc == nil {
-								typeSpec.Doc = gd.Doc
+						if typeSpec.Doc == nil {
+							typeSpec.Doc = gd.Doc
+						}
+
+						hasFfigen := false
+						if typeSpec.Doc != nil {
+							for _, line := range typeSpec.Doc.List {
+								if strings.Contains(line.Text, "ffigen:") {
+									hasFfigen = true
+									break
+								}
 							}
+						}
+
+						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
 							ifaceSpecs = append(ifaceSpecs, typeSpec)
 						} else if str, ok := typeSpec.Type.(*ast.StructType); ok {
 							structs[typeSpec.Name.Name] = str
+							if hasFfigen {
+								isModule := false
+								if typeSpec.Doc != nil {
+									for _, line := range typeSpec.Doc.List {
+										if strings.Contains(line.Text, "ffigen:module") {
+											isModule = true
+											break
+										}
+									}
+								}
+
+								methods := findMethodsForStruct(files, typeSpec.Name.Name)
+								if len(methods) > 0 {
+									// Only add receiver if it's NOT a module (i.e. it's ffigen:methods)
+									virtualIface := synthesizeInterface(methods, !isModule)
+									virtualSpec := *typeSpec
+									virtualSpec.Type = virtualIface
+									if virtualSpec.Doc == nil {
+										virtualSpec.Doc = &ast.CommentGroup{}
+									}
+									virtualSpec.Doc.List = append(virtualSpec.Doc.List, &ast.Comment{Text: "// ffigen:struct"})
+									ifaceSpecs = append(ifaceSpecs, &virtualSpec)
+								}
+							}
 						}
 					}
 				}
@@ -100,16 +135,19 @@ func main() {
 	anyReverse := false
 	for _, spec := range ifaceSpecs {
 		isReverse := false
+		isStruct := false
 		if spec.Doc != nil {
 			for _, line := range spec.Doc.List {
 				if strings.Contains(line.Text, "ffigen:reverse") {
 					isReverse = true
 					anyReverse = true
-					break
+				}
+				if strings.Contains(line.Text, "ffigen:struct") {
+					isStruct = true
 				}
 			}
 		}
-		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse))
+		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse, isStruct))
 	}
 
 	fullInterfaces := strings.Join(interfaces, "\n")
@@ -194,7 +232,7 @@ func resolveToBasicType(e ast.Expr) string {
 	return ""
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse bool) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse bool, isStruct bool) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 
@@ -215,8 +253,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			if strings.Contains(line.Text, "ffigen:methods") {
 				parts := strings.Fields(line.Text)
 				for i, p := range parts {
-					if p == "ffigen:methods" && i+1 < len(parts) {
-						methodsPrefix = parts[i+1]
+					if p == "ffigen:methods" {
+						if i+1 < len(parts) {
+							methodsPrefix = parts[i+1]
+						} else {
+							methodsPrefix = name
+						}
 						fixedPrefix = "__method_" + resolveCanonicalType(methodsPrefix)
 						break
 					}
@@ -267,170 +309,176 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	}
 	fmt.Fprintf(&sb, ")\n\n")
 
-	fmt.Fprintf(&sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name)
-	fmt.Fprintf(&sb, "func New%sProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) %s {\n\treturn &%sProxy{bridge: bridge, registry: registry}\n}\n\n", name, name, name)
+	if !isStruct {
+		fmt.Fprintf(&sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name)
+		fmt.Fprintf(&sb, "func New%sProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) %s {\n\treturn &%sProxy{bridge: bridge, registry: registry}\n}\n\n", name, name, name)
 
-	for _, method := range iface.Methods.List {
-		if len(method.Names) == 0 {
-			continue
-		}
-		methodName := method.Names[0].Name
-		funcType := method.Type.(*ast.FuncType)
-
-		hasContext := false
-		contextVarName := "context.Background()"
-		if funcType.Params != nil && len(funcType.Params.List) > 0 {
-			pType := typeToString(funcType.Params.List[0].Type)
-			if pType == "context.Context" || pType == "Context" {
-				hasContext = true
-				if len(funcType.Params.List[0].Names) > 0 {
-					contextVarName = funcType.Params.List[0].Names[0].Name
-				} else {
-					contextVarName = "arg0"
-				}
+		for _, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
 			}
-		}
+			methodName := method.Names[0].Name
+			funcType := method.Type.(*ast.FuncType)
 
-		fmt.Fprintf(&sb, "func (__p *%sProxy) %s(", name, methodName)
-		var pList []string
-		argIdx := 0
-		if funcType.Params != nil {
-			for _, param := range funcType.Params.List {
-				goType := toGoType(typeToString(param.Type))
-				if _, ok := param.Type.(*ast.Ellipsis); ok {
-					goType = "..." + strings.TrimPrefix(goType, "[]")
-				}
-				if len(param.Names) == 0 {
-					pList = append(pList, fmt.Sprintf("arg%d %s", argIdx, goType))
-					argIdx++
-				} else {
-					for _, pName := range param.Names {
-						pList = append(pList, pName.Name+" "+goType)
-						argIdx++
-					}
-				}
-			}
-		}
-		fmt.Fprintf(&sb, "%s) ", strings.Join(pList, ", "))
-
-		var hasErr bool
-		if funcType.Results != nil {
-			fmt.Fprintf(&sb, "(")
-			for j, result := range funcType.Results.List {
-				rType := typeToString(result.Type)
-				if rType == "error" {
-					hasErr = true
-					fmt.Fprintf(&sb, "error")
-				} else {
-					fmt.Fprintf(&sb, "%s", toGoType(rType))
-				}
-				if j < len(funcType.Results.List)-1 {
-					fmt.Fprintf(&sb, ", ")
-				}
-			}
-			fmt.Fprintf(&sb, ") ")
-		}
-
-		fmt.Fprintf(&sb, "{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
-		argIdx = 0
-		if funcType.Params != nil {
-			for j, param := range funcType.Params.List {
-				if j == 0 && hasContext {
-					argIdx++
-					continue
-				}
-				pType := typeToString(param.Type)
-				if len(param.Names) == 0 {
-					argName := fmt.Sprintf("arg%d", argIdx)
-					if _, ok := param.Type.(*ast.Ellipsis); ok {
-						itemType, _ := readArrayItemType(pType)
-						fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", argName)
-						fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", argName)
-						emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
-						fmt.Fprintf(&sb, "\t}\n")
+			hasContext := false
+			contextVarName := "context.Background()"
+			if funcType.Params != nil && len(funcType.Params.List) > 0 {
+				pType := typeToString(funcType.Params.List[0].Type)
+				if pType == "context.Context" || pType == "Context" {
+					hasContext = true
+					if len(funcType.Params.List[0].Names) > 0 {
+						contextVarName = funcType.Params.List[0].Names[0].Name
 					} else {
-						emitWrite(&sb, argName, pType, param.Type, structs, "buf", false)
-					}
-					argIdx++
-				} else {
-					for _, pName := range param.Names {
-						if _, ok := param.Type.(*ast.Ellipsis); ok {
-							itemType, _ := readArrayItemType(pType)
-							fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
-							fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
-							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
-							fmt.Fprintf(&sb, "\t}\n")
-						} else {
-							emitWrite(&sb, pName.Name, pType, param.Type, structs, "buf", false)
-						}
-						argIdx++
+						contextVarName = "arg0"
 					}
 				}
 			}
-		}
 
-		needsRetBuf := (funcType.Results != nil && len(funcType.Results.List) > 0)
-		if needsRetBuf || hasErr {
-			fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
-			fmt.Fprintf(&sb, "\t_ = retData\n")
-		} else {
-			fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
-		}
-		fmt.Fprintf(&sb, "\t_ = err\n")
+			fmt.Fprintf(&sb, "func (__p *%sProxy) %s(", name, methodName)
+			var pList []string
+			argIdx := 0
+			if funcType.Params != nil {
+				for _, param := range funcType.Params.List {
+					goType := toGoType(typeToString(param.Type))
+					if _, ok := param.Type.(*ast.Ellipsis); ok {
+						goType = "..." + strings.TrimPrefix(goType, "[]")
+					}
+					if len(param.Names) == 0 {
+						pList = append(pList, fmt.Sprintf("arg%d %s", argIdx, goType))
+						argIdx++
+					} else {
+						for _, pName := range param.Names {
+							pList = append(pList, pName.Name+" "+goType)
+							argIdx++
+						}
+					}
+				}
+			}
+			fmt.Fprintf(&sb, "%s) ", strings.Join(pList, ", "))
 
-		if hasErr {
-			fmt.Fprintf(&sb, "\tif err != nil { return ")
+			var hasErr bool
 			if funcType.Results != nil {
+				fmt.Fprintf(&sb, "(")
 				for j, result := range funcType.Results.List {
 					rType := typeToString(result.Type)
 					if rType == "error" {
-						fmt.Fprintf(&sb, "err")
+						hasErr = true
+						fmt.Fprintf(&sb, "error")
 					} else {
-						fmt.Fprintf(&sb, "%s", zeroValue(toGoType(rType)))
+						fmt.Fprintf(&sb, "%s", toGoType(rType))
 					}
 					if j < len(funcType.Results.List)-1 {
 						fmt.Fprintf(&sb, ", ")
 					}
 				}
+				fmt.Fprintf(&sb, ") ")
 			}
-			fmt.Fprintf(&sb, " }\n")
-		}
 
-		if needsRetBuf {
-			fmt.Fprintf(&sb, "\tretBuf := ffigo.NewReader(retData)\n")
-		}
-
-		var retStmt []string
-		if funcType.Results != nil {
-			for i, result := range funcType.Results.List {
-				rType := typeToString(result.Type)
-				if rType == "error" {
-					fmt.Fprintf(&sb, "\tvar err_%d error\n", i)
-					fmt.Fprintf(&sb, "\tif retBuf.Available() > 0 {\n")
-					fmt.Fprintf(&sb, "\t\ted := retBuf.ReadRawError()\n")
-					fmt.Fprintf(&sb, "\t\tif ed.Message != \"\" || ed.Handle != 0 {\n")
-					fmt.Fprintf(&sb, "\t\t\tif ed.Handle != 0 && __p.registry != nil {\n")
-					fmt.Fprintf(&sb, "\t\t\t\tif obj, ok := __p.registry.Get(ed.Handle); ok { err_%d = obj.(error) } else { err_%d = ed }\n", i, i)
-					fmt.Fprintf(&sb, "\t\t\t} else { err_%d = ed }\n", i)
-					fmt.Fprintf(&sb, "\t\t}\n\t}\n")
-					retStmt = append(retStmt, fmt.Sprintf("err_%d", i))
-					continue
+			fmt.Fprintf(&sb, "{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
+			argIdx = 0
+			if funcType.Params != nil {
+				for j, param := range funcType.Params.List {
+					if j == 0 && hasContext {
+						argIdx++
+						continue
+					}
+					pType := typeToString(param.Type)
+					if len(param.Names) == 0 {
+						argName := fmt.Sprintf("arg%d", argIdx)
+						if _, ok := param.Type.(*ast.Ellipsis); ok {
+							itemType, _ := readArrayItemType(pType)
+							fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", argName)
+							fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", argName)
+							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
+							fmt.Fprintf(&sb, "\t}\n")
+						} else {
+							emitWrite(&sb, argName, pType, param.Type, structs, "buf", false)
+						}
+						argIdx++
+					} else {
+						for _, pName := range param.Names {
+							if _, ok := param.Type.(*ast.Ellipsis); ok {
+								itemType, _ := readArrayItemType(pType)
+								fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
+								fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
+								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
+								fmt.Fprintf(&sb, "\t}\n")
+							} else {
+								emitWrite(&sb, pName.Name, pType, param.Type, structs, "buf", false)
+							}
+							argIdx++
+						}
+					}
 				}
-				varName := fmt.Sprintf("v_%d", i)
-				fmt.Fprintf(&sb, "\tvar %s %s\n", varName, toGoType(rType))
-				emitReadAssign(&sb, varName, rType, result.Type, structs, "retBuf", false)
-				retStmt = append(retStmt, varName)
 			}
+
+			needsRetBuf := (funcType.Results != nil && len(funcType.Results.List) > 0)
+			if needsRetBuf || hasErr {
+				fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+				fmt.Fprintf(&sb, "\t_ = retData\n")
+			} else {
+				fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+			}
+			fmt.Fprintf(&sb, "\t_ = err\n")
+
+			if hasErr {
+				fmt.Fprintf(&sb, "\tif err != nil { return ")
+				if funcType.Results != nil {
+					for j, result := range funcType.Results.List {
+						rType := typeToString(result.Type)
+						if rType == "error" {
+							fmt.Fprintf(&sb, "err")
+						} else {
+							fmt.Fprintf(&sb, "%s", zeroValue(toGoType(rType)))
+						}
+						if j < len(funcType.Results.List)-1 {
+							fmt.Fprintf(&sb, ", ")
+						}
+					}
+				}
+				fmt.Fprintf(&sb, " }\n")
+			}
+
+			if needsRetBuf {
+				fmt.Fprintf(&sb, "\tretBuf := ffigo.NewReader(retData)\n")
+			}
+
+			var retStmt []string
+			if funcType.Results != nil {
+				for i, result := range funcType.Results.List {
+					rType := typeToString(result.Type)
+					if rType == "error" {
+						fmt.Fprintf(&sb, "\tvar err_%d error\n", i)
+						fmt.Fprintf(&sb, "\tif retBuf.Available() > 0 {\n")
+						fmt.Fprintf(&sb, "\t\ted := retBuf.ReadRawError()\n")
+						fmt.Fprintf(&sb, "\t\tif ed.Message != \"\" || ed.Handle != 0 {\n")
+						fmt.Fprintf(&sb, "\t\t\tif ed.Handle != 0 && __p.registry != nil {\n")
+						fmt.Fprintf(&sb, "\t\t\t\tif obj, ok := __p.registry.Get(ed.Handle); ok { err_%d = obj.(error) } else { err_%d = ed }\n", i, i)
+						fmt.Fprintf(&sb, "\t\t\t} else { err_%d = ed }\n", i)
+						fmt.Fprintf(&sb, "\t\t}\n\t}\n")
+						retStmt = append(retStmt, fmt.Sprintf("err_%d", i))
+						continue
+					}
+					varName := fmt.Sprintf("v_%d", i)
+					fmt.Fprintf(&sb, "\tvar %s %s\n", varName, toGoType(rType))
+					emitReadAssign(&sb, varName, rType, result.Type, structs, "retBuf", false)
+					retStmt = append(retStmt, varName)
+				}
+			}
+			if len(retStmt) > 0 {
+				fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(retStmt, ", "))
+			} else {
+				fmt.Fprintf(&sb, "\treturn\n")
+			}
+			fmt.Fprintf(&sb, "}\n\n")
 		}
-		if len(retStmt) > 0 {
-			fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(retStmt, ", "))
-		} else {
-			fmt.Fprintf(&sb, "\treturn\n")
-		}
-		fmt.Fprintf(&sb, "}\n\n")
 	}
 
-	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {\n", name, name)
+	implType := name
+	if isStruct {
+		implType = "*" + name
+	}
+	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {\n", name, implType)
 	fmt.Fprintf(&sb, "\tif methodID == 0 && methodName != \"\" {\n")
 	fmt.Fprintf(&sb, "\t\tswitch methodName {\n")
 	for _, method := range iface.Methods.List {
@@ -502,6 +550,24 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 			}
 		}
+
+		callPrefix := "impl."
+		callParams := paramVars
+		if isStruct && methodsPrefix != "" {
+			paramIdx := 0
+			if hasContext {
+				paramIdx = 1
+			}
+			if len(paramVars) > paramIdx {
+				receiverVar := paramVars[paramIdx]
+				callPrefix = receiverVar + "."
+				// Remove receiver from callParams
+				newCallParams := append([]string{}, paramVars[:paramIdx]...)
+				newCallParams = append(newCallParams, paramVars[paramIdx+1:]...)
+				callParams = newCallParams
+			}
+		}
+
 		var retVars []string
 		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
@@ -511,9 +577,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					retVars = append(retVars, fmt.Sprintf("r%d", i))
 				}
 			}
-			fmt.Fprintf(&sb, "\t\t%s := impl.%s(%s)\n", strings.Join(retVars, ", "), methodName, strings.Join(paramVars, ", "))
+			fmt.Fprintf(&sb, "\t\t%s := %s%s(%s)\n", strings.Join(retVars, ", "), callPrefix, methodName, strings.Join(callParams, ", "))
 		} else {
-			fmt.Fprintf(&sb, "\t\timpl.%s(%s)\n", methodName, strings.Join(paramVars, ", "))
+			fmt.Fprintf(&sb, "\t\t%s%s(%s)\n", callPrefix, methodName, strings.Join(callParams, ", "))
 		}
 		fmt.Fprintf(&sb, "\t\tresBuf := ffigo.GetBuffer()\n")
 		if funcType.Results != nil {
@@ -547,7 +613,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	}
 	fmt.Fprintf(&sb, "}\n\n")
 
-	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, name)
+	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, implType)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name)
 	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, \"\", args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {\n", name)
@@ -555,18 +621,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
 	if fixedPrefix != "" {
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, name)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
 	} else {
-		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, name)
+		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
 	}
 
-	if isReverse {
+	if isReverse && !isStruct {
 		fmt.Fprintf(&sb, "type %s_ReverseProxy struct {\n\tprogram runtime.ExecutorAPI\n\tctx *runtime.StackContext\n\tcallable *runtime.Var\n\tbridge ffigo.FFIBridge\n}\n\n", name)
 		fmt.Fprintf(&sb, "func New%s_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.StackContext, callable *runtime.Var, bridge ffigo.FFIBridge) *%s_ReverseProxy {\n\treturn &%s_ReverseProxy{program: program, ctx: ctx, callable: callable, bridge: bridge}\n}\n\n", name, name, name)
 		for _, method := range iface.Methods.List {
@@ -1144,4 +1210,67 @@ func zeroValue(t string) string {
 	default:
 		return t + "{}"
 	}
+}
+
+func findMethodsForStruct(files []*ast.File, structName string) []*ast.FuncDecl {
+	var res []*ast.FuncDecl
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			if fd, ok := decl.(*ast.FuncDecl); ok && fd.Recv != nil && len(fd.Recv.List) > 0 {
+				recvType := fd.Recv.List[0].Type
+				if star, ok := recvType.(*ast.StarExpr); ok {
+					recvType = star.X
+				}
+				if ident, ok := recvType.(*ast.Ident); ok && ident.Name == structName {
+					if fd.Name.IsExported() {
+						res = append(res, fd)
+					}
+				}
+			}
+		}
+	}
+	return res
+}
+
+func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.InterfaceType {
+	iface := &ast.InterfaceType{
+		Methods: &ast.FieldList{},
+	}
+	for _, md := range methods {
+		ft := *md.Type
+		newParams := make([]*ast.Field, 0, len(ft.Params.List)+1)
+
+		if addReceiver {
+			hasContext := false
+			if len(ft.Params.List) > 0 {
+				pType := typeToString(ft.Params.List[0].Type)
+				if pType == "context.Context" || pType == "Context" {
+					hasContext = true
+				}
+			}
+
+			// Ensure receiver has a name
+			recvField := *md.Recv.List[0]
+			if len(recvField.Names) == 0 {
+				recvField.Names = []*ast.Ident{ast.NewIdent("recv")}
+			}
+
+			if hasContext {
+				newParams = append(newParams, ft.Params.List[0])
+				newParams = append(newParams, &recvField)
+				newParams = append(newParams, ft.Params.List[1:]...)
+			} else {
+				newParams = append(newParams, &recvField)
+				newParams = append(newParams, ft.Params.List...)
+			}
+			ft.Params = &ast.FieldList{List: newParams}
+		}
+
+		iface.Methods.List = append(iface.Methods.List, &ast.Field{
+			Names: []*ast.Ident{md.Name},
+			Type:  &ft,
+			Doc:   md.Doc,
+		})
+	}
+	return iface
 }
