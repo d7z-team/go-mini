@@ -205,7 +205,11 @@ func (r *Reader) ReadString() string {
 
 func (r *Reader) ReadBytes() []byte {
 	l := int(r.ReadUvarint())
-	v := r.buf[r.offset : r.offset+l]
+	if l == 0 {
+		return nil
+	}
+	v := make([]byte, l)
+	copy(v, r.buf[r.offset:r.offset+l])
 	r.offset += l
 	return v
 }

@@ -320,6 +320,18 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 	}
 
 	switch obj.VType {
+	case TypeBytes:
+		i := int(idx.I64)
+		if i < 0 || i >= len(obj.B) {
+			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length %d", i, len(obj.B)), IsPanic: true}
+		}
+		return NewInt(int64(obj.B[i])), nil
+	case TypeString:
+		i := int(idx.I64)
+		if i < 0 || i >= len(obj.Str) {
+			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length %d", i, len(obj.Str)), IsPanic: true}
+		}
+		return NewInt(int64(obj.Str[i])), nil
 	case TypeArray:
 		arr := obj.Ref.(*VMArray)
 		i := int(idx.I64)
@@ -329,6 +341,20 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		return arr.Data[i], nil
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
+		// Dynamic Key Type Validation
+		keyType, valType, _ := obj.Type.GetMapKeyValueTypes()
+		if !keyType.IsAny() {
+			if keyType.IsInt() && idx.VType != TypeInt {
+				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Int64, got %v", idx.VType), IsPanic: true}
+			}
+			if keyType.IsString() && idx.VType != TypeString {
+				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected String, got %v", idx.VType), IsPanic: true}
+			}
+			if keyType.IsBool() && idx.VType != TypeBool {
+				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Bool, got %v", idx.VType), IsPanic: true}
+			}
+		}
+
 		key, err := e.varToMapKey(idx)
 		if err != nil {
 			return nil, err
@@ -336,7 +362,6 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		if val, ok := m.Data[key]; ok {
 			return val, nil
 		}
-		_, valType, _ := obj.Type.GetMapKeyValueTypes()
 		return e.ToVar(ctx, valType.ZeroVar(), nil), nil
 	}
 	return nil, &VMError{Message: fmt.Sprintf("type %v does not support indexing", obj.VType), IsPanic: true}
@@ -618,6 +643,27 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				return nil
 			}
 			return &VMError{Message: fmt.Sprintf("invalid argument for len: %v", obj.VType), IsPanic: true}
+		case "cap":
+			if len(args) != 1 || args[0] == nil {
+				return &VMError{Message: "cap requires exactly 1 argument", IsPanic: true}
+			}
+			obj := args[0]
+			if obj.VType == TypeCell {
+				obj = obj.Ref.(*Cell).Value
+			}
+			if obj == nil {
+				session.ValueStack.Push(NewInt(0))
+				return nil
+			}
+			switch obj.VType {
+			case TypeBytes:
+				session.ValueStack.Push(NewInt(int64(cap(obj.B))))
+				return nil
+			case TypeArray:
+				session.ValueStack.Push(NewInt(int64(cap(obj.Ref.(*VMArray).Data))))
+				return nil
+			}
+			return &VMError{Message: fmt.Sprintf("invalid argument for cap: %v", obj.VType), IsPanic: true}
 		case "append":
 			if len(args) < 2 || args[0] == nil {
 				return &VMError{Message: "append requires at least 2 arguments", IsPanic: true}

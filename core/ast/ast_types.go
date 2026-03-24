@@ -37,8 +37,13 @@ func (o GoMiniType) BaseName() string {
 }
 
 func (o GoMiniType) IsVoid() bool {
-	return o == "Void" || o == ""
+	return o == "" || o == "Void" || o == "void"
 }
+
+func (o GoMiniType) IsPrimitive() bool {
+	return o.IsAny() || o.IsString() || o.IsNumeric() || o.IsBool() || o == "TypeBytes" || o == "Error"
+}
+
 
 func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	fn, ok := o.ReadFunc()
@@ -594,7 +599,7 @@ func (ft *FunctionType) String() string {
 
 func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 	vType := pVar.GetBase().Type
-	if o.IsAny() {
+	if o.IsAny() || vType.IsAny() {
 		return pVar, true
 	}
 	if o.Equals(vType) {
@@ -607,11 +612,37 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 			return pVar, true
 		}
 	}
-	return pVar, true
+	// 接口兼容性由 IsAssignableTo 在赋值或参数校验时更深入判断
+	if o.IsInterface() {
+		return pVar, true
+	}
+	return pVar, o.Equals(vType)
 }
 
 func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
+	return o.isAssignableToRecursive(target, 0, DefaultMaxTypeDepth)
+}
+
+var DefaultMaxTypeDepth = 256
+
+func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth int, maxDepth int) bool {
+	if depth > maxDepth {
+		return false // Prevent DoS via recursive types
+	}
+	if target.IsAny() || o.IsAny() {
+		return true
+	}
 	if o.Equals(target) {
+		return true
+	}
+	if target.IsString() && o == "Error" {
+		return true // Error 自动转 String
+	}
+	if target.IsNumeric() && o.IsNumeric() {
+		return true // 数值类型互转 (Int64 <-> Float64)
+	}
+	if o.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsInterface() {
+		// 允许 Map 赋值给命名的结构体类型
 		return true
 	}
 	if target.IsInterface() {
@@ -629,6 +660,19 @@ func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
 		}
 		// 允许非接口类型赋值给接口（由运行时进一步校验鸭子类型）
 		return true
+	}
+	// 处理指针自动解引用/取地址兼容性
+	if target.IsPtr() && !o.IsPtr() {
+		unPtr, _ := target.GetPtrElementType()
+		if unPtr.isAssignableToRecursive(o, depth+1, maxDepth) {
+			return true
+		}
+	}
+	if o.IsPtr() && !target.IsPtr() {
+		unPtr, _ := o.GetPtrElementType()
+		if unPtr.isAssignableToRecursive(target, depth+1, maxDepth) {
+			return true
+		}
 	}
 	return o.Equals(target)
 }

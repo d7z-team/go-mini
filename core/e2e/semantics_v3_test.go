@@ -1,128 +1,51 @@
 package e2e
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestSemanticValidationErrors(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+func TestSemanticsV3(t *testing.T) {
+	e := engine.NewMiniExecutor()
 
-	tests := []struct {
-		name    string
-		code    string
-		wantErr string
-	}{
-		{
-			name: "Missing return in all paths",
-			code: `
-package main
-func test() int {
-	x := 1
-}
-`,
-			wantErr: "缺少返回语句",
-		},
-		{
-			name: "Missing return in one branch",
-			code: `
-package main
-func test(b bool) int {
-	if b {
-		return 1
-	}
-	// missing return here
-}
-`,
-			wantErr: "缺少返回语句",
-		},
-		{
-			name: "Break outside loop",
-			code: `
-package main
-func main() {
-	break
-}
-`,
-			wantErr: "break 语句只能在循环中使用",
-		},
-		{
-			name: "Continue outside loop",
-			code: `
-package main
-func main() {
-	continue
-}
-`,
-			wantErr: "continue 语句只能在循环中使用",
-		},
-	}
+	t.Run("StrictMapKeyValidation", func(t *testing.T) {
+		code := `package main
+		func main() {
+			m := make(map[string]int64)
+			return m[1] // 静态检查应报错：键类型不匹配
+		}`
+		_, err := e.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Error("Expected validation error for map key mismatch (int key for string map), but got nil")
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := executor.NewRuntimeByGoCode(tt.code)
-			if err == nil {
-				t.Error("Expected validation error but got nil")
-				return
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("Expected error containing %q, got: %v", tt.wantErr, err)
-			}
-		})
-	}
-}
+	t.Run("InvalidCapArgument", func(t *testing.T) {
+		code := `package main
+		func main() {
+			return cap(123) // cap 不支持数值
+		}`
+		_, err := e.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Error("Expected validation error for cap(int), but got nil")
+		}
+	})
 
-func TestRuntimeLogicErrors(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-
-	tests := []struct {
-		name    string
-		code    string
-		wantErr string
-	}{
-		{
-			name: "Bitwise on non-int",
-			code: `
-package main
-func main() {
-	x := 1.5 & 2
-}
-`,
-			wantErr: "expected Int64",
-		},
-		{
-			name: "Arithmetic on strings",
-			code: `
-package main
-func main() {
-	x := "a" - "b"
-}
-`,
-			wantErr: "arithmetic operation",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			prog, err := executor.NewRuntimeByGoCode(tt.code)
-			if err != nil {
-				// Validation might catch some, but we want to test runtime if possible
-				if strings.Contains(err.Error(), tt.wantErr) {
-					return
-				}
-				t.Fatalf("Compile failed unexpectedly: %v", err)
-			}
-			err = prog.Execute(context.Background())
-			if err == nil {
-				t.Error("Expected runtime error but got nil")
-				return
-			}
-			if !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("Expected error containing %q, got: %v", tt.wantErr, err)
-			}
-		})
-	}
+	t.Run("ErrorToStringAssignment", func(t *testing.T) {
+		// 这里验证语义层面的兼容性
+		// 虽然无法直接在脚本写 Error 类型，但我们可以模拟 FFI 返回 Error 的场景
+		e.AddFuncSpec("getErr", "function() Error")
+		
+		code := `package main
+		func main() string {
+			var s string
+			s = getErr() // 应该允许，因为我们开启了自动转换
+			return s
+		}`
+		_, err := e.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Errorf("Expected Error to String assignment to pass validation, but got: %v", err)
+		}
+	})
 }

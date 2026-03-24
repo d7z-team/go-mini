@@ -35,6 +35,7 @@ type ValidRoot struct {
 	Imported      map[string]bool
 	ImportedRoots map[string]*ValidRoot
 	importStack   []string
+	MaxTypeDepth  int // 递归类型检查深度限制
 }
 
 type ValidContext struct {
@@ -83,6 +84,7 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 			Imported:      make(map[string]bool),
 			ImportedRoots: make(map[string]*ValidRoot),
 			importStack:   make([]string, 0),
+			MaxTypeDepth:  256,
 		},
 		parent:  nil,
 		current: node,
@@ -127,6 +129,10 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 	v.root.vars["true"] = "Bool"
 	v.root.vars["false"] = "Bool"
 	return v, nil
+}
+
+func (c *ValidContext) Root() *ValidRoot {
+	return c.root
 }
 
 func (c *ValidContext) Child(b Node) *ValidContext {

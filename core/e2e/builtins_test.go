@@ -84,7 +84,32 @@ func TestBuiltins(t *testing.T) {
 			panic("string to float conversion failed")
 		}
 
-		// 6. Test new on pointer type (stripped Ptr<...>)
+		// 6. Test cap
+		arr3 := make([]int64, 5, 10)
+		if cap(arr3) != 10 {
+			panic("cap array mismatch")
+		}
+		b2 := make([]byte, 2, 4)
+		if cap(b2) != 4 {
+			panic("cap bytes mismatch")
+		}
+
+		// 7. Test indexing on String/Bytes
+		s3 := "abc"
+		if s3[1] != 98 { // 'b'
+			panic("string indexing failed")
+		}
+		b3 := []byte("def")
+		if b3[2] != 102 { // 'f'
+			panic("bytes indexing failed")
+		}
+
+		// 8. Test Error to String auto conversion
+		// We can't easily create a raw Error in VM without FFI, 
+		// but we can test the assignment logic if we have an Error-returning function.
+		// For now, verified by semantic check in other tests.
+
+		// 9. Test new on pointer type
 		p := new(*int64)
 		if p == nil {
 			// This part should NOT be reached if p is properly initialized to TypeHandle(0)

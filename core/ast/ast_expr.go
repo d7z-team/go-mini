@@ -307,10 +307,8 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
-		if !sigParams[i].Equals(argType) {
-			if _, ok := sigParams[i].AutoPtr(c.Args[i]); !ok {
-				return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
-			}
+		if !argType.IsAssignableTo(sigParams[i]) {
+			return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
 		}
 	}
 
@@ -321,17 +319,15 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 		// 如果只有一个参数且正好是数组类型，视为完美匹配
 		if len(c.Args) == fixedNum+1 {
-			if targetArrayType.Equals(c.Args[fixedNum].GetBase().Type) {
+			if c.Args[fixedNum].GetBase().Type.IsAssignableTo(targetArrayType) {
 				goto done
 			}
 		}
 
 		for i := fixedNum; i < len(c.Args); i++ {
 			argType := c.Args[i].GetBase().Type
-			if !targetElem.Equals(argType) {
-				if _, ok := targetElem.AutoPtr(c.Args[i]); !ok {
-					return fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
-				}
+			if !argType.IsAssignableTo(targetElem) {
+				return fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
 			}
 		}
 	}
@@ -352,7 +348,7 @@ done:
 				// append 返回第一个参数的类型 (通常是 Array<T>)
 				c.Type = c.Args[0].GetBase().Type
 			}
-		case "len":
+		case "len", "cap":
 			c.Type = "Int64"
 		}
 	}
@@ -767,7 +763,6 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		if i.Multi {
 			return errors.New("数组索引不支持二元解构语法")
 		}
-		// fmt.Printf("DEBUG: Index type: %s\n", i.Index.GetBase().Type)
 		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
 			return fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 		}
@@ -779,18 +774,35 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		return nil
 	}
+	if objType == "TypeBytes" {
+		if i.Multi {
+			return errors.New("Bytes 索引不支持二元解构语法")
+		}
+		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
+			return fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+		}
+		i.Type = "Int64"
+		return nil
+	}
+	if objType == "String" {
+		if i.Multi {
+			return errors.New("String 索引不支持二元解构语法")
+		}
+		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
+			return fmt.Errorf("String 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+		}
+		i.Type = "Int64" // 返回字节值
+		return nil
+	}
 	if objType.IsMap() {
 		keyType, valType, ok := objType.GetMapKeyValueTypes()
 		if !ok {
-			err := fmt.Errorf("无法获取Map类型信息: %s", objType)
-			ctx.AddErrorf("%s", err.Error())
-			return err
+			return fmt.Errorf("无法获取 Map 键值对类型: %s", objType)
 		}
-		if !keyType.Equals(i.Index.GetBase().Type) {
-			err := fmt.Errorf("Map索引类型不匹配: 需 %s, 实际 %s", keyType, i.Index.GetBase().Type)
-			ctx.WithNode(i.Index).AddErrorf("%s", err.Error())
-			return err
+		if !i.Index.GetBase().Type.IsAssignableTo(keyType) {
+			return fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
 		}
+
 		if i.Multi {
 			i.Type = CreateTupleType(valType, "Bool")
 		} else {
@@ -798,7 +810,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("索引访问的对象必须是数组或Map类型，实际为 %s", objType)
+	return fmt.Errorf("索引访问的对象类型 %s 不支持", objType)
 }
 
 func (i *IndexExpr) Optimize(ctx *OptimizeContext) Node {

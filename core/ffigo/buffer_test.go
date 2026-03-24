@@ -59,8 +59,7 @@ func TestZeroCopyBytes(t *testing.T) {
 	// 修改读取到的数据
 	readData[0] = 'X'
 
-	// 验证原始 buffer 是否也被修改（证明是零拷贝切片）
-	// 注意：由于使用了 Varint，数据的起始位置取决于长度字段的编码长度
+	// 验证原始 buffer 是否未被修改（证明是深拷贝，维护隔离）
 	found := false
 	for _, b := range rawBuf {
 		if b == 'X' {
@@ -68,7 +67,7 @@ func TestZeroCopyBytes(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Errorf("Expected zero-copy slice, but modification didn't reflect in buffer")
+	if found {
+		t.Errorf("ReadBytes should return a deep copy to maintain isolation, but modification reflected in buffer")
 	}
 }

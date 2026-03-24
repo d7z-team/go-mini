@@ -32,6 +32,14 @@ type MiniExecutor struct {
 	registry *ffigo.HandleRegistry
 	modules   map[string]*ast.ProgramStmt // 预加载的模块蓝图
 	structSpecs map[ast.Ident]ast.GoMiniType // 用于验证的结构体签名
+
+	MaxTypeDepth int // 递归类型检查深度限制
+}
+
+func (e *MiniExecutor) SetMaxTypeDepth(depth int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.MaxTypeDepth = depth
 }
 
 type MiniProgram struct {
@@ -235,18 +243,21 @@ func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
 		bridges:     make(map[uint32]ffigo.FFIBridge),
-		routes:      make(map[string]runtime.FFIRoute),
-		specs:       make(map[ast.Ident]ast.GoMiniType),
-		registry:    ffigo.NewHandleRegistry(),
-		modules:     make(map[string]*ast.ProgramStmt),
-		structSpecs: make(map[ast.Ident]ast.GoMiniType),
-	}
+		routes:       make(map[string]runtime.FFIRoute),
+		specs:        make(map[ast.Ident]ast.GoMiniType),
+		registry:     ffigo.NewHandleRegistry(),
+		modules:      make(map[string]*ast.ProgramStmt),
+		structSpecs:  make(map[ast.Ident]ast.GoMiniType),
+		MaxTypeDepth: 256,
+		}
+
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
 	res.specs["recover"] = "function() Any"
 	res.specs["String"] = "function(Any) String"
 	res.specs["TypeBytes"] = "function(Any) TypeBytes"
 	res.specs["len"] = "function(Any) Int64"
+	res.specs["cap"] = "function(Any) Int64"
 	res.specs["make"] = "function(String, ...Int64) Any"
 	res.specs["new"] = "function(String) Any"
 	res.specs["append"] = "function(Any, ...Any) Any"
@@ -586,6 +597,10 @@ func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 
 	// Validate and Optimize
 	validator, _ := ast.NewValidator(program, specs)
+	if o.MaxTypeDepth > 0 {
+		validator.Root().MaxTypeDepth = o.MaxTypeDepth
+		ast.DefaultMaxTypeDepth = o.MaxTypeDepth
+	}
 	// 在验证阶段也要支持已注册模块
 	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
 		o.mu.RLock()

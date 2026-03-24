@@ -1026,6 +1026,9 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > 4294967295 { panic(fmt.Sprintf(\"ffi: uint32 overflow: %%d\", tmp)) }\n")
 			case "uint", "uint64":
 				fmt.Fprintf(sb, "\tif tmp < 0 { panic(fmt.Sprintf(\"ffi: uint overflow: %%d\", tmp)) }\n")
+			case "int":
+				// Depending on the host architecture (32/64 bit), but we assume 64-bit for safe limits in VM
+				// Go's int is at least 32 bits.
 			}
 			fmt.Fprintf(sb, "\t%s = %s(tmp)\n\t}\n", varName, gt)
 			return
