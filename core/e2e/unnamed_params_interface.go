@@ -1,6 +1,6 @@
 package e2e
 
-//go:generate go run ../../cmd/ffigen/main.go -pkg e2e -out unnamed_params_ffigen.go unnamed_params_interface.go
+//go:generate go run ../../cmd/ffigen/main.go -pkg e2e -path gopkg.d7z.net/go-mini/core/e2e -out unnamed_params_ffigen.go unnamed_params_interface.go
 
 import "context"
 

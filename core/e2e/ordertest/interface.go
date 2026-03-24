@@ -1,4 +1,4 @@
-//go:generate go run ../../../cmd/ffigen/main.go -pkg ordertest -out order_ffigen.go interface.go
+//go:generate go run ../../../cmd/ffigen/main.go -pkg ordertest -path gopkg.d7z.net/go-mini/core/e2e/ordertest -out order_ffigen.go interface.go
 package ordertest
 
 // ffigen:module order

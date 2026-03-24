@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg iolib -out io_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg iolib -path gopkg.d7z.net/go-mini/core/ffilib/iolib -out io_ffigen.go interface.go
 package iolib
 
 // IO 接口定义了 I/O 操作

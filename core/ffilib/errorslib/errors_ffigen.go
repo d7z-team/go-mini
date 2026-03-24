@@ -14,7 +14,7 @@ const (
 )
 
 type ErrorsProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -22,7 +22,7 @@ func NewErrorsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Erro
 	return &ErrorsProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *ErrorsProxy) New(text string) error {
+func (__p *ErrorsProxy) New(text string) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -31,23 +31,15 @@ func (__p *ErrorsProxy) New(text string) error {
 	retData, err := __p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_0 = obj.(error) } else { err_0 = ed }
+			} else { err_0 = ed }
 		}
 	}
 	return err_0
@@ -65,7 +57,7 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string
-		text = string(reqBuf.ReadString())
+	text = string(reqBuf.ReadString())
 		err := impl.New(text)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -82,7 +74,6 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var Errors_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -93,7 +84,7 @@ var Errors_FFI_Metadata = []struct {
 }
 
 type Errors_Bridge struct {
-	Impl     Errors
+	Impl Errors
 	Registry *ffigo.HandleRegistry
 }
 
@@ -106,21 +97,15 @@ func (b *Errors_Bridge) Invoke(ctx context.Context, method string, args []byte) 
 }
 
 func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterErrors(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl Errors, registry *ffigo.HandleRegistry) {
+func RegisterErrors(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl Errors, registry *ffigo.HandleRegistry) {
 	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
 	prefix := "errors"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range Errors_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}

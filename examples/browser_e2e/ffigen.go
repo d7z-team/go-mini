@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 	"strings"
+	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 )
 
 type BrowserModuleProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -32,31 +32,17 @@ func (__p *BrowserModuleProxy) OpenBrowser(ctx context.Context, url string) (*ot
 	retData, err := __p.bridge.Call(ctx, MethodID_BrowserModule_OpenBrowser, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.Browser
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*other.Browser)
-			}
-		}
-	}
+	if id := uint32(retBuf.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { v_0 = obj.(*other.Browser) } } }
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_1 = obj.(error) } else { err_1 = ed }
+			} else { err_1 = ed }
 		}
 	}
 	return v_0, err_1
@@ -74,14 +60,14 @@ func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *
 	switch methodID {
 	case MethodID_BrowserModule_OpenBrowser:
 		var url string
-		url = string(reqBuf.ReadString())
+	url = string(reqBuf.ReadString())
 		r0, err := impl.OpenBrowser(ctx, url)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -96,7 +82,6 @@ func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var BrowserModule_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -107,7 +92,7 @@ var BrowserModule_FFI_Metadata = []struct {
 }
 
 type BrowserModule_Bridge struct {
-	Impl     BrowserModule
+	Impl BrowserModule
 	Registry *ffigo.HandleRegistry
 }
 
@@ -120,21 +105,15 @@ func (b *BrowserModule_Bridge) Invoke(ctx context.Context, method string, args [
 }
 
 func (b *BrowserModule_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterBrowserModule(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl BrowserModule, registry *ffigo.HandleRegistry) {
+func RegisterBrowserModule(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl BrowserModule, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserModule_Bridge{Impl: impl, Registry: registry}
 	prefix := "browser"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range BrowserModule_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -145,7 +124,7 @@ const (
 )
 
 type BrowserServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -160,41 +139,23 @@ func (__p *BrowserServiceProxy) NewPage(b *other.Browser) (*other.Page, error) {
 	if b == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(b)))
-		} else {
-			buf.WriteUvarint(0)
-		}
+		if __p.registry != nil { buf.WriteUvarint(uint64(__p.registry.Register(b))) } else { buf.WriteUvarint(0) }
 	}
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_BrowserService_NewPage, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.Page
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*other.Page)
-			}
-		}
-	}
+	if id := uint32(retBuf.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { v_0 = obj.(*other.Page) } } }
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_1 = obj.(error) } else { err_1 = ed }
+			} else { err_1 = ed }
 		}
 	}
 	return v_0, err_1
@@ -212,20 +173,14 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 	switch methodID {
 	case MethodID_BrowserService_NewPage:
 		var b *other.Browser
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				b = obj.(*other.Browser)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { b = obj.(*other.Browser) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		r0, err := impl.NewPage(b)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -240,7 +195,6 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var BrowserService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -251,7 +205,7 @@ var BrowserService_FFI_Metadata = []struct {
 }
 
 type BrowserService_Bridge struct {
-	Impl     BrowserService
+	Impl BrowserService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -264,21 +218,15 @@ func (b *BrowserService_Bridge) Invoke(ctx context.Context, method string, args 
 }
 
 func (b *BrowserService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterBrowserService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl BrowserService, registry *ffigo.HandleRegistry) {
+func RegisterBrowserService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range BrowserService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -289,7 +237,7 @@ const (
 )
 
 type PageServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -304,45 +252,27 @@ func (__p *PageServiceProxy) Locator(p *other.Page, selectors ...string) (*other
 	if p == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(p)))
-		} else {
-			buf.WriteUvarint(0)
-		}
+		if __p.registry != nil { buf.WriteUvarint(uint64(__p.registry.Register(p))) } else { buf.WriteUvarint(0) }
 	}
 	buf.WriteUvarint(uint64(len(selectors)))
 	for _, item := range selectors {
-		buf.WriteString(string(item))
+	buf.WriteString(string(item))
 	}
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_PageService_Locator, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.CdpSelector
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*other.CdpSelector)
-			}
-		}
-	}
+	if id := uint32(retBuf.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { v_0 = obj.(*other.CdpSelector) } } }
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_1 = obj.(error) } else { err_1 = ed }
+			} else { err_1 = ed }
 		}
 	}
 	return v_0, err_1
@@ -360,26 +290,20 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 	switch methodID {
 	case MethodID_PageService_Locator:
 		var p *other.Page
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				p = obj.(*other.Page)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { p = obj.(*other.Page) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		var selectors []string
-		l_selectors := int(reqBuf.ReadUvarint())
-		selectors = make([]string, l_selectors)
-		for i_selectors := 0; i_selectors < l_selectors; i_selectors++ {
-			selectors[i_selectors] = string(reqBuf.ReadString())
-		}
+	l_selectors := int(reqBuf.ReadUvarint())
+	selectors = make([]string, l_selectors)
+	for i_selectors := 0; i_selectors < l_selectors; i_selectors++ {
+	selectors[i_selectors] = string(reqBuf.ReadString())
+	}
 		r0, err := impl.Locator(p, selectors...)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -394,7 +318,6 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var PageService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -405,7 +328,7 @@ var PageService_FFI_Metadata = []struct {
 }
 
 type PageService_Bridge struct {
-	Impl     PageService
+	Impl PageService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -418,21 +341,15 @@ func (b *PageService_Bridge) Invoke(ctx context.Context, method string, args []b
 }
 
 func (b *PageService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterPageService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl PageService, registry *ffigo.HandleRegistry) {
+func RegisterPageService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range PageService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -443,7 +360,7 @@ const (
 )
 
 type CdpSelectorServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -451,40 +368,28 @@ func NewCdpSelectorServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRe
 	return &CdpSelectorServiceProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *CdpSelectorServiceProxy) Click(s *other.CdpSelector) error {
+func (__p *CdpSelectorServiceProxy) Click(s *other.CdpSelector) (error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if s == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(s)))
-		} else {
-			buf.WriteUvarint(0)
-		}
+		if __p.registry != nil { buf.WriteUvarint(uint64(__p.registry.Register(s))) } else { buf.WriteUvarint(0) }
 	}
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_CdpSelectorService_Click, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	retBuf := ffigo.NewReader(retData)
 	var err_0 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_0 = obj.(error) } else { err_0 = ed }
+			} else { err_0 = ed }
 		}
 	}
 	return err_0
@@ -502,13 +407,7 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 	switch methodID {
 	case MethodID_CdpSelectorService_Click:
 		var s *other.CdpSelector
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				s = obj.(*other.CdpSelector)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { s = obj.(*other.CdpSelector) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		err := impl.Click(s)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -525,7 +424,6 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var CdpSelectorService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -536,7 +434,7 @@ var CdpSelectorService_FFI_Metadata = []struct {
 }
 
 type CdpSelectorService_Bridge struct {
-	Impl     CdpSelectorService
+	Impl CdpSelectorService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -549,21 +447,15 @@ func (b *CdpSelectorService_Bridge) Invoke(ctx context.Context, method string, a
 }
 
 func (b *CdpSelectorService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterCdpSelectorService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
+func RegisterCdpSelectorService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range CdpSelectorService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}

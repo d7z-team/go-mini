@@ -130,8 +130,8 @@ go-mini/
     *   **接口模式**: 在 `interface.go` 中定义接口。使用 `// ffigen:module <name>` 或 `// ffigen:methods <FullTypeName>`。
     *   **结构体模式**: 直接在 `struct` 上标注 `// ffigen:methods`。`ffigen` 会自动导出所有公开方法。
 3.  **全路径安全**: 始终推荐在 `ffigen:methods` 中包含包名前缀（如 `ops.Page`）。`ffigen` 会自动将其解析为 Canonical Path 以确保路由唯一。
-4.  **生成指令**: 在文件首行添加 `//go:generate` 指令：
-    `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -out <name>_ffigen.go interface.go`
+4.  **生成指令**: 在文件首行添加 `//go:generate` 指令，推荐使用 `-path` 指定导入路径（可选，不传则自动推导）：
+    `//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg <pkgname> -path <import-path> -out <name>_ffigen.go interface.go`
 5.  **宿主实现**: 在 `host.go` 中实现宿主逻辑。
 6.  **元数据安全**: Bridge 层**严禁信任** `Var.Type` 字符串，必须基于 `VType` 枚举进行严格的硬断言。
 7.  **触发生成**: 运行 `make gen`。

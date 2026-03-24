@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
-	a_other "gopkg.d7z.net/go-mini/core/e2e/internal/a/other"
-	b_other "gopkg.d7z.net/go-mini/core/e2e/internal/b/other"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"strings"
+	a_other "gopkg.d7z.net/go-mini/core/e2e/internal/a/other"
+	b_other "gopkg.d7z.net/go-mini/core/e2e/internal/b/other"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 type TestCanonicalServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -25,7 +25,7 @@ func NewTestCanonicalServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.Handle
 	return &TestCanonicalServiceProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_other.Type {
+func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) (*a_other.Type) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -36,17 +36,11 @@ func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *a_other.Type
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*a_other.Type)
-			}
-		}
-	}
+	if id := uint32(retBuf.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { v_0 = obj.(*a_other.Type) } } }
 	return v_0
 }
 
-func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other.Type {
+func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) (*b_other.Type) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -57,13 +51,7 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *b_other.Type
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*b_other.Type)
-			}
-		}
-	}
+	if id := uint32(retBuf.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { v_0 = obj.(*b_other.Type) } } }
 	return v_0
 }
 
@@ -81,34 +69,33 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	switch methodID {
 	case MethodID_TestCanonicalService_NewA:
 		var name string
-		name = string(reqBuf.ReadString())
+	name = string(reqBuf.ReadString())
 		r0 := impl.NewA(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		return resBuf.Bytes(), nil
 	case MethodID_TestCanonicalService_NewB:
 		var id int
-		{
-			tmp := reqBuf.ReadVarint()
-			id = int(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	id = int(tmp)
+	}
 		r0 := impl.NewB(ctx, id)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var TestCanonicalService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -120,7 +107,7 @@ var TestCanonicalService_FFI_Metadata = []struct {
 }
 
 type TestCanonicalService_Bridge struct {
-	Impl     TestCanonicalService
+	Impl TestCanonicalService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -133,21 +120,15 @@ func (b *TestCanonicalService_Bridge) Invoke(ctx context.Context, method string,
 }
 
 func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterTestCanonicalService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
+func RegisterTestCanonicalService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
 	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
 	prefix := "test_canonical"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range TestCanonicalService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -158,7 +139,7 @@ const (
 )
 
 type ATypeServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -166,18 +147,14 @@ func NewATypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 	return &ATypeServiceProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
+func (__p *ATypeServiceProxy) Hello(t *a_other.Type) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if t == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
-		} else {
-			buf.WriteUvarint(0)
-		}
+		if __p.registry != nil { buf.WriteUvarint(uint64(__p.registry.Register(t))) } else { buf.WriteUvarint(0) }
 	}
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_ATypeService_Hello, buf.Bytes())
@@ -201,22 +178,15 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	switch methodID {
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				t = obj.(*a_other.Type)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { t = obj.(*a_other.Type) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		r0 := impl.Hello(t)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
+	resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var ATypeService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -227,7 +197,7 @@ var ATypeService_FFI_Metadata = []struct {
 }
 
 type ATypeService_Bridge struct {
-	Impl     ATypeService
+	Impl ATypeService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -240,21 +210,15 @@ func (b *ATypeService_Bridge) Invoke(ctx context.Context, method string, args []
 }
 
 func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterATypeService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl ATypeService, registry *ffigo.HandleRegistry) {
+func RegisterATypeService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range ATypeService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -265,7 +229,7 @@ const (
 )
 
 type BTypeServiceProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -273,18 +237,14 @@ func NewBTypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 	return &BTypeServiceProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
+func (__p *BTypeServiceProxy) Hello(t *b_other.Type) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if t == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
-		} else {
-			buf.WriteUvarint(0)
-		}
+		if __p.registry != nil { buf.WriteUvarint(uint64(__p.registry.Register(t))) } else { buf.WriteUvarint(0) }
 	}
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_BTypeService_Hello, buf.Bytes())
@@ -308,22 +268,15 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	switch methodID {
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				t = obj.(*b_other.Type)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { t = obj.(*b_other.Type) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		r0 := impl.Hello(t)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
+	resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var BTypeService_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -334,7 +287,7 @@ var BTypeService_FFI_Metadata = []struct {
 }
 
 type BTypeService_Bridge struct {
-	Impl     BTypeService
+	Impl BTypeService
 	Registry *ffigo.HandleRegistry
 }
 
@@ -347,21 +300,15 @@ func (b *BTypeService_Bridge) Invoke(ctx context.Context, method string, args []
 }
 
 func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterBTypeService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl BTypeService, registry *ffigo.HandleRegistry) {
+func RegisterBTypeService(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range BTypeService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}

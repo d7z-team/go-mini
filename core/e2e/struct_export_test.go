@@ -19,10 +19,7 @@ func TestStructExport(t *testing.T) {
 	// Register the Calculator methods
 	// Note: We don't need a specific instance of Calculator to register its methods, 
 	// because the methods themselves will be called on instances returned by the factory.
-	// But RegisterCalculator needs an 'impl' that satisfies the interface.
-	// Since Calculator struct itself has the methods, we can pass a dummy instance.
-	structtest.RegisterCalculator(executor, &structtest.Calculator{}, registry)
-
+	structtest.RegisterCalculator(executor, registry)
 	code := `
 	package main
 	import "calc"

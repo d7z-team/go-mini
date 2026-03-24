@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 	"strings"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
-	MethodID_ScriptCalculator_Add    = 1
+	MethodID_ScriptCalculator_Add = 1
 	MethodID_ScriptCalculator_Format = 2
 	MethodID_ScriptCalculator_Divide = 3
 )
 
 type ScriptCalculatorProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -25,7 +25,7 @@ func NewScriptCalculatorProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegi
 	return &ScriptCalculatorProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
+func (__p *ScriptCalculatorProxy) Add(a int64, b int64) (int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -38,13 +38,13 @@ func (__p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
 	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
+	tmp := retBuf.ReadVarint()
+	v_0 = int64(tmp)
 	}
 	return v_0
 }
 
-func (__p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
+func (__p *ScriptCalculatorProxy) Format(prefix string, val int64) (string) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -70,28 +70,20 @@ func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Divide, buf.Bytes())
 	_ = retData
 	_ = err
-	if err != nil {
-		return 0, err
-	}
+	if err != nil { return 0, err }
 	retBuf := ffigo.NewReader(retData)
 	var v_0 int64
 	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
+	tmp := retBuf.ReadVarint()
+	v_0 = int64(tmp)
 	}
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
 			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
+				if obj, ok := __p.registry.Get(ed.Handle); ok { err_1 = obj.(error) } else { err_1 = ed }
+			} else { err_1 = ed }
 		}
 	}
 	return v_0, err_1
@@ -113,45 +105,45 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 	switch methodID {
 	case MethodID_ScriptCalculator_Add:
 		var a int64
-		{
-			tmp := reqBuf.ReadVarint()
-			a = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	a = int64(tmp)
+	}
 		var b int64
-		{
-			tmp := reqBuf.ReadVarint()
-			b = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	b = int64(tmp)
+	}
 		r0 := impl.Add(a, b)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+	resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_ScriptCalculator_Format:
 		var prefix string
-		prefix = string(reqBuf.ReadString())
+	prefix = string(reqBuf.ReadString())
 		var val int64
-		{
-			tmp := reqBuf.ReadVarint()
-			val = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	val = int64(tmp)
+	}
 		r0 := impl.Format(prefix, val)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
+	resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_ScriptCalculator_Divide:
 		var a int64
-		{
-			tmp := reqBuf.ReadVarint()
-			a = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	a = int64(tmp)
+	}
 		var b int64
-		{
-			tmp := reqBuf.ReadVarint()
-			b = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	b = int64(tmp)
+	}
 		r0, err := impl.Divide(a, b)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+	resBuf.WriteVarint(int64(r0))
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -166,7 +158,6 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var ScriptCalculator_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -179,7 +170,7 @@ var ScriptCalculator_FFI_Metadata = []struct {
 }
 
 type ScriptCalculator_Bridge struct {
-	Impl     ScriptCalculator
+	Impl ScriptCalculator
 	Registry *ffigo.HandleRegistry
 }
 
@@ -192,30 +183,23 @@ func (b *ScriptCalculator_Bridge) Invoke(ctx context.Context, method string, arg
 }
 
 func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterE2EScriptCalculatorLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
+func RegisterE2EScriptCalculatorLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range ScriptCalculator_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
-
 type ScriptCalculator_ReverseProxy struct {
-	program  runtime.ExecutorAPI
-	ctx      *runtime.StackContext
+	program runtime.ExecutorAPI
+	ctx *runtime.StackContext
 	callable *runtime.Var
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 }
 
 func NewScriptCalculator_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.StackContext, callable *runtime.Var, bridge ffigo.FFIBridge) *ScriptCalculator_ReverseProxy {
@@ -230,16 +214,9 @@ func (__p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
 	_ = err
 	_ = resVar
 	var ret0 int64 = 0
-	if resVar != nil {
-		if raw := resVar.Interface(); raw != nil {
-			switch v := raw.(type) {
-			case int64:
-				ret0 = int64(v)
-			case float64:
-				ret0 = int64(v)
-			}
-		}
-	}
+		if resVar != nil { if raw := resVar.Interface(); raw != nil {
+			switch v := raw.(type) { case int64: ret0 = int64(v); case float64: ret0 = int64(v) }
+		} }
 	return ret0
 }
 
@@ -251,13 +228,9 @@ func (__p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) strin
 	_ = err
 	_ = resVar
 	var ret0 string = ""
-	if resVar != nil {
-		if raw := resVar.Interface(); raw != nil {
-			if v, ok := raw.(string); ok {
-				ret0 = v
-			}
-		}
-	}
+		if resVar != nil { if raw := resVar.Interface(); raw != nil {
+			if v, ok := raw.(string); ok { ret0 = v }
+		} }
 	return ret0
 }
 
@@ -269,35 +242,15 @@ func (__p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error
 	_ = err
 	_ = resVar
 	var elements []*runtime.Var
-	if resVar != nil && resVar.VType == runtime.TypeArray {
-		if arr, ok := resVar.Ref.(*runtime.VMArray); ok {
-			elements = arr.Data
-		}
-	}
+	if resVar != nil && resVar.VType == runtime.TypeArray { if arr, ok := resVar.Ref.(*runtime.VMArray); ok { elements = arr.Data } }
 	var ret0 int64 = 0
-	if 0 < len(elements) {
-		if elements[0] != nil {
-			if raw := elements[0].Interface(); raw != nil {
-				switch v := raw.(type) {
-				case int64:
-					ret0 = int64(v)
-				case float64:
-					ret0 = int64(v)
-				}
-			}
-		}
-	}
+	if 0 < len(elements) {		if elements[0] != nil { if raw := elements[0].Interface(); raw != nil {
+			switch v := raw.(type) { case int64: ret0 = int64(v); case float64: ret0 = int64(v) }
+		} }
+}
 	var ret1 error = nil
-	if 1 < len(elements) {
-		if elements[1] != nil {
-			if raw := elements[1].Interface(); raw != nil {
-				if ed, ok := raw.(ffigo.ErrorData); ok && (ed.Message != "" || ed.Handle != 0) {
-					ret1 = ed
-				} else if s, ok := raw.(string); ok && s != "" {
-					ret1 = fmt.Errorf("%s", s)
-				}
-			}
-		}
-	}
+	if 1 < len(elements) {		if elements[1] != nil { if raw := elements[1].Interface(); raw != nil { if ed, ok := raw.(ffigo.ErrorData); ok && (ed.Message != "" || ed.Handle != 0) { ret1 = ed } else if s, ok := raw.(string); ok && s != "" { ret1 = fmt.Errorf("%s", s) } } }
+}
 	return ret0, ret1
 }
+

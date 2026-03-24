@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out ffi_struct_ffigen_test.go ffi_struct_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -path gopkg.d7z.net/go-mini/core/e2e -out ffi_struct_ffigen_test.go ffi_struct_test.go
 package e2e
 
 import (

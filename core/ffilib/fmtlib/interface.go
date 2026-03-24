@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg fmtlib -out fmt_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg fmtlib -path gopkg.d7z.net/go-mini/core/ffilib/fmtlib -out fmt_ffigen.go interface.go
 package fmtlib
 
 // Fmt 接口定义了格式化输出操作

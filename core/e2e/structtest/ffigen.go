@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	MethodID_Calculator_Add      = 1
+	MethodID_Calculator_Add = 1
 	MethodID_Calculator_Multiply = 2
-	MethodID_Calculator_GetBase  = 3
+	MethodID_Calculator_GetBase = 3
 )
 
 func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
@@ -31,76 +31,57 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	switch methodID {
 	case MethodID_Calculator_Add:
 		var c *Calculator
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				c = obj.(*Calculator)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { c = obj.(*Calculator) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		var x int64
-		{
-			tmp := reqBuf.ReadVarint()
-			x = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	x = int64(tmp)
+	}
 		r0 := c.Add(ctx, x)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+	resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_Multiply:
 		var c *Calculator
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				c = obj.(*Calculator)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { c = obj.(*Calculator) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		var x int64
-		{
-			tmp := reqBuf.ReadVarint()
-			x = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	x = int64(tmp)
+	}
 		var y int64
-		{
-			tmp := reqBuf.ReadVarint()
-			y = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	y = int64(tmp)
+	}
 		r0 := c.Multiply(x, y)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+	resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_GetBase:
 		var c *Calculator
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				c = obj.(*Calculator)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
+	if id := uint32(reqBuf.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { c = obj.(*Calculator) } else { return nil, fmt.Errorf("invalid handle ID: %d", id) } }
 		r0 := c.GetBase()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+	resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var Calculator_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
 	Doc      string
 }{
-	{"Add", 1, "function(Ptr<Calculator>, Int64) Int64", ""},
-	{"Multiply", 2, "function(Ptr<Calculator>, Int64, Int64) Int64", ""},
-	{"GetBase", 3, "function(Ptr<Calculator>) Int64", ""},
+	{"Add", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64) Int64", ""},
+	{"Multiply", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64, Int64) Int64", ""},
+	{"GetBase", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>) Int64", ""},
 }
 
 type Calculator_Bridge struct {
-	Impl     *Calculator
+	Impl *Calculator
 	Registry *ffigo.HandleRegistry
 }
 
@@ -113,21 +94,15 @@ func (b *Calculator_Bridge) Invoke(ctx context.Context, method string, args []by
 }
 
 func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterCalculator(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl *Calculator, registry *ffigo.HandleRegistry) {
-	bridge := &Calculator_Bridge{Impl: impl, Registry: registry}
-	prefix := "__method_Calculator"
+func RegisterCalculator(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, registry *ffigo.HandleRegistry) {
+	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
+	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range Calculator_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -149,34 +124,33 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	switch methodID {
 	case MethodID_Factory_New:
 		var base int64
-		{
-			tmp := reqBuf.ReadVarint()
-			base = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	base = int64(tmp)
+	}
 		r0 := impl.New(base)
 		resBuf := ffigo.GetBuffer()
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
+	if r0 == nil {
+		resBuf.WriteUvarint(0)
+	} else {
+		resBuf.WriteUvarint(uint64(registry.Register(r0)))
+	}
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var Factory_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
 	Doc      string
 }{
-	{"New", 1, "function(Int64) Ptr<Calculator>", ""},
+	{"New", 1, "function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>", ""},
 }
 
 type Factory_Bridge struct {
-	Impl     *Factory
+	Impl *Factory
 	Registry *ffigo.HandleRegistry
 }
 
@@ -189,21 +163,15 @@ func (b *Factory_Bridge) Invoke(ctx context.Context, method string, args []byte)
 }
 
 func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterFactory(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl *Factory, registry *ffigo.HandleRegistry) {
+func RegisterFactory(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	prefix := "calc"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range Factory_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}

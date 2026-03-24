@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -out ffi_robustness_ffigen_test.go robustness_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -path gopkg.d7z.net/go-mini/core/e2e -out ffi_robustness_ffigen_test.go robustness_test.go
 package e2e
 
 import (

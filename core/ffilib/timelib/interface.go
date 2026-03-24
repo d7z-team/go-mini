@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg timelib -out time_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg timelib -path gopkg.d7z.net/go-mini/core/ffilib/timelib -out time_ffigen.go interface.go
 package timelib
 
 // Time 接口定义了时间操作

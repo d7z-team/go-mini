@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 	"strings"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
-	MethodID_Logger_Log      = 1
+	MethodID_Logger_Log = 1
 	MethodID_Logger_Internal = 2
 )
 
 type LoggerProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -64,27 +64,27 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 	switch methodID {
 	case MethodID_Logger_Log:
 		var msg string
-		msg = string(reqBuf.ReadString())
+	msg = string(reqBuf.ReadString())
 		var level string
-		level = string(reqBuf.ReadString())
+	level = string(reqBuf.ReadString())
 		var code int64
-		{
-			tmp := reqBuf.ReadVarint()
-			code = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	code = int64(tmp)
+	}
 		impl.Log(ctx, msg, level, code)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Logger_Internal:
 		var arg0 string
-		arg0 = string(reqBuf.ReadString())
+	arg0 = string(reqBuf.ReadString())
 		var arg1 string
-		arg1 = string(reqBuf.ReadString())
+	arg1 = string(reqBuf.ReadString())
 		var arg2 int64
-		{
-			tmp := reqBuf.ReadVarint()
-			arg2 = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	arg2 = int64(tmp)
+	}
 		impl.Internal(arg0, arg1, arg2)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
@@ -92,7 +92,6 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var Logger_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -104,7 +103,7 @@ var Logger_FFI_Metadata = []struct {
 }
 
 type Logger_Bridge struct {
-	Impl     Logger
+	Impl Logger
 	Registry *ffigo.HandleRegistry
 }
 
@@ -117,21 +116,15 @@ func (b *Logger_Bridge) Invoke(ctx context.Context, method string, args []byte) 
 }
 
 func (b *Logger_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterLogger(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl Logger, registry *ffigo.HandleRegistry) {
+func RegisterLogger(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl Logger, registry *ffigo.HandleRegistry) {
 	bridge := &Logger_Bridge{Impl: impl, Registry: registry}
 	prefix := "logger"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range Logger_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
@@ -139,11 +132,11 @@ func RegisterLogger(executor interface {
 
 const (
 	MethodID_Callback_OnEvent = 1
-	MethodID_Callback_OnRaw   = 2
+	MethodID_Callback_OnRaw = 2
 )
 
 type CallbackProxy struct {
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
@@ -189,23 +182,23 @@ func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.Hand
 	switch methodID {
 	case MethodID_Callback_OnEvent:
 		var arg0 int64
-		{
-			tmp := reqBuf.ReadVarint()
-			arg0 = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	arg0 = int64(tmp)
+	}
 		var arg1 string
-		arg1 = string(reqBuf.ReadString())
+	arg1 = string(reqBuf.ReadString())
 		impl.OnEvent(arg0, arg1)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Callback_OnRaw:
 		var arg0 int64
-		{
-			tmp := reqBuf.ReadVarint()
-			arg0 = int64(tmp)
-		}
+	{
+	tmp := reqBuf.ReadVarint()
+	arg0 = int64(tmp)
+	}
 		var arg1 []byte
-		arg1 = reqBuf.ReadBytes()
+	arg1 = reqBuf.ReadBytes()
 		impl.OnRaw(arg0, arg1)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
@@ -213,7 +206,6 @@ func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.Hand
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
-
 var Callback_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
@@ -225,7 +217,7 @@ var Callback_FFI_Metadata = []struct {
 }
 
 type Callback_Bridge struct {
-	Impl     Callback
+	Impl Callback
 	Registry *ffigo.HandleRegistry
 }
 
@@ -238,31 +230,24 @@ func (b *Callback_Bridge) Invoke(ctx context.Context, method string, args []byte
 }
 
 func (b *Callback_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
+	if b.Registry != nil { b.Registry.Remove(handle) }
 	return nil
 }
 
-func RegisterCallback(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-}, impl Callback, registry *ffigo.HandleRegistry) {
+func RegisterCallback(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl Callback, registry *ffigo.HandleRegistry) {
 	bridge := &Callback_Bridge{Impl: impl, Registry: registry}
 	prefix := "callback"
 	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
+	if strings.HasPrefix(prefix, "__method_") { sep = "_" }
 	for _, m := range Callback_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 }
-
 type Callback_ReverseProxy struct {
-	program  runtime.ExecutorAPI
-	ctx      *runtime.StackContext
+	program runtime.ExecutorAPI
+	ctx *runtime.StackContext
 	callable *runtime.Var
-	bridge   ffigo.FFIBridge
+	bridge ffigo.FFIBridge
 }
 
 func NewCallback_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.StackContext, callable *runtime.Var, bridge ffigo.FFIBridge) *Callback_ReverseProxy {
@@ -288,3 +273,4 @@ func (__p *Callback_ReverseProxy) OnRaw(arg0 int64, arg1 []byte) {
 	_ = resVar
 	return
 }
+
