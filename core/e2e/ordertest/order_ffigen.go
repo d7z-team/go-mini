@@ -29,7 +29,7 @@ func (p *OrderServiceProxy) New(id string) (*Order, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(id)
+	buf.WriteString(string(id))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_New, buf.Bytes())
 	_ = retData
@@ -77,7 +77,7 @@ func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error 
 			buf.WriteUvarint(0)
 		}
 	}
-	buf.WriteString(name)
+	buf.WriteString(string(name))
 	buf.WriteFloat64(float64(price))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, buf.Bytes())
@@ -127,7 +127,7 @@ func (p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 float64
-	v_0 = retBuf.ReadFloat64()
+	v_0 = float64(retBuf.ReadFloat64())
 	var err_1 error
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
@@ -203,7 +203,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	switch methodID {
 	case MethodID_OrderService_New:
 		var id string
-		id = reqBuf.ReadString()
+		id = string(reqBuf.ReadString())
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
@@ -231,9 +231,9 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 			}
 		}
 		var name string
-		name = reqBuf.ReadString()
+		name = string(reqBuf.ReadString())
 		var price float64
-		price = reqBuf.ReadFloat64()
+		price = float64(reqBuf.ReadFloat64())
 		err := impl.AddItem(o, name, price)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {

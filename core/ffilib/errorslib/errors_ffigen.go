@@ -26,7 +26,7 @@ func (p *ErrorsProxy) New(text string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(text)
+	buf.WriteString(string(text))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
 	_ = retData
@@ -65,7 +65,7 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string
-		text = reqBuf.ReadString()
+		text = string(reqBuf.ReadString())
 		err := impl.New(text)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {

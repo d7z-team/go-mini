@@ -32,7 +32,7 @@ func (p *MockOSProxy) Open(name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(name)
+	buf.WriteString(string(name))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Open, buf.Bytes())
 	_ = retData
@@ -86,7 +86,7 @@ func (p *MockOSProxy) Name(f *File) string {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -112,7 +112,7 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 FileInfo
-	v_0.Name = retBuf.ReadString()
+	v_0.Name = string(retBuf.ReadString())
 	{
 		tmp := retBuf.ReadVarint()
 		v_0.Size = int64(tmp)
@@ -268,7 +268,7 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(n.Info.Name)
+	buf.WriteString(string(n.Info.Name))
 	buf.WriteVarint(int64(n.Info.Size))
 	buf.WriteVarint(int64(n.Level))
 
@@ -277,7 +277,7 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 Nested
-	v_0.Info.Name = retBuf.ReadString()
+	v_0.Info.Name = string(retBuf.ReadString())
 	{
 		tmp := retBuf.ReadVarint()
 		v_0.Info.Size = int64(tmp)
@@ -313,7 +313,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	switch methodID {
 	case MethodID_MockOS_Open:
 		var name string
-		name = reqBuf.ReadString()
+		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
@@ -342,7 +342,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		r0 := impl.Name(f)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Stat:
 		var f *File
@@ -355,7 +355,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		r0, err := impl.Stat(f)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0.Name)
+		resBuf.WriteString(string(r0.Name))
 		resBuf.WriteVarint(int64(r0.Size))
 		if err != nil {
 			if registry != nil {
@@ -438,7 +438,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Deep:
 		var n Nested
-		n.Info.Name = reqBuf.ReadString()
+		n.Info.Name = string(reqBuf.ReadString())
 		{
 			tmp := reqBuf.ReadVarint()
 			n.Info.Size = int64(tmp)
@@ -449,7 +449,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		}
 		r0 := impl.Deep(n)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0.Info.Name)
+		resBuf.WriteString(string(r0.Info.Name))
 		resBuf.WriteVarint(int64(r0.Info.Size))
 		resBuf.WriteVarint(int64(r0.Level))
 		return resBuf.Bytes(), nil
@@ -524,14 +524,14 @@ func (p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(key)
+	buf.WriteString(string(key))
 
 	retData, err := p.bridge.Call(ctx, MethodID_ContextMock_WithContext, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -539,14 +539,14 @@ func (p *ContextMockProxy) WithoutContext(val string) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(val)
+	buf.WriteString(string(val))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -564,17 +564,17 @@ func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffig
 	switch methodID {
 	case MethodID_ContextMock_WithContext:
 		var key string
-		key = reqBuf.ReadString()
+		key = string(reqBuf.ReadString())
 		r0 := impl.WithContext(ctx, key)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_ContextMock_WithoutContext:
 		var val string
-		val = reqBuf.ReadString()
+		val = string(reqBuf.ReadString())
 		r0 := impl.WithoutContext(val)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -650,7 +650,7 @@ func (p *NativeMockProxy) GetStruct() NativeStruct {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 NativeStruct
-	v_0.Msg = retBuf.ReadString()
+	v_0.Msg = string(retBuf.ReadString())
 	{
 		tmp := retBuf.ReadVarint()
 		v_0.Value = int64(tmp)
@@ -681,7 +681,7 @@ func (p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(s.Msg)
+	buf.WriteString(string(s.Msg))
 	buf.WriteVarint(int64(s.Value))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, buf.Bytes())
@@ -741,7 +741,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case MethodID_NativeMock_GetStruct:
 		r0 := impl.GetStruct()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0.Msg)
+		resBuf.WriteString(string(r0.Msg))
 		resBuf.WriteVarint(int64(r0.Value))
 		return resBuf.Bytes(), nil
 	case MethodID_NativeMock_GetPtr:
@@ -755,7 +755,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 		return resBuf.Bytes(), nil
 	case MethodID_NativeMock_SetStruct:
 		var s NativeStruct
-		s.Msg = reqBuf.ReadString()
+		s.Msg = string(reqBuf.ReadString())
 		{
 			tmp := reqBuf.ReadVarint()
 			s.Value = int64(tmp)

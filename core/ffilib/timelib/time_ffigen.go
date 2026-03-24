@@ -35,7 +35,7 @@ func (p *TimeProxy) Now() string {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -121,7 +121,7 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 	case MethodID_Time_Now:
 		r0 := impl.Now()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Unix:
 		r0 := impl.Unix()

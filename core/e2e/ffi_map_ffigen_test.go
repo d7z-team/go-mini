@@ -31,8 +31,8 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 
 	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteString(k)
-		buf.WriteString(v)
+		buf.WriteString(string(k))
+		buf.WriteString(string(v))
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoMap, buf.Bytes())
@@ -48,8 +48,8 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k string
 		var v string
-		k = retBuf.ReadString()
-		v = retBuf.ReadString()
+		k = string(retBuf.ReadString())
+		v = string(retBuf.ReadString())
 		v_0[k] = v
 	}
 	var err_1 error
@@ -87,7 +87,7 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k string
 		var v int64
-		k = retBuf.ReadString()
+		k = string(retBuf.ReadString())
 		{
 			tmp := retBuf.ReadVarint()
 			v = int64(tmp)
@@ -118,7 +118,7 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 
 	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteString(k)
+		buf.WriteString(string(k))
 		buf.WriteVarint(int64(v))
 	}
 
@@ -159,7 +159,7 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
 		buf.WriteVarint(int64(k))
-		buf.WriteString(v)
+		buf.WriteString(string(v))
 	}
 
 	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
@@ -179,7 +179,7 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 			tmp := retBuf.ReadVarint()
 			k = int64(tmp)
 		}
-		v = retBuf.ReadString()
+		v = string(retBuf.ReadString())
 		v_0[k] = v
 	}
 	var err_1 error
@@ -223,16 +223,16 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
 			var v string
-			k = reqBuf.ReadString()
-			v = reqBuf.ReadString()
+			k = string(reqBuf.ReadString())
+			v = string(reqBuf.ReadString())
 			m[k] = v
 		}
 		r0, err := impl.EchoMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
-			resBuf.WriteString(k)
-			resBuf.WriteString(v)
+			resBuf.WriteString(string(k))
+			resBuf.WriteString(string(v))
 		}
 		if err != nil {
 			if registry != nil {
@@ -249,7 +249,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
-			resBuf.WriteString(k)
+			resBuf.WriteString(string(k))
 			resBuf.WriteVarint(int64(v))
 		}
 		if err != nil {
@@ -269,7 +269,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
 			var v int64
-			k = reqBuf.ReadString()
+			k = string(reqBuf.ReadString())
 			{
 				tmp := reqBuf.ReadVarint()
 				v = int64(tmp)
@@ -300,7 +300,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 				tmp := reqBuf.ReadVarint()
 				k = int64(tmp)
 			}
-			v = reqBuf.ReadString()
+			v = string(reqBuf.ReadString())
 			m[k] = v
 		}
 		r0, err := impl.EchoIntMap(ctx, m)
@@ -308,7 +308,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
 			resBuf.WriteVarint(int64(k))
-			resBuf.WriteString(v)
+			resBuf.WriteString(string(v))
 		}
 		if err != nil {
 			if registry != nil {

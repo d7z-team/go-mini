@@ -48,7 +48,7 @@ func (p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(prefix)
+	buf.WriteString(string(prefix))
 	buf.WriteVarint(int64(val))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Format, buf.Bytes())
@@ -56,7 +56,7 @@ func (p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -128,7 +128,7 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 		return resBuf.Bytes(), nil
 	case MethodID_ScriptCalculator_Format:
 		var prefix string
-		prefix = reqBuf.ReadString()
+		prefix = string(reqBuf.ReadString())
 		var val int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -136,7 +136,7 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 		}
 		r0 := impl.Format(prefix, val)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_ScriptCalculator_Divide:
 		var a int64

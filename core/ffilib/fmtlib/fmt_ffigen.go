@@ -60,7 +60,7 @@ func (p *FmtProxy) Printf(format string, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(format)
+	buf.WriteString(string(format))
 	buf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
 		buf.WriteAny(item)
@@ -75,7 +75,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(format)
+	buf.WriteString(string(format))
 	buf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
 		buf.WriteAny(item)
@@ -86,7 +86,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) string {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 string
-	v_0 = retBuf.ReadString()
+	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
@@ -110,7 +110,7 @@ func (p *FmtProxy) Fprintf(w any, format string, args ...any) {
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteAny(w)
-	buf.WriteString(format)
+	buf.WriteString(string(format))
 	buf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
 		buf.WriteAny(item)
@@ -220,7 +220,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Printf:
 		var format string
-		format = reqBuf.ReadString()
+		format = string(reqBuf.ReadString())
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
@@ -252,7 +252,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Sprintf:
 		var format string
-		format = reqBuf.ReadString()
+		format = string(reqBuf.ReadString())
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
@@ -281,7 +281,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		}
 		r0 := impl.Sprintf(format, args...)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0)
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Fmt_Fprint:
 		var w any
@@ -359,7 +359,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			w = rawVal
 		}
 		var format string
-		format = reqBuf.ReadString()
+		format = string(reqBuf.ReadString())
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)

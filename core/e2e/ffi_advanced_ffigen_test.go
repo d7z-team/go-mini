@@ -72,7 +72,7 @@ func (p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 bool
-	v_0 = retBuf.ReadBool()
+	v_0 = bool(retBuf.ReadBool())
 	return v_0
 }
 
@@ -82,8 +82,8 @@ func (p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 
 	buf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteBool(k)
-		buf.WriteString(v)
+		buf.WriteBool(bool(k))
+		buf.WriteString(string(v))
 	}
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, buf.Bytes())
@@ -96,8 +96,8 @@ func (p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
 		var k float64
 		var v bool
-		k = retBuf.ReadFloat64()
-		v = retBuf.ReadBool()
+		k = float64(retBuf.ReadFloat64())
+		v = bool(retBuf.ReadBool())
 		v_0[k] = v
 	}
 	return v_0
@@ -107,7 +107,7 @@ func (p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteString(e.BaseField)
+	buf.WriteString(string(e.BaseField))
 	buf.WriteVarint(int64(e.ExtraField))
 
 	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, buf.Bytes())
@@ -115,7 +115,7 @@ func (p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 EmbeddedStruct
-	v_0.BaseField = retBuf.ReadString()
+	v_0.BaseField = string(retBuf.ReadString())
 	{
 		tmp := retBuf.ReadVarint()
 		v_0.ExtraField = int64(tmp)
@@ -167,7 +167,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		}
 		r0 := impl.IsSame(a, b)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBool(r0)
+		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_AdvancedFFI_EchoMap:
 		var m map[bool]string
@@ -176,8 +176,8 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k bool
 			var v string
-			k = reqBuf.ReadBool()
-			v = reqBuf.ReadString()
+			k = bool(reqBuf.ReadBool())
+			v = string(reqBuf.ReadString())
 			m[k] = v
 		}
 		r0 := impl.EchoMap(m)
@@ -185,19 +185,19 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		resBuf.WriteUvarint(uint64(len(r0)))
 		for k, v := range r0 {
 			resBuf.WriteFloat64(float64(k))
-			resBuf.WriteBool(v)
+			resBuf.WriteBool(bool(v))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_AdvancedFFI_EchoEmbedded:
 		var e EmbeddedStruct
-		e.BaseField = reqBuf.ReadString()
+		e.BaseField = string(reqBuf.ReadString())
 		{
 			tmp := reqBuf.ReadVarint()
 			e.ExtraField = int64(tmp)
 		}
 		r0 := impl.EchoEmbedded(e)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(r0.BaseField)
+		resBuf.WriteString(string(r0.BaseField))
 		resBuf.WriteVarint(int64(r0.ExtraField))
 		return resBuf.Bytes(), nil
 	default:
