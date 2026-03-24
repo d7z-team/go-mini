@@ -4,9 +4,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"strings"
 	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 )
 

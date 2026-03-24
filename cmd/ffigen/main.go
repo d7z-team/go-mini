@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -151,14 +152,6 @@ func main() {
 		})
 	}
 
-	usedAliases := make(map[string]bool)
-	for _, spec := range ifaceSpecs {
-		collectUsedAliases(spec.Type, usedAliases)
-	}
-	for _, str := range structs {
-		collectUsedAliases(str, usedAliases)
-	}
-
 	var interfaces []string
 	anyReverse := false
 	for _, spec := range ifaceSpecs {
@@ -185,41 +178,53 @@ func main() {
 	fmt.Fprintf(&sb, "package %s\n\n", *pkgName)
 	sb.WriteString("import (\n")
 
-	// Standard packages - only if used in fullInterfaces
-	if strings.Contains(fullInterfaces, "context.") {
-		sb.WriteString("\t\"context\"\n")
-	}
-	if strings.Contains(fullInterfaces, "fmt.") {
-		sb.WriteString("\t\"fmt\"\n")
-	}
-	if strings.Contains(fullInterfaces, "ast.") {
-		sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ast\"\n")
-	}
-	if strings.Contains(fullInterfaces, "ffigo.") {
-		sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/ffigo\"\n")
-	}
-	if strings.Contains(fullInterfaces, "strings.") {
-		sb.WriteString("\t\"strings\"\n")
-	}
-	if anyReverse && strings.Contains(fullInterfaces, "runtime.") {
-		sb.WriteString("\t\"gopkg.d7z.net/go-mini/core/runtime\"\n")
+	// Helper to check if an alias is used in the generated code
+	isUsed := func(alias string) bool {
+		re := regexp.MustCompile(`(?m)(?:[^a-zA-Z0-9_]|^)` + regexp.QuoteMeta(alias) + `\.`)
+		return re.MatchString(fullInterfaces)
 	}
 
-	// External Aliased Packages
-	var aliases []string
-	for a := range usedAliases {
-		if a == "context" || a == "fmt" || a == "strings" || a == "ast" || a == "ffigo" || a == "runtime" {
+	// 1. Standard packages - only if used in fullInterfaces
+	stdPackages := []struct {
+		alias string
+		path  string
+	}{
+		{"context", "context"},
+		{"fmt", "fmt"},
+		{"strings", "strings"},
+		{"ast", "gopkg.d7z.net/go-mini/core/ast"},
+		{"ffigo", "gopkg.d7z.net/go-mini/core/ffigo"},
+		{"runtime", "gopkg.d7z.net/go-mini/core/runtime"},
+	}
+
+	for _, p := range stdPackages {
+		if p.alias == "runtime" && !anyReverse {
 			continue
 		}
-		aliases = append(aliases, a)
+		if isUsed(p.alias) {
+			fmt.Fprintf(&sb, "\t\"%s\"\n", p.path)
+		}
 	}
-	sort.Strings(aliases)
-	for _, alias := range aliases {
-		if path, ok := knownImports[alias]; ok {
-			// Check if the alias is actually used in the generated code
-			if !strings.Contains(fullInterfaces, alias+".") {
-				continue
+
+	// 2. External Aliased Packages from knownImports
+	var sortedAliases []string
+	for a := range knownImports {
+		isStd := false
+		for _, p := range stdPackages {
+			if a == p.alias {
+				isStd = true
+				break
 			}
+		}
+		if !isStd {
+			sortedAliases = append(sortedAliases, a)
+		}
+	}
+	sort.Strings(sortedAliases)
+
+	for _, alias := range sortedAliases {
+		if isUsed(alias) {
+			path := knownImports[alias]
 			if alias == path[strings.LastIndex(path, "/")+1:] {
 				fmt.Fprintf(&sb, "\t\"%s\"\n", path)
 			} else {
