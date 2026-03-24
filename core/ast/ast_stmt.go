@@ -391,6 +391,7 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 		hasError = true
 	} else {
 		if err := i.Cond.Check(semCtx); err != nil {
+			fmt.Printf("IfStmt Cond.Check error: %v\n", err)
 			hasError = true
 		} else {
 			condType := i.Cond.GetBase().Type
@@ -587,7 +588,7 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, result := range r.Results {
-		if err := result.Check(ctx); err != nil {
+		if err := result.Check(ctx.WithNode(result)); err != nil {
 			hasError = true
 		}
 	}

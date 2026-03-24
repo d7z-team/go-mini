@@ -48,10 +48,9 @@ func TestAdvancedFFIExecution(t *testing.T) {
 			e["ExtraField"] = 42
 			
 			resE = test.EchoEmbedded(e)
-			if resE["BaseField"] != "from_vm" || resE["ExtraField"] != 42 {
-				panic("Embedded struct flattening failed")
-			}
-		}
+			if resE.BaseField != "from_vm" || resE.ExtraField != 42 {
+			        panic("Embedded struct flattening failed")
+			}		}
 	`
 
 	prog, err := executor.NewRuntimeByGoCode(code)

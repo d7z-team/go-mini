@@ -96,10 +96,10 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 }
 
 func (b *BinaryExpr) Check(ctx *SemanticContext) error {
-	if err := b.Left.Check(ctx); err != nil {
+	if err := b.Left.Check(ctx.WithNode(b.Left)); err != nil {
 		return err
 	}
-	if err := b.Right.Check(ctx); err != nil {
+	if err := b.Right.Check(ctx.WithNode(b.Right)); err != nil {
 		return err
 	}
 

@@ -94,14 +94,6 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, t := range externalSpecs {
 		v.root.vars[ident] = t
-		// 如果包含点号，自动注册包名前缀为 Package 类型以支持校验
-		sName := string(ident)
-		if idx := strings.Index(sName, "."); idx != -1 {
-			pkg := Ident(sName[:idx])
-			if _, ok := v.root.vars[pkg]; !ok {
-				v.root.vars[pkg] = "Package"
-			}
-		}
 	}
 	// 注入命名接口
 	for ident, stmt := range node.Interfaces {
@@ -329,6 +321,9 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 			if vt, ok := root.vars[Ident(parts[1])]; ok {
 				return vt, true
 			}
+			if _, ok := root.program.Constants[parts[1]]; ok {
+				return "Constant", true
+			}
 		}
 	}
 
@@ -348,6 +343,11 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 		if miniType, ok := ctx.root.vars[variable]; ok {
 			// 全局变量无需捕获，因为闭包执行时环境能看到全局
 			return miniType, true
+		}
+		if ctx.root.program != nil {
+			if _, ok := ctx.root.program.Constants[string(variable)]; ok {
+				return "Constant", true
+			}
 		}
 		ctx = ctx.parent
 	}

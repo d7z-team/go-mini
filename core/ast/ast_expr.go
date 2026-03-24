@@ -397,7 +397,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	}
 
 	objType := m.Object.GetBase().Type
-	if objType == TypeModule || objType == "Any" {
+	if objType == "Any" {
 		m.Type = "Any"
 		return nil
 	}
@@ -409,13 +409,50 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	if objType == "Package" {
+	if objType == "Package" || objType == TypeModule {
 		if id, ok := m.Object.(*IdentifierExpr); ok {
-			fullPath := string(id.Name) + "." + string(m.Property)
-			if t, ok := ctx.GetVariable(Ident(fullPath)); ok {
-				m.Type = t
-				return nil
+			path, isPkg := ctx.root.Imports[string(id.Name)]
+			if !isPkg {
+				path = string(id.Name)
 			}
+
+			// 尝试多种路径格式
+			// 1. 原始路径 (Go-source 模块使用 /)
+			p1 := Ident(path + "." + string(m.Property))
+			// 2. FFI 风格路径 (FFI 标准库将 / 映射为 .)
+			p2 := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(m.Property))
+
+			targets := []Ident{p1}
+			if p1 != p2 {
+				targets = append(targets, p2)
+			}
+
+			for _, fullPath := range targets {
+				// 1. 尝试作为变量/常量查找
+				if t, ok := ctx.GetVariable(fullPath); ok {
+					m.Type = t
+					return nil
+				}
+				// 2. 尝试作为函数查找
+				if fn, ok := ctx.GetFunction(fullPath); ok {
+					m.Type = fn.MiniType()
+					return nil
+				}
+				// 3. 尝试作为结构体查找
+				if _, ok := ctx.GetStruct(fullPath); ok {
+					m.Type = GoMiniType(fullPath)
+					return nil
+				}
+				// 4. 尝试作为接口查找
+				if _, ok := ctx.GetInterface(fullPath); ok {
+					m.Type = GoMiniType(fullPath)
+					return nil
+				}
+			}
+
+			err := fmt.Errorf("包 %s 不存在成员 %s", id.Name, m.Property)
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			return err
 		}
 		m.Type = "Any"
 		return nil
@@ -468,14 +505,14 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					m.Type = GoMiniType(method.String())
 					return nil
 				}
-				// 继续尝试其他可能，不立即报错
+				// 找到了结构体但没找到字段和方法，跳过，最终会报错
 			} else {
 				m.Type = met
 				return nil
 			}
-		} else if strings.Contains(typeName, ".") {
-			// 如果是跨包的结构体（例如 lib.Point），由于在隔离架构下不静态合并符号表，
-			// 在编译期无法得知其完整定义，因此放行作为动态成员访问
+		} else {
+			// 结构体未在当前上下文中定义（例如 FFI 宿主类型或跨包类型）。
+			// 由于隔离架构不要求全量 AST，这里放行作为动态成员访问。
 			m.Type = "Any"
 			return nil
 		}
