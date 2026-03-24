@@ -40,7 +40,7 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 		}
 
 		err := fmt.Errorf("变量 %s 不存在", c.Name)
-		ctx.AddErrorf("%s", err.Error())
+		ctx.WithNode(c).AddErrorf("%s", err.Error())
 		return err
 	}
 
@@ -187,7 +187,9 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	return fmt.Errorf("const/function %s 不存在", c.Name)
+	err := fmt.Errorf("const/function %s 不存在", c.Name)
+	ctx.AddErrorf("%s", err.Error())
+	return err
 }
 
 func (c *ConstRefExpr) Optimize(ctx *OptimizeContext) Node {
@@ -213,10 +215,10 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 
-	funcErr := c.Func.Check(ctx)
+	// 此时错误已经由 c.Func.Check 内部通过自己的 context 报告了
+	funcErr := c.Func.Check(ctx.WithNode(c.Func))
 
 	// 无论函数名是否能解析成功，我们都必须校验参数，以便填充 LSP 所需的类型信息
-	var argsError bool
 
 	// 特殊处理 make/new 的类型参数解析
 	if ident, ok := c.Func.(*ConstRefExpr); ok && (ident.Name == "make" || ident.Name == "new") {
@@ -225,27 +227,32 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 				t := GoMiniType(lit.Value).Resolve(ctx.ValidContext)
 				if ident.Name == "make" {
 					if !t.IsStrictValid() {
-						ctx.AddErrorf("make: 非法类型 %s", lit.Value)
-						argsError = true
+						err := fmt.Errorf("make: 非法类型 %s", lit.Value)
+						ctx.AddErrorf("%s", err.Error())
+						return err
 					}
 				} else { // new
 					if !t.IsStrictValid() {
 						if _, hasStruct := ctx.GetStruct(Ident(t)); !hasStruct {
-							ctx.AddErrorf("new: 非法类型 %s", lit.Value)
-							argsError = true
+							err := fmt.Errorf("new: 非法类型 %s", lit.Value)
+							ctx.AddErrorf("%s", err.Error())
+							return err
 						}
 					}
 					t = t.ToPtr()
 				}
 				lit.Value = string(t)
+			} else {
+				// 如果不是字面量字符串，说明是动态变量，报错
+				err := fmt.Errorf("%s: 第一个参数必须是表示类型的字符串字面量", ident.Name)
+				ctx.AddErrorf("%s", err.Error())
+				return err
 			}
 		}
 	}
 
 	for _, arg := range c.Args {
-		if err := arg.Check(ctx); err != nil {
-			argsError = true
-		}
+		_ = arg.Check(ctx.WithNode(arg))
 	}
 
 	if funcErr != nil {
@@ -256,18 +263,11 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
 			c.Type = "Any"
-			if argsError {
-				return errors.New("invalid arguments")
-			}
 			return nil
 		}
 		err := fmt.Errorf("对象(%s)不是函数", c.Func.GetBase().Type)
 		ctx.AddErrorf("%s", err.Error())
 		return err
-	}
-
-	if argsError {
-		return errors.New("invalid arguments")
 	}
 
 	// 语义校验：参数数量和基本类型匹配
