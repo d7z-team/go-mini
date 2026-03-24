@@ -199,6 +199,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	var sb strings.Builder
 	fixedPrefix := ""
+	methodsPrefix := ""
 	if spec.Doc != nil {
 		for _, line := range spec.Doc.List {
 			if strings.Contains(line.Text, "ffigen:module") {
@@ -214,10 +215,43 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				parts := strings.Fields(line.Text)
 				for i, p := range parts {
 					if p == "ffigen:methods" && i+1 < len(parts) {
+						methodsPrefix = parts[i+1]
 						fixedPrefix = "__method_" + parts[i+1]
 						break
 					}
 				}
+			}
+		}
+	}
+
+	if methodsPrefix != "" && !isReverse {
+		for _, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
+			}
+			funcType := method.Type.(*ast.FuncType)
+			hasContext := false
+			if funcType.Params != nil && len(funcType.Params.List) > 0 {
+				pType := typeToString(funcType.Params.List[0].Type)
+				if pType == "context.Context" || pType == "Context" {
+					hasContext = true
+				}
+			}
+
+			paramIdx := 0
+			if hasContext {
+				paramIdx = 1
+			}
+
+			if funcType.Params == nil || len(funcType.Params.List) <= paramIdx {
+				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' has ffigen:methods '%s', but method '%s' has no receiver parameter. The first parameter (or second, if the first is context.Context) must be the receiver.", name, methodsPrefix, method.Names[0].Name))
+			}
+
+			receiverType := typeToString(funcType.Params.List[paramIdx].Type)
+			receiverTypeClean := strings.TrimPrefix(receiverType, "Ptr<")
+			receiverTypeClean = strings.TrimSuffix(receiverTypeClean, ">")
+			if receiverTypeClean != methodsPrefix {
+				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' method '%s' expects receiver type '%s', but ffigen:methods specifies '%s'. Please ensure the ffigen:methods prefix exactly matches the receiver type (including package prefix).", name, method.Names[0].Name, receiverTypeClean, methodsPrefix))
 			}
 		}
 	}
