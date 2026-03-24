@@ -26,11 +26,11 @@ func NewTimeProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Time {
 	return &TimeProxy{bridge: bridge, registry: registry}
 }
 
-func (p *TimeProxy) Now() string {
+func (__p *TimeProxy) Now() string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Now, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Now, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -39,11 +39,11 @@ func (p *TimeProxy) Now() string {
 	return v_0
 }
 
-func (p *TimeProxy) Unix() int64 {
+func (__p *TimeProxy) Unix() int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Unix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Unix, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -55,11 +55,11 @@ func (p *TimeProxy) Unix() int64 {
 	return v_0
 }
 
-func (p *TimeProxy) UnixNano() int64 {
+func (__p *TimeProxy) UnixNano() int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Time_UnixNano, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixNano, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -71,24 +71,24 @@ func (p *TimeProxy) UnixNano() int64 {
 	return v_0
 }
 
-func (p *TimeProxy) Sleep(ns int64) {
+func (__p *TimeProxy) Sleep(ns int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(ns))
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Time_Sleep, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Time_Sleep, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *TimeProxy) Since(ns int64) int64 {
+func (__p *TimeProxy) Since(ns int64) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(ns))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Time_Since, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Since, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)

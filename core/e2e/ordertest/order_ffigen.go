@@ -25,13 +25,13 @@ func NewOrderServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 	return &OrderServiceProxy{bridge: bridge, registry: registry}
 }
 
-func (p *OrderServiceProxy) New(id string) (*Order, error) {
+func (__p *OrderServiceProxy) New(id string) (*Order, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(id))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_New, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_New, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -40,8 +40,8 @@ func (p *OrderServiceProxy) New(id string) (*Order, error) {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Order
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if p.registry != nil {
-			if obj, ok := p.registry.Get(id); ok {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
 				v_0 = obj.(*Order)
 			}
 		}
@@ -50,8 +50,8 @@ func (p *OrderServiceProxy) New(id string) (*Order, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -64,15 +64,15 @@ func (p *OrderServiceProxy) New(id string) (*Order, error) {
 	return v_0, err_1
 }
 
-func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error {
+func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(o)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
 			buf.WriteUvarint(0)
 		}
@@ -80,7 +80,7 @@ func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error 
 	buf.WriteString(string(name))
 	buf.WriteFloat64(float64(price))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -91,8 +91,8 @@ func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error 
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
 					err_0 = ed
@@ -105,21 +105,21 @@ func (p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error 
 	return err_0
 }
 
-func (p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
+func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(o)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -132,8 +132,8 @@ func (p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -146,21 +146,21 @@ func (p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	return v_0, err_1
 }
 
-func (p *OrderServiceProxy) Close(o *Order) error {
+func (__p *OrderServiceProxy) Close(o *Order) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(o)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_OrderService_Close, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_Close, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -171,8 +171,8 @@ func (p *OrderServiceProxy) Close(o *Order) error {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
 					err_0 = ed

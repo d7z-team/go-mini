@@ -23,11 +23,11 @@ func NewMockShapeAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 	return &MockShapeAPIProxy{bridge: bridge, registry: registry}
 }
 
-func (p *MockShapeAPIProxy) GetRect() Rect {
+func (__p *MockShapeAPIProxy) GetRect() Rect {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockShapeAPI_GetRect, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockShapeAPI_GetRect, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -51,7 +51,7 @@ func (p *MockShapeAPIProxy) GetRect() Rect {
 	return v_0
 }
 
-func (p *MockShapeAPIProxy) Area(r Rect) int64 {
+func (__p *MockShapeAPIProxy) Area(r Rect) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -60,7 +60,7 @@ func (p *MockShapeAPIProxy) Area(r Rect) int64 {
 	buf.WriteVarint(int64(r.B.X))
 	buf.WriteVarint(int64(r.B.Y))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockShapeAPI_Area, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockShapeAPI_Area, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)

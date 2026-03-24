@@ -22,13 +22,13 @@ func NewIOProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) IO {
 	return &IOProxy{bridge: bridge, registry: registry}
 }
 
-func (p *IOProxy) ReadAll(r any) ([]byte, error) {
+func (__p *IOProxy) ReadAll(r any) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteAny(r)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_IO_ReadAll, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_IO_ReadAll, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -41,8 +41,8 @@ func (p *IOProxy) ReadAll(r any) ([]byte, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed

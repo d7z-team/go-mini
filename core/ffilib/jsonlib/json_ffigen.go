@@ -23,13 +23,13 @@ func NewJSONProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) JSON {
 	return &JSONProxy{bridge: bridge, registry: registry}
 }
 
-func (p *JSONProxy) Marshal(v any) ([]byte, error) {
+func (__p *JSONProxy) Marshal(v any) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteAny(v)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_JSON_Marshal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Marshal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -42,8 +42,8 @@ func (p *JSONProxy) Marshal(v any) ([]byte, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -56,13 +56,13 @@ func (p *JSONProxy) Marshal(v any) ([]byte, error) {
 	return v_0, err_1
 }
 
-func (p *JSONProxy) Unmarshal(data []byte) (any, error) {
+func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteBytes(data)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,8 +75,8 @@ func (p *JSONProxy) Unmarshal(data []byte) (any, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed

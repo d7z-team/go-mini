@@ -25,14 +25,14 @@ func NewScriptCalculatorProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegi
 	return &ScriptCalculatorProxy{bridge: bridge, registry: registry}
 }
 
-func (p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
+func (__p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(a))
 	buf.WriteVarint(int64(b))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Add, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Add, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -44,14 +44,14 @@ func (p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
 	return v_0
 }
 
-func (p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
+func (__p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(prefix))
 	buf.WriteVarint(int64(val))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Format, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Format, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -60,14 +60,14 @@ func (p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
 	return v_0
 }
 
-func (p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
+func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(a))
 	buf.WriteVarint(int64(b))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Divide, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Divide, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -83,8 +83,8 @@ func (p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -222,11 +222,11 @@ func NewScriptCalculator_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.
 	return &ScriptCalculator_ReverseProxy{program: program, ctx: ctx, callable: callable, bridge: bridge}
 }
 
-func (p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
+func (__p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
 	args := make([]*runtime.Var, 2)
-	args[0] = p.program.ToVar(p.ctx, a, p.bridge)
-	args[1] = p.program.ToVar(p.ctx, b, p.bridge)
-	resVar, err := p.program.InvokeCallable(p.ctx, p.callable, "Add", args)
+	args[0] = __p.program.ToVar(__p.ctx, a, __p.bridge)
+	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Add", args)
 	_ = err
 	var ret0 int64 = 0
 	if resVar != nil {
@@ -242,11 +242,11 @@ func (p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
 	return ret0
 }
 
-func (p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) string {
+func (__p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) string {
 	args := make([]*runtime.Var, 2)
-	args[0] = p.program.ToVar(p.ctx, prefix, p.bridge)
-	args[1] = p.program.ToVar(p.ctx, val, p.bridge)
-	resVar, err := p.program.InvokeCallable(p.ctx, p.callable, "Format", args)
+	args[0] = __p.program.ToVar(__p.ctx, prefix, __p.bridge)
+	args[1] = __p.program.ToVar(__p.ctx, val, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Format", args)
 	_ = err
 	var ret0 string = ""
 	if resVar != nil {
@@ -259,11 +259,11 @@ func (p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) string 
 	return ret0
 }
 
-func (p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error) {
+func (__p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error) {
 	args := make([]*runtime.Var, 2)
-	args[0] = p.program.ToVar(p.ctx, a, p.bridge)
-	args[1] = p.program.ToVar(p.ctx, b, p.bridge)
-	resVar, err := p.program.InvokeCallable(p.ctx, p.callable, "Divide", args)
+	args[0] = __p.program.ToVar(__p.ctx, a, __p.bridge)
+	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Divide", args)
 	_ = err
 	var elements []*runtime.Var
 	if resVar != nil && resVar.VType == runtime.TypeArray {

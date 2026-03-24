@@ -28,13 +28,13 @@ func NewMockOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Mock
 	return &MockOSProxy{bridge: bridge, registry: registry}
 }
 
-func (p *MockOSProxy) Open(name string) (*File, error) {
+func (__p *MockOSProxy) Open(name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Open, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Open, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -43,8 +43,8 @@ func (p *MockOSProxy) Open(name string) (*File, error) {
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if p.registry != nil {
-			if obj, ok := p.registry.Get(id); ok {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
 				v_0 = obj.(*File)
 			}
 		}
@@ -53,8 +53,8 @@ func (p *MockOSProxy) Open(name string) (*File, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -67,21 +67,21 @@ func (p *MockOSProxy) Open(name string) (*File, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Name(f *File) string {
+func (__p *MockOSProxy) Name(f *File) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Name, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Name, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -90,21 +90,21 @@ func (p *MockOSProxy) Name(f *File) string {
 	return v_0
 }
 
-func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
+func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Stat, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Stat, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -121,8 +121,8 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -135,22 +135,22 @@ func (p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
+func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Read, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Read, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -166,8 +166,8 @@ func (p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -180,22 +180,22 @@ func (p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
+func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 	buf.WriteBytes(b)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Write, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Write, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -211,8 +211,8 @@ func (p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -225,21 +225,21 @@ func (p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	return v_0, err_1
 }
 
-func (p *MockOSProxy) Close(f *File) error {
+func (__p *MockOSProxy) Close(f *File) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(f)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Close, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Close, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -250,8 +250,8 @@ func (p *MockOSProxy) Close(f *File) error {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
 					err_0 = ed
@@ -264,7 +264,7 @@ func (p *MockOSProxy) Close(f *File) error {
 	return err_0
 }
 
-func (p *MockOSProxy) Deep(n Nested) Nested {
+func (__p *MockOSProxy) Deep(n Nested) Nested {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -272,7 +272,7 @@ func (p *MockOSProxy) Deep(n Nested) Nested {
 	buf.WriteVarint(int64(n.Info.Size))
 	buf.WriteVarint(int64(n.Level))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_MockOS_Deep, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Deep, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -520,13 +520,13 @@ func NewContextMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 	return &ContextMockProxy{bridge: bridge, registry: registry}
 }
 
-func (p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
+func (__p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(key))
 
-	retData, err := p.bridge.Call(ctx, MethodID_ContextMock_WithContext, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_ContextMock_WithContext, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -535,13 +535,13 @@ func (p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
 	return v_0
 }
 
-func (p *ContextMockProxy) WithoutContext(val string) string {
+func (__p *ContextMockProxy) WithoutContext(val string) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(val))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -641,11 +641,11 @@ func NewNativeMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) 
 	return &NativeMockProxy{bridge: bridge, registry: registry}
 }
 
-func (p *NativeMockProxy) GetStruct() NativeStruct {
+func (__p *NativeMockProxy) GetStruct() NativeStruct {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_NativeMock_GetStruct, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetStruct, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -658,18 +658,18 @@ func (p *NativeMockProxy) GetStruct() NativeStruct {
 	return v_0
 }
 
-func (p *NativeMockProxy) GetPtr() *NativeStruct {
+func (__p *NativeMockProxy) GetPtr() *NativeStruct {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_NativeMock_GetPtr, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetPtr, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *NativeStruct
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if p.registry != nil {
-			if obj, ok := p.registry.Get(id); ok {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
 				v_0 = obj.(*NativeStruct)
 			}
 		}
@@ -677,14 +677,14 @@ func (p *NativeMockProxy) GetPtr() *NativeStruct {
 	return v_0
 }
 
-func (p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
+func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(s.Msg))
 	buf.WriteVarint(int64(s.Value))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -696,21 +696,21 @@ func (p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	return v_0
 }
 
-func (p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
+func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if s == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(s)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(s)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_NativeMock_SetPtr, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetPtr, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)

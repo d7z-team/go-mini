@@ -22,13 +22,13 @@ func NewErrorsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Erro
 	return &ErrorsProxy{bridge: bridge, registry: registry}
 }
 
-func (p *ErrorsProxy) New(text string) error {
+func (__p *ErrorsProxy) New(text string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(text))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -39,8 +39,8 @@ func (p *ErrorsProxy) New(text string) error {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_0 = obj.(error)
 				} else {
 					err_0 = ed

@@ -252,7 +252,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 		}
 
-		fmt.Fprintf(&sb, "func (p *%sProxy) %s(", name, methodName)
+		fmt.Fprintf(&sb, "func (__p *%sProxy) %s(", name, methodName)
 		var pList []string
 		if funcType.Params != nil {
 			for _, param := range funcType.Params.List {
@@ -308,10 +308,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 		needsRetBuf := (funcType.Results != nil && len(funcType.Results.List) > 0)
 		if needsRetBuf || hasErr {
-			fmt.Fprintf(&sb, "\n\tretData, err := p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+			fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
 			fmt.Fprintf(&sb, "\t_ = retData\n")
 		} else {
-			fmt.Fprintf(&sb, "\n\t_, err := p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+			fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
 		}
 		fmt.Fprintf(&sb, "\t_ = err\n")
 
@@ -346,8 +346,8 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					fmt.Fprintf(&sb, "\tif retBuf.Available() > 0 {\n")
 					fmt.Fprintf(&sb, "\t\ted := retBuf.ReadRawError()\n")
 					fmt.Fprintf(&sb, "\t\tif ed.Message != \"\" || ed.Handle != 0 {\n")
-					fmt.Fprintf(&sb, "\t\t\tif ed.Handle != 0 && p.registry != nil {\n")
-					fmt.Fprintf(&sb, "\t\t\t\tif obj, ok := p.registry.Get(ed.Handle); ok { err_%d = obj.(error) } else { err_%d = ed }\n", i, i)
+					fmt.Fprintf(&sb, "\t\t\tif ed.Handle != 0 && __p.registry != nil {\n")
+					fmt.Fprintf(&sb, "\t\t\t\tif obj, ok := __p.registry.Get(ed.Handle); ok { err_%d = obj.(error) } else { err_%d = ed }\n", i, i)
 					fmt.Fprintf(&sb, "\t\t\t} else { err_%d = ed }\n", i)
 					fmt.Fprintf(&sb, "\t\t}\n\t}\n")
 					retStmt = append(retStmt, fmt.Sprintf("err_%d", i))
@@ -516,10 +516,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				for _, r := range fType.Results.List { res = append(res, toGoType(typeToString(r.Type))) }
 				if len(res) > 1 { retT = " ("+strings.Join(res, ", ")+") " } else if len(res) == 1 { retT = " "+res[0]+" " }
 			}
-			fmt.Fprintf(&sb, "func (p *%s_ReverseProxy) %s(%s)%s{\n", name, mName, strings.Join(pList, ", "), retT)
+			fmt.Fprintf(&sb, "func (__p *%s_ReverseProxy) %s(%s)%s{\n", name, mName, strings.Join(pList, ", "), retT)
 			fmt.Fprintf(&sb, "\targs := make([]*runtime.Var, %d)\n", len(pNames))
-			for i, pn := range pNames { fmt.Fprintf(&sb, "\targs[%d] = p.program.ToVar(p.ctx, %s, p.bridge)\n", i, pn) }
-			fmt.Fprintf(&sb, "\tresVar, err := p.program.InvokeCallable(p.ctx, p.callable, \"%s\", args)\n\t_ = err\n", mName)
+			for i, pn := range pNames { fmt.Fprintf(&sb, "\targs[%d] = __p.program.ToVar(__p.ctx, %s, __p.bridge)\n", i, pn) }
+			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = err\n", mName)
 			if fType.Results != nil {
 				var rStmts []string
 				if len(fType.Results.List) > 1 {
@@ -555,8 +555,9 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 		if isHost {
 			fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.Register(%s)))\n", bufName, prefix)
 		} else {
-			fmt.Fprintf(sb, "\t\tif p.registry != nil { %s.WriteUvarint(uint64(p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
+			fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteUvarint(uint64(__p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
 		}
+
 		fmt.Fprintf(sb, "\t}\n")
 		return
 	}
@@ -565,7 +566,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 		if isHost {
 			fmt.Fprintf(sb, "\t\t%s.WriteRawInterface(registry.Register(%s), methods)\n", bufName, prefix)
 		} else {
-			fmt.Fprintf(sb, "\t\tif p.registry != nil { %s.WriteRawInterface(p.registry.Register(%s), methods) } else { %s.WriteRawInterface(0, nil) }\n", bufName, prefix, bufName)
+			fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteRawInterface(__p.registry.Register(%s), methods) } else { %s.WriteRawInterface(0, nil) }\n", bufName, prefix, bufName)
 		}
 		fmt.Fprintf(sb, "\t}\n")
 		return
@@ -647,7 +648,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 			if isHost {
 				fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.Register(%s)))\n", bufName, prefix)
 			} else {
-				fmt.Fprintf(sb, "\t\tif p.registry != nil { %s.WriteUvarint(uint64(p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
+				fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteUvarint(uint64(__p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
 			}
 			if isN {
 				fmt.Fprintf(sb, "\t}\n")
@@ -661,7 +662,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 		if isHost {
 			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { %s = obj.(%s) } else { return nil, fmt.Errorf(\"invalid handle ID: %%d\", id) } }\n", readerName, varName, toGoType(pType))
 		} else {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if p.registry != nil { if obj, ok := p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
+			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
 		}
 		return
 	}
@@ -764,7 +765,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 			if isHost {
 				fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { %s = obj.(%s) } else { return nil, fmt.Errorf(\"invalid handle ID: %%d\", id) } }\n", readerName, varName, toGoType(pType))
 			} else {
-				fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if p.registry != nil { if obj, ok := p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
+				fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
 			}
 		}
 	}

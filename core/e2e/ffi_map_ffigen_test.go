@@ -25,7 +25,7 @@ func NewMapTestProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Map
 	return &MapTestProxy{bridge: bridge, registry: registry}
 }
 
-func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
+func (__p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -35,7 +35,7 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 		buf.WriteString(string(v))
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoMap, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -56,8 +56,8 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -70,11 +70,11 @@ func (p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[st
 	return v_0, err_1
 }
 
-func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
+func (__p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(ctx, MethodID_MapTest_GetMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_GetMap, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -98,8 +98,8 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -112,7 +112,7 @@ func (p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	return v_0, err_1
 }
 
-func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
+func (__p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -122,7 +122,7 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 		buf.WriteVarint(int64(v))
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -138,8 +138,8 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed
@@ -152,7 +152,7 @@ func (p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int6
 	return v_0, err_1
 }
 
-func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
+func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -162,7 +162,7 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 		buf.WriteString(string(v))
 	}
 
-	retData, err := p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -186,8 +186,8 @@ func (p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[
 	if retBuf.Available() > 0 {
 		ed := retBuf.ReadRawError()
 		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && p.registry != nil {
-				if obj, ok := p.registry.Get(ed.Handle); ok {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
 					err_1 = obj.(error)
 				} else {
 					err_1 = ed

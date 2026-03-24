@@ -28,7 +28,7 @@ func NewFmtProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Fmt {
 	return &FmtProxy{bridge: bridge, registry: registry}
 }
 
-func (p *FmtProxy) Print(args ...any) {
+func (__p *FmtProxy) Print(args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -37,12 +37,12 @@ func (p *FmtProxy) Print(args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Print, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Print, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *FmtProxy) Println(args ...any) {
+func (__p *FmtProxy) Println(args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -51,12 +51,12 @@ func (p *FmtProxy) Println(args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Println, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Println, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *FmtProxy) Printf(format string, args ...any) {
+func (__p *FmtProxy) Printf(format string, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -66,12 +66,12 @@ func (p *FmtProxy) Printf(format string, args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Printf, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Printf, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *FmtProxy) Sprintf(format string, args ...any) string {
+func (__p *FmtProxy) Sprintf(format string, args ...any) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -81,7 +81,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) string {
 		buf.WriteAny(item)
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_Fmt_Sprintf, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Sprintf, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -90,7 +90,7 @@ func (p *FmtProxy) Sprintf(format string, args ...any) string {
 	return v_0
 }
 
-func (p *FmtProxy) Fprint(w any, args ...any) {
+func (__p *FmtProxy) Fprint(w any, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -100,12 +100,12 @@ func (p *FmtProxy) Fprint(w any, args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Fprint, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Fprint, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *FmtProxy) Fprintf(w any, format string, args ...any) {
+func (__p *FmtProxy) Fprintf(w any, format string, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -116,12 +116,12 @@ func (p *FmtProxy) Fprintf(w any, format string, args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Fprintf, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Fprintf, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *FmtProxy) Fprintln(w any, args ...any) {
+func (__p *FmtProxy) Fprintln(w any, args ...any) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -131,7 +131,7 @@ func (p *FmtProxy) Fprintln(w any, args ...any) {
 		buf.WriteAny(item)
 	}
 
-	_, err := p.bridge.Call(context.Background(), MethodID_Fmt_Fprintln, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Fmt_Fprintln, buf.Bytes())
 	_ = err
 	return
 }

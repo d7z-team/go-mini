@@ -25,18 +25,18 @@ func NewAdvancedFFIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 	return &AdvancedFFIProxy{bridge: bridge, registry: registry}
 }
 
-func (p *AdvancedFFIProxy) GetSameObject() *TestObj {
+func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_GetSameObject, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_GetSameObject, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *TestObj
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if p.registry != nil {
-			if obj, ok := p.registry.Get(id); ok {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
 				v_0 = obj.(*TestObj)
 			}
 		}
@@ -44,15 +44,15 @@ func (p *AdvancedFFIProxy) GetSameObject() *TestObj {
 	return v_0
 }
 
-func (p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
+func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	if a == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(a)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(a)))
 		} else {
 			buf.WriteUvarint(0)
 		}
@@ -60,14 +60,14 @@ func (p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	if b == nil {
 		buf.WriteUvarint(0)
 	} else {
-		if p.registry != nil {
-			buf.WriteUvarint(uint64(p.registry.Register(b)))
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(b)))
 		} else {
 			buf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_IsSame, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_IsSame, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -76,7 +76,7 @@ func (p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	return v_0
 }
 
-func (p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
+func (__p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
@@ -86,7 +86,7 @@ func (p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 		buf.WriteString(string(v))
 	}
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -103,14 +103,14 @@ func (p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 	return v_0
 }
 
-func (p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
+func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(e.BaseField))
 	buf.WriteVarint(int64(e.ExtraField))
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)

@@ -23,22 +23,22 @@ func NewStorageAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) 
 	return &StorageAPIProxy{bridge: bridge, registry: registry}
 }
 
-func (p *StorageAPIProxy) SetCapacity(capacity uint32) {
+func (__p *StorageAPIProxy) SetCapacity(capacity uint32) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteUvarint(uint64(capacity))
 
-	_, err := p.bridge.Call(context.Background(), MethodID_StorageAPI_SetCapacity, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_SetCapacity, buf.Bytes())
 	_ = err
 	return
 }
 
-func (p *StorageAPIProxy) GetStatus() int16 {
+func (__p *StorageAPIProxy) GetStatus() int16 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := p.bridge.Call(context.Background(), MethodID_StorageAPI_GetStatus, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_GetStatus, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
