@@ -228,6 +228,7 @@ func (__p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
 	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Add", args)
 	_ = err
+	_ = resVar
 	var ret0 int64 = 0
 	if resVar != nil {
 		if raw := resVar.Interface(); raw != nil {
@@ -248,6 +249,7 @@ func (__p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) strin
 	args[1] = __p.program.ToVar(__p.ctx, val, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Format", args)
 	_ = err
+	_ = resVar
 	var ret0 string = ""
 	if resVar != nil {
 		if raw := resVar.Interface(); raw != nil {
@@ -265,6 +267,7 @@ func (__p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error
 	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Divide", args)
 	_ = err
+	_ = resVar
 	var elements []*runtime.Var
 	if resVar != nil && resVar.VType == runtime.TypeArray {
 		if arr, ok := resVar.Ref.(*runtime.VMArray); ok {

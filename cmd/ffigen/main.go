@@ -248,20 +248,29 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				hasContext = true
 				if len(funcType.Params.List[0].Names) > 0 {
 					contextVarName = funcType.Params.List[0].Names[0].Name
+				} else {
+					contextVarName = "arg0"
 				}
 			}
 		}
 
 		fmt.Fprintf(&sb, "func (__p *%sProxy) %s(", name, methodName)
 		var pList []string
+		argIdx := 0
 		if funcType.Params != nil {
 			for _, param := range funcType.Params.List {
-				for _, pName := range param.Names {
-					goType := toGoType(typeToString(param.Type))
-					if _, ok := param.Type.(*ast.Ellipsis); ok {
-						goType = "..." + strings.TrimPrefix(goType, "[]")
+				goType := toGoType(typeToString(param.Type))
+				if _, ok := param.Type.(*ast.Ellipsis); ok {
+					goType = "..." + strings.TrimPrefix(goType, "[]")
+				}
+				if len(param.Names) == 0 {
+					pList = append(pList, fmt.Sprintf("arg%d %s", argIdx, goType))
+					argIdx++
+				} else {
+					for _, pName := range param.Names {
+						pList = append(pList, pName.Name+" "+goType)
+						argIdx++
 					}
-					pList = append(pList, pName.Name+" "+goType)
 				}
 			}
 		}
@@ -286,21 +295,38 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		fmt.Fprintf(&sb, "{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
+		argIdx = 0
 		if funcType.Params != nil {
 			for j, param := range funcType.Params.List {
 				if j == 0 && hasContext {
+					argIdx++
 					continue
 				}
-				for _, pName := range param.Names {
-					pType := typeToString(param.Type)
+				pType := typeToString(param.Type)
+				if len(param.Names) == 0 {
+					argName := fmt.Sprintf("arg%d", argIdx)
 					if _, ok := param.Type.(*ast.Ellipsis); ok {
 						itemType, _ := readArrayItemType(pType)
-						fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
-						fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
+						fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", argName)
+						fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", argName)
 						emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
 						fmt.Fprintf(&sb, "\t}\n")
 					} else {
-						emitWrite(&sb, pName.Name, pType, param.Type, structs, "buf", false)
+						emitWrite(&sb, argName, pType, param.Type, structs, "buf", false)
+					}
+					argIdx++
+				} else {
+					for _, pName := range param.Names {
+						if _, ok := param.Type.(*ast.Ellipsis); ok {
+							itemType, _ := readArrayItemType(pType)
+							fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
+							fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
+							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
+							fmt.Fprintf(&sb, "\t}\n")
+						} else {
+							emitWrite(&sb, pName.Name, pType, param.Type, structs, "buf", false)
+						}
+						argIdx++
 					}
 				}
 			}
@@ -398,28 +424,43 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 		fmt.Fprintf(&sb, "\tcase MethodID_%s_%s:\n", name, methodName)
 		var paramVars []string
+		argIdx := 0
 		if hasContext {
 			paramVars = append(paramVars, "ctx")
+			argIdx++
 		}
 		if funcType.Params != nil {
 			for j, param := range funcType.Params.List {
 				if j == 0 && hasContext {
 					continue
 				}
-				for _, pName := range param.Names {
-					pType := typeToString(param.Type)
-					goType := toGoType(pType)
-					isVariadic := false
-					if _, ok := param.Type.(*ast.Ellipsis); ok {
-						isVariadic = true
-						goType = "[]" + strings.TrimPrefix(goType, "[]")
-					}
-					fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
-					emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
+				pType := typeToString(param.Type)
+				goType := toGoType(pType)
+				isVariadic := false
+				if _, ok := param.Type.(*ast.Ellipsis); ok {
+					isVariadic = true
+					goType = "[]" + strings.TrimPrefix(goType, "[]")
+				}
+				if len(param.Names) == 0 {
+					argName := fmt.Sprintf("arg%d", argIdx)
+					fmt.Fprintf(&sb, "\t\tvar %s %s\n", argName, goType)
+					emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", true)
 					if isVariadic {
-						paramVars = append(paramVars, pName.Name+"...")
+						paramVars = append(paramVars, argName+"...")
 					} else {
-						paramVars = append(paramVars, pName.Name)
+						paramVars = append(paramVars, argName)
+					}
+					argIdx++
+				} else {
+					for _, pName := range param.Names {
+						fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
+						emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
+						if isVariadic {
+							paramVars = append(paramVars, pName.Name+"...")
+						} else {
+							paramVars = append(paramVars, pName.Name)
+						}
+						argIdx++
 					}
 				}
 			}
@@ -497,16 +538,26 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fType := method.Type.(*ast.FuncType)
 			var pList []string
 			var pNames []string
+			argIdx := 0
 			if fType.Params != nil {
 				for j, p := range fType.Params.List {
 					gType := toGoType(typeToString(p.Type))
 					if j == 0 && (gType == "context.Context" || gType == "Context") {
 						pList = append(pList, "ctx "+gType)
+						argIdx++
 						continue
 					}
-					for _, pn := range p.Names {
-						pList = append(pList, pn.Name+" "+gType)
-						pNames = append(pNames, pn.Name)
+					if len(p.Names) == 0 {
+						argName := fmt.Sprintf("arg%d", argIdx)
+						pList = append(pList, argName+" "+gType)
+						pNames = append(pNames, argName)
+						argIdx++
+					} else {
+						for _, pn := range p.Names {
+							pList = append(pList, pn.Name+" "+gType)
+							pNames = append(pNames, pn.Name)
+							argIdx++
+						}
 					}
 				}
 			}
@@ -519,7 +570,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fmt.Fprintf(&sb, "func (__p *%s_ReverseProxy) %s(%s)%s{\n", name, mName, strings.Join(pList, ", "), retT)
 			fmt.Fprintf(&sb, "\targs := make([]*runtime.Var, %d)\n", len(pNames))
 			for i, pn := range pNames { fmt.Fprintf(&sb, "\targs[%d] = __p.program.ToVar(__p.ctx, %s, __p.bridge)\n", i, pn) }
-			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = err\n", mName)
+			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = err\n\t_ = resVar\n", mName)
 			if fType.Results != nil {
 				var rStmts []string
 				if len(fType.Results.List) > 1 {
