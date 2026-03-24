@@ -338,6 +338,24 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 done:
 	c.Type = fType.Returns
+	// 特殊处理内建函数的返回类型推导
+	if ident, ok := c.Func.(*ConstRefExpr); ok {
+		switch ident.Name {
+		case "make", "new":
+			if len(c.Args) > 0 {
+				if lit, ok2 := c.Args[0].(*LiteralExpr); ok2 && lit.Type == "String" {
+					c.Type = GoMiniType(lit.Value)
+				}
+			}
+		case "append":
+			if len(c.Args) > 0 {
+				// append 返回第一个参数的类型 (通常是 Array<T>)
+				c.Type = c.Args[0].GetBase().Type
+			}
+		case "len":
+			c.Type = "Int64"
+		}
+	}
 
 	return nil
 }
@@ -749,7 +767,8 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		if i.Multi {
 			return errors.New("数组索引不支持二元解构语法")
 		}
-		if i.Index.GetBase().Type != "Int64" {
+		// fmt.Printf("DEBUG: Index type: %s\n", i.Index.GetBase().Type)
+		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
 			return fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 		}
 
