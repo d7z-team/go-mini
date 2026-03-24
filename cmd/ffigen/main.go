@@ -2,9 +2,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/importer"
 	"go/parser"
 	"go/token"
@@ -12,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 )
@@ -178,67 +179,94 @@ func main() {
 	fmt.Fprintf(&sb, "package %s\n\n", *pkgName)
 	sb.WriteString("import (\n")
 
-	// Helper to check if an alias is used in the generated code
-	isUsed := func(alias string) bool {
-		re := regexp.MustCompile(`(?m)(?:[^a-zA-Z0-9_]|^)` + regexp.QuoteMeta(alias) + `\.`)
-		return re.MatchString(fullInterfaces)
+	// Standard packages potentially used
+	stdPackages := map[string]string{
+		"context": "context",
+		"fmt":     "fmt",
+		"strings": "strings",
+		"ast":     "gopkg.d7z.net/go-mini/core/ast",
+		"ffigo":   "gopkg.d7z.net/go-mini/core/ffigo",
+		"runtime": "gopkg.d7z.net/go-mini/core/runtime",
 	}
 
-	// 1. Standard packages - only if used in fullInterfaces
-	stdPackages := []struct {
-		alias string
-		path  string
-	}{
-		{"context", "context"},
-		{"fmt", "fmt"},
-		{"strings", "strings"},
-		{"ast", "gopkg.d7z.net/go-mini/core/ast"},
-		{"ffigo", "gopkg.d7z.net/go-mini/core/ffigo"},
-		{"runtime", "gopkg.d7z.net/go-mini/core/runtime"},
-	}
-
-	for _, p := range stdPackages {
-		if p.alias == "runtime" && !anyReverse {
+	// Write all candidate imports first
+	for alias, path := range stdPackages {
+		if alias == "runtime" && !anyReverse {
 			continue
 		}
-		if isUsed(p.alias) {
-			fmt.Fprintf(&sb, "\t\"%s\"\n", p.path)
+		fmt.Fprintf(&sb, "\t\"%s\"\n", path)
+	}
+	for alias, path := range knownImports {
+		if _, ok := stdPackages[alias]; ok {
+			continue
+		}
+		if alias == path[strings.LastIndex(path, "/")+1:] {
+			fmt.Fprintf(&sb, "\t\"%s\"\n", path)
+		} else {
+			fmt.Fprintf(&sb, "\t%s \"%s\"\n", alias, path)
 		}
 	}
-
-	// 2. External Aliased Packages from knownImports
-	var sortedAliases []string
-	for a := range knownImports {
-		isStd := false
-		for _, p := range stdPackages {
-			if a == p.alias {
-				isStd = true
-				break
-			}
-		}
-		if !isStd {
-			sortedAliases = append(sortedAliases, a)
-		}
-	}
-	sort.Strings(sortedAliases)
-
-	for _, alias := range sortedAliases {
-		if isUsed(alias) {
-			path := knownImports[alias]
-			if alias == path[strings.LastIndex(path, "/")+1:] {
-				fmt.Fprintf(&sb, "\t\"%s\"\n", path)
-			} else {
-				fmt.Fprintf(&sb, "\t%s \"%s\"\n", alias, path)
-			}
-		}
-	}
-
 	sb.WriteString(")\n\n")
 	sb.WriteString(fullInterfaces)
 
-	src := []byte(sb.String())
-	err := os.WriteFile(*outFile, src, 0o644)
+	// Now parse the whole thing and find actually used aliases
+	source := sb.String()
+	fsetOut := token.NewFileSet()
+	fOut, err := parser.ParseFile(fsetOut, "", source, 0)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing generated code for import cleanup: %v\n", err)
+		// Fallback to writing as is
+		os.WriteFile(*outFile, []byte(source), 0o644)
+		return
+	}
+
+	usedAliases := make(map[string]bool)
+	ast.Inspect(fOut, func(n ast.Node) bool {
+		if se, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := se.X.(*ast.Ident); ok {
+				usedAliases[id.Name] = true
+			}
+		}
+		return true
+	})
+
+	// Filter imports
+	var newDecls []ast.Decl
+	for _, decl := range fOut.Decls {
+		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.IMPORT {
+			var newSpecs []ast.Spec
+			for _, spec := range gd.Specs {
+				is := spec.(*ast.ImportSpec)
+				path := strings.Trim(is.Path.Value, "\"")
+				alias := ""
+				if is.Name != nil {
+					alias = is.Name.Name
+				} else {
+					alias = path[strings.LastIndex(path, "/")+1:]
+				}
+				if usedAliases[alias] {
+					newSpecs = append(newSpecs, is)
+				}
+			}
+			if len(newSpecs) > 0 {
+				gd.Specs = newSpecs
+				newDecls = append(newDecls, gd)
+			}
+		} else {
+			newDecls = append(newDecls, decl)
+		}
+	}
+	fOut.Decls = newDecls
+
+	// Format and write
+	var finalBuf bytes.Buffer
+	if err := format.Node(&finalBuf, fsetOut, fOut); err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting generated code: %v\n", err)
+		os.WriteFile(*outFile, []byte(source), 0o644)
+		return
+	}
+
+	if err := os.WriteFile(*outFile, finalBuf.Bytes(), 0o644); err != nil {
 		panic(err)
 	}
 }
