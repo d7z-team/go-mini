@@ -153,6 +153,7 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterE2EMockShapeAPILibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
 	sep := "."

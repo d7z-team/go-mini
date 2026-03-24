@@ -1005,13 +1005,6 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 
 	// 注册函数签名
 	sig := f.FunctionType.ToCallFunctionType()
-	if isMethod {
-		methodSig := f.FunctionType
-		if len(methodSig.Params) > 0 {
-			methodSig.Params = append([]FunctionParam(nil), methodSig.Params[1:]...)
-		}
-		sig = methodSig.ToCallFunctionType()
-	}
 
 	if t, ok := structType.Methods[fnName]; ok {
 		if t.String() != sig.String() {

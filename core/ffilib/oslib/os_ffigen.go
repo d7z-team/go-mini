@@ -427,6 +427,7 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterOS(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
 	prefix := "os"
@@ -704,6 +705,7 @@ func (b *FileMethods_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterFileMethods(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl FileMethods, registry *ffigo.HandleRegistry) {
 	bridge := &FileMethods_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/oslib.File"
@@ -714,4 +716,5 @@ func RegisterFileMethods(executor interface {
 	for _, m := range FileMethods_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/oslib.File", "struct { Read function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/oslib.File>, TypeBytes) tuple(Int64, Error); Write function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/oslib.File>, TypeBytes) tuple(Int64, Error); Close function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/oslib.File>) Error; }")
 }

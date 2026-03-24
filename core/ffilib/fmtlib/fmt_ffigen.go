@@ -485,6 +485,7 @@ func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterFmt(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl Fmt, registry *ffigo.HandleRegistry) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
 	prefix := "fmt"

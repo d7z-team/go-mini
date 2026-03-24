@@ -192,6 +192,7 @@ func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterJSON(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl JSON, registry *ffigo.HandleRegistry) {
 	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
 	prefix := "json"

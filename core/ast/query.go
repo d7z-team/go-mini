@@ -740,16 +740,32 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 		// 检查是否是包名
 		if id, ok := obj.(*IdentifierExpr); ok {
 			pkgName := string(id.Name)
-			// 寻找所有以 pkgName. 开头的全局变量 (FFI)
+			realPath, isPkg := ctx.root.Imports[pkgName]
+			if !isPkg {
+				realPath = pkgName
+			}
+
+			// 尝试多种路径格式 (例如 net/http 或 net.http)
+			targets := []string{pkgName + ".", realPath + ".", strings.ReplaceAll(realPath, "/", ".") + "."}
+			seenSymbols := make(map[string]bool)
+
+			// 寻找所有匹配前缀的全局变量 (FFI)
 			for name, t := range ctx.root.vars {
 				sName := string(name)
-				if strings.HasPrefix(sName, pkgName+".") {
-					label := sName[len(pkgName)+1:]
-					kind := "var"
-					if strings.HasPrefix(string(t), "function") {
-						kind = "func"
+				for _, prefix := range targets {
+					if strings.HasPrefix(sName, prefix) {
+						label := sName[len(prefix):]
+						if label == "" || strings.Contains(label, ".") || seenSymbols[label] {
+							continue
+						}
+						seenSymbols[label] = true
+						kind := "var"
+						if strings.HasPrefix(string(t), "function") {
+							kind = "func"
+						}
+						items = append(items, CompletionItem{Label: label, Kind: kind, Type: t})
+						break
 					}
-					items = append(items, CompletionItem{Label: label, Kind: kind, Type: t})
 				}
 			}
 		}
@@ -765,7 +781,14 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 			items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
 		}
 		for m, t := range st.Methods {
-			items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: t.MiniType()})
+			sig := t
+			// 剥离接收者以便在补全中显示正确的参数列表
+			if objType != "Package" && objType != TypeModule {
+				if len(sig.Params) > 0 {
+					sig.Params = sig.Params[1:]
+				}
+			}
+			items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: sig.MiniType()})
 		}
 	}
 

@@ -723,19 +723,63 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, registry *ffigo.HandleRegistry) {\n", name)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
+
+		// Register struct metadata
+		fmt.Fprintf(&sb, "\t// Register struct metadata for validation and code completion\n")
+		var fieldsSB strings.Builder
+		fieldsSB.WriteString("struct { ")
+		if str, ok := structs[name]; ok {
+			var keys []string
+			fMap := make(map[string]string)
+			getFields(structs, name, fMap)
+			for k := range fMap {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(&fieldsSB, "%s %s; ", k, fMap[k])
+			}
+			_ = str
+		}
+		for _, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
+			}
+			mName := method.Names[0].Name
+			fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
+		}
+		fieldsSB.WriteString("}")
+		fmt.Fprintf(&sb, "\texecutor.RegisterStructSpec(\"%s\", \"%s\")\n", resolveCanonicalType(name), fieldsSB.String())
+		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
+
+		if methodsPrefix != "" {
+			// Register as a struct if it's a method set
+			var fieldsSB strings.Builder
+			fieldsSB.WriteString("struct { ")
+			for _, method := range iface.Methods.List {
+				if len(method.Names) == 0 {
+					continue
+				}
+				mName := method.Names[0].Name
+				fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
+			}
+			fieldsSB.WriteString("}")
+			fmt.Fprintf(&sb, "\texecutor.RegisterStructSpec(\"%s\", \"%s\")\n", resolveCanonicalType(methodsPrefix), fieldsSB.String())
+		}
+		fmt.Fprintf(&sb, "}\n")
 	} else {
 		// Generic Library registration: Requires 'impl' and explicit prefix
-		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
+		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)

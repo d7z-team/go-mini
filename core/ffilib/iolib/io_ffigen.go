@@ -139,6 +139,7 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterIO(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
 	prefix := "io"

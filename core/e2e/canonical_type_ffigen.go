@@ -143,6 +143,7 @@ func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterTestCanonicalService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
 	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
 	prefix := "test_canonical"
@@ -250,6 +251,7 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterATypeService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type"
@@ -260,6 +262,7 @@ func RegisterATypeService(executor interface {
 	for _, m := range ATypeService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", "struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String; }")
 }
 
 const (
@@ -357,6 +360,7 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterBTypeService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type"
@@ -367,4 +371,5 @@ func RegisterBTypeService(executor interface {
 	for _, m := range BTypeService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", "struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String; }")
 }

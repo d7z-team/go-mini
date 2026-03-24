@@ -121,6 +121,7 @@ func (b *StorageAPI_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterStorageAPI(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl StorageAPI, registry *ffigo.HandleRegistry) {
 	bridge := &StorageAPI_Bridge{Impl: impl, Registry: registry}
 	prefix := "storage"

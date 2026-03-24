@@ -123,6 +123,7 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterCalculator(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator"
@@ -133,6 +134,8 @@ func RegisterCalculator(executor interface {
 	for _, m := range Calculator_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	// Register struct metadata for validation and code completion
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator", "struct { Base int64; Add function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64) Int64; Multiply function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>) Int64; }")
 }
 
 const (
@@ -199,6 +202,7 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterFactory(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	prefix := "calc"

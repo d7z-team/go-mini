@@ -94,6 +94,18 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, t := range externalSpecs {
 		v.root.vars[ident] = t
+		if t.IsStruct() {
+			fields, _ := t.ReadStructFields()
+			vStru := &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
+			for fName, fType := range fields {
+				if callFunc, ok := fType.ReadCallFunc(); ok {
+					vStru.Methods[Ident(fName)] = *callFunc
+				} else {
+					vStru.Fields[Ident(fName)] = fType
+				}
+			}
+			v.root.structs[ident] = vStru
+		}
 	}
 	// 注入命名接口
 	for ident, stmt := range node.Interfaces {

@@ -330,6 +330,7 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterORDERTESTOrderServiceLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, prefix string, impl OrderService, registry *ffigo.HandleRegistry) {
 	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
 	sep := "."

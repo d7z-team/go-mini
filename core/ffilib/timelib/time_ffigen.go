@@ -194,6 +194,7 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterTime(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl Time, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: impl, Registry: registry}
 	prefix := "time"

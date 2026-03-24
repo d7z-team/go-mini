@@ -271,14 +271,15 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 	// 语义校验：参数数量和基本类型匹配
-	minParams := len(fType.Params)
+	sigParams := fType.Params
+	minParams := len(sigParams)
 	if fType.Variadic {
 		minParams--
 	}
 
 	// 校验固定参数部分的类型
-	fixedNum := len(fType.Params)
-	isImplicitArray := len(fType.Params) > 0 && fType.Params[len(fType.Params)-1].IsArray()
+	fixedNum := len(sigParams)
+	isImplicitArray := len(sigParams) > 0 && sigParams[len(sigParams)-1].IsArray()
 	if fType.Variadic || isImplicitArray {
 		fixedNum--
 	}
@@ -300,22 +301,22 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if len(c.Args) < minParams {
 		return fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
 	}
-	if !fType.Variadic && !isImplicitArray && len(fType.Params) > 0 && len(c.Args) > len(fType.Params) {
-		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(fType.Params), len(c.Args))
+	if !fType.Variadic && !isImplicitArray && len(sigParams) > 0 && len(c.Args) > len(sigParams) {
+		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(sigParams), len(c.Args))
 	}
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
-		if !fType.Params[i].Equals(argType) {
-			if _, ok := fType.Params[i].AutoPtr(c.Args[i]); !ok {
-				return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, fType.Params[i], argType)
+		if !sigParams[i].Equals(argType) {
+			if _, ok := sigParams[i].AutoPtr(c.Args[i]); !ok {
+				return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
 			}
 		}
 	}
 
 	// 校验隐式数组/变长参数的子项兼容性
 	if isImplicitArray && len(c.Args) > fixedNum {
-		targetArrayType := fType.Params[len(fType.Params)-1]
+		targetArrayType := sigParams[len(sigParams)-1]
 		targetElem, _ := targetArrayType.ReadArrayItemType()
 
 		// 如果只有一个参数且正好是数组类型，视为完美匹配
@@ -358,7 +359,8 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 	if c.Func != nil && c.Func.GetBase() != nil {
 		fType, ok := c.Func.GetBase().Type.ReadCallFunc()
 		if ok && fType != nil {
-			for i, param := range fType.Params {
+			sigParams := fType.Params
+			for i, param := range sigParams {
 				if i < len(c.Args) && c.Args[i] != nil {
 					arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
 					if ptr, b2 := param.AutoPtr(arg); b2 {
@@ -502,7 +504,15 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			met, b := miniStruct.Fields[m.Property]
 			if !b {
 				if method, ok := miniStruct.Methods[m.Property]; ok {
-					m.Type = GoMiniType(method.String())
+					sig := method
+					// 对于结构体方法，第一个参数通常是接收者。
+					// 如果是通过对象访问（不是包名），我们需要剥离接收者以便支持方法值和简化调用校验。
+					if objType != "Package" && objType != TypeModule {
+						if len(sig.Params) > 0 {
+							sig.Params = sig.Params[1:]
+						}
+					}
+					m.Type = sig.MiniType()
 					return nil
 				}
 				// 找到了结构体但没找到字段和方法，跳过，最终会报错

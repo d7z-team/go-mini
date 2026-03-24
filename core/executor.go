@@ -30,7 +30,8 @@ type MiniExecutor struct {
 	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
 
 	registry *ffigo.HandleRegistry
-	modules  map[string]*ast.ProgramStmt // 预加载的模块蓝图
+	modules   map[string]*ast.ProgramStmt // 预加载的模块蓝图
+	structSpecs map[ast.Ident]ast.GoMiniType // 用于验证的结构体签名
 }
 
 type MiniProgram struct {
@@ -233,11 +234,12 @@ func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges:  make(map[uint32]ffigo.FFIBridge),
-		routes:   make(map[string]runtime.FFIRoute),
-		specs:    make(map[ast.Ident]ast.GoMiniType),
-		registry: ffigo.NewHandleRegistry(),
-		modules:  make(map[string]*ast.ProgramStmt),
+		bridges:     make(map[uint32]ffigo.FFIBridge),
+		routes:      make(map[string]runtime.FFIRoute),
+		specs:       make(map[ast.Ident]ast.GoMiniType),
+		registry:    ffigo.NewHandleRegistry(),
+		modules:     make(map[string]*ast.ProgramStmt),
+		structSpecs: make(map[ast.Ident]ast.GoMiniType),
 	}
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
@@ -360,6 +362,9 @@ func (o *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
 	for k, v := range o.specs {
 		res[k] = v
 	}
+	for k, v := range o.structSpecs {
+		res[k] = v
+	}
 	return res
 }
 
@@ -368,6 +373,28 @@ func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.specs[ast.Ident(name)] = spec
+}
+
+func (o *MiniExecutor) RegisterStructSpec(name string, spec ast.GoMiniType) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.structSpecs[ast.Ident(name)] = spec
+}
+
+func (o *MiniExecutor) AddStructSpec(name string, spec ast.GoMiniType) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.structSpecs[ast.Ident(name)] = spec
+}
+
+func (o *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	res := make(map[ast.Ident]ast.GoMiniType)
+	for k, v := range o.structSpecs {
+		res[k] = v
+	}
+	return res
 }
 
 func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
@@ -509,12 +536,7 @@ func (o *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 }
 
 func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
-	o.mu.RLock()
-	specs := make(map[ast.Ident]ast.GoMiniType)
-	for k, v := range o.specs {
-		specs[k] = v
-	}
-	o.mu.RUnlock()
+	specs := o.GetExportedSpecs()
 
 	// Validate
 	validator, _ := ast.NewValidator(program, specs)
@@ -560,12 +582,7 @@ func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 
 	program := node.(*ast.ProgramStmt)
 
-	o.mu.RLock()
-	specs := make(map[ast.Ident]ast.GoMiniType)
-	for k, v := range o.specs {
-		specs[k] = v
-	}
-	o.mu.RUnlock()
+	specs := o.GetExportedSpecs()
 
 	// Validate and Optimize
 	validator, _ := ast.NewValidator(program, specs)
@@ -716,12 +733,7 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	o.mu.RUnlock()
 
-	o.mu.RLock()
-	specs := make(map[ast.Ident]ast.GoMiniType)
-	for k, v := range o.specs {
-		specs[k] = v
-	}
-	o.mu.RUnlock()
+	specs := o.GetExportedSpecs()
 
 	// 语义校验
 	v, err := ast.NewValidator(program, specs)

@@ -361,6 +361,7 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterE2EMapTestLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
 	bridge := &MapTest_Bridge{Impl: impl, Registry: registry}
 	sep := "."

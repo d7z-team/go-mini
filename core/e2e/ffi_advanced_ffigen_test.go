@@ -241,6 +241,7 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterAdvancedFFI(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
 	prefix := "test"

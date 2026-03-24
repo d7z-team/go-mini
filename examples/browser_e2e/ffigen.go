@@ -130,6 +130,7 @@ func (b *BrowserModule_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterBrowserModule(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl BrowserModule, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserModule_Bridge{Impl: impl, Registry: registry}
 	prefix := "browser"
@@ -274,6 +275,7 @@ func (b *BrowserService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterBrowserService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser"
@@ -284,6 +286,7 @@ func RegisterBrowserService(executor interface {
 	for _, m := range BrowserService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser", "struct { NewPage function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error); }")
 }
 
 const (
@@ -428,6 +431,7 @@ func (b *PageService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterPageService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page"
@@ -438,6 +442,7 @@ func RegisterPageService(executor interface {
 	for _, m := range PageService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page", "struct { Locator function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error); }")
 }
 
 const (
@@ -559,6 +564,7 @@ func (b *CdpSelectorService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterCdpSelectorService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
 }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector"
@@ -569,4 +575,5 @@ func RegisterCdpSelectorService(executor interface {
 	for _, m := range CdpSelectorService_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector", "struct { Click function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error; }")
 }

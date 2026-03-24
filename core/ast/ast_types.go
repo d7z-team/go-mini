@@ -78,6 +78,36 @@ func (o GoMiniType) IsInterface() bool {
 	return strings.HasPrefix(s, "interface") && strings.Contains(s, "{") && strings.HasSuffix(s, "}")
 }
 
+func (o GoMiniType) IsStruct() bool {
+	s := strings.TrimSpace(string(o))
+	return strings.HasPrefix(s, "struct") && strings.Contains(s, "{") && strings.HasSuffix(s, "}")
+}
+
+func (o GoMiniType) ReadStructFields() (map[string]GoMiniType, bool) {
+	if !o.IsStruct() {
+		return nil, false
+	}
+	s := strings.TrimSpace(string(o))
+	start := strings.Index(s, "{")
+	inner := s[start+1 : len(s)-1]
+	if strings.TrimSpace(inner) == "" {
+		return map[string]GoMiniType{}, true
+	}
+	parts := strings.Split(inner, ";")
+	res := make(map[string]GoMiniType)
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		fParts := strings.SplitN(p, " ", 2)
+		if len(fParts) == 2 {
+			res[strings.TrimSpace(fParts[0])] = GoMiniType(strings.TrimSpace(fParts[1]))
+		}
+	}
+	return res, true
+}
+
 func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
 	if !o.IsInterface() {
 		return nil, false
