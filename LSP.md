@@ -44,145 +44,53 @@ func main() {
 		// 无状态执行：由于我们不使用增量同步，每次都生成一个随机的 URI 供此次请求使用
 		uri := "virtual://temp.mini"
 
-		// 第一步：解析当前代码并更新临时会话 (这步会产生诊断信息)
-		_, _ = lsp.UpdateSession(uri, req.Code)
+		// 第一步：解析当前代码并更新临时会话
+		// UpdateSession 会返回当前文件的诊断信息（包括语法错误和语义错误）
+		diags, _ := lsp.UpdateSession(uri, req.Code)
 
 		// 第二步：获取补全建议 (注意：lspServer 要求 0-based 坐标)
 		items := lsp.GetCompletions(uri, req.Line, req.Char)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(items)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"completions": items,
+			"diagnostics": diags,
+		})
 	})
-
-	http.ListenAndServe(":8080", nil)
-}
 ```
 
 ---
 
-## 2. 前端接入 (Monaco Editor)
+## 3. 诊断信息 (Diagnostics) 与错误提示
 
-在前端，你需要使用 Monaco 的 `registerCompletionItemProvider` 注册一个提示提供者。
+`go-mini` 的 LSP 引擎现在支持高精度的诊断信息反馈：
 
-### 示例前端代码 (JavaScript)
+1.  **即时语法错误**：即使代码无法运行（如括号不匹配），引擎也会返回 `go-mini-syntax` 来源的错误。
+2.  **包级语义校验**：在多文件模式下，引擎会跨文件分析类型冲突、未定义变量等。
+3.  **精准的文件过滤**：即使包内其他文件有错，`UpdateSession` 也只会返回属于当前 `uri` 的错误，避免编辑器界面出现“错位”的波浪线。
+4.  **符合 LSP 标准的坐标**：
+    *   **起始/结束位置**：所有错误均包含完整的 `Range`（Start 和 End）。
+    *   **容错处理**：对于没有明确范围的错误（如运行时 Panic），引擎会自动推导合理的显示范围（如 `Start + 1`），确保编辑器始终能渲染出波浪线。
 
-```javascript
-import * as monaco from 'monaco-editor';
+### 诊断信息结构示例
 
-// 1. 注册语言
-monaco.languages.register({ id: 'go-mini' });
-
-// 2. 注册 Monarch 语法高亮 (Tokenization)
-monaco.languages.setMonarchTokensProvider('go-mini', {
-    keywords: [
-        'package', 'import', 'func', 'var', 'type', 'struct', 'interface',
-        'if', 'else', 'for', 'range', 'switch', 'case', 'default',
-        'return', 'defer', 'go', 'try', 'catch', 'finally', 'throw',
-        'break', 'continue', 'fallthrough'
-    ],
-    typeKeywords: [
-        'Int64', 'Float64', 'String', 'Bool', 'Any', 'Void', 'TypeBytes',
-        'TypeModule', 'TypeClosure', 'Ptr', 'Array', 'Map'
-    ],
-    tokenizer: {
-        root: [
-            // 标识符和关键字
-            [/[a-zA-Z_]\w*/, { cases: { '@typeKeywords': 'type', '@keywords': 'keyword', '@default': 'identifier' } }],
-            
-            // 注释
-            [/\/\/.*/, 'comment'],
-            [/\/\*/, 'comment', '@comment'],
-
-            // 字符串
-            [/"([^"\\]|\\.)*$/, 'string.invalid' ],  // 未闭合的字符串
-            [/"/,  'string', '@string' ],
-            [/`/, 'string', '@rawstring'],
-
-            // 数字
-            [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
-            [/\d+/, 'number'],
-        ],
-        comment: [
-            [/[^\/*]+/, 'comment' ],
-            [/\*\//,    'comment', '@pop'  ],
-            [/[\/*]/,   'comment' ]
-        ],
-        string: [
-            [/[^\\"]+/,  'string'],
-            [/\\./,      'string.escape'],
-            [/"/,        'string', '@pop']
-        ],
-        rawstring: [
-            [/[^`]+/, 'string'],
-            [/`/, 'string', '@pop']
-        ]
-    }
-});
-
-// 3. 注册代码提示 Provider
-monaco.languages.registerCompletionItemProvider('go-mini', {
-    triggerCharacters: ['.'], // 关键：输入点号时自动触发补全
-    
-    provideCompletionItems: async function(model, position) {
-        // 获取编辑器里的全部最新代码
-        const text = model.getValue();
-        
-        // 构造请求，注意 Monaco 的 position.lineNumber 是 1-based，而我们需要传 0-based
-        const requestBody = {
-            code: text,
-            line: position.lineNumber - 1, 
-            char: position.column - 1
-        };
-
-        try {
-            // 向你的后端发起请求
-            const response = await fetch('/api/complete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-
-            const items = await response.json();
-            
-            if (!items) {
-                return { suggestions: [] };
-            }
-
-            // 映射后端返回的 LSP Kind 到 Monaco 的 CompletionItemKind
-            const suggestions = items.map(item => ({
-                label: item.label,
-                kind: item.kind, // Monaco 恰好兼容大部分标准的 LSP Kind 枚举
-                insertText: item.insertText || item.label,
-                detail: item.detail,
-                documentation: item.documentation,
-                // 限定补全替换的范围为当前光标位置
-                range: {
-                    startLineNumber: position.lineNumber,
-                    endLineNumber: position.lineNumber,
-                    startColumn: position.column,
-                    endColumn: position.column
-                }
-            }));
-
-            return { suggestions: suggestions };
-        } catch (err) {
-            console.error("LSP Request failed:", err);
-            return { suggestions: [] };
-        }
-    }
-});
-
-// 3. 创建编辑器实例
-const editor = monaco.editor.create(document.getElementById('container'), {
-    value: 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.\n}',
-    language: 'go-mini',
-    theme: 'vs-dark'
-});
+```json
+[
+  {
+    "range": {
+      "start": { "line": 4, "character": 2 },
+      "end": { "line": 4, "character": 14 }
+    },
+    "severity": 1,
+    "source": "go-mini",
+    "message": "类型不匹配: 无法将 String 赋值给 a (Int64)"
+  }
+]
 ```
 
 ---
 
-## 3. 多文件支持（包级合并）
+## 4. 多文件支持（包级合并）
 
 如果你的 Web IDE 允许用户创建多个文件，并且你希望提供跨文件的代码提示：
 

@@ -100,6 +100,7 @@ func handleMessage(server *lspserv.LSPServer, msg *rpcMessage) {
 					},
 					"hoverProvider":      true,
 					"definitionProvider": true,
+					"referencesProvider": true,
 				},
 			},
 		})
@@ -175,6 +176,22 @@ func handleMessage(server *lspserv.LSPServer, msg *rpcMessage) {
 		}
 
 		locs := server.GetDefinition(params.TextDocument.URI, params.Position.Line, params.Position.Character)
+		writeMessage(rpcMessage{
+			JSONRPC: "2.0",
+			ID:      msg.ID,
+			Result:  locs,
+		})
+
+	case "textDocument/references":
+		var params struct {
+			TextDocument struct{ URI string } `json:"textDocument"`
+			Position     lspserv.Position     `json:"position"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return
+		}
+
+		locs := server.GetReferences(params.TextDocument.URI, params.Position.Line, params.Position.Character)
 		writeMessage(rpcMessage{
 			JSONRPC: "2.0",
 			ID:      msg.ID,

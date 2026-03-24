@@ -115,8 +115,28 @@ func FromInternalPos(p *ast.Position) Range {
 	if p == nil {
 		return Range{}
 	}
+	start := Position{Line: p.L - 1, Character: p.C - 1}
+	end := Position{Line: p.EL - 1, Character: p.EC - 1}
+
+	// 如果结束位置无效（比如为 0），则退化为开始位置 + 1
+	if p.EL <= 0 {
+		end.Line = start.Line
+		end.Character = start.Character + 1
+	}
+	if p.EC <= 0 && p.EL > 0 {
+		end.Character = start.Character + 1
+	}
+
+	// 确保不出现负值
+	if end.Line < 0 {
+		end.Line = 0
+	}
+	if end.Character < 0 {
+		end.Character = 0
+	}
+
 	return Range{
-		Start: Position{Line: p.L - 1, Character: p.C - 1},
-		End:   Position{Line: p.EL - 1, Character: p.EC - 1},
+		Start: start,
+		End:   end,
 	}
 }

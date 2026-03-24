@@ -3,6 +3,7 @@ package lspserv
 import (
 	"errors"
 	"fmt"
+	"go/scanner"
 	"sync"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -50,10 +51,10 @@ func (s *LSPServer) UpdateSession(uri, code string) ([]Diagnostic, error) {
 	s.sessions.Store(uri, &fileSession{pkgName: pkgName, code: code})
 
 	// 3. 触发包级重新聚合分析
-	return s.rebuildPackage(pkgName)
+	return s.rebuildPackage(pkgName, uri)
 }
 
-func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
+func (s *LSPServer) rebuildPackage(pkgName string, targetURI string) ([]Diagnostic, error) {
 	val, _ := s.packages.LoadOrStore(pkgName, &packageState{files: make(map[string]string)})
 	pkg := val.(*packageState)
 	pkg.mu.Lock()
@@ -71,9 +72,35 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 	// 聚合所有文件到单个 ProgramStmt
 	var combinedNode *ast.ProgramStmt
 	converter := ffigo.NewGoToASTConverter()
+	diagnostics := make([]Diagnostic, 0)
 
 	for uri, code := range pkg.files {
-		node, _ := converter.ConvertSourceTolerant(uri, code)
+		node, errs := converter.ConvertSourceTolerant(uri, code)
+
+		// 语法错误单独处理
+		for _, err := range errs {
+			var scanErr scanner.Error
+			if errors.As(err, &scanErr) {
+				if scanErr.Pos.Filename == targetURI {
+					diagnostics = append(diagnostics, Diagnostic{
+						Range: Range{
+							Start: Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column - 1},
+							End:   Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column},
+						},
+						Severity: 1,
+						Source:   "go-mini-syntax",
+						Message:  scanErr.Msg,
+					})
+				}
+			} else if err != nil && uri == targetURI {
+				diagnostics = append(diagnostics, Diagnostic{
+					Range:    FromInternalPos(&ast.Position{L: 1, C: 1}),
+					Severity: 1,
+					Source:   "go-mini-syntax",
+					Message:  err.Error(),
+				})
+			}
+		}
 
 		if prog, ok := node.(*ast.ProgramStmt); ok {
 			if combinedNode == nil {
@@ -86,7 +113,7 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 	}
 
 	if combinedNode == nil {
-		return nil, nil
+		return diagnostics, nil
 	}
 
 	// 运行校验以生成持久化 Scope
@@ -94,34 +121,35 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 	pkg.combined = prog
 
 	// 将当前触发文件的诊断信息返回
-	diagnostics := make([]Diagnostic, 0)
 	for _, err := range errs {
 		if astErr, ok := err.(*ast.MiniAstError); ok {
 			for _, log := range astErr.Logs {
 				loc := log.Node.GetBase().Loc
-				diag := Diagnostic{
-					Range:    FromInternalPos(loc),
-					Severity: 1,
-					Source:   "go-mini",
-					Message:  log.Message,
+				// 严格过滤文件路径，确保错误显示在正确的文件中
+				if loc != nil && loc.F == targetURI {
+					diag := Diagnostic{
+						Range:    FromInternalPos(loc),
+						Severity: 1,
+						Source:   "go-mini",
+						Message:  log.Message,
+					}
+					diagnostics = append(diagnostics, diag)
 				}
-				diagnostics = append(diagnostics, diag)
 			}
 		} else {
 			// 处理其他类型的运行时或执行错误
 			var vme *runtime.VMError
 			if errors.As(err, &vme) {
-				diag := Diagnostic{
-					Range:    FromInternalPos(&ast.Position{L: 1, C: 1}), // 默认位置
-					Severity: 1,
-					Source:   "go-mini-runtime",
-					Message:  vme.Message,
-				}
-				if len(vme.Frames) > 0 {
-					diag.Range = FromInternalPos(&ast.Position{
-						L: vme.Frames[0].Line,
-						C: vme.Frames[0].Column,
-					})
+				if len(vme.Frames) > 0 && vme.Frames[0].Filename == targetURI {
+					diag := Diagnostic{
+						Range: FromInternalPos(&ast.Position{
+							L: vme.Frames[0].Line,
+							C: vme.Frames[0].Column,
+						}),
+						Severity: 1,
+						Source:   "go-mini-runtime",
+						Message:  vme.Message,
+					}
 					for _, f := range vme.Frames {
 						diag.RelatedInformation = append(diag.RelatedInformation, DiagnosticRelatedInformation{
 							Location: Location{
@@ -134,8 +162,8 @@ func (s *LSPServer) rebuildPackage(pkgName string) ([]Diagnostic, error) {
 							Message: fmt.Sprintf("at %s()", f.Function),
 						})
 					}
+					diagnostics = append(diagnostics, diag)
 				}
-				diagnostics = append(diagnostics, diag)
 			}
 		}
 	}
@@ -249,10 +277,52 @@ func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
 		return nil
 	}
 
+	defLoc := def.GetBase().Loc
+	targetURI := uri
+	if defLoc != nil && defLoc.F != "" {
+		targetURI = defLoc.F
+	}
+
 	return []Location{
 		{
-			URI:   uri, // 目前假设定义在同一个 URI，实际应从 def 的 Loc 溯源
-			Range: FromInternalPos(def.GetBase().Loc),
+			URI:   targetURI,
+			Range: FromInternalPos(defLoc),
 		},
 	}
+}
+
+// GetReferences 获取指定位置符号的所有引用
+func (s *LSPServer) GetReferences(uri string, line, char int) []Location {
+	val, ok := s.sessions.Load(uri)
+	if !ok {
+		return nil
+	}
+	sess := val.(*fileSession)
+
+	pVal, ok := s.packages.Load(sess.pkgName)
+	if !ok {
+		return nil
+	}
+	pkg := pVal.(*packageState)
+
+	if pkg.combined == nil {
+		return nil
+	}
+
+	refs := pkg.combined.GetReferencesAt(line+1, char+1)
+	res := make([]Location, 0, len(refs))
+	for _, r := range refs {
+		loc := r.GetBase().Loc
+		if loc != nil {
+			targetURI := uri
+			if loc.F != "" {
+				targetURI = loc.F
+			}
+			res = append(res, Location{
+				URI:   targetURI,
+				Range: FromInternalPos(loc),
+			})
+		}
+	}
+	return res
 }
