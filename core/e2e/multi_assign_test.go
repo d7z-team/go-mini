@@ -15,7 +15,7 @@ func TestMultiAssignment(t *testing.T) {
 	t.Run("ResultDestructuring", func(t *testing.T) {
 		code := `
 		package main
-		import "json"
+		import "encoding/json"
 		func main() {
 			// 1. Test Result destructuring (val, err)
 			// Use backticks for raw string to avoid escape hell

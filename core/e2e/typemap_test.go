@@ -53,7 +53,7 @@ func TestTypeMapRobustness(t *testing.T) {
 			name: "ResultMapAccess",
 			code: `
 			package main
-			import "json"
+			import "encoding/json"
 			import "fmt"
 			func main() {
 				val, err := json.Unmarshal([]byte(` + "`" + `{"meta":{"code":200}}` + "`" + `))
@@ -88,7 +88,7 @@ func TestTypeMapRobustness(t *testing.T) {
 			name: "AnyWrappedScalarMemberAccess",
 			code: `
 			package main
-			import "json"
+			import "encoding/json"
 			import "fmt"
 			func main() {
 				// 通过 json.Unmarshal 获得一个真正的 Any 类型标量

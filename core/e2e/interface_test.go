@@ -176,7 +176,7 @@ func TestInterfaceAnyPenetration(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	code := `
 	package main
-	import "json"
+	import "encoding/json"
 	
 	func main() {
 		// json.Unmarshal 返回的是 (Any, string)，里面包裹的是真正的脚本 Map (TypeAny -> TypeMap)

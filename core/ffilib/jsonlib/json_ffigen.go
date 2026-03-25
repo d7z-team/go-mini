@@ -195,7 +195,7 @@ func RegisterJSON(executor interface {
 	RegisterStructSpec(string, ast.GoMiniType)
 }, impl JSON, registry *ffigo.HandleRegistry) {
 	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
-	prefix := "json"
+	prefix := "encoding/json"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"

@@ -13,7 +13,7 @@ func TestJSONLibrary(t *testing.T) {
 
 	code := `
 	package main
-	import "json"
+	import "encoding/json"
 	import "fmt"
 
 	func main() {

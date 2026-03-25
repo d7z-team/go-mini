@@ -87,7 +87,7 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 	t.Run("MemberAssignment", func(t *testing.T) {
 		code := `
 		package main
-		import "json"
+		import "encoding/json"
 		import "fmt"
 		func main() {
 			// json返回的是包装在Any里的Map
