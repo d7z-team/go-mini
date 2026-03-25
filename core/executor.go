@@ -20,6 +20,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/filepathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/imagelib"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/math/randlib"
@@ -386,6 +387,9 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 	// 2. Inject io
 	iolib.RegisterIO(e, &iolib.IOHost{}, e.registry)
 	iolib.RegisterFileMethods(e, &iolib.FileMethodsHost{}, e.registry)
+
+	// 3. Inject image
+	imagelib.RegisterImage(e, &imagelib.ImageHost{}, &imagelib.ImageMethodsHost{}, e.registry)
 }
 
 // GetExportedSpecs 返回所有注册的 FFI 函数签名
