@@ -11,7 +11,7 @@ import (
 
 // Outputter 接口定义了自定义输出操作
 type Outputter interface {
-	Print(string)
+	Print(context.Context, string)
 }
 
 const FMTKey ffilib.CtxKey = "gomini.fmt.Outputter"
@@ -25,7 +25,7 @@ type FmtHost struct{}
 
 func (h *FmtHost) Print(ctx context.Context, args ...any) {
 	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
-		o.Print(fmt.Sprint(args...))
+		o.Print(ctx, fmt.Sprint(args...))
 		return
 	}
 	fmt.Print(args...) //nolint:forbidigo // native implementation
@@ -33,7 +33,7 @@ func (h *FmtHost) Print(ctx context.Context, args ...any) {
 
 func (h *FmtHost) Println(ctx context.Context, args ...any) {
 	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
-		o.Print(fmt.Sprintln(args...))
+		o.Print(ctx, fmt.Sprintln(args...))
 		return
 	}
 	fmt.Println(args...) //nolint:forbidigo // native implementation
@@ -41,13 +41,13 @@ func (h *FmtHost) Println(ctx context.Context, args ...any) {
 
 func (h *FmtHost) Printf(ctx context.Context, format string, args ...any) {
 	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
-		o.Print(fmt.Sprintf(format, args...))
+		o.Print(ctx, fmt.Sprintf(format, args...))
 		return
 	}
 	fmt.Printf(format, args...) //nolint:forbidigo // native implementation
 }
 
-func (h *FmtHost) Sprintf(ctx context.Context, format string, args ...any) string {
+func (h *FmtHost) Sprintf(_ context.Context, format string, args ...any) string {
 	return fmt.Sprintf(format, args...)
 }
 
