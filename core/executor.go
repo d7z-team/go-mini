@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 
@@ -210,8 +209,31 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		UnwindMode:     runtime.UnwindNone,
 	}
 
+	// 继承上次执行的状态（如 import 的模块和全局变量）
+	// 注意：此处不持有锁执行拷贝，因为 Executor 是只读蓝图，
+	// 我们只读取上一个会话的快照。
+	if last := p.executor.LastSession(); last != nil {
+		// 模块缓存继承
+		for k, v := range last.ModuleCache {
+			session.ModuleCache[k] = v
+		}
+		// 全局变量继承：追溯到最顶层作用域
+		root := last.Stack
+		if root != nil {
+			for root.Parent != nil {
+				root = root.Parent
+			}
+			for k, v := range root.MemoryPtr {
+				// 仅继承值，不继承句柄所有权（ActiveHandles），
+				// 这样 Eval 结束时不会销毁主程序的全局句柄。
+				session.Stack.MemoryPtr[k] = v
+			}
+		}
+	}
+
 	defer func() {
 		session.Stack.RunDefers()
+		// 仅清理 Eval 过程中产生的临时句柄
 		if session.ActiveHandles != nil {
 			for _, h := range session.ActiveHandles.Handles {
 				if h.Bridge != nil && h.ID != 0 {
@@ -224,11 +246,7 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
 	for k, v := range env {
-		norm, err := normalizeValue(v)
-		if err != nil {
-			return nil, fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
-		}
-		_ = session.AddVariable(k, p.executor.ToVar(session, norm, nil))
+		_ = session.AddVariable(k, p.executor.ToVar(session, v, nil))
 	}
 
 	return p.executor.ExecExpr(session, expr)
@@ -468,91 +486,6 @@ func (e *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 	}, nil
 }
 
-// normalizeValue 将复杂的宿主对象（如 struct）规范化为 VM 可直接处理的类型（map/slice/primitives）。
-// 该函数位于 engine 边界层，允许使用反射以提供极致的开发便利性。
-func normalizeValue(val interface{}) (interface{}, error) {
-	if val == nil {
-		return nil, nil
-	}
-
-	// 检查是否已经是引擎原生变量，若是则直接穿透
-	if _, ok := val.(*runtime.Var); ok {
-		return val, nil
-	}
-
-	v := reflect.ValueOf(val)
-	// 处理指针
-	for v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return nil, nil
-		}
-		v = v.Elem()
-	}
-
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int(), nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return int64(v.Uint()), nil
-	case reflect.Float32, reflect.Float64:
-		return v.Float(), nil
-	case reflect.String:
-		return v.String(), nil
-	case reflect.Bool:
-		return v.Bool(), nil
-	case reflect.Slice, reflect.Array:
-		// 特殊处理 []byte
-		if v.Type().Elem().Kind() == reflect.Uint8 {
-			return v.Bytes(), nil
-		}
-		res := make([]interface{}, v.Len())
-		for i := 0; i < v.Len(); i++ {
-			var err error
-			res[i], err = normalizeValue(v.Index(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-		}
-		return res, nil
-	case reflect.Map:
-		res := make(map[string]interface{})
-		for _, key := range v.MapKeys() {
-			if key.Kind() != reflect.String {
-				return nil, fmt.Errorf("不支持非字符串类型的 Map Key: %v", key.Kind())
-			}
-			var err error
-			res[key.String()], err = normalizeValue(v.MapIndex(key).Interface())
-			if err != nil {
-				return nil, err
-			}
-		}
-		return res, nil
-	case reflect.Struct:
-		res := make(map[string]interface{})
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			// 仅处理导出的字段
-			if field.PkgPath != "" {
-				continue
-			}
-			name := field.Name
-			// 优先使用 json 标签作为键名
-			if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
-				name = strings.Split(tag, ",")[0]
-			}
-			var err error
-			res[name], err = normalizeValue(v.Field(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-		}
-		return res, nil
-	default:
-		return nil, fmt.Errorf("不支持将类型 %T 注入脚本环境", val)
-	}
-}
-
 func (e *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
 	prog, _, err := e.newMiniProgramByGoCode("snippet", code, false)
 	return prog, err
@@ -727,11 +660,7 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
 	for k, v := range env {
-		norm, err := normalizeValue(v)
-		if err != nil {
-			return nil, fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
-		}
-		_ = session.AddVariable(k, executor.ToVar(session, norm, nil))
+		_ = session.AddVariable(k, executor.ToVar(session, v, nil))
 	}
 
 	return executor.ExecExpr(session, expr)
@@ -831,11 +760,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	// 注入环境
 	_ = session.AddVariable("nil", nil)
 	for k, v := range env {
-		norm, err := normalizeValue(v)
-		if err != nil {
-			return fmt.Errorf("环境变量 %s 规范化失败: %w", k, err)
-		}
-		_ = session.AddVariable(k, executor.ToVar(session, norm, nil))
+		_ = session.AddVariable(k, executor.ToVar(session, v, nil))
 	}
 
 	return executor.ExecuteStmts(session, stmts)

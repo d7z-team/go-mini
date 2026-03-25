@@ -142,3 +142,56 @@ func TestEvalStructInjection(t *testing.T) {
 		}
 	})
 }
+
+func TestEvalAfterExecute(t *testing.T) {
+	e := engine.NewMiniExecutor()
+	e.InjectStandardLibraries()
+
+	code := `
+package main
+import "strings"
+
+var globalVar = "initialized"
+
+func test() string {
+	return strings.ToUpper(globalVar)
+}
+`
+	prog, err := e.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Execute the program to initialize globals and imports
+	err = prog.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Eval a function that uses those globals and imports
+	res, err := prog.Eval(context.Background(), "test()", nil)
+	if err != nil {
+		t.Errorf("Eval after Execute failed: %v", err)
+		return
+	}
+
+	if res.Str != "INITIALIZED" {
+		t.Errorf("Expected 'INITIALIZED', got %q", res.Str)
+	}
+}
+
+func TestNormalizeFixedSizeByteArray(t *testing.T) {
+	e := engine.NewMiniExecutor()
+	prog, _ := e.NewRuntimeByGoCode("package main")
+
+	data := [4]byte{1, 2, 3, 4}
+	res, err := prog.Eval(context.Background(), "d", map[string]interface{}{"d": data})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := res.Interface().([]byte)
+	if len(got) != 4 || got[0] != 1 || got[3] != 4 {
+		t.Errorf("Expected []byte{1,2,3,4}, got %v", got)
+	}
+}
