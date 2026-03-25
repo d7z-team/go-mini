@@ -79,7 +79,7 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 	e.routes[name] = route
 }
 
-// 模拟原 Executor.ExecExpr 用于初始化全局变量 (临时回退机制，直至完全重构)
+// ExecExpr 模拟原 Executor.ExecExpr 用于初始化全局变量 (临时回退机制，直至完全重构)
 func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
 	// 在完全迭代化之前，先使用一个临时的子 Run()
 	oldTasks := ctx.TaskStack

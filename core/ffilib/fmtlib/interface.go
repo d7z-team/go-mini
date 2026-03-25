@@ -1,15 +1,14 @@
 //go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg fmtlib -path gopkg.d7z.net/go-mini/core/ffilib/fmtlib -out fmt_ffigen.go interface.go
 package fmtlib
 
+import "context"
+
 // Fmt 接口定义了格式化输出操作
 
 // ffigen:module fmt
 type Fmt interface {
-	Print(args ...any)
-	Println(args ...any)
-	Printf(format string, args ...any)
-	Sprintf(format string, args ...any) string
-	Fprint(w any, args ...any)
-	Fprintf(w any, format string, args ...any)
-	Fprintln(w any, args ...any)
+	Print(ctx context.Context, args ...any)
+	Println(ctx context.Context, args ...any)
+	Printf(ctx context.Context, format string, args ...any)
+	Sprintf(ctx context.Context, format string, args ...any) string
 }

@@ -9,13 +9,13 @@ import (
 
 func TestLSPHostFFICompletion(t *testing.T) {
 	e := engine.NewMiniExecutor()
-
+	e.InjectStandardLibraries()
 	// 1. 注册 FFI 结构体
 	// 模拟 os.File
-	e.AddStructSpec("os.File", ast.GoMiniType("struct { Read function(TypeBytes) tuple(Int64, Error); Close function() Error; Name String }"))
-	
+	e.AddStructSpec("os.File", "struct { Read function(TypeBytes) tuple(Int64, Error); Close function() Error; Name String }")
+
 	// 模拟返回该结构体的函数
-	e.AddFuncSpec("os.Open", ast.GoMiniType("function(String) tuple(os.File, Error)"))
+	e.AddFuncSpec("os.Open", "function(String) tuple(os.File, Error)")
 
 	code := `package main
 import "os"
@@ -33,7 +33,7 @@ func main() {
 	if prog == nil {
 		t.Fatal("failed to get program")
 	}
-	
+
 	// 验证是否有语义错误 (排除语法错误)
 	for _, err := range errs {
 		if _, ok := err.(*ast.MiniAstError); ok {
@@ -87,7 +87,7 @@ func main() {
 		if !foundName {
 			t.Error("missing f.Name completion")
 		}
-		
+
 		if !foundRead || !foundClose || !foundName {
 			for _, it := range completions {
 				t.Logf("- %s (%s) Type: %s", it.Label, it.Kind, it.Type)

@@ -1,47 +1,55 @@
 package fmtlib
 
 import (
+	"context"
 	"fmt"
-	"io"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
+// Outputter 接口定义了自定义输出操作
+type Outputter interface {
+	Print(string)
+}
+
+type ctxKey string
+
+const fmtKey ctxKey = "fmt"
+
+// WithOutputter 将 Outputter 注入 context
+func WithOutputter(ctx context.Context, o Outputter) context.Context {
+	return context.WithValue(ctx, fmtKey, o)
+}
+
 type FmtHost struct{}
 
-func (h *FmtHost) Print(args ...any) {
+func (h *FmtHost) Print(ctx context.Context, args ...any) {
+	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+		o.Print(fmt.Sprint(args...))
+		return
+	}
 	fmt.Print(args...) //nolint:forbidigo // native implementation
 }
 
-func (h *FmtHost) Println(args ...any) {
+func (h *FmtHost) Println(ctx context.Context, args ...any) {
+	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+		o.Print(fmt.Sprintln(args...))
+		return
+	}
 	fmt.Println(args...) //nolint:forbidigo // native implementation
 }
 
-func (h *FmtHost) Printf(format string, args ...any) {
+func (h *FmtHost) Printf(ctx context.Context, format string, args ...any) {
+	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+		o.Print(fmt.Sprintf(format, args...))
+		return
+	}
 	fmt.Printf(format, args...) //nolint:forbidigo // native implementation
 }
 
-func (h *FmtHost) Sprintf(format string, args ...any) string {
+func (h *FmtHost) Sprintf(ctx context.Context, format string, args ...any) string {
 	return fmt.Sprintf(format, args...)
-}
-
-func (h *FmtHost) Fprint(w any, args ...any) {
-	if writer, ok := w.(io.Writer); ok {
-		fmt.Fprint(writer, args...)
-	}
-}
-
-func (h *FmtHost) Fprintf(w any, format string, args ...any) {
-	if writer, ok := w.(io.Writer); ok {
-		fmt.Fprintf(writer, format, args...)
-	}
-}
-
-func (h *FmtHost) Fprintln(w any, args ...any) {
-	if writer, ok := w.(io.Writer); ok {
-		fmt.Fprintln(writer, args...)
-	}
 }
 
 // RegisterFmtAliases 注册全局的 print 和 println 别名

@@ -62,7 +62,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	var err error
 
 	// 硬编码拦截内置扩展路由
-	if route.MethodID == 999 && route.Name == "errors.is" {
+	if route.MethodID == 999999999 && route.Name == "errors.Is" {
 		if len(args) == 2 {
 			errVar := args[0]
 			targetHandle := args[1]

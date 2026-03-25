@@ -17,6 +17,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -29,8 +30,8 @@ type MiniExecutor struct {
 	routes  map[string]runtime.FFIRoute
 	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
 
-	registry *ffigo.HandleRegistry
-	modules   map[string]*ast.ProgramStmt // 预加载的模块蓝图
+	registry    *ffigo.HandleRegistry
+	modules     map[string]*ast.ProgramStmt  // 预加载的模块蓝图
 	structSpecs map[ast.Ident]ast.GoMiniType // 用于验证的结构体签名
 
 	MaxTypeDepth int // 递归类型检查深度限制
@@ -242,14 +243,14 @@ func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges:     make(map[uint32]ffigo.FFIBridge),
+		bridges:      make(map[uint32]ffigo.FFIBridge),
 		routes:       make(map[string]runtime.FFIRoute),
 		specs:        make(map[ast.Ident]ast.GoMiniType),
 		registry:     ffigo.NewHandleRegistry(),
 		modules:      make(map[string]*ast.ProgramStmt),
 		structSpecs:  make(map[ast.Ident]ast.GoMiniType),
 		MaxTypeDepth: 256,
-		}
+	}
 
 	// 默认注册 panic 签名以便通过验证
 	res.specs["panic"] = "function(String) Void"
@@ -265,46 +266,57 @@ func NewMiniExecutor() *MiniExecutor {
 	res.specs["Int64"] = "function(Any) Int64"
 	res.specs["Float64"] = "function(Any) Float64"
 	res.specs["require"] = "function(String) TypeModule"
-	res.specs["print"] = "function(...Any) Void"
-	res.specs["println"] = "function(...Any) Void"
+
+	// Inject non-IO libraries by default
+	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
+	res.RegisterFFI("errors.Is", nil, 999999999, "function(Error, TypeHandle) Bool", "Check if an error matches a target handle")
+	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
+	timelib.RegisterTime(res, &timelib.TimeHost{}, res.registry)
+	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
+
+	// Inject fmt by default (supports context-based redirection)
+	fmtImpl := &fmtlib.FmtHost{}
+	fmtlib.RegisterFmt(res, fmtImpl, res.registry)
+	fmtlib.RegisterFmtAliases(res, fmtImpl, res.registry)
+
 	return res
 }
 
-func (o *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
-	o.Loader = loader
+func (e *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
+	e.Loader = loader
 }
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
-func (o *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.modules[path] = prog.GetAst()
+func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.modules[path] = prog.GetAst()
 }
 
-func (o *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
-	return o.registry
+func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
+	return e.registry
 }
 
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
-func (o *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+func (e *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	returns := "Void"
 	callFunc, ok := spec.ReadCallFunc()
 	if ok {
 		returns = string(callFunc.Returns)
 	}
 
-	o.routes[name] = runtime.FFIRoute{Name: name, Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec), Doc: doc}
+	e.routes[name] = runtime.FFIRoute{Name: name, Bridge: bridge, MethodID: methodID, Returns: returns, Spec: string(spec), Doc: doc}
 	if spec != "" {
-		o.specs[ast.Ident(name)] = spec
+		e.specs[ast.Ident(name)] = spec
 	}
 }
 
-func (o *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.bridges[methodID] = bridge
+func (e *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.bridges[methodID] = bridge
 }
 
 type BridgeWrapper struct {
@@ -316,7 +328,7 @@ func (b *BridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) 
 }
 
 func (b *BridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("Invoke not supported on BridgeWrapper")
+	return nil, errors.New("invoke not supported on BridgeWrapper")
 }
 
 func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
@@ -333,7 +345,7 @@ func (b *HandleBridgeWrapper) Call(ctx context.Context, methodID uint32, args []
 }
 
 func (b *HandleBridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("Invoke not supported on HandleBridgeWrapper")
+	return nil, errors.New("invoke not supported on HandleBridgeWrapper")
 }
 
 func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
@@ -341,74 +353,59 @@ func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func (o *MiniExecutor) InjectStandardLibraries() {
-	// 1. Inject fmt
-	fmtImpl := &fmtlib.FmtHost{}
-	fmtlib.RegisterFmt(o, fmtImpl, o.registry)
-	fmtlib.RegisterFmtAliases(o, fmtImpl, o.registry)
+func (e *MiniExecutor) InjectStandardLibraries() {
+	// 1. Inject os
+	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
+	oslib.RegisterFileMethods(e, &oslib.FileMethodsHost{}, e.registry)
 
-	// 2. Inject os
-	oslib.RegisterOS(o, &oslib.OSHost{}, o.registry)
-	oslib.RegisterFileMethods(o, &oslib.FileMethodsHost{}, o.registry)
-
-	// 3. Inject errors
-	errorslib.RegisterErrors(o, &errorslib.ErrorsHost{}, o.registry)
-	o.RegisterFFI("errors.is", nil, 999, "function(Error, TypeHandle) Bool", "Check if an error matches a target handle")
-
-	// 4. Inject io
-	iolib.RegisterIO(o, &iolib.IOHost{}, o.registry)
-
-	// 5. Inject json
-	jsonlib.RegisterJSON(o, &jsonlib.JSONHost{}, o.registry)
-
-	// 6. Inject time
-	timelib.RegisterTime(o, &timelib.TimeHost{}, o.registry)
+	// 2. Inject io
+	iolib.RegisterIO(e, &iolib.IOHost{}, e.registry)
 }
 
 // GetExportedSpecs 返回所有注册的 FFI 函数签名
-func (o *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
+func (e *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	res := make(map[ast.Ident]ast.GoMiniType)
-	for k, v := range o.specs {
+	for k, v := range e.specs {
 		res[k] = v
 	}
-	for k, v := range o.structSpecs {
+	for k, v := range e.structSpecs {
 		res[k] = v
 	}
 	return res
 }
 
 // AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
-func (o *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.specs[ast.Ident(name)] = spec
+func (e *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.specs[ast.Ident(name)] = spec
 }
 
-func (o *MiniExecutor) RegisterStructSpec(name string, spec ast.GoMiniType) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.structSpecs[ast.Ident(name)] = spec
+func (e *MiniExecutor) RegisterStructSpec(name string, spec ast.GoMiniType) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.structSpecs[ast.Ident(name)] = spec
 }
 
-func (o *MiniExecutor) AddStructSpec(name string, spec ast.GoMiniType) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.structSpecs[ast.Ident(name)] = spec
+func (e *MiniExecutor) AddStructSpec(name string, spec ast.GoMiniType) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.structSpecs[ast.Ident(name)] = spec
 }
 
-func (o *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
+func (e *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	res := make(map[ast.Ident]ast.GoMiniType)
-	for k, v := range o.structSpecs {
+	for k, v := range e.structSpecs {
 		res[k] = v
 	}
 	return res
 }
 
-func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
+func (e *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
 	executor, err := runtime.NewExecutor(program)
 	if err != nil {
 		return nil, err
@@ -416,21 +413,21 @@ func (o *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, 
 
 	// 自动合并 Loader，优先查找已注册模块
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		if astNode, ok := o.modules[path]; ok {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if o.Loader != nil {
-			return o.Loader(path)
+		if e.Loader != nil {
+			return e.Loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
 	// Pass routes to executor
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	for name, route := range o.routes {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for name, route := range e.routes {
 		executor.RegisterRoute(name, route)
 	}
 
@@ -526,32 +523,32 @@ func normalizeValue(val interface{}) (interface{}, error) {
 	}
 }
 
-func (o *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
-	prog, _, err := o.newMiniProgramByGoCode("snippet", code, false)
+func (e *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
+	prog, _, err := e.newMiniProgramByGoCode("snippet", code, false)
 	return prog, err
 }
 
-func (o *MiniExecutor) NewRuntimeByGoFile(filename, code string) (*MiniProgram, error) {
-	prog, _, err := o.newMiniProgramByGoCode(filename, code, false)
+func (e *MiniExecutor) NewRuntimeByGoFile(filename, code string) (*MiniProgram, error) {
+	prog, _, err := e.newMiniProgramByGoCode(filename, code, false)
 	return prog, err
 }
 
-func (o *MiniExecutor) NewMiniProgramByGoCodeTolerant(code string) (*MiniProgram, []error) {
-	prog, errs, _ := o.newMiniProgramByGoCode("snippet", code, true)
+func (e *MiniExecutor) NewMiniProgramByGoCodeTolerant(code string) (*MiniProgram, []error) {
+	prog, errs, _ := e.newMiniProgramByGoCode("snippet", code, true)
 	return prog, errs
 }
 
-func (o *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*MiniProgram, []error) {
-	prog, errs, _ := o.newMiniProgramByGoCode(filename, code, true)
+func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*MiniProgram, []error) {
+	prog, errs, _ := e.newMiniProgramByGoCode(filename, code, true)
 	return prog, errs
 }
 
-func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
-	specs := o.GetExportedSpecs()
+func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
+	specs := e.GetExportedSpecs()
 
 	// Validate
 	validator, _ := ast.NewValidator(program, specs)
-	validator.SetLoader(o.Loader)
+	validator.SetLoader(e.Loader)
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	var errs []error
@@ -562,7 +559,7 @@ func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 	optimizeCtx := ast.NewOptimizeContext(validator)
 	program.Optimize(optimizeCtx)
 
-	res, rErr := o.NewRuntimeByAst(program)
+	res, rErr := e.NewRuntimeByAst(program)
 	if rErr != nil {
 		errs = append(errs, rErr)
 		res = &MiniProgram{
@@ -573,7 +570,7 @@ func (o *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 	return res, errs
 }
 
-func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
+func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
 	converter := ffigo.NewGoToASTConverter()
 	var node ast.Node
 	var errs []error
@@ -593,23 +590,23 @@ func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 
 	program := node.(*ast.ProgramStmt)
 
-	specs := o.GetExportedSpecs()
+	specs := e.GetExportedSpecs()
 
 	// Validate and Optimize
 	validator, _ := ast.NewValidator(program, specs)
-	if o.MaxTypeDepth > 0 {
-		validator.Root().MaxTypeDepth = o.MaxTypeDepth
-		ast.DefaultMaxTypeDepth = o.MaxTypeDepth
+	if e.MaxTypeDepth > 0 {
+		validator.Root().MaxTypeDepth = e.MaxTypeDepth
+		ast.DefaultMaxTypeDepth = e.MaxTypeDepth
 	}
 	// 在验证阶段也要支持已注册模块
 	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		if astNode, ok := o.modules[path]; ok {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if o.Loader != nil {
-			return o.Loader(path)
+		if e.Loader != nil {
+			return e.Loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	})
@@ -626,7 +623,7 @@ func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 	optimizeCtx := ast.NewOptimizeContext(validator)
 	program.Optimize(optimizeCtx)
 
-	res, rErr := o.NewRuntimeByAst(program)
+	res, rErr := e.NewRuntimeByAst(program)
 	if rErr != nil {
 		if !tolerant {
 			return nil, nil, rErr
@@ -645,7 +642,7 @@ func (o *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 }
 
 // Eval 执行单个 Go 表达式字符串
-func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
+func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
 	converter := ffigo.NewGoToASTConverter()
 	expr, err := converter.ConvertExprSource(exprStr)
 	if err != nil {
@@ -659,22 +656,22 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 
 	// 继承模块查找逻辑
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		if astNode, ok := o.modules[path]; ok {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if o.Loader != nil {
-			return o.Loader(path)
+		if e.Loader != nil {
+			return e.Loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
-	o.mu.RLock()
-	for name, route := range o.routes {
+	e.mu.RLock()
+	for name, route := range e.routes {
 		executor.RegisterRoute(name, route)
 	}
-	o.mu.RUnlock()
+	e.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -711,8 +708,8 @@ func (o *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 }
 
 // MustEval 类似于 Eval，但在出错时会触发 panic
-func (o *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
-	res, err := o.Eval(ctx, exprStr, env)
+func (e *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
+	res, err := e.Eval(ctx, exprStr, env)
 	if err != nil {
 		panic(err)
 	}
@@ -722,7 +719,7 @@ func (o *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[str
 // Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量。
 // 注意：本方法使用“单次快照模式”，每次调用均创建全新的执行器上下文。
 // 若需持久化的全局变量或复杂的跨模块交互，建议使用 NewRuntimeByGoCode。
-func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
+func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
 	converter := ffigo.NewGoToASTConverter()
 	stmts, err := converter.ConvertStmtsSource(code)
 	if err != nil {
@@ -737,8 +734,8 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		Constants: make(map[string]string),
 	}
 	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
-	o.mu.RLock()
-	for _, s := range o.modules {
+	e.mu.RLock()
+	for _, s := range e.modules {
 		for name, sDef := range s.Structs {
 			program.Structs[name] = sDef
 		}
@@ -746,9 +743,9 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 			program.Constants[name] = cDef
 		}
 	}
-	o.mu.RUnlock()
+	e.mu.RUnlock()
 
-	specs := o.GetExportedSpecs()
+	specs := e.GetExportedSpecs()
 
 	// 语义校验
 	v, err := ast.NewValidator(program, specs)
@@ -763,22 +760,22 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	executor, _ := runtime.NewExecutor(program)
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		if astNode, ok := o.modules[path]; ok {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if o.Loader != nil {
-			return o.Loader(path)
+		if e.Loader != nil {
+			return e.Loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
-	o.mu.RLock()
-	for name, route := range o.routes {
+	e.mu.RLock()
+	for name, route := range e.routes {
 		executor.RegisterRoute(name, route)
 	}
-	o.mu.RUnlock()
+	e.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -815,37 +812,37 @@ func (o *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 }
 
 // MustExecute 类似于 Execute，但在出错时会触发 panic
-func (o *MiniExecutor) MustExecute(ctx context.Context, code string, env map[string]interface{}) {
-	err := o.Execute(ctx, code, env)
+func (e *MiniExecutor) MustExecute(ctx context.Context, code string, env map[string]interface{}) {
+	err := e.Execute(ctx, code, env)
 	if err != nil {
 		panic(err)
 	}
 }
 
 // Import 手动加载一个模块并返回其导出的成员对象
-func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
+func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
 	// 创建一个最简的执行器环境来执行加载
 	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"},
 	})
 
 	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		if astNode, ok := o.modules[path]; ok {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if o.Loader != nil {
-			return o.Loader(path)
+		if e.Loader != nil {
+			return e.Loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 
-	o.mu.RLock()
-	for name, route := range o.routes {
+	e.mu.RLock()
+	for name, route := range e.routes {
 		executor.RegisterRoute(name, route)
 	}
-	o.mu.RUnlock()
+	e.mu.RUnlock()
 
 	session := &runtime.StackContext{
 		Context:        ctx,
@@ -872,16 +869,16 @@ func (o *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 }
 
 // NewRuntimeByJSON 从序列化后的 JSON AST 数据加载并构建执行环境
-func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
+func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 	node, err := Unmarshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("JSON 反序列化失败: %w", err)
 	}
 
-	program, logs, err := ValidateAndOptimizeWithLoader(node, o.Loader, func(v *ast.ValidContext) error {
-		o.mu.RLock()
-		defer o.mu.RUnlock()
-		for name, spec := range o.specs {
+	program, logs, err := ValidateAndOptimizeWithLoader(node, e.Loader, func(v *ast.ValidContext) error {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		for name, spec := range e.specs {
 			v.AddVariable(name, spec)
 		}
 		return nil
@@ -890,7 +887,7 @@ func (o *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 	}
 
-	return o.NewRuntimeByAst(program)
+	return e.NewRuntimeByAst(program)
 }
 
 // LSP Metadata Export
@@ -915,9 +912,9 @@ type ExportedStruct struct {
 }
 
 // ExportMetadata 导出当前执行器中注册的所有符号，供 IDE 和 LSP 提供代码补全
-func (o *MiniExecutor) ExportMetadata() string {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
+func (e *MiniExecutor) ExportMetadata() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 
 	meta := &ExportedMetadata{
 		Builtins:  make(map[string]string),
@@ -948,7 +945,7 @@ func (o *MiniExecutor) ExportMetadata() string {
 	}
 
 	// 1. 处理 Builtins 和 全局 Specs
-	for name, spec := range o.specs {
+	for name, spec := range e.specs {
 		sName := string(name)
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
 			meta.Builtins[sName] = string(spec)
@@ -956,7 +953,7 @@ func (o *MiniExecutor) ExportMetadata() string {
 	}
 
 	// 2. 处理 FFI Routes 和 Methods
-	for routeName, route := range o.routes {
+	for routeName, route := range e.routes {
 		if strings.HasPrefix(routeName, "__method_") {
 			// __method_TypeName_MethodName
 			parts := strings.Split(routeName, "_")
@@ -983,7 +980,7 @@ func (o *MiniExecutor) ExportMetadata() string {
 	}
 
 	// 3. 处理已加载的 Modules (脚本模块)
-	for modName, prog := range o.modules {
+	for modName, prog := range e.modules {
 		mod := getModule(modName)
 		// 导出函数
 		for fnName, fnStmt := range prog.Functions {
