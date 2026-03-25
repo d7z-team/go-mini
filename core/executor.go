@@ -13,6 +13,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/filepathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
@@ -275,6 +276,7 @@ func NewMiniExecutor() *MiniExecutor {
 	timelib.RegisterTime(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
 	mathlib.RegisterMath(res, &mathlib.MathHost{}, res.registry)
+	filepathlib.RegisterFilepath(res, &filepathlib.FilepathHost{}, res.registry)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}
@@ -358,10 +360,10 @@ func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
 func (e *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject os
 	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
-	oslib.RegisterFileMethods(e, &oslib.FileMethodsHost{}, e.registry)
 
 	// 2. Inject io
 	iolib.RegisterIO(e, &iolib.IOHost{}, e.registry)
+	iolib.RegisterFileMethods(e, &iolib.FileMethodsHost{}, e.registry)
 }
 
 // GetExportedSpecs 返回所有注册的 FFI 函数签名
