@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/crypto/md5lib"
@@ -196,18 +195,7 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 	}
 
 	// 创建基于当前程序蓝图的 session
-	session := &runtime.StackContext{
-		Context:        ctx,
-		Executor:       p.executor,
-		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
-		ModuleCache:    make(map[string]*runtime.Var),
-		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
-		Debugger:       debugger.GetDebugger(ctx),
-		TaskStack:      make([]runtime.Task, 0, 64),
-		ValueStack:     &runtime.ValueStack{},
-		UnwindMode:     runtime.UnwindNone,
-	}
+	session := p.executor.NewSession(ctx, "eval")
 
 	// 继承上次执行的状态（如 import 的模块和全局变量）
 	// 注意：此处不持有锁执行拷贝，因为 Executor 是只读蓝图，
@@ -231,20 +219,9 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		}
 	}
 
-	defer func() {
-		session.Stack.RunDefers()
-		// 仅清理 Eval 过程中产生的临时句柄
-		if session.ActiveHandles != nil {
-			for _, h := range session.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
-		}
-	}()
+	defer p.executor.CleanupSession(session)
 
 	// 注入环境
-	_ = session.AddVariable("nil", nil)
 	for k, v := range env {
 		_ = session.AddVariable(k, p.executor.ToVar(session, v, nil))
 	}
@@ -325,6 +302,60 @@ func NewMiniExecutor() *MiniExecutor {
 	fmtlib.RegisterFmtAliases(res, fmtImpl, res.registry)
 
 	return res
+}
+
+func (e *MiniExecutor) getLoader() func(path string) (*ast.ProgramStmt, error) {
+	return func(path string) (*ast.ProgramStmt, error) {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.modules[path]; ok {
+			return astNode, nil
+		}
+		if e.Loader != nil {
+			return e.Loader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
+}
+
+func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Executor, error) {
+	executor, err := runtime.NewExecutor(program)
+	if err != nil {
+		return nil, err
+	}
+
+	executor.Loader = e.getLoader()
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for name, route := range e.routes {
+		executor.RegisterRoute(name, route)
+	}
+	return executor, nil
+}
+
+func (e *MiniExecutor) validateAndOptimize(program *ast.ProgramStmt) (*ast.SemanticContext, error) {
+	specs := e.GetExportedSpecs()
+	validator, err := ast.NewValidator(program, specs)
+	if err != nil {
+		return nil, err
+	}
+
+	if e.MaxTypeDepth > 0 {
+		validator.Root().MaxTypeDepth = e.MaxTypeDepth
+		ast.DefaultMaxTypeDepth = e.MaxTypeDepth
+	}
+
+	validator.SetLoader(e.getLoader())
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	if err := program.Check(semanticCtx); err != nil {
+		return semanticCtx, err
+	}
+
+	optimizeCtx := ast.NewOptimizeContext(validator)
+	program.Optimize(optimizeCtx)
+	return semanticCtx, nil
 }
 
 func (e *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
@@ -454,29 +485,9 @@ func (e *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
 }
 
 func (e *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
-	executor, err := runtime.NewExecutor(program)
+	executor, err := e.prepareExecutor(program)
 	if err != nil {
 		return nil, err
-	}
-
-	// 自动合并 Loader，优先查找已注册模块
-	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
-			return astNode, nil
-		}
-		if e.Loader != nil {
-			return e.Loader(path)
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	}
-
-	// Pass routes to executor
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	for name, route := range e.routes {
-		executor.RegisterRoute(name, route)
 	}
 
 	return &MiniProgram{
@@ -507,20 +518,11 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 }
 
 func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
-	specs := e.GetExportedSpecs()
-
-	// Validate
-	validator, _ := ast.NewValidator(program, specs)
-	validator.SetLoader(e.Loader)
-
-	semanticCtx := ast.NewSemanticContext(validator)
 	var errs []error
-	if err := program.Check(semanticCtx); err != nil {
+	semanticCtx, err := e.validateAndOptimize(program)
+	if err != nil {
 		errs = append(errs, err)
 	}
-
-	optimizeCtx := ast.NewOptimizeContext(validator)
-	program.Optimize(optimizeCtx)
 
 	res, rErr := e.NewRuntimeByAst(program)
 	if rErr != nil {
@@ -529,6 +531,10 @@ func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 			Program:  program,
 			executor: &runtime.Executor{},
 		}
+	}
+	if semanticCtx != nil {
+		// If there are validation errors, they might be in the validator logs
+		// But program.Check(semanticCtx) already returns the first error.
 	}
 	return res, errs
 }
@@ -553,38 +559,18 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 
 	program := node.(*ast.ProgramStmt)
 
-	specs := e.GetExportedSpecs()
-
 	// Validate and Optimize
-	validator, _ := ast.NewValidator(program, specs)
-	if e.MaxTypeDepth > 0 {
-		validator.Root().MaxTypeDepth = e.MaxTypeDepth
-		ast.DefaultMaxTypeDepth = e.MaxTypeDepth
-	}
-	// 在验证阶段也要支持已注册模块
-	validator.SetLoader(func(path string) (*ast.ProgramStmt, error) {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
-			return astNode, nil
-		}
-		if e.Loader != nil {
-			return e.Loader(path)
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	})
-
-	semanticCtx := ast.NewSemanticContext(validator)
-	err := program.Check(semanticCtx)
+	semanticCtx, err := e.validateAndOptimize(program)
 	if err != nil {
 		if !tolerant {
-			return nil, nil, &ast.MiniAstError{Err: err, Logs: validator.Logs(), Node: program}
+			var logs []ast.Logs
+			if semanticCtx != nil {
+				logs = semanticCtx.Logs()
+			}
+			return nil, nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 		}
 		errs = append(errs, err)
 	}
-
-	optimizeCtx := ast.NewOptimizeContext(validator)
-	program.Optimize(optimizeCtx)
 
 	res, rErr := e.NewRuntimeByAst(program)
 	if rErr != nil {
@@ -604,6 +590,15 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 	return res, errs, nil
 }
 
+func (e *MiniExecutor) injectEnv(session *runtime.StackContext, env map[string]interface{}) {
+	if env == nil {
+		return
+	}
+	for k, v := range env {
+		_ = session.AddVariable(k, session.Executor.ToVar(session, v, nil))
+	}
+}
+
 // Eval 执行单个 Go 表达式字符串
 func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
 	converter := ffigo.NewGoToASTConverter()
@@ -613,55 +608,14 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	}
 
 	// 创建最小化的无状态执行器
-	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+	executor, _ := e.prepareExecutor(&ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"},
 	})
 
-	// 继承模块查找逻辑
-	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
-			return astNode, nil
-		}
-		if e.Loader != nil {
-			return e.Loader(path)
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	}
+	session := executor.NewSession(ctx, "eval")
+	defer executor.CleanupSession(session)
 
-	e.mu.RLock()
-	for name, route := range e.routes {
-		executor.RegisterRoute(name, route)
-	}
-	e.mu.RUnlock()
-
-	session := &runtime.StackContext{
-		Context:        ctx,
-		Executor:       executor,
-		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "eval", Depth: 1},
-		ModuleCache:    make(map[string]*runtime.Var),
-		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
-		Debugger:       debugger.GetDebugger(ctx),
-	}
-
-	defer func() {
-		session.Stack.RunDefers()
-		if session.ActiveHandles != nil {
-			for _, h := range session.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
-		}
-	}()
-
-	// 注入环境
-	_ = session.AddVariable("nil", nil)
-	for k, v := range env {
-		_ = session.AddVariable(k, executor.ToVar(session, v, nil))
-	}
+	e.injectEnv(session, env)
 
 	return executor.ExecExpr(session, expr)
 }
@@ -704,64 +658,17 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	e.mu.RUnlock()
 
-	specs := e.GetExportedSpecs()
-
 	// 语义校验
-	v, err := ast.NewValidator(program, specs)
-	if err != nil {
+	if _, err := e.validateAndOptimize(program); err != nil {
 		return err
 	}
 
-	if err := program.Check(ast.NewSemanticContext(v)); err != nil {
-		return err
-	}
+	executor, _ := e.prepareExecutor(program)
 
-	executor, _ := runtime.NewExecutor(program)
+	session := executor.NewSession(ctx, "snippet")
+	defer executor.CleanupSession(session)
 
-	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
-			return astNode, nil
-		}
-		if e.Loader != nil {
-			return e.Loader(path)
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	}
-
-	e.mu.RLock()
-	for name, route := range e.routes {
-		executor.RegisterRoute(name, route)
-	}
-	e.mu.RUnlock()
-
-	session := &runtime.StackContext{
-		Context:        ctx,
-		Executor:       executor,
-		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "snippet", Depth: 1},
-		ModuleCache:    make(map[string]*runtime.Var),
-		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
-		Debugger:       debugger.GetDebugger(ctx),
-	}
-
-	defer func() {
-		session.Stack.RunDefers()
-		if session.ActiveHandles != nil {
-			for _, h := range session.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
-		}
-	}()
-
-	// 注入环境
-	_ = session.AddVariable("nil", nil)
-	for k, v := range env {
-		_ = session.AddVariable(k, executor.ToVar(session, v, nil))
-	}
+	e.injectEnv(session, env)
 
 	return executor.ExecuteStmts(session, stmts)
 }
@@ -777,48 +684,12 @@ func (e *MiniExecutor) MustExecute(ctx context.Context, code string, env map[str
 // Import 手动加载一个模块并返回其导出的成员对象
 func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
 	// 创建一个最简的执行器环境来执行加载
-	executor, _ := runtime.NewExecutor(&ast.ProgramStmt{
+	executor, _ := e.prepareExecutor(&ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"},
 	})
 
-	executor.Loader = func(path string) (*ast.ProgramStmt, error) {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
-			return astNode, nil
-		}
-		if e.Loader != nil {
-			return e.Loader(path)
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	}
-
-	e.mu.RLock()
-	for name, route := range e.routes {
-		executor.RegisterRoute(name, route)
-	}
-	e.mu.RUnlock()
-
-	session := &runtime.StackContext{
-		Context:        ctx,
-		Executor:       executor,
-		Stack:          &runtime.Stack{MemoryPtr: make(map[string]*runtime.Var), Scope: "loader", Depth: 1},
-		ModuleCache:    make(map[string]*runtime.Var),
-		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &runtime.HandleTracker{Handles: make([]runtime.HandleRef, 0)},
-		Debugger:       debugger.GetDebugger(ctx),
-	}
-
-	defer func() {
-		session.Stack.RunDefers()
-		if session.ActiveHandles != nil {
-			for _, h := range session.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
-		}
-	}()
+	session := executor.NewSession(ctx, "loader")
+	defer executor.CleanupSession(session)
 
 	return executor.ImportModule(session, &ast.ImportExpr{Path: path})
 }
@@ -830,15 +701,29 @@ func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		return nil, fmt.Errorf("JSON 反序列化失败: %w", err)
 	}
 
-	program, logs, err := ValidateAndOptimizeWithLoader(node, e.Loader, func(v *ast.ValidContext) error {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-		for name, spec := range e.specs {
-			v.AddVariable(name, spec)
+	program, ok := node.(*ast.ProgramStmt)
+	if !ok {
+		// 如果不是 ProgramStmt，则封装为一个
+		program = &ast.ProgramStmt{
+			BaseNode:  ast.BaseNode{ID: "boot", Meta: "boot"},
+			Constants: make(map[string]string),
+			Variables: make(map[ast.Ident]ast.Expr),
+			Types:     make(map[ast.Ident]ast.GoMiniType),
+			Structs:   make(map[ast.Ident]*ast.StructStmt),
+			Functions: make(map[ast.Ident]*ast.FunctionStmt),
+			Main:      make([]ast.Stmt, 0),
 		}
-		return nil
-	})
+		if block, ok := node.(*ast.BlockStmt); ok {
+			program.Main = block.Children
+		}
+	}
+
+	semanticCtx, err := e.validateAndOptimize(program)
 	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
 		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 	}
 

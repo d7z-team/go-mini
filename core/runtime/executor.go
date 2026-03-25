@@ -79,6 +79,56 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 	e.routes[name] = route
 }
 
+func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
+	session := &StackContext{
+		Context:        ctx,
+		Executor:       e,
+		Stack:          &Stack{MemoryPtr: make(map[string]*Var), Scope: scope, Depth: 1},
+		ModuleCache:    make(map[string]*Var),
+		LoadingModules: make(map[string]bool),
+		ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 128)},
+		Debugger:       debugger.GetDebugger(ctx),
+		TaskStack:      make([]Task, 0, 128),
+		ValueStack:     &ValueStack{},
+		UnwindMode:     UnwindNone,
+		resumeSignal:   make(chan struct{}, 1),
+	}
+
+	// Setup Context Bridge (Abort logic)
+	if ctx != nil && ctx.Done() != nil {
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-ctx.Done():
+				session.Abort()
+			case <-done:
+			}
+		}()
+		session.Stack.AddDefer(func() { close(done) })
+	}
+
+	_ = session.AddVariable("nil", nil)
+	return session
+}
+
+func (e *Executor) CleanupSession(session *StackContext) {
+	if session == nil {
+		return
+	}
+	// Run all defers
+	if session.Stack != nil {
+		session.Stack.RunDefers()
+	}
+	// Clean up all active handles to prevent memory leaks on VM exit
+	if session.ActiveHandles != nil {
+		for _, h := range session.ActiveHandles.Handles {
+			if h.Bridge != nil && h.ID != 0 {
+				_ = h.Bridge.DestroyHandle(h.ID)
+			}
+		}
+	}
+}
+
 // ExecExpr 模拟原 Executor.ExecExpr 用于初始化全局变量 (临时回退机制，直至完全重构)
 func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
 	// 在完全迭代化之前，先使用一个临时的子 Run()
