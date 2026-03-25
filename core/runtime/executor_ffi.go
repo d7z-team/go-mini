@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -90,6 +91,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 		} else {
 			retData, err = route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
 		}
+		runtime.KeepAlive(args) // 关键：确保参数在调用期间不被回收
 	}()
 
 	if err != nil {
@@ -436,7 +438,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
-			session.AddHandle(bridge, v)
+			session.AddHandle(bridge, v, h)
 		}
 		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
 	case ffigo.InterfaceData:
@@ -459,8 +461,9 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 
 		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge, Type: "TypeHandle"}
 		if v.Handle != 0 {
-			target.Ref = NewVMHandle(v.Handle, bridge)
-			session.AddHandle(bridge, v.Handle)
+			h := NewVMHandle(v.Handle, bridge)
+			target.Ref = h
+			session.AddHandle(bridge, v.Handle, h)
 		}
 		return &Var{
 			VType: TypeInterface,
@@ -480,7 +483,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			Bridge:  bridge,
 		}
 		if v.Handle != 0 {
-			session.AddHandle(bridge, v.Handle)
+			h := NewVMHandle(v.Handle, bridge)
+			session.AddHandle(bridge, v.Handle, h)
 		}
 		return &Var{
 			VType:  TypeError,
@@ -660,7 +664,7 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
-				session.AddHandle(bridge, id)
+				session.AddHandle(bridge, id, h)
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 		case typ.IsArray():
@@ -724,7 +728,7 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 				var h *VMHandle
 				if id != 0 {
 					h = NewVMHandle(id, bridge)
-					session.AddHandle(bridge, id)
+					session.AddHandle(bridge, id, h)
 				}
 				res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 				break

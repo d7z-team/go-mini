@@ -358,11 +358,16 @@ func (v *Var) Copy() *Var {
 		Bool:   v.Bool,
 		Handle: v.Handle,
 		Bridge: v.Bridge,
-		Ref:    v.Ref, // Reference structures are shared by pointer
+		Ref:    v.Ref, // 共享内部引用
 	}
 	if v.B != nil {
 		res.B = make([]byte, len(v.B))
 		copy(res.B, v.B)
+	}
+	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
+	if v.VType == TypeHandle && v.Handle != 0 && v.Ref == nil {
+		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
+		res.Ref = NewVMHandle(v.Handle, v.Bridge)
 	}
 	if v.VType == TypeInterface {
 		if inter, ok := v.Ref.(*VMInterface); ok {
@@ -634,7 +639,7 @@ func (ctx *StackContext) AddVariable(name string, v *Var) error {
 	return nil
 }
 
-func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32) {
+func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32, _ interface{}) {
 	if ctx.ActiveHandles == nil {
 		ctx.ActiveHandles = &HandleTracker{}
 	}

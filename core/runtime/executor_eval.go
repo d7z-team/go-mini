@@ -854,7 +854,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 				hLen = len(session.ActiveHandles.Handles)
 			}
 			internalID := uint32(hLen + 1000000)
-			session.AddHandle(nil, internalID)
+			session.AddHandle(nil, internalID, nil)
 
 			res := &Var{
 				VType:  TypeHandle,

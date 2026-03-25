@@ -4,3 +4,4 @@ coverage.txt
 bin/
 vscode-ext/node_modules/
 *.vsix
+*.txt
