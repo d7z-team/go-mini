@@ -18,7 +18,6 @@ const (
 	MethodID_OS_WriteFile = 4
 	MethodID_OS_Remove    = 5
 	MethodID_OS_Getenv    = 6
-	MethodID_OS_Setenv    = 7
 )
 
 type OSProxy struct {
@@ -30,13 +29,13 @@ func NewOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) OS {
 	return &OSProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
+func (__p *OSProxy) Open(name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_OS_Open, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Open, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -69,13 +68,13 @@ func (__p *OSProxy) Open(ctx context.Context, name string) (*File, error) {
 	return v_0, err_1
 }
 
-func (__p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
+func (__p *OSProxy) Create(name string) (*File, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_OS_Create, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Create, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -108,13 +107,13 @@ func (__p *OSProxy) Create(ctx context.Context, name string) (*File, error) {
 	return v_0, err_1
 }
 
-func (__p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
+func (__p *OSProxy) ReadFile(name string) ([]byte, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_OS_ReadFile, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_ReadFile, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -141,14 +140,14 @@ func (__p *OSProxy) ReadFile(ctx context.Context, name string) ([]byte, error) {
 	return v_0, err_1
 }
 
-func (__p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) error {
+func (__p *OSProxy) WriteFile(name string, data []byte) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 	buf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_OS_WriteFile, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_WriteFile, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -173,13 +172,13 @@ func (__p *OSProxy) WriteFile(ctx context.Context, name string, data []byte) err
 	return err_0
 }
 
-func (__p *OSProxy) Remove(ctx context.Context, name string) error {
+func (__p *OSProxy) Remove(name string) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_OS_Remove, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Remove, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -219,38 +218,6 @@ func (__p *OSProxy) Getenv(key string) string {
 	return v_0
 }
 
-func (__p *OSProxy) Setenv(key string, value string) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	buf.WriteString(string(key))
-	buf.WriteString(string(value))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Setenv, buf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
 func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
@@ -266,8 +233,6 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			methodID = MethodID_OS_Remove
 		case "Getenv":
 			methodID = MethodID_OS_Getenv
-		case "Setenv":
-			methodID = MethodID_OS_Setenv
 		}
 	}
 
@@ -276,7 +241,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	case MethodID_OS_Open:
 		var name string
 		name = string(reqBuf.ReadString())
-		r0, err := impl.Open(ctx, name)
+		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
@@ -296,7 +261,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	case MethodID_OS_Create:
 		var name string
 		name = string(reqBuf.ReadString())
-		r0, err := impl.Create(ctx, name)
+		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
@@ -316,7 +281,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	case MethodID_OS_ReadFile:
 		var name string
 		name = string(reqBuf.ReadString())
-		r0, err := impl.ReadFile(ctx, name)
+		r0, err := impl.ReadFile(name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		if err != nil {
@@ -334,7 +299,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = string(reqBuf.ReadString())
 		var data []byte
 		data = reqBuf.ReadBytes()
-		err := impl.WriteFile(ctx, name, data)
+		err := impl.WriteFile(name, data)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			if registry != nil {
@@ -349,7 +314,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	case MethodID_OS_Remove:
 		var name string
 		name = string(reqBuf.ReadString())
-		err := impl.Remove(ctx, name)
+		err := impl.Remove(name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
 			if registry != nil {
@@ -368,23 +333,6 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_OS_Setenv:
-		var key string
-		key = string(reqBuf.ReadString())
-		var value string
-		value = string(reqBuf.ReadString())
-		err := impl.Setenv(key, value)
-		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -402,7 +350,6 @@ var OS_FFI_Metadata = []struct {
 	{"WriteFile", 4, "function(String, TypeBytes) Error", ""},
 	{"Remove", 5, "function(String) Error", ""},
 	{"Getenv", 6, "function(String) String", ""},
-	{"Setenv", 7, "function(String, String) Error", ""},
 }
 
 type OS_Bridge struct {

@@ -1,14 +1,13 @@
 package oslib
 
 import (
-	"context"
 	"os"
 	"unsafe"
 )
 
 type OSHost struct{}
 
-func (h *OSHost) Open(ctx context.Context, name string) (*File, error) {
+func (h *OSHost) Open(name string) (*File, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, err
@@ -16,7 +15,7 @@ func (h *OSHost) Open(ctx context.Context, name string) (*File, error) {
 	return (*File)(unsafe.Pointer(f)), nil
 }
 
-func (h *OSHost) Create(ctx context.Context, name string) (*File, error) {
+func (h *OSHost) Create(name string) (*File, error) {
 	f, err := os.Create(name)
 	if err != nil {
 		return nil, err
@@ -24,24 +23,20 @@ func (h *OSHost) Create(ctx context.Context, name string) (*File, error) {
 	return (*File)(unsafe.Pointer(f)), nil
 }
 
-func (h *OSHost) ReadFile(ctx context.Context, name string) ([]byte, error) {
+func (h *OSHost) ReadFile(name string) ([]byte, error) {
 	return os.ReadFile(name)
 }
 
-func (h *OSHost) WriteFile(ctx context.Context, name string, data []byte) error {
+func (h *OSHost) WriteFile(name string, data []byte) error {
 	return os.WriteFile(name, data, 0o644)
 }
 
-func (h *OSHost) Remove(ctx context.Context, name string) error {
+func (h *OSHost) Remove(name string) error {
 	return os.Remove(name)
 }
 
 func (h *OSHost) Getenv(key string) string {
 	return os.Getenv(key)
-}
-
-func (h *OSHost) Setenv(key, value string) error {
-	return os.Setenv(key, value)
 }
 
 type FileMethodsHost struct{}

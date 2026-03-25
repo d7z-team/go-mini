@@ -1,8 +1,6 @@
 //go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg oslib -path gopkg.d7z.net/go-mini/core/ffilib/oslib -out os_ffigen.go interface.go
 package oslib
 
-import "context"
-
 // File 是一个占位符结构体，用于在 FFI 中表示文件句柄
 type File struct{}
 
@@ -10,13 +8,12 @@ type File struct{}
 
 // ffigen:module os
 type OS interface {
-	Open(ctx context.Context, name string) (*File, error)
-	Create(ctx context.Context, name string) (*File, error)
-	ReadFile(ctx context.Context, name string) ([]byte, error)
-	WriteFile(ctx context.Context, name string, data []byte) error
-	Remove(ctx context.Context, name string) error
+	Open(name string) (*File, error)
+	Create(name string) (*File, error)
+	ReadFile(name string) ([]byte, error)
+	WriteFile(name string, data []byte) error
+	Remove(name string) error
 	Getenv(key string) string
-	Setenv(key, value string) error
 }
 
 // FileMethods 接口定义了文件句柄的方法

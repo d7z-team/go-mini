@@ -9,6 +9,9 @@ import (
 )
 
 func TestFFILibV2(t *testing.T) {
+	os.Setenv("GO_MINI_TEST", "rocks")
+	defer os.Unsetenv("GO_MINI_TEST")
+
 	code := `
 		package main
 		import "os"
@@ -18,7 +21,6 @@ func TestFFILibV2(t *testing.T) {
 
 		func main() {
 			// 1. 测试 OS 增强
-			os.Setenv("GO_MINI_TEST", "rocks")
 			if os.Getenv("GO_MINI_TEST") != "rocks" { panic("os.Getenv failed") }
 
 			// 2. 测试 f.Write 和 io.ReadAll 的联动
@@ -59,9 +61,4 @@ func TestFFILibV2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if os.Getenv("GO_MINI_TEST") != "rocks" {
-		t.Error("env should have been set in host")
-	}
-	_ = os.Unsetenv("GO_MINI_TEST")
 }
