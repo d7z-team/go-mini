@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -414,33 +415,34 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 	val = norm
 
 	// 2. 核心转换逻辑
+	var res *Var
 	switch v := val.(type) {
 	case *Var:
-		return v
+		res = v
 	case int:
-		return NewInt(int64(v))
+		res = NewInt(int64(v))
 	case int64:
-		return NewInt(v)
+		res = NewInt(v)
 	case float64:
-		return NewFloat(v)
+		res = NewFloat(v)
 	case string:
-		return NewString(v)
+		res = NewString(v)
 	case []byte:
 		if v == nil {
 			return nil
 		}
 		buf := make([]byte, len(v))
 		copy(buf, v)
-		return NewBytes(buf)
+		res = NewBytes(buf)
 	case bool:
-		return NewBool(v)
+		res = NewBool(v)
 	case uint32:
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
 			session.AddHandle(bridge, v, h)
 		}
-		return &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
+		res = &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
 	case ffigo.InterfaceData:
 		var ifaceStr strings.Builder
 		ifaceStr.WriteString("interface{")
@@ -465,7 +467,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			target.Ref = h
 			session.AddHandle(bridge, v.Handle, h)
 		}
-		return &Var{
+		res = &Var{
 			VType: TypeInterface,
 			Ref: &VMInterface{
 				Target:  target,
@@ -486,7 +488,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			h := NewVMHandle(v.Handle, bridge)
 			session.AddHandle(bridge, v.Handle, h)
 		}
-		return &Var{
+		res = &Var{
 			VType:  TypeError,
 			Ref:    errObj,
 			Bridge: bridge,
@@ -494,20 +496,25 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			Type:   "Error",
 		}
 	case map[string]interface{}:
-		res := make(map[string]*Var)
+		resMap := make(map[string]*Var)
 		for k, raw := range v {
-			res[k] = e.ToVar(session, raw, bridge)
+			resMap[k] = e.ToVar(session, raw, bridge)
 		}
-		return &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
+		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
 	case []interface{}:
-		res := make([]*Var, len(v))
+		resArr := make([]*Var, len(v))
 		for i, raw := range v {
-			res[i] = e.ToVar(session, raw, bridge)
+			resArr[i] = e.ToVar(session, raw, bridge)
 		}
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
+		res = &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
 	default:
-		return &Var{VType: TypeAny, Ref: v}
+		res = &Var{VType: TypeAny, Ref: v}
 	}
+
+	if res != nil && session.Stack != nil {
+		res.stack = weak.Make(session.Stack)
+	}
+	return res
 }
 
 // normalizeValue 将复杂的宿主对象（如 struct）规范化为 VM 可直接处理的类型（map/slice/primitives）。
@@ -739,6 +746,9 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 
 	if res != nil {
 		res.Type = typ
+		if session.Stack != nil {
+			res.stack = weak.Make(session.Stack)
+		}
 	}
 	return res, err
 }
