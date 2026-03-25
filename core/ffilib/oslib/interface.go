@@ -11,6 +11,7 @@ import (
 type OS interface {
 	Open(name string) (*iolib.File, error)
 	Create(name string) (*iolib.File, error)
+	OpenFile(name string, flag, perm int) (*iolib.File, error)
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte) error
 	Remove(name string) error

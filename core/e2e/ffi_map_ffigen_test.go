@@ -217,6 +217,8 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_MapTest_EchoMap:
 		var m map[string]string

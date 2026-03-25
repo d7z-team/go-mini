@@ -138,6 +138,8 @@ func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Base64_EncodeToString:
 		var src []byte

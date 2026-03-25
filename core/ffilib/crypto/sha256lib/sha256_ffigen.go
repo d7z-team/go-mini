@@ -48,6 +48,8 @@ func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_SHA256_Sum256:
 		var data []byte

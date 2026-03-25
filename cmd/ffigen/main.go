@@ -593,7 +593,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "\t\t}\n")
 	fmt.Fprintf(&sb, "\t}\n\n")
 
-	fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n\tswitch methodID {\n")
+	fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n\tvar rawVal any\n\t_ = rawVal\n\tswitch methodID {\n")
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
@@ -1053,7 +1053,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
-			fmt.Fprintf(sb, "\trawVal := %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase uint32: if obj, ok := registry.Get(rv); ok { %s = obj } else { %s = rv }\n\tcase ffigo.ErrorData: if rv.Handle != 0 { if obj, ok := registry.Get(rv.Handle); ok { %s = obj } else { %s = rv } } else { %s = rv }\n\tdefault: %s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName, varName)
+			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase uint32: if obj, ok := registry.Get(rv); ok { %s = obj } else { %s = rv }\n\tcase ffigo.ErrorData: if rv.Handle != 0 { if obj, ok := registry.Get(rv.Handle); ok { %s = obj } else { %s = rv } } else { %s = rv }\n\tdefault: %s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName, varName)
 		} else {
 			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
 		}

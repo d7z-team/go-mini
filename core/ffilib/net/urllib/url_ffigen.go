@@ -106,6 +106,8 @@ func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_URL_QueryEscape:
 		var s string

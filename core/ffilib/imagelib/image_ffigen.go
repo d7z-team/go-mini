@@ -99,6 +99,8 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_ImageLib_Decode:
 		var data []byte
@@ -245,6 +247,8 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Image_Bounds:
 		var i *Image

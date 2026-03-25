@@ -313,6 +313,8 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Strconv_Atoi:
 		var s string

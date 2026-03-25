@@ -299,6 +299,8 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Time_Now:
 		r0 := impl.Now()

@@ -369,6 +369,8 @@ func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Strings_Contains:
 		var s string

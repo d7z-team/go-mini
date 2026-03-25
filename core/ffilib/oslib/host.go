@@ -2,7 +2,6 @@ package oslib
 
 import (
 	"os"
-	"unsafe"
 
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 )
@@ -14,7 +13,7 @@ func (h *OSHost) Open(name string) (*iolib.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return (*iolib.File)(unsafe.Pointer(f)), nil
+	return &iolib.File{F: f}, nil
 }
 
 func (h *OSHost) Create(name string) (*iolib.File, error) {
@@ -22,7 +21,15 @@ func (h *OSHost) Create(name string) (*iolib.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return (*iolib.File)(unsafe.Pointer(f)), nil
+	return &iolib.File{F: f}, nil
+}
+
+func (h *OSHost) OpenFile(name string, flag, perm int) (*iolib.File, error) {
+	f, err := os.OpenFile(name, flag, os.FileMode(perm))
+	if err != nil {
+		return nil, err
+	}
+	return &iolib.File{F: f}, nil
 }
 
 func (h *OSHost) ReadFile(name string) ([]byte, error) {

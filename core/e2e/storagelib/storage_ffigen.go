@@ -66,6 +66,8 @@ func StorageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_StorageAPI_SetCapacity:
 		var capacity uint32

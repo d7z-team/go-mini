@@ -102,10 +102,12 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_JSON_Marshal:
 		var v any
-		rawVal := reqBuf.ReadAny()
+		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
 			if obj, ok := registry.Get(rv); ok {

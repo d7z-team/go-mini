@@ -165,6 +165,8 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Rand_Float64:
 		r0 := impl.Float64()

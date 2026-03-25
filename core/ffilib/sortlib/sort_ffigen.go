@@ -171,6 +171,8 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Sort_Ints:
 		var x []int64

@@ -312,6 +312,8 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_MockOS_Open:
 		var name string
@@ -564,6 +566,8 @@ func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffig
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_ContextMock_WithContext:
 		var key string
@@ -741,6 +745,8 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_NativeMock_GetStruct:
 		r0 := impl.GetStruct()

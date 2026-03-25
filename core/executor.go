@@ -441,8 +441,7 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
 
 	// 2. Inject io
-	iolib.RegisterIO(e, &iolib.IOHost{}, e.registry)
-	iolib.RegisterFileMethods(e, &iolib.FileMethodsHost{}, e.registry)
+	iolib.RegisterIOAll(e, &iolib.IOHost{}, e.registry)
 
 	// 3. Inject image
 	imagelib.RegisterImageAll(e, &imagelib.ImageHost{}, e.registry)

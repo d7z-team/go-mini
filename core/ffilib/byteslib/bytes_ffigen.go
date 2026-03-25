@@ -310,6 +310,8 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Bytes_Contains:
 		var b []byte

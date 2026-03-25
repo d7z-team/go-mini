@@ -213,10 +213,11 @@ func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem 
 	res := make([]CompletionItem, 0, len(items))
 	for _, it := range items {
 		res = append(res, CompletionItem{
-			Label:      it.Label,
-			Kind:       MapKind(it.Kind),
-			Detail:     string(it.Type),
-			InsertText: it.Label,
+			Label:         it.Label,
+			Kind:          MapKind(it.Kind),
+			Detail:        string(it.Type),
+			InsertText:    it.Label,
+			Documentation: it.Doc,
 		})
 	}
 	return res

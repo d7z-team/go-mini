@@ -48,6 +48,8 @@ func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_MD5_Sum:
 		var data []byte

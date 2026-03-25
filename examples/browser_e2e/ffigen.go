@@ -73,6 +73,8 @@ func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_BrowserModule_OpenBrowser:
 		var url string
@@ -212,6 +214,8 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_BrowserService_NewPage:
 		var b *other.Browser
@@ -362,6 +366,8 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_PageService_Locator:
 		var p *other.Page
@@ -506,6 +512,8 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_CdpSelectorService_Click:
 		var s *other.CdpSelector

@@ -15,10 +15,11 @@ import (
 const (
 	MethodID_OS_Open      = 1
 	MethodID_OS_Create    = 2
-	MethodID_OS_ReadFile  = 3
-	MethodID_OS_WriteFile = 4
-	MethodID_OS_Remove    = 5
-	MethodID_OS_Getenv    = 6
+	MethodID_OS_OpenFile  = 3
+	MethodID_OS_ReadFile  = 4
+	MethodID_OS_WriteFile = 5
+	MethodID_OS_Remove    = 6
+	MethodID_OS_Getenv    = 7
 )
 
 type OSProxy struct {
@@ -76,6 +77,47 @@ func (__p *OSProxy) Create(name string) (*iolib.File, error) {
 	buf.WriteString(string(name))
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Create, buf.Bytes())
+	_ = retData
+	_ = err
+	if err != nil {
+		return nil, err
+	}
+	retBuf := ffigo.NewReader(retData)
+	var v_0 *iolib.File
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
+				v_0 = obj.(*iolib.File)
+			}
+		}
+	}
+	var err_1 error
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = ed
+				}
+			} else {
+				err_1 = ed
+			}
+		}
+	}
+	return v_0, err_1
+}
+
+func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(string(name))
+	buf.WriteVarint(int64(flag))
+	buf.WriteVarint(int64(perm))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_OpenFile, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -226,6 +268,8 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			methodID = MethodID_OS_Open
 		case "Create":
 			methodID = MethodID_OS_Create
+		case "OpenFile":
+			methodID = MethodID_OS_OpenFile
 		case "ReadFile":
 			methodID = MethodID_OS_ReadFile
 		case "WriteFile":
@@ -238,6 +282,8 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_OS_Open:
 		var name string
@@ -263,6 +309,36 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		var name string
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Create(name)
+		resBuf := ffigo.GetBuffer()
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_OS_OpenFile:
+		var name string
+		name = string(reqBuf.ReadString())
+		var flag int
+		{
+			tmp := reqBuf.ReadVarint()
+			flag = int(tmp)
+		}
+		var perm int
+		{
+			tmp := reqBuf.ReadVarint()
+			perm = int(tmp)
+		}
+		r0, err := impl.OpenFile(name, flag, perm)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
@@ -347,10 +423,11 @@ var OS_FFI_Metadata = []struct {
 }{
 	{"Open", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
 	{"Create", 2, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
-	{"ReadFile", 3, "function(String) tuple(TypeBytes, Error)", ""},
-	{"WriteFile", 4, "function(String, TypeBytes) Error", ""},
-	{"Remove", 5, "function(String) Error", ""},
-	{"Getenv", 6, "function(String) String", ""},
+	{"OpenFile", 3, "function(String, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
+	{"ReadFile", 4, "function(String) tuple(TypeBytes, Error)", ""},
+	{"WriteFile", 5, "function(String, TypeBytes) Error", ""},
+	{"Remove", 6, "function(String) Error", ""},
+	{"Getenv", 7, "function(String) String", ""},
 }
 
 type OS_Bridge struct {

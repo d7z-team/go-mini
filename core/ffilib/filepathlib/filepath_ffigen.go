@@ -289,6 +289,8 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Filepath_Base:
 		var path string

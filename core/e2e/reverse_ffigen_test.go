@@ -112,6 +112,8 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_ScriptCalculator_Add:
 		var a int64

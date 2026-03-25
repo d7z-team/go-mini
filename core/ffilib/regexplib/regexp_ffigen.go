@@ -244,6 +244,8 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Regexp_Match:
 		var pattern string

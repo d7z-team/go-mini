@@ -104,13 +104,15 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Fmt_Print:
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal := reqBuf.ReadAny()
+			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
 				if obj, ok := registry.Get(rv); ok {
@@ -140,7 +142,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal := reqBuf.ReadAny()
+			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
 				if obj, ok := registry.Get(rv); ok {
@@ -172,7 +174,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal := reqBuf.ReadAny()
+			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
 				if obj, ok := registry.Get(rv); ok {
@@ -204,7 +206,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal := reqBuf.ReadAny()
+			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
 				if obj, ok := registry.Get(rv); ok {

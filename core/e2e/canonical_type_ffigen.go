@@ -80,6 +80,8 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_TestCanonicalService_NewA:
 		var name string
@@ -201,6 +203,8 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
@@ -310,6 +314,8 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type

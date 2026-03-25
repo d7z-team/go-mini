@@ -55,6 +55,8 @@ func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_MockGeometry_SumX:
 		var points []RobustPoint

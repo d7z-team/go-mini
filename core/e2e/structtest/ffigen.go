@@ -30,6 +30,8 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Calculator_Add:
 		var c *Calculator
@@ -151,6 +153,8 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Factory_New:
 		var base int64

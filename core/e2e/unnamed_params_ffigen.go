@@ -63,6 +63,8 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Logger_Log:
 		var msg string
@@ -189,6 +191,8 @@ func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Callback_OnEvent:
 		var arg0 int64

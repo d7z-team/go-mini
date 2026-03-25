@@ -388,6 +388,8 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Math_Abs:
 		var x float64

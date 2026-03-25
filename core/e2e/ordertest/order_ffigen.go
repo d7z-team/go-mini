@@ -202,6 +202,8 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_OrderService_New:
 		var id string

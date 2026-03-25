@@ -152,6 +152,8 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_UTF8_DecodeRuneInString:
 		var s string

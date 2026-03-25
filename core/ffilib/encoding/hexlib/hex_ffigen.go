@@ -102,6 +102,8 @@ func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case MethodID_Hex_EncodeToString:
 		var src []byte
