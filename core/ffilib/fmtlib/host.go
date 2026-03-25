@@ -6,6 +6,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib"
 )
 
 // Outputter 接口定义了自定义输出操作
@@ -13,19 +14,17 @@ type Outputter interface {
 	Print(string)
 }
 
-type ctxKey string
-
-const fmtKey ctxKey = "fmt"
+const FMTKey ffilib.CtxKey = "gomini.fmt.Outputter"
 
 // WithOutputter 将 Outputter 注入 context
 func WithOutputter(ctx context.Context, o Outputter) context.Context {
-	return context.WithValue(ctx, fmtKey, o)
+	return context.WithValue(ctx, FMTKey, o)
 }
 
 type FmtHost struct{}
 
 func (h *FmtHost) Print(ctx context.Context, args ...any) {
-	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
 		o.Print(fmt.Sprint(args...))
 		return
 	}
@@ -33,7 +32,7 @@ func (h *FmtHost) Print(ctx context.Context, args ...any) {
 }
 
 func (h *FmtHost) Println(ctx context.Context, args ...any) {
-	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
 		o.Print(fmt.Sprintln(args...))
 		return
 	}
@@ -41,7 +40,7 @@ func (h *FmtHost) Println(ctx context.Context, args ...any) {
 }
 
 func (h *FmtHost) Printf(ctx context.Context, format string, args ...any) {
-	if o, ok := ctx.Value(fmtKey).(Outputter); ok {
+	if o, ok := ctx.Value(FMTKey).(Outputter); ok {
 		o.Print(fmt.Sprintf(format, args...))
 		return
 	}
