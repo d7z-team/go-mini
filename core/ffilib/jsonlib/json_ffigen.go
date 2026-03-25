@@ -110,17 +110,17 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, ok := registry.Get(rv); ok {
+			if obj, err := registry.GetWithAudit(rv); err == nil {
 				v = obj
 			} else {
-				v = rv
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "v", err)
 			}
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, ok := registry.Get(rv.Handle); ok {
+				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 					v = obj
 				} else {
-					v = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "v", err)
 				}
 			} else {
 				v = rv

@@ -338,10 +338,10 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Name:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		r0 := impl.Name(f)
@@ -351,10 +351,10 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Stat:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		r0, err := impl.Stat(f)
@@ -374,10 +374,10 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Read:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var b []byte
@@ -398,10 +398,10 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Write:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var b []byte
@@ -422,10 +422,10 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case MethodID_MockOS_Close:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		err := impl.Close(f)
@@ -777,10 +777,10 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case MethodID_NativeMock_SetPtr:
 		var s *NativeStruct
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				s = obj.(*NativeStruct)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "s", err)
 			}
 		}
 		r0 := impl.SetPtr(s)

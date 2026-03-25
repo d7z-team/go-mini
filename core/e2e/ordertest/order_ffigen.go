@@ -228,10 +228,10 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case MethodID_OrderService_AddItem:
 		var o *Order
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
 			}
 		}
 		var name string
@@ -253,10 +253,10 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case MethodID_OrderService_GetTotal:
 		var o *Order
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
 			}
 		}
 		r0, err := impl.GetTotal(o)
@@ -275,10 +275,10 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case MethodID_OrderService_Close:
 		var o *Order
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
 			}
 		}
 		err := impl.Close(o)

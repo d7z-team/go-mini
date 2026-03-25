@@ -100,9 +100,17 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 			vme.IsPanic = true
 			return nil, vme
 		}
-		// 将宿主 Error 包装为 Panic
+		
+		// 获取 VM 调用栈
+		frames := session.GenerateStackTrace(nil)
+		var stackStr strings.Builder
+		for i, f := range frames {
+			stackStr.WriteString(fmt.Sprintf("\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column))
+		}
+
+		// 将宿主 Error 包装为带栈信息的 Panic
 		return nil, &VMError{
-			Message: err.Error(),
+			Message: fmt.Sprintf("%v\n\nVM Stack Trace:%s", err.Error(), stackStr.String()),
 			Value:   NewString(err.Error()),
 			IsPanic: true,
 			Cause:   err,

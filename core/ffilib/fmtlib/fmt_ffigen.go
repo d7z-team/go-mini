@@ -115,17 +115,17 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, ok := registry.Get(rv); ok {
+				if obj, err := registry.GetWithAudit(rv); err == nil {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 				}
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, ok := registry.Get(rv.Handle); ok {
+					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 						args[i_args] = obj
 					} else {
-						args[i_args] = rv
+						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 					}
 				} else {
 					args[i_args] = rv
@@ -145,17 +145,17 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, ok := registry.Get(rv); ok {
+				if obj, err := registry.GetWithAudit(rv); err == nil {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 				}
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, ok := registry.Get(rv.Handle); ok {
+					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 						args[i_args] = obj
 					} else {
-						args[i_args] = rv
+						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 					}
 				} else {
 					args[i_args] = rv
@@ -177,17 +177,17 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, ok := registry.Get(rv); ok {
+				if obj, err := registry.GetWithAudit(rv); err == nil {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 				}
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, ok := registry.Get(rv.Handle); ok {
+					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 						args[i_args] = obj
 					} else {
-						args[i_args] = rv
+						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 					}
 				} else {
 					args[i_args] = rv
@@ -209,17 +209,17 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, ok := registry.Get(rv); ok {
+				if obj, err := registry.GetWithAudit(rv); err == nil {
 					args[i_args] = obj
 				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 				}
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, ok := registry.Get(rv.Handle); ok {
+					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 						args[i_args] = obj
 					} else {
-						args[i_args] = rv
+						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
 					}
 				} else {
 					args[i_args] = rv

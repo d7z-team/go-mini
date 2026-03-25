@@ -36,10 +36,10 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case MethodID_Calculator_Add:
 		var c *Calculator
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
 			}
 		}
 		var x int64
@@ -54,10 +54,10 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case MethodID_Calculator_Multiply:
 		var c *Calculator
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
 			}
 		}
 		var x int64
@@ -77,10 +77,10 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case MethodID_Calculator_GetBase:
 		var c *Calculator
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
 			}
 		}
 		r0 := c.GetBase()

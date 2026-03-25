@@ -979,7 +979,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
 		if isHost {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { %s = obj.(%s) } else { return nil, fmt.Errorf(\"invalid handle ID: %%d\", id) } }\n", readerName, varName, toGoType(pType))
+			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, err := registry.GetWithAudit(id); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, varName, toGoType(pType), varName)
 		} else {
 			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
 		}
@@ -1053,7 +1053,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
-			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase uint32: if obj, ok := registry.Get(rv); ok { %s = obj } else { %s = rv }\n\tcase ffigo.ErrorData: if rv.Handle != 0 { if obj, ok := registry.Get(rv.Handle); ok { %s = obj } else { %s = rv } } else { %s = rv }\n\tdefault: %s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName, varName)
+			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase uint32: if obj, err := registry.GetWithAudit(rv); err == nil { %s = obj } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) }\n\tcase ffigo.ErrorData: if rv.Handle != 0 { if obj, err := registry.GetWithAudit(rv.Handle); err == nil { %s = obj } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } } else { %s = rv }\n\tdefault: %s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName, varName)
 		} else {
 			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
 		}

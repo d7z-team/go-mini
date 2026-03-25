@@ -253,10 +253,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Bounds:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0, r1, r2, r3 := i.Bounds()
@@ -269,10 +269,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Size:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0, r1 := i.Size()
@@ -283,10 +283,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Width:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0 := i.Width()
@@ -296,10 +296,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Height:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0 := i.Height()
@@ -309,10 +309,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_At:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var x int
@@ -335,10 +335,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Set:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var x int
@@ -377,10 +377,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Fill:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var r int
@@ -409,10 +409,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Clear:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		i.Clear()
@@ -421,10 +421,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Clone:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0 := i.Clone()
@@ -438,10 +438,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_SubImage:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var x int
@@ -484,18 +484,18 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Draw:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var src *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				src = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
 			}
 		}
 		var x int
@@ -514,10 +514,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Resize:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var width int
@@ -550,10 +550,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_Crop:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var x int
@@ -596,10 +596,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_EncodePNG:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		r0, err := i.EncodePNG()
@@ -618,10 +618,10 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case MethodID_Image_EncodeJPEG:
 		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				i = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
 			}
 		}
 		var quality int

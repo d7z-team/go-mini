@@ -220,10 +220,10 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 	case MethodID_BrowserService_NewPage:
 		var b *other.Browser
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				b = obj.(*other.Browser)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "b", err)
 			}
 		}
 		r0, err := impl.NewPage(b)
@@ -372,10 +372,10 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 	case MethodID_PageService_Locator:
 		var p *other.Page
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				p = obj.(*other.Page)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "p", err)
 			}
 		}
 		var selectors []string
@@ -518,10 +518,10 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 	case MethodID_CdpSelectorService_Click:
 		var s *other.CdpSelector
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				s = obj.(*other.CdpSelector)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "s", err)
 			}
 		}
 		err := impl.Click(s)

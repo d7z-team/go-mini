@@ -154,17 +154,17 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, ok := registry.Get(rv); ok {
+			if obj, err := registry.GetWithAudit(rv); err == nil {
 				r = obj
 			} else {
-				r = rv
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "r", err)
 			}
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, ok := registry.Get(rv.Handle); ok {
+				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 					r = obj
 				} else {
-					r = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "r", err)
 				}
 			} else {
 				r = rv
@@ -190,17 +190,17 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, ok := registry.Get(rv); ok {
+			if obj, err := registry.GetWithAudit(rv); err == nil {
 				dst = obj
 			} else {
-				dst = rv
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "dst", err)
 			}
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, ok := registry.Get(rv.Handle); ok {
+				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 					dst = obj
 				} else {
-					dst = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "dst", err)
 				}
 			} else {
 				dst = rv
@@ -212,17 +212,17 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, ok := registry.Get(rv); ok {
+			if obj, err := registry.GetWithAudit(rv); err == nil {
 				src = obj
 			} else {
-				src = rv
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
 			}
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, ok := registry.Get(rv.Handle); ok {
+				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 					src = obj
 				} else {
-					src = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
 				}
 			} else {
 				src = rv
@@ -248,17 +248,17 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, ok := registry.Get(rv); ok {
+			if obj, err := registry.GetWithAudit(rv); err == nil {
 				w = obj
 			} else {
-				w = rv
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "w", err)
 			}
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, ok := registry.Get(rv.Handle); ok {
+				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
 					w = obj
 				} else {
-					w = rv
+					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "w", err)
 				}
 			} else {
 				w = rv
@@ -375,10 +375,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Write:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var b []byte
@@ -399,10 +399,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_WriteAt:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var b []byte
@@ -428,10 +428,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Seek:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var offset int64
@@ -460,10 +460,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Close:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		err := f.Close()
@@ -481,10 +481,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Sync:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		err := f.Sync()
@@ -502,10 +502,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Truncate:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var size int64
@@ -528,10 +528,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_WriteString:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var s string
@@ -552,10 +552,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_Name:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		r0 := f.Name()
@@ -565,10 +565,10 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case MethodID_File_WriteNative:
 		var f *File
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
 		}
 		var p []byte

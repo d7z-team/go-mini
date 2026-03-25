@@ -209,10 +209,10 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				t = obj.(*a_other.Type)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
 		}
 		r0 := impl.Hello(t)
@@ -320,10 +320,10 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
+			if obj, err := registry.GetWithAudit(id); err == nil {
 				t = obj.(*b_other.Type)
 			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
 		}
 		r0 := impl.Hello(t)
