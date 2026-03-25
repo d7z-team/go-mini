@@ -12,15 +12,26 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/crypto/md5lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/crypto/sha256lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/encoding/base64lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/encoding/hexlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/filepathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/math/randlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/net/urllib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/regexplib"
+	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
+	"gopkg.d7z.net/go-mini/core/ffilib/unicode/utf8lib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -277,6 +288,17 @@ func NewMiniExecutor() *MiniExecutor {
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
 	mathlib.RegisterMath(res, &mathlib.MathHost{}, res.registry)
 	filepathlib.RegisterFilepath(res, &filepathlib.FilepathHost{}, res.registry)
+	strconvlib.RegisterStrconv(res, &strconvlib.StrconvHost{}, res.registry)
+	byteslib.RegisterBytes(res, &byteslib.BytesHost{}, res.registry)
+	sortlib.RegisterSort(res, &sortlib.SortHost{}, res.registry)
+	regexplib.RegisterRegexp(res, &regexplib.RegexpHost{}, res.registry)
+	randlib.RegisterRand(res, &randlib.RandHost{}, res.registry)
+	utf8lib.RegisterUTF8(res, &utf8lib.UTF8Host{}, res.registry)
+	base64lib.RegisterBase64(res, &base64lib.Base64Host{}, res.registry)
+	hexlib.RegisterHex(res, &hexlib.HexHost{}, res.registry)
+	md5lib.RegisterMD5(res, &md5lib.MD5Host{}, res.registry)
+	sha256lib.RegisterSHA256(res, &sha256lib.SHA256Host{}, res.registry)
+	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}
