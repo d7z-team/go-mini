@@ -367,7 +367,11 @@ func (v *Var) Copy() *Var {
 	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
 	if v.VType == TypeHandle && v.Handle != 0 && v.Ref == nil {
 		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
-		res.Ref = NewVMHandle(v.Handle, v.Bridge)
+		h := NewVMHandle(v.Handle, v.Bridge)
+		res.Ref = h
+		if v.stack.Value() != nil {
+			v.stack.Value().AddHandle(v.Bridge, v.Handle, h)
+		}
 	}
 	if v.VType == TypeInterface {
 		if inter, ok := v.Ref.(*VMInterface); ok {
@@ -429,7 +433,15 @@ type Stack struct {
 	interrupt string
 	Depth     int
 
-	DeferStack []func()
+	DeferStack    []func()
+	ActiveHandles *HandleTracker // 作用域/会话级的句柄追踪，防止 GC 提前回收
+}
+
+func (s *Stack) AddHandle(bridge ffigo.FFIBridge, id uint32, h *VMHandle) {
+	if s.ActiveHandles == nil {
+		s.ActiveHandles = &HandleTracker{}
+	}
+	s.ActiveHandles.Handles = append(s.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id, Ref: h})
 }
 
 func (s *Stack) AddDefer(fn func()) {
@@ -447,6 +459,7 @@ func (s *Stack) RunDefers() {
 type HandleRef struct {
 	Bridge ffigo.FFIBridge
 	ID     uint32
+	Ref    *VMHandle // 强引用，防止在 Session 存活期间被回收
 }
 
 type HandleTracker struct {
@@ -639,11 +652,10 @@ func (ctx *StackContext) AddVariable(name string, v *Var) error {
 	return nil
 }
 
-func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32, _ interface{}) {
-	if ctx.ActiveHandles == nil {
-		ctx.ActiveHandles = &HandleTracker{}
+func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32, h *VMHandle) {
+	if ctx.Stack != nil {
+		ctx.Stack.AddHandle(bridge, id, h)
 	}
-	ctx.ActiveHandles.Handles = append(ctx.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id})
 }
 
 func (ctx *StackContext) Load(name string) (*Var, error) {

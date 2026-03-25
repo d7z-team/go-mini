@@ -115,17 +115,20 @@ func (e *Executor) CleanupSession(session *StackContext) {
 	if session == nil {
 		return
 	}
-	// Run all defers
-	if session.Stack != nil {
-		session.Stack.RunDefers()
-	}
-	// Clean up all active handles to prevent memory leaks on VM exit
-	if session.ActiveHandles != nil {
-		for _, h := range session.ActiveHandles.Handles {
-			if h.Bridge != nil && h.ID != 0 {
-				_ = h.Bridge.DestroyHandle(h.ID)
+	// Run all defers and clean up handles in all scopes
+	curr := session.Stack
+	for curr != nil {
+		if curr.DeferStack != nil {
+			curr.RunDefers()
+		}
+		if curr.ActiveHandles != nil {
+			for _, h := range curr.ActiveHandles.Handles {
+				if h.Bridge != nil && h.ID != 0 {
+					_ = h.Bridge.DestroyHandle(h.ID)
+				}
 			}
 		}
+		curr = curr.Parent
 	}
 }
 
