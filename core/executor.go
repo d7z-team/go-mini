@@ -16,6 +16,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
@@ -273,6 +274,7 @@ func NewMiniExecutor() *MiniExecutor {
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
 	timelib.RegisterTime(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
+	mathlib.RegisterMath(res, &mathlib.MathHost{}, res.registry)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}

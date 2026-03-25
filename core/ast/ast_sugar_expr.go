@@ -223,10 +223,16 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 
+	u.Type = u.Operand.GetBase().Type
 	if u.Operator == "Not" {
+		if u.Type != "Bool" && u.Type != "Any" && u.Type != "" {
+			ctx.AddErrorf("Not 运算符预期 Bool, 实际为 %s", u.Type)
+		}
 		u.Type = "Bool"
-	} else {
-		u.Type = u.Operand.GetBase().Type
+	} else if u.Operator == "Sub" || u.Operator == "Plus" {
+		if u.Type != "Int64" && u.Type != "Float64" && u.Type != "Any" && u.Type != "" {
+			ctx.AddErrorf("%s 运算符预期数值类型, 实际为 %s", u.Operator, u.Type)
+		}
 	}
 
 	return nil

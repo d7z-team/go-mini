@@ -7,7 +7,14 @@ package timelib
 type Time interface {
 	Now() string
 	Unix() int64
+	UnixMilli() int64
+	UnixMicro() int64
 	UnixNano() int64
 	Sleep(ns int64)
 	Since(ns int64) int64
+	Format(ns int64, layout string) string
+	Parse(layout, value string) (int64, error)
+	ParseDuration(s string) (int64, error)
+	Add(ns int64, duration int64) int64
+	Sub(ns1 int64, ns2 int64) int64
 }

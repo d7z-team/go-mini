@@ -279,6 +279,9 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 		if val.VType == TypeInt {
 			return NewInt(-val.I64), nil
 		}
+		if val.VType == TypeFloat {
+			return NewFloat(-val.F64), nil
+		}
 	case "^", "BitXor", "Xor":
 		if val.VType == TypeInt {
 			return NewInt(^val.I64), nil

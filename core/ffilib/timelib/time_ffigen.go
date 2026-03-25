@@ -12,11 +12,18 @@ import (
 )
 
 const (
-	MethodID_Time_Now      = 1
-	MethodID_Time_Unix     = 2
-	MethodID_Time_UnixNano = 3
-	MethodID_Time_Sleep    = 4
-	MethodID_Time_Since    = 5
+	MethodID_Time_Now           = 1
+	MethodID_Time_Unix          = 2
+	MethodID_Time_UnixMilli     = 3
+	MethodID_Time_UnixMicro     = 4
+	MethodID_Time_UnixNano      = 5
+	MethodID_Time_Sleep         = 6
+	MethodID_Time_Since         = 7
+	MethodID_Time_Format        = 8
+	MethodID_Time_Parse         = 9
+	MethodID_Time_ParseDuration = 10
+	MethodID_Time_Add           = 11
+	MethodID_Time_Sub           = 12
 )
 
 type TimeProxy struct {
@@ -46,6 +53,38 @@ func (__p *TimeProxy) Unix() int64 {
 	defer ffigo.ReleaseBuffer(buf)
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Unix, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	return v_0
+}
+
+func (__p *TimeProxy) UnixMilli() int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixMilli, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	return v_0
+}
+
+func (__p *TimeProxy) UnixMicro() int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixMicro, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -102,6 +141,133 @@ func (__p *TimeProxy) Since(ns int64) int64 {
 	return v_0
 }
 
+func (__p *TimeProxy) Format(ns int64, layout string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteVarint(int64(ns))
+	buf.WriteString(string(layout))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Format, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = string(retBuf.ReadString())
+	return v_0
+}
+
+func (__p *TimeProxy) Parse(layout string, value string) (int64, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(string(layout))
+	buf.WriteString(string(value))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Parse, buf.Bytes())
+	_ = retData
+	_ = err
+	if err != nil {
+		return 0, err
+	}
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	var err_1 error
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = ed
+				}
+			} else {
+				err_1 = ed
+			}
+		}
+	}
+	return v_0, err_1
+}
+
+func (__p *TimeProxy) ParseDuration(s string) (int64, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(string(s))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_ParseDuration, buf.Bytes())
+	_ = retData
+	_ = err
+	if err != nil {
+		return 0, err
+	}
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	var err_1 error
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = ed
+				}
+			} else {
+				err_1 = ed
+			}
+		}
+	}
+	return v_0, err_1
+}
+
+func (__p *TimeProxy) Add(ns int64, duration int64) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteVarint(int64(ns))
+	buf.WriteVarint(int64(duration))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Add, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	return v_0
+}
+
+func (__p *TimeProxy) Sub(ns1 int64, ns2 int64) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteVarint(int64(ns1))
+	buf.WriteVarint(int64(ns2))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Sub, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	return v_0
+}
+
 func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
@@ -109,12 +275,26 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 			methodID = MethodID_Time_Now
 		case "Unix":
 			methodID = MethodID_Time_Unix
+		case "UnixMilli":
+			methodID = MethodID_Time_UnixMilli
+		case "UnixMicro":
+			methodID = MethodID_Time_UnixMicro
 		case "UnixNano":
 			methodID = MethodID_Time_UnixNano
 		case "Sleep":
 			methodID = MethodID_Time_Sleep
 		case "Since":
 			methodID = MethodID_Time_Since
+		case "Format":
+			methodID = MethodID_Time_Format
+		case "Parse":
+			methodID = MethodID_Time_Parse
+		case "ParseDuration":
+			methodID = MethodID_Time_ParseDuration
+		case "Add":
+			methodID = MethodID_Time_Add
+		case "Sub":
+			methodID = MethodID_Time_Sub
 		}
 	}
 
@@ -127,6 +307,16 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Unix:
 		r0 := impl.Unix()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixMilli:
+		r0 := impl.UnixMilli()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixMicro:
+		r0 := impl.UnixMicro()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
@@ -154,6 +344,82 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
+	case MethodID_Time_Format:
+		var ns int64
+		{
+			tmp := reqBuf.ReadVarint()
+			ns = int64(tmp)
+		}
+		var layout string
+		layout = string(reqBuf.ReadString())
+		r0 := impl.Format(ns, layout)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Parse:
+		var layout string
+		layout = string(reqBuf.ReadString())
+		var value string
+		value = string(reqBuf.ReadString())
+		r0, err := impl.Parse(layout, value)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Time_ParseDuration:
+		var s string
+		s = string(reqBuf.ReadString())
+		r0, err := impl.ParseDuration(s)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Add:
+		var ns int64
+		{
+			tmp := reqBuf.ReadVarint()
+			ns = int64(tmp)
+		}
+		var duration int64
+		{
+			tmp := reqBuf.ReadVarint()
+			duration = int64(tmp)
+		}
+		r0 := impl.Add(ns, duration)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Sub:
+		var ns1 int64
+		{
+			tmp := reqBuf.ReadVarint()
+			ns1 = int64(tmp)
+		}
+		var ns2 int64
+		{
+			tmp := reqBuf.ReadVarint()
+			ns2 = int64(tmp)
+		}
+		r0 := impl.Sub(ns1, ns2)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -167,9 +433,16 @@ var Time_FFI_Metadata = []struct {
 }{
 	{"Now", 1, "function() String", ""},
 	{"Unix", 2, "function() Int64", ""},
-	{"UnixNano", 3, "function() Int64", ""},
-	{"Sleep", 4, "function(Int64) Void", ""},
-	{"Since", 5, "function(Int64) Int64", ""},
+	{"UnixMilli", 3, "function() Int64", ""},
+	{"UnixMicro", 4, "function() Int64", ""},
+	{"UnixNano", 5, "function() Int64", ""},
+	{"Sleep", 6, "function(Int64) Void", ""},
+	{"Since", 7, "function(Int64) Int64", ""},
+	{"Format", 8, "function(Int64, String) String", ""},
+	{"Parse", 9, "function(String, String) tuple(Int64, Error)", ""},
+	{"ParseDuration", 10, "function(String) tuple(Int64, Error)", ""},
+	{"Add", 11, "function(Int64, Int64) Int64", ""},
+	{"Sub", 12, "function(Int64, Int64) Int64", ""},
 }
 
 type Time_Bridge struct {
