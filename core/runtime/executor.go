@@ -394,57 +394,16 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 }
 
 func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
-	session := &StackContext{
-		Context:  ctx,
-		Executor: e,
-		Stack: &Stack{
-			MemoryPtr: make(map[string]*Var),
-			Scope:     "global",
-			Depth:     1,
-		},
-		StepLimit:      e.StepLimit,
-		ModuleCache:    make(map[string]*Var),
-		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 128)},
-		Debugger:       debugger.GetDebugger(ctx),
-		TaskStack:      make([]Task, 0, 128),
-		ValueStack:     &ValueStack{},
-		UnwindMode:     UnwindNone,
-		resumeSignal:   make(chan struct{}, 1),
-	}
-
-	// Setup Context Bridge (Fake Context logic)
-	// Propagate host cancellation to VM internal status bit.
-	if ctx != nil && ctx.Done() != nil {
-		done := make(chan struct{})
-		defer close(done)
-		go func() {
-			select {
-			case <-ctx.Done():
-				session.Abort()
-			case <-done:
-			}
-		}()
-	}
+	session := e.NewSession(ctx, "global")
+	session.StepLimit = e.StepLimit
 
 	e.mu.Lock()
 	e.lastSession = session
 	e.mu.Unlock()
 
-	defer func() {
-		// Clean up all active handles to prevent memory leaks on VM exit
-		if session.ActiveHandles != nil {
-			for _, h := range session.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
-		}
-		// Ensure all defers are run
-		session.Stack.RunDefers()
-	}()
+	defer e.CleanupSession(session)
 
-	// 注入环境变量
+	// 注入脚本定义的全局变量
 	for name, expr := range e.program.Variables {
 		var val *Var
 		if expr != nil {
@@ -460,9 +419,6 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 		// 确保变量已存储到内存中 (直接操作内存字典以避开 AddVariable 的 Copy 逻辑，适合初始化)
 		session.Stack.MemoryPtr[string(name)] = val
 	}
-
-	// 注入内建 nil
-	_ = session.AddVariable("nil", nil)
 
 	// 注入环境变量 (放到后面，允许覆盖脚本定义的同名全局变量)
 	for k, v := range env {
@@ -869,34 +825,45 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpEvalLHS:
-		if task.Node == nil {
+		if task.Node == nil && task.Data == nil {
 			session.ValueStack.Push(nil)
 			return nil
 		}
+		if lhsType, ok := task.Data.(LHSType); ok {
+			switch lhsType {
+			case LHSTypeIndex:
+				idx := session.ValueStack.Pop()
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				if idx != nil && idx.VType == TypeCell {
+					idx = idx.Ref.(*Cell).Value
+				}
+				if idx != nil {
+					idx = idx.Copy()
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSIndex{Obj: obj, Index: idx}})
+				return nil
+			case LHSTypeMember:
+				memberExpr := task.Node.(*ast.MemberExpr)
+				prop := string(memberExpr.Property)
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: prop}})
+				return nil
+			case LHSTypeStar:
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: "__deref__"}})
+				return nil
+			}
+		}
 		return e.evalLHS(session, task.Node.(ast.Expr))
-	case OpEvalLHSIndex:
-		idx := session.ValueStack.Pop()
-		obj := session.ValueStack.Pop()
-		if obj != nil && obj.VType == TypeCell {
-			obj = obj.Ref.(*Cell).Value
-		}
-		// idx also needs to be unwrapped and copied to ensure it's stable
-		if idx != nil && idx.VType == TypeCell {
-			idx = idx.Ref.(*Cell).Value
-		}
-		if idx != nil {
-			idx = idx.Copy()
-		}
-		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSIndex{Obj: obj, Index: idx}})
-		return nil
-	case OpEvalLHSMember:
-		prop := task.Data.(string)
-		obj := session.ValueStack.Pop()
-		if obj != nil && obj.VType == TypeCell {
-			obj = obj.Ref.(*Cell).Value
-		}
-		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: prop}})
-		return nil
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
@@ -1840,17 +1807,17 @@ func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSEnv{Name: string(lhs.Name)}})
 		return nil
 	case *ast.IndexExpr:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSIndex})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Data: LHSTypeIndex})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.Index})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.Object})
 		return nil
 	case *ast.MemberExpr:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSMember, Data: string(lhs.Property)})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Data: LHSTypeMember, Node: lhs})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.Object})
 		return nil
 	case *ast.StarExpr:
 		// Assignment to dereferenced pointer (*p = val)
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHSMember, Data: "__deref__"})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpEvalLHS, Data: LHSTypeStar})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: lhs.X})
 		return nil
 	}
@@ -2277,6 +2244,124 @@ func (e *Executor) Run(session *StackContext) error {
 		}
 	}
 	return nil
+}
+
+func (e *Executor) Disassemble() string {
+	var sb strings.Builder
+	sb.WriteString("; Go-Mini VM Disassembly\n")
+	sb.WriteString(fmt.Sprintf("; Total Variables: %d\n", len(e.program.Variables)))
+	sb.WriteString(fmt.Sprintf("; Total Functions: %d\n\n", len(e.program.Functions)))
+
+	// 1. Export Global Initialization
+	sb.WriteString("section .init:\n")
+	for name, expr := range e.program.Variables {
+		sb.WriteString(fmt.Sprintf("  INIT_VAR %s\n", name))
+		e.disassembleNode(&sb, "    ", expr, true)
+	}
+	sb.WriteString("\n")
+
+	// 2. Export Main body
+	sb.WriteString("section .main:\n")
+	for _, stmt := range e.program.Main {
+		e.disassembleNode(&sb, "  ", stmt, false)
+	}
+	sb.WriteString("\n")
+
+	// 3. Export Functions
+	keys := make([]string, 0, len(e.program.Functions))
+	for k := range e.program.Functions {
+		keys = append(keys, string(k))
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		f := e.program.Functions[ast.Ident(k)]
+		sb.WriteString(fmt.Sprintf("func %s%s:\n", k, f.FunctionType.MiniType()))
+		e.disassembleNode(&sb, "  ", f.Body, false)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.Node, isExpr bool) {
+	if node == nil {
+		return
+	}
+
+	mockSession := &StackContext{
+		Executor: e,
+		Stack: &Stack{
+			MemoryPtr: make(map[string]*Var),
+			Scope:     "disassemble",
+			Depth:     1,
+		},
+		ValueStack:     &ValueStack{},
+		ModuleCache:    make(map[string]*Var),
+		LoadingModules: make(map[string]bool),
+	}
+
+	var root Task
+	if isExpr {
+		root = Task{Op: OpEval, Node: node}
+	} else {
+		root = Task{Op: OpExec, Node: node}
+	}
+
+	// 我们使用一个队列来展开任务。
+	// 但由于 handleExec 是反序压栈，我们为了得到正向汇编，需要处理这种递归展开。
+	var queue []Task
+	queue = append(queue, root)
+
+	for len(queue) > 0 {
+		task := queue[0]
+		queue = queue[1:]
+
+		// 如果是基本指令，直接输出
+		if task.Op != OpExec && task.Op != OpEval {
+			dataStr := ""
+			if task.Data != nil {
+				dataStr = fmt.Sprintf("%v", task.Data)
+			}
+			meta := ""
+			if task.Node != nil {
+				base := task.Node.GetBase()
+				meta = fmt.Sprintf("%s#%s", base.Meta, base.ID)
+				if base.Loc != nil {
+					meta = fmt.Sprintf("%s at L%d:%d", meta, base.Loc.L, base.Loc.C)
+				}
+			} else if task.Op == OpPush {
+				meta = "Literal value"
+			} else if task.Op == OpLoadVar {
+				meta = fmt.Sprintf("Load variable '%v'", task.Data)
+			}
+			// NASM 风格对齐: INSTRUCTION OPERANDS ; COMMENT
+			sb.WriteString(fmt.Sprintf("%s%-16s %-16s ; %s\n", indent, task.Op.String(), dataStr, meta))
+			continue
+		}
+
+		// 如果是复合指令 (Exec/Eval)，展开它
+		// 临时清空模拟栈，调用真实 handler 捕获压入的任务
+		mockSession.TaskStack = nil
+		if task.Op == OpExec {
+			_ = e.handleExec(mockSession, task.Node.(ast.Stmt), task.Data)
+		} else {
+			_ = e.handleEval(mockSession, task.Node.(ast.Expr))
+		}
+
+		// handleExec 压入的任务是反序的，
+		// 为了让汇编逻辑更符合常规理解（即求值在操作之前），
+		// 我们把压入的任务倒序排列，并放到队列的最前面（DFS 展开）。
+		newTasks := mockSession.TaskStack
+		if len(newTasks) > 0 {
+			combined := make([]Task, 0, len(newTasks)+len(queue))
+			for i := len(newTasks) - 1; i >= 0; i-- {
+				combined = append(combined, newTasks[i])
+			}
+			combined = append(combined, queue...)
+			queue = combined
+		}
+	}
 }
 
 func (e *Executor) GetProgram() *ast.ProgramStmt {

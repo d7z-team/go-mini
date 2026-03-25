@@ -198,12 +198,12 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 	session := p.executor.NewSession(ctx, "eval")
 
 	// 继承上次执行的状态（如 import 的模块和全局变量）
-	// 注意：此处不持有锁执行拷贝，因为 Executor 是只读蓝图，
-	// 我们只读取上一个会话的快照。
 	if last := p.executor.LastSession(); last != nil {
 		// 模块缓存继承
-		for k, v := range last.ModuleCache {
-			session.ModuleCache[k] = v
+		if last.ModuleCache != nil {
+			for k, v := range last.ModuleCache {
+				session.ModuleCache[k] = v
+			}
 		}
 		// 全局变量继承：追溯到最顶层作用域
 		root := last.Stack
@@ -211,10 +211,10 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 			for root.Parent != nil {
 				root = root.Parent
 			}
-			for k, v := range root.MemoryPtr {
-				// 仅继承值，不继承句柄所有权（ActiveHandles），
-				// 这样 Eval 结束时不会销毁主程序的全局句柄。
-				session.Stack.MemoryPtr[k] = v
+			if root.MemoryPtr != nil {
+				for k, v := range root.MemoryPtr {
+					session.Stack.MemoryPtr[k] = v
+				}
 			}
 		}
 	}
@@ -240,6 +240,10 @@ func (p *MiniProgram) MustEval(ctx context.Context, exprStr string, env map[stri
 
 func (p *MiniProgram) GetAst() *ast.ProgramStmt {
 	return p.executor.GetProgram()
+}
+
+func (p *MiniProgram) Disassemble() string {
+	return p.executor.Disassemble()
 }
 
 func (p *MiniProgram) MarshalJSON() ([]byte, error) {

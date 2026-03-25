@@ -10,8 +10,6 @@ const (
 	OpExec OpCode = iota
 	OpEval
 	OpEvalLHS
-	OpEvalLHSIndex
-	OpEvalLHSMember
 	OpApplyBinary
 	OpApplyUnary
 	OpPop
@@ -54,6 +52,101 @@ const (
 	OpAssert
 	OpPush
 )
+
+func (op OpCode) String() string {
+	switch op {
+	case OpExec:
+		return "EXEC"
+	case OpEval:
+		return "EVAL"
+	case OpEvalLHS:
+		return "EVAL_LHS"
+	case OpApplyBinary:
+		return "BINARY_OP"
+	case OpApplyUnary:
+		return "UNARY_OP"
+	case OpPop:
+		return "POP"
+	case OpScopeEnter:
+		return "SCOPE_ENTER"
+	case OpScopeExit:
+		return "SCOPE_EXIT"
+	case OpAssign:
+		return "ASSIGN"
+	case OpMultiAssign:
+		return "MULTI_ASSIGN"
+	case OpIncDec:
+		return "INC_DEC"
+	case OpRunDefers:
+		return "RUN_DEFERS"
+	case OpFinally:
+		return "FINALLY"
+	case OpCatchBoundary:
+		return "CATCH_BOUNDARY"
+	case OpLoopBoundary:
+		return "LOOP_BOUNDARY"
+	case OpLoopContinue:
+		return "LOOP_CONTINUE"
+	case OpForCond:
+		return "FOR_COND"
+	case OpForScopeEnter:
+		return "FOR_SCOPE_ENTER"
+	case OpForScopeExit:
+		return "FOR_SCOPE_EXIT"
+	case OpRangeInit:
+		return "RANGE_INIT"
+	case OpRangeIter:
+		return "RANGE_ITER"
+	case OpRangeScopeEnter:
+		return "RANGE_SCOPE_ENTER"
+	case OpCallBoundary:
+		return "CALL_BOUNDARY"
+	case OpJumpIf:
+		return "JUMP_IF"
+	case OpBranchIf:
+		return "BRANCH_IF"
+	case OpDoCall:
+		return "DO_CALL"
+	case OpCall:
+		return "CALL"
+	case OpReturn:
+		return "RETURN"
+	case OpInterrupt:
+		return "INTERRUPT"
+	case OpComposite:
+		return "COMPOSITE"
+	case OpIndex:
+		return "INDEX"
+	case OpSlice:
+		return "SLICE"
+	case OpMember:
+		return "MEMBER"
+	case OpLoadVar:
+		return "LOAD_VAR"
+	case OpResumeUnwind:
+		return "RESUME_UNWIND"
+	case OpImportInit:
+		return "IMPORT_INIT"
+	case OpImportDone:
+		return "IMPORT_DONE"
+	case OpSwitchTag:
+		return "SWITCH_TAG"
+	case OpSwitchNextCase:
+		return "SWITCH_NEXT_CASE"
+	case OpSwitchMatchCase:
+		return "SWITCH_MATCH_CASE"
+	case OpCatchScopeEnter:
+		return "CATCH_SCOPE_ENTER"
+	case OpInitVar:
+		return "INIT_VAR"
+	case OpAssert:
+		return "ASSERT"
+	case OpPush:
+		return "PUSH"
+	default:
+		return "UNKNOWN"
+	}
+}
 
 type UnwindMode int
 
@@ -122,6 +215,16 @@ func (vs *ValueStack) Clear() {
 }
 
 // Data structures for Task Data field
+
+// LHS resolution type
+type LHSType int
+
+const (
+	LHSTypeEnv LHSType = iota
+	LHSTypeIndex
+	LHSTypeMember
+	LHSTypeStar
+)
 
 // LHS Descriptors
 type LHSEnv struct {
