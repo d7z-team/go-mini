@@ -445,7 +445,7 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 	iolib.RegisterFileMethods(e, &iolib.FileMethodsHost{}, e.registry)
 
 	// 3. Inject image
-	imagelib.RegisterImage(e, &imagelib.ImageHost{}, &imagelib.ImageMethodsHost{}, e.registry)
+	imagelib.RegisterImageAll(e, &imagelib.ImageHost{}, e.registry)
 }
 
 // GetExportedSpecs 返回所有注册的 FFI 函数签名

@@ -12,10 +12,8 @@ import (
 )
 
 const (
-	MethodID_ImageLib_Decode     = 1
-	MethodID_ImageLib_NewRGBA    = 2
-	MethodID_ImageLib_EncodePNG  = 3
-	MethodID_ImageLib_EncodeJPEG = 4
+	MethodID_ImageLib_Decode  = 1
+	MethodID_ImageLib_NewRGBA = 2
 )
 
 type ImageLibProxy struct {
@@ -90,89 +88,6 @@ func (__p *ImageLibProxy) NewRGBA(ctx context.Context, width int, height int) *I
 	return v_0
 }
 
-func (__p *ImageLibProxy) EncodePNG(ctx context.Context, img *Image) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-
-	retData, err := __p.bridge.Call(ctx, MethodID_ImageLib_EncodePNG, buf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *ImageLibProxy) EncodeJPEG(ctx context.Context, img *Image, quality int) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteVarint(int64(quality))
-
-	retData, err := __p.bridge.Call(ctx, MethodID_ImageLib_EncodeJPEG, buf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
 func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
@@ -180,10 +95,6 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 			methodID = MethodID_ImageLib_Decode
 		case "NewRGBA":
 			methodID = MethodID_ImageLib_NewRGBA
-		case "EncodePNG":
-			methodID = MethodID_ImageLib_EncodePNG
-		case "EncodeJPEG":
-			methodID = MethodID_ImageLib_EncodeJPEG
 		}
 	}
 
@@ -229,55 +140,6 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 			resBuf.WriteUvarint(uint64(registry.Register(r0)))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_ImageLib_EncodePNG:
-		var img *Image
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
-		r0, err := impl.EncodePNG(ctx, img)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBytes(r0)
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
-	case MethodID_ImageLib_EncodeJPEG:
-		var img *Image
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
-			} else {
-				return nil, fmt.Errorf("invalid handle ID: %d", id)
-			}
-		}
-		var quality int
-		{
-			tmp := reqBuf.ReadVarint()
-			quality = int(tmp)
-		}
-		r0, err := impl.EncodeJPEG(ctx, img, quality)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBytes(r0)
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -291,8 +153,6 @@ var ImageLib_FFI_Metadata = []struct {
 }{
 	{"Decode", 1, "function(TypeBytes) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, String, Error)", "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
 	{"NewRGBA", 2, "function(Int64, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>", "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
-	{"EncodePNG", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(TypeBytes, Error)", "以下为方便脚本使用的扩展 API (Go 原生在 image/png 和 image/jpeg 中)"},
-	{"EncodeJPEG", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64) tuple(TypeBytes, Error)", ""},
 }
 
 type ImageLib_Bridge struct {
@@ -331,270 +191,122 @@ func RegisterImageLib(executor interface {
 }
 
 const (
-	MethodID_ImageMethods_Bounds = 1
-	MethodID_ImageMethods_At     = 2
-	MethodID_ImageMethods_Set    = 3
-	MethodID_ImageMethods_Resize = 4
-	MethodID_ImageMethods_Crop   = 5
+	MethodID_Image_Bounds     = 1
+	MethodID_Image_Size       = 2
+	MethodID_Image_Width      = 3
+	MethodID_Image_Height     = 4
+	MethodID_Image_At         = 5
+	MethodID_Image_Set        = 6
+	MethodID_Image_Fill       = 7
+	MethodID_Image_Clear      = 8
+	MethodID_Image_Clone      = 9
+	MethodID_Image_SubImage   = 10
+	MethodID_Image_Draw       = 11
+	MethodID_Image_Resize     = 12
+	MethodID_Image_Crop       = 13
+	MethodID_Image_EncodePNG  = 14
+	MethodID_Image_EncodeJPEG = 15
 )
 
-type ImageMethodsProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewImageMethodsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) ImageMethods {
-	return &ImageMethodsProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ImageMethodsProxy) Bounds(img *Image) (int, int, int, int) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ImageMethods_Bounds, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	var v_1 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_1 = int(tmp)
-	}
-	var v_2 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_2 = int(tmp)
-	}
-	var v_3 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_3 = int(tmp)
-	}
-	return v_0, v_1, v_2, v_3
-}
-
-func (__p *ImageMethodsProxy) At(img *Image, x int, y int) (int, int, int, int) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteVarint(int64(x))
-	buf.WriteVarint(int64(y))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ImageMethods_At, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	var v_1 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_1 = int(tmp)
-	}
-	var v_2 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_2 = int(tmp)
-	}
-	var v_3 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_3 = int(tmp)
-	}
-	return v_0, v_1, v_2, v_3
-}
-
-func (__p *ImageMethodsProxy) Set(img *Image, x int, y int, r int, g int, b int, a int) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteVarint(int64(x))
-	buf.WriteVarint(int64(y))
-	buf.WriteVarint(int64(r))
-	buf.WriteVarint(int64(g))
-	buf.WriteVarint(int64(b))
-	buf.WriteVarint(int64(a))
-
-	_, err := __p.bridge.Call(context.Background(), MethodID_ImageMethods_Set, buf.Bytes())
-	_ = err
-	return
-}
-
-func (__p *ImageMethodsProxy) Resize(img *Image, width int, height int) (*Image, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteVarint(int64(width))
-	buf.WriteVarint(int64(height))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ImageMethods_Resize, buf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Image
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*Image)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *ImageMethodsProxy) Crop(img *Image, x int, y int, width int, height int) (*Image, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	if img == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(img)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteVarint(int64(x))
-	buf.WriteVarint(int64(y))
-	buf.WriteVarint(int64(width))
-	buf.WriteVarint(int64(height))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ImageMethods_Crop, buf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Image
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*Image)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func ImageMethodsHostRouter(ctx context.Context, impl ImageMethods, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Bounds":
-			methodID = MethodID_ImageMethods_Bounds
+			methodID = MethodID_Image_Bounds
+		case "Size":
+			methodID = MethodID_Image_Size
+		case "Width":
+			methodID = MethodID_Image_Width
+		case "Height":
+			methodID = MethodID_Image_Height
 		case "At":
-			methodID = MethodID_ImageMethods_At
+			methodID = MethodID_Image_At
 		case "Set":
-			methodID = MethodID_ImageMethods_Set
+			methodID = MethodID_Image_Set
+		case "Fill":
+			methodID = MethodID_Image_Fill
+		case "Clear":
+			methodID = MethodID_Image_Clear
+		case "Clone":
+			methodID = MethodID_Image_Clone
+		case "SubImage":
+			methodID = MethodID_Image_SubImage
+		case "Draw":
+			methodID = MethodID_Image_Draw
 		case "Resize":
-			methodID = MethodID_ImageMethods_Resize
+			methodID = MethodID_Image_Resize
 		case "Crop":
-			methodID = MethodID_ImageMethods_Crop
+			methodID = MethodID_Image_Crop
+		case "EncodePNG":
+			methodID = MethodID_Image_EncodePNG
+		case "EncodeJPEG":
+			methodID = MethodID_Image_EncodeJPEG
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_ImageMethods_Bounds:
-		var img *Image
+	case MethodID_Image_Bounds:
+		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
+				i = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("invalid handle ID: %d", id)
 			}
 		}
-		r0, r1, r2, r3 := impl.Bounds(img)
+		r0, r1, r2, r3 := i.Bounds()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
 		resBuf.WriteVarint(int64(r2))
 		resBuf.WriteVarint(int64(r3))
 		return resBuf.Bytes(), nil
-	case MethodID_ImageMethods_At:
-		var img *Image
+	case MethodID_Image_Size:
+		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0, r1 := i.Size()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		resBuf.WriteVarint(int64(r1))
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Width:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0 := i.Width()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Height:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0 := i.Height()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Image_At:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("invalid handle ID: %d", id)
 			}
@@ -609,18 +321,18 @@ func ImageMethodsHostRouter(ctx context.Context, impl ImageMethods, registry *ff
 			tmp := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
-		r0, r1, r2, r3 := impl.At(img, x, y)
+		r0, r1, r2, r3 := i.At(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
 		resBuf.WriteVarint(int64(r2))
 		resBuf.WriteVarint(int64(r3))
 		return resBuf.Bytes(), nil
-	case MethodID_ImageMethods_Set:
-		var img *Image
+	case MethodID_Image_Set:
+		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
+				i = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("invalid handle ID: %d", id)
 			}
@@ -655,50 +367,75 @@ func ImageMethodsHostRouter(ctx context.Context, impl ImageMethods, registry *ff
 			tmp := reqBuf.ReadVarint()
 			a = int(tmp)
 		}
-		impl.Set(img, x, y, r, g, b, a)
+		i.Set(x, y, r, g, b, a)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_ImageMethods_Resize:
-		var img *Image
+	case MethodID_Image_Fill:
+		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
+				i = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("invalid handle ID: %d", id)
 			}
 		}
-		var width int
+		var r int
 		{
 			tmp := reqBuf.ReadVarint()
-			width = int(tmp)
+			r = int(tmp)
 		}
-		var height int
+		var g int
 		{
 			tmp := reqBuf.ReadVarint()
-			height = int(tmp)
+			g = int(tmp)
 		}
-		r0, err := impl.Resize(img, width, height)
+		var b int
+		{
+			tmp := reqBuf.ReadVarint()
+			b = int(tmp)
+		}
+		var a int
+		{
+			tmp := reqBuf.ReadVarint()
+			a = int(tmp)
+		}
+		i.Fill(r, g, b, a)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Clear:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		i.Clear()
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Clone:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0 := i.Clone()
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
 			resBuf.WriteUvarint(uint64(registry.Register(r0)))
 		}
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
 		return resBuf.Bytes(), nil
-	case MethodID_ImageMethods_Crop:
-		var img *Image
+	case MethodID_Image_SubImage:
+		var i *Image
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, ok := registry.Get(id); ok {
-				img = obj.(*Image)
+				i = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("invalid handle ID: %d", id)
 			}
@@ -723,7 +460,7 @@ func ImageMethodsHostRouter(ctx context.Context, impl ImageMethods, registry *ff
 			tmp := reqBuf.ReadVarint()
 			height = int(tmp)
 		}
-		r0, err := impl.Crop(img, x, y, width, height)
+		r0, err := i.SubImage(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
@@ -740,56 +477,228 @@ func ImageMethodsHostRouter(ctx context.Context, impl ImageMethods, registry *ff
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_Image_Draw:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var src *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				src = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var x int
+		{
+			tmp := reqBuf.ReadVarint()
+			x = int(tmp)
+		}
+		var y int
+		{
+			tmp := reqBuf.ReadVarint()
+			y = int(tmp)
+		}
+		i.Draw(ctx, src, x, y)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Resize:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var width int
+		{
+			tmp := reqBuf.ReadVarint()
+			width = int(tmp)
+		}
+		var height int
+		{
+			tmp := reqBuf.ReadVarint()
+			height = int(tmp)
+		}
+		r0, err := i.Resize(width, height)
+		resBuf := ffigo.GetBuffer()
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Image_Crop:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var x int
+		{
+			tmp := reqBuf.ReadVarint()
+			x = int(tmp)
+		}
+		var y int
+		{
+			tmp := reqBuf.ReadVarint()
+			y = int(tmp)
+		}
+		var width int
+		{
+			tmp := reqBuf.ReadVarint()
+			width = int(tmp)
+		}
+		var height int
+		{
+			tmp := reqBuf.ReadVarint()
+			height = int(tmp)
+		}
+		r0, err := i.Crop(x, y, width, height)
+		resBuf := ffigo.GetBuffer()
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Image_EncodePNG:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		r0, err := i.EncodePNG()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBytes(r0)
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Image_EncodeJPEG:
+		var i *Image
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, ok := registry.Get(id); ok {
+				i = obj.(*Image)
+			} else {
+				return nil, fmt.Errorf("invalid handle ID: %d", id)
+			}
+		}
+		var quality int
+		{
+			tmp := reqBuf.ReadVarint()
+			quality = int(tmp)
+		}
+		r0, err := i.EncodeJPEG(quality)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBytes(r0)
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
 }
 
-var ImageMethods_FFI_Metadata = []struct {
+var Image_FFI_Metadata = []struct {
 	Name     string
 	MethodID uint32
 	Spec     string
 	Doc      string
 }{
 	{"Bounds", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64, Int64, Int64)", "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{"At", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", "At 返回 r, g, b, a (0-255)"},
-	{"Set", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", "Set 设置指定像素的颜色"},
-	{"Resize", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "高级操作 (宿主侧加速)"},
-	{"Crop", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", ""},
+	{"Size", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64)", "Size 返回 width, height"},
+	{"Width", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64", "Width 返回图像宽度"},
+	{"Height", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64", "Height 返回图像高度"},
+	{"At", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", "At 返回 r, g, b, a (0-255)"},
+	{"Set", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", "Set 设置指定像素的颜色"},
+	{"Fill", 7, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) Void", "Fill 用指定颜色填充整个图像"},
+	{"Clear", 8, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Void", "Clear 将图像清空为透明"},
+	{"Clone", 9, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>", "Clone 复制当前图像"},
+	{"SubImage", 10, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "SubImage 返回图像的子部分 (共享内存)"},
+	{"Draw", 11, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) Void", "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
+	{"Resize", 12, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "Resize 缩放图像"},
+	{"Crop", 13, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "Crop 裁剪图像"},
+	{"EncodePNG", 14, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(TypeBytes, Error)", "EncodePNG 将图像编码为 PNG 字节数组"},
+	{"EncodeJPEG", 15, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64) tuple(TypeBytes, Error)", "EncodeJPEG 将图像编码为 JPEG 字节数组"},
 }
 
-type ImageMethods_Bridge struct {
-	Impl     ImageMethods
+type Image_Bridge struct {
+	Impl     *Image
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *ImageMethods_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ImageMethodsHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Image_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return ImageHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
 }
 
-func (b *ImageMethods_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ImageMethodsHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Image_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return ImageHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
 }
 
-func (b *ImageMethods_Bridge) DestroyHandle(handle uint32) error {
+func (b *Image_Bridge) DestroyHandle(handle uint32) error {
 	if b.Registry != nil {
 		b.Registry.Remove(handle)
 	}
 	return nil
 }
 
-func RegisterImageMethods(executor interface {
+func RegisterImage(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
-}, impl ImageMethods, registry *ffigo.HandleRegistry) {
-	bridge := &ImageMethods_Bridge{Impl: impl, Registry: registry}
+}, registry *ffigo.HandleRegistry) {
+	bridge := &Image_Bridge{Impl: nil, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range ImageMethods_FFI_Metadata {
+	for _, m := range Image_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image", "struct { Bounds function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64, Int64, Int64); At function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Resize function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); Crop function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); }")
+	// Register struct metadata for validation and code completion
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image", "struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64); Width function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64; Height function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64; At function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Void; Clone function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>; SubImage function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); Draw function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) Void; Resize function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); Crop function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); EncodePNG function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64) tuple(TypeBytes, Error); }")
 }

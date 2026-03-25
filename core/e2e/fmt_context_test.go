@@ -13,7 +13,7 @@ type testOutputter struct {
 	sb strings.Builder
 }
 
-func (o *testOutputter) Print(s string) {
+func (o *testOutputter) Print(_ context.Context, s string) {
 	o.sb.WriteString(s)
 }
 
