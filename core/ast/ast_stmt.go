@@ -159,7 +159,7 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 			hasError = true
 		}
 	}
-	if hasError {
+	if hasError || len(ctx.Logs()) > 0 {
 		return &MiniAstError{
 			Err:  errors.New("semantic validation failed"),
 			Logs: ctx.Logs(),

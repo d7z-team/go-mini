@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,16 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Printf("Usage: %s <file1.go> [file2.go ...]\n", os.Args[0])
+	disasmFlag := flag.Bool("d", false, "print disassembly and exit")
+	flag.Usage = func() {
+		fmt.Printf("Usage: %s [options] <file1.go> [file2.go ...]\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	files := flag.Args()
+	if len(files) < 1 {
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -24,7 +33,7 @@ func main() {
 	var rootProgram *ast.ProgramStmt
 
 	// 1. 解析所有文件并合并到 rootProgram
-	for i, arg := range os.Args[1:] {
+	for i, arg := range files {
 		path, _ := filepath.Abs(arg)
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -67,6 +76,11 @@ func main() {
 	if runtime == nil {
 		fmt.Printf("Runtime initialization failed.\n")
 		os.Exit(1)
+	}
+
+	if *disasmFlag {
+		fmt.Println(runtime.Disassemble())
+		return
 	}
 
 	// 执行程序（内部会自动初始化全局变量并寻找 main() 函数运行）

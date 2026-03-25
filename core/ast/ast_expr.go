@@ -252,7 +252,9 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, arg := range c.Args {
-		_ = arg.Check(ctx.WithNode(arg))
+		if err := arg.Check(ctx.WithNode(arg)); err != nil {
+			funcErr = err
+		}
 	}
 
 	if funcErr != nil {
@@ -350,6 +352,14 @@ done:
 			}
 		case "len", "cap":
 			c.Type = "Int64"
+			if len(c.Args) > 0 {
+				argType := c.Args[0].GetBase().Type
+				if !argType.IsArray() && !argType.IsMap() && argType != "String" && argType != "TypeBytes" && !argType.IsAny() {
+					err := fmt.Errorf("%s: 不支持类型 %s", ident.Name, argType)
+					ctx.AddErrorf("%s", err.Error())
+					return err
+				}
+			}
 		}
 	}
 

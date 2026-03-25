@@ -1720,7 +1720,7 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 		}
 		return session.NewVar(string(n.Name), n.Kind)
 	case *ast.AssignmentStmt:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpAssign})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpAssign, Node: n})
 		if data != nil {
 			if v, ok := data.(*Var); ok {
 				// 正确入栈顺序：OpAssign -> OpPush -> OpEvalLHS
@@ -2046,9 +2046,9 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		if err != nil {
 			return err
 		}
-		session.ValueStack.Push(val)
+		session.TaskStack = append(session.TaskStack, Task{Op: OpPush, Node: n, Data: val})
 	case *ast.IdentifierExpr:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpLoadVar, Data: string(n.Name)})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpLoadVar, Node: n, Data: string(n.Name)})
 	case *ast.ConstRefExpr:
 		if val, ok := e.program.Constants[string(n.Name)]; ok {
 			session.ValueStack.Push(NewString(val))
@@ -2246,26 +2246,38 @@ func (e *Executor) Run(session *StackContext) error {
 	return nil
 }
 
-func (e *Executor) Disassemble() string {
+func (e *Executor) Disassemble() (res string) {
+	defer func() {
+		if r := recover(); r != nil {
+			res = fmt.Sprintf("; Disassembly failed: %v\n", r)
+		}
+	}()
+
+	if e.program == nil {
+		return "; Error: no program loaded\n"
+	}
 	var sb strings.Builder
 	sb.WriteString("; Go-Mini VM Disassembly\n")
 	sb.WriteString(fmt.Sprintf("; Total Variables: %d\n", len(e.program.Variables)))
 	sb.WriteString(fmt.Sprintf("; Total Functions: %d\n\n", len(e.program.Functions)))
 
 	// 1. Export Global Initialization
-	sb.WriteString("section .init:\n")
+	sb.WriteString("section .data:\n")
 	for name, expr := range e.program.Variables {
-		sb.WriteString(fmt.Sprintf("  INIT_VAR %s\n", name))
+		sb.WriteString(fmt.Sprintf("  global %s\n", name))
 		e.disassembleNode(&sb, "    ", expr, true)
 	}
 	sb.WriteString("\n")
 
-	// 2. Export Main body
-	sb.WriteString("section .main:\n")
-	for _, stmt := range e.program.Main {
-		e.disassembleNode(&sb, "  ", stmt, false)
+	// 2. Export Main body / Functions
+	sb.WriteString("section .text:\n")
+	if len(e.program.Main) > 0 {
+		sb.WriteString("main:\n")
+		for _, stmt := range e.program.Main {
+			e.disassembleNode(&sb, "  ", stmt, false)
+		}
+		sb.WriteString("\n")
 	}
-	sb.WriteString("\n")
 
 	// 3. Export Functions
 	keys := make([]string, 0, len(e.program.Functions))
@@ -2276,7 +2288,17 @@ func (e *Executor) Disassemble() string {
 
 	for _, k := range keys {
 		f := e.program.Functions[ast.Ident(k)]
-		sb.WriteString(fmt.Sprintf("func %s%s:\n", k, f.FunctionType.MiniType()))
+		// Format signature nicely: (param1, param2) return
+		params := []string{}
+		for i, p := range f.Params {
+			prefix := ""
+			if f.Variadic && i == len(f.Params)-1 {
+				prefix = "..."
+			}
+			params = append(params, prefix+string(p.Type))
+		}
+		sig := fmt.Sprintf("(%s) %s", strings.Join(params, ","), f.Return)
+		sb.WriteString(fmt.Sprintf("%s%s:\n", k, sig))
 		e.disassembleNode(&sb, "  ", f.Body, false)
 		sb.WriteString("\n")
 	}
@@ -2285,21 +2307,31 @@ func (e *Executor) Disassemble() string {
 }
 
 func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.Node, isExpr bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			sb.WriteString(indent + "; Disassembly failed for this node: " + fmt.Sprintf("%v", r) + "\n")
+		}
+	}()
+
 	if node == nil {
 		return
 	}
+// 模拟执行环境来提取任务流
+mockSession := &StackContext{
+	Executor: e,
+	Stack: &Stack{
+		MemoryPtr: make(map[string]*Var),
+		Scope:     "disassemble",
+		Depth:     1,
+	},
+	ValueStack:     &ValueStack{},
+	TaskStack:      nil,
+	ModuleCache:    make(map[string]*Var),
+	LoadingModules: make(map[string]bool),
+	Context:        context.Background(),
+	ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 16)},
+}
 
-	mockSession := &StackContext{
-		Executor: e,
-		Stack: &Stack{
-			MemoryPtr: make(map[string]*Var),
-			Scope:     "disassemble",
-			Depth:     1,
-		},
-		ValueStack:     &ValueStack{},
-		ModuleCache:    make(map[string]*Var),
-		LoadingModules: make(map[string]bool),
-	}
 
 	var root Task
 	if isExpr {
@@ -2321,22 +2353,123 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 		if task.Op != OpExec && task.Op != OpEval {
 			dataStr := ""
 			if task.Data != nil {
-				dataStr = fmt.Sprintf("%v", task.Data)
+				if v, ok := task.Data.(*Var); ok && v != nil {
+					if v.VType == TypeString {
+						dataStr = fmt.Sprintf("%q", v.Str)
+					} else {
+						dataStr = v.String()
+					}
+				} else if env, ok := task.Data.(LHSEnv); ok {
+					dataStr = env.Name
+				} else if mem, ok := task.Data.(LHSMember); ok {
+					objStr := "nil"
+					if mem.Obj != nil {
+						objStr = mem.Obj.String()
+					}
+					dataStr = fmt.Sprintf("%v.%v", objStr, mem.Property)
+				} else if _, ok := task.Data.(LHSIndex); ok {
+					dataStr = "[]" // 索引通常在栈上
+				} else {
+					dataStr = fmt.Sprintf("%v", task.Data)
+				}
 			}
-			meta := ""
+			// 兜底：强制替换任何可能残留的真实换行符，防止破坏对齐
+			dataStr = strings.ReplaceAll(dataStr, "\n", "\\n")
+			dataStr = strings.ReplaceAll(dataStr, "\r", "\\r")
+
+			// 如果是 EVAL_LHS 且没有 Data，尝试从 Node 静态推导显示内容
+			if task.Op == OpEvalLHS && dataStr == "" && task.Node != nil {
+				switch n := task.Node.(type) {
+				case *ast.IdentifierExpr:
+					dataStr = string(n.Name)
+				case *ast.MemberExpr:
+					dataStr = string(n.Property)
+				case *ast.IndexExpr:
+					dataStr = "[]"
+				case *ast.StarExpr:
+					dataStr = "*"
+				}
+			}
+
+			// 特殊处理 BINARY_OP 和 UNARY_OP
+			if task.Op == OpApplyBinary || task.Op == OpApplyUnary {
+				if task.Data != nil {
+					dataStr = fmt.Sprintf("%v", task.Data)
+				}
+			}
+
+			// 特殊处理 CALL 指令的操作数显示
+			if task.Op == OpCall && task.Node != nil {
+				if call, ok := task.Node.(*ast.CallExprStmt); ok {
+					if ident, ok := call.Func.(*ast.IdentifierExpr); ok {
+						dataStr = string(ident.Name)
+					} else if ident, ok := call.Func.(*ast.ConstRefExpr); ok {
+						dataStr = string(ident.Name)
+					} else if member, ok := call.Func.(*ast.MemberExpr); ok {
+						dataStr = string(member.Property)
+					}
+				}
+			}
+
+			addr := "[                ]"
+			comment := ""
 			if task.Node != nil {
 				base := task.Node.GetBase()
-				meta = fmt.Sprintf("%s#%s", base.Meta, base.ID)
-				if base.Loc != nil {
-					meta = fmt.Sprintf("%s at L%d:%d", meta, base.Loc.L, base.Loc.C)
+				addr = fmt.Sprintf("[%16s]", base.ID)
+				comment = base.Meta
+
+				// Provide more semantic context for common instructions
+				switch task.Op {
+				case OpCall:
+					if call, ok := task.Node.(*ast.CallExprStmt); ok {
+						funcName := "anonymous"
+						if ident, ok := call.Func.(*ast.IdentifierExpr); ok {
+							funcName = string(ident.Name)
+						} else if ident, ok := call.Func.(*ast.ConstRefExpr); ok {
+							funcName = string(ident.Name)
+						} else if member, ok := call.Func.(*ast.MemberExpr); ok {
+							funcName = string(member.Property)
+						}
+						comment = fmt.Sprintf("Call %s", funcName)
+					}
+				case OpAssign:
+					comment = "Assignment"
+				case OpReturn:
+					comment = fmt.Sprintf("Return %v values", task.Data)
+				case OpBranchIf:
+					if ifStmt, ok := task.Node.(*ast.IfStmt); ok {
+						if ifStmt.ElseBody != nil {
+							comment = "Branch if false to ELSE"
+						} else {
+							comment = "Branch if false to END"
+						}
+					}
+				case OpJumpIf:
+					comment = fmt.Sprintf("Short-circuit %v", task.Data)
 				}
-			} else if task.Op == OpPush {
-				meta = "Literal value"
-			} else if task.Op == OpLoadVar {
-				meta = fmt.Sprintf("Load variable '%v'", task.Data)
+
+				if base.Loc != nil {
+					comment = fmt.Sprintf("%s at L%d:%d", comment, base.Loc.L, base.Loc.C)
+				}
+			} else {
+				switch task.Op {
+				case OpPush:
+					comment = "Literal value"
+				case OpLoadVar:
+					comment = fmt.Sprintf("Load variable '%v'", task.Data)
+				case OpAssign:
+					comment = "Assignment"
+				case OpPop:
+					comment = "Pop stack"
+				}
 			}
-			// NASM 风格对齐: INSTRUCTION OPERANDS ; COMMENT
-			sb.WriteString(fmt.Sprintf("%s%-16s %-16s ; %s\n", indent, task.Op.String(), dataStr, meta))
+
+			// NASM 风格对齐: ADDRESS  INSTRUCTION  OPERANDS  ; COMMENT
+			line := fmt.Sprintf("%s  %-18s %-22s", addr, task.Op.String(), dataStr)
+			if comment != "" {
+				line = fmt.Sprintf("%-65s ; %s", line, comment)
+			}
+			sb.WriteString(indent + line + "\n")
 			continue
 		}
 

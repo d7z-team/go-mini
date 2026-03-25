@@ -261,7 +261,45 @@ func (v *Var) ToError() (string, error) {
 	return "", fmt.Errorf("type mismatch: expected Error or String compatible type, got %v", v.VType)
 }
 
-// Interface 将 VM 变量转换为 Go 原生接口类型
+func (v *Var) String() string {
+	if v == nil {
+		return "nil"
+	}
+	switch v.VType {
+	case TypeInt:
+		return strconv.FormatInt(v.I64, 10)
+	case TypeFloat:
+		return strconv.FormatFloat(v.F64, 'g', -1, 64)
+	case TypeString:
+		return fmt.Sprintf("\"%s\"", v.Str)
+	case TypeBool:
+		return strconv.FormatBool(v.Bool)
+	case TypeBytes:
+		return fmt.Sprintf("bytes(%d)", len(v.B))
+	case TypeHandle:
+		return fmt.Sprintf("handle(%d)", v.Handle)
+	case TypeArray:
+		if arr, ok := v.Ref.(*VMArray); ok {
+			return fmt.Sprintf("array(%d)", len(arr.Data))
+		}
+	case TypeMap:
+		if m, ok := v.Ref.(*VMMap); ok {
+			return fmt.Sprintf("map(%d)", len(m.Data))
+		}
+	case TypeModule:
+		if m, ok := v.Ref.(*VMModule); ok {
+			return fmt.Sprintf("module(%s)", m.Name)
+		}
+	case TypeClosure:
+		return "closure"
+	case TypeInterface:
+		return "interface"
+	case TypeError:
+		return "error"
+	}
+	return "unknown"
+}
+
 func (v *Var) Interface() interface{} {
 	return v.interfaceWithDepth(0)
 }
