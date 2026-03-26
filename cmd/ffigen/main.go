@@ -21,6 +21,7 @@ var (
 	pkgName  = flag.String("pkg", "", "package name")
 	basePath = flag.String("path", "", "full import path of the current package (optional, will try to derive if empty)")
 	outFile  = flag.String("out", "", "output file")
+	scanAll  = flag.Bool("scan", false, "scan all .go files in the directory for methods")
 
 	// 类型推导上下文
 	typeInfo     *types.Info
@@ -77,7 +78,7 @@ func main() {
 		}
 
 		dir := filepath.Dir(absPath)
-		if !seenDirs[dir] {
+		if *scanAll && !seenDirs[dir] {
 			seenDirs[dir] = true
 			// Parse all .go files in this directory
 			entries, err := os.ReadDir(dir)
