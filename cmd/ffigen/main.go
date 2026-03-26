@@ -61,14 +61,74 @@ func main() {
 	}
 
 	fset = token.NewFileSet()
-	var files []*ast.File
+	var allFiles []*ast.File
+	seenDirs := make(map[string]bool)
+
+	// Map to quickly find parsed files by their absolute path
+	parsedFiles := make(map[string]*ast.File)
+
+	absOutFile, _ := filepath.Abs(*outFile)
+
 	for _, arg := range flag.Args() {
-		f, err := parser.ParseFile(fset, arg, nil, parser.ParseComments)
+		absPath, err := filepath.Abs(arg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing file %s: %v\n", arg, err)
+			fmt.Fprintf(os.Stderr, "Error getting absolute path for %s: %v\n", arg, err)
 			os.Exit(1)
 		}
-		files = append(files, f)
+
+		dir := filepath.Dir(absPath)
+		if !seenDirs[dir] {
+			seenDirs[dir] = true
+			// Parse all .go files in this directory
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading directory %s: %v\n", dir, err)
+				os.Exit(1)
+			}
+
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+					continue
+				}
+
+				filePath := filepath.Join(dir, entry.Name())
+				absFilePath, _ := filepath.Abs(filePath)
+
+				// Skip the output file to avoid circularity/conflicts
+				if absFilePath == absOutFile {
+					continue
+				}
+
+				f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error parsing file %s: %v\n", filePath, err)
+					os.Exit(1)
+				}
+
+				allFiles = append(allFiles, f)
+				parsedFiles[absFilePath] = f
+			}
+		}
+
+		// Ensure the explicitly provided file is in parsedFiles even if it was skipped or is elsewhere
+		if _, ok := parsedFiles[absPath]; !ok {
+			f, err := parser.ParseFile(fset, absPath, nil, parser.ParseComments)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error parsing explicitly provided file %s: %v\n", absPath, err)
+				os.Exit(1)
+			}
+			allFiles = append(allFiles, f)
+			parsedFiles[absPath] = f
+		}
+	}
+
+	// Reconstruct inputFiles in the order they were provided
+	var inputFiles []*ast.File
+	for _, arg := range flag.Args() {
+		abs, _ := filepath.Abs(arg)
+		if f, ok := parsedFiles[abs]; ok {
+			inputFiles = append(inputFiles, f)
+		}
 	}
 
 	// 执行类型检查以获取跨包的 Underlying 类型信息
@@ -79,13 +139,14 @@ func main() {
 		Uses:  make(map[*ast.Ident]types.Object),
 	}
 	typeInfo = info
-	_, _ = conf.Check(*pkgName, fset, files, info)
+	_, _ = conf.Check(*pkgName, fset, allFiles, info)
 
 	var ifaceSpecs []*ast.TypeSpec
 	structs := make(map[string]*ast.StructType)
 	knownImports = make(map[string]string)
 
-	for _, node := range files {
+	// Step 1: Collect package-wide information from allFiles
+	for _, node := range allFiles {
 		for _, imp := range node.Imports {
 			path := strings.Trim(imp.Path.Value, "\"")
 			var alias string
@@ -98,6 +159,22 @@ func main() {
 			knownImports[alias] = path
 		}
 
+		ast.Inspect(node, func(n ast.Node) bool {
+			if gd, ok := n.(*ast.GenDecl); ok {
+				for _, spec := range gd.Specs {
+					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+						if str, ok := typeSpec.Type.(*ast.StructType); ok {
+							structs[typeSpec.Name.Name] = str
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+
+	// Step 2: Collect ffigen targets from inputFiles in order
+	for _, node := range inputFiles {
 		ast.Inspect(node, func(n ast.Node) bool {
 			if gd, ok := n.(*ast.GenDecl); ok {
 				for _, spec := range gd.Specs {
@@ -118,8 +195,7 @@ func main() {
 
 						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
 							ifaceSpecs = append(ifaceSpecs, typeSpec)
-						} else if str, ok := typeSpec.Type.(*ast.StructType); ok {
-							structs[typeSpec.Name.Name] = str
+						} else if _, ok := typeSpec.Type.(*ast.StructType); ok {
 							if hasFfigen {
 								isModule := false
 								if typeSpec.Doc != nil {
@@ -131,7 +207,7 @@ func main() {
 									}
 								}
 
-								methods := findMethodsForStruct(files, typeSpec.Name.Name)
+								methods := findMethodsForStruct(allFiles, typeSpec.Name.Name)
 								if len(methods) > 0 {
 									// Only add receiver if it's NOT a module (i.e. it's ffigen:methods)
 									virtualIface := synthesizeInterface(methods, !isModule)
