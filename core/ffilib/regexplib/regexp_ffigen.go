@@ -223,7 +223,7 @@ func (__p *RegexpProxy) Split(pattern string, s string, n int) ([]string, error)
 	return v_0, err_1
 }
 
-func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Match":
@@ -244,8 +244,6 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Regexp_Match:
 		var pattern string

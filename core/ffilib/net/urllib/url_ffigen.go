@@ -93,7 +93,7 @@ func (__p *URLProxy) JoinPath(base string, elem ...string) string {
 	return v_0
 }
 
-func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "QueryEscape":
@@ -106,8 +106,6 @@ func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_URL_QueryEscape:
 		var s string

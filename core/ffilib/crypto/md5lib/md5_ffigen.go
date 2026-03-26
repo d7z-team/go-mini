@@ -39,7 +39,7 @@ func (__p *MD5Proxy) Sum(data []byte) []byte {
 	return v_0
 }
 
-func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sum":
@@ -48,8 +48,6 @@ func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_MD5_Sum:
 		var data []byte

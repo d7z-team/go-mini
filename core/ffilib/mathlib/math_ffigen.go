@@ -341,7 +341,7 @@ func (__p *MathProxy) E() float64 {
 	return v_0
 }
 
-func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Abs":
@@ -388,8 +388,6 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Math_Abs:
 		var x float64

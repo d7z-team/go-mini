@@ -99,7 +99,7 @@ func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	return v_0, err_1
 }
 
-func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Add":
@@ -112,8 +112,6 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_ScriptCalculator_Add:
 		var a int64

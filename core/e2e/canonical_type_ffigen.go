@@ -69,7 +69,7 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 	return v_0
 }
 
-func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "NewA":
@@ -80,8 +80,6 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_TestCanonicalService_NewA:
 		var name string
@@ -194,7 +192,7 @@ func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
 	return v_0
 }
 
-func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
@@ -203,8 +201,6 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
@@ -305,7 +301,7 @@ func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
 	return v_0
 }
 
-func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
@@ -314,8 +310,6 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type

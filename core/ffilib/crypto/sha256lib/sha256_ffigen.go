@@ -39,7 +39,7 @@ func (__p *SHA256Proxy) Sum256(data []byte) []byte {
 	return v_0
 }
 
-func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sum256":
@@ -48,8 +48,6 @@ func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_SHA256_Sum256:
 		var data []byte

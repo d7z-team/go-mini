@@ -254,13 +254,13 @@ func (__p *StringsProxy) TrimSuffix(s string, suffix string) string {
 	return v_0
 }
 
-func (__p *StringsProxy) Replace(s string, old string, new string, n int) string {
+func (__p *StringsProxy) Replace(s string, old string, replacement string, n int) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(s))
 	buf.WriteString(string(old))
-	buf.WriteString(string(new))
+	buf.WriteString(string(replacement))
 	buf.WriteVarint(int64(n))
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Replace, buf.Bytes())
@@ -272,13 +272,13 @@ func (__p *StringsProxy) Replace(s string, old string, new string, n int) string
 	return v_0
 }
 
-func (__p *StringsProxy) ReplaceAll(s string, old string, new string) string {
+func (__p *StringsProxy) ReplaceAll(s string, old string, replacement string) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(s))
 	buf.WriteString(string(old))
-	buf.WriteString(string(new))
+	buf.WriteString(string(replacement))
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ReplaceAll, buf.Bytes())
 	_ = retData
@@ -328,7 +328,7 @@ func (__p *StringsProxy) Join(elems []string, sep string) string {
 	return v_0
 }
 
-func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Contains":
@@ -369,8 +369,6 @@ func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Strings_Contains:
 		var s string
@@ -488,14 +486,14 @@ func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.Handle
 		s = string(reqBuf.ReadString())
 		var old string
 		old = string(reqBuf.ReadString())
-		var new string
-		new = string(reqBuf.ReadString())
+		var replacement string
+		replacement = string(reqBuf.ReadString())
 		var n int
 		{
 			tmp := reqBuf.ReadVarint()
 			n = int(tmp)
 		}
-		r0 := impl.Replace(s, old, new, n)
+		r0 := impl.Replace(s, old, replacement, n)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
@@ -504,9 +502,9 @@ func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.Handle
 		s = string(reqBuf.ReadString())
 		var old string
 		old = string(reqBuf.ReadString())
-		var new string
-		new = string(reqBuf.ReadString())
-		r0 := impl.ReplaceAll(s, old, new)
+		var replacement string
+		replacement = string(reqBuf.ReadString())
+		r0 := impl.ReplaceAll(s, old, replacement)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil

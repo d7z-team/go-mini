@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 )
 
 type Logs struct {
@@ -19,7 +18,6 @@ const (
 )
 
 type ValidRoot struct {
-	mu            sync.RWMutex
 	logs          []Logs
 	types         map[Ident]GoMiniType
 	structs       map[Ident]*ValidStruct

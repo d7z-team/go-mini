@@ -52,7 +52,7 @@ func (__p *LoggerProxy) Internal(arg0 string, arg1 string, arg2 int64) {
 	return
 }
 
-func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Log":
@@ -63,8 +63,6 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Logger_Log:
 		var msg string
@@ -180,7 +178,7 @@ func (__p *CallbackProxy) OnRaw(arg0 int64, arg1 []byte) {
 	return
 }
 
-func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "OnEvent":
@@ -191,8 +189,6 @@ func CallbackHostRouter(ctx context.Context, impl Callback, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Callback_OnEvent:
 		var arg0 int64

@@ -18,5 +18,5 @@ type Bytes interface {
 	Split(s, sep []byte) [][]byte
 	Join(s [][]byte, sep []byte) []byte
 	Repeat(b []byte, count int) []byte
-	ReplaceAll(s, old, new []byte) []byte
+	ReplaceAll(s, old, replacement []byte) []byte
 }

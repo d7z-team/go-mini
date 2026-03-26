@@ -10,7 +10,7 @@ func (h *RegexpHost) Match(pattern string, b []byte) (bool, error) {
 	return regexp.Match(pattern, b)
 }
 
-func (h *RegexpHost) MatchString(pattern string, s string) (bool, error) {
+func (h *RegexpHost) MatchString(pattern, s string) (bool, error) {
 	return regexp.MatchString(pattern, s)
 }
 
@@ -18,7 +18,7 @@ func (h *RegexpHost) QuoteMeta(s string) string {
 	return regexp.QuoteMeta(s)
 }
 
-func (h *RegexpHost) FindString(pattern string, s string) string {
+func (h *RegexpHost) FindString(pattern, s string) string {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return ""
@@ -26,7 +26,7 @@ func (h *RegexpHost) FindString(pattern string, s string) string {
 	return re.FindString(s)
 }
 
-func (h *RegexpHost) FindStringSubmatch(pattern string, s string) []string {
+func (h *RegexpHost) FindStringSubmatch(pattern, s string) []string {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil
@@ -34,7 +34,7 @@ func (h *RegexpHost) FindStringSubmatch(pattern string, s string) []string {
 	return re.FindStringSubmatch(s)
 }
 
-func (h *RegexpHost) ReplaceAllString(pattern string, src, repl string) (string, error) {
+func (h *RegexpHost) ReplaceAllString(pattern, src, repl string) (string, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", err
@@ -42,7 +42,7 @@ func (h *RegexpHost) ReplaceAllString(pattern string, src, repl string) (string,
 	return re.ReplaceAllString(src, repl), nil
 }
 
-func (h *RegexpHost) Split(pattern string, s string, n int) ([]string, error) {
+func (h *RegexpHost) Split(pattern, s string, n int) ([]string, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err

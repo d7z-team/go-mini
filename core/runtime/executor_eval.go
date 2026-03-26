@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 )
@@ -49,7 +50,7 @@ func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error
 		return e.evalLogic(operator, l, r)
 	}
 
-	return nil, &VMError{Message: fmt.Sprintf("unsupported operator: %s", operator), IsPanic: true}
+	return nil, &VMError{Message: "unsupported operator: " + operator, IsPanic: true}
 }
 
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
@@ -119,7 +120,7 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		}
 		return NewInt(lVal % rVal), nil
 	}
-	return nil, &VMError{Message: fmt.Sprintf("unsupported arithmetic operator: %s", op), IsPanic: true}
+	return nil, &VMError{Message: "unsupported arithmetic operator: " + op, IsPanic: true}
 }
 
 func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
@@ -148,7 +149,7 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	case ">>", "Rsh":
 		return NewInt(li >> uint(ri)), nil
 	}
-	return nil, &VMError{Message: fmt.Sprintf("unsupported bitwise operator: %s", op), IsPanic: true}
+	return nil, &VMError{Message: "unsupported bitwise operator: " + op, IsPanic: true}
 }
 
 func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
@@ -262,7 +263,7 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 	case "||", "Or":
 		return NewBool(lb || rb), nil
 	}
-	return nil, &VMError{Message: fmt.Sprintf("unsupported logic operator: %s", op), IsPanic: true}
+	return nil, &VMError{Message: "unsupported logic operator: " + op, IsPanic: true}
 }
 
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
@@ -294,7 +295,7 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 		}
 		return nil, &VMError{Message: fmt.Sprintf("cannot dereference type %v", val.VType), IsPanic: true}
 	}
-	return nil, &VMError{Message: fmt.Sprintf("unsupported unary op %s", operator), IsPanic: true}
+	return nil, &VMError{Message: "unsupported unary op " + operator, IsPanic: true}
 }
 
 func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
@@ -372,7 +373,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 
 func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property string) (*Var, error) {
 	if obj == nil || isEmptyVar(obj) {
-		return nil, &VMError{Message: fmt.Sprintf("member access on nil object: %s", property), IsPanic: true}
+		return nil, &VMError{Message: "member access on nil object: " + property, IsPanic: true}
 	}
 	if obj.VType == TypeCell {
 		obj = obj.Ref.(*Cell).Value
@@ -848,13 +849,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			// For internal "heap" simulation, we can use a non-zero handle ID.
 			// Since we only need it to be non-nil for the test, and ideally it should
 			// point to something that can be dereferenced or used later.
-			// For now, let's use a unique ID and store it in ActiveHandles with a nil bridge.
-			hLen := 0
-			if session.ActiveHandles != nil {
-				hLen = len(session.ActiveHandles.Handles)
-			}
-			internalID := uint32(hLen + 1000000)
-			session.AddHandle(nil, internalID, nil)
+			internalID := uint32(1000000 + time.Now().UnixNano()%1000000)
 
 			res := &Var{
 				VType:  TypeHandle,

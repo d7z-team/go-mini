@@ -64,7 +64,7 @@ func (__p *BrowserModuleProxy) OpenBrowser(ctx context.Context, url string) (*ot
 	return v_0, err_1
 }
 
-func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "OpenBrowser":
@@ -73,8 +73,6 @@ func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_BrowserModule_OpenBrowser:
 		var url string
@@ -205,7 +203,7 @@ func (__p *BrowserServiceProxy) NewPage(b *other.Browser) (*other.Page, error) {
 	return v_0, err_1
 }
 
-func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "NewPage":
@@ -214,8 +212,6 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_BrowserService_NewPage:
 		var b *other.Browser
@@ -357,7 +353,7 @@ func (__p *PageServiceProxy) Locator(p *other.Page, selectors ...string) (*other
 	return v_0, err_1
 }
 
-func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Locator":
@@ -366,8 +362,6 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_PageService_Locator:
 		var p *other.Page
@@ -503,7 +497,7 @@ func (__p *CdpSelectorServiceProxy) Click(s *other.CdpSelector) error {
 	return err_0
 }
 
-func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Click":
@@ -512,8 +506,6 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_CdpSelectorService_Click:
 		var s *other.CdpSelector

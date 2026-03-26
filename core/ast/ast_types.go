@@ -44,7 +44,6 @@ func (o GoMiniType) IsPrimitive() bool {
 	return o.IsAny() || o.IsString() || o.IsNumeric() || o.IsBool() || o == "TypeBytes" || o == "Error"
 }
 
-
 func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	fn, ok := o.ReadFunc()
 	if !ok {
@@ -625,7 +624,7 @@ func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
 
 var DefaultMaxTypeDepth = 256
 
-func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth int, maxDepth int) bool {
+func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth int) bool {
 	if depth > maxDepth {
 		return false // Prevent DoS via recursive types
 	}

@@ -80,7 +80,7 @@ func (e *VMError) Error() string {
 		sb.WriteString("\n\ngoroutine (mini) [running]:")
 		for _, f := range e.Frames {
 			// VSCode 终端匹配模式： path:line:col
-			sb.WriteString(fmt.Sprintf("\n%s()\n\t%s:%d:%d", f.Function, f.Filename, f.Line, f.Column))
+			fmt.Fprintf(&sb, "\n%s()\n\t%s:%d:%d", f.Function, f.Filename, f.Line, f.Column)
 		}
 	}
 	return sb.String()
@@ -369,9 +369,6 @@ func (v *Var) Copy() *Var {
 		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
 		h := NewVMHandle(v.Handle, v.Bridge)
 		res.Ref = h
-		if v.stack.Value() != nil {
-			v.stack.Value().AddHandle(v.Bridge, v.Handle, h)
-		}
 	}
 	if v.VType == TypeInterface {
 		if inter, ok := v.Ref.(*VMInterface); ok {
@@ -433,15 +430,7 @@ type Stack struct {
 	interrupt string
 	Depth     int
 
-	DeferStack    []func()
-	ActiveHandles *HandleTracker // 作用域/会话级的句柄追踪，防止 GC 提前回收
-}
-
-func (s *Stack) AddHandle(bridge ffigo.FFIBridge, id uint32, h *VMHandle) {
-	if s.ActiveHandles == nil {
-		s.ActiveHandles = &HandleTracker{}
-	}
-	s.ActiveHandles.Handles = append(s.ActiveHandles.Handles, HandleRef{Bridge: bridge, ID: id, Ref: h})
+	DeferStack []func()
 }
 
 func (s *Stack) AddDefer(fn func()) {
@@ -454,16 +443,6 @@ func (s *Stack) RunDefers() {
 		s.DeferStack[i]()
 	}
 	s.DeferStack = nil
-}
-
-type HandleRef struct {
-	Bridge ffigo.FFIBridge
-	ID     uint32
-	Ref    *VMHandle // 强引用，防止在 Session 存活期间被回收
-}
-
-type HandleTracker struct {
-	Handles []HandleRef
 }
 
 type ExecutorAPI interface {
@@ -492,7 +471,6 @@ type StackContext struct {
 
 	StepCount      int64
 	StepLimit      int64
-	ActiveHandles  *HandleTracker
 	ModuleCache    map[string]*Var
 	LoadingModules map[string]bool
 
@@ -650,12 +628,6 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 func (ctx *StackContext) AddVariable(name string, v *Var) error {
 	ctx.Stack.MemoryPtr[name] = v.Copy()
 	return nil
-}
-
-func (ctx *StackContext) AddHandle(bridge ffigo.FFIBridge, id uint32, h *VMHandle) {
-	if ctx.Stack != nil {
-		ctx.Stack.AddHandle(bridge, id, h)
-	}
 }
 
 func (ctx *StackContext) Load(name string) (*Var, error) {

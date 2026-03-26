@@ -14,19 +14,19 @@ type Impl struct{}
 
 // 实现 BrowserModule
 func (i *Impl) OpenBrowser(ctx context.Context, url string) (*other.Browser, error) {
-	fmt.Println("Mock OpenBrowser:", url)
+	fmt.Println("Mock OpenBrowser:", url) //nolint:forbidigo // example output
 	return &other.Browser{Name: url}, nil
 }
 
 // 实现 BrowserService
 func (i *Impl) NewPage(b *other.Browser) (*other.Page, error) {
-	fmt.Println("Mock NewPage for browser:", b.Name)
+	fmt.Println("Mock NewPage for browser:", b.Name) //nolint:forbidigo // example output
 	return &other.Page{URL: "about:blank"}, nil
 }
 
 // 实现 PageService
 func (i *Impl) Locator(p *other.Page, selectors ...string) (*other.CdpSelector, error) {
-	fmt.Printf("Mock Locator on page '%s' with selectors: %v\n", p.URL, selectors)
+	fmt.Printf("Mock Locator on page '%s' with selectors: %v\n", p.URL, selectors) //nolint:forbidigo // example output
 	id := "unknown"
 	if len(selectors) > 0 {
 		id = selectors[0]
@@ -36,7 +36,7 @@ func (i *Impl) Locator(p *other.Page, selectors ...string) (*other.CdpSelector, 
 
 // 实现 CdpSelectorService
 func (i *Impl) Click(s *other.CdpSelector) error {
-	fmt.Println("Mock Click on selector:", s.ID)
+	fmt.Println("Mock Click on selector:", s.ID) //nolint:forbidigo // example output
 	return nil
 }
 

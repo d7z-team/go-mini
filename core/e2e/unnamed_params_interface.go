@@ -6,7 +6,7 @@ import "context"
 
 // ffigen:module logger
 type Logger interface {
-	Log(ctx context.Context, msg string, level string, code int64)
+	Log(ctx context.Context, msg, level string, code int64)
 	// Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)
 	Internal(string, string, int64)
 }

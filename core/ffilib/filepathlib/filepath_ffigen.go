@@ -258,7 +258,7 @@ func (__p *FilepathProxy) VolumeName(path string) string {
 	return v_0
 }
 
-func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Base":
@@ -289,8 +289,6 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Filepath_Base:
 		var path string

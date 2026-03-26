@@ -86,7 +86,6 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		Stack:          &Stack{MemoryPtr: make(map[string]*Var), Scope: scope, Depth: 1},
 		ModuleCache:    make(map[string]*Var),
 		LoadingModules: make(map[string]bool),
-		ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 128)},
 		Debugger:       debugger.GetDebugger(ctx),
 		TaskStack:      make([]Task, 0, 128),
 		ValueStack:     &ValueStack{},
@@ -120,13 +119,6 @@ func (e *Executor) CleanupSession(session *StackContext) {
 	for curr != nil {
 		if curr.DeferStack != nil {
 			curr.RunDefers()
-		}
-		if curr.ActiveHandles != nil {
-			for _, h := range curr.ActiveHandles.Handles {
-				if h.Bridge != nil && h.ID != 0 {
-					_ = h.Bridge.DestroyHandle(h.ID)
-				}
-			}
 		}
 		curr = curr.Parent
 	}
@@ -1546,7 +1538,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					StepCount:      session.StepCount,
 					ModuleCache:    session.ModuleCache,
 					LoadingModules: session.LoadingModules,
-					ActiveHandles:  session.ActiveHandles, // Share the same handles slice
 					Debugger:       session.Debugger,
 				}
 
@@ -2127,7 +2118,6 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 			StepLimit:      session.StepLimit,
 			ModuleCache:    session.ModuleCache,
 			LoadingModules: session.LoadingModules,
-			ActiveHandles:  session.ActiveHandles,
 			Debugger:       session.Debugger,
 		}
 		closure := &VMClosure{
@@ -2261,13 +2251,13 @@ func (e *Executor) Disassemble() (res string) {
 	}
 	var sb strings.Builder
 	sb.WriteString("; Go-Mini VM Disassembly\n")
-	sb.WriteString(fmt.Sprintf("; Total Variables: %d\n", len(e.program.Variables)))
-	sb.WriteString(fmt.Sprintf("; Total Functions: %d\n\n", len(e.program.Functions)))
+	fmt.Fprintf(&sb, "; Total Variables: %d\n", len(e.program.Variables))
+	fmt.Fprintf(&sb, "; Total Functions: %d\n\n", len(e.program.Functions))
 
 	// 1. Export Global Initialization
 	sb.WriteString("section .data:\n")
 	for name, expr := range e.program.Variables {
-		sb.WriteString(fmt.Sprintf("  global %s\n", name))
+		fmt.Fprintf(&sb, "  global %s\n", name)
 		e.disassembleNode(&sb, "    ", expr, true)
 	}
 	sb.WriteString("\n")
@@ -2301,7 +2291,7 @@ func (e *Executor) Disassemble() (res string) {
 			params = append(params, prefix+string(p.Type))
 		}
 		sig := fmt.Sprintf("(%s) %s", strings.Join(params, ","), f.Return)
-		sb.WriteString(fmt.Sprintf("%s%s:\n", k, sig))
+		fmt.Fprintf(&sb, "%s%s:\n", k, sig)
 		e.disassembleNode(&sb, "  ", f.Body, false)
 		sb.WriteString("\n")
 	}
@@ -2319,22 +2309,20 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 	if node == nil {
 		return
 	}
-// 模拟执行环境来提取任务流
-mockSession := &StackContext{
-	Executor: e,
-	Stack: &Stack{
-		MemoryPtr: make(map[string]*Var),
-		Scope:     "disassemble",
-		Depth:     1,
-	},
-	ValueStack:     &ValueStack{},
-	TaskStack:      nil,
-	ModuleCache:    make(map[string]*Var),
-	LoadingModules: make(map[string]bool),
-	Context:        context.Background(),
-	ActiveHandles:  &HandleTracker{Handles: make([]HandleRef, 0, 16)},
-}
-
+	// 模拟执行环境来提取任务流
+	mockSession := &StackContext{
+		Executor: e,
+		Stack: &Stack{
+			MemoryPtr: make(map[string]*Var),
+			Scope:     "disassemble",
+			Depth:     1,
+		},
+		ValueStack:     &ValueStack{},
+		TaskStack:      nil,
+		ModuleCache:    make(map[string]*Var),
+		LoadingModules: make(map[string]bool),
+		Context:        context.Background(),
+	}
 
 	var root Task
 	if isExpr {
@@ -2433,7 +2421,7 @@ mockSession := &StackContext{
 						} else if member, ok := call.Func.(*ast.MemberExpr); ok {
 							funcName = string(member.Property)
 						}
-						comment = fmt.Sprintf("Call %s", funcName)
+						comment = "Call " + funcName
 					}
 				case OpAssign:
 					comment = "Assignment"
@@ -2512,9 +2500,6 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	session.TaskStack = []Task{}
 	session.ValueStack = &ValueStack{}
 	session.UnwindMode = UnwindNone
-	if session.ActiveHandles == nil {
-		session.ActiveHandles = &HandleTracker{Handles: make([]HandleRef, 0, 64)}
-	}
 	if session.ModuleCache == nil {
 		session.ModuleCache = make(map[string]*Var)
 	}
@@ -2542,9 +2527,6 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	ctx.TaskStack = []Task{{Op: OpImportInit, Node: n}}
 	ctx.ValueStack = &ValueStack{}
 	ctx.UnwindMode = UnwindNone
-	if ctx.ActiveHandles == nil {
-		ctx.ActiveHandles = &HandleTracker{Handles: make([]HandleRef, 0, 64)}
-	}
 	if ctx.ModuleCache == nil {
 		ctx.ModuleCache = make(map[string]*Var)
 	}

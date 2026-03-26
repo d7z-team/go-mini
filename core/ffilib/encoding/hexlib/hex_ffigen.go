@@ -89,7 +89,7 @@ func (__p *HexProxy) Dump(data []byte) string {
 	return v_0
 }
 
-func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EncodeToString":
@@ -102,8 +102,6 @@ func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Hex_EncodeToString:
 		var src []byte

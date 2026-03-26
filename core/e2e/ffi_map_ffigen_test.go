@@ -202,7 +202,7 @@ func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (ma
 	return v_0, err_1
 }
 
-func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EchoMap":
@@ -217,8 +217,6 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_MapTest_EchoMap:
 		var m map[string]string

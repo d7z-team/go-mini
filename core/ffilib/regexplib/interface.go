@@ -6,10 +6,10 @@ package regexplib
 // ffigen:module regexp
 type Regexp interface {
 	Match(pattern string, b []byte) (bool, error)
-	MatchString(pattern string, s string) (bool, error)
+	MatchString(pattern, s string) (bool, error)
 	QuoteMeta(s string) string
-	FindString(pattern string, s string) string
-	FindStringSubmatch(pattern string, s string) []string
-	ReplaceAllString(pattern string, src, repl string) (string, error)
-	Split(pattern string, s string, n int) ([]string, error)
+	FindString(pattern, s string) string
+	FindStringSubmatch(pattern, s string) []string
+	ReplaceAllString(pattern, src, repl string) (string, error)
+	Split(pattern, s string, n int) ([]string, error)
 }

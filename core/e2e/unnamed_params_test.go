@@ -13,13 +13,13 @@ type mockLogger struct {
 	lastCode  int64
 }
 
-func (m *mockLogger) Log(ctx context.Context, msg string, level string, code int64) {
+func (m *mockLogger) Log(ctx context.Context, msg, level string, code int64) {
 	m.lastMsg = msg
 	m.lastLevel = level
 	m.lastCode = code
 }
 
-func (m *mockLogger) Internal(msg string, level string, code int64) {
+func (m *mockLogger) Internal(msg, level string, code int64) {
 	m.lastMsg = msg
 	m.lastLevel = level
 	m.lastCode = code

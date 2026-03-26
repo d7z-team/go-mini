@@ -308,7 +308,7 @@ func (s *VMStruct) String() string {
 		}
 		buf.WriteString(f.Name)
 		buf.WriteString(":")
-		buf.WriteString(fmt.Sprintf("%v", f.Value))
+		fmt.Fprintf(&buf, "%v", f.Value)
 	}
 	buf.WriteString("}")
 	return buf.String()

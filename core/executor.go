@@ -525,7 +525,7 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 
 func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
 	var errs []error
-	semanticCtx, err := e.validateAndOptimize(program)
+	_, err := e.validateAndOptimize(program)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -537,10 +537,6 @@ func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 			Program:  program,
 			executor: &runtime.Executor{},
 		}
-	}
-	if semanticCtx != nil {
-		// If there are validation errors, they might be in the validator logs
-		// But program.Check(semanticCtx) already returns the first error.
 	}
 	return res, errs
 }

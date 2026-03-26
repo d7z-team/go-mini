@@ -13,11 +13,11 @@ func TestStructExport(t *testing.T) {
 	executor.InjectStandardLibraries()
 
 	registry := executor.HandleRegistry()
-	
+
 	// Register the factory as a module
 	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
 	// Register the Calculator methods
-	// Note: We don't need a specific instance of Calculator to register its methods, 
+	// Note: We don't need a specific instance of Calculator to register its methods,
 	// because the methods themselves will be called on instances returned by the factory.
 	structtest.RegisterCalculator(executor, registry)
 	code := `

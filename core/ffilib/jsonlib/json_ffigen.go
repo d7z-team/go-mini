@@ -91,7 +91,7 @@ func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
 	return v_0, err_1
 }
 
-func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Marshal":

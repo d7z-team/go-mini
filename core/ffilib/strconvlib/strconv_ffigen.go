@@ -286,7 +286,7 @@ func (__p *StrconvProxy) Unquote(s string) (string, error) {
 	return v_0, err_1
 }
 
-func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Atoi":
@@ -313,8 +313,6 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Strconv_Atoi:
 		var s string

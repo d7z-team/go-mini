@@ -15,6 +15,6 @@ type Time interface {
 	Format(ns int64, layout string) string
 	Parse(layout, value string) (int64, error)
 	ParseDuration(s string) (int64, error)
-	Add(ns int64, duration int64) int64
-	Sub(ns1 int64, ns2 int64) int64
+	Add(ns, duration int64) int64
+	Sub(ns1, ns2 int64) int64
 }

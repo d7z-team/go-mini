@@ -258,13 +258,13 @@ func (__p *BytesProxy) Repeat(b []byte, count int) []byte {
 	return v_0
 }
 
-func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, new []byte) []byte {
+func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, replacement []byte) []byte {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteBytes(s)
 	buf.WriteBytes(old)
-	buf.WriteBytes(new)
+	buf.WriteBytes(replacement)
 
 	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_ReplaceAll, buf.Bytes())
 	_ = retData
@@ -275,7 +275,7 @@ func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, new []byte) []byte {
 	return v_0
 }
 
-func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Contains":
@@ -310,8 +310,6 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Bytes_Contains:
 		var b []byte
@@ -439,9 +437,9 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		s = reqBuf.ReadBytes()
 		var old []byte
 		old = reqBuf.ReadBytes()
-		var new []byte
-		new = reqBuf.ReadBytes()
-		r0 := impl.ReplaceAll(s, old, new)
+		var replacement []byte
+		replacement = reqBuf.ReadBytes()
+		r0 := impl.ReplaceAll(s, old, replacement)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil

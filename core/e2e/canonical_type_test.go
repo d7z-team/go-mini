@@ -14,14 +14,17 @@ type CanonicalTestImpl struct{}
 func (i *CanonicalTestImpl) NewA(ctx context.Context, name string) *a_other.Type {
 	return &a_other.Type{Name: name}
 }
+
 func (i *CanonicalTestImpl) NewB(ctx context.Context, id int) *b_other.Type {
 	return &b_other.Type{ID: id}
 }
 
 type AImpl struct{}
+
 func (i *AImpl) Hello(t *a_other.Type) string { return "Hello A: " + t.Name }
 
 type BImpl struct{}
+
 func (i *BImpl) Hello(t *b_other.Type) string { return "Hello B: " + string(rune(t.ID)) }
 
 func TestCanonicalTypeSystem(t *testing.T) {

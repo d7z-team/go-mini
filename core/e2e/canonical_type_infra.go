@@ -3,6 +3,7 @@ package e2e
 
 import (
 	"context"
+
 	a_other "gopkg.d7z.net/go-mini/core/e2e/internal/a/other"
 	b_other "gopkg.d7z.net/go-mini/core/e2e/internal/b/other"
 )

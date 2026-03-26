@@ -46,7 +46,7 @@ func (__p *MockGeometryProxy) SumX(points []RobustPoint) int64 {
 	return v_0
 }
 
-func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "SumX":
@@ -55,8 +55,6 @@ func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_MockGeometry_SumX:
 		var points []RobustPoint

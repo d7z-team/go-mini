@@ -54,7 +54,7 @@ func (s *LSPServer) UpdateSession(uri, code string) ([]Diagnostic, error) {
 	return s.rebuildPackage(pkgName, uri)
 }
 
-func (s *LSPServer) rebuildPackage(pkgName string, targetURI string) ([]Diagnostic, error) {
+func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, error) {
 	val, _ := s.packages.LoadOrStore(pkgName, &packageState{files: make(map[string]string)})
 	pkg := val.(*packageState)
 	pkg.mu.Lock()

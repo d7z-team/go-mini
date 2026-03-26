@@ -133,7 +133,7 @@ func (__p *UTF8Proxy) ValidString(s string) bool {
 	return v_0
 }
 
-func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "DecodeRuneInString":
@@ -152,8 +152,6 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_UTF8_DecodeRuneInString:
 		var s string

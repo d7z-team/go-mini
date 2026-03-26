@@ -17,7 +17,7 @@ const (
 	MethodID_Calculator_GetBase  = 3
 )
 
-func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Add":
@@ -30,8 +30,6 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Calculator_Add:
 		var c *Calculator
@@ -144,7 +142,7 @@ const (
 	MethodID_Factory_New = 1
 )
 
-func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -153,8 +151,6 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Factory_New:
 		var base int64

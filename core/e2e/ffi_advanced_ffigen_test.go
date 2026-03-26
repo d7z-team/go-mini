@@ -125,7 +125,7 @@ func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	return v_0
 }
 
-func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetSameObject":
@@ -140,8 +140,6 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_AdvancedFFI_GetSameObject:
 		r0 := impl.GetSameObject()

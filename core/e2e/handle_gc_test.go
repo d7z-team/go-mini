@@ -31,16 +31,16 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []
 	case 1: // 模拟 Screenshot
 		res := &MockResource{ID: 12}
 		id := m.registry.Register(res)
-		
+
 		buf := ffigo.GetBuffer()
 		defer ffigo.ReleaseBuffer(buf)
 		buf.WriteUvarint(uint64(id))
 		return buf.Bytes(), nil
-		
+
 	case 2: // 模拟 GetWidth
 		reader := ffigo.NewReader(args)
 		id := uint32(reader.ReadUvarint())
-		
+
 		obj, ok := m.registry.Get(id)
 		if !ok {
 			return nil, ffigo.ErrorData{Message: fmt.Sprintf("invalid handle ID: %d", id)}
@@ -50,7 +50,7 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []
 		defer ffigo.ReleaseBuffer(buf)
 		buf.WriteVarint(res.GetID())
 		return buf.Bytes(), nil
-		
+
 	case 3: // 模拟 GC 压力
 		runtime.GC()
 		time.Sleep(50 * time.Millisecond)

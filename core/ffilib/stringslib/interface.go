@@ -18,8 +18,8 @@ type Strings interface {
 	TrimSpace(s string) string
 	TrimPrefix(s, prefix string) string
 	TrimSuffix(s, suffix string) string
-	Replace(s, old, new string, n int) string
-	ReplaceAll(s, old, new string) string
+	Replace(s, old, replacement string, n int) string
+	ReplaceAll(s, old, replacement string) string
 	Split(s, sep string) []string
 	Join(elems []string, sep string) string
 }

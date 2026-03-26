@@ -33,7 +33,7 @@ func TestFileExtendedAPI(t *testing.T) {
 	})
 
 	t.Run("SeekAndReadAll", func(t *testing.T) {
-		os.WriteFile("test_2.txt", []byte("0123456789"), 0644)
+		os.WriteFile("test_2.txt", []byte("0123456789"), 0o644)
 		defer os.Remove("test_2.txt")
 		code := `
 			package main

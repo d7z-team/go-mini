@@ -74,7 +74,7 @@ func (__p *MockShapeAPIProxy) Area(r Rect) int64 {
 	return v_0
 }
 
-func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetRect":
@@ -85,8 +85,6 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_MockShapeAPI_GetRect:
 		r0 := impl.GetRect()

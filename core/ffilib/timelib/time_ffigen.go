@@ -268,7 +268,7 @@ func (__p *TimeProxy) Sub(ns1 int64, ns2 int64) int64 {
 	return v_0
 }
 
-func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Now":
@@ -299,8 +299,6 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Time_Now:
 		r0 := impl.Now()

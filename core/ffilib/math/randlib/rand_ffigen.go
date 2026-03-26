@@ -144,7 +144,7 @@ func (__p *RandProxy) Perm(n int) []int {
 	return v_0
 }
 
-func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Float64":
@@ -165,8 +165,6 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Rand_Float64:
 		r0 := impl.Float64()

@@ -100,12 +100,12 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 			vme.IsPanic = true
 			return nil, vme
 		}
-		
+
 		// 获取 VM 调用栈
 		frames := session.GenerateStackTrace(nil)
 		var stackStr strings.Builder
 		for i, f := range frames {
-			stackStr.WriteString(fmt.Sprintf("\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column))
+			fmt.Fprintf(&stackStr, "\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column)
 		}
 
 		// 将宿主 Error 包装为带栈信息的 Panic
@@ -448,7 +448,6 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
-			session.AddHandle(bridge, v, h)
 		}
 		res = &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
 	case ffigo.InterfaceData:
@@ -473,7 +472,6 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		if v.Handle != 0 {
 			h := NewVMHandle(v.Handle, bridge)
 			target.Ref = h
-			session.AddHandle(bridge, v.Handle, h)
 		}
 		res = &Var{
 			VType: TypeInterface,
@@ -493,8 +491,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			Bridge:  bridge,
 		}
 		if v.Handle != 0 {
-			h := NewVMHandle(v.Handle, bridge)
-			session.AddHandle(bridge, v.Handle, h)
+			NewVMHandle(v.Handle, bridge)
 		}
 		res = &Var{
 			VType:  TypeError,
@@ -679,7 +676,6 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
-				session.AddHandle(bridge, id, h)
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 		case typ.IsArray():
@@ -743,7 +739,6 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 				var h *VMHandle
 				if id != 0 {
 					h = NewVMHandle(id, bridge)
-					session.AddHandle(bridge, id, h)
 				}
 				res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
 				break

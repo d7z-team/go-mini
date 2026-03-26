@@ -18,9 +18,11 @@ type SimpleBridge struct {
 func (b *SimpleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	return b.Callback(methodID, args)
 }
+
 func (b *SimpleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
 	return nil, nil
 }
+
 func (b *SimpleBridge) DestroyHandle(handle uint32) error {
 	return nil
 }
@@ -139,10 +141,10 @@ func TestSecurityV3(t *testing.T) {
 			t.Error("Expected recursion depth error during semantic check, but got nil")
 		}
 	})
-	
+
 	t.Run("Configurable_Recursion_Depth", func(t *testing.T) {
 		e.SetMaxTypeDepth(100)
-		
+
 		deepType := "int64"
 		for i := 0; i < 40; i++ {
 			deepType = "*" + deepType

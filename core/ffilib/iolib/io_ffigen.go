@@ -133,7 +133,7 @@ func (__p *IOProxy) WriteString(ctx context.Context, w any, s string) (int64, er
 	return v_0, err_1
 }
 
-func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "ReadAll":
@@ -344,7 +344,7 @@ const (
 	MethodID_File_WriteNative = 9
 )
 
-func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Write":
@@ -369,8 +369,6 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_File_Write:
 		var f *File

@@ -3,11 +3,12 @@ package imagelib
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
-	_ "image/gif"
+	_ "image/gif" // register gif format
 	"image/jpeg"
 	"image/png"
 
@@ -111,11 +112,11 @@ func (i *Image) Clone() *Image {
 // SubImage 返回图像的子部分 (共享内存)
 func (i *Image) SubImage(x, y, width, height int) (*Image, error) {
 	if i == nil || i.RGBA == nil {
-		return nil, fmt.Errorf("nil image")
+		return nil, errors.New("nil image")
 	}
 	rect := image.Rect(x, y, x+width, y+height).Intersect(i.RGBA.Bounds())
 	if rect.Empty() {
-		return nil, fmt.Errorf("sub-image area out of bounds or empty")
+		return nil, errors.New("sub-image area out of bounds or empty")
 	}
 	sub := i.RGBA.SubImage(rect).(*image.RGBA)
 	return &Image{RGBA: sub}, nil
@@ -137,12 +138,12 @@ func (i *Image) Draw(ctx context.Context, src *Image, x, y int) {
 // Resize 缩放图像
 func (i *Image) Resize(width, height int) (*Image, error) {
 	if i == nil || i.RGBA == nil {
-		return nil, fmt.Errorf("nil image")
+		return nil, errors.New("nil image")
 	}
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("invalid dimensions: %dx%d", width, height)
 	}
-	
+
 	newImg := image.NewRGBA(image.Rect(0, 0, width, height))
 	oldBounds := i.RGBA.Bounds()
 	oldWidth := oldBounds.Dx()
@@ -163,11 +164,11 @@ func (i *Image) Resize(width, height int) (*Image, error) {
 // Crop 裁剪图像
 func (i *Image) Crop(x, y, width, height int) (*Image, error) {
 	if i == nil || i.RGBA == nil {
-		return nil, fmt.Errorf("nil image")
+		return nil, errors.New("nil image")
 	}
 	rect := image.Rect(x, y, x+width, y+height).Intersect(i.RGBA.Bounds())
 	if rect.Empty() {
-		return nil, fmt.Errorf("crop area out of bounds or empty")
+		return nil, errors.New("crop area out of bounds or empty")
 	}
 
 	newImg := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
@@ -179,7 +180,7 @@ func (i *Image) Crop(x, y, width, height int) (*Image, error) {
 // EncodePNG 将图像编码为 PNG 字节数组
 func (i *Image) EncodePNG() ([]byte, error) {
 	if i == nil || i.RGBA == nil {
-		return nil, fmt.Errorf("nil image")
+		return nil, errors.New("nil image")
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, i.RGBA); err != nil {
@@ -191,7 +192,7 @@ func (i *Image) EncodePNG() ([]byte, error) {
 // EncodeJPEG 将图像编码为 JPEG 字节数组
 func (i *Image) EncodeJPEG(quality int) ([]byte, error) {
 	if i == nil || i.RGBA == nil {
-		return nil, fmt.Errorf("nil image")
+		return nil, errors.New("nil image")
 	}
 	var buf bytes.Buffer
 	if quality < 1 {
@@ -230,7 +231,8 @@ func (h *ImageHost) Decode(ctx context.Context, data []byte) (*Image, string, er
 func RegisterImageAll(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
-}, impl ImageLib, registry *ffigo.HandleRegistry) {
+}, impl ImageLib, registry *ffigo.HandleRegistry,
+) {
 	RegisterImageLib(executor, impl, registry)
 	RegisterImage(executor, registry)
 }

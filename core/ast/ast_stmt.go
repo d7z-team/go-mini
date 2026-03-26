@@ -391,7 +391,7 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 		hasError = true
 	} else {
 		if err := i.Cond.Check(semCtx); err != nil {
-			fmt.Printf("IfStmt Cond.Check error: %v\n", err)
+			semCtx.AddErrorf("IfStmt Cond.Check error: %v", err)
 			hasError = true
 		} else {
 			condType := i.Cond.GetBase().Type

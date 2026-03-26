@@ -55,7 +55,7 @@ func (__p *ErrorsProxy) New(text string) error {
 	return err_0
 }
 
-func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -64,8 +64,6 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Errors_New:
 		var text string

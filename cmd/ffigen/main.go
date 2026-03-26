@@ -88,7 +88,7 @@ func main() {
 	for _, node := range files {
 		for _, imp := range node.Imports {
 			path := strings.Trim(imp.Path.Value, "\"")
-			alias := ""
+			var alias string
 			if imp.Name != nil {
 				alias = imp.Name.Name
 			} else {
@@ -215,15 +215,27 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing generated code for import cleanup: %v\n", err)
 		// Fallback to writing as is
-		os.WriteFile(*outFile, []byte(source), 0o644)
+		_ = os.WriteFile(*outFile, []byte(source), 0o644)
 		return
 	}
 
 	usedAliases := make(map[string]bool)
 	ast.Inspect(fOut, func(n ast.Node) bool {
-		if se, ok := n.(*ast.SelectorExpr); ok {
-			if id, ok := se.X.(*ast.Ident); ok {
+		switch node := n.(type) {
+		case *ast.SelectorExpr:
+			if id, ok := node.X.(*ast.Ident); ok {
 				usedAliases[id.Name] = true
+			}
+		case *ast.Field: // Handle parameter and result types
+			if node.Type != nil {
+				ast.Inspect(node.Type, func(tn ast.Node) bool {
+					if se, ok := tn.(*ast.SelectorExpr); ok {
+						if id, ok := se.X.(*ast.Ident); ok {
+							usedAliases[id.Name] = true
+						}
+					}
+					return true
+				})
 			}
 		}
 		return true
@@ -239,7 +251,7 @@ func main() {
 			for _, spec := range gd.Specs {
 				is := spec.(*ast.ImportSpec)
 				path := strings.Trim(is.Path.Value, "\"")
-				alias := ""
+				var alias string
 				if is.Name != nil {
 					alias = is.Name.Name
 				} else {
@@ -298,24 +310,13 @@ func main() {
 	var finalBuf bytes.Buffer
 	if err := format.Node(&finalBuf, fsetOut, fOut); err != nil {
 		fmt.Fprintf(os.Stderr, "Error formatting generated code: %v\n", err)
-		os.WriteFile(*outFile, []byte(source), 0o644)
+		_ = os.WriteFile(*outFile, []byte(source), 0o644)
 		return
 	}
 
 	if err := os.WriteFile(*outFile, finalBuf.Bytes(), 0o644); err != nil {
 		panic(err)
 	}
-}
-
-func collectUsedAliases(n ast.Node, used map[string]bool) {
-	ast.Inspect(n, func(n ast.Node) bool {
-		if se, ok := n.(*ast.SelectorExpr); ok {
-			if id, ok := se.X.(*ast.Ident); ok {
-				used[id.Name] = true
-			}
-		}
-		return true
-	})
 }
 
 func resolveToBasicType(e ast.Expr) string {
@@ -331,7 +332,7 @@ func resolveToBasicType(e ast.Expr) string {
 	return ""
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse bool, isStruct bool) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse, isStruct bool) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 
@@ -579,7 +580,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	if isStruct {
 		implType = "*" + name
 	}
-	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {\n", name, implType)
+	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {\n", name, implType)
 	fmt.Fprintf(&sb, "\tif methodID == 0 && methodName != \"\" {\n")
 	fmt.Fprintf(&sb, "\t\tswitch methodName {\n")
 	for _, method := range iface.Methods.List {
@@ -593,7 +594,48 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "\t\t}\n")
 	fmt.Fprintf(&sb, "\t}\n\n")
 
-	fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n\tvar rawVal any\n\t_ = rawVal\n\tswitch methodID {\n")
+	needsReqBuf := false
+	needsRawVal := false
+	for _, method := range iface.Methods.List {
+		if len(method.Names) == 0 {
+			continue
+		}
+		funcType := method.Type.(*ast.FuncType)
+		hasContext := false
+		if funcType.Params != nil && len(funcType.Params.List) > 0 {
+			pType := typeToString(funcType.Params.List[0].Type)
+			if pType == "context.Context" || pType == "Context" {
+				hasContext = true
+			}
+		}
+		if funcType.Params != nil {
+			for j, param := range funcType.Params.List {
+				if j == 0 && hasContext {
+					continue
+				}
+				needsReqBuf = true
+				pType := typeToString(param.Type)
+				if pType == "Any" || pType == "any" || strings.Contains(pType, "<Any>") || strings.Contains(pType, "<any>") {
+					needsRawVal = true
+				}
+				if _, ok := param.Type.(*ast.Ellipsis); ok {
+					// Also check variadic element type
+					inner := typeToString(param.Type.(*ast.Ellipsis).Elt)
+					if inner == "Any" || inner == "any" {
+						needsRawVal = true
+					}
+				}
+			}
+		}
+	}
+
+	if needsReqBuf {
+		fmt.Fprintf(&sb, "\treqBuf := ffigo.NewReader(args)\n")
+	}
+	if needsRawVal {
+		fmt.Fprintf(&sb, "\tvar rawVal any\n\t_ = rawVal\n")
+	}
+	fmt.Fprintf(&sb, "\tswitch methodID {\n")
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
@@ -672,13 +714,17 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		var retVars []string
 		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
+				rName := fmt.Sprintf("r%d", i)
 				if typeToString(result.Type) == "error" {
-					retVars = append(retVars, "err")
-				} else {
-					retVars = append(retVars, fmt.Sprintf("r%d", i))
+					rName = "err"
 				}
+				retVars = append(retVars, rName)
 			}
-			fmt.Fprintf(&sb, "\t\t%s := %s%s(%s)\n", strings.Join(retVars, ", "), callPrefix, methodName, strings.Join(callParams, ", "))
+			if len(retVars) > 0 {
+				fmt.Fprintf(&sb, "\t\t%s := %s%s(%s)\n", strings.Join(retVars, ", "), callPrefix, methodName, strings.Join(callParams, ", "))
+			} else {
+				fmt.Fprintf(&sb, "\t\t%s%s(%s)\n", callPrefix, methodName, strings.Join(callParams, ", "))
+			}
 		} else {
 			fmt.Fprintf(&sb, "\t\t%s%s(%s)\n", callPrefix, methodName, strings.Join(callParams, ", "))
 		}
@@ -1229,7 +1275,7 @@ func toVMType(expr ast.Expr) string {
 	case *ast.Ellipsis:
 		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
 	case *ast.SelectorExpr:
-		name := ""
+		var name string
 		if x, ok := t.X.(*ast.Ident); ok {
 			name = x.Name + "." + t.Sel.Name
 		} else {
@@ -1237,7 +1283,7 @@ func toVMType(expr ast.Expr) string {
 		}
 		return resolveCanonicalType(name)
 	case *ast.InterfaceType:
-		// Interfaces are always handles, so canonicalize methods if possible? 
+		// Interfaces are always handles, so canonicalize methods if possible?
 		// Actually ffigen interface processing is elsewhere.
 		return "Any"
 	default:

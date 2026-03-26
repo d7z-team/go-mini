@@ -187,7 +187,7 @@ func (__p *OrderServiceProxy) Close(o *Order) error {
 	return err_0
 }
 
-func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -202,8 +202,6 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_OrderService_New:
 		var id string

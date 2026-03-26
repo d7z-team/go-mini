@@ -38,9 +38,9 @@ func TestDisassemble(t *testing.T) {
 	}
 
 	// 打印输出以便在测试日志中查看
-	fmt.Println("--- Generated Disassembly ---")
-	fmt.Println(asm)
-	fmt.Println("--- End of Disassembly ---")
+	fmt.Println("--- Generated Disassembly ---") //nolint:forbidigo // allowed for test output
+	fmt.Println(asm)                             //nolint:forbidigo // allowed for test output
+	fmt.Println("--- End of Disassembly ---")    //nolint:forbidigo // allowed for test output
 
 	// 基本内容验证
 	expectedSymbols := []string{

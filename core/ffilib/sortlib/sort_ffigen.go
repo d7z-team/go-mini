@@ -152,7 +152,7 @@ func (__p *SortProxy) StringsAreSorted(x []string) bool {
 	return v_0
 }
 
-func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Ints":
@@ -171,8 +171,6 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Sort_Ints:
 		var x []int64

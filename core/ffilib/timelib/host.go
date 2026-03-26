@@ -56,12 +56,12 @@ func (h *TimeHost) ParseDuration(s string) (int64, error) {
 	return int64(d), nil
 }
 
-func (h *TimeHost) Add(ns int64, duration int64) int64 {
+func (h *TimeHost) Add(ns, duration int64) int64 {
 	t := time.Unix(0, ns)
 	return t.Add(time.Duration(duration)).UnixNano()
 }
 
-func (h *TimeHost) Sub(ns1 int64, ns2 int64) int64 {
+func (h *TimeHost) Sub(ns1, ns2 int64) int64 {
 	t1 := time.Unix(0, ns1)
 	t2 := time.Unix(0, ns2)
 	return int64(t1.Sub(t2))

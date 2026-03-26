@@ -58,12 +58,12 @@ func (h *StringsHost) TrimSuffix(s, suffix string) string {
 	return strings.TrimSuffix(s, suffix)
 }
 
-func (h *StringsHost) Replace(s, old, new string, n int) string {
-	return strings.Replace(s, old, new, n)
+func (h *StringsHost) Replace(s, old, replacement string, n int) string {
+	return strings.Replace(s, old, replacement, n)
 }
 
-func (h *StringsHost) ReplaceAll(s, old, new string) string {
-	return strings.ReplaceAll(s, old, new)
+func (h *StringsHost) ReplaceAll(s, old, replacement string) string {
+	return strings.ReplaceAll(s, old, replacement)
 }
 
 func (h *StringsHost) Split(s, sep string) []string {

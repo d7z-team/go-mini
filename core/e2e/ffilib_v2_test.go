@@ -2,15 +2,13 @@ package e2e
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
 func TestFFILibV2(t *testing.T) {
-	os.Setenv("GO_MINI_TEST", "rocks")
-	defer os.Unsetenv("GO_MINI_TEST")
+	t.Setenv("GO_MINI_TEST", "rocks")
 
 	code := `
 		package main

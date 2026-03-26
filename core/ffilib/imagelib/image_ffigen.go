@@ -88,7 +88,7 @@ func (__p *ImageLibProxy) NewRGBA(ctx context.Context, width int, height int) *I
 	return v_0
 }
 
-func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Decode":
@@ -99,8 +99,6 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_ImageLib_Decode:
 		var data []byte
@@ -210,7 +208,7 @@ const (
 	MethodID_Image_EncodeJPEG = 15
 )
 
-func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Bounds":
@@ -247,8 +245,6 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Image_Bounds:
 		var i *Image

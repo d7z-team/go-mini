@@ -123,7 +123,7 @@ func (__p *Base64Proxy) URLDecodeString(s string) ([]byte, error) {
 	return v_0, err_1
 }
 
-func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EncodeToString":
@@ -138,8 +138,6 @@ func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRe
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_Base64_EncodeToString:
 		var src []byte
