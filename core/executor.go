@@ -341,9 +341,9 @@ func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Execu
 	return executor, nil
 }
 
-func (e *MiniExecutor) validateAndOptimize(program *ast.ProgramStmt) (*ast.SemanticContext, error) {
+func (e *MiniExecutor) validateAndOptimize(program *ast.ProgramStmt, tolerant bool) (*ast.SemanticContext, error) {
 	specs := e.GetExportedSpecs()
-	validator, err := ast.NewValidator(program, specs)
+	validator, err := ast.NewValidator(program, specs, tolerant)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +525,7 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 
 func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
 	var errs []error
-	_, err := e.validateAndOptimize(program)
+	_, err := e.validateAndOptimize(program, true)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -562,7 +562,7 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 	program := node.(*ast.ProgramStmt)
 
 	// Validate and Optimize
-	semanticCtx, err := e.validateAndOptimize(program)
+	semanticCtx, err := e.validateAndOptimize(program, tolerant)
 	if err != nil {
 		if !tolerant {
 			var logs []ast.Logs
@@ -661,7 +661,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	e.mu.RUnlock()
 
 	// 语义校验
-	if _, err := e.validateAndOptimize(program); err != nil {
+	if _, err := e.validateAndOptimize(program, false); err != nil {
 		return err
 	}
 
@@ -720,7 +720,7 @@ func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		}
 	}
 
-	semanticCtx, err := e.validateAndOptimize(program)
+	semanticCtx, err := e.validateAndOptimize(program, false)
 	if err != nil {
 		var logs []ast.Logs
 		if semanticCtx != nil {

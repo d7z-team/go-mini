@@ -440,6 +440,33 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			path, isPkg := ctx.root.Imports[string(id.Name)]
 			if !isPkg {
 				path = string(id.Name)
+				// 尝试查找后缀匹配的 ImportedRoot
+				for fullPath := range ctx.root.ImportedRoots {
+					if fullPath == path || strings.HasSuffix(fullPath, "/"+path) {
+						path = fullPath
+						break
+					}
+				}
+			}
+
+			// 尝试从 ImportedRoots 中直接获取成员 (Go-source 模块)
+			if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
+				prop := string(m.Property)
+				// 1. 变量/函数
+				if t, ok := srcRoot.vars[Ident(prop)]; ok {
+					m.Type = t
+					return nil
+				}
+				// 2. 结构体
+				if _, ok := srcRoot.structs[Ident(prop)]; ok {
+					m.Type = GoMiniType(prop) // 或者需要包含包路径?
+					return nil
+				}
+				// 3. 接口
+				if _, ok := srcRoot.interfaces[Ident(prop)]; ok {
+					m.Type = GoMiniType(prop)
+					return nil
+				}
 			}
 
 			// 尝试多种路径格式

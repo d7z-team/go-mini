@@ -72,7 +72,7 @@ func main() {
 	parentMap := ast.BuildParentMap(prog)
 
 	// 重要：必须运行 Check 才能填充类型信息
-	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil)
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	// 必须运行 Check 来填充类型信息，否则 s.X 无法知道 s 是什么类型
-	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil)
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
@@ -173,7 +173,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil)
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 

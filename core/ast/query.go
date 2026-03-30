@@ -743,13 +743,44 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 			realPath, isPkg := ctx.root.Imports[pkgName]
 			if !isPkg {
 				realPath = pkgName
+				// 尝试在 ImportedRoots 中查找后缀匹配的真实路径
+				for fullPath := range ctx.root.ImportedRoots {
+					if fullPath == pkgName || strings.HasSuffix(fullPath, "/"+pkgName) {
+						realPath = fullPath
+						break
+					}
+				}
 			}
 
 			// 尝试多种路径格式 (例如 net/http 或 net.http)
 			targets := []string{pkgName + ".", realPath + ".", strings.ReplaceAll(realPath, "/", ".") + "."}
 			seenSymbols := make(map[string]bool)
 
-			// 寻找所有匹配前缀的全局变量 (FFI)
+			// 1. 查找 Go-source 模块成员 (从导入的子 Root 中提取)
+			if srcRoot, ok := ctx.root.ImportedRoots[realPath]; ok {
+				for name, t := range srcRoot.vars {
+					kind := "var"
+					if strings.HasPrefix(string(t), "function") {
+						kind = "func"
+					}
+					items = append(items, CompletionItem{Label: string(name), Kind: kind, Type: t})
+					seenSymbols[string(name)] = true
+				}
+				for name := range srcRoot.structs {
+					if !seenSymbols[string(name)] {
+						items = append(items, CompletionItem{Label: string(name), Kind: "struct"})
+						seenSymbols[string(name)] = true
+					}
+				}
+				for name := range srcRoot.interfaces {
+					if !seenSymbols[string(name)] {
+						items = append(items, CompletionItem{Label: string(name), Kind: "interface"})
+						seenSymbols[string(name)] = true
+					}
+				}
+			}
+
+			// 2. 寻找匹配前缀的全局变量 (FFI)
 			for name, t := range ctx.root.vars {
 				sName := string(name)
 				for _, prefix := range targets {

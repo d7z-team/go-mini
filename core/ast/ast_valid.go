@@ -33,7 +33,8 @@ type ValidRoot struct {
 	Imported      map[string]bool
 	ImportedRoots map[string]*ValidRoot
 	importStack   []string
-	MaxTypeDepth  int // 递归类型检查深度限制
+	MaxTypeDepth  int  // 递归类型检查深度限制
+	Tolerant      bool // 宽容模式：允许未显式导入的 FFI 包 (用于 LSP)
 }
 
 type ValidContext struct {
@@ -44,7 +45,7 @@ type ValidContext struct {
 	closureNode *FuncLitExpr // 当前活动的闭包节点
 }
 
-func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*ValidContext, error) {
+func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, tolerant bool) (*ValidContext, error) {
 	imports := make(map[string]string)
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
@@ -83,6 +84,7 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 			ImportedRoots: make(map[string]*ValidRoot),
 			importStack:   make([]string, 0),
 			MaxTypeDepth:  256,
+			Tolerant:      tolerant,
 		},
 		parent:  nil,
 		current: node,
@@ -94,6 +96,19 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, t := range externalSpecs {
 		v.root.vars[ident] = t
+
+		// 自动推断包名前缀并注册为 Package 类型，以支持成员访问补全 (符合 GEMINI.md XI)
+		// 仅在宽容模式 (LSP) 下启用，以维持 make test 的严格性
+		if v.root.Tolerant {
+			sIdent := string(ident)
+			if idx := strings.Index(sIdent, "."); idx != -1 {
+				pkgName := Ident(sIdent[:idx])
+				if _, ok := v.root.vars[pkgName]; !ok {
+					v.root.vars[pkgName] = "Package"
+				}
+			}
+		}
+
 		if t.IsStruct() {
 			fields, _ := t.ReadStructFields()
 			vStru := &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
@@ -122,11 +137,29 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType) (*Valid
 		v.root.vars[ident] = fn.FunctionType.MiniType()
 	}
 
+	// 在宽容模式下，也将 ImportedRoots 中的包名注册为 Package，以支持未显式导入时的补全
+	if v.root.Tolerant {
+		for pkgPath := range v.root.ImportedRoots {
+			// 如果路径中包含 /，取最后一部分作为包名建议
+			pkgName := pkgPath
+			if idx := strings.LastIndex(pkgPath, "/"); idx != -1 {
+				pkgName = pkgPath[idx+1:]
+			}
+			if _, ok := v.root.vars[Ident(pkgName)]; !ok {
+				v.root.vars[Ident(pkgName)] = "Package"
+			}
+		}
+	}
+
 	// 注入内建 nil
 	v.root.vars["nil"] = "Any"
 	v.root.vars["true"] = "Bool"
 	v.root.vars["false"] = "Bool"
 	return v, nil
+}
+
+func (r *ValidRoot) Vars() map[Ident]GoMiniType {
+	return r.vars
 }
 
 func (c *ValidContext) Root() *ValidRoot {
@@ -475,7 +508,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidator(prog, nil)
+	v, _ := NewValidator(prog, nil, c.root.Tolerant)
 	v.root.Path = path
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
