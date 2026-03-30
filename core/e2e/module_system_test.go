@@ -17,7 +17,8 @@ func TestModuleComprehensive(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path == "lib" {
+		switch path {
+		case "lib":
 			code := `
 			package lib
 			
@@ -39,8 +40,9 @@ func TestModuleComprehensive(t *testing.T) {
 				return nil, err
 			}
 			return node.(*ast.ProgramStmt), nil
+		default:
+			return nil, fmt.Errorf("module not found: %s", path)
 		}
-		return nil, fmt.Errorf("module not found: %s", path)
 	})
 
 	code := `
@@ -88,11 +90,12 @@ func TestCircularDependency(t *testing.T) {
 
 	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
 		var code string
-		if path == "a" {
+		switch path {
+		case "a":
 			code = "package a; import \"b\"; func Run() {}"
-		} else if path == "b" {
+		case "b":
 			code = "package b; import \"a\"; func Run() {}"
-		} else {
+		default:
 			return nil, errors.New("not found")
 		}
 		converter := ffigo.NewGoToASTConverter()

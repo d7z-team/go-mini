@@ -1201,11 +1201,9 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 	for i, lhs := range m.LHS {
 		if lhs != nil {
-			if lhs != nil {
-				if opt := lhs.Optimize(ctx); opt != nil {
-					if val, ok := opt.(Expr); ok {
-						m.LHS[i] = val
-					}
+			if opt := lhs.Optimize(ctx); opt != nil {
+				if val, ok := opt.(Expr); ok {
+					m.LHS[i] = val
 				}
 			}
 		}
@@ -1413,24 +1411,23 @@ func (i *InterruptStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *InterruptStmt) stmtNode()          {}
 
 func (i *InterruptStmt) Check(ctx *SemanticContext) error {
-	if i.InterruptType != "break" && i.InterruptType != "continue" {
-		err := fmt.Errorf("无效的中断类型: %s", i.InterruptType)
-		ctx.AddErrorf("%s", err.Error())
-		return err
-	}
-
-	if i.InterruptType == "break" {
+	switch i.InterruptType {
+	case "break":
 		if _, ok := ctx.CheckAnyScope("for", "range", "switch"); !ok {
 			err := fmt.Errorf("break 语句只能在循环或 switch 中使用")
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
-	} else if i.InterruptType == "continue" {
+	case "continue":
 		if _, ok := ctx.CheckAnyScope("for", "range"); !ok {
 			err := fmt.Errorf("continue 语句只能在循环中使用")
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
+	default:
+		err := fmt.Errorf("无效的中断类型: %s", i.InterruptType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	i.Type = "Void"

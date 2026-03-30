@@ -303,8 +303,3 @@ func (i *ImportExpr) Check(ctx *SemanticContext) error {
 func (i *ImportExpr) Optimize(ctx *OptimizeContext) Node {
 	return i
 }
-
-// 移除过时的自动数值转换
-func tryAutoNumericCast(ctx *ValidContext, param GoMiniType, arg Expr) Expr {
-	return arg
-}

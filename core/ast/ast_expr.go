@@ -409,7 +409,7 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 			sigParams := fType.Params
 			for i, param := range sigParams {
 				if i < len(c.Args) && c.Args[i] != nil {
-					arg := tryAutoNumericCast(ctx.ValidContext, param, c.Args[i])
+					arg := c.Args[i]
 					if ptr, b2 := param.AutoPtr(arg); b2 {
 						c.Args[i] = ptr
 					} else {
