@@ -747,16 +747,9 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 
 func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 	items := make([]CompletionItem, 0)
-	objType := obj.GetBase().Type
+	objType := inferLSPType(ctx, obj)
 
-	if objType == "" || objType == "Any" { // 也尝试推导 Any 类型
-		// 尝试推导
-		if id, ok := obj.(*IdentifierExpr); ok {
-			if t, ok := ctx.GetVariable(id.Name); ok {
-				objType = t
-			}
-		}
-	}
+	// 如果推导失败或推导出的为 Any，且是 IdentifierExpr，则尝试作为包名处理，下文会进一步检查
 
 	if objType == "" || objType == "Package" || objType == TypeModule {
 		// 检查是否是包名
@@ -861,4 +854,74 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 	}
 
 	return items
+}
+func inferLSPType(ctx *ValidContext, expr Node) GoMiniType {
+	return inferLSPTypeRecursive(ctx, expr, 0)
+}
+
+func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
+	if expr == nil || depth > 20 {
+		return ""
+	}
+	// 如果已经有确定的类型且不是 Any，则直接使用
+	if t := expr.GetBase().Type; t != "" && t != "Any" {
+		return t
+	}
+
+	switch e := expr.(type) {
+	case *IdentifierExpr:
+		if t, ok := ctx.GetVariable(e.Name); ok {
+			return t
+		}
+	case *MemberExpr:
+		objType := inferLSPTypeRecursive(ctx, e.Object, depth+1)
+		if objType == "" {
+			return ""
+		}
+		// 1. 尝试从结构体中查找
+		typeName := objType.BaseName()
+		if st, ok := ctx.root.structs[Ident(typeName)]; ok {
+			if t, ok := st.Fields[e.Property]; ok {
+				return t
+			}
+			if m, ok := st.Methods[e.Property]; ok {
+				return m.MiniType()
+			}
+		}
+		// 2. 尝试从接口中查找
+		if iStmt, ok := ctx.GetInterface(Ident(objType)); ok {
+			methods, _ := iStmt.Type.ReadInterfaceMethods()
+			if sig, ok := methods[string(e.Property)]; ok {
+				return sig.MiniType()
+			}
+		}
+		// 3. 处理包成员
+		if objType == "Package" || objType == TypeModule {
+			if id, ok := e.Object.(*IdentifierExpr); ok {
+				path, ok := ctx.root.Imports[string(id.Name)]
+				if !ok {
+					path = string(id.Name)
+				}
+				if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
+					if t, ok := srcRoot.vars[e.Property]; ok {
+						return t
+					}
+				}
+				// FFI 包成员推导
+				fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
+				if t, ok := ctx.GetVariable(fullPath); ok {
+					return t
+				}
+			}
+		}
+	case *CallExprStmt:
+		fnType := inferLSPTypeRecursive(ctx, e.Func, depth+1)
+		if sig, ok := fnType.ReadCallFunc(); ok {
+			return sig.Returns
+		}
+	case *LiteralExpr:
+		return e.Type
+	}
+
+	return expr.GetBase().Type
 }

@@ -441,7 +441,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return errors.New("成员访问缺少属性名")
 	}
 
-	if err := m.Object.Check(ctx); err != nil {
+	if err := m.Object.Check(ctx.WithNode(m.Object)); err != nil {
 		return err
 	}
 

@@ -221,7 +221,7 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("一元表达式缺少操作数")
 		return errors.New("一元表达式缺少操作数")
 	}
-	if err := u.Operand.Check(ctx); err != nil {
+	if err := u.Operand.Check(ctx.WithNode(u.Operand)); err != nil {
 		return err
 	}
 
