@@ -37,10 +37,11 @@ func TestFFILibV2(t *testing.T) {
 			f2.Close()
 
 			// 4. 测试 time 增强
-			now := time.Unix()
-			if now <= 0 { panic("time.Unix invalid") }
+			now := time.Now()
+			u := now.Unix()
+			if u <= 0 { panic("time.Unix invalid") }
 			
-			elapsed := time.Since(now * 1000000000) // 传入纳秒
+			elapsed := time.Since(now)
 			if elapsed < 0 { panic("time.Since invalid") }
 
 			os.Remove("v2_test.txt")

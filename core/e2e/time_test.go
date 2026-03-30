@@ -16,37 +16,30 @@ func TestTimeLibrary(t *testing.T) {
 	func main() {
 		// Test Now/Unix
 		now := time.Now()
-		u := time.Unix()
+		u := now.Unix()
 		if u <= 0 { panic("Unix failed") }
 		
 		// Test Unix variants
-		ms := time.UnixMilli()
-		mc := time.UnixMicro()
-		ns := time.UnixNano()
+		ms := now.UnixMilli()
+		mc := now.UnixMicro()
+		ns := now.UnixNano()
 		if ms <= 0 || mc <= 0 || ns <= 0 { panic("Unix variants failed") }
 		
 		// Test Format/Parse
 		layout := "2006-01-02 15:04:05"
-		formatted := time.Format(ns, layout)
-		parsedNs, err := time.Parse(layout, formatted)
+		formatted := now.Format(layout)
+		parsed, err := time.Parse(layout, formatted)
 		if err != nil { panic("Parse failed: " + err.Error()) }
 		
-		// Note: parsedNs might lose some precision depending on the layout, 
-		// but since we use second-level layout, it should be close.
-		// For equality check we should use a layout that includes nanos if needed.
-		
-		// Test ParseDuration/Add
+		// Test ParseDuration/Add/Sub
 		d, err1 := time.ParseDuration("1h")
 		if err1 != nil { panic("ParseDuration failed") }
-		future := time.Add(ns, d)
-		if future != ns + d { panic("Add failed") }
-		
-		// Test Sub
-		diff := time.Sub(future, ns)
-		if diff != d { panic("Sub failed") }
+		future := now.Add(d)
+		diff := future.Sub(now)
+		if diff != d { panic("Sub/Add failed") }
 		
 		// Test Since
-		s := time.Since(ns)
+		s := time.Since(now)
 		if s < 0 { panic("Since failed") }
 	}
 	`

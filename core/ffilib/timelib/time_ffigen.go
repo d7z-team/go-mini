@@ -13,124 +13,91 @@ import (
 )
 
 const (
-	MethodID_Time_Now           = 1
-	MethodID_Time_Unix          = 2
-	MethodID_Time_UnixMilli     = 3
-	MethodID_Time_UnixMicro     = 4
-	MethodID_Time_UnixNano      = 5
-	MethodID_Time_Sleep         = 6
-	MethodID_Time_Since         = 7
-	MethodID_Time_Format        = 8
-	MethodID_Time_Parse         = 9
-	MethodID_Time_ParseDuration = 10
-	MethodID_Time_Add           = 11
-	MethodID_Time_Sub           = 12
+	MethodID_Module_Now           = 1
+	MethodID_Module_Unix          = 2
+	MethodID_Module_Sleep         = 3
+	MethodID_Module_Since         = 4
+	MethodID_Module_Until         = 5
+	MethodID_Module_Parse         = 6
+	MethodID_Module_ParseDuration = 7
 )
 
-type TimeProxy struct {
+type ModuleProxy struct {
 	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func NewTimeProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Time {
-	return &TimeProxy{bridge: bridge, registry: registry}
+func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Module {
+	return &ModuleProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *TimeProxy) Now() string {
+func (__p *ModuleProxy) Now() *Time {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Now, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Now, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *TimeProxy) Unix() int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Unix, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
+	var v_0 *Time
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
+				v_0 = obj.(*Time)
+			}
+		}
 	}
 	return v_0
 }
 
-func (__p *TimeProxy) UnixMilli() int64 {
+func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixMilli, buf.Bytes())
+	buf.WriteVarint(int64(sec))
+	buf.WriteVarint(int64(nsec))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Unix, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
+	var v_0 *Time
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
+				v_0 = obj.(*Time)
+			}
+		}
 	}
 	return v_0
 }
 
-func (__p *TimeProxy) UnixMicro() int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixMicro, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *TimeProxy) UnixNano() int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_UnixNano, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *TimeProxy) Sleep(ns int64) {
+func (__p *ModuleProxy) Sleep(ns int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(ns))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Time_Sleep, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Module_Sleep, buf.Bytes())
 	_ = err
 	return
 }
 
-func (__p *TimeProxy) Since(ns int64) int64 {
+func (__p *ModuleProxy) Since(t *Time) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteVarint(int64(ns))
+	if t == nil {
+		buf.WriteUvarint(0)
+	} else {
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+		} else {
+			buf.WriteUvarint(0)
+		}
+	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Since, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Since, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -142,40 +109,53 @@ func (__p *TimeProxy) Since(ns int64) int64 {
 	return v_0
 }
 
-func (__p *TimeProxy) Format(ns int64, layout string) string {
+func (__p *ModuleProxy) Until(t *Time) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	buf.WriteVarint(int64(ns))
-	buf.WriteString(string(layout))
+	if t == nil {
+		buf.WriteUvarint(0)
+	} else {
+		if __p.registry != nil {
+			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+		} else {
+			buf.WriteUvarint(0)
+		}
+	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Format, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Until, buf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
 	return v_0
 }
 
-func (__p *TimeProxy) Parse(layout string, value string) (int64, error) {
+func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(layout))
 	buf.WriteString(string(value))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Parse, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Parse, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
+	var v_0 *Time
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.Get(id); ok {
+				v_0 = obj.(*Time)
+			}
+		}
 	}
 	var err_1 error
 	if retBuf.Available() > 0 {
@@ -195,13 +175,13 @@ func (__p *TimeProxy) Parse(layout string, value string) (int64, error) {
 	return v_0, err_1
 }
 
-func (__p *TimeProxy) ParseDuration(s string) (int64, error) {
+func (__p *ModuleProxy) ParseDuration(s string) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_ParseDuration, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_ParseDuration, buf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -231,102 +211,57 @@ func (__p *TimeProxy) ParseDuration(s string) (int64, error) {
 	return v_0, err_1
 }
 
-func (__p *TimeProxy) Add(ns int64, duration int64) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	buf.WriteVarint(int64(ns))
-	buf.WriteVarint(int64(duration))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Add, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *TimeProxy) Sub(ns1 int64, ns2 int64) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	buf.WriteVarint(int64(ns1))
-	buf.WriteVarint(int64(ns2))
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Time_Sub, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Now":
-			methodID = MethodID_Time_Now
+			methodID = MethodID_Module_Now
 		case "Unix":
-			methodID = MethodID_Time_Unix
-		case "UnixMilli":
-			methodID = MethodID_Time_UnixMilli
-		case "UnixMicro":
-			methodID = MethodID_Time_UnixMicro
-		case "UnixNano":
-			methodID = MethodID_Time_UnixNano
+			methodID = MethodID_Module_Unix
 		case "Sleep":
-			methodID = MethodID_Time_Sleep
+			methodID = MethodID_Module_Sleep
 		case "Since":
-			methodID = MethodID_Time_Since
-		case "Format":
-			methodID = MethodID_Time_Format
+			methodID = MethodID_Module_Since
+		case "Until":
+			methodID = MethodID_Module_Until
 		case "Parse":
-			methodID = MethodID_Time_Parse
+			methodID = MethodID_Module_Parse
 		case "ParseDuration":
-			methodID = MethodID_Time_ParseDuration
-		case "Add":
-			methodID = MethodID_Time_Add
-		case "Sub":
-			methodID = MethodID_Time_Sub
+			methodID = MethodID_Module_ParseDuration
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Time_Now:
+	case MethodID_Module_Now:
 		r0 := impl.Now()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Unix:
-		r0 := impl.Unix()
+	case MethodID_Module_Unix:
+		var sec int64
+		{
+			tmp := reqBuf.ReadVarint()
+			sec = int64(tmp)
+		}
+		var nsec int64
+		{
+			tmp := reqBuf.ReadVarint()
+			nsec = int64(tmp)
+		}
+		r0 := impl.Unix(sec, nsec)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
 		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixMilli:
-		r0 := impl.UnixMilli()
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixMicro:
-		r0 := impl.UnixMicro()
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixNano:
-		r0 := impl.UnixNano()
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Time_Sleep:
+	case MethodID_Module_Sleep:
 		var ns int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -335,36 +270,44 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 		impl.Sleep(ns)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Since:
-		var ns int64
-		{
-			tmp := reqBuf.ReadVarint()
-			ns = int64(tmp)
+	case MethodID_Module_Since:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
 		}
-		r0 := impl.Since(ns)
+		r0 := impl.Since(t)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Format:
-		var ns int64
-		{
-			tmp := reqBuf.ReadVarint()
-			ns = int64(tmp)
+	case MethodID_Module_Until:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
 		}
-		var layout string
-		layout = string(reqBuf.ReadString())
-		r0 := impl.Format(ns, layout)
+		r0 := impl.Until(t)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Parse:
+	case MethodID_Module_Parse:
 		var layout string
 		layout = string(reqBuf.ReadString())
 		var value string
 		value = string(reqBuf.ReadString())
 		r0, err := impl.Parse(layout, value)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteVarint(int64(r0))
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
 		if err != nil {
 			if registry != nil {
 				resBuf.WriteRawError(err.Error(), registry.Register(err))
@@ -375,7 +318,7 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Time_ParseDuration:
+	case MethodID_Module_ParseDuration:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.ParseDuration(s)
@@ -391,35 +334,437 @@ func TimeHostRouter(ctx context.Context, impl Time, registry *ffigo.HandleRegist
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Add:
-		var ns int64
-		{
-			tmp := reqBuf.ReadVarint()
-			ns = int64(tmp)
+	default:
+		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+
+var Module_FFI_Metadata = []struct {
+	Name     string
+	MethodID uint32
+	Spec     string
+	Doc      string
+}{
+	{"Now", 1, "function() Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
+	{"Unix", 2, "function(Int64, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
+	{"Sleep", 3, "function(Int64) Void", ""},
+	{"Since", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Until", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Parse", 6, "function(String, String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Error)", ""},
+	{"ParseDuration", 7, "function(String) tuple(Int64, Error)", ""},
+}
+
+type Module_Bridge struct {
+	Impl     Module
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Module_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *Module_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+}
+
+func (b *Module_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}
+
+func RegisterModule(executor interface {
+	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
+}, impl Module, registry *ffigo.HandleRegistry) {
+	bridge := &Module_Bridge{Impl: impl, Registry: registry}
+	prefix := "time"
+	sep := "."
+	if strings.HasPrefix(prefix, "__method_") {
+		sep = "_"
+	}
+	for _, m := range Module_FFI_Metadata {
+		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	}
+	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
+	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
+	executor.RegisterConstant("time.Kitchen", ffigo.ToConstantString(time.Kitchen))
+	executor.RegisterConstant("time.Layout", ffigo.ToConstantString(time.Layout))
+	executor.RegisterConstant("time.Microsecond", ffigo.ToConstantString(time.Microsecond))
+	executor.RegisterConstant("time.Millisecond", ffigo.ToConstantString(time.Millisecond))
+	executor.RegisterConstant("time.Minute", ffigo.ToConstantString(time.Minute))
+	executor.RegisterConstant("time.Nanosecond", ffigo.ToConstantString(time.Nanosecond))
+	executor.RegisterConstant("time.RFC1123", ffigo.ToConstantString(time.RFC1123))
+	executor.RegisterConstant("time.RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
+	executor.RegisterConstant("time.RFC3339", ffigo.ToConstantString(time.RFC3339))
+	executor.RegisterConstant("time.RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
+	executor.RegisterConstant("time.RFC822", ffigo.ToConstantString(time.RFC822))
+	executor.RegisterConstant("time.RFC822Z", ffigo.ToConstantString(time.RFC822Z))
+	executor.RegisterConstant("time.RFC850", ffigo.ToConstantString(time.RFC850))
+	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
+	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
+	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
+}
+
+const (
+	MethodID_Time_Year       = 1
+	MethodID_Time_Month      = 2
+	MethodID_Time_Day        = 3
+	MethodID_Time_Hour       = 4
+	MethodID_Time_Minute     = 5
+	MethodID_Time_Second     = 6
+	MethodID_Time_Nanosecond = 7
+	MethodID_Time_Unix       = 8
+	MethodID_Time_UnixMilli  = 9
+	MethodID_Time_UnixMicro  = 10
+	MethodID_Time_UnixNano   = 11
+	MethodID_Time_Format     = 12
+	MethodID_Time_Add        = 13
+	MethodID_Time_Sub        = 14
+	MethodID_Time_IsZero     = 15
+	MethodID_Time_Before     = 16
+	MethodID_Time_After      = 17
+	MethodID_Time_Equal      = 18
+	MethodID_Time_String     = 19
+)
+
+func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Year":
+			methodID = MethodID_Time_Year
+		case "Month":
+			methodID = MethodID_Time_Month
+		case "Day":
+			methodID = MethodID_Time_Day
+		case "Hour":
+			methodID = MethodID_Time_Hour
+		case "Minute":
+			methodID = MethodID_Time_Minute
+		case "Second":
+			methodID = MethodID_Time_Second
+		case "Nanosecond":
+			methodID = MethodID_Time_Nanosecond
+		case "Unix":
+			methodID = MethodID_Time_Unix
+		case "UnixMilli":
+			methodID = MethodID_Time_UnixMilli
+		case "UnixMicro":
+			methodID = MethodID_Time_UnixMicro
+		case "UnixNano":
+			methodID = MethodID_Time_UnixNano
+		case "Format":
+			methodID = MethodID_Time_Format
+		case "Add":
+			methodID = MethodID_Time_Add
+		case "Sub":
+			methodID = MethodID_Time_Sub
+		case "IsZero":
+			methodID = MethodID_Time_IsZero
+		case "Before":
+			methodID = MethodID_Time_Before
+		case "After":
+			methodID = MethodID_Time_After
+		case "Equal":
+			methodID = MethodID_Time_Equal
+		case "String":
+			methodID = MethodID_Time_String
 		}
-		var duration int64
-		{
-			tmp := reqBuf.ReadVarint()
-			duration = int64(tmp)
+	}
+
+	reqBuf := ffigo.NewReader(args)
+	switch methodID {
+	case MethodID_Time_Year:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
 		}
-		r0 := impl.Add(ns, duration)
+		r0 := t.Year()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Sub:
-		var ns1 int64
-		{
-			tmp := reqBuf.ReadVarint()
-			ns1 = int64(tmp)
+	case MethodID_Time_Month:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
 		}
-		var ns2 int64
-		{
-			tmp := reqBuf.ReadVarint()
-			ns2 = int64(tmp)
-		}
-		r0 := impl.Sub(ns1, ns2)
+		r0 := t.Month()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Day:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Day()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Hour:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Hour()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Minute:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Minute()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Second:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Second()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Nanosecond:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Nanosecond()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Unix:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.Unix()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixMilli:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.UnixMilli()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixMicro:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.UnixMicro()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_UnixNano:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.UnixNano()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Format:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var layout string
+		layout = string(reqBuf.ReadString())
+		r0 := t.Format(layout)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Add:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var d int64
+		{
+			tmp := reqBuf.ReadVarint()
+			d = int64(tmp)
+		}
+		r0 := t.Add(d)
+		resBuf := ffigo.GetBuffer()
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Sub:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var other *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				other = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
+			}
+		}
+		r0 := t.Sub(other)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_IsZero:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.IsZero()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBool(bool(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Before:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var other *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				other = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
+			}
+		}
+		r0 := t.Before(other)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBool(bool(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_After:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var other *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				other = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
+			}
+		}
+		r0 := t.After(other)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBool(bool(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_Equal:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		var other *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				other = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
+			}
+		}
+		r0 := t.Equal(other)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBool(bool(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Time_String:
+		var t *Time
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				t = obj.(*Time)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
+			}
+		}
+		r0 := t.String()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
@@ -432,22 +777,29 @@ var Time_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Now", 1, "function() String", ""},
-	{"Unix", 2, "function() Int64", ""},
-	{"UnixMilli", 3, "function() Int64", ""},
-	{"UnixMicro", 4, "function() Int64", ""},
-	{"UnixNano", 5, "function() Int64", ""},
-	{"Sleep", 6, "function(Int64) Void", ""},
-	{"Since", 7, "function(Int64) Int64", ""},
-	{"Format", 8, "function(Int64, String) String", ""},
-	{"Parse", 9, "function(String, String) tuple(Int64, Error)", ""},
-	{"ParseDuration", 10, "function(String) tuple(Int64, Error)", ""},
-	{"Add", 11, "function(Int64, Int64) Int64", ""},
-	{"Sub", 12, "function(Int64, Int64) Int64", ""},
+	{"Year", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Month", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Day", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Hour", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Minute", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Second", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Nanosecond", 7, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Unix", 8, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"UnixMilli", 9, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"UnixMicro", 10, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"UnixNano", 11, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"Format", 12, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, String) String", ""},
+	{"Add", 13, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
+	{"Sub", 14, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
+	{"IsZero", 15, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
+	{"Before", 16, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
+	{"After", 17, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
+	{"Equal", 18, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
+	{"String", 19, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) String", ""},
 }
 
 type Time_Bridge struct {
-	Impl     Time
+	Impl     *Time
 	Registry *ffigo.HandleRegistry
 }
 
@@ -470,9 +822,9 @@ func RegisterTime(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)
-}, impl Time, registry *ffigo.HandleRegistry) {
-	bridge := &Time_Bridge{Impl: impl, Registry: registry}
-	prefix := "time"
+}, registry *ffigo.HandleRegistry) {
+	bridge := &Time_Bridge{Impl: nil, Registry: registry}
+	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/timelib.Time"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -480,22 +832,6 @@ func RegisterTime(executor interface {
 	for _, m := range Time_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
-	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
-	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
-	executor.RegisterConstant("time.Kitchen", ffigo.ToConstantString(time.Kitchen))
-	executor.RegisterConstant("time.Layout", ffigo.ToConstantString(time.Layout))
-	executor.RegisterConstant("time.Microsecond", ffigo.ToConstantString(time.Microsecond))
-	executor.RegisterConstant("time.Millisecond", ffigo.ToConstantString(time.Millisecond))
-	executor.RegisterConstant("time.Minute", ffigo.ToConstantString(time.Minute))
-	executor.RegisterConstant("time.Nanosecond", ffigo.ToConstantString(time.Nanosecond))
-	executor.RegisterConstant("time.RFC1123", ffigo.ToConstantString(time.RFC1123))
-	executor.RegisterConstant("time.RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
-	executor.RegisterConstant("time.RFC3339", ffigo.ToConstantString(time.RFC3339))
-	executor.RegisterConstant("time.RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
-	executor.RegisterConstant("time.RFC822", ffigo.ToConstantString(time.RFC822))
-	executor.RegisterConstant("time.RFC822Z", ffigo.ToConstantString(time.RFC822Z))
-	executor.RegisterConstant("time.RFC850", ffigo.ToConstantString(time.RFC850))
-	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
-	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
-	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
+	// Register struct metadata for validation and code completion
+	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/timelib.Time", "struct { T time.Time; Year function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Month function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Day function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Hour function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Minute function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Second function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Nanosecond function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Unix function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixMilli function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixMicro function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixNano function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Format function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, String) String; Add function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>; Sub function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; IsZero function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; Before function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; After function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; Equal function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; String function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) String; }")
 }

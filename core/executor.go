@@ -289,7 +289,7 @@ func NewMiniExecutor() *MiniExecutor {
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
 	res.RegisterFFI("errors.Is", nil, 999999999, "function(Error, TypeHandle) Bool", "Check if an error matches a target handle")
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
-	timelib.RegisterTime(res, &timelib.TimeHost{}, res.registry)
+	timelib.RegisterTimeAll(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
 	mathlib.RegisterMath(res, &mathlib.MathHost{}, res.registry)
 	filepathlib.RegisterFilepath(res, &filepathlib.FilepathHost{}, res.registry)
