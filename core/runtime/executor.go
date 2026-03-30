@@ -517,12 +517,6 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		}
 	}
 
-	if task.Op == OpLoopBoundary {
-		if session.UnwindMode == UnwindBreak || session.UnwindMode == UnwindContinue {
-			session.UnwindMode = UnwindNone
-			return true, nil
-		}
-	}
 
 	if task.Op == OpImportDone {
 		// Even on panic, we must restore the parent session
@@ -566,6 +560,11 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			return true, nil
 		}
 		if session.UnwindMode == UnwindContinue {
+			// Switch does NOT catch continue, it should propagate to the outer loop
+			if _, ok := task.Node.(*ast.SwitchStmt); ok {
+				return false, nil
+			}
+
 			session.UnwindMode = UnwindNone
 			if err := e.dispatch(session, *task); err != nil {
 				return false, err
@@ -1761,6 +1760,7 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeInit, Node: n})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.X})
 	case *ast.SwitchStmt:
+		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Node: n})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchTag, Node: n})
 		if n.Tag != nil {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Tag})

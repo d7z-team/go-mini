@@ -725,7 +725,8 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 		objType = r.X.GetBase().Type
 	}
 
-	inner := ctx.Child(r.Body)
+	semCtx := ctx.WithNode(r)
+	inner := semCtx.Child(r.Body)
 	if r.Key != "" {
 		kType := GoMiniType("Int64")
 		if objType.IsMap() {
@@ -787,7 +788,8 @@ func (s *SwitchStmt) stmtNode()          {}
 
 func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	s.Type = "Void"
-	inner := ctx.Child(s.Body)
+	semCtx := ctx.WithNode(s)
+	inner := semCtx.Child(s.Body)
 	var hasError bool
 
 	if s.Init != nil {
@@ -1415,10 +1417,18 @@ func (i *InterruptStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 
-	if _, ok := ctx.CheckScope("for"); !ok {
-		err := fmt.Errorf("%s 语句只能在循环中使用", i.InterruptType)
-		ctx.AddErrorf("%s", err.Error())
-		return err
+	if i.InterruptType == "break" {
+		if _, ok := ctx.CheckAnyScope("for", "range", "switch"); !ok {
+			err := fmt.Errorf("break 语句只能在循环或 switch 中使用")
+			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
+	} else if i.InterruptType == "continue" {
+		if _, ok := ctx.CheckAnyScope("for", "range"); !ok {
+			err := fmt.Errorf("continue 语句只能在循环中使用")
+			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
 	}
 
 	i.Type = "Void"
