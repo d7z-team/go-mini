@@ -15,6 +15,7 @@ func (c *IdentifierExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *IdentifierExpr) exprNode()          {}
 
 func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(c)
 	c.Name = c.Name.Resolve(ctx.ValidContext)
 	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
@@ -62,10 +63,13 @@ func (s *StarExpr) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StarExpr) exprNode()          {}
 
 func (s *StarExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(s)
 	if s.X == nil {
-		return errors.New("解引用缺少对象")
+		err := errors.New("解引用缺少对象")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	if err := s.X.Check(ctx); err != nil {
+	if err := s.X.Check(ctx.WithNode(s.X)); err != nil {
 		return err
 	}
 	xType := s.X.GetBase().Type
@@ -116,14 +120,19 @@ func (t *TypeAssertExpr) GetBase() *BaseNode { return &t.BaseNode }
 func (t *TypeAssertExpr) exprNode()          {}
 
 func (t *TypeAssertExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(t)
 	if t.X == nil {
-		return errors.New("类型断言缺少对象")
+		err := errors.New("类型断言缺少对象")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	if err := t.X.Check(ctx); err != nil {
+	if err := t.X.Check(ctx.WithNode(t.X)); err != nil {
 		return err
 	}
 	if !t.Type.Valid(ctx.ValidContext) {
-		return fmt.Errorf("无效的断言类型: %s", t.Type)
+		err := fmt.Errorf("无效的断言类型: %s", t.Type)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	// 断言后的类型即为目标类型
 	if t.Multi {
@@ -146,6 +155,7 @@ func (t *TypeAssertExpr) Optimize(ctx *OptimizeContext) Node {
 }
 
 func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(c)
 	c.Name = c.Name.Resolve(ctx.ValidContext)
 	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
@@ -209,6 +219,7 @@ func (c *CallExprStmt) exprNode()          {}
 func (c *CallExprStmt) stmtNode()          {}
 
 func (c *CallExprStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(c)
 	if c.Func == nil {
 		err := errors.New("函数调用缺少函数名")
 		ctx.AddErrorf("%s", err.Error())
@@ -673,6 +684,7 @@ func (c *CompositeExpr) GetBase() *BaseNode { return &c.BaseNode }
 func (c *CompositeExpr) exprNode()          {}
 
 func (c *CompositeExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(c)
 	if c.Kind != "" {
 		c.Kind = Ident(GoMiniType(c.Kind).Resolve(ctx.ValidContext))
 		c.Type = GoMiniType(c.Kind)
@@ -826,19 +838,24 @@ func (i *IndexExpr) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IndexExpr) exprNode()          {}
 
 func (i *IndexExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(i)
 	if i.Object == nil {
-		return errors.New("索引访问缺少对象表达式")
+		err := errors.New("索引访问缺少对象表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
-	if err := i.Object.Check(ctx); err != nil {
+	if err := i.Object.Check(ctx.WithNode(i.Object)); err != nil {
 		return err
 	}
 
 	if i.Index == nil {
-		return errors.New("索引访问缺少索引表达式")
+		err := errors.New("索引访问缺少索引表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
-	if err := i.Index.Check(ctx); err != nil {
+	if err := i.Index.Check(ctx.WithNode(i.Index)); err != nil {
 		return err
 	}
 
@@ -861,35 +878,49 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 
 	if objType.IsArray() {
 		if i.Multi {
-			return errors.New("数组索引不支持二元解构语法")
+			err := errors.New("数组索引不支持二元解构语法")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
-			return fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			err := fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 
 		if elemType, ok := objType.ReadArrayItemType(); ok {
 			i.Type = elemType
 		} else {
-			return fmt.Errorf("无法获取数组元素类型: %s", objType)
+			err := fmt.Errorf("无法获取数组元素类型: %s", objType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		return nil
 	}
 	if objType == "TypeBytes" {
 		if i.Multi {
-			return errors.New("Bytes 索引不支持二元解构语法")
+			err := errors.New("Bytes 索引不支持二元解构语法")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
-			return fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			err := fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		i.Type = "Int64"
 		return nil
 	}
 	if objType == "String" {
 		if i.Multi {
-			return errors.New("String 索引不支持二元解构语法")
+			err := errors.New("String 索引不支持二元解构语法")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
-			return fmt.Errorf("String 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			err := fmt.Errorf("String 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		i.Type = "Int64" // 返回字节值
 		return nil
@@ -897,10 +928,14 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	if objType.IsMap() {
 		keyType, valType, ok := objType.GetMapKeyValueTypes()
 		if !ok {
-			return fmt.Errorf("无法获取 Map 键值对类型: %s", objType)
+			err := fmt.Errorf("无法获取 Map 键值对类型: %s", objType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		if !i.Index.GetBase().Type.IsAssignableTo(keyType) {
-			return fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
+			err := fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 
 		if i.Multi {
@@ -910,7 +945,9 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("索引访问的对象类型 %s 不支持", objType)
+	err := fmt.Errorf("索引访问的对象类型 %s 不支持", objType)
+	ctx.AddErrorf("%s", err.Error())
+	return err
 }
 
 func (i *IndexExpr) Optimize(ctx *OptimizeContext) Node {
@@ -943,31 +980,40 @@ func (s *SliceExpr) GetBase() *BaseNode { return &s.BaseNode }
 func (s *SliceExpr) exprNode()          {}
 
 func (s *SliceExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(s)
 	if s.X == nil {
-		return errors.New("slice 语句缺少对象")
+		err := errors.New("slice 语句缺少对象")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	if err := s.X.Check(ctx); err != nil {
+	if err := s.X.Check(ctx.WithNode(s.X)); err != nil {
 		return err
 	}
 	xType := s.X.GetBase().Type
 	if !xType.IsArray() && xType != "TypeBytes" && !xType.IsAny() {
-		return fmt.Errorf("类型 %s 不支持切片操作", xType)
+		err := fmt.Errorf("类型 %s 不支持切片操作", xType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if s.Low != nil {
-		if err := s.Low.Check(ctx); err != nil {
+		if err := s.Low.Check(ctx.WithNode(s.Low)); err != nil {
 			return err
 		}
 		if !s.Low.GetBase().Type.IsNumeric() {
-			return errors.New("slice low 索引必须是数值类型")
+			err := errors.New("slice low 索引必须是数值类型")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 	}
 	if s.High != nil {
-		if err := s.High.Check(ctx); err != nil {
+		if err := s.High.Check(ctx.WithNode(s.High)); err != nil {
 			return err
 		}
 		if !s.High.GetBase().Type.IsNumeric() {
-			return errors.New("slice high 索引必须是数值类型")
+			err := errors.New("slice high 索引必须是数值类型")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 	}
 
@@ -1015,6 +1061,7 @@ type FuncLitExpr struct {
 func (f *FuncLitExpr) exprNode() {}
 
 func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(f)
 	// 类型推导
 	f.Type = TypeClosure
 

@@ -62,6 +62,7 @@ type BadExpr struct {
 func (b *BadExpr) exprNode() {}
 
 func (b *BadExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(b)
 	ctx.AddErrorf("语法错误：无法解析的表达式")
 	b.Type = "Any"
 	return nil // 软处理：不中断校验流程
@@ -80,6 +81,7 @@ type BadStmt struct {
 func (b *BadStmt) stmtNode() {}
 
 func (b *BadStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(b)
 	ctx.AddErrorf("语法错误：无法解析的语句块")
 	return nil // 软处理：不中断校验流程
 }

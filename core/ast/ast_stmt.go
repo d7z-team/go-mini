@@ -582,6 +582,7 @@ func (r *ReturnStmt) GetBase() *BaseNode { return &r.BaseNode }
 func (r *ReturnStmt) stmtNode()          {}
 
 func (r *ReturnStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(r)
 	var hasError bool
 	if r.Results == nil {
 		r.Results = make([]Expr, 0)
@@ -666,13 +667,14 @@ func (d *DeferStmt) GetBase() *BaseNode { return &d.BaseNode }
 func (d *DeferStmt) stmtNode()          {}
 
 func (d *DeferStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(d)
 	d.Type = "Void"
 	if d.Call == nil {
 		err := errors.New("defer 语句缺少调用表达式")
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	return d.Call.Check(ctx)
+	return d.Call.Check(ctx.WithNode(d.Call))
 }
 
 func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
@@ -1451,6 +1453,7 @@ func (t *TryStmt) GetBase() *BaseNode { return &t.BaseNode }
 func (t *TryStmt) stmtNode()          {}
 
 func (t *TryStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(t)
 	t.Type = "Void"
 	var hasError bool
 	if t.Body == nil {
@@ -1458,21 +1461,21 @@ func (t *TryStmt) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("%s", err.Error())
 		hasError = true
 	} else {
-		if err := t.Body.Check(ctx); err != nil {
+		if err := t.Body.Check(ctx.WithNode(t.Body)); err != nil {
 			hasError = true
 		}
 	}
 	if t.Catch != nil {
-		inner := ctx.Child(t.Catch)
+		inner := ctx.Child(t.Catch).WithNode(t.Catch)
 		if t.Catch.VarName != "" {
 			inner.AddVariable(t.Catch.VarName, "Any")
 		}
-		if err := t.Catch.Body.Check(inner); err != nil {
+		if err := t.Catch.Body.Check(inner.WithNode(t.Catch.Body)); err != nil {
 			hasError = true
 		}
 	}
 	if t.Finally != nil {
-		if err := t.Finally.Check(ctx); err != nil {
+		if err := t.Finally.Check(ctx.WithNode(t.Finally)); err != nil {
 			hasError = true
 		}
 	}

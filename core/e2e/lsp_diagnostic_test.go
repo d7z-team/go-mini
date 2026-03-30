@@ -159,3 +159,90 @@ func main() {
 		t.Error("Expected precise error range at line 4 for member access, but not found or range too broad")
 	}
 }
+
+func TestErrorRangeForCallArguments(t *testing.T) {
+	code := `package main
+func Add(a Int64, b Int64) Int64 {
+	return a + b
+}
+func main() {
+	Add(1, "2")
+	Add(1)
+}`
+	conv := ffigo.NewGoToASTConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	logs := validator.Logs()
+	foundMismatch := false
+	foundTooFew := false
+
+	for _, log := range logs {
+		if log.Node != nil {
+			base := log.Node.GetBase()
+			if base.Loc != nil {
+				t.Logf("Error at %d:%d - %d:%d: %s", base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC, log.Message)
+				if base.Loc.L == 6 && log.Message == "函数第 2 个参数类型不匹配: 期望 Int64, 实际 String" {
+					foundMismatch = true
+				}
+				if base.Loc.L == 7 && log.Message == "函数参数数量不足: 需至少 2, 实际 1" {
+					foundTooFew = true
+				}
+			}
+		}
+	}
+
+	if !foundMismatch {
+		t.Error("Expected precise error range at line 6 for type mismatch, but not found")
+	}
+	if !foundTooFew {
+		t.Error("Expected precise error range at line 7 for too few arguments, but not found")
+	}
+}
+
+func TestErrorRangeForBinaryAndIncDec(t *testing.T) {
+	code := `package main
+func main() {
+	a := 10
+	a++
+	b := "string"
+	b++ // Error: inc/dec must be numeric
+	c := 1 + "2" // Binary error (though currently BinaryExpr.Check is loose, we added WithNode)
+}`
+	conv := ffigo.NewGoToASTConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	logs := validator.Logs()
+	foundIncDecError := false
+
+	for _, log := range logs {
+		if log.Node != nil {
+			base := log.Node.GetBase()
+			if base.Loc != nil {
+				t.Logf("Error at %d:%d - %d:%d: %s", base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC, log.Message)
+				if base.Loc.L == 6 && log.Message == "inc/dec 语句的操作数必须是数值类型" {
+					foundIncDecError = true
+				}
+			}
+		}
+	}
+
+	if !foundIncDecError {
+		t.Error("Expected precise error range at line 6 for inc/dec error, but not found")
+	}
+}

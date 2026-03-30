@@ -96,6 +96,7 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 }
 
 func (b *BinaryExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(b)
 	if err := b.Left.Check(ctx.WithNode(b.Left)); err != nil {
 		return err
 	}
@@ -201,6 +202,7 @@ func (u *UnaryExpr) GetBase() *BaseNode { return &u.BaseNode }
 func (u *UnaryExpr) exprNode()          {}
 
 func (u *UnaryExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(u)
 	switch u.Operator {
 	case "-", "Sub", "Minus":
 		u.Operator = "Sub"
@@ -266,6 +268,7 @@ func (l *LiteralExpr) GetBase() *BaseNode { return &l.BaseNode }
 func (l *LiteralExpr) exprNode()          {}
 
 func (l *LiteralExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(l)
 	l.Type = l.Type.Resolve(ctx.ValidContext)
 	if l.Type == "" {
 		return errors.New("missing type for literal")
@@ -289,6 +292,7 @@ func (i *ImportExpr) GetBase() *BaseNode { return &i.BaseNode }
 func (i *ImportExpr) exprNode()          {}
 
 func (i *ImportExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(i)
 	i.Type = TypeModule
 	if ctx.parent != nil {
 		return errors.New("import 只能在包级作用域中使用")

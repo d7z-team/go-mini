@@ -15,17 +15,22 @@ func (i *IncDecStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *IncDecStmt) stmtNode()          {}
 
 func (i *IncDecStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(i)
 	i.Type = "Void"
 	if i.Operand == nil {
-		return errors.New("inc/dec 语句缺少操作数")
+		err := errors.New("inc/dec 语句缺少操作数")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	if err := i.Operand.Check(ctx); err != nil {
+	if err := i.Operand.Check(ctx.WithNode(i.Operand)); err != nil {
 		return err
 	}
 	// 验证操作数是否为数值类型
 	oType := i.Operand.GetBase().Type
 	if oType != "Int64" && oType != "Float64" && oType != "Int" {
-		return errors.New("inc/dec 语句的操作数必须是数值类型")
+		err := errors.New("inc/dec 语句的操作数必须是数值类型")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	return nil
 }
@@ -51,10 +56,13 @@ func (e *ExpressionStmt) GetBase() *BaseNode { return &e.BaseNode }
 func (e *ExpressionStmt) stmtNode()          {}
 
 func (e *ExpressionStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(e)
 	if e.X == nil {
-		return errors.New("expression statement is missing expression")
+		err := errors.New("expression statement is missing expression")
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
-	return e.X.Check(ctx)
+	return e.X.Check(ctx.WithNode(e.X))
 }
 
 func (e *ExpressionStmt) Optimize(ctx *OptimizeContext) Node {
