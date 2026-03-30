@@ -40,6 +40,12 @@ func (e *Executor) LastSession() *StackContext {
 	return e.lastSession
 }
 
+func (e *Executor) SetLastSession(session *StackContext) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.lastSession = session
+}
+
 func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	if program == nil {
 		return nil, errors.New("invalid program")
@@ -76,7 +82,15 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 }
 
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.routes[name] = route
+}
+
+func (e *Executor) RegisterConstant(name string, val string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.consts[name] = val
 }
 
 func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
@@ -1602,6 +1616,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
+		for name, val := range e.consts {
+			if strings.HasPrefix(name, prefix1) || strings.HasPrefix(name, prefix2) {
+				found = true
+				var constName string
+				if strings.HasPrefix(name, prefix1) {
+					constName = strings.TrimPrefix(name, prefix1)
+				} else {
+					constName = strings.TrimPrefix(name, prefix2)
+				}
+				ffiMod.Data[constName] = e.evalLiteralToVar(val)
+			}
+		}
+
 		if found {
 			res := &Var{VType: TypeModule, Ref: ffiMod}
 			session.ModuleCache[path] = res
@@ -2045,7 +2072,9 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpLoadVar, Node: n, Data: string(n.Name)})
 	case *ast.ConstRefExpr:
 		if val, ok := e.program.Constants[string(n.Name)]; ok {
-			session.ValueStack.Push(NewString(val))
+			session.ValueStack.Push(e.evalLiteralToVar(val))
+		} else if val, ok := e.consts[string(n.Name)]; ok {
+			session.ValueStack.Push(e.evalLiteralToVar(val))
 		} else {
 			return fmt.Errorf("const %s not found", n.Name)
 		}

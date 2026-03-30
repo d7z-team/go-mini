@@ -117,6 +117,7 @@ func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
 func RegisterErrors(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Errors, registry *ffigo.HandleRegistry) {
 	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
 	prefix := "errors"

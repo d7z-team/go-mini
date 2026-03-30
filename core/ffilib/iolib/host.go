@@ -142,6 +142,7 @@ func (f *File) WriteNative(p []byte) (n int, err error) {
 func RegisterIOAll(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl IO, registry *ffigo.HandleRegistry,
 ) {
 	RegisterIO(executor, impl, registry)

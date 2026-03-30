@@ -449,6 +449,7 @@ func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {
 func RegisterFilepath(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Filepath, registry *ffigo.HandleRegistry) {
 	bridge := &Filepath_Bridge{Impl: impl, Registry: registry}
 	prefix := "filepath"

@@ -19,7 +19,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, true)
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
@@ -106,7 +106,7 @@ func TestPrimitiveMethodNotFound(t *testing.T) {
 			}
 			prog := node.(*ast.ProgramStmt)
 
-			validator, _ := ast.NewValidator(prog, nil, true)
+			validator, _ := ast.NewValidator(prog, nil, nil, true)
 			semanticCtx := ast.NewSemanticContext(validator)
 			err = prog.Check(semanticCtx)
 
@@ -131,7 +131,7 @@ func main() {
 	}
 	prog := node.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(prog, nil, true)
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
@@ -176,7 +176,7 @@ func main() {
 	}
 	prog := node.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(prog, nil, true)
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 
@@ -223,7 +223,7 @@ func main() {
 	}
 	prog := node.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(prog, nil, true)
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	_ = prog.Check(semanticCtx)
 

@@ -45,7 +45,7 @@ type ValidContext struct {
 	closureNode *FuncLitExpr // 当前活动的闭包节点
 }
 
-func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, tolerant bool) (*ValidContext, error) {
+func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
 	imports := make(map[string]string)
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
@@ -93,6 +93,19 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, toleran
 	if node != nil {
 		node.GetBase().Scope = v
 	}
+
+	// 注入外部 FFI 常量
+	for name, val := range externalConsts {
+		if node != nil {
+			if node.Constants == nil {
+				node.Constants = make(map[string]string)
+			}
+			if _, ok := node.Constants[name]; !ok {
+				node.Constants[name] = val
+			}
+		}
+	}
+
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, t := range externalSpecs {
 		v.root.vars[ident] = t
@@ -508,7 +521,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidator(prog, nil, c.root.Tolerant)
+	v, _ := NewValidator(prog, nil, nil, c.root.Tolerant)
 	v.root.Path = path
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈

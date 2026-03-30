@@ -231,6 +231,7 @@ func (h *ImageHost) Decode(ctx context.Context, data []byte) (*Image, string, er
 func RegisterImageAll(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl ImageLib, registry *ffigo.HandleRegistry,
 ) {
 	RegisterImageLib(executor, impl, registry)

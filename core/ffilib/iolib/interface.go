@@ -1,7 +1,17 @@
 //go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg iolib -path gopkg.d7z.net/go-mini/core/ffilib/iolib -out io_ffigen.go interface.go host.go
 package iolib
 
-import "context"
+import (
+	"context"
+	"io"
+)
+
+// ffigen:module io
+const (
+	SeekStart   = io.SeekStart
+	SeekCurrent = io.SeekCurrent
+	SeekEnd     = io.SeekEnd
+)
 
 // ffigen:module io
 type IO interface {

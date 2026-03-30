@@ -3,6 +3,7 @@ package sha256lib
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 )
@@ -93,6 +94,7 @@ func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {
 func RegisterSHA256(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl SHA256, registry *ffigo.HandleRegistry) {
 	bridge := &SHA256_Bridge{Impl: impl, Registry: registry}
 	prefix := "crypto/sha256"
@@ -103,4 +105,6 @@ func RegisterSHA256(executor interface {
 	for _, m := range SHA256_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("crypto/sha256.BlockSize", ffigo.ToConstantString(sha256.BlockSize))
+	executor.RegisterConstant("crypto/sha256.Size", ffigo.ToConstantString(sha256.Size))
 }

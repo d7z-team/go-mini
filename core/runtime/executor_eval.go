@@ -298,6 +298,22 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 	return nil, &VMError{Message: "unsupported unary op " + operator, IsPanic: true}
 }
 
+func (e *Executor) evalLiteralToVar(val string) *Var {
+	if v, err := strconv.ParseInt(val, 0, 64); err == nil {
+		return NewInt(v)
+	}
+	if v, err := strconv.ParseFloat(val, 64); err == nil {
+		return NewFloat(v)
+	}
+	if val == "true" {
+		return NewBool(true)
+	}
+	if val == "false" {
+		return NewBool(false)
+	}
+	return NewString(val)
+}
+
 func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
 	switch n.Type {
 	case "Int64":

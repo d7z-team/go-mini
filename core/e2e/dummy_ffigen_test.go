@@ -498,6 +498,7 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 func RegisterE2EMockOSLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, prefix string, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
 	sep := "."
@@ -617,6 +618,7 @@ func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
 func RegisterContextMock(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl ContextMock, registry *ffigo.HandleRegistry) {
 	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
 	prefix := "ctx_test"
@@ -821,6 +823,7 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 func RegisterNativeMock(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
 	prefix := "native"

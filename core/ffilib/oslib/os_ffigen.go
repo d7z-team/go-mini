@@ -4,6 +4,7 @@ package oslib
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 )
 import (
@@ -451,6 +452,7 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 func RegisterOS(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
 	prefix := "os"
@@ -461,4 +463,15 @@ func RegisterOS(executor interface {
 	for _, m := range OS_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("os.DevNull", ffigo.ToConstantString(os.DevNull))
+	executor.RegisterConstant("os.O_APPEND", ffigo.ToConstantString(os.O_APPEND))
+	executor.RegisterConstant("os.O_CREATE", ffigo.ToConstantString(os.O_CREATE))
+	executor.RegisterConstant("os.O_EXCL", ffigo.ToConstantString(os.O_EXCL))
+	executor.RegisterConstant("os.O_RDONLY", ffigo.ToConstantString(os.O_RDONLY))
+	executor.RegisterConstant("os.O_RDWR", ffigo.ToConstantString(os.O_RDWR))
+	executor.RegisterConstant("os.O_SYNC", ffigo.ToConstantString(os.O_SYNC))
+	executor.RegisterConstant("os.O_TRUNC", ffigo.ToConstantString(os.O_TRUNC))
+	executor.RegisterConstant("os.O_WRONLY", ffigo.ToConstantString(os.O_WRONLY))
+	executor.RegisterConstant("os.PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
+	executor.RegisterConstant("os.PathSeparator", ffigo.ToConstantString(os.PathSeparator))
 }

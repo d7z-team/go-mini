@@ -244,6 +244,7 @@ func (b *UTF8_Bridge) DestroyHandle(handle uint32) error {
 func RegisterUTF8(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl UTF8, registry *ffigo.HandleRegistry) {
 	bridge := &UTF8_Bridge{Impl: impl, Registry: registry}
 	prefix := "unicode/utf8"

@@ -295,6 +295,7 @@ func (b *Sort_Bridge) DestroyHandle(handle uint32) error {
 func RegisterSort(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Sort, registry *ffigo.HandleRegistry) {
 	bridge := &Sort_Bridge{Impl: impl, Registry: registry}
 	prefix := "sort"

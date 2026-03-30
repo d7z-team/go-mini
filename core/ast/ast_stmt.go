@@ -630,7 +630,7 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 			tType = r.Results[0].GetBase().Type
 		}
 
-		if !tType.Equals(expectedReturn) {
+		if !tType.IsAssignableTo(expectedReturn) {
 			err := fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
 			ctx.AddErrorf("%s", err.Error())
 			return err

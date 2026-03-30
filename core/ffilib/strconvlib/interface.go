@@ -1,7 +1,16 @@
 //go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg strconvlib -path gopkg.d7z.net/go-mini/core/ffilib/strconvlib -out strconv_ffigen.go interface.go
 package strconvlib
 
+import (
+	"strconv"
+)
+
 // Strconv 接口定义了类型转换操作
+
+// ffigen:module strconv
+const (
+	IntSize = strconv.IntSize
+)
 
 // ffigen:module strconv
 type Strconv interface {

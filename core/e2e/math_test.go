@@ -34,10 +34,10 @@ func TestMathLibrary(t *testing.T) {
 		if !math.IsInf(inf, 1) { panic("IsInf failed") }
 		
 		// Test Constants
-		pi := math.Pi()
+		pi := math.Pi
 		if pi < 3.14 || pi > 3.15 { panic("Pi failed") }
 		
-		e := math.E()
+		e := math.E
 		if e < 2.71 || e > 2.72 { panic("E failed") }
 	}
 	`

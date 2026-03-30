@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -468,6 +469,7 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 func RegisterTime(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Time, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: impl, Registry: registry}
 	prefix := "time"
@@ -478,4 +480,22 @@ func RegisterTime(executor interface {
 	for _, m := range Time_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
+	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
+	executor.RegisterConstant("time.Kitchen", ffigo.ToConstantString(time.Kitchen))
+	executor.RegisterConstant("time.Layout", ffigo.ToConstantString(time.Layout))
+	executor.RegisterConstant("time.Microsecond", ffigo.ToConstantString(time.Microsecond))
+	executor.RegisterConstant("time.Millisecond", ffigo.ToConstantString(time.Millisecond))
+	executor.RegisterConstant("time.Minute", ffigo.ToConstantString(time.Minute))
+	executor.RegisterConstant("time.Nanosecond", ffigo.ToConstantString(time.Nanosecond))
+	executor.RegisterConstant("time.RFC1123", ffigo.ToConstantString(time.RFC1123))
+	executor.RegisterConstant("time.RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
+	executor.RegisterConstant("time.RFC3339", ffigo.ToConstantString(time.RFC3339))
+	executor.RegisterConstant("time.RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
+	executor.RegisterConstant("time.RFC822", ffigo.ToConstantString(time.RFC822))
+	executor.RegisterConstant("time.RFC822Z", ffigo.ToConstantString(time.RFC822Z))
+	executor.RegisterConstant("time.RFC850", ffigo.ToConstantString(time.RFC850))
+	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
+	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
+	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
 }

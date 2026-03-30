@@ -586,6 +586,7 @@ func (b *Strings_Bridge) DestroyHandle(handle uint32) error {
 func RegisterStrings(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Strings, registry *ffigo.HandleRegistry) {
 	bridge := &Strings_Bridge{Impl: impl, Registry: registry}
 	prefix := "strings"

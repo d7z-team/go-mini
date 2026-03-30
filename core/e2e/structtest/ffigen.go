@@ -124,6 +124,7 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 func RegisterCalculator(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator"
@@ -203,6 +204,7 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 func RegisterFactory(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	prefix := "calc"

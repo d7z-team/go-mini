@@ -178,6 +178,7 @@ func (b *ImageLib_Bridge) DestroyHandle(handle uint32) error {
 func RegisterImageLib(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl ImageLib, registry *ffigo.HandleRegistry) {
 	bridge := &ImageLib_Bridge{Impl: impl, Registry: registry}
 	prefix := "image"
@@ -689,6 +690,7 @@ func (b *Image_Bridge) DestroyHandle(handle uint32) error {
 func RegisterImage(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Image_Bridge{Impl: nil, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image"

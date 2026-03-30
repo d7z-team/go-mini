@@ -37,10 +37,11 @@ import (
 type MiniExecutor struct {
 	mu sync.RWMutex
 
-	Loader  func(path string) (*ast.ProgramStmt, error)
-	bridges map[uint32]ffigo.FFIBridge
-	routes  map[string]runtime.FFIRoute
-	specs   map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
+	Loader    func(path string) (*ast.ProgramStmt, error)
+	bridges   map[uint32]ffigo.FFIBridge
+	routes    map[string]runtime.FFIRoute
+	constants map[string]string            // 全局常量表
+	specs     map[ast.Ident]ast.GoMiniType // 用于验证的函数签名
 
 	registry    *ffigo.HandleRegistry
 	modules     map[string]*ast.ProgramStmt  // 预加载的模块蓝图
@@ -261,6 +262,7 @@ func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
 		bridges:      make(map[uint32]ffigo.FFIBridge),
 		routes:       make(map[string]runtime.FFIRoute),
+		constants:    make(map[string]string),
 		specs:        make(map[ast.Ident]ast.GoMiniType),
 		registry:     ffigo.NewHandleRegistry(),
 		modules:      make(map[string]*ast.ProgramStmt),
@@ -338,12 +340,16 @@ func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Execu
 	for name, route := range e.routes {
 		executor.RegisterRoute(name, route)
 	}
+	for name, val := range e.constants {
+		executor.RegisterConstant(name, val)
+	}
 	return executor, nil
 }
 
 func (e *MiniExecutor) validateAndOptimize(program *ast.ProgramStmt, tolerant bool) (*ast.SemanticContext, error) {
 	specs := e.GetExportedSpecs()
-	validator, err := ast.NewValidator(program, specs, tolerant)
+	consts := e.GetExportedConstants()
+	validator, err := ast.NewValidator(program, specs, consts, tolerant)
 	if err != nil {
 		return nil, err
 	}
@@ -396,6 +402,13 @@ func (e *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 	}
 }
 
+// RegisterConstant 注册一个全局常量到执行器
+func (e *MiniExecutor) RegisterConstant(name string, val string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.constants[name] = val
+}
+
 func (e *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -445,9 +458,22 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 
 	// 3. Inject image
 	imagelib.RegisterImageAll(e, &imagelib.ImageHost{}, e.registry)
+
+	// 4. Inject math
+	mathlib.RegisterMath(e, &mathlib.MathHost{}, e.registry)
 }
 
 // GetExportedSpecs 返回所有注册的 FFI 函数签名
+func (e *MiniExecutor) GetExportedConstants() map[string]string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	res := make(map[string]string)
+	for k, v := range e.constants {
+		res[k] = v
+	}
+	return res
+}
+
 func (e *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -574,17 +600,39 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 		errs = append(errs, err)
 	}
 
-	res, rErr := e.NewRuntimeByAst(program)
-	if rErr != nil {
+	var res *MiniProgram
+	executor, err := e.NewRuntimeByAst(program)
+	if err != nil {
 		if !tolerant {
-			return nil, nil, rErr
+			return nil, nil, err
 		}
-		errs = append(errs, rErr)
+		errs = append(errs, err)
 		// 创建一个仅包含 AST 的半成品 MiniProgram 供 LSP 使用
 		res = &MiniProgram{
 			Program:  program,
 			executor: &runtime.Executor{}, // 空执行器
 		}
+	} else {
+		// 初始化全局变量
+		session := executor.executor.NewSession(context.Background(), "global_init")
+		// 我们必须将此 session 设置为 lastSession，否则 Eval 无法继承全局变量和 Import
+		executor.executor.SetLastSession(session)
+
+		for name, expr := range program.Variables {
+			val, err := executor.executor.ExecExpr(session, expr)
+			if err != nil {
+				return nil, nil, err
+			}
+			_ = session.AddVariable(string(name), val)
+		}
+
+		if len(program.Main) > 0 {
+			err := executor.executor.ExecuteStmts(session, program.Main)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		res = executor
 	}
 	if res != nil {
 		res.Source = code

@@ -169,7 +169,7 @@ func (a *ReturnAnalyzer) compareReturnTypes(actual, expected []GoMiniType) bool 
 	}
 
 	for i := range actual {
-		if !actual[i].Equals(expected[i]) {
+		if !actual[i].IsAssignableTo(expected[i]) {
 			return false
 		}
 	}

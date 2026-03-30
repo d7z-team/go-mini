@@ -225,6 +225,7 @@ func (b *Base64_Bridge) DestroyHandle(handle uint32) error {
 func RegisterBase64(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Base64, registry *ffigo.HandleRegistry) {
 	bridge := &Base64_Bridge{Impl: impl, Registry: registry}
 	prefix := "encoding/base64"

@@ -203,6 +203,7 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 func RegisterE2EScriptCalculatorLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}
 	sep := "."

@@ -182,6 +182,7 @@ func (b *URL_Bridge) DestroyHandle(handle uint32) error {
 func RegisterURL(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl URL, registry *ffigo.HandleRegistry) {
 	bridge := &URL_Bridge{Impl: impl, Registry: registry}
 	prefix := "net/url"

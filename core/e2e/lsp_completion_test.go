@@ -24,7 +24,7 @@ func main() {
 		"os.ReadFile": "function(String) (TypeBytes, String)",
 	}
 
-	validator, _ := ast.NewValidator(prog, externalSpecs, true)
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = prog.Check(semanticCtx)
 
@@ -55,7 +55,7 @@ func main() {
 		"os.WriteFile": "function(String, TypeBytes) String",
 	}
 
-	ast.NewValidator(prog, externalSpecs, true)
+	ast.NewValidator(prog, externalSpecs, nil, true)
 	// 在 "os." 之后触发补全
 	// Line 3, Col 5 是 "o", Col 6 是 "s", Col 7 是 "."
 	completions := ast.FindCompletionsAt(prog, 3, 7)
@@ -101,10 +101,10 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
 
 	// 手动注入子模块 Root (模拟 Loader 行为之后的结果)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
@@ -146,7 +146,7 @@ func main() {
 		"fmt.Printf":  "function(String, ...Any) Void",
 	}
 
-	ast.NewValidator(prog, externalSpecs, true)
+	ast.NewValidator(prog, externalSpecs, nil, true)
 	// 在空行触发补全
 	completions := ast.FindCompletionsAt(prog, 3, 1)
 
@@ -183,7 +183,7 @@ func main() {
 		"os.ReadFile": "function(String) (TypeBytes, String)",
 	}
 
-	validator, _ := ast.NewValidator(prog, externalSpecs, true)
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = prog.Check(semanticCtx)
 
@@ -211,7 +211,7 @@ func main() {
 		"os.ReadFile": "function(String) (TypeBytes, String)",
 	}
 
-	ast.NewValidator(prog, externalSpecs, true)
+	ast.NewValidator(prog, externalSpecs, nil, true)
 	// 在 "unknownpkg." 之后触发补全 (Line 3, Col 12 是 '.')
 	completions := ast.FindCompletionsAt(prog, 3, 12)
 
@@ -232,7 +232,7 @@ func main() {
 	}
 	prog := node.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(prog, nil, true)
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = prog.Check(semanticCtx)
 
@@ -266,8 +266,8 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
@@ -310,8 +310,8 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
@@ -350,15 +350,15 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，路径为 "my/math"
 	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
 
 	// 重新初始化以应用宽容模式下的 Package 注册逻辑 (实际上通常是在 Loader 填充后再创建 Validator，这里手动触发)
-	validator, _ = ast.NewValidator(mainProg, nil, true)
+	validator, _ = ast.NewValidator(mainProg, nil, nil, true)
 	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
 	// 重新运行部分逻辑或手动添加，因为 NewValidator 在创建时就已经遍历了 ImportedRoots（此时还为空）
 	// 在实际 LSP 中，Validator 可能是持久的或在 Loader 填充后创建的。
@@ -402,8 +402,8 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
@@ -440,8 +440,8 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 
-	validator, _ := ast.NewValidator(mainProg, nil, true)
-	subValidator, _ := ast.NewValidator(subProg, nil, true)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()

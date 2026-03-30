@@ -4,6 +4,7 @@ package iolib
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 )
 import (
@@ -320,6 +321,7 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 func RegisterIO(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
 	prefix := "io"
@@ -330,6 +332,9 @@ func RegisterIO(executor interface {
 	for _, m := range IO_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("io.SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
+	executor.RegisterConstant("io.SeekEnd", ffigo.ToConstantString(io.SeekEnd))
+	executor.RegisterConstant("io.SeekStart", ffigo.ToConstantString(io.SeekStart))
 }
 
 const (
@@ -629,6 +634,7 @@ func (b *File_Bridge) DestroyHandle(handle uint32) error {
 func RegisterFile(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &File_Bridge{Impl: nil, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/iolib.File"

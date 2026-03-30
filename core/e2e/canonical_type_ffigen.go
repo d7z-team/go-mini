@@ -144,6 +144,7 @@ func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterTestCanonicalService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
 	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
 	prefix := "test_canonical"
@@ -252,6 +253,7 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterATypeService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type"
@@ -361,6 +363,7 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterBTypeService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type"

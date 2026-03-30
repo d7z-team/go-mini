@@ -30,8 +30,6 @@ const (
 	MethodID_Math_IsNaN = 16
 	MethodID_Math_Inf   = 17
 	MethodID_Math_IsInf = 18
-	MethodID_Math_Pi    = 19
-	MethodID_Math_E     = 20
 )
 
 type MathProxy struct {
@@ -315,32 +313,6 @@ func (__p *MathProxy) IsInf(f float64, sign int) bool {
 	return v_0
 }
 
-func (__p *MathProxy) Pi() float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Pi, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) E() float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_E, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
 func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
@@ -380,10 +352,6 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 			methodID = MethodID_Math_Inf
 		case "IsInf":
 			methodID = MethodID_Math_IsInf
-		case "Pi":
-			methodID = MethodID_Math_Pi
-		case "E":
-			methodID = MethodID_Math_E
 		}
 	}
 
@@ -527,16 +495,6 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Pi:
-		r0 := impl.Pi()
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteFloat64(float64(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Math_E:
-		r0 := impl.E()
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteFloat64(float64(r0))
-		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -566,8 +524,6 @@ var Math_FFI_Metadata = []struct {
 	{"IsNaN", 16, "function(Float64) Bool", ""},
 	{"Inf", 17, "function(Int64) Float64", ""},
 	{"IsInf", 18, "function(Float64, Int64) Bool", ""},
-	{"Pi", 19, "function() Float64", ""},
-	{"E", 20, "function() Float64", ""},
 }
 
 type Math_Bridge struct {
@@ -593,6 +549,7 @@ func (b *Math_Bridge) DestroyHandle(handle uint32) error {
 func RegisterMath(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Math, registry *ffigo.HandleRegistry) {
 	bridge := &Math_Bridge{Impl: impl, Registry: registry}
 	prefix := "math"
@@ -603,4 +560,6 @@ func RegisterMath(executor interface {
 	for _, m := range Math_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("math.E", ffigo.ToConstantString(2.71828182845904523536))
+	executor.RegisterConstant("math.Pi", ffigo.ToConstantString(3.14159265358979323846))
 }

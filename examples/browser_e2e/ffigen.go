@@ -131,6 +131,7 @@ func (b *BrowserModule_Bridge) DestroyHandle(handle uint32) error {
 func RegisterBrowserModule(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl BrowserModule, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserModule_Bridge{Impl: impl, Registry: registry}
 	prefix := "browser"
@@ -276,6 +277,7 @@ func (b *BrowserService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterBrowserService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser"
@@ -432,6 +434,7 @@ func (b *PageService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterPageService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page"
@@ -565,6 +568,7 @@ func (b *CdpSelectorService_Bridge) DestroyHandle(handle uint32) error {
 func RegisterCdpSelectorService(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector"

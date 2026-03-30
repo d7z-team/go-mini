@@ -128,6 +128,7 @@ func (b *Logger_Bridge) DestroyHandle(handle uint32) error {
 func RegisterLogger(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Logger, registry *ffigo.HandleRegistry) {
 	bridge := &Logger_Bridge{Impl: impl, Registry: registry}
 	prefix := "logger"
@@ -250,6 +251,7 @@ func (b *Callback_Bridge) DestroyHandle(handle uint32) error {
 func RegisterCallback(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Callback, registry *ffigo.HandleRegistry) {
 	bridge := &Callback_Bridge{Impl: impl, Registry: registry}
 	prefix := "callback"

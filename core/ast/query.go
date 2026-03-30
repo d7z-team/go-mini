@@ -300,6 +300,18 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 				if f, ok := prog.Functions[ident.Name]; ok {
 					return f
 				}
+				// 检查常量 (由于常量没有物理 AST 节点，构造一个虚拟节点以支持 Hover/跳转)
+				if val, ok := prog.Constants[string(ident.Name)]; ok {
+					return &LiteralExpr{
+						BaseNode: BaseNode{
+							ID:   "const_" + string(ident.Name),
+							Meta: "constant",
+							Type: "Constant",
+							Loc:  prog.GetBase().Loc, // 回退：跳转到文件开头
+						},
+						Value: val,
+					}
+				}
 				// 检查结构体
 				if s, ok := prog.Structs[ident.Name]; ok {
 					return s
@@ -706,6 +718,16 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 		}
 	}
 
+	// 2.3.5 收集常量
+	if ctx.root.program != nil {
+		for name := range ctx.root.program.Constants {
+			if !seen[name] {
+				items = append(items, CompletionItem{Label: name, Kind: "constant", Type: "Constant"})
+				seen[name] = true
+			}
+		}
+	}
+
 	// 2.4 收集结构体和接口 (总是显示)
 	for name := range ctx.root.structs {
 		if !seen[string(name)] {
@@ -765,6 +787,12 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 					}
 					items = append(items, CompletionItem{Label: string(name), Kind: kind, Type: t})
 					seenSymbols[string(name)] = true
+				}
+				for name := range srcRoot.program.Constants {
+					if !seenSymbols[name] {
+						items = append(items, CompletionItem{Label: name, Kind: "constant", Type: "Constant"})
+						seenSymbols[name] = true
+					}
 				}
 				for name := range srcRoot.structs {
 					if !seenSymbols[string(name)] {

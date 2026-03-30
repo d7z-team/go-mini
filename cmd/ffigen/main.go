@@ -143,6 +143,7 @@ func main() {
 	_, _ = conf.Check(*pkgName, fset, allFiles, info)
 
 	var ifaceSpecs []*ast.TypeSpec
+	globalConsts := make(map[string]map[string]string) // pkg -> name -> value
 	structs := make(map[string]*ast.StructType)
 	knownImports = make(map[string]string)
 
@@ -166,6 +167,33 @@ func main() {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
 						if str, ok := typeSpec.Type.(*ast.StructType); ok {
 							structs[typeSpec.Name.Name] = str
+						}
+					}
+					if valSpec, ok := spec.(*ast.ValueSpec); ok {
+						hasFfigenModule := false
+						if gd.Doc != nil {
+							for _, line := range gd.Doc.List {
+								if strings.Contains(line.Text, "ffigen:module") {
+									hasFfigenModule = true
+									break
+								}
+							}
+						}
+
+						if hasFfigenModule || *scanAll {
+							for i, name := range valSpec.Names {
+								if name.IsExported() {
+									if i < len(valSpec.Values) {
+										val := exprToString(valSpec.Values[i])
+										if val != "" {
+											if globalConsts[*pkgName] == nil {
+												globalConsts[*pkgName] = make(map[string]string)
+											}
+											globalConsts[*pkgName][name.Name] = val
+										}
+									}
+								}
+							}
 						}
 					}
 				}
@@ -245,7 +273,7 @@ func main() {
 				}
 			}
 		}
-		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse, isStruct))
+		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse, isStruct, globalConsts[*pkgName]))
 	}
 
 	fullInterfaces := strings.Join(interfaces, "\n")
@@ -409,7 +437,7 @@ func resolveToBasicType(e ast.Expr) string {
 	return ""
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse, isStruct bool) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse, isStruct bool, constants map[string]string) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 
@@ -591,7 +619,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 			}
 
-			needsRetBuf := (funcType.Results != nil && len(funcType.Results.List) > 0)
+			needsRetBuf := funcType.Results != nil && len(funcType.Results.List) > 0
 			if needsRetBuf || hasErr {
 				fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
 				fmt.Fprintf(&sb, "\t_ = retData\n")
@@ -846,7 +874,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, registry *ffigo.HandleRegistry) {\n", name)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
@@ -880,10 +908,21 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
+
+		if isModule && fixedPrefix != "" && len(constants) > 0 {
+			var keys []string
+			for k := range constants {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(&sb, "\texecutor.RegisterConstant(\"%s.%s\", ffigo.ToConstantString(%s))\n", fixedPrefix, k, constants[k])
+			}
+		}
 
 		if methodsPrefix != "" {
 			// Register as a struct if it's a method set
@@ -902,7 +941,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "}\n")
 	} else {
 		// Generic Library registration: Requires 'impl' and explicit prefix
-		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
+		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
@@ -1586,4 +1625,18 @@ func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.Interfa
 		})
 	}
 	return iface
+}
+func exprToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.BasicLit:
+		return t.Value
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return exprToString(t.X) + "." + t.Sel.Name
+	case *ast.BinaryExpr:
+		return exprToString(t.X) + " " + t.Op.String() + " " + exprToString(t.Y)
+	default:
+		return ""
+	}
 }

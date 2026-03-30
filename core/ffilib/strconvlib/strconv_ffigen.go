@@ -4,6 +4,7 @@ package strconvlib
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 import (
@@ -519,6 +520,7 @@ func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {
 func RegisterStrconv(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Strconv, registry *ffigo.HandleRegistry) {
 	bridge := &Strconv_Bridge{Impl: impl, Registry: registry}
 	prefix := "strconv"
@@ -529,4 +531,5 @@ func RegisterStrconv(executor interface {
 	for _, m := range Strconv_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("strconv.IntSize", ffigo.ToConstantString(strconv.IntSize))
 }

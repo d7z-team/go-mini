@@ -266,6 +266,7 @@ func (b *Rand_Bridge) DestroyHandle(handle uint32) error {
 func RegisterRand(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Rand, registry *ffigo.HandleRegistry) {
 	bridge := &Rand_Bridge{Impl: impl, Registry: registry}
 	prefix := "math/rand"

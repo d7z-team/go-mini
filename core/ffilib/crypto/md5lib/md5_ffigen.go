@@ -3,6 +3,7 @@ package md5lib
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"strings"
 )
@@ -93,6 +94,7 @@ func (b *MD5_Bridge) DestroyHandle(handle uint32) error {
 func RegisterMD5(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl MD5, registry *ffigo.HandleRegistry) {
 	bridge := &MD5_Bridge{Impl: impl, Registry: registry}
 	prefix := "crypto/md5"
@@ -103,4 +105,6 @@ func RegisterMD5(executor interface {
 	for _, m := range MD5_FFI_Metadata {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
+	executor.RegisterConstant("crypto/md5.BlockSize", ffigo.ToConstantString(md5.BlockSize))
+	executor.RegisterConstant("crypto/md5.Size", ffigo.ToConstantString(md5.Size))
 }

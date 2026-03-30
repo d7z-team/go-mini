@@ -628,7 +628,7 @@ func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth i
 	if depth > maxDepth {
 		return false // Prevent DoS via recursive types
 	}
-	if target.IsAny() || o.IsAny() {
+	if target.IsAny() || o.IsAny() || o == "Constant" {
 		return true
 	}
 	if o.Equals(target) {

@@ -1,6 +1,12 @@
 //go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg mathlib -path gopkg.d7z.net/go-mini/core/ffilib/mathlib -out math_ffigen.go interface.go
 package mathlib
 
+// ffigen:module math
+const (
+	Pi = 3.14159265358979323846
+	E  = 2.71828182845904523536
+)
+
 // Math 接口定义了数学计算操作
 
 // ffigen:module math
@@ -23,6 +29,4 @@ type Math interface {
 	IsNaN(f float64) bool
 	Inf(sign int) float64
 	IsInf(f float64, sign int) bool
-	Pi() float64
-	E() float64
 }

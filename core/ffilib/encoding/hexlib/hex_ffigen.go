@@ -172,6 +172,7 @@ func (b *Hex_Bridge) DestroyHandle(handle uint32) error {
 func RegisterHex(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterConstant(string, string)
 }, impl Hex, registry *ffigo.HandleRegistry) {
 	bridge := &Hex_Bridge{Impl: impl, Registry: registry}
 	prefix := "encoding/hex"
