@@ -48,3 +48,71 @@ func main() {
 		t.Error("No error logs contained a Node reference")
 	}
 }
+
+func TestPrimitiveMethodNotFound(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+	}{
+		{
+			"StringMethodNotFound",
+			`package main
+			func main() {
+				s := "test"
+				s.NotFound()
+			}`,
+		},
+		{
+			"Int64MethodNotFound",
+			`package main
+			func main() {
+				i := 123
+				i.NotFound()
+			}`,
+		},
+		{
+			"ArrayMethodNotFound",
+			`package main
+			func main() {
+				a := []Int64{1}
+				a.NotFound()
+			}`,
+		},
+		{
+			"MapMethodNotFound",
+			`package main
+			func main() {
+				m := map[String]Int64{"a": 1}
+				m.NotFound()
+			}`,
+		},
+		{
+			"PtrMethodNotFound",
+			`package main
+			type Point struct { X Int64 }
+			func main() {
+				p := Point{X: 1}
+				p.NotFound()
+			}`,
+		},
+	}
+
+	conv := ffigo.NewGoToASTConverter()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node, err := conv.ConvertSource("snippet", tt.code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prog := node.(*ast.ProgramStmt)
+
+			validator, _ := ast.NewValidator(prog, nil, true)
+			semanticCtx := ast.NewSemanticContext(validator)
+			err = prog.Check(semanticCtx)
+
+			if err == nil {
+				t.Errorf("%s: Expected validation error for non-existent method, but got none", tt.name)
+			}
+		})
+	}
+}

@@ -543,6 +543,14 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return nil
 	}
 
+	if objType.IsPrimitive() {
+		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+	}
+
+	if objType.IsArray() {
+		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+	}
+
 	if !m.Property.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid property: %s", m.Property)
 	}
@@ -566,14 +574,24 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					m.Type = sig.MiniType()
 					return nil
 				}
-				// 找到了结构体但没找到字段和方法，跳过，最终会报错
+				// 找到了结构体但没找到字段和方法，报错
+				return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 			} else {
 				m.Type = met
 				return nil
 			}
 		} else {
-			// 结构体未在当前上下文中定义（例如 FFI 宿主类型或跨包类型）。
-			// 由于隔离架构不要求全量 AST，这里放行作为动态成员访问。
+			// 结构体未在当前上下文中定义。
+			// 如果是内置类型（非 Package/Any），但又没找到 Struct 定义，说明确实不支持。
+			// 对于 FFI 宿主类型或跨包类型，通常我们会把它们注册为 Package 或 Any 或者是特定的命名的 Type。
+			// 如果走到这里，说明 typeName 不是 Package/Any 却没定义，我们默认放行作为 Any 可能不安全。
+			// 但由于 go-mini 的隔离架构，有些类型可能确实没有 AST。
+			// 这里我们保持原样或进行更细致的判断。
+			if objType.IsPtr() || objType.IsMap() {
+				// 指针和 Map 暂时维持原样，或者如果 Ptr 指向的是已知但没定义的 struct，则放行
+				m.Type = "Any"
+				return nil
+			}
 			m.Type = "Any"
 			return nil
 		}
