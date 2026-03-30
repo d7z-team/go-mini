@@ -116,3 +116,46 @@ func TestPrimitiveMethodNotFound(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorRangeForMemberAccess(t *testing.T) {
+	code := `package main
+func main() {
+	data := "NotFound"
+	data.NotFound()
+	fmt.Printf("1+1=%v\n", 2)
+}`
+	conv := ffigo.NewGoToASTConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	logs := validator.Logs()
+	found := false
+	for _, log := range logs {
+		if log.Node != nil {
+			base := log.Node.GetBase()
+			if base.Loc != nil {
+				t.Logf("Error at %d:%d - %d:%d: %s", base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC, log.Message)
+				// 我们期望错误是在 data.NotFound() 这一行，即第 4 行
+				// 并且不应该覆盖整个 main 函数或整个程序
+				if base.Loc.L == 4 {
+					found = true
+					// 验证列范围，大致应该是 2 到 15 左右
+					if base.Loc.C < 1 || base.Loc.EC > 20 {
+						t.Errorf("Unexpected column range: %d:%d", base.Loc.C, base.Loc.EC)
+					}
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("Expected precise error range at line 4 for member access, but not found or range too broad")
+	}
+}

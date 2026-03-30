@@ -290,27 +290,37 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		// 如果使用了 f(args...)，则参数数量必须固定为 1 (针对变长参数函数)
 		// 或者符合被调用函数的参数结构
 		if len(c.Args) == 0 {
-			return errors.New("invalid use of ellipsis with no arguments")
+			err := errors.New("invalid use of ellipsis with no arguments")
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		// 校验最后一个参数必须是数组类型
 		lastArgType := c.Args[len(c.Args)-1].GetBase().Type
 		if !lastArgType.IsArray() && !lastArgType.IsAny() {
-			return fmt.Errorf("invalid use of ellipsis with non-array type %s", lastArgType)
+			err := fmt.Errorf("invalid use of ellipsis with non-array type %s", lastArgType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 		goto done // 变长参数展开跳过常规数量检查，运行时处理
 	}
 
 	if len(c.Args) < minParams {
-		return fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
+		err := fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 	if !fType.Variadic && !isImplicitArray && len(sigParams) > 0 && len(c.Args) > len(sigParams) {
-		return fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(sigParams), len(c.Args))
+		err := fmt.Errorf("函数参数数量过多: 需 %d, 实际 %d", len(sigParams), len(c.Args))
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
 		if !argType.IsAssignableTo(sigParams[i]) {
-			return fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
+			err := fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
 		}
 	}
 
@@ -329,7 +339,9 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		for i := fixedNum; i < len(c.Args); i++ {
 			argType := c.Args[i].GetBase().Type
 			if !argType.IsAssignableTo(targetElem) {
-				return fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
+				err := fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
+				ctx.AddErrorf("%s", err.Error())
+				return err
 			}
 		}
 	}
@@ -517,7 +529,9 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			m.Type = sig.MiniType() // 使用解析出的完整签名类型
 			return nil
 		}
-		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
 	}
 
 	// 检查是否为命名接口
@@ -527,7 +541,9 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			m.Type = sig.MiniType()
 			return nil
 		}
-		return fmt.Errorf("interface %s does not support member access to %s", objType, m.Property)
+		err := fmt.Errorf("interface %s does not support member access to %s", objType, m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if objType.IsMap() {
@@ -544,15 +560,21 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if objType.IsPrimitive() {
-		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if objType.IsArray() {
-		return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if !m.Property.Valid(ctx.ValidContext) {
-		return fmt.Errorf("invalid property: %s", m.Property)
+		err := fmt.Errorf("invalid property: %s", m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
 	}
 
 	// 尝试作为结构体访问
@@ -575,7 +597,9 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					return nil
 				}
 				// 找到了结构体但没找到字段和方法，报错
-				return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+				err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+				ctx.WithNode(m).AddErrorf("%s", err.Error())
+				return err
 			} else {
 				m.Type = met
 				return nil
@@ -616,7 +640,9 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	return fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+	err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+	ctx.WithNode(m).AddErrorf("%s", err.Error())
+	return err
 }
 
 func (m *MemberExpr) Optimize(ctx *OptimizeContext) Node {
