@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg errorslib -path gopkg.d7z.net/go-mini/core/ffilib/errorslib -out errors_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg errorslib -module errors -path gopkg.d7z.net/go-mini/core/ffilib/errorslib -out errors_ffigen.go interface.go
 package errorslib
 
 // Errors 接口定义了错误创建操作

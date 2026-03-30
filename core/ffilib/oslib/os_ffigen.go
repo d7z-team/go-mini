@@ -420,9 +420,9 @@ var OS_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Open", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
-	{"Create", 2, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
-	{"OpenFile", 3, "function(String, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Error)", ""},
+	{"Open", 1, "function(String) tuple(Ptr<io.File>, Error)", ""},
+	{"Create", 2, "function(String) tuple(Ptr<io.File>, Error)", ""},
+	{"OpenFile", 3, "function(String, Int64, Int64) tuple(Ptr<io.File>, Error)", ""},
 	{"ReadFile", 4, "function(String) tuple(TypeBytes, Error)", ""},
 	{"WriteFile", 5, "function(String, TypeBytes) Error", ""},
 	{"Remove", 6, "function(String) Error", ""},

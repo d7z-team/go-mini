@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg sortlib -path gopkg.d7z.net/go-mini/core/ffilib/sortlib -out sort_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg sortlib -module sort -path gopkg.d7z.net/go-mini/core/ffilib/sortlib -out sort_ffigen.go interface.go
 package sortlib
 
 // Sort 接口定义了排序操作

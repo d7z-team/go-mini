@@ -151,8 +151,8 @@ var ImageLib_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Decode", 1, "function(TypeBytes) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, String, Error)", "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
-	{"NewRGBA", 2, "function(Int64, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>", "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
+	{"Decode", 1, "function(TypeBytes) tuple(Ptr<image.Image>, String, Error)", "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
+	{"NewRGBA", 2, "function(Int64, Int64) Ptr<image.Image>", "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
 }
 
 type ImageLib_Bridge struct {
@@ -650,21 +650,21 @@ var Image_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Bounds", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64, Int64, Int64)", "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{"Size", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64)", "Size 返回 width, height"},
-	{"Width", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64", "Width 返回图像宽度"},
-	{"Height", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64", "Height 返回图像高度"},
-	{"At", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", "At 返回 r, g, b, a (0-255)"},
-	{"Set", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", "Set 设置指定像素的颜色"},
-	{"Fill", 7, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) Void", "Fill 用指定颜色填充整个图像"},
-	{"Clear", 8, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Void", "Clear 将图像清空为透明"},
-	{"Clone", 9, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>", "Clone 复制当前图像"},
-	{"SubImage", 10, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "SubImage 返回图像的子部分 (共享内存)"},
-	{"Draw", 11, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) Void", "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
-	{"Resize", 12, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "Resize 缩放图像"},
-	{"Crop", 13, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error)", "Crop 裁剪图像"},
-	{"EncodePNG", 14, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(TypeBytes, Error)", "EncodePNG 将图像编码为 PNG 字节数组"},
-	{"EncodeJPEG", 15, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64) tuple(TypeBytes, Error)", "EncodeJPEG 将图像编码为 JPEG 字节数组"},
+	{"Bounds", 1, "function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64)", "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
+	{"Size", 2, "function(Ptr<image.Image>) tuple(Int64, Int64)", "Size 返回 width, height"},
+	{"Width", 3, "function(Ptr<image.Image>) Int64", "Width 返回图像宽度"},
+	{"Height", 4, "function(Ptr<image.Image>) Int64", "Height 返回图像高度"},
+	{"At", 5, "function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", "At 返回 r, g, b, a (0-255)"},
+	{"Set", 6, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", "Set 设置指定像素的颜色"},
+	{"Fill", 7, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void", "Fill 用指定颜色填充整个图像"},
+	{"Clear", 8, "function(Ptr<image.Image>) Void", "Clear 将图像清空为透明"},
+	{"Clone", 9, "function(Ptr<image.Image>) Ptr<image.Image>", "Clone 复制当前图像"},
+	{"SubImage", 10, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", "SubImage 返回图像的子部分 (共享内存)"},
+	{"Draw", 11, "function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void", "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
+	{"Resize", 12, "function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error)", "Resize 缩放图像"},
+	{"Crop", 13, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", "Crop 裁剪图像"},
+	{"EncodePNG", 14, "function(Ptr<image.Image>) tuple(TypeBytes, Error)", "EncodePNG 将图像编码为 PNG 字节数组"},
+	{"EncodeJPEG", 15, "function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error)", "EncodeJPEG 将图像编码为 JPEG 字节数组"},
 }
 
 type Image_Bridge struct {
@@ -693,7 +693,7 @@ func RegisterImage(executor interface {
 	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Image_Bridge{Impl: nil, Registry: registry}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image"
+	prefix := "__method_image.Image"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -702,5 +702,5 @@ func RegisterImage(executor interface {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image", "struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(Int64, Int64); Width function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64; Height function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Int64; At function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Void; Clone function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>; SubImage function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); Draw function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) Void; Resize function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); Crop function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Error); EncodePNG function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/imagelib.Image>, Int64) tuple(TypeBytes, Error); }")
+	executor.RegisterStructSpec("image.Image", "struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<image.Image>) tuple(Int64, Int64); Width function(Ptr<image.Image>) Int64; Height function(Ptr<image.Image>) Int64; At function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<image.Image>) Void; Clone function(Ptr<image.Image>) Ptr<image.Image>; SubImage function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); Draw function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void; Resize function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error); Crop function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); EncodePNG function(Ptr<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error); }")
 }

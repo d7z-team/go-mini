@@ -345,12 +345,12 @@ var Module_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Now", 1, "function() Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
-	{"Unix", 2, "function(Int64, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
+	{"Now", 1, "function() Ptr<time.Time>", ""},
+	{"Unix", 2, "function(Int64, Int64) Ptr<time.Time>", ""},
 	{"Sleep", 3, "function(Int64) Void", ""},
-	{"Since", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Until", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Parse", 6, "function(String, String) tuple(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Error)", ""},
+	{"Since", 4, "function(Ptr<time.Time>) Int64", ""},
+	{"Until", 5, "function(Ptr<time.Time>) Int64", ""},
+	{"Parse", 6, "function(String, String) tuple(Ptr<time.Time>, Error)", ""},
 	{"ParseDuration", 7, "function(String) tuple(Int64, Error)", ""},
 }
 
@@ -777,25 +777,25 @@ var Time_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Year", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Month", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Day", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Hour", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Minute", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Second", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Nanosecond", 7, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Unix", 8, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"UnixMilli", 9, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"UnixMicro", 10, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"UnixNano", 11, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"Format", 12, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, String) String", ""},
-	{"Add", 13, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>", ""},
-	{"Sub", 14, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64", ""},
-	{"IsZero", 15, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
-	{"Before", 16, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
-	{"After", 17, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
-	{"Equal", 18, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool", ""},
-	{"String", 19, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) String", ""},
+	{"Year", 1, "function(Ptr<time.Time>) Int64", ""},
+	{"Month", 2, "function(Ptr<time.Time>) Int64", ""},
+	{"Day", 3, "function(Ptr<time.Time>) Int64", ""},
+	{"Hour", 4, "function(Ptr<time.Time>) Int64", ""},
+	{"Minute", 5, "function(Ptr<time.Time>) Int64", ""},
+	{"Second", 6, "function(Ptr<time.Time>) Int64", ""},
+	{"Nanosecond", 7, "function(Ptr<time.Time>) Int64", ""},
+	{"Unix", 8, "function(Ptr<time.Time>) Int64", ""},
+	{"UnixMilli", 9, "function(Ptr<time.Time>) Int64", ""},
+	{"UnixMicro", 10, "function(Ptr<time.Time>) Int64", ""},
+	{"UnixNano", 11, "function(Ptr<time.Time>) Int64", ""},
+	{"Format", 12, "function(Ptr<time.Time>, String) String", ""},
+	{"Add", 13, "function(Ptr<time.Time>, Int64) Ptr<time.Time>", ""},
+	{"Sub", 14, "function(Ptr<time.Time>, Ptr<time.Time>) Int64", ""},
+	{"IsZero", 15, "function(Ptr<time.Time>) Bool", ""},
+	{"Before", 16, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
+	{"After", 17, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
+	{"Equal", 18, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
+	{"String", 19, "function(Ptr<time.Time>) String", ""},
 }
 
 type Time_Bridge struct {
@@ -824,7 +824,7 @@ func RegisterTime(executor interface {
 	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: nil, Registry: registry}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/timelib.Time"
+	prefix := "__method_time.Time"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -833,5 +833,5 @@ func RegisterTime(executor interface {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/timelib.Time", "struct { T time.Time; Year function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Month function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Day function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Hour function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Minute function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Second function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Nanosecond function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Unix function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixMilli function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixMicro function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; UnixNano function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; Format function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, String) String; Add function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Int64) Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>; Sub function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Int64; IsZero function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; Before function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; After function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; Equal function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>, Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) Bool; String function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/timelib.Time>) String; }")
+	executor.RegisterStructSpec("time.Time", "struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }")
 }

@@ -21,6 +21,7 @@ var (
 	pkgName  = flag.String("pkg", "", "package name")
 	basePath = flag.String("path", "", "full import path of the current package (optional, will try to derive if empty)")
 	outFile  = flag.String("out", "", "output file")
+	module   = flag.String("module", "", "logical module name (e.g. 'time' or 'os')")
 	scanAll  = flag.Bool("scan", false, "scan all .go files in the directory for methods")
 
 	// 类型推导上下文
@@ -1326,19 +1327,36 @@ func getSpec(funcType *ast.FuncType) string {
 
 func resolveCanonicalType(name string) string {
 	if !strings.Contains(name, ".") {
+		if *module != "" {
+			return *module + "." + name
+		}
 		if *basePath != "" {
-			return *basePath + "." + name
+			return toLogicalPath(*basePath) + "." + name
 		}
 		return name
 	}
 	parts := strings.SplitN(name, ".", 2)
 	prefix := parts[0]
 	if fullPath, ok := knownImports[prefix]; ok {
-		return fullPath + "." + parts[1]
+		return toLogicalPath(fullPath) + "." + parts[1]
 	}
 	return name
 }
 
+func toLogicalPath(fullPath string) string {
+	const stdPrefix = "gopkg.d7z.net/go-mini/core/ffilib/"
+	if strings.HasPrefix(fullPath, stdPrefix) {
+		rel := strings.TrimPrefix(fullPath, stdPrefix)
+		parts := strings.Split(rel, "/")
+		for i, p := range parts {
+			if strings.HasSuffix(p, "lib") {
+				parts[i] = strings.TrimSuffix(p, "lib")
+			}
+		}
+		return strings.Join(parts, "/")
+	}
+	return fullPath
+}
 func toVMType(expr ast.Expr) string {
 	if bt := resolveToBasicType(expr); bt != "" {
 		switch {

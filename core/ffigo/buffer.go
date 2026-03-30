@@ -3,6 +3,7 @@ package ffigo
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"sync"
@@ -53,8 +54,9 @@ func ReleaseBuffer(b *Buffer) {
 func (b *Buffer) Bytes() []byte { return b.buf }
 func (b *Buffer) Len() int      { return len(b.buf) }
 
-func (b *Buffer) WriteByte(v byte) {
+func (b *Buffer) WriteByte(v byte) error {
 	b.buf = append(b.buf, v)
+	return nil
 }
 
 func (b *Buffer) WriteUvarint(v uint64) {
@@ -168,10 +170,13 @@ func NewReader(data []byte) *Reader {
 
 func (r *Reader) Available() int { return len(r.buf) - r.offset }
 
-func (r *Reader) ReadByte() byte {
+func (r *Reader) ReadByte() (byte, error) {
+	if r.offset >= len(r.buf) {
+		return 0, io.EOF
+	}
 	v := r.buf[r.offset]
 	r.offset++
-	return v
+	return v, nil
 }
 
 func (r *Reader) ReadUvarint() uint64 {
@@ -193,7 +198,8 @@ func (r *Reader) ReadFloat64() float64 {
 }
 
 func (r *Reader) ReadBool() bool {
-	return r.ReadByte() != 0
+	v, _ := r.ReadByte()
+	return v != 0
 }
 
 func (r *Reader) ReadString() string {
@@ -239,7 +245,7 @@ func (r *Reader) ReadAny() interface{} {
 	if r.Available() == 0 {
 		return nil
 	}
-	tag := r.ReadByte()
+	tag, _ := r.ReadByte()
 	switch tag {
 	case TypeTagInt64:
 		return r.ReadVarint()

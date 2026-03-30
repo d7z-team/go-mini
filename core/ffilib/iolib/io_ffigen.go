@@ -600,15 +600,15 @@ var File_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Write", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes) tuple(Int64, Error)", "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"WriteAt", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes, Int64) tuple(Int64, Error)", "WriteAt 正常工作：支持偏移量写入"},
-	{"Seek", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Int64, Int64) tuple(Int64, Error)", ""},
-	{"Close", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) Error", ""},
-	{"Sync", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) Error", ""},
-	{"Truncate", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Int64) Error", ""},
-	{"WriteString", 7, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, String) tuple(Int64, Error)", ""},
-	{"Name", 8, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) String", ""},
-	{"WriteNative", 9, "function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes) tuple(Int64, Error)", "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"Write", 1, "function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{"WriteAt", 2, "function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", "WriteAt 正常工作：支持偏移量写入"},
+	{"Seek", 3, "function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)", ""},
+	{"Close", 4, "function(Ptr<io.File>) Error", ""},
+	{"Sync", 5, "function(Ptr<io.File>) Error", ""},
+	{"Truncate", 6, "function(Ptr<io.File>, Int64) Error", ""},
+	{"WriteString", 7, "function(Ptr<io.File>, String) tuple(Int64, Error)", ""},
+	{"Name", 8, "function(Ptr<io.File>) String", ""},
+	{"WriteNative", 9, "function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
 type File_Bridge struct {
@@ -637,7 +637,7 @@ func RegisterFile(executor interface {
 	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &File_Bridge{Impl: nil, Registry: registry}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/ffilib/iolib.File"
+	prefix := "__method_io.File"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -646,5 +646,5 @@ func RegisterFile(executor interface {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/ffilib/iolib.File", "struct { F Ptr<os.File>; Write function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) Error; Sync function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) Error; Truncate function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, Int64) Error; WriteString function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, String) tuple(Int64, Error); Name function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>) String; WriteNative function(Ptr<gopkg.d7z.net/go-mini/core/ffilib/iolib.File>, TypeBytes) tuple(Int64, Error); }")
+	executor.RegisterStructSpec("io.File", "struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }")
 }
