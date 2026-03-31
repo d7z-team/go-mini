@@ -18,19 +18,20 @@
 3. 执行层（Runtime VM）
 - `core/runtime/executor.go`: 调度循环与 opcode 执行
 - `core/runtime/executor_eval.go`: 调用、内置函数、FFI 路由
-- `core/runtime/task.go`: opcode 与 payload 数据结构
+- `core/runtime/task.go`: opcode、payload 以及 `SourceRef` 数据结构
 - `core/runtime/scope.go`: 栈、作用域、Var、闭包数据结构
 
 ### 1.2 运行时现状（2026-03-31）
 
-- 非调试模式（主路径）已改为 data-first：
-  - `InitializeSession/ExecExpr/ExecuteStmts/ImportModule` 优先压入 lowered tasks。
-  - 闭包与函数调用使用 `FunctionType + BodyTasks`，不再依赖闭包 AST 函数字段。
-  - 新增 `OpMakeClosure`、`DoCallData`、`ClosureData`。
+- 非调试模式（主路径）已实现完全脱 AST：
+  - `InitializeSession/ExecExpr/ExecuteStmts/ImportModule` 仅消费 lowered tasks。
+  - `dispatch` 调度器不再依赖 `task.Node`（非调试模式下强制要求 `Data` payload）。
+  - `Disassemble` 已改为基于 `SourceRef` 和 `Data` 的纯数据化展开。
+  - 任务项包含 `SourceRef` 用于记录行号、ID 等元信息。
 
-- 调试模式（兼容路径）仍保留 AST 任务（断点/单步所需）：
-  - `session.Debugger != nil` 时允许 `OpExec/OpEval`。
-  - 后续会替换为 source-map 驱动的 data 调试模型。
+- 调试模式（兼容路径）：
+  - 暂时保留 `Task.Node` 字段（标记为 DEPRECATED）。
+  - 仍然使用 `OpExec` 作为断点触发点，后续将迁移至 `SourceRef` 驱动。
 
 ## 2. 目录速查
 

@@ -6,23 +6,43 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
+func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
+	if node == nil {
+		return tasks
+	}
+	base := node.GetBase()
+	ref := &SourceRef{
+		ID:   base.ID,
+		Meta: base.Meta,
+	}
+	if base.Loc != nil {
+		ref.File = base.Loc.F
+		ref.Line = base.Loc.L
+		ref.Col = base.Loc.C
+	}
+	for i := range tasks {
+		tasks[i].Source = ref
+	}
+	return tasks
+}
+
 func (e *Executor) tasksForStmt(stmt ast.Stmt, data interface{}) []Task {
 	if tasks, ok := e.lowerStmtTasks(stmt, data); ok {
-		return tasks
+		return e.setSource(tasks, stmt)
 	}
 	panic(fmt.Sprintf("runtime lowering missing for stmt %T", stmt))
 }
 
 func (e *Executor) tasksForExpr(expr ast.Expr) []Task {
 	if tasks, ok := e.lowerExprTasks(expr); ok {
-		return tasks
+		return e.setSource(tasks, expr)
 	}
 	panic(fmt.Sprintf("runtime lowering missing for expr %T", expr))
 }
 
 func (e *Executor) tasksForLHS(expr ast.Expr) []Task {
 	if tasks, ok := e.lowerLHSTasks(expr); ok {
-		return tasks
+		return e.setSource(tasks, expr)
 	}
 	panic(fmt.Sprintf("runtime lowering missing for lhs %T", expr))
 }

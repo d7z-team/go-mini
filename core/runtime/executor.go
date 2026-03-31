@@ -554,6 +554,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 				Data: map[string]interface{}{"catch": data, "panic": session.PanicVar},
 			})
 		} else {
+			if session.Debugger == nil {
+				return false, fmt.Errorf("OpCatchBoundary missing CatchData")
+			}
 			clause := task.Node.(*ast.CatchClause)
 			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: clause.Body})
 			session.TaskStack = append(session.TaskStack, Task{
@@ -627,8 +630,11 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			if _, ok := task.Data.(*SwitchData); ok {
 				return false, nil
 			}
-			if _, ok := task.Node.(*ast.SwitchStmt); ok {
-				return false, nil
+
+			if session.Debugger != nil {
+				if _, ok := task.Node.(*ast.SwitchStmt); ok {
+					return false, nil
+				}
 			}
 
 			session.UnwindMode = UnwindNone
@@ -741,13 +747,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpJumpIf:
-		op := ""
+		var op string
 		var rightTasks []Task
 		if data, ok := task.Data.(*JumpData); ok {
 			op = data.Operator
 			rightTasks = data.Right
 		} else {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpJumpIf missing JumpData")
+			}
 			op = task.Data.(string)
+			rightTasks = []Task{{Op: OpEval, Node: task.Node.(ast.Expr)}}
 		}
 		l := session.ValueStack.Peek()
 		lb, err := l.ToBool()
@@ -772,11 +782,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Pop() // Discard Left
 		// Push a task to evaluate Right and ensure it's converted to Bool
 		session.TaskStack = append(session.TaskStack, Task{Op: OpApplyUnary, Data: "ToBool"}) // a pseudo unary to enforce bool
-		if len(rightTasks) > 0 {
-			session.TaskStack = append(session.TaskStack, rightTasks...)
-		} else {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: task.Node.(ast.Expr)})
-		}
+		session.TaskStack = append(session.TaskStack, rightTasks...)
 		return nil
 	case OpLoadVar:
 		name := task.Data.(string)
@@ -936,6 +942,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				return nil
 			}
 		}
+
+		if session.Debugger == nil {
+			return fmt.Errorf("OpEvalLHS missing LHSData")
+		}
+
+		// Fallback for Debugger
 		if lhsType, ok := task.Data.(LHSType); ok {
 			switch lhsType {
 			case LHSTypeIndex:
@@ -974,13 +986,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
-		data, hasData := task.Data.(*IndexData)
-		multi := hasData && data.Multi
-		if !hasData {
+		data, ok := task.Data.(*IndexData)
+		if !ok {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpIndex missing IndexData")
+			}
 			n := task.Node.(*ast.IndexExpr)
-			multi = n.Multi
+			data = &IndexData{
+				Multi:      n.Multi,
+				ResultType: n.GetBase().Type,
+			}
 		}
-		if multi {
+
+		if data.Multi {
 			if obj == nil || isEmptyVar(obj) {
 				return errors.New("index access on nil")
 			}
@@ -1002,13 +1020,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
 					tuple[1] = NewBool(false)
 				}
-				resultType := ast.GoMiniType("")
-				if hasData {
-					resultType = data.ResultType
-				} else {
-					resultType = task.Node.(*ast.IndexExpr).GetBase().Type
-				}
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: data.ResultType})
 				return nil
 			}
 			// Fallback for Any
@@ -1052,6 +1064,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			typ = data.Type
 			entries = data.Entries
 		} else {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpComposite missing CompositeData")
+			}
 			n := task.Node.(*ast.CompositeExpr)
 			typ = n.Type
 			entries = make([]CompositeEntryData, len(n.Values))
@@ -1265,14 +1280,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpAssert:
 		val := session.ValueStack.Pop()
-		targetType := ast.GoMiniType("")
-		multi := false
-		resultType := ast.GoMiniType("")
+		var (
+			targetType ast.GoMiniType
+			multi      bool
+			resultType ast.GoMiniType
+		)
 		if data, ok := task.Data.(*AssertData); ok {
 			targetType = data.TargetType
 			multi = data.Multi
 			resultType = data.ResultType
 		} else {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpAssert missing AssertData")
+			}
 			n := task.Node.(*ast.TypeAssertExpr)
 			targetType = n.Type
 			multi = n.Multi
@@ -1338,6 +1358,18 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			} else {
 				e.scheduleForBody(session, n, nil)
 			}
+			return nil
+		}
+		if session.Debugger == nil {
+			if task.Data == nil {
+				// Marker boundary (e.g. for Range)
+				return nil
+			}
+			if _, ok := task.Data.(*SwitchData); ok {
+				// Switch boundary, just a placeholder for break/continue
+				return nil
+			}
+			return fmt.Errorf("OpLoopBoundary missing ForData")
 		}
 		return nil
 	case OpForCond:
@@ -1350,6 +1382,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			if data, ok := task.Data.(*ForData); ok {
 				e.scheduleForBody(session, nil, data)
 			} else {
+				if session.Debugger == nil {
+					return fmt.Errorf("OpForCond missing ForData")
+				}
 				n := task.Node.(*ast.ForStmt)
 				e.scheduleForBody(session, n, nil)
 			}
@@ -1477,6 +1512,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			})
 			return nil
 		}
+		if session.Debugger == nil {
+			return fmt.Errorf("OpSwitchTag missing SwitchData")
+		}
 		n := task.Node.(*ast.SwitchStmt)
 		var tag *Var
 		if n.Tag != nil {
@@ -1525,6 +1563,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.TaskStack = append(session.TaskStack, task)
 			return nil
 		}
+
+		if session.Debugger == nil {
+			return fmt.Errorf("OpSwitchNextCase missing SwitchState")
+		}
+
 		data := task.Data.(map[string]interface{})
 		n := task.Node.(*ast.SwitchStmt)
 		tag := data["tag"].(*Var)
@@ -1666,6 +1709,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchNextCase, Data: state})
 			return nil
 		}
+
+		if session.Debugger == nil {
+			return fmt.Errorf("OpSwitchMatchCase missing SwitchState")
+		}
+
 		data := task.Data.(map[string]interface{})
 		clause := task.Node.(*ast.CaseClause)
 		tag := data["tag"].(*Var)
@@ -1698,6 +1746,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if data, ok := task.Data.(*FinallyData); ok {
 			session.TaskStack = append(session.TaskStack, data.Body...)
 		} else {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpFinally missing FinallyData")
+			}
 			n := task.Node.(*ast.BlockStmt)
 			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n})
 		}
@@ -1708,10 +1759,18 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			panicVar *Var
 		)
 		if data, ok := task.Data.(map[string]interface{}); ok {
-			catch := data["catch"].(*CatchData)
-			varName = catch.VarName
-			panicVar = data["panic"].(*Var)
+			catch, ok := data["catch"].(*CatchData)
+			if ok {
+				varName = catch.VarName
+				panicVar = data["panic"].(*Var)
+			} else {
+				// Old map data format
+				panicVar = data["panic"].(*Var)
+			}
 		} else {
+			if session.Debugger == nil {
+				return fmt.Errorf("OpCatchScopeEnter missing Data")
+			}
 			clause := task.Node.(*ast.CatchClause)
 			varName = string(clause.VarName)
 			panicVar = task.Data.(*Var)
@@ -1735,6 +1794,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.TaskStack = append(session.TaskStack, data.Else...)
 			}
 			return nil
+		}
+		if session.Debugger == nil {
+			return fmt.Errorf("OpBranchIf missing BranchData")
 		}
 		n := task.Node.(*ast.IfStmt)
 		if b {
@@ -1991,6 +2053,7 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 			session.TaskStack = append(session.TaskStack, tasks...)
 			return nil
 		}
+		return fmt.Errorf("runtime lowering missing for stmt %T", stmt)
 	}
 	switch n := stmt.(type) {
 	case *ast.BadStmt:
@@ -2101,6 +2164,7 @@ func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 			session.TaskStack = append(session.TaskStack, tasks...)
 			return nil
 		}
+		return fmt.Errorf("runtime lowering missing for lhs %T", lhsExpr)
 	}
 	switch lhs := lhsExpr.(type) {
 	case *ast.IdentifierExpr:
@@ -2423,6 +2487,7 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 			session.TaskStack = append(session.TaskStack, tasks...)
 			return nil
 		}
+		return fmt.Errorf("runtime lowering missing for expr %T", expr)
 	}
 	switch n := expr.(type) {
 	case *ast.BadExpr:
@@ -2704,20 +2769,6 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 	if node == nil {
 		return
 	}
-	// 模拟执行环境来提取任务流
-	mockSession := &StackContext{
-		Executor: e,
-		Stack: &Stack{
-			MemoryPtr: make(map[string]*Var),
-			Scope:     "disassemble",
-			Depth:     1,
-		},
-		ValueStack:     &ValueStack{},
-		TaskStack:      nil,
-		ModuleCache:    make(map[string]*Var),
-		LoadingModules: make(map[string]bool),
-		Context:        context.Background(),
-	}
 
 	var root Task
 	if isExpr {
@@ -2745,16 +2796,29 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 					} else {
 						dataStr = v.String()
 					}
-				} else if env, ok := task.Data.(LHSEnv); ok {
+				} else if env, ok := task.Data.(*LHSEnv); ok {
 					dataStr = env.Name
-				} else if mem, ok := task.Data.(LHSMember); ok {
+				} else if mem, ok := task.Data.(*LHSMember); ok {
 					objStr := "nil"
 					if mem.Obj != nil {
 						objStr = mem.Obj.String()
 					}
 					dataStr = fmt.Sprintf("%v.%v", objStr, mem.Property)
-				} else if _, ok := task.Data.(LHSIndex); ok {
-					dataStr = "[]" // 索引通常在栈上
+				} else if _, ok := task.Data.(*LHSIndex); ok {
+					dataStr = "[]"
+				} else if ld, ok := task.Data.(*LHSData); ok {
+					switch ld.Kind {
+					case LHSTypeEnv:
+						dataStr = ld.Name
+					case LHSTypeMember:
+						dataStr = ld.Property
+					case LHSTypeIndex:
+						dataStr = "[]"
+					case LHSTypeStar:
+						dataStr = "*"
+					}
+				} else if cd, ok := task.Data.(*CallData); ok {
+					dataStr = cd.Name
 				} else {
 					dataStr = fmt.Sprintf("%v", task.Data)
 				}
@@ -2763,91 +2827,37 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 			dataStr = strings.ReplaceAll(dataStr, "\n", "\\n")
 			dataStr = strings.ReplaceAll(dataStr, "\r", "\\r")
 
-			// 如果是 EVAL_LHS 且没有 Data，尝试从 Node 静态推导显示内容
-			if task.Op == OpEvalLHS && dataStr == "" && task.Node != nil {
-				switch n := task.Node.(type) {
-				case *ast.IdentifierExpr:
-					dataStr = string(n.Name)
-				case *ast.MemberExpr:
-					dataStr = string(n.Property)
-				case *ast.IndexExpr:
-					dataStr = "[]"
-				case *ast.StarExpr:
-					dataStr = "*"
-				}
-			}
-
-			// 特殊处理 BINARY_OP 和 UNARY_OP
-			if task.Op == OpApplyBinary || task.Op == OpApplyUnary {
-				if task.Data != nil {
-					dataStr = fmt.Sprintf("%v", task.Data)
-				}
-			}
-
-			// 特殊处理 CALL 指令的操作数显示
-			if task.Op == OpCall && task.Node != nil {
-				if call, ok := task.Node.(*ast.CallExprStmt); ok {
-					if ident, ok := call.Func.(*ast.IdentifierExpr); ok {
-						dataStr = string(ident.Name)
-					} else if ident, ok := call.Func.(*ast.ConstRefExpr); ok {
-						dataStr = string(ident.Name)
-					} else if member, ok := call.Func.(*ast.MemberExpr); ok {
-						dataStr = string(member.Property)
-					}
-				}
-			}
-
 			addr := "[                ]"
 			comment := ""
-			if task.Node != nil {
-				base := task.Node.GetBase()
-				addr = fmt.Sprintf("[%16s]", base.ID)
-				comment = base.Meta
+			if task.Source != nil {
+				addr = fmt.Sprintf("[%16s]", task.Source.ID)
+				comment = task.Source.Meta
 
-				// Provide more semantic context for common instructions
-				switch task.Op {
-				case OpCall:
-					if call, ok := task.Node.(*ast.CallExprStmt); ok {
-						funcName := "anonymous"
-						if ident, ok := call.Func.(*ast.IdentifierExpr); ok {
-							funcName = string(ident.Name)
-						} else if ident, ok := call.Func.(*ast.ConstRefExpr); ok {
-							funcName = string(ident.Name)
-						} else if member, ok := call.Func.(*ast.MemberExpr); ok {
-							funcName = string(member.Property)
-						}
-						comment = "Call " + funcName
-					}
-				case OpAssign:
-					comment = "Assignment"
-				case OpReturn:
-					comment = fmt.Sprintf("Return %v values", task.Data)
-				case OpBranchIf:
-					if ifStmt, ok := task.Node.(*ast.IfStmt); ok {
-						if ifStmt.ElseBody != nil {
-							comment = "Branch if false to ELSE"
-						} else {
-							comment = "Branch if false to END"
-						}
-					}
-				case OpJumpIf:
-					comment = fmt.Sprintf("Short-circuit %v", task.Data)
+				if task.Source.Line > 0 {
+					comment = fmt.Sprintf("%s at L%d:%d", comment, task.Source.Line, task.Source.Col)
 				}
+			}
 
-				if base.Loc != nil {
-					comment = fmt.Sprintf("%s at L%d:%d", comment, base.Loc.L, base.Loc.C)
+			// Provide more semantic context for common instructions based on Data
+			switch task.Op {
+			case OpCall:
+				if cd, ok := task.Data.(*CallData); ok {
+					comment = "Call " + cd.Name
 				}
-			} else {
-				switch task.Op {
-				case OpPush:
-					comment = "Literal value"
-				case OpLoadVar:
-					comment = fmt.Sprintf("Load variable '%v'", task.Data)
-				case OpAssign:
-					comment = "Assignment"
-				case OpPop:
-					comment = "Pop stack"
+			case OpAssign:
+				comment = "Assignment"
+			case OpReturn:
+				comment = fmt.Sprintf("Return %v values", task.Data)
+			case OpJumpIf:
+				if jd, ok := task.Data.(*JumpData); ok {
+					comment = fmt.Sprintf("Short-circuit %v", jd.Operator)
 				}
+			case OpPush:
+				comment = "Literal value"
+			case OpLoadVar:
+				comment = fmt.Sprintf("Load variable '%v'", task.Data)
+			case OpPop:
+				comment = "Pop stack"
 			}
 
 			// NASM 风格对齐: ADDRESS  INSTRUCTION  OPERANDS  ; COMMENT
@@ -2860,18 +2870,16 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 		}
 
 		// 如果是复合指令 (Exec/Eval)，展开它
-		// 临时清空模拟栈，调用真实 handler 捕获压入的任务
-		mockSession.TaskStack = nil
+		var newTasks []Task
 		if task.Op == OpExec {
-			_ = e.handleExec(mockSession, task.Node.(ast.Stmt), task.Data)
+			newTasks = e.tasksForStmt(task.Node.(ast.Stmt), task.Data)
 		} else {
-			_ = e.handleEval(mockSession, task.Node.(ast.Expr))
+			newTasks = e.tasksForExpr(task.Node.(ast.Expr))
 		}
 
 		// handleExec 压入的任务是反序的，
 		// 为了让汇编逻辑更符合常规理解（即求值在操作之前），
 		// 我们把压入的任务倒序排列，并放到队列的最前面（DFS 展开）。
-		newTasks := mockSession.TaskStack
 		if len(newTasks) > 0 {
 			combined := make([]Task, 0, len(newTasks)+len(queue))
 			for i := len(newTasks) - 1; i >= 0; i-- {

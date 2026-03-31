@@ -167,10 +167,19 @@ const (
 	UnwindContinue
 )
 
+type SourceRef struct {
+	ID   string
+	Meta string
+	File string
+	Line int
+	Col  int
+}
+
 type Task struct {
-	Op   OpCode
-	Node ast.Node
-	Data interface{}
+	Op     OpCode
+	Node   ast.Node // DEPRECATED: Use Source and Data instead
+	Source *SourceRef
+	Data   interface{}
 }
 
 type DeclareVarData struct {

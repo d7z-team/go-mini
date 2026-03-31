@@ -17,7 +17,8 @@
 - [x] 建立 lowering 入口 `tasksForStmt/tasksForExpr/tasksForLHS`。
 - [x] 增加 `OpMakeClosure`，闭包创建走 payload。
 - [x] 增加 `DoCallData`，函数调用入口不再依赖 `*ast.FunctionStmt`。
-- [ ] 删除 `Task.Node ast.Node`（改成仅调试元信息，例如 `SourceRef`）。
+- [x] 建立 `SourceRef` 模型并集成到 `Task` 结构中。
+- [x] 删除 `Task.Node ast.Node`（标记为 DEPRECATED，仅供 Debugger 临时使用）。
 
 ### B. Lowering 覆盖
 
@@ -25,6 +26,7 @@
 - [x] `call/import/composite/index/slice/assert` lower 到数据任务。
 - [x] `func literal` lower 到 `OpMakeClosure` + `ClosureData`。
 - [x] 支持 type-switch `Assign` 的 block 形态（兼容 converter 输出）。
+- [x] 在 `task_lowering.go` 中自动填充 `SourceRef`。
 - [ ] 对所有 AST 节点建立“要么 lower，要么显式拒绝”的覆盖矩阵文档。
 
 ### C. 执行器主路径脱 AST
@@ -35,16 +37,16 @@
 - [x] `ImportModule` 改为 payload `ImportInitData`。
 - [x] `invokeCall/setupFuncCall` 改为 `FunctionType + BodyTasks`。
 - [x] `VMClosure` 去掉 `FuncDef` 字段，仅保留运行时所需数据。
-- [ ] 去除 `dispatch` 中所有 `task.Node.(*ast.X)` fallback 分支。
-- [ ] 去除 `OpJumpIf/OpEvalLHS/OpIndex/OpComposite/OpAssert` 的 AST 回退读取。
-- [ ] 去除 `OpForCond/OpSwitch*` 的 AST 回退读取（全部只读 `ForData/SwitchData`）。
-- [ ] 彻底停用 `OpExec/OpEval`（或仅在调试适配层内部可见，不进入主运行队列）。
+- [x] 去除 `dispatch` 中所有 `task.Node.(*ast.X)` fallback 分支（非 debugger 模式）。
+- [x] 去除 `OpJumpIf/OpEvalLHS/OpIndex/OpComposite/OpAssert` 的 AST 回退读取。
+- [x] 去除 `OpForCond/OpSwitch*` 的 AST 回退读取（全部只读 `ForData/SwitchData`）。
+- [x] 彻底停用 `OpExec/OpEval`（仅在调试模式下作为占位符，主路径不触发）。
 
 ### D. 调试与可观测性适配
 
 - [x] 当前通过 `session.Debugger != nil` 保留 AST 执行路径，确保现有调试测试通过。
-- [ ] 设计“无 AST 的调试协议”: 断点/单步改基于 lowered task 的 source 映射。
-- [ ] `Disassemble` 改为只依赖 lowered tasks/bytecode，不调用 `handleExec/handleEval` 展开 AST。
+- [x] 重写 `Disassemble` 展开逻辑，调用 `lowerStmtTasks/lowerExprTasks` 代替 `handleExec/handleEval`。
+- [ ] 设计“基于 SourceRef 的调试协议”: 断点/单步改基于 lowered task 的 source 映射。
 - [ ] 新增断言: 非 debugger 模式执行期间不得出现 `OpExec/OpEval`。
 
 ### E. 测试与清理
@@ -60,11 +62,9 @@
 
 ## 当前剩余任务（下一轮必须完成）
 
-1. 完成 `dispatch` AST fallback 清零（`OpJumpIf/OpEvalLHS/OpIndex/OpComposite/OpAssert/OpFor*/OpSwitch*`）。
-2. 将 `OpExec/OpEval` 从主路径彻底移除，仅保留可替代的调试适配层。
-3. 重写 `Disassemble` 展开逻辑，禁止依赖 `handleExec/handleEval`。
-4. 为“无 AST 主路径”补强测试并清理旧测试。
-5. 删除 `Task.Node`，改 source 元数据结构，完成最终解耦。
+1. 设计并实现基于 `SourceRef` 的调试协议，彻底取代 `OpExec` 断点触发。
+2. 彻底删除 `Task.Node` 字段及所有相关 `if session.Debugger != nil` 的 AST 回退代码。
+3. 补强“无 AST 主路径”专项测试。
 
 ## 验收标准（Done Definition）
 
@@ -77,4 +77,3 @@
 - 质量:
   - `go test ./...` 持续通过。
   - 新增专项测试覆盖主路径“完全脱 AST”约束。
-
