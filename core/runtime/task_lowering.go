@@ -278,6 +278,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}) ([]Task, bool
 		}
 		out = append(out, e.tasksForExpr(n)...)
 		return out, true
+	case *ast.ProgramStmt, *ast.FunctionStmt, *ast.StructStmt, *ast.InterfaceStmt:
+		// Metadata nodes handled at initialization, not in execution path
+		return nil, false
 	default:
 		return nil, false
 	}

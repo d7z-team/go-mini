@@ -29,9 +29,9 @@
   - `Disassemble` 已改为基于 `SourceRef` 和 `Data` 的纯数据化展开。
   - 任务项包含 `SourceRef` 用于记录行号、ID 等元信息。
 
-- 调试模式（兼容路径）：
-  - 暂时保留 `Task.Node` 字段（标记为 DEPRECATED）。
-  - 仍然使用 `OpExec` 作为断点触发点，后续将迁移至 `SourceRef` 驱动。
+- 调试模式：
+  - 已移除 `Task.Node` 字段，调试完全基于 `SourceRef` 和 `OpLineStep` 驱动。
+  - 断点、单步、暂停功能均已适配数据化执行路径。
 
 ## 2. 目录速查
 
@@ -126,3 +126,6 @@ GOCACHE=/tmp/go-build-cache go test ./...
 - 本文档聚焦“怎么做（约束与流程）”，不记录临时实验结论。
 - 若架构方向变更（例如 debugger 完全脱 AST），需要同步更新本文件与 `TODO.md`。
 
+## 其他说明
+
+所有的对话均使用 **简体中文** ，专业术语使用  **简体中文（英语缩写/全称）** 
