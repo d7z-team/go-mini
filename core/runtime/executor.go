@@ -530,14 +530,22 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 
 	if task.Op == OpCatchBoundary && session.UnwindMode == UnwindPanic {
 		session.UnwindMode = UnwindNone
-		clause := task.Node.(*ast.CatchClause)
 		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: clause.Body})
-		session.TaskStack = append(session.TaskStack, Task{
-			Op:   OpCatchScopeEnter,
-			Node: clause,
-			Data: session.PanicVar,
-		})
+		if data, ok := task.Data.(*CatchData); ok {
+			session.TaskStack = append(session.TaskStack, data.Body...)
+			session.TaskStack = append(session.TaskStack, Task{
+				Op:   OpCatchScopeEnter,
+				Data: map[string]interface{}{"catch": data, "panic": session.PanicVar},
+			})
+		} else {
+			clause := task.Node.(*ast.CatchClause)
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: clause.Body})
+			session.TaskStack = append(session.TaskStack, Task{
+				Op:   OpCatchScopeEnter,
+				Node: clause,
+				Data: session.PanicVar,
+			})
+		}
 		session.PanicVar = nil
 		return true, nil // Resume normal execution within Catch
 	}
@@ -1342,28 +1350,50 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 		return nil
+	case OpScheduleDefer:
+		data := task.Data.(*DeferData)
+		session.Stack.AddDefer(func() {
+			if data.PopResult {
+				session.TaskStack = append(session.TaskStack, Task{Op: OpPop})
+			}
+			session.TaskStack = append(session.TaskStack, data.Tasks...)
+		})
+		return nil
 	case OpLoopBoundary:
 		if err := session.Context.Err(); err != nil {
 			return err
+		}
+		if data, ok := task.Data.(*ForData); ok {
+			if len(data.Cond) > 0 {
+				session.TaskStack = append(session.TaskStack, Task{Op: OpForCond, Data: data})
+				session.TaskStack = append(session.TaskStack, data.Cond...)
+			} else {
+				e.scheduleForBody(session, nil, data)
+			}
+			return nil
 		}
 		if n, ok := task.Node.(*ast.ForStmt); ok {
 			if n.Cond != nil {
 				session.TaskStack = append(session.TaskStack, Task{Op: OpForCond, Node: n})
 				session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: n.Cond})
 			} else {
-				e.scheduleForBody(session, n)
+				e.scheduleForBody(session, n, nil)
 			}
 		}
 		return nil
 	case OpForCond:
-		n := task.Node.(*ast.ForStmt)
 		condVal := session.ValueStack.Pop()
 		b, err := condVal.ToBool()
 		if err != nil {
 			return err
 		}
 		if b {
-			e.scheduleForBody(session, n)
+			if data, ok := task.Data.(*ForData); ok {
+				e.scheduleForBody(session, nil, data)
+			} else {
+				n := task.Node.(*ast.ForStmt)
+				e.scheduleForBody(session, n, nil)
+			}
 		}
 		return nil
 	case OpForScopeEnter:
@@ -1400,12 +1430,30 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpLoopContinue:
 		return nil
 	case OpRangeInit:
-		n := task.Node.(*ast.RangeStmt)
 		obj := session.ValueStack.Pop()
 		if obj == nil {
 			return nil
 		}
-		rData := &RangeData{Stmt: n, Obj: obj}
+		var rData *RangeData
+		if data, ok := task.Data.(*RangeData); ok {
+			rData = &RangeData{
+				Key:    data.Key,
+				Value:  data.Value,
+				Define: data.Define,
+				Body:   data.Body,
+				Obj:    obj,
+			}
+		} else {
+			n := task.Node.(*ast.RangeStmt)
+			rData = &RangeData{
+				Stmt:   n,
+				Key:    string(n.Key),
+				Value:  string(n.Value),
+				Define: n.Define,
+				Body:   e.tasksForStmt(n.Body, nil),
+				Obj:    obj,
+			}
+		}
 		switch obj.VType {
 		case TypeArray:
 			rData.Length = len(obj.Ref.(*VMArray).Data)
@@ -1417,7 +1465,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			rData.Length = len(rData.Keys)
 		}
-		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Node: n})
+		if task.Data != nil {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary})
+		} else {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Node: task.Node})
+		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
 		return nil
 	case OpRangeIter:
@@ -1442,7 +1494,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: rData.Stmt.Body})
+		if len(rData.Body) > 0 {
+			session.TaskStack = append(session.TaskStack, rData.Body...)
+		} else if rData.Stmt != nil {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: rData.Stmt.Body})
+		}
 		session.TaskStack = append(session.TaskStack, Task{
 			Op:   OpRangeScopeEnter,
 			Data: map[string]interface{}{"rData": rData, "key": key, "val": val},
@@ -1453,21 +1509,20 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		rData := data["rData"].(*RangeData)
 		key := data["key"].(*Var)
 		val := data["val"].(*Var)
-		n := rData.Stmt
 		session.ScopeApply("for_range_body")
-		if n.Define {
-			if n.Key != "" && n.Key != "_" {
-				_ = session.AddVariable(string(n.Key), key)
+		if rData.Define {
+			if rData.Key != "" && rData.Key != "_" {
+				_ = session.AddVariable(rData.Key, key)
 			}
-			if n.Value != "" && n.Value != "_" && val != nil {
-				_ = session.AddVariable(string(n.Value), val)
+			if rData.Value != "" && rData.Value != "_" && val != nil {
+				_ = session.AddVariable(rData.Value, val)
 			}
 		} else {
-			if n.Key != "" && n.Key != "_" {
-				_ = session.Store(string(n.Key), key)
+			if rData.Key != "" && rData.Key != "_" {
+				_ = session.Store(rData.Key, key)
 			}
-			if n.Value != "" && n.Value != "_" && val != nil {
-				_ = session.Store(string(n.Value), val)
+			if rData.Value != "" && rData.Value != "_" && val != nil {
+				_ = session.Store(rData.Value, val)
 			}
 		}
 		return nil
@@ -1647,16 +1702,31 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpCatchBoundary:
 		return nil
 	case OpFinally:
-		n := task.Node.(*ast.BlockStmt)
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n})
+		if data, ok := task.Data.(*FinallyData); ok {
+			session.TaskStack = append(session.TaskStack, data.Body...)
+		} else {
+			n := task.Node.(*ast.BlockStmt)
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n})
+		}
 		return nil
 	case OpCatchScopeEnter:
-		clause := task.Node.(*ast.CatchClause)
-		panicVar := task.Data.(*Var)
+		var (
+			varName  string
+			panicVar *Var
+		)
+		if data, ok := task.Data.(map[string]interface{}); ok {
+			catch := data["catch"].(*CatchData)
+			varName = catch.VarName
+			panicVar = data["panic"].(*Var)
+		} else {
+			clause := task.Node.(*ast.CatchClause)
+			varName = string(clause.VarName)
+			panicVar = task.Data.(*Var)
+		}
 		session.ScopeApply("catch")
-		if clause.VarName != "" {
-			_ = session.NewVar(string(clause.VarName), "Any")
-			_ = session.Store(string(clause.VarName), panicVar)
+		if varName != "" {
+			_ = session.NewVar(varName, "Any")
+			_ = session.Store(varName, panicVar)
 		}
 		return nil
 	case OpBranchIf:
@@ -2042,7 +2112,18 @@ func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
 	return &VMError{Message: fmt.Sprintf("unsupported LHS in assignment: %T", lhsExpr), IsPanic: true}
 }
 
-func (e *Executor) scheduleForBody(session *StackContext, n *ast.ForStmt) {
+func (e *Executor) scheduleForBody(session *StackContext, n *ast.ForStmt, data *ForData) {
+	if data != nil {
+		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Data: data})
+		if len(data.Update) > 0 {
+			session.TaskStack = append(session.TaskStack, data.Update...)
+		}
+		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopContinue})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpForScopeExit})
+		session.TaskStack = append(session.TaskStack, data.Body...)
+		session.TaskStack = append(session.TaskStack, Task{Op: OpForScopeEnter})
+		return
+	}
 	session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Node: n})
 	if n.Update != nil {
 		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Update})
@@ -2388,17 +2469,17 @@ func (e *Executor) Run(session *StackContext) error {
 		task := session.TaskStack[len(session.TaskStack)-1]
 		session.TaskStack = session.TaskStack[:len(session.TaskStack)-1]
 
+		session.StepCount++
+		if session.StepLimit > 0 {
+			if session.StepCount > session.StepLimit {
+				return fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
+			}
+		}
+		if session.Aborted() {
+			return session.Err()
+		}
+
 		if task.Op == OpExec {
-			session.StepCount++
-			if session.StepLimit > 0 {
-				if session.StepCount > session.StepLimit {
-					return fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
-				}
-			}
-			// Use high-performance internal signaling (Fake Context)
-			if session.Aborted() {
-				return session.Err()
-			}
 			if session.Debugger != nil {
 				loc := task.Node.GetBase().Loc
 				if loc != nil && session.Debugger.ShouldTrigger(loc.L) {

@@ -20,6 +20,7 @@ const (
 	OpMultiAssign
 	OpIncDec
 	OpRunDefers
+	OpScheduleDefer
 	OpFinally
 	OpCatchBoundary
 	OpLoopBoundary
@@ -82,6 +83,8 @@ func (op OpCode) String() string {
 		return "INC_DEC"
 	case OpRunDefers:
 		return "RUN_DEFERS"
+	case OpScheduleDefer:
+		return "SCHEDULE_DEFER"
 	case OpFinally:
 		return "FINALLY"
 	case OpCatchBoundary:
@@ -177,6 +180,17 @@ type BranchData struct {
 	Else []Task
 }
 
+type DeferData struct {
+	Tasks     []Task
+	PopResult bool
+}
+
+type ForData struct {
+	Cond   []Task
+	Body   []Task
+	Update []Task
+}
+
 type JumpData struct {
 	Operator string
 	Right    []Task
@@ -200,6 +214,38 @@ type AssertData struct {
 
 type ImportInitData struct {
 	Path string
+}
+
+type SwitchCaseData struct {
+	Exprs []Task
+	Body  []Task
+}
+
+type SwitchData struct {
+	IsType      bool
+	HasTag      bool
+	HasAssign   bool
+	Init        []Task
+	Tag         []Task
+	Assign      []Task
+	Cases       []SwitchCaseData
+	DefaultBody []Task
+}
+
+type SwitchState struct {
+	Plan   *SwitchData
+	Tag    *Var
+	Index  int
+	ExprIx int
+}
+
+type FinallyData struct {
+	Body []Task
+}
+
+type CatchData struct {
+	VarName string
+	Body    []Task
 }
 
 type CompositeEntryData struct {
@@ -229,6 +275,10 @@ type CallData struct {
 
 type RangeData struct {
 	Stmt   *ast.RangeStmt
+	Key    string
+	Value  string
+	Define bool
+	Body   []Task
 	Obj    *Var
 	Keys   []string // For map
 	Length int      // For array

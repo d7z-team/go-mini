@@ -86,6 +86,71 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}) ([]Task, bool
 		out := []Task{{Op: OpBranchIf, Data: branch}}
 		out = append(out, e.tasksForExpr(n.Cond)...)
 		return out, true
+	case *ast.ForStmt:
+		bodyStmt, ok := n.Body.(ast.Stmt)
+		if !ok {
+			return nil, false
+		}
+		loop := &ForData{
+			Body: e.tasksForStmt(bodyStmt, nil),
+		}
+		if n.Cond != nil {
+			loop.Cond = e.tasksForExpr(n.Cond)
+		}
+		if n.Update != nil {
+			update, ok := n.Update.(ast.Stmt)
+			if !ok {
+				return nil, false
+			}
+			loop.Update = e.tasksForStmt(update, nil)
+		}
+		out := []Task{
+			{Op: OpScopeExit},
+			{Op: OpLoopBoundary, Data: loop},
+		}
+		if n.Init != nil {
+			initStmt, ok := n.Init.(ast.Stmt)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, e.tasksForStmt(initStmt, nil)...)
+		}
+		out = append(out, Task{Op: OpScopeEnter, Data: "for"})
+		return out, true
+	case *ast.RangeStmt:
+		rData := &RangeData{
+			Key:    string(n.Key),
+			Value:  string(n.Value),
+			Define: n.Define,
+			Body:   e.tasksForStmt(n.Body, nil),
+		}
+		out := []Task{{Op: OpRangeInit, Data: rData}}
+		out = append(out, e.tasksForExpr(n.X)...)
+		return out, true
+	case *ast.TryStmt:
+		out := make([]Task, 0, 3)
+		if n.Finally != nil {
+			out = append(out, Task{Op: OpFinally, Data: &FinallyData{
+				Body: e.tasksForStmt(n.Finally, nil),
+			}})
+		}
+		if n.Catch != nil {
+			out = append(out, Task{Op: OpCatchBoundary, Data: &CatchData{
+				VarName: string(n.Catch.VarName),
+				Body:    e.tasksForStmt(n.Catch.Body, nil),
+			}})
+		}
+		out = append(out, e.tasksForStmt(n.Body, nil)...)
+		return out, true
+	case *ast.DeferStmt:
+		call, ok := n.Call.(*ast.CallExprStmt)
+		if !ok {
+			return nil, false
+		}
+		return []Task{{Op: OpScheduleDefer, Data: &DeferData{
+			Tasks:     e.tasksForExpr(call),
+			PopResult: !call.GetBase().Type.IsVoid(),
+		}}}, true
 	case *ast.ExpressionStmt:
 		out := make([]Task, 0)
 		if n.X != nil && !n.GetBase().Type.IsVoid() {
