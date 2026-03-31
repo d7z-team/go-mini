@@ -200,7 +200,7 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterE2EScriptCalculatorLibrary(executor interface {
+func RegisterScriptCalculatorLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)

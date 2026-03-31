@@ -96,9 +96,9 @@ var Calculator_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Add", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64) Int64", ""},
-	{"Multiply", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64, Int64) Int64", ""},
-	{"GetBase", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>) Int64", ""},
+	{"Add", 1, "function(Ptr<calc.Calculator>, Int64) Int64", ""},
+	{"Multiply", 2, "function(Ptr<calc.Calculator>, Int64, Int64) Int64", ""},
+	{"GetBase", 3, "function(Ptr<calc.Calculator>) Int64", ""},
 }
 
 type Calculator_Bridge struct {
@@ -127,7 +127,7 @@ func RegisterCalculator(executor interface {
 	RegisterConstant(string, string)
 }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator"
+	prefix := "__method_calc.Calculator"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -136,7 +136,7 @@ func RegisterCalculator(executor interface {
 		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 	}
 	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator", "struct { Base int64; Add function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64) Int64; Multiply function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>) Int64; }")
+	executor.RegisterStructSpec("calc.Calculator", "struct { Base int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }")
 }
 
 const (
@@ -178,7 +178,7 @@ var Factory_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"New", 1, "function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/structtest.Calculator>", ""},
+	{"New", 1, "function(Int64) Ptr<calc.Calculator>", ""},
 }
 
 type Factory_Bridge struct {

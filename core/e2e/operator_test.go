@@ -65,7 +65,7 @@ func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[in
 func TestIntKeyMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &IntMapHost{}
-	RegisterE2EMapTestLibrary(executor, "e2e", host, nil)
+	RegisterMapTestLibrary(executor, "e2e", host, nil)
 
 	code := `
 	package main

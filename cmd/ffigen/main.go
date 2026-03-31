@@ -487,7 +487,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				for i, p := range parts {
 					if p == "ffigen:module" && i+1 < len(parts) {
 						fixedPrefix = parts[i+1]
-						*module = fixedPrefix // Update global module if found here too
 						break
 					}
 				}

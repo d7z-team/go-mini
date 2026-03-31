@@ -328,7 +328,7 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterORDERTESTOrderServiceLibrary(executor interface {
+func RegisterOrderServiceLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)

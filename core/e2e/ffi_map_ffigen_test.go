@@ -359,7 +359,7 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterE2EMapTestLibrary(executor interface {
+func RegisterMapTestLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)

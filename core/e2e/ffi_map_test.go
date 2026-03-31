@@ -33,7 +33,7 @@ func TestFFIMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &MapTestHost{}
 
-	RegisterE2EMapTestLibrary(executor, "e2e", host, nil)
+	RegisterMapTestLibrary(executor, "e2e", host, nil)
 
 	code := `
 	package main

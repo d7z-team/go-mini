@@ -49,7 +49,7 @@ func TestFFIHandle(t *testing.T) {
 	mock := &HandleMockOS{}
 	registry := ffigo.NewHandleRegistry()
 
-	RegisterE2EMockOSLibrary(executor, "os", mock, registry)
+	RegisterMockOS(executor, mock, registry)
 
 	code := `
 	package main

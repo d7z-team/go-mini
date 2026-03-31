@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg e2e -path gopkg.d7z.net/go-mini/core/e2e -out dummy_ffigen_test.go dummy_test.go coverage_test.go
+//go:generate go run ../../cmd/ffigen/main.go -pkg e2e -module os -path gopkg.d7z.net/go-mini/core/e2e -out dummy_ffigen_test.go dummy_test.go coverage_test.go
 package e2e
 
 import "context"
@@ -17,6 +17,7 @@ type Nested struct {
 	Level int64
 }
 
+// ffigen:module os
 type MockOS interface {
 	Open(name string) (*File, error)
 	Name(f *File) string

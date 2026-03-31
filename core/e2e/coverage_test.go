@@ -59,7 +59,7 @@ func TestFFICoverage(t *testing.T) {
 	mock := &CoverageMockOS{}
 	registry := ffigo.NewHandleRegistry()
 
-	RegisterE2EMockOSLibrary(executor, "os", mock, registry)
+	RegisterMockOS(executor, mock, registry)
 
 	code := `
 	package main
@@ -107,7 +107,7 @@ func TestFFIErrorPropagation(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &CoverageMockOS{}
 	registry := ffigo.NewHandleRegistry()
-	RegisterE2EMockOSLibrary(executor, "os", mock, registry)
+	RegisterMockOS(executor, mock, registry)
 
 	code := `
 	package main

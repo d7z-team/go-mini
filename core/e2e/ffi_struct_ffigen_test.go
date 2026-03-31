@@ -151,7 +151,7 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterE2EMockShapeAPILibrary(executor interface {
+func RegisterMockShapeAPILibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)

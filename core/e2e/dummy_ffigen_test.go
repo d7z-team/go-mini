@@ -466,12 +466,12 @@ var MockOS_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"Open", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>, Error)", ""},
-	{"Name", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>) String", ""},
-	{"Stat", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>) tuple(FileInfo, Error)", ""},
-	{"Read", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>, TypeBytes) tuple(Int64, Error)", ""},
-	{"Write", 5, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>, TypeBytes) tuple(Int64, Error)", ""},
-	{"Close", 6, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.File>) Error", ""},
+	{"Open", 1, "function(String) tuple(Ptr<native.File>, Error)", ""},
+	{"Name", 2, "function(Ptr<native.File>) String", ""},
+	{"Stat", 3, "function(Ptr<native.File>) tuple(FileInfo, Error)", ""},
+	{"Read", 4, "function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)", ""},
+	{"Write", 5, "function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)", ""},
+	{"Close", 6, "function(Ptr<native.File>) Error", ""},
 	{"Deep", 7, "function(Nested) Nested", ""},
 }
 
@@ -495,12 +495,13 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterE2EMockOSLibrary(executor interface {
+func RegisterMockOS(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)
-}, prefix string, impl MockOS, registry *ffigo.HandleRegistry) {
+}, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
+	prefix := "os"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -795,9 +796,9 @@ var NativeMock_FFI_Metadata = []struct {
 	Doc      string
 }{
 	{"GetStruct", 1, "function() NativeStruct", ""},
-	{"GetPtr", 2, "function() Ptr<gopkg.d7z.net/go-mini/core/e2e.NativeStruct>", ""},
+	{"GetPtr", 2, "function() Ptr<native.NativeStruct>", ""},
 	{"SetStruct", 3, "function(NativeStruct) Int64", ""},
-	{"SetPtr", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.NativeStruct>) Int64", ""},
+	{"SetPtr", 4, "function(Ptr<native.NativeStruct>) Int64", ""},
 }
 
 type NativeMock_Bridge struct {

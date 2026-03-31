@@ -35,7 +35,7 @@ func TestRobustness(t *testing.T) {
 
 	// 注册一个处理数组+结构体的 FFI
 	mock := &MockGeo{}
-	RegisterE2EMockGeometryLibrary(executor, "e2e", mock, nil)
+	RegisterMockGeometryLibrary(executor, "e2e", mock, nil)
 
 	code := `
 	package main

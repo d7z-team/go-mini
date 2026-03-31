@@ -108,7 +108,7 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterE2EMockGeometryLibrary(executor interface {
+func RegisterMockGeometryLibrary(executor interface {
 	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
 	RegisterStructSpec(string, ast.GoMiniType)
 	RegisterConstant(string, string)

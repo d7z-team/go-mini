@@ -213,8 +213,8 @@ var AdvancedFFI_FFI_Metadata = []struct {
 	Spec     string
 	Doc      string
 }{
-	{"GetSameObject", 1, "function() Ptr<gopkg.d7z.net/go-mini/core/e2e.TestObj>", "Identity check"},
-	{"IsSame", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e.TestObj>, Ptr<gopkg.d7z.net/go-mini/core/e2e.TestObj>) Bool", ""},
+	{"GetSameObject", 1, "function() Ptr<test.TestObj>", "Identity check"},
+	{"IsSame", 2, "function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool", ""},
 	{"EchoMap", 3, "function(Map<Bool, String>) Map<Float64, Bool>", "Map keys"},
 	{"EchoEmbedded", 4, "function(EmbeddedStruct) EmbeddedStruct", "Embedded structs"},
 }

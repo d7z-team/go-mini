@@ -112,6 +112,9 @@ func TestDebugger_SnippetMode(t *testing.T) {
 
 	linesSeen := []int{}
 
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case event := <-dbg.EventChan:
@@ -121,18 +124,16 @@ func TestDebugger_SnippetMode(t *testing.T) {
 					t.Fatalf("Expected x=100, got %v", event.Variables["x"])
 				}
 			}
-			// Check if we should continue
-			select {
-			case err := <-done:
-				if err != nil {
-					t.Fatal(err)
-				}
-				goto DONE
-			default:
-				dbg.CommandChan <- debugger.CmdStepInto
+			dbg.CommandChan <- debugger.CmdStepInto
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
 			}
-		case <-ctx.Done():
 			goto DONE
+		case <-ctx.Done():
+			t.Fatal("Timeout in TestDebugger_SnippetMode")
+		case <-ticker.C:
+			// Just to ensure we don't block forever if event and done are both empty
 		}
 	}
 DONE:
