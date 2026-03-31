@@ -143,6 +143,39 @@ func main() {
 	typeInfo = info
 	_, _ = conf.Check(*pkgName, fset, allFiles, info)
 
+	// Step 0: Find ffigen:module in allFiles and update *module if found
+	for _, f := range allFiles {
+		if f.Doc != nil {
+			for _, line := range f.Doc.List {
+				if strings.Contains(line.Text, "ffigen:module") {
+					parts := strings.Fields(line.Text)
+					for i, p := range parts {
+						if p == "ffigen:module" && i+1 < len(parts) {
+							*module = parts[i+1]
+							break
+						}
+					}
+				}
+			}
+		}
+		// Also scan GenDecl docs (some files might have it there)
+		for _, decl := range f.Decls {
+			if gd, ok := decl.(*ast.GenDecl); ok && gd.Doc != nil {
+				for _, line := range gd.Doc.List {
+					if strings.Contains(line.Text, "ffigen:module") {
+						parts := strings.Fields(line.Text)
+						for i, p := range parts {
+							if p == "ffigen:module" && i+1 < len(parts) {
+								*module = parts[i+1]
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	var ifaceSpecs []*ast.TypeSpec
 	globalConsts := make(map[string]map[string]string) // pkg -> name -> value
 	structs := make(map[string]*ast.StructType)
@@ -443,9 +476,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	iface := spec.Type.(*ast.InterfaceType)
 
 	var sb strings.Builder
-	fixedPrefix := ""
+	fixedPrefix := *module
 	methodsPrefix := ""
-	isModule := false
+	isModule := *module != ""
 	if spec.Doc != nil {
 		for _, line := range spec.Doc.List {
 			if strings.Contains(line.Text, "ffigen:module") {
@@ -454,6 +487,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				for i, p := range parts {
 					if p == "ffigen:module" && i+1 < len(parts) {
 						fixedPrefix = parts[i+1]
+						*module = fixedPrefix // Update global module if found here too
 						break
 					}
 				}
@@ -942,7 +976,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "}\n")
 	} else {
 		// Generic Library registration: Requires 'impl' and explicit prefix
-		fmt.Fprintf(&sb, "func Register%s%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", strings.ToUpper(pkg), name, implType)
+		fmt.Fprintf(&sb, "func Register%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)

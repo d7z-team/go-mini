@@ -16,12 +16,13 @@ import (
 )
 
 type Executor struct {
-	structs    map[string]*ast.StructStmt
-	interfaces map[string]*ast.InterfaceStmt
-	types      map[string]ast.GoMiniType
-	consts     map[string]string
-	funcs      map[ast.Ident]*Var
-	program    *ast.ProgramStmt
+	structs         map[string]*ast.StructStmt
+	interfaces      map[string]*ast.InterfaceStmt
+	types           map[string]ast.GoMiniType
+	consts          map[string]string
+	funcs           map[ast.Ident]*Var
+	program         *ast.ProgramStmt
+	globalInitOrder []ast.Ident
 
 	routes map[string]FFIRoute
 
@@ -50,15 +51,20 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	if program == nil {
 		return nil, errors.New("invalid program")
 	}
+	globalInitOrder, err := program.GlobalInitOrder()
+	if err != nil {
+		globalInitOrder = program.DeclaredGlobalOrder()
+	}
 	result := &Executor{
-		program:        program,
-		structs:        make(map[string]*ast.StructStmt),
-		interfaces:     make(map[string]*ast.InterfaceStmt),
-		types:          make(map[string]ast.GoMiniType),
-		funcs:          make(map[ast.Ident]*Var),
-		consts:         make(map[string]string),
-		routes:         make(map[string]FFIRoute),
-		interfaceCache: make(map[ast.GoMiniType]map[string]*ast.FunctionType),
+		program:         program,
+		globalInitOrder: globalInitOrder,
+		structs:         make(map[string]*ast.StructStmt),
+		interfaces:      make(map[string]*ast.InterfaceStmt),
+		types:           make(map[string]ast.GoMiniType),
+		funcs:           make(map[ast.Ident]*Var),
+		consts:          make(map[string]string),
+		routes:          make(map[string]FFIRoute),
+		interfaceCache:  make(map[ast.GoMiniType]map[string]*ast.FunctionType),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
@@ -79,6 +85,12 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		result.consts[s] = s2
 	}
 	return result, nil
+}
+
+func (e *Executor) SetGlobalInitOrder(order []ast.Ident) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.globalInitOrder = append([]ast.Ident(nil), order...)
 }
 
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
@@ -412,8 +424,20 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 
 	defer e.CleanupSession(session)
 
+	return e.InitializeSession(session, env, true)
+}
+
+func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
+	if session == nil {
+		return errors.New("invalid session")
+	}
+
 	// 注入脚本定义的全局变量
-	for name, expr := range e.program.Variables {
+	for _, name := range e.globalInitOrder {
+		expr, ok := e.program.Variables[name]
+		if !ok {
+			continue
+		}
 		var val *Var
 		if expr != nil {
 			v, err := e.ExecExpr(session, expr)
@@ -458,18 +482,20 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 	}
 
 	// 自动寻找并执行 main() 入口函数
-	if f, ok := e.program.Functions["main"]; ok {
-		session.TaskStack = append(session.TaskStack, Task{
-			Op:   OpCallBoundary,
-			Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
-		})
-		session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Node: f, Data: nil}) // args=nil
+	if invokeMain {
+		if f, ok := e.program.Functions["main"]; ok {
+			session.TaskStack = append(session.TaskStack, Task{
+				Op:   OpCallBoundary,
+				Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
+			})
+			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Node: f, Data: nil}) // args=nil
 
-		// Start run loop again for main func
-		err = e.Run(session)
-		session.Stack.RunDefers()
-		if err != nil {
-			return err
+			// Start run loop again for main func
+			err = e.Run(session)
+			session.Stack.RunDefers()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -530,7 +556,6 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			return true, nil
 		}
 	}
-
 
 	if task.Op == OpImportDone {
 		// Even on panic, we must restore the parent session

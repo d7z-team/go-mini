@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/crypto/md5lib"
@@ -59,6 +60,7 @@ func (e *MiniExecutor) SetMaxTypeDepth(depth int) {
 type MiniProgram struct {
 	Source   string
 	Program  *ast.ProgramStmt
+	Compiled *compiler.Artifact
 	executor *runtime.Executor
 
 	// LSP / Debugger 支撑
@@ -83,6 +85,10 @@ func (p *MiniProgram) ToVar(ctx *runtime.StackContext, val interface{}, bridge f
 
 func (p *MiniProgram) Executor() *runtime.Executor {
 	return p.executor
+}
+
+func (p *MiniProgram) Compilation() *compiler.Artifact {
+	return p.Compiled
 }
 
 func (p *MiniProgram) CheckSatisfaction(val *runtime.Var, interfaceType ast.GoMiniType) (*runtime.Var, error) {
@@ -189,14 +195,14 @@ func (p *MiniProgram) InvokeCallable(ctx *runtime.StackContext, callable *runtim
 // Eval 在当前程序的语境下执行单个 Go 表达式
 // 这允许你调用程序中定义的函数或访问全局变量
 func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
-	converter := ffigo.NewGoToASTConverter()
-	expr, err := converter.ConvertExprSource(exprStr)
+	expr, err := compiler.New(compiler.Config{}).CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
 
 	// 创建基于当前程序蓝图的 session
 	session := p.executor.NewSession(ctx, "eval")
+	defer p.executor.CleanupSession(session)
 
 	// 继承上次执行的状态（如 import 的模块和全局变量）
 	if last := p.executor.LastSession(); last != nil {
@@ -218,9 +224,11 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 				}
 			}
 		}
+	} else {
+		if err := p.executor.InitializeSession(session, nil, false); err != nil {
+			return nil, err
+		}
 	}
-
-	defer p.executor.CleanupSession(session)
 
 	// 注入环境
 	for k, v := range env {
@@ -346,29 +354,13 @@ func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Execu
 	return executor, nil
 }
 
-func (e *MiniExecutor) validateAndOptimize(program *ast.ProgramStmt, tolerant bool) (*ast.SemanticContext, error) {
-	specs := e.GetExportedSpecs()
-	consts := e.GetExportedConstants()
-	validator, err := ast.NewValidator(program, specs, consts, tolerant)
-	if err != nil {
-		return nil, err
-	}
-
-	if e.MaxTypeDepth > 0 {
-		validator.Root().MaxTypeDepth = e.MaxTypeDepth
-		ast.DefaultMaxTypeDepth = e.MaxTypeDepth
-	}
-
-	validator.SetLoader(e.getLoader())
-
-	semanticCtx := ast.NewSemanticContext(validator)
-	if err := program.Check(semanticCtx); err != nil {
-		return semanticCtx, err
-	}
-
-	optimizeCtx := ast.NewOptimizeContext(validator)
-	program.Optimize(optimizeCtx)
-	return semanticCtx, nil
+func (e *MiniExecutor) newCompiler() *compiler.Compiler {
+	return compiler.New(compiler.Config{
+		Loader:       e.getLoader(),
+		Specs:        e.GetExportedSpecs(),
+		Constants:    e.GetExportedConstants(),
+		MaxTypeDepth: e.MaxTypeDepth,
+	})
 }
 
 func (e *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
@@ -517,16 +509,68 @@ func (e *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
 }
 
 func (e *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
-	executor, err := e.prepareExecutor(program)
+	compiled, semanticCtx, err := e.newCompiler().CompileProgram("ast", "", program, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
+	}
+	return e.NewRuntimeByCompiled(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniProgram, error) {
+	if compiled == nil || compiled.Program == nil {
+		return nil, errors.New("invalid compiled program")
+	}
+
+	executor, err := e.prepareExecutor(compiled.Program)
 	if err != nil {
 		return nil, err
 	}
+	if len(compiled.GlobalInitOrder) > 0 {
+		executor.SetGlobalInitOrder(compiled.GlobalInitOrder)
+	}
 
 	return &MiniProgram{
-		Source:   "",
-		Program:  program,
+		Source:   compiled.Source,
+		Program:  compiled.Program,
+		Compiled: compiled,
 		executor: executor,
 	}, nil
+}
+
+func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileSource("snippet", code, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		node := (*ast.ProgramStmt)(nil)
+		if compiled != nil {
+			node = compiled.Program
+		}
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+	}
+	return compiled, nil
+}
+
+func (e *MiniExecutor) CompileGoFile(filename, code string) (*compiler.Artifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileSource(filename, code, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		node := (*ast.ProgramStmt)(nil)
+		if compiled != nil {
+			node = compiled.Program
+		}
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+	}
+	return compiled, nil
 }
 
 func (e *MiniExecutor) NewRuntimeByGoCode(code string) (*MiniProgram, error) {
@@ -551,16 +595,17 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 
 func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
 	var errs []error
-	_, err := e.validateAndOptimize(program, true)
+	compiled, _, err := e.newCompiler().CompileProgram("ast", "", program, true)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
-	res, rErr := e.NewRuntimeByAst(program)
+	res, rErr := e.NewRuntimeByCompiled(compiled)
 	if rErr != nil {
 		errs = append(errs, rErr)
 		res = &MiniProgram{
 			Program:  program,
+			Compiled: compiled,
 			executor: &runtime.Executor{},
 		}
 	}
@@ -568,40 +613,28 @@ func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*M
 }
 
 func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
-	converter := ffigo.NewGoToASTConverter()
-	var node ast.Node
-	var errs []error
-	if tolerant {
-		node, errs = converter.ConvertSourceTolerant(filename, code)
-	} else {
-		var err error
-		node, err = converter.ConvertSource(filename, code)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	if node == nil {
-		return nil, errs, errors.New("failed to parse source")
-	}
-
-	program := node.(*ast.ProgramStmt)
-
-	// Validate and Optimize
-	semanticCtx, err := e.validateAndOptimize(program, tolerant)
+	compiled, errs, semanticCtx, err := e.newCompiler().CompileSource(filename, code, tolerant)
 	if err != nil {
 		if !tolerant {
 			var logs []ast.Logs
 			if semanticCtx != nil {
 				logs = semanticCtx.Logs()
 			}
-			return nil, nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
+			node := (*ast.ProgramStmt)(nil)
+			if compiled != nil {
+				node = compiled.Program
+			}
+			return nil, nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
 		}
 		errs = append(errs, err)
 	}
 
 	var res *MiniProgram
-	executor, err := e.NewRuntimeByAst(program)
+	if compiled == nil {
+		return nil, errs, errors.New("failed to compile source")
+	}
+
+	executor, err := e.NewRuntimeByCompiled(compiled)
 	if err != nil {
 		if !tolerant {
 			return nil, nil, err
@@ -609,29 +642,11 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 		errs = append(errs, err)
 		// 创建一个仅包含 AST 的半成品 MiniProgram 供 LSP 使用
 		res = &MiniProgram{
-			Program:  program,
+			Program:  compiled.Program,
+			Compiled: compiled,
 			executor: &runtime.Executor{}, // 空执行器
 		}
 	} else {
-		// 初始化全局变量
-		session := executor.executor.NewSession(context.Background(), "global_init")
-		// 我们必须将此 session 设置为 lastSession，否则 Eval 无法继承全局变量和 Import
-		executor.executor.SetLastSession(session)
-
-		for name, expr := range program.Variables {
-			val, err := executor.executor.ExecExpr(session, expr)
-			if err != nil {
-				return nil, nil, err
-			}
-			_ = session.AddVariable(string(name), val)
-		}
-
-		if len(program.Main) > 0 {
-			err := executor.executor.ExecuteStmts(session, program.Main)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
 		res = executor
 	}
 	if res != nil {
@@ -651,8 +666,7 @@ func (e *MiniExecutor) injectEnv(session *runtime.StackContext, env map[string]i
 
 // Eval 执行单个 Go 表达式字符串
 func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
-	converter := ffigo.NewGoToASTConverter()
-	expr, err := converter.ConvertExprSource(exprStr)
+	expr, err := e.newCompiler().CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
@@ -683,8 +697,7 @@ func (e *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[str
 // 注意：本方法使用“单次快照模式”，每次调用均创建全新的执行器上下文。
 // 若需持久化的全局变量或复杂的跨模块交互，建议使用 NewRuntimeByGoCode。
 func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
-	converter := ffigo.NewGoToASTConverter()
-	stmts, err := converter.ConvertStmtsSource(code)
+	stmts, err := e.newCompiler().CompileStatementsSource(code)
 	if err != nil {
 		return err
 	}
@@ -708,19 +721,26 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	e.mu.RUnlock()
 
-	// 语义校验
-	if _, err := e.validateAndOptimize(program, false); err != nil {
+	compiled, semanticCtx, err := e.newCompiler().CompileProgram("snippet", code, program, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		return &ast.MiniAstError{Err: err, Logs: logs, Node: program}
+	}
+
+	executor, err := e.NewRuntimeByCompiled(compiled)
+	if err != nil {
 		return err
 	}
 
-	executor, _ := e.prepareExecutor(program)
-
-	session := executor.NewSession(ctx, "snippet")
-	defer executor.CleanupSession(session)
+	session := executor.executor.NewSession(ctx, "snippet")
+	defer executor.executor.CleanupSession(session)
 
 	e.injectEnv(session, env)
 
-	return executor.ExecuteStmts(session, stmts)
+	return executor.executor.ExecuteStmts(session, compiled.Program.Main)
 }
 
 // MustExecute 类似于 Execute，但在出错时会触发 panic
@@ -768,7 +788,7 @@ func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		}
 	}
 
-	semanticCtx, err := e.validateAndOptimize(program, false)
+	compiled, semanticCtx, err := e.newCompiler().CompileProgram("json", "", program, false)
 	if err != nil {
 		var logs []ast.Logs
 		if semanticCtx != nil {
@@ -777,7 +797,7 @@ func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 	}
 
-	return e.NewRuntimeByAst(program)
+	return e.NewRuntimeByCompiled(compiled)
 }
 
 // LSP Metadata Export

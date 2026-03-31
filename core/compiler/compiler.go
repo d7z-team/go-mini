@@ -1,0 +1,128 @@
+package compiler
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+)
+
+type Config struct {
+	Loader       func(path string) (*ast.ProgramStmt, error)
+	Specs        map[ast.Ident]ast.GoMiniType
+	Constants    map[string]string
+	MaxTypeDepth int
+}
+
+type Compiler struct {
+	cfg Config
+}
+
+type Artifact struct {
+	Filename        string
+	Source          string
+	Program         *ast.ProgramStmt
+	GlobalInitOrder []ast.Ident
+}
+
+func New(cfg Config) *Compiler {
+	return &Compiler{cfg: cfg}
+}
+
+func (a *Artifact) MarshalJSON() ([]byte, error) {
+	if a == nil || a.Program == nil {
+		return nil, fmt.Errorf("cannot marshal empty artifact")
+	}
+	return json.Marshal(a.Program)
+}
+
+func (a *Artifact) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
+	if a == nil || a.Program == nil {
+		return nil, fmt.Errorf("cannot marshal empty artifact")
+	}
+	return json.MarshalIndent(a.Program, prefix, indent)
+}
+
+func (c *Compiler) CompileSource(filename, code string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
+	converter := ffigo.NewGoToASTConverter()
+
+	var (
+		node ast.Node
+		errs []error
+		err  error
+	)
+	if tolerant {
+		node, errs = converter.ConvertSourceTolerant(filename, code)
+	} else {
+		node, err = converter.ConvertSource(filename, code)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	if node == nil {
+		return nil, errs, nil, fmt.Errorf("failed to parse source")
+	}
+
+	program, ok := node.(*ast.ProgramStmt)
+	if !ok {
+		return nil, errs, nil, fmt.Errorf("unexpected root node type: %T", node)
+	}
+
+	artifact, sem, compileErr := c.CompileProgram(filename, code, program, tolerant)
+	return artifact, errs, sem, compileErr
+}
+
+func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramStmt, tolerant bool) (*Artifact, *ast.SemanticContext, error) {
+	if program == nil {
+		return nil, nil, fmt.Errorf("invalid program")
+	}
+
+	artifact := &Artifact{
+		Filename: filename,
+		Source:   source,
+		Program:  program,
+	}
+
+	validator, err := ast.NewValidator(program, c.cfg.Specs, c.cfg.Constants, tolerant)
+	if err != nil {
+		return artifact, nil, err
+	}
+	if c.cfg.MaxTypeDepth > 0 {
+		validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
+		ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
+	}
+	validator.SetLoader(c.cfg.Loader)
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	if err := program.Check(semanticCtx); err != nil {
+		if order, orderErr := program.GlobalInitOrder(); orderErr == nil {
+			artifact.GlobalInitOrder = order
+		}
+		return artifact, semanticCtx, err
+	}
+
+	optimizeCtx := ast.NewOptimizeContext(validator)
+	if optimized := program.Optimize(optimizeCtx); optimized != nil {
+		if prog, ok := optimized.(*ast.ProgramStmt); ok {
+			artifact.Program = prog
+		}
+	}
+
+	order, orderErr := artifact.Program.GlobalInitOrder()
+	if orderErr != nil {
+		artifact.GlobalInitOrder = artifact.Program.DeclaredGlobalOrder()
+		return artifact, semanticCtx, orderErr
+	}
+	artifact.GlobalInitOrder = order
+	return artifact, semanticCtx, nil
+}
+
+func (c *Compiler) CompileExprSource(code string) (ast.Expr, error) {
+	return ffigo.NewGoToASTConverter().ConvertExprSource(code)
+}
+
+func (c *Compiler) CompileStatementsSource(code string) ([]ast.Stmt, error) {
+	return ffigo.NewGoToASTConverter().ConvertStmtsSource(code)
+}

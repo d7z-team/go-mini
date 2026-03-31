@@ -11,9 +11,9 @@ import (
 
 func TestCompileAndExecuteSeparation(t *testing.T) {
 	// 阶段 1：在节点 A 进行编译和序列化
-	compiler := engine.NewMiniExecutor()
+	executorA := engine.NewMiniExecutor()
 	code := `
-		package main
+			package main
 		
 		func compute() int {
 			sum := 0
@@ -31,13 +31,13 @@ func TestCompileAndExecuteSeparation(t *testing.T) {
 		}
 	`
 
-	progA, err := compiler.NewRuntimeByGoCode(code)
+	compiled, err := executorA.CompileGoCode(code)
 	if err != nil {
 		t.Fatalf("Server A compilation failed: %v", err)
 	}
 
-	// 将编译好的蓝图导出为 JSON 字节流 (模拟网络传输或数据库存储)
-	jsonPayload, err := progA.MarshalJSON()
+	// 将编译好的产物导出为 JSON 字节流 (模拟网络传输或数据库存储)
+	jsonPayload, err := compiled.MarshalJSON()
 	if err != nil {
 		t.Fatalf("Failed to marshal AST to JSON: %v", err)
 	}

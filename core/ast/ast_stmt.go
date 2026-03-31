@@ -118,7 +118,15 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	for i, stmt := range p.Variables {
+	varOrder, orderErr := p.GlobalInitOrder()
+	if orderErr != nil {
+		ctx.AddErrorf("%s", orderErr.Error())
+		hasError = true
+		varOrder = p.DeclaredGlobalOrder()
+	}
+
+	for _, i := range varOrder {
+		stmt := p.Variables[i]
 		if !i.Valid(ctx.ValidContext) {
 			ctx.AddErrorf("invalid identifier: %s", i)
 			hasError = true
@@ -265,6 +273,178 @@ func (p *ProgramStmt) String() string {
 	encoder.SetEscapeHTML(false)
 	_ = encoder.Encode(p)
 	return buffer.String()
+}
+
+// DeclaredGlobalOrder returns top-level variable names in declaration order.
+// Imports are treated as synthetic globals and come before var declarations.
+func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
+	seen := make(map[Ident]struct{})
+	order := make([]Ident, 0, len(p.Variables))
+
+	add := func(name Ident) {
+		if name == "" {
+			return
+		}
+		if _, ok := p.Variables[name]; !ok {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		order = append(order, name)
+	}
+
+	for _, imp := range p.Imports {
+		alias := imp.Alias
+		if alias == "" {
+			parts := strings.Split(imp.Path, "/")
+			alias = parts[len(parts)-1]
+		}
+		add(Ident(alias))
+	}
+
+	for _, stmt := range p.Main {
+		decl, ok := stmt.(*GenDeclStmt)
+		if ok {
+			add(decl.Name)
+		}
+	}
+
+	remaining := make([]Ident, 0, len(p.Variables)-len(order))
+	for name := range p.Variables {
+		if _, ok := seen[name]; !ok {
+			remaining = append(remaining, name)
+		}
+	}
+
+	sort.Slice(remaining, func(i, j int) bool {
+		li, lj := p.globalDeclLess(remaining[i], remaining[j])
+		if li != lj {
+			return li
+		}
+		return remaining[i] < remaining[j]
+	})
+
+	return append(order, remaining...)
+}
+
+// GlobalInitOrder resolves package-level initialization order.
+// It preserves declaration order where possible, but forces dependencies first.
+func (p *ProgramStmt) GlobalInitOrder() ([]Ident, error) {
+	declared := p.DeclaredGlobalOrder()
+	order := make([]Ident, 0, len(declared))
+	state := make(map[Ident]byte, len(declared))
+
+	var visit func(name Ident) error
+	visit = func(name Ident) error {
+		switch state[name] {
+		case 1:
+			return fmt.Errorf("circular dependency detected in global initialization: %s", name)
+		case 2:
+			return nil
+		}
+
+		state[name] = 1
+		for dep := range p.globalDependencies(name) {
+			if dep == name {
+				return fmt.Errorf("self dependency detected in global initialization: %s", name)
+			}
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		state[name] = 2
+		order = append(order, name)
+		return nil
+	}
+
+	for _, name := range declared {
+		if err := visit(name); err != nil {
+			return declared, err
+		}
+	}
+	return order, nil
+}
+
+func (p *ProgramStmt) globalDeclLess(a, b Ident) (bool, bool) {
+	exprA := p.Variables[a]
+	exprB := p.Variables[b]
+	if exprA == nil || exprB == nil {
+		return false, false
+	}
+	locA := exprA.GetBase().Loc
+	locB := exprB.GetBase().Loc
+	if locA == nil || locB == nil {
+		return false, false
+	}
+	if locA.L != locB.L {
+		return locA.L < locB.L, true
+	}
+	if locA.C != locB.C {
+		return locA.C < locB.C, true
+	}
+	return false, false
+}
+
+func (p *ProgramStmt) globalDependencies(name Ident) map[Ident]struct{} {
+	deps := make(map[Ident]struct{})
+	expr := p.Variables[name]
+	p.collectGlobalDependencies(expr, deps)
+	delete(deps, name)
+	return deps
+}
+
+func (p *ProgramStmt) collectGlobalDependencies(expr Expr, deps map[Ident]struct{}) {
+	if expr == nil {
+		return
+	}
+
+	switch n := expr.(type) {
+	case *IdentifierExpr:
+		if _, ok := p.Variables[n.Name]; ok {
+			deps[n.Name] = struct{}{}
+		}
+	case *StarExpr:
+		p.collectGlobalDependencies(n.X, deps)
+	case *TypeAssertExpr:
+		p.collectGlobalDependencies(n.X, deps)
+	case *CallExprStmt:
+		if _, ok := n.Func.(*ConstRefExpr); !ok {
+			p.collectGlobalDependencies(n.Func, deps)
+		}
+		for _, arg := range n.Args {
+			p.collectGlobalDependencies(arg, deps)
+		}
+	case *MemberExpr:
+		p.collectGlobalDependencies(n.Object, deps)
+	case *IndexExpr:
+		p.collectGlobalDependencies(n.Object, deps)
+		p.collectGlobalDependencies(n.Index, deps)
+	case *SliceExpr:
+		p.collectGlobalDependencies(n.X, deps)
+		p.collectGlobalDependencies(n.Low, deps)
+		p.collectGlobalDependencies(n.High, deps)
+	case *CompositeExpr:
+		isMap := GoMiniType(n.Kind).IsMap()
+		for _, elem := range n.Values {
+			if elem.Key != nil {
+				if isMap {
+					p.collectGlobalDependencies(elem.Key, deps)
+				} else if _, ok := elem.Key.(*IdentifierExpr); !ok {
+					p.collectGlobalDependencies(elem.Key, deps)
+				}
+			}
+			p.collectGlobalDependencies(elem.Value, deps)
+		}
+	case *BinaryExpr:
+		p.collectGlobalDependencies(n.Left, deps)
+		p.collectGlobalDependencies(n.Right, deps)
+	case *UnaryExpr:
+		p.collectGlobalDependencies(n.Operand, deps)
+	case *FuncLitExpr, *LiteralExpr, *ConstRefExpr, *ImportExpr, *BadExpr:
+		return
+	}
 }
 
 // BlockStmt 表示代码块或作用域
