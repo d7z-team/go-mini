@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -337,5 +338,177 @@ func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
 	}
 	if len(data.Tasks) == 0 {
 		t.Fatalf("expected deferred task payload, got: %+v", data)
+	}
+}
+
+func TestLowerStmtTasksBuildsDataOnlySwitchPlan(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
+switch x {
+case 1:
+	res = "one"
+case 2, 3:
+	res = "two"
+default:
+	res = "other"
+}
+`)
+	if err != nil {
+		t.Fatalf("convert stmts failed: %v", err)
+	}
+	if len(stmts) != 1 {
+		t.Fatalf("unexpected stmt count: %d", len(stmts))
+	}
+
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	if !ok {
+		t.Fatal("expected switch statement to be lowered")
+	}
+
+	var (
+		loopTask   *Task
+		switchTask *Task
+	)
+	for i := range tasks {
+		switch tasks[i].Op {
+		case OpLoopBoundary:
+			loopTask = &tasks[i]
+		case OpSwitchTag:
+			switchTask = &tasks[i]
+		}
+	}
+	if loopTask == nil || switchTask == nil {
+		t.Fatalf("expected lowered switch tasks, got: %+v", tasks)
+	}
+	if loopTask.Node != nil || switchTask.Node != nil {
+		t.Fatalf("expected lowered switch tasks without AST nodes: loop=%T switch=%T", loopTask.Node, switchTask.Node)
+	}
+	data, ok := switchTask.Data.(*SwitchData)
+	if !ok {
+		t.Fatalf("unexpected switch data: %T", switchTask.Data)
+	}
+	if !data.HasTag || data.IsType || len(data.Cases) != 2 || len(data.DefaultBody) == 0 {
+		t.Fatalf("unexpected switch lowering data: %+v", data)
+	}
+	if len(data.Cases[1].Exprs) != 2 {
+		t.Fatalf("expected second case to contain two expressions, got: %+v", data.Cases[1])
+	}
+}
+
+func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	assign := &ast.AssignmentStmt{
+		LHS: &ast.IdentifierExpr{Name: "x"},
+	}
+	switchStmt := &ast.SwitchStmt{
+		IsType: true,
+		Tag:    &ast.IdentifierExpr{Name: "v"},
+		Assign: assign,
+		Body: &ast.BlockStmt{Children: []ast.Stmt{
+			&ast.CaseClause{
+				List: []ast.Expr{&ast.IdentifierExpr{Name: "Int64"}},
+				Body: []ast.Stmt{
+					&ast.ReturnStmt{Results: []ast.Expr{
+						&ast.LiteralExpr{BaseNode: ast.BaseNode{Type: "String"}, Value: "int"},
+					}},
+				},
+			},
+			&ast.CaseClause{
+				Body: []ast.Stmt{
+					&ast.ReturnStmt{Results: []ast.Expr{
+						&ast.LiteralExpr{BaseNode: ast.BaseNode{Type: "String"}, Value: "other"},
+					}},
+				},
+			},
+		}},
+	}
+
+	tasks, ok := exec.lowerStmtTasks(switchStmt, nil)
+	if !ok {
+		t.Fatal("expected type switch statement to be lowered")
+	}
+
+	var switchTask *Task
+	for i := range tasks {
+		if tasks[i].Op == OpSwitchTag {
+			switchTask = &tasks[i]
+			break
+		}
+	}
+	if switchTask == nil {
+		t.Fatal("expected switch tag task")
+	}
+	data, ok := switchTask.Data.(*SwitchData)
+	if !ok {
+		t.Fatalf("unexpected switch data: %T", switchTask.Data)
+	}
+	if !data.IsType || !data.HasAssign || len(data.AssignLHS) == 0 {
+		t.Fatalf("unexpected type switch lowering data: %+v", data)
+	}
+	if len(data.Cases) != 1 || len(data.Cases[0].TypeNames) != 1 || data.Cases[0].TypeNames[0] != "Int64" {
+		t.Fatalf("unexpected type switch cases: %+v", data.Cases)
+	}
+}
+
+func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	expr, err := ffigo.NewGoToASTConverter().ConvertExprSource(`func(x Int64) Int64 { return x + 1 }`)
+	if err != nil {
+		t.Fatalf("convert expr failed: %v", err)
+	}
+
+	session := exec.NewSession(context.Background(), "test")
+	defer exec.CleanupSession(session)
+
+	if err := exec.handleEval(session, expr); err != nil {
+		t.Fatalf("handle eval failed: %v", err)
+	}
+	if err := exec.Run(session); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	value := session.ValueStack.Pop()
+	if value == nil || value.VType != TypeClosure {
+		t.Fatalf("expected closure value, got %+v", value)
+	}
+	closure, ok := value.Ref.(*VMClosure)
+	if !ok {
+		t.Fatalf("unexpected closure ref: %T", value.Ref)
+	}
+	if len(closure.BodyTasks) == 0 {
+		t.Fatal("expected lowered body tasks on closure")
 	}
 }

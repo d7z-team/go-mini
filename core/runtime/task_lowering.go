@@ -1,26 +1,30 @@
 package runtime
 
-import "gopkg.d7z.net/go-mini/core/ast"
+import (
+	"fmt"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+)
 
 func (e *Executor) tasksForStmt(stmt ast.Stmt, data interface{}) []Task {
 	if tasks, ok := e.lowerStmtTasks(stmt, data); ok {
 		return tasks
 	}
-	return []Task{{Op: OpExec, Node: stmt, Data: data}}
+	panic(fmt.Sprintf("runtime lowering missing for stmt %T", stmt))
 }
 
 func (e *Executor) tasksForExpr(expr ast.Expr) []Task {
 	if tasks, ok := e.lowerExprTasks(expr); ok {
 		return tasks
 	}
-	return []Task{{Op: OpEval, Node: expr}}
+	panic(fmt.Sprintf("runtime lowering missing for expr %T", expr))
 }
 
 func (e *Executor) tasksForLHS(expr ast.Expr) []Task {
 	if tasks, ok := e.lowerLHSTasks(expr); ok {
 		return tasks
 	}
-	return []Task{{Op: OpEvalLHS, Node: expr}}
+	panic(fmt.Sprintf("runtime lowering missing for lhs %T", expr))
 }
 
 func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}) ([]Task, bool) {
@@ -151,6 +155,78 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}) ([]Task, bool
 			Tasks:     e.tasksForExpr(call),
 			PopResult: !call.GetBase().Type.IsVoid(),
 		}}}, true
+	case *ast.SwitchStmt:
+		plan := &SwitchData{
+			IsType:    n.IsType,
+			HasTag:    n.Tag != nil,
+			HasAssign: n.Assign != nil,
+		}
+		if n.Init != nil {
+			plan.Init = e.tasksForStmt(n.Init, nil)
+		}
+		if n.Tag != nil {
+			plan.Tag = e.tasksForExpr(n.Tag)
+		}
+		if n.Assign != nil {
+			if n.IsType {
+				switch assign := n.Assign.(type) {
+				case *ast.AssignmentStmt:
+					plan.AssignLHS = e.tasksForLHS(assign.LHS)
+				case *ast.BlockStmt:
+					var lhs ast.Expr
+					for _, child := range assign.Children {
+						if asg, ok := child.(*ast.AssignmentStmt); ok {
+							lhs = asg.LHS
+						}
+					}
+					if lhs == nil {
+						return nil, false
+					}
+					plan.AssignLHS = e.tasksForLHS(lhs)
+				default:
+					return nil, false
+				}
+			}
+		}
+		for _, child := range n.Body.Children {
+			clause, ok := child.(*ast.CaseClause)
+			if !ok {
+				return nil, false
+			}
+			if clause.List == nil {
+				plan.DefaultBody = e.tasksForStmt(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil)
+				continue
+			}
+			caseData := SwitchCaseData{
+				Body: e.tasksForStmt(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil),
+			}
+			for _, expr := range clause.List {
+				if n.IsType {
+					var targetType ast.GoMiniType
+					if id, ok := expr.(*ast.IdentifierExpr); ok {
+						targetType = ast.GoMiniType(id.Name)
+					} else {
+						targetType = expr.GetBase().Type
+					}
+					caseData.TypeNames = append(caseData.TypeNames, targetType)
+				} else {
+					caseData.Exprs = append(caseData.Exprs, e.tasksForExpr(expr))
+				}
+			}
+			plan.Cases = append(plan.Cases, caseData)
+		}
+
+		out := []Task{
+			{Op: OpLoopBoundary, Data: plan},
+			{Op: OpSwitchTag, Data: plan},
+		}
+		if n.Tag != nil {
+			out = append(out, plan.Tag...)
+		}
+		if n.Init != nil {
+			out = append(out, plan.Init...)
+		}
+		return out, true
 	case *ast.ExpressionStmt:
 		out := make([]Task, 0)
 		if n.X != nil && !n.GetBase().Type.IsVoid() {
@@ -296,6 +372,14 @@ func (e *Executor) lowerExprTasks(expr ast.Expr) ([]Task, bool) {
 		return out, true
 	case *ast.ImportExpr:
 		return []Task{{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}}}, true
+	case *ast.FuncLitExpr:
+		captures := make([]string, len(n.CaptureNames))
+		copy(captures, n.CaptureNames)
+		return []Task{{Op: OpMakeClosure, Data: &ClosureData{
+			FunctionType: n.FunctionType,
+			BodyTasks:    e.tasksForStmt(n.Body, nil),
+			CaptureNames: captures,
+		}}}, true
 	default:
 		return nil, false
 	}
@@ -303,6 +387,8 @@ func (e *Executor) lowerExprTasks(expr ast.Expr) ([]Task, bool) {
 
 func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr) ([]Task, bool) {
 	switch lhs := lhsExpr.(type) {
+	case nil:
+		return []Task{{Op: OpEvalLHS}}, true
 	case *ast.IdentifierExpr:
 		return []Task{{
 			Op: OpEvalLHS,

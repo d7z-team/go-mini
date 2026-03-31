@@ -557,7 +557,7 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 	return nil, &VMError{Message: fmt.Sprintf("type %v does not support slice operations", obj.VType), IsPanic: true}
 }
 
-func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
+func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
 	// 0. 特殊类型方法 (Built-in methods on Error)
 	if receiver != nil && receiver.VType == TypeError && name == "Error" {
 		if errObj, ok := receiver.Ref.(*VMError); ok {
@@ -892,7 +892,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 		if c.VType == TypeClosure {
 			switch ref := c.Ref.(type) {
 			case *VMClosure:
-				return e.setupFuncCall(session, "closure", ref.FuncDef, args, ref)
+				return e.setupFuncCall(session, "closure", nil, args, ref)
 			case *VMMethodValue:
 				// Resolve as FFI method
 				if route, ok := e.routes[ref.Method]; ok {
@@ -952,7 +952,7 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 			if len(args) > 0 && args[0] == receiver {
 				actualArgs = args[1:]
 			}
-			return e.invokeCall(session, nil, "", nil, nil, val, actualArgs)
+			return e.invokeCall(session, "", nil, nil, val, actualArgs)
 		}
 	}
 
@@ -973,17 +973,22 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 	if mod != nil {
 		if fVar, ok := mod.Data[name]; ok && fVar.VType == TypeClosure {
 			if closure, ok := fVar.Ref.(*VMClosure); ok {
-				return e.setupFuncCall(session, name, closure.FuncDef, args, closure)
+				return e.setupFuncCall(session, name, nil, args, closure)
 			}
 		}
 	}
 
 	// 5. Internal Function Call
 	if f, ok := e.program.Functions[ast.Ident(name)]; ok {
-		// Only global scope, no closure needed
-		return e.setupFuncCall(session, name, &ast.FuncLitExpr{
+		bodyTasks := e.tasksForStmt(f.Body, nil)
+		if session.Debugger != nil {
+			bodyTasks = []Task{{Op: OpExec, Node: f.Body}}
+		}
+		return e.setupFuncCall(session, name, &DoCallData{
+			Name:         name,
 			FunctionType: f.FunctionType,
-			Body:         f.Body,
+			BodyTasks:    bodyTasks,
+			Args:         args,
 		}, args, nil)
 	}
 
@@ -994,9 +999,23 @@ func (e *Executor) invokeCall(session *StackContext, _ *ast.CallExprStmt, name s
 	return &VMError{Message: fmt.Sprintf("function or method %s not found", name), IsPanic: true}
 }
 
-func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.FuncLitExpr, args []*Var, closure *VMClosure) error {
+func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallData, args []*Var, closure *VMClosure) error {
 	old := session.Stack
 	oldExec := session.Executor
+	ft := ast.FunctionType{}
+	var bodyTasks []Task
+	if closure != nil {
+		ft = closure.FunctionType
+		bodyTasks = closure.BodyTasks
+	}
+	if fn != nil {
+		if len(ft.Params) == 0 && ft.Return == "" {
+			ft = fn.FunctionType
+		}
+		if len(bodyTasks) == 0 {
+			bodyTasks = fn.BodyTasks
+		}
+	}
 
 	// Default lexical scope is global
 	root := old
@@ -1035,9 +1054,9 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.Func
 	}
 
 	// Inject params
-	for i, p := range f.Params {
+	for i, p := range ft.Params {
 		_ = session.NewVar(string(p.Name), p.Type)
-		if f.Variadic && i == len(f.Params)-1 {
+		if ft.Variadic && i == len(ft.Params)-1 {
 			var variadicArgs []*Var
 			if i < len(args) {
 				variadicArgs = args[i:]
@@ -1047,8 +1066,8 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.Func
 			_ = session.Store(string(p.Name), args[i])
 		}
 	}
-	if !f.Return.IsVoid() {
-		_ = session.NewVar("__return__", f.Return)
+	if !ft.Return.IsVoid() {
+		_ = session.NewVar("__return__", ft.Return)
 	}
 
 	// Push CallBoundary
@@ -1057,15 +1076,15 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, f *ast.Func
 		Data: map[string]interface{}{
 			"oldStack":  old,
 			"oldExec":   oldExec,
-			"hasReturn": !f.Return.IsVoid(),
+			"hasReturn": !ft.Return.IsVoid(),
 		},
 	})
 	// Push Defers execution
 	session.TaskStack = append(session.TaskStack, Task{Op: OpRunDefers})
 
 	// Push body
-	if f.Body != nil {
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: f.Body})
+	if len(bodyTasks) > 0 {
+		session.TaskStack = append(session.TaskStack, bodyTasks...)
 	}
 
 	return nil

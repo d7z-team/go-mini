@@ -156,7 +156,11 @@ func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
 	oldTasks := ctx.TaskStack
 	oldValues := ctx.ValueStack
 
-	ctx.TaskStack = []Task{{Op: OpEval, Node: s}}
+	if ctx.Debugger != nil {
+		ctx.TaskStack = []Task{{Op: OpEval, Node: s}}
+	} else {
+		ctx.TaskStack = e.tasksForExpr(s)
+	}
 	ctx.ValueStack = &ValueStack{}
 
 	err := e.Run(ctx)
@@ -311,7 +315,7 @@ func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *as
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
 	if v.VType == TypeClosure {
 		if cl, ok := v.Ref.(*VMClosure); ok {
-			return e.isSignatureCompatible(&cl.FuncDef.FunctionType, expectedSig)
+			return e.isSignatureCompatible(&cl.FunctionType, expectedSig)
 		}
 	}
 	if v.VType == TypeAny && v.Ref != nil {
@@ -383,7 +387,7 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 		actualCallable = nil
 	}
 
-	err := e.invokeCall(ctx, &ast.CallExprStmt{}, name, receiver, nil, actualCallable, args)
+	err := e.invokeCall(ctx, name, receiver, nil, actualCallable, args)
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
@@ -473,7 +477,11 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 
 	// 压入执行入口任务: Main 块 (包初始化逻辑)
 	for i := len(e.program.Main) - 1; i >= 0; i-- {
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: e.program.Main[i]})
+		if session.Debugger != nil {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: e.program.Main[i]})
+		} else {
+			session.TaskStack = append(session.TaskStack, e.tasksForStmt(e.program.Main[i], nil)...)
+		}
 	}
 
 	err = e.Run(session)
@@ -488,7 +496,15 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 				Op:   OpCallBoundary,
 				Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
 			})
-			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Node: f, Data: nil}) // args=nil
+			bodyTasks := e.tasksForStmt(f.Body, nil)
+			if session.Debugger != nil {
+				bodyTasks = []Task{{Op: OpExec, Node: f.Body}}
+			}
+			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
+				Name:         string(f.Name),
+				FunctionType: f.FunctionType,
+				BodyTasks:    bodyTasks,
+			}})
 
 			// Start run loop again for main func
 			err = e.Run(session)
@@ -608,6 +624,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		}
 		if session.UnwindMode == UnwindContinue {
 			// Switch does NOT catch continue, it should propagate to the outer loop
+			if _, ok := task.Data.(*SwitchData); ok {
+				return false, nil
+			}
 			if _, ok := task.Node.(*ast.SwitchStmt); ok {
 				return false, nil
 			}
@@ -799,15 +818,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		lhsDesc := lhsDescVar.Ref
 		return e.assignToLHSDesc(session, lhsDesc, val)
 	case OpDoCall:
-		f := task.Node.(*ast.FunctionStmt)
-		var args []*Var
-		if task.Data != nil {
-			args = task.Data.([]*Var)
-		}
-		return e.setupFuncCall(session, string(f.Name), &ast.FuncLitExpr{
-			FunctionType: f.FunctionType,
-			Body:         f.Body,
-		}, args, nil)
+		call := task.Data.(*DoCallData)
+		return e.setupFuncCall(session, call.Name, call, call.Args, nil)
 	case OpMultiAssign:
 		lhsCount := task.Data.(int)
 		val := session.ValueStack.Pop()
@@ -1117,14 +1129,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var high, low, obj *Var
 		hasLow := false
 		hasHigh := false
-		if data, ok := task.Data.(*SliceData); ok {
-			hasLow = data.HasLow
-			hasHigh = data.HasHigh
-		} else {
-			n := task.Node.(*ast.SliceExpr)
-			hasLow = n.Low != nil
-			hasHigh = n.High != nil
-		}
+		data := task.Data.(*SliceData)
+		hasLow = data.HasLow
+		hasHigh = data.HasHigh
 		if hasHigh {
 			high = session.ValueStack.Pop()
 		}
@@ -1144,13 +1151,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var receiver *Var
 		var mod *VMModule
 		var callable *Var
-		data, hasData := task.Data.(*CallData)
-		argCount := 0
-		if hasData {
-			argCount = data.ArgCount
-		} else {
-			argCount = len(task.Node.(*ast.CallExprStmt).Args)
-		}
+		data := task.Data.(*CallData)
+		argCount := data.ArgCount
 
 		// Arguments are on top of stack, then Func eval result (if any)
 		// Let's pop arguments first!
@@ -1160,10 +1162,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		// 处理变长参数展开 f(args...)
-		ellipsis := hasData && data.Ellipsis
-		if !hasData {
-			ellipsis = task.Node.(*ast.CallExprStmt).Ellipsis
-		}
+		ellipsis := data.Ellipsis
 		if ellipsis && len(args) > 0 {
 			last := args[len(args)-1]
 			if last != nil && last.VType == TypeArray {
@@ -1184,10 +1183,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
-		switch {
-		case hasData && data.Mode == CallByName:
+		switch data.Mode {
+		case CallByName:
 			name = data.Name
-		case hasData && data.Mode == CallByMember:
+		case CallByMember:
 			obj := session.ValueStack.Pop()
 			if obj == nil {
 				return errors.New("calling method on nil object")
@@ -1213,44 +1212,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			} else {
 				return fmt.Errorf("property %s is not a callable function on %v", data.Name, obj.VType)
 			}
-		case hasData && data.Mode == CallByValue:
+		case CallByValue:
 			callable = session.ValueStack.Pop()
-		default:
-			n := task.Node.(*ast.CallExprStmt)
-			if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
-				name = string(ident.Name)
-			} else if ident, ok := n.Func.(*ast.IdentifierExpr); ok {
-				name = string(ident.Name)
-			} else if member, ok := n.Func.(*ast.MemberExpr); ok {
-				obj := session.ValueStack.Pop()
-				if obj == nil {
-					return errors.New("calling method on nil object")
-				}
-
-				// Use unified member evaluation logic
-				res, err := e.evalMemberExprDirect(session, obj, string(member.Property))
-				if err != nil {
-					return err
-				}
-
-				if res != nil && res.VType == TypeClosure {
-					if mv, ok := res.Ref.(*VMMethodValue); ok {
-						receiver = mv.Receiver
-						name = mv.Method
-					} else {
-						callable = res
-					}
-				} else if res != nil && res.VType == TypeModule {
-					mod = res.Ref.(*VMModule)
-					name = string(member.Property)
-				} else if res != nil {
-					callable = res
-				} else {
-					return fmt.Errorf("property %s is not a callable function on %v", member.Property, obj.VType)
-				}
-			} else {
-				callable = session.ValueStack.Pop()
-			}
 		}
 
 		if name != "" && mod == nil && callable == nil {
@@ -1271,11 +1234,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		copy(finalArgs[offset:], args)
 
-		if hasData {
-			return e.invokeCall(session, nil, name, receiver, mod, callable, finalArgs)
-		}
-		n := task.Node.(*ast.CallExprStmt)
-		return e.invokeCall(session, n, name, receiver, mod, callable, finalArgs)
+		return e.invokeCall(session, name, receiver, mod, callable, finalArgs)
 	case OpCallBoundary:
 		dataMap, ok := task.Data.(map[string]interface{})
 		if !ok {
@@ -1434,25 +1393,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if obj == nil {
 			return nil
 		}
-		var rData *RangeData
-		if data, ok := task.Data.(*RangeData); ok {
-			rData = &RangeData{
-				Key:    data.Key,
-				Value:  data.Value,
-				Define: data.Define,
-				Body:   data.Body,
-				Obj:    obj,
-			}
-		} else {
-			n := task.Node.(*ast.RangeStmt)
-			rData = &RangeData{
-				Stmt:   n,
-				Key:    string(n.Key),
-				Value:  string(n.Value),
-				Define: n.Define,
-				Body:   e.tasksForStmt(n.Body, nil),
-				Obj:    obj,
-			}
+		data := task.Data.(*RangeData)
+		rData := &RangeData{
+			Key:    data.Key,
+			Value:  data.Value,
+			Define: data.Define,
+			Body:   data.Body,
+			Obj:    obj,
 		}
 		switch obj.VType {
 		case TypeArray:
@@ -1465,11 +1412,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			rData.Length = len(rData.Keys)
 		}
-		if task.Data != nil {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary})
-		} else {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Node: task.Node})
-		}
+		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
 		return nil
 	case OpRangeIter:
@@ -1494,11 +1437,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
-		if len(rData.Body) > 0 {
-			session.TaskStack = append(session.TaskStack, rData.Body...)
-		} else if rData.Stmt != nil {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: rData.Stmt.Body})
-		}
+		session.TaskStack = append(session.TaskStack, rData.Body...)
 		session.TaskStack = append(session.TaskStack, Task{
 			Op:   OpRangeScopeEnter,
 			Data: map[string]interface{}{"rData": rData, "key": key, "val": val},
@@ -1527,6 +1466,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpSwitchTag:
+		if plan, ok := task.Data.(*SwitchData); ok {
+			tag := NewBool(true)
+			if plan.HasTag {
+				tag = session.ValueStack.Pop()
+			}
+			session.TaskStack = append(session.TaskStack, Task{
+				Op:   OpSwitchNextCase,
+				Data: &SwitchState{Plan: plan, Tag: tag},
+			})
+			return nil
+		}
 		n := task.Node.(*ast.SwitchStmt)
 		var tag *Var
 		if n.Tag != nil {
@@ -1543,6 +1493,38 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		})
 		return nil
 	case OpSwitchNextCase:
+		if state, ok := task.Data.(*SwitchState); ok {
+			if state.Index >= len(state.Plan.Cases) {
+				if len(state.Plan.DefaultBody) > 0 {
+					session.TaskStack = append(session.TaskStack, e.switchCaseTasks(state.Plan, state.Tag, state.Plan.DefaultBody, "switch_default")...)
+				}
+				return nil
+			}
+
+			caseData := state.Plan.Cases[state.Index]
+			if state.Plan.IsType {
+				if e.switchTypeCaseMatches(state.Tag, caseData.TypeNames) {
+					session.TaskStack = append(session.TaskStack, e.switchCaseTasks(state.Plan, state.Tag, caseData.Body, "switch_matched")...)
+					return nil
+				}
+				state.Index++
+				state.ExprIx = 0
+				session.TaskStack = append(session.TaskStack, task)
+				return nil
+			}
+			if state.ExprIx < len(caseData.Exprs) {
+				next := *state
+				next.ExprIx++
+				session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchMatchCase, Data: &next})
+				session.TaskStack = append(session.TaskStack, caseData.Exprs[state.ExprIx]...)
+				return nil
+			}
+
+			state.Index++
+			state.ExprIx = 0
+			session.TaskStack = append(session.TaskStack, task)
+			return nil
+		}
 		data := task.Data.(map[string]interface{})
 		n := task.Node.(*ast.SwitchStmt)
 		tag := data["tag"].(*Var)
@@ -1673,6 +1655,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		})
 		return nil
 	case OpSwitchMatchCase:
+		if state, ok := task.Data.(*SwitchState); ok {
+			val := session.ValueStack.Pop()
+			res, _ := e.evalComparison("==", state.Tag, val)
+			if res != nil && res.Bool {
+				caseData := state.Plan.Cases[state.Index]
+				session.TaskStack = append(session.TaskStack, caseData.Body...)
+				return nil
+			}
+			session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchNextCase, Data: state})
+			return nil
+		}
 		data := task.Data.(map[string]interface{})
 		clause := task.Node.(*ast.CaseClause)
 		tag := data["tag"].(*Var)
@@ -1765,13 +1758,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpImportInit:
-		path := ""
-		if data, ok := task.Data.(*ImportInitData); ok {
-			path = data.Path
-		} else {
-			n := task.Node.(*ast.ImportExpr)
-			path = n.Path
-		}
+		path := task.Data.(*ImportInitData).Path
 		path = strings.Trim(path, " \t\n\r")
 		if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
 			return fmt.Errorf("invalid import path: %s", path)
@@ -1837,12 +1824,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					name := names[i]
 					expr := prog.Variables[ast.Ident(name)]
 					session.TaskStack = append(session.TaskStack, Task{Op: OpInitVar, Data: name})
-					session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: expr})
+					session.TaskStack = append(session.TaskStack, e.tasksForExpr(expr)...)
 				}
 
 				// Push Main block execution
 				for i := len(prog.Main) - 1; i >= 0; i-- {
-					session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: prog.Main[i]})
+					session.TaskStack = append(session.TaskStack, e.tasksForStmt(prog.Main[i], nil)...)
 				}
 
 				return nil
@@ -1914,13 +1901,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				exports[string(name)] = &Var{
 					VType: TypeClosure,
 					Ref: &VMClosure{
-						FuncDef: &ast.FuncLitExpr{
-							BaseNode:     fn.BaseNode,
-							FunctionType: fn.FunctionType,
-							Body:         fn.Body,
-						},
-						Upvalues: make(map[string]*Var),
-						Context:  modSession,
+						FunctionType: fn.FunctionType,
+						BodyTasks:    modSession.Executor.(*Executor).tasksForStmt(fn.Body, nil),
+						Upvalues:     make(map[string]*Var),
+						Context:      modSession,
 					},
 				}
 			}
@@ -1967,6 +1951,34 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			session.ValueStack.Push(nil)
 		}
+		return nil
+	case OpMakeClosure:
+		data := task.Data.(*ClosureData)
+		clCtx := &StackContext{
+			Context:        session.Context,
+			Executor:       session.Executor,
+			Stack:          session.Stack,
+			StepLimit:      session.StepLimit,
+			ModuleCache:    session.ModuleCache,
+			LoadingModules: session.LoadingModules,
+			Debugger:       session.Debugger,
+		}
+		closure := &VMClosure{
+			FunctionType: data.FunctionType,
+			BodyTasks:    data.BodyTasks,
+			Upvalues:     make(map[string]*Var),
+			Context:      clCtx,
+		}
+		for _, name := range data.CaptureNames {
+			cellVar, err := session.CaptureVar(name)
+			if err != nil {
+				return fmt.Errorf("failed to capture variable %s: %w", name, err)
+			}
+			closure.Upvalues[name] = cellVar
+		}
+		v := NewVar(ast.TypeClosure, TypeClosure)
+		v.Ref = closure
+		session.ValueStack.Push(v)
 		return nil
 	default:
 		return fmt.Errorf("unhandled opcode: %v", task.Op)
@@ -2132,6 +2144,75 @@ func (e *Executor) scheduleForBody(session *StackContext, n *ast.ForStmt, data *
 	session.TaskStack = append(session.TaskStack, Task{Op: OpForScopeExit})
 	session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Body})
 	session.TaskStack = append(session.TaskStack, Task{Op: OpForScopeEnter})
+}
+
+func (e *Executor) switchCaseTasks(plan *SwitchData, tag *Var, body []Task, scopeName string) []Task {
+	out := make([]Task, 0, len(body)+4)
+	if plan.IsType {
+		out = append(out, Task{Op: OpScopeExit})
+	}
+	out = append(out, body...)
+	if plan.HasAssign {
+		out = append(out, Task{Op: OpAssign})
+		out = append(out, Task{Op: OpPush, Data: tag})
+		out = append(out, plan.AssignLHS...)
+	}
+	if plan.IsType {
+		out = append(out, Task{Op: OpScopeEnter, Data: scopeName})
+	}
+	return out
+}
+
+func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) bool {
+	for _, targetType := range targets {
+		if targetType == "" {
+			continue
+		}
+		if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
+			if targetType == "nil" || targetType == "Any" || targetType == "interface{}" {
+				return true
+			}
+			continue
+		}
+
+		switch targetType {
+		case "Int64", "int", "int64":
+			if tag.VType == TypeInt {
+				return true
+			}
+		case "Float64", "float64":
+			if tag.VType == TypeFloat {
+				return true
+			}
+		case "String", "string":
+			if tag.VType == TypeString {
+				return true
+			}
+		case "Bool", "bool":
+			if tag.VType == TypeBool {
+				return true
+			}
+		case "TypeBytes", "bytes":
+			if tag.VType == TypeBytes {
+				return true
+			}
+		case "Any", "interface{}":
+			if tag != nil {
+				return true
+			}
+		case "Error", "error":
+			if tag.VType == TypeError {
+				return true
+			}
+		}
+
+		if targetType.IsInterface() || e.interfaces[string(targetType)] != nil {
+			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op string) error {
@@ -2434,9 +2515,10 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 			Debugger:       session.Debugger,
 		}
 		closure := &VMClosure{
-			FuncDef:  n,
-			Upvalues: make(map[string]*Var),
-			Context:  clCtx,
+			FunctionType: n.FunctionType,
+			BodyTasks:    e.tasksForStmt(n.Body, nil),
+			Upvalues:     make(map[string]*Var),
+			Context:      clCtx,
 		}
 		for _, name := range n.CaptureNames {
 			cellVar, err := session.CaptureVar(name)
@@ -2449,7 +2531,7 @@ func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
 		v.Ref = closure
 		session.ValueStack.Push(v)
 	case *ast.ImportExpr:
-		session.TaskStack = append(session.TaskStack, Task{Op: OpImportInit, Node: n})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}})
 	}
 	return nil
 }
@@ -2821,7 +2903,11 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	}
 
 	for i := len(stmts) - 1; i >= 0; i-- {
-		session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: stmts[i]})
+		if session.Debugger != nil {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: stmts[i]})
+		} else {
+			session.TaskStack = append(session.TaskStack, e.tasksForStmt(stmts[i], nil)...)
+		}
 	}
 
 	err := e.Run(session)
@@ -2837,7 +2923,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	oldValues := ctx.ValueStack
 	oldUnwind := ctx.UnwindMode
 
-	ctx.TaskStack = []Task{{Op: OpImportInit, Node: n}}
+	ctx.TaskStack = []Task{{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}}}
 	ctx.ValueStack = &ValueStack{}
 	ctx.UnwindMode = UnwindNone
 	if ctx.ModuleCache == nil {

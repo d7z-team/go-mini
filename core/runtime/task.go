@@ -53,6 +53,7 @@ const (
 	OpInitVar
 	OpAssert
 	OpPush
+	OpMakeClosure
 )
 
 func (op OpCode) String() string {
@@ -149,6 +150,8 @@ func (op OpCode) String() string {
 		return "ASSERT"
 	case OpPush:
 		return "PUSH"
+	case OpMakeClosure:
+		return "MAKE_CLOSURE"
 	default:
 		return "UNKNOWN"
 	}
@@ -217,8 +220,9 @@ type ImportInitData struct {
 }
 
 type SwitchCaseData struct {
-	Exprs []Task
-	Body  []Task
+	Exprs     [][]Task
+	TypeNames []ast.GoMiniType
+	Body      []Task
 }
 
 type SwitchData struct {
@@ -227,7 +231,7 @@ type SwitchData struct {
 	HasAssign   bool
 	Init        []Task
 	Tag         []Task
-	Assign      []Task
+	AssignLHS   []Task
 	Cases       []SwitchCaseData
 	DefaultBody []Task
 }
@@ -273,8 +277,14 @@ type CallData struct {
 	Ellipsis bool
 }
 
+type DoCallData struct {
+	Name         string
+	FunctionType ast.FunctionType
+	BodyTasks    []Task
+	Args         []*Var
+}
+
 type RangeData struct {
-	Stmt   *ast.RangeStmt
 	Key    string
 	Value  string
 	Define bool
@@ -348,6 +358,12 @@ type LHSData struct {
 	Kind     LHSType
 	Name     string
 	Property string
+}
+
+type ClosureData struct {
+	FunctionType ast.FunctionType
+	BodyTasks    []Task
+	CaptureNames []string
 }
 
 type LHSIndex struct {

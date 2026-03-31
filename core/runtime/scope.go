@@ -123,9 +123,10 @@ type Cell struct {
 }
 
 type VMClosure struct {
-	FuncDef  *ast.FuncLitExpr // Ast node of the function
-	Upvalues map[string]*Var  // Captured environment variables (should be TypeCell)
-	Context  *StackContext    // 闭包所属的母上下文
+	FunctionType ast.FunctionType
+	BodyTasks    []Task
+	Upvalues     map[string]*Var // Captured environment variables (should be TypeCell)
+	Context      *StackContext   // 闭包所属的母上下文
 }
 
 type VMMethodValue struct {
