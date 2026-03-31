@@ -9,6 +9,7 @@ type OpCode int
 const (
 	OpExec OpCode = iota
 	OpEval
+	OpDeclareVar
 	OpEvalLHS
 	OpApplyBinary
 	OpApplyUnary
@@ -59,6 +60,8 @@ func (op OpCode) String() string {
 		return "EXEC"
 	case OpEval:
 		return "EVAL"
+	case OpDeclareVar:
+		return "DECLARE_VAR"
 	case OpEvalLHS:
 		return "EVAL_LHS"
 	case OpApplyBinary:
@@ -164,6 +167,66 @@ type Task struct {
 	Data interface{}
 }
 
+type DeclareVarData struct {
+	Name string
+	Kind ast.GoMiniType
+}
+
+type BranchData struct {
+	Then []Task
+	Else []Task
+}
+
+type JumpData struct {
+	Operator string
+	Right    []Task
+}
+
+type IndexData struct {
+	Multi      bool
+	ResultType ast.GoMiniType
+}
+
+type SliceData struct {
+	HasLow  bool
+	HasHigh bool
+}
+
+type AssertData struct {
+	TargetType ast.GoMiniType
+	Multi      bool
+	ResultType ast.GoMiniType
+}
+
+type ImportInitData struct {
+	Path string
+}
+
+type CompositeEntryData struct {
+	IdentKey   string
+	HasExprKey bool
+}
+
+type CompositeData struct {
+	Type    ast.GoMiniType
+	Entries []CompositeEntryData
+}
+
+type CallMode int
+
+const (
+	CallByValue CallMode = iota
+	CallByName
+	CallByMember
+)
+
+type CallData struct {
+	Mode     CallMode
+	Name     string
+	ArgCount int
+	Ellipsis bool
+}
+
 type RangeData struct {
 	Stmt   *ast.RangeStmt
 	Obj    *Var
@@ -229,6 +292,12 @@ const (
 // LHS Descriptors
 type LHSEnv struct {
 	Name string
+}
+
+type LHSData struct {
+	Kind     LHSType
+	Name     string
+	Property string
 }
 
 type LHSIndex struct {

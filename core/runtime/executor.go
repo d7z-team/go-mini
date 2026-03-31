@@ -678,6 +678,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return nil
 		}
 		return e.handleEval(session, task.Node.(ast.Expr))
+	case OpDeclareVar:
+		data := task.Data.(*DeclareVarData)
+		if session.Stack.Depth == 1 && session.Stack.Scope == "global" {
+			if _, ok := session.Stack.MemoryPtr[data.Name]; ok {
+				return nil
+			}
+		}
+		return session.NewVar(data.Name, data.Kind)
 	case OpApplyBinary:
 		op := task.Data.(string)
 		r := session.ValueStack.Pop()
@@ -706,7 +714,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpJumpIf:
-		op := task.Data.(string)
+		op := ""
+		var rightTasks []Task
+		if data, ok := task.Data.(*JumpData); ok {
+			op = data.Operator
+			rightTasks = data.Right
+		} else {
+			op = task.Data.(string)
+		}
 		l := session.ValueStack.Peek()
 		lb, err := l.ToBool()
 		if err != nil {
@@ -730,7 +745,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Pop() // Discard Left
 		// Push a task to evaluate Right and ensure it's converted to Bool
 		session.TaskStack = append(session.TaskStack, Task{Op: OpApplyUnary, Data: "ToBool"}) // a pseudo unary to enforce bool
-		session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: task.Node.(ast.Expr)})
+		if len(rightTasks) > 0 {
+			session.TaskStack = append(session.TaskStack, rightTasks...)
+		} else {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpEval, Node: task.Node.(ast.Expr)})
+		}
 		return nil
 	case OpLoadVar:
 		name := task.Data.(string)
@@ -862,6 +881,41 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.ValueStack.Push(nil)
 			return nil
 		}
+		if lhsData, ok := task.Data.(*LHSData); ok {
+			switch lhsData.Kind {
+			case LHSTypeEnv:
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSEnv{Name: lhsData.Name}})
+				return nil
+			case LHSTypeIndex:
+				idx := session.ValueStack.Pop()
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				if idx != nil && idx.VType == TypeCell {
+					idx = idx.Ref.(*Cell).Value
+				}
+				if idx != nil {
+					idx = idx.Copy()
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSIndex{Obj: obj, Index: idx}})
+				return nil
+			case LHSTypeMember:
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: lhsData.Property}})
+				return nil
+			case LHSTypeStar:
+				obj := session.ValueStack.Pop()
+				if obj != nil && obj.VType == TypeCell {
+					obj = obj.Ref.(*Cell).Value
+				}
+				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: "__deref__"}})
+				return nil
+			}
+		}
 		if lhsType, ok := task.Data.(LHSType); ok {
 			switch lhsType {
 			case LHSTypeIndex:
@@ -900,8 +954,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
-		n := task.Node.(*ast.IndexExpr)
-		if n.Multi {
+		data, hasData := task.Data.(*IndexData)
+		multi := hasData && data.Multi
+		if !hasData {
+			n := task.Node.(*ast.IndexExpr)
+			multi = n.Multi
+		}
+		if multi {
 			if obj == nil || isEmptyVar(obj) {
 				return errors.New("index access on nil")
 			}
@@ -923,7 +982,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
 					tuple[1] = NewBool(false)
 				}
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+				resultType := ast.GoMiniType("")
+				if hasData {
+					resultType = data.ResultType
+				} else {
+					resultType = task.Node.(*ast.IndexExpr).GetBase().Type
+				}
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
 				return nil
 			}
 			// Fallback for Any
@@ -959,16 +1024,34 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Pop()
 		return nil
 	case OpComposite:
-		n := task.Node.(*ast.CompositeExpr)
-		isArray := n.Type.IsArray()
-		isMap := n.Type.IsMap()
+		var (
+			typ     ast.GoMiniType
+			entries []CompositeEntryData
+		)
+		if data, ok := task.Data.(*CompositeData); ok {
+			typ = data.Type
+			entries = data.Entries
+		} else {
+			n := task.Node.(*ast.CompositeExpr)
+			typ = n.Type
+			entries = make([]CompositeEntryData, len(n.Values))
+			for i, v := range n.Values {
+				if ident, ok := v.Key.(*ast.IdentifierExpr); ok {
+					entries[i].IdentKey = string(ident.Name)
+				} else if v.Key != nil {
+					entries[i].HasExprKey = true
+				}
+			}
+		}
+		isArray := typ.IsArray()
+		isMap := typ.IsMap()
 
 		if isArray {
-			elemType, _ := n.Type.ReadArrayItemType()
-			res := make([]*Var, len(n.Values))
+			elemType, _ := typ.ReadArrayItemType()
+			res := make([]*Var, len(entries))
 			// ValueStack has [V1, V2, ..., VN]
 			// So we must pop in reverse: V_N first, then V_N-1...
-			for i := len(n.Values) - 1; i >= 0; i-- {
+			for i := len(entries) - 1; i >= 0; i-- {
 				val := session.ValueStack.Pop()
 				if val != nil && (val.Type == "" || val.Type == "Any") {
 					val.Type = elemType
@@ -982,21 +1065,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 				res[i] = val
 			}
-			session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: n.Type})
+			session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ})
 			return nil
 		}
 
 		res := make(map[string]*Var)
 		var valType ast.GoMiniType
 		if isMap {
-			_, valType, _ = n.Type.GetMapKeyValueTypes()
+			_, valType, _ = typ.GetMapKeyValueTypes()
 		}
 
 		// Values are pushed as [..., K_i, V_i]
 		// So we must pop in reverse order: V_i then K_i
-		for i := len(n.Values) - 1; i >= 0; i-- {
-			v := n.Values[i]
-
+		for i := len(entries) - 1; i >= 0; i-- {
 			val := session.ValueStack.Pop()
 			if val != nil && isMap && (val.Type == "" || val.Type == "Any") {
 				val.Type = valType
@@ -1010,30 +1091,36 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 
 			keyName := ""
-			var keyVal *Var
-			if v.Key != nil {
-				if ident, ok := v.Key.(*ast.IdentifierExpr); ok {
-					keyName = string(ident.Name)
-				} else {
-					keyVal = session.ValueStack.Pop()
-					keyName = keyVal.Str
-					if keyVal.VType == TypeInt {
-						keyName = strconv.FormatInt(keyVal.I64, 10)
-					}
+			if entries[i].IdentKey != "" {
+				keyName = entries[i].IdentKey
+			} else if entries[i].HasExprKey {
+				keyVal := session.ValueStack.Pop()
+				keyName = keyVal.Str
+				if keyVal.VType == TypeInt {
+					keyName = strconv.FormatInt(keyVal.I64, 10)
 				}
 			}
 
 			res[keyName] = val
 		}
-		session.ValueStack.Push(&Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: n.Type})
+		session.ValueStack.Push(&Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: typ})
 		return nil
 	case OpSlice:
-		n := task.Node.(*ast.SliceExpr)
 		var high, low, obj *Var
-		if n.High != nil {
+		hasLow := false
+		hasHigh := false
+		if data, ok := task.Data.(*SliceData); ok {
+			hasLow = data.HasLow
+			hasHigh = data.HasHigh
+		} else {
+			n := task.Node.(*ast.SliceExpr)
+			hasLow = n.Low != nil
+			hasHigh = n.High != nil
+		}
+		if hasHigh {
 			high = session.ValueStack.Pop()
 		}
-		if n.Low != nil {
+		if hasLow {
 			low = session.ValueStack.Pop()
 		}
 		obj = session.ValueStack.Pop()
@@ -1045,21 +1132,31 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpCall:
-		n := task.Node.(*ast.CallExprStmt)
 		var name string
 		var receiver *Var
 		var mod *VMModule
 		var callable *Var
+		data, hasData := task.Data.(*CallData)
+		argCount := 0
+		if hasData {
+			argCount = data.ArgCount
+		} else {
+			argCount = len(task.Node.(*ast.CallExprStmt).Args)
+		}
 
 		// Arguments are on top of stack, then Func eval result (if any)
 		// Let's pop arguments first!
-		args := make([]*Var, len(n.Args))
-		for i := len(n.Args) - 1; i >= 0; i-- {
+		args := make([]*Var, argCount)
+		for i := argCount - 1; i >= 0; i-- {
 			args[i] = session.ValueStack.Pop()
 		}
 
 		// 处理变长参数展开 f(args...)
-		if n.Ellipsis && len(args) > 0 {
+		ellipsis := hasData && data.Ellipsis
+		if !hasData {
+			ellipsis = task.Node.(*ast.CallExprStmt).Ellipsis
+		}
+		if ellipsis && len(args) > 0 {
 			last := args[len(args)-1]
 			if last != nil && last.VType == TypeArray {
 				arr := last.Ref.(*VMArray)
@@ -1079,18 +1176,16 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
-		if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
-			name = string(ident.Name)
-		} else if ident, ok := n.Func.(*ast.IdentifierExpr); ok {
-			name = string(ident.Name)
-		} else if member, ok := n.Func.(*ast.MemberExpr); ok {
+		switch {
+		case hasData && data.Mode == CallByName:
+			name = data.Name
+		case hasData && data.Mode == CallByMember:
 			obj := session.ValueStack.Pop()
 			if obj == nil {
 				return errors.New("calling method on nil object")
 			}
 
-			// Use unified member evaluation logic
-			res, err := e.evalMemberExprDirect(session, obj, string(member.Property))
+			res, err := e.evalMemberExprDirect(session, obj, data.Name)
 			if err != nil {
 				return err
 			}
@@ -1104,14 +1199,50 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 			} else if res != nil && res.VType == TypeModule {
 				mod = res.Ref.(*VMModule)
-				name = string(member.Property)
+				name = data.Name
 			} else if res != nil {
 				callable = res
 			} else {
-				return fmt.Errorf("property %s is not a callable function on %v", member.Property, obj.VType)
+				return fmt.Errorf("property %s is not a callable function on %v", data.Name, obj.VType)
 			}
-		} else {
+		case hasData && data.Mode == CallByValue:
 			callable = session.ValueStack.Pop()
+		default:
+			n := task.Node.(*ast.CallExprStmt)
+			if ident, ok := n.Func.(*ast.ConstRefExpr); ok {
+				name = string(ident.Name)
+			} else if ident, ok := n.Func.(*ast.IdentifierExpr); ok {
+				name = string(ident.Name)
+			} else if member, ok := n.Func.(*ast.MemberExpr); ok {
+				obj := session.ValueStack.Pop()
+				if obj == nil {
+					return errors.New("calling method on nil object")
+				}
+
+				// Use unified member evaluation logic
+				res, err := e.evalMemberExprDirect(session, obj, string(member.Property))
+				if err != nil {
+					return err
+				}
+
+				if res != nil && res.VType == TypeClosure {
+					if mv, ok := res.Ref.(*VMMethodValue); ok {
+						receiver = mv.Receiver
+						name = mv.Method
+					} else {
+						callable = res
+					}
+				} else if res != nil && res.VType == TypeModule {
+					mod = res.Ref.(*VMModule)
+					name = string(member.Property)
+				} else if res != nil {
+					callable = res
+				} else {
+					return fmt.Errorf("property %s is not a callable function on %v", member.Property, obj.VType)
+				}
+			} else {
+				callable = session.ValueStack.Pop()
+			}
 		}
 
 		if name != "" && mod == nil && callable == nil {
@@ -1132,6 +1263,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		copy(finalArgs[offset:], args)
 
+		if hasData {
+			return e.invokeCall(session, nil, name, receiver, mod, callable, finalArgs)
+		}
+		n := task.Node.(*ast.CallExprStmt)
 		return e.invokeCall(session, n, name, receiver, mod, callable, finalArgs)
 	case OpCallBoundary:
 		dataMap, ok := task.Data.(map[string]interface{})
@@ -1163,22 +1298,33 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpAssert:
 		val := session.ValueStack.Pop()
-		n := task.Node.(*ast.TypeAssertExpr)
-		targetType := n.Type
+		targetType := ast.GoMiniType("")
+		multi := false
+		resultType := ast.GoMiniType("")
+		if data, ok := task.Data.(*AssertData); ok {
+			targetType = data.TargetType
+			multi = data.Multi
+			resultType = data.ResultType
+		} else {
+			n := task.Node.(*ast.TypeAssertExpr)
+			targetType = n.Type
+			multi = n.Multi
+			resultType = n.GetBase().Type
+		}
 		res, err := e.CheckSatisfaction(val, targetType)
-		if n.Multi {
+		if multi {
 			if err != nil {
 				// 返回 (nil, false)
 				tuple := make([]*Var, 2)
 				tuple[0] = nil
 				tuple[1] = NewBool(false)
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
 			} else {
 				// 返回 (res, true)
 				tuple := make([]*Var, 2)
 				tuple[0] = res
 				tuple[1] = NewBool(true)
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: n.GetBase().Type})
+				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
 			}
 			return nil
 		}
@@ -1519,6 +1665,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if err != nil {
 			return err
 		}
+		if data, ok := task.Data.(*BranchData); ok {
+			if b {
+				session.TaskStack = append(session.TaskStack, data.Then...)
+			} else if len(data.Else) > 0 {
+				session.TaskStack = append(session.TaskStack, data.Else...)
+			}
+			return nil
+		}
 		n := task.Node.(*ast.IfStmt)
 		if b {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpExec, Node: n.Body})
@@ -1541,8 +1695,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpImportInit:
-		n := task.Node.(*ast.ImportExpr)
-		path := strings.Trim(n.Path, " \t\n\r")
+		path := ""
+		if data, ok := task.Data.(*ImportInitData); ok {
+			path = data.Path
+		} else {
+			n := task.Node.(*ast.ImportExpr)
+			path = n.Path
+		}
+		path = strings.Trim(path, " \t\n\r")
 		if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
 			return fmt.Errorf("invalid import path: %s", path)
 		}
@@ -1744,6 +1904,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 }
 
 func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interface{}) error {
+	if session.Debugger == nil {
+		if tasks, ok := e.lowerStmtTasks(stmt, data); ok {
+			session.TaskStack = append(session.TaskStack, tasks...)
+			return nil
+		}
+	}
 	switch n := stmt.(type) {
 	case *ast.BadStmt:
 		return errors.New("cannot execute BadStmt: AST contains syntax errors")
@@ -1848,6 +2014,12 @@ func (e *Executor) handleExec(session *StackContext, stmt ast.Stmt, data interfa
 }
 
 func (e *Executor) evalLHS(session *StackContext, lhsExpr ast.Expr) error {
+	if session.Debugger == nil {
+		if tasks, ok := e.lowerLHSTasks(lhsExpr); ok {
+			session.TaskStack = append(session.TaskStack, tasks...)
+			return nil
+		}
+	}
 	switch lhs := lhsExpr.(type) {
 	case *ast.IdentifierExpr:
 		session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSEnv{Name: string(lhs.Name)}})
@@ -2084,6 +2256,12 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 }
 
 func (e *Executor) handleEval(session *StackContext, expr ast.Expr) error {
+	if session.Debugger == nil {
+		if tasks, ok := e.lowerExprTasks(expr); ok {
+			session.TaskStack = append(session.TaskStack, tasks...)
+			return nil
+		}
+	}
 	switch n := expr.(type) {
 	case *ast.BadExpr:
 		return errors.New("cannot evaluate BadExpr: AST contains syntax errors")

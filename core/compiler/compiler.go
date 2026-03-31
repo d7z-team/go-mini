@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -24,6 +25,7 @@ type Artifact struct {
 	Source          string
 	Program         *ast.ProgramStmt
 	GlobalInitOrder []ast.Ident
+	Bytecode        *bytecode.Program
 }
 
 func New(cfg Config) *Compiler {
@@ -42,6 +44,20 @@ func (a *Artifact) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot marshal empty artifact")
 	}
 	return json.MarshalIndent(a.Program, prefix, indent)
+}
+
+func (a *Artifact) MarshalBytecodeJSON() ([]byte, error) {
+	if a == nil || a.Bytecode == nil {
+		return nil, fmt.Errorf("cannot marshal empty bytecode artifact")
+	}
+	return json.Marshal(a.Bytecode)
+}
+
+func (a *Artifact) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, error) {
+	if a == nil || a.Bytecode == nil {
+		return nil, fmt.Errorf("cannot marshal empty bytecode artifact")
+	}
+	return json.MarshalIndent(a.Bytecode, prefix, indent)
 }
 
 func (c *Compiler) CompileSource(filename, code string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
@@ -116,6 +132,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		return artifact, semanticCtx, orderErr
 	}
 	artifact.GlobalInitOrder = order
+	artifact.Bytecode = buildBytecode(artifact.Program, artifact.GlobalInitOrder)
 	return artifact, semanticCtx, nil
 }
 

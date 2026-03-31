@@ -252,7 +252,13 @@ func (p *MiniProgram) GetAst() *ast.ProgramStmt {
 }
 
 func (p *MiniProgram) Disassemble() string {
-	if p == nil || p.executor == nil {
+	if p == nil {
+		return "; Error: invalid or uninitialized program\n"
+	}
+	if p.Compiled != nil && p.Compiled.Bytecode != nil {
+		return p.Compiled.Bytecode.Disassemble()
+	}
+	if p.executor == nil {
 		return "; Error: invalid or uninitialized program\n"
 	}
 	return p.executor.Disassemble()
