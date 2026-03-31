@@ -11,9 +11,11 @@ func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
 		return tasks
 	}
 	base := node.GetBase()
+	_, isStmt := node.(ast.Stmt)
 	ref := &SourceRef{
-		ID:   base.ID,
-		Meta: base.Meta,
+		ID:          base.ID,
+		Meta:        base.Meta,
+		IsStmtStart: isStmt,
 	}
 	if base.Loc != nil {
 		ref.File = base.Loc.F
@@ -21,14 +23,27 @@ func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
 		ref.Col = base.Loc.C
 	}
 	for i := range tasks {
-		tasks[i].Source = ref
+		if tasks[i].Source == nil {
+			tasks[i].Source = ref
+		}
 	}
 	return tasks
 }
 
+func (e *Executor) TasksForStmt(stmt ast.Stmt) []Task {
+	return e.tasksForStmt(stmt, nil)
+}
+
 func (e *Executor) tasksForStmt(stmt ast.Stmt, data interface{}) []Task {
 	if tasks, ok := e.lowerStmtTasks(stmt, data); ok {
-		return e.setSource(tasks, stmt)
+		res := e.setSource(tasks, stmt)
+		// Prepend OpLineStep for debugging
+		if stmt != nil {
+			lineStep := Task{Op: OpLineStep}
+			lineStep = e.setSource([]Task{lineStep}, stmt)[0]
+			res = append(res, lineStep)
+		}
+		return res
 	}
 	panic(fmt.Sprintf("runtime lowering missing for stmt %T", stmt))
 }
@@ -51,6 +66,8 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}) ([]Task, bool
 	switch n := stmt.(type) {
 	case nil:
 		return nil, true
+	case *ast.BadStmt:
+		return nil, false // Will be handled by the caller or panic
 	case *ast.BlockStmt:
 		out := make([]Task, 0)
 		if !n.Inner {
@@ -270,6 +287,8 @@ func (e *Executor) lowerExprTasks(expr ast.Expr) ([]Task, bool) {
 	switch n := expr.(type) {
 	case nil:
 		return []Task{{Op: OpPush}}, true
+	case *ast.BadExpr:
+		return nil, false
 	case *ast.LiteralExpr:
 		val, err := e.evalLiteralDirect(n)
 		if err != nil {
@@ -408,7 +427,12 @@ func (e *Executor) lowerExprTasks(expr ast.Expr) ([]Task, bool) {
 func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr) ([]Task, bool) {
 	switch lhs := lhsExpr.(type) {
 	case nil:
-		return []Task{{Op: OpEvalLHS}}, true
+		return []Task{{
+			Op: OpEvalLHS,
+			Data: &LHSData{
+				Kind: LHSTypeNone,
+			},
+		}}, true
 	case *ast.IdentifierExpr:
 		return []Task{{
 			Op: OpEvalLHS,

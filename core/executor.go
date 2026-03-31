@@ -384,6 +384,12 @@ func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
 	return e.registry
 }
 
+func (e *MiniExecutor) Executor() *runtime.Executor {
+	// We need a dummy executor or create one from a dummy program to access the methods
+	executor, _ := e.prepareExecutor(&ast.ProgramStmt{})
+	return executor
+}
+
 // RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
 func (e *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
 	e.mu.Lock()

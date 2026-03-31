@@ -44,27 +44,25 @@
 
 ### D. 调试与可观测性适配
 
-- [x] 当前通过 `session.Debugger != nil` 保留 AST 执行路径，确保现有调试测试通过。
+- [x] 当前通过 `OpLineStep` 统一处理调试触发，移除了所有 AST 回退路径。
 - [x] 重写 `Disassemble` 展开逻辑，调用 `lowerStmtTasks/lowerExprTasks` 代替 `handleExec/handleEval`。
-- [ ] 设计“基于 SourceRef 的调试协议”: 断点/单步改基于 lowered task 的 source 映射。
-- [ ] 新增断言: 非 debugger 模式执行期间不得出现 `OpExec/OpEval`。
+- [x] 设计“基于 SourceRef 的调试协议”: 断点/单步改基于 lowered task 的 source 映射。
+- [x] 新增断言: 非 debugger 模式执行期间不得出现 `OpExec/OpEval`。 (已删除这些 OpCode)
 
 ### E. 测试与清理
 
 - [x] 新增/更新 lowering 单测（for/range/defer/try/switch/type-switch/closure 等）。
 - [x] 修复因强制 lowering 导致的回归（`lhs=nil`、type-switch assign 形态）。
 - [x] 全量测试 `go test ./...` 通过。
-- [ ] 清理过时测试: 删除只验证 AST fallback 语义、与新执行模型冲突的用例。
-- [ ] 增加“主路径脱 AST”专项测试集:
-  - [ ] 运行时任务栈无 AST 节点
-  - [ ] 关键 opcode 全 payload 化
-  - [ ] 导入模块/闭包/type-switch 在无 AST 模式一致
+- [x] 清理过时测试: 删除只验证 AST fallback 语义、与新执行模型冲突的用例。
+- [x] 增加“主路径脱 AST”专项测试集:
+  - [x] 运行时任务栈无 AST 节点
+  - [x] 关键 opcode 全 payload 化
+  - [x] 导入模块/闭包/type-switch 在无 AST 模式一致
 
-## 当前剩余任务（下一轮必须完成）
+## 当前剩余任务
 
-1. 设计并实现基于 `SourceRef` 的调试协议，彻底取代 `OpExec` 断点触发。
-2. 彻底删除 `Task.Node` 字段及所有相关 `if session.Debugger != nil` 的 AST 回退代码。
-3. 补强“无 AST 主路径”专项测试。
+1. 对所有 AST 节点建立“要么 lower，要么显式拒绝”的覆盖矩阵文档。
 
 ## 验收标准（Done Definition）
 

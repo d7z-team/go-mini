@@ -28,9 +28,11 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	dbg := debugger.NewSession()
 	dbg.AddBreakpoint(5) // Break at 'b := 20'
 
-	ctx := debugger.WithDebugger(context.Background(), dbg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
 
-	done := make(chan error)
+	done := make(chan error, 1)
 	go func() {
 		done <- prog.Execute(ctx)
 	}()
@@ -38,6 +40,7 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	// Wait for breakpoint at line 5
 	select {
 	case event := <-dbg.EventChan:
+		t.Logf("Hit breakpoint at line %d", event.Loc.L)
 		if event.Loc.L != 5 {
 			t.Fatalf("Expected break at line 5, got %d", event.Loc.L)
 		}
@@ -49,14 +52,15 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 		}
 		// Send step into
 		dbg.CommandChan <- debugger.CmdStepInto
-	case <-time.After(2 * time.Second):
-		t.Fatal("Timeout waiting for breakpoint")
+	case <-ctx.Done():
+		t.Fatal("Timeout waiting for breakpoint at line 5")
 	}
 
 	// Step repeatedly until we reach line 6
 	for {
 		select {
 		case event := <-dbg.EventChan:
+			t.Logf("Stepped to line %d", event.Loc.L)
 			if event.Loc.L == 6 {
 				if event.Variables["b"] != "20" {
 					t.Fatalf("Expected b=20, got %v", event.Variables["b"])
@@ -64,18 +68,24 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 				// Reached line 6, continue
 				dbg.CommandChan <- debugger.CmdContinue
 				goto WAIT_DONE
-			} else {
+			} else if event.Loc.L == 5 {
 				// Keep stepping if still on line 5
 				dbg.CommandChan <- debugger.CmdStepInto
+			} else {
+				t.Fatalf("Unexpected step to line %d", event.Loc.L)
 			}
-		case <-time.After(2 * time.Second):
-			t.Fatal("Timeout waiting for step")
+		case <-ctx.Done():
+			t.Fatal("Timeout waiting for step to line 6")
 		}
 	}
 WAIT_DONE:
-	err = <-done
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case err = <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for program completion")
 	}
 }
 
@@ -91,9 +101,11 @@ func TestDebugger_SnippetMode(t *testing.T) {
 	dbg := debugger.NewSession()
 	dbg.SetStepping(true) // 开启单步模式以观察每一行
 
-	ctx := debugger.WithDebugger(context.Background(), dbg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
 
-	done := make(chan error)
+	done := make(chan error, 1)
 	go func() {
 		done <- executor.Execute(ctx, code, nil)
 	}()
@@ -109,23 +121,28 @@ func TestDebugger_SnippetMode(t *testing.T) {
 					t.Fatalf("Expected x=100, got %v", event.Variables["x"])
 				}
 			}
-			dbg.CommandChan <- debugger.CmdStepInto
-		case <-time.After(100 * time.Millisecond):
+			// Check if we should continue
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+				goto DONE
+			default:
+				dbg.CommandChan <- debugger.CmdStepInto
+			}
+		case <-ctx.Done():
 			goto DONE
 		}
 	}
 DONE:
-	// Let it finish
-	dbg.SetStepping(false)
-	// Give a continue just in case it's blocked
+	// Ensure we read from done if we haven't already
 	select {
-	case dbg.CommandChan <- debugger.CmdContinue:
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
 	default:
-	}
-
-	err := <-done
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	if len(linesSeen) == 0 {
@@ -155,9 +172,11 @@ func TestDebugger_LoopExecution(t *testing.T) {
 	dbg := debugger.NewSession()
 	dbg.AddBreakpoint(6) // 在循环体内打断点
 
-	ctx := debugger.WithDebugger(context.Background(), dbg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
 
-	done := make(chan error)
+	done := make(chan error, 1)
 	go func() {
 		done <- prog.Execute(ctx)
 	}()
@@ -187,7 +206,7 @@ func TestDebugger_LoopExecution(t *testing.T) {
 			// 继续执行，直到下一次命中该断点
 			dbg.CommandChan <- debugger.CmdContinue
 
-		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
 			t.Fatalf("Timeout waiting for breakpoint in loop %d", loopCount)
 		}
 	}
@@ -224,7 +243,10 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-	ctx := debugger.WithDebugger(context.Background(), dbg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
 
 	done := make(chan error, 1)
 	go func() {
@@ -242,7 +264,7 @@ func TestDebugger_AnytimePause(t *testing.T) {
 		t.Logf("Successfully paused at line %d", event.Loc.L)
 		// 恢复执行
 		dbg.CommandChan <- debugger.CmdContinue
-	case <-time.After(2 * time.Second):
+	case <-ctx.Done():
 		t.Fatal("Timeout waiting for anytime pause")
 	}
 
@@ -254,7 +276,7 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	case event := <-dbg.EventChan:
 		t.Logf("Successfully paused second time at line %d", event.Loc.L)
 		dbg.CommandChan <- debugger.CmdContinue
-	case <-time.After(500 * time.Millisecond):
+	case <-ctx.Done():
 		t.Fatal("Timeout waiting for second anytime pause")
 	}
 

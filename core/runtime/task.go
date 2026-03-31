@@ -7,9 +7,7 @@ import (
 type OpCode int
 
 const (
-	OpExec OpCode = iota
-	OpEval
-	OpDeclareVar
+	OpDeclareVar OpCode = iota
 	OpEvalLHS
 	OpApplyBinary
 	OpApplyUnary
@@ -54,14 +52,11 @@ const (
 	OpAssert
 	OpPush
 	OpMakeClosure
+	OpLineStep
 )
 
 func (op OpCode) String() string {
 	switch op {
-	case OpExec:
-		return "EXEC"
-	case OpEval:
-		return "EVAL"
 	case OpDeclareVar:
 		return "DECLARE_VAR"
 	case OpEvalLHS:
@@ -152,6 +147,8 @@ func (op OpCode) String() string {
 		return "PUSH"
 	case OpMakeClosure:
 		return "MAKE_CLOSURE"
+	case OpLineStep:
+		return "LINE_STEP"
 	default:
 		return "UNKNOWN"
 	}
@@ -168,16 +165,16 @@ const (
 )
 
 type SourceRef struct {
-	ID   string
-	Meta string
-	File string
-	Line int
-	Col  int
+	ID          string
+	Meta        string
+	File        string
+	Line        int
+	Col         int
+	IsStmtStart bool
 }
 
 type Task struct {
 	Op     OpCode
-	Node   ast.Node // DEPRECATED: Use Source and Data instead
 	Source *SourceRef
 	Data   interface{}
 }
@@ -356,6 +353,7 @@ const (
 	LHSTypeIndex
 	LHSTypeMember
 	LHSTypeStar
+	LHSTypeNone
 )
 
 // LHS Descriptors

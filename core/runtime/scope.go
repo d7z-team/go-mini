@@ -733,50 +733,40 @@ func (ctx *StackContext) GenerateStackTrace(current *Task) []StackFrame {
 	var frames []StackFrame
 
 	// 1. Add current frame
-	if current != nil && current.Node != nil && current.Node.GetBase() != nil && current.Node.GetBase().Loc != nil {
-		loc := current.Node.GetBase().Loc
+	if current != nil && current.Source != nil {
 		funcName := "main"
 		if ctx.Stack != nil && ctx.Stack.Scope != "" {
 			funcName = ctx.Stack.Scope
 		}
 		frames = append(frames, StackFrame{
-			Filename: loc.F,
+			Filename: current.Source.File,
 			Function: funcName,
-			Line:     loc.L,
-			Column:   loc.C,
+			Line:     current.Source.Line,
+			Column:   current.Source.Col,
 		})
 	}
 
 	// 2. Reconstruct previous frames from TaskStack
 	for i := len(ctx.TaskStack) - 1; i >= 0; i-- {
 		task := ctx.TaskStack[i]
-		if task.Op == OpCallBoundary {
-			data, ok := task.Data.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			callNode, _ := data["callNode"].(ast.Node)
-			if callNode != nil && callNode.GetBase() != nil && callNode.GetBase().Loc != nil {
-				loc := callNode.GetBase().Loc
-				callerName := "main"
-				for j := i - 1; j >= 0; j-- {
-					if ctx.TaskStack[j].Op == OpCallBoundary {
-						if d2, ok := ctx.TaskStack[j].Data.(map[string]interface{}); ok {
-							if name, ok := d2["name"].(string); ok && name != "" {
-								callerName = name
-							}
-							break
+		if task.Op == OpCallBoundary && task.Source != nil {
+			callerName := "main"
+			for j := i - 1; j >= 0; j-- {
+				if ctx.TaskStack[j].Op == OpCallBoundary {
+					if d2, ok := ctx.TaskStack[j].Data.(map[string]interface{}); ok {
+						if name, ok := d2["name"].(string); ok && name != "" {
+							callerName = name
 						}
+						break
 					}
 				}
-				frames = append(frames, StackFrame{
-					Filename: loc.F,
-					Function: callerName,
-					Line:     loc.L,
-					Column:   loc.C,
-				})
 			}
+			frames = append(frames, StackFrame{
+				Filename: task.Source.File,
+				Function: callerName,
+				Line:     task.Source.Line,
+				Column:   task.Source.Col,
+			})
 		}
 		if len(frames) > 20 {
 			break

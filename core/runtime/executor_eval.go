@@ -981,9 +981,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	// 5. Internal Function Call
 	if f, ok := e.program.Functions[ast.Ident(name)]; ok {
 		bodyTasks := e.tasksForStmt(f.Body, nil)
-		if session.Debugger != nil {
-			bodyTasks = []Task{{Op: OpExec, Node: f.Body}}
-		}
 		return e.setupFuncCall(session, name, &DoCallData{
 			Name:         name,
 			FunctionType: f.FunctionType,

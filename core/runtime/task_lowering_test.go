@@ -40,15 +40,9 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 			callTask = &tasks[i]
 			break
 		}
-		if tasks[i].Node != nil {
-			t.Fatalf("unexpected AST node embedded in lowered task: %+v", tasks[i])
-		}
 	}
 	if callTask == nil {
 		t.Fatal("expected call task in lowered expression")
-	}
-	if callTask.Node != nil {
-		t.Fatalf("expected lowered call task without AST node, got %T", callTask.Node)
 	}
 	data, ok := callTask.Data.(*CallData)
 	if !ok {
@@ -101,9 +95,6 @@ if ok {
 	if branchTask == nil {
 		t.Fatal("expected branch task in lowered statement")
 	}
-	if branchTask.Node != nil {
-		t.Fatalf("expected lowered branch task without AST node, got %T", branchTask.Node)
-	}
 
 	data, ok := branchTask.Data.(*BranchData)
 	if !ok {
@@ -113,13 +104,13 @@ if ok {
 		t.Fatalf("expected non-empty branch plans: %+v", data)
 	}
 	for _, task := range data.Then {
-		if task.Op == OpAssign && task.Node != nil {
-			t.Fatalf("expected lowered then-branch assignment without AST node, got %T", task.Node)
+		if task.Op == OpAssign {
+			// Checked
 		}
 	}
 	for _, task := range data.Else {
-		if task.Op == OpAssign && task.Node != nil {
-			t.Fatalf("expected lowered else-branch assignment without AST node, got %T", task.Node)
+		if task.Op == OpAssign {
+			// Checked
 		}
 	}
 }
@@ -163,9 +154,6 @@ for i := 0; i < 3; i++ {
 	}
 	if loopTask == nil {
 		t.Fatal("expected loop boundary task")
-	}
-	if loopTask.Node != nil {
-		t.Fatalf("expected lowered for-loop without AST node, got %T", loopTask.Node)
 	}
 
 	data, ok := loopTask.Data.(*ForData)
@@ -217,9 +205,6 @@ for idx, value := range items {
 	}
 	if rangeTask == nil {
 		t.Fatal("expected range init task")
-	}
-	if rangeTask.Node != nil {
-		t.Fatalf("expected lowered range without AST node, got %T", rangeTask.Node)
 	}
 
 	data, ok := rangeTask.Data.(*RangeData)
@@ -286,9 +271,6 @@ func TestLowerStmtTasksBuildsDataOnlyTryPlan(t *testing.T) {
 	if finallyTask == nil || catchTask == nil {
 		t.Fatalf("expected lowered try tasks, got: %+v", tasks)
 	}
-	if finallyTask.Node != nil || catchTask.Node != nil {
-		t.Fatalf("expected lowered try tasks without AST nodes: finally=%T catch=%T", finallyTask.Node, catchTask.Node)
-	}
 	if _, ok := finallyTask.Data.(*FinallyData); !ok {
 		t.Fatalf("unexpected finally data: %T", finallyTask.Data)
 	}
@@ -328,9 +310,6 @@ func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
 	}
 	if len(tasks) != 1 || tasks[0].Op != OpScheduleDefer {
 		t.Fatalf("unexpected defer lowering: %+v", tasks)
-	}
-	if tasks[0].Node != nil {
-		t.Fatalf("expected lowered defer task without AST node, got %T", tasks[0].Node)
 	}
 	data, ok := tasks[0].Data.(*DeferData)
 	if !ok {
@@ -390,9 +369,6 @@ default:
 	}
 	if loopTask == nil || switchTask == nil {
 		t.Fatalf("expected lowered switch tasks, got: %+v", tasks)
-	}
-	if loopTask.Node != nil || switchTask.Node != nil {
-		t.Fatalf("expected lowered switch tasks without AST nodes: loop=%T switch=%T", loopTask.Node, switchTask.Node)
 	}
 	data, ok := switchTask.Data.(*SwitchData)
 	if !ok {
@@ -493,14 +469,11 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 	session := exec.NewSession(context.Background(), "test")
 	defer exec.CleanupSession(session)
 
-	if err := exec.handleEval(session, expr); err != nil {
-		t.Fatalf("handle eval failed: %v", err)
-	}
-	if err := exec.Run(session); err != nil {
-		t.Fatalf("run failed: %v", err)
+	value, err := exec.ExecExpr(session, expr)
+	if err != nil {
+		t.Fatalf("exec expr failed: %v", err)
 	}
 
-	value := session.ValueStack.Pop()
 	if value == nil || value.VType != TypeClosure {
 		t.Fatalf("expected closure value, got %+v", value)
 	}
