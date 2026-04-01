@@ -390,20 +390,24 @@ func (e *Executor) lookupGlobal(name ast.Ident) (*RuntimeGlobal, bool) {
 func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
 	oldTasks := ctx.TaskStack
 	oldValues := ctx.ValueStack
+	oldLHS := ctx.LHSStack
 
 	ctx.TaskStack = cloneTasks(plan)
 	ctx.ValueStack = &ValueStack{}
+	ctx.LHSStack = &LHSStack{}
 
 	err := e.Run(ctx)
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
+		ctx.LHSStack = oldLHS
 		return nil, err
 	}
 
 	res := ctx.ValueStack.Pop()
 	ctx.TaskStack = oldTasks
 	ctx.ValueStack = oldValues
+	ctx.LHSStack = oldLHS
 	return res, nil
 }
 
@@ -433,12 +437,13 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 	session := &StackContext{
 		Context:        ctx,
 		Executor:       e,
-		Stack:          &Stack{MemoryPtr: make(map[string]*Var), Scope: scope, Depth: 1},
+		Stack:          &Stack{MemoryPtr: make(map[string]*Var), Globals: make(map[string]*Var), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
 		ModuleCache:    make(map[string]*Var),
 		LoadingModules: make(map[string]bool),
 		Debugger:       debugger.GetDebugger(ctx),
 		TaskStack:      make([]Task, 0, 128),
 		ValueStack:     &ValueStack{},
+		LHSStack:       &LHSStack{},
 		UnwindMode:     UnwindNone,
 		resumeSignal:   make(chan struct{}, 1),
 	}
@@ -456,7 +461,6 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		session.Stack.AddDefer(func() { close(done) })
 	}
 
-	_ = session.AddVariable("nil", nil)
 	return session
 }
 
@@ -677,8 +681,10 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 	// Save old task stack and value stack
 	oldTasks := ctx.TaskStack
 	oldValues := ctx.ValueStack
+	oldLHS := ctx.LHSStack
 	ctx.TaskStack = nil
 	ctx.ValueStack = &ValueStack{}
+	ctx.LHSStack = &LHSStack{}
 
 	// Prepare the call
 	// If methodName is provided, treat callable as receiver
@@ -694,6 +700,7 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
+		ctx.LHSStack = oldLHS
 		return nil, err
 	}
 
@@ -702,6 +709,7 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
+		ctx.LHSStack = oldLHS
 		return nil, err
 	}
 
@@ -714,6 +722,7 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 	// Restore old stacks
 	ctx.TaskStack = oldTasks
 	ctx.ValueStack = oldValues
+	ctx.LHSStack = oldLHS
 	return res, nil
 }
 
@@ -757,12 +766,12 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 			val = &Var{VType: TypeAny, Type: "Any"}
 		}
 		// 确保变量已存储到内存中 (直接操作内存字典以避开 AddVariable 的 Copy 逻辑，适合初始化)
-		session.Stack.MemoryPtr[string(name)] = val
+		session.Stack.Globals[string(name)] = val
 	}
 
 	// 注入环境变量 (放到后面，允许覆盖脚本定义的同名全局变量)
 	for k, v := range env {
-		_ = session.AddVariable(k, v)
+		session.Stack.Globals[k] = v.Copy()
 	}
 
 	defer func() {
@@ -886,7 +895,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
 			if hasReturn {
-				res, _ := session.Load("__return__")
+				res, _ := session.LoadReturn()
 				session.ValueStack.Push(res)
 			}
 			session.Stack = oldStack
@@ -986,8 +995,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpDeclareVar:
 		data := task.Data.(*DeclareVarData)
+		if data.Sym.Kind == SymbolLocal {
+			return session.DeclareSymbol(data.Sym, data.Kind)
+		}
 		if session.Stack.Depth == 1 && session.Stack.Scope == "global" {
-			if _, ok := session.Stack.MemoryPtr[data.Name]; ok {
+			if _, ok := session.Stack.Globals[data.Name]; ok {
 				return nil
 			}
 		}
@@ -1054,16 +1066,28 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.TaskStack = append(session.TaskStack, rightTasks...)
 		return nil
 	case OpLoadVar:
-		var name string
+		var (
+			name string
+			sym  SymbolRef
+		)
 		switch data := task.Data.(type) {
 		case string:
 			name = data
 		case *LoadVarData:
 			name = data.Name
+			sym = data.Sym
 		default:
 			return fmt.Errorf("OpLoadVar missing LoadVarData")
 		}
-		v, err := session.Load(name)
+		var (
+			v   *Var
+			err error
+		)
+		if sym.Kind != SymbolUnknown {
+			v, err = session.LoadSymbol(sym)
+		} else {
+			v, err = session.Load(name)
+		}
 		if err != nil {
 			exec := session.Executor.(*Executor)
 			if exec.program != nil {
@@ -1085,6 +1109,40 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		session.ValueStack.Push(v)
 		return nil
+	case OpLoadLocal:
+		sym, ok := task.Data.(SymbolRef)
+		if !ok {
+			return fmt.Errorf("OpLoadLocal missing SymbolRef")
+		}
+		v, err := session.LoadSymbol(sym)
+		if err != nil {
+			return err
+		}
+		session.ValueStack.Push(v)
+		return nil
+	case OpLoadUpvalue:
+		sym, ok := task.Data.(SymbolRef)
+		if !ok {
+			return fmt.Errorf("OpLoadUpvalue missing SymbolRef")
+		}
+		v, err := session.LoadSymbol(sym)
+		if err != nil {
+			return err
+		}
+		session.ValueStack.Push(v)
+		return nil
+	case OpStoreLocal:
+		sym, ok := task.Data.(SymbolRef)
+		if !ok {
+			return fmt.Errorf("OpStoreLocal missing SymbolRef")
+		}
+		return session.StoreSymbol(sym, session.ValueStack.Pop())
+	case OpStoreUpvalue:
+		sym, ok := task.Data.(SymbolRef)
+		if !ok {
+			return fmt.Errorf("OpStoreUpvalue missing SymbolRef")
+		}
+		return session.StoreSymbol(sym, session.ValueStack.Pop())
 	case OpScopeEnter:
 		scopeName := task.Data.(string)
 		session.ScopeApply(scopeName)
@@ -1093,27 +1151,24 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ScopeExit()
 		return nil
 	case OpAssign:
-		val := session.ValueStack.Pop()
-		lhsDescVar := session.ValueStack.Pop()
-		if lhsDescVar == nil {
-			return nil
+		if session.LHSStack == nil {
+			session.LHSStack = &LHSStack{}
 		}
-		lhsDesc := lhsDescVar.Ref
-		return e.assignToLHSDesc(session, lhsDesc, val)
+		val := session.ValueStack.Pop()
+		lhs := session.LHSStack.Pop()
+		return e.storeAddress(session, lhs, val)
 	case OpDoCall:
 		call := task.Data.(*DoCallData)
 		return e.setupFuncCall(session, call.Name, call, call.Args, nil)
 	case OpMultiAssign:
+		if session.LHSStack == nil {
+			session.LHSStack = &LHSStack{}
+		}
 		lhsCount := task.Data.(int)
 		val := session.ValueStack.Pop()
 		descs := make([]interface{}, lhsCount)
 		for i := lhsCount - 1; i >= 0; i-- {
-			descVar := session.ValueStack.Pop()
-			if descVar != nil {
-				descs[i] = descVar.Ref
-			} else {
-				descs[i] = nil
-			}
+			descs[i] = session.LHSStack.Pop()
 		}
 
 		if val == nil {
@@ -1142,15 +1197,18 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		for i := 0; i < lhsCount; i++ {
-			if err := e.assignToLHSDesc(session, descs[i], elements[i]); err != nil {
+			if err := e.storeAddress(session, descs[i], elements[i]); err != nil {
 				return err
 			}
 		}
 		return nil
 	case OpIncDec:
+		if session.LHSStack == nil {
+			session.LHSStack = &LHSStack{}
+		}
 		op := task.Data.(string)
-		lhsDesc := session.ValueStack.Pop().Ref
-		return e.incDecLHSDesc(session, lhsDesc, op)
+		lhs := session.LHSStack.Pop()
+		return e.updateAddress(session, lhs, op)
 	case OpReturn:
 		count := task.Data.(int)
 		if count > 1 {
@@ -1160,12 +1218,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				elements[i] = session.ValueStack.Pop()
 			}
 			res := &Var{VType: TypeArray, Ref: &VMArray{Data: elements}}
-			_ = session.Store("__return__", res)
+			_ = session.StoreReturn(res)
 		} else if count == 1 {
 			// 单返回值
 			res := session.ValueStack.Pop()
 			if res != nil {
-				_ = session.Store("__return__", res)
+				_ = session.StoreReturn(res)
 			}
 		}
 		session.UnwindMode = UnwindReturn
@@ -1180,45 +1238,36 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpEvalLHS:
+		if session.LHSStack == nil {
+			session.LHSStack = &LHSStack{}
+		}
 		if task.Data == nil {
-			session.ValueStack.Push(nil)
+			session.LHSStack.Push(nil)
 			return nil
 		}
 		if lhsData, ok := task.Data.(*LHSData); ok {
 			switch lhsData.Kind {
 			case LHSTypeEnv:
-				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSEnv{Name: lhsData.Name}})
+				session.LHSStack.Push(&LHSEnv{Name: lhsData.Name, Sym: lhsData.Sym})
 				return nil
 			case LHSTypeIndex:
-				idx := session.ValueStack.Pop()
-				obj := session.ValueStack.Pop()
-				if obj != nil && obj.VType == TypeCell {
-					obj = obj.Ref.(*Cell).Value
-				}
-				if idx != nil && idx.VType == TypeCell {
-					idx = idx.Ref.(*Cell).Value
-				}
+				idx := e.unwrapAddressVar(session.ValueStack.Pop())
+				obj := e.unwrapAddressVar(session.ValueStack.Pop())
 				if idx != nil {
 					idx = idx.Copy()
 				}
-				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSIndex{Obj: obj, Index: idx}})
+				session.LHSStack.Push(&LHSIndex{Obj: obj, Index: idx})
 				return nil
 			case LHSTypeMember:
-				obj := session.ValueStack.Pop()
-				if obj != nil && obj.VType == TypeCell {
-					obj = obj.Ref.(*Cell).Value
-				}
-				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: lhsData.Property}})
+				obj := e.unwrapAddressVar(session.ValueStack.Pop())
+				session.LHSStack.Push(&LHSMember{Obj: obj, Property: lhsData.Property})
 				return nil
 			case LHSTypeStar:
-				obj := session.ValueStack.Pop()
-				if obj != nil && obj.VType == TypeCell {
-					obj = obj.Ref.(*Cell).Value
-				}
-				session.ValueStack.Push(&Var{VType: TypeAny, Ref: &LHSMember{Obj: obj, Property: "__deref__"}})
+				obj := e.unwrapAddressVar(session.ValueStack.Pop())
+				session.LHSStack.Push(&LHSDeref{Target: obj})
 				return nil
 			case LHSTypeNone:
-				session.ValueStack.Push(nil)
+				session.LHSStack.Push(nil)
 				return nil
 			}
 		}
@@ -1454,7 +1503,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		if name != "" && mod == nil && callable == nil {
-			if v, err := session.Load(name); err == nil && v != nil {
+			loadTarget := data.Sym
+			if loadTarget.Kind == SymbolUnknown {
+				loadTarget = SymbolRef{Name: name}
+			}
+			if v, err := session.LoadSymbol(loadTarget); err == nil && v != nil {
 				callable = v
 			}
 		}
@@ -1479,6 +1532,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		oldStack := dataMap["oldStack"].(*Stack)
 		hasReturn := dataMap["hasReturn"].(bool)
+		valueBase, _ := dataMap["valueBase"].(int)
+		lhsBase, _ := dataMap["lhsBase"].(int)
 
 		// Restore executor if saved (cross-module calls)
 		if oldExec, ok := dataMap["oldExec"]; ok {
@@ -1487,10 +1542,16 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		var retVal *Var
 		if hasReturn {
-			retVal, _ = session.Load("__return__")
+			retVal, _ = session.LoadReturn()
 		}
 
 		session.Stack = oldStack
+		if session.ValueStack != nil {
+			session.ValueStack.Truncate(valueBase)
+		}
+		if session.LHSStack != nil {
+			session.LHSStack.Truncate(lhsBase)
+		}
 
 		if hasReturn {
 			session.ValueStack.Push(retVal)
@@ -1591,34 +1652,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpForScopeEnter:
-		parentVars := session.Stack.MemoryPtr
-		session.ScopeApply("for_body")
-		for k, v := range parentVars {
-			val := v
-			if v != nil && v.VType == TypeCell {
-				val = v.Ref.(*Cell).Value
-			}
-			_ = session.AddVariable(k, val)
-		}
+		session.ScopeApplyLoopBody("for_body")
 		return nil
 	case OpForScopeExit:
-		bodyVars := session.Stack.MemoryPtr
-		parentVars := session.Stack.Parent.MemoryPtr
-		for k, v := range bodyVars {
-			if parentVar, ok := parentVars[k]; ok {
-				source := v
-				if v != nil && v.VType == TypeCell {
-					source = v.Ref.(*Cell).Value
-				}
-				dest := parentVar
-				if parentVar != nil && parentVar.VType == TypeCell {
-					dest = parentVar.Ref.(*Cell).Value
-				}
-				if dest != nil && source != nil {
-					copyVarData(dest, source)
-				}
-			}
-		}
+		session.SyncLoopScope()
 		session.ScopeExit()
 		return nil
 	case OpLoopContinue:
@@ -1632,6 +1669,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		rData := &RangeData{
 			Key:    data.Key,
 			Value:  data.Value,
+			KeySym: data.KeySym,
+			ValSym: data.ValSym,
 			Define: data.Define,
 			Body:   data.Body,
 			Obj:    obj,
@@ -1686,17 +1725,35 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ScopeApply("for_range_body")
 		if rData.Define {
 			if rData.Key != "" && rData.Key != "_" {
-				_ = session.AddVariable(rData.Key, key)
+				if rData.KeySym.Kind == SymbolLocal {
+					_ = session.DeclareSymbol(rData.KeySym, "Any")
+					_ = session.StoreSymbol(rData.KeySym, key)
+				} else {
+					_ = session.AddVariable(rData.Key, key)
+				}
 			}
 			if rData.Value != "" && rData.Value != "_" && val != nil {
-				_ = session.AddVariable(rData.Value, val)
+				if rData.ValSym.Kind == SymbolLocal {
+					_ = session.DeclareSymbol(rData.ValSym, "Any")
+					_ = session.StoreSymbol(rData.ValSym, val)
+				} else {
+					_ = session.AddVariable(rData.Value, val)
+				}
 			}
 		} else {
 			if rData.Key != "" && rData.Key != "_" {
-				_ = session.Store(rData.Key, key)
+				if rData.KeySym.Kind != SymbolUnknown {
+					_ = session.StoreSymbol(rData.KeySym, key)
+				} else {
+					_ = session.Store(rData.Key, key)
+				}
 			}
 			if rData.Value != "" && rData.Value != "_" && val != nil {
-				_ = session.Store(rData.Value, val)
+				if rData.ValSym.Kind != SymbolUnknown {
+					_ = session.StoreSymbol(rData.ValSym, val)
+				} else {
+					_ = session.Store(rData.Value, val)
+				}
 			}
 		}
 		return nil
@@ -1772,12 +1829,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpCatchScopeEnter:
 		var (
 			varName  string
+			varSym   SymbolRef
 			panicVar *Var
 		)
 		if data, ok := task.Data.(map[string]interface{}); ok {
 			catch, ok := data["catch"].(*CatchData)
 			if ok {
 				varName = catch.VarName
+				varSym = catch.Sym
 				panicVar = data["panic"].(*Var)
 			} else {
 				// Old map data format
@@ -1788,8 +1847,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		session.ScopeApply("catch")
 		if varName != "" {
-			_ = session.NewVar(varName, "Any")
-			_ = session.Store(varName, panicVar)
+			if varSym.Kind == SymbolLocal {
+				_ = session.DeclareSymbol(varSym, "Any")
+				_ = session.StoreSymbol(varSym, panicVar)
+			} else {
+				_ = session.NewVar(varName, "Any")
+				_ = session.Store(varName, panicVar)
+			}
 		}
 		return nil
 	case OpBranchIf:
@@ -1852,12 +1916,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				modSession := &StackContext{
 					Context:        session.Context,
 					Executor:       modExecutor,
-					Stack:          &Stack{MemoryPtr: make(map[string]*Var), Scope: "global", Depth: 1},
+					Stack:          &Stack{MemoryPtr: make(map[string]*Var), Globals: make(map[string]*Var), Frame: &SlotFrame{}, Scope: "global", Depth: 1},
 					StepLimit:      session.StepLimit,
 					StepCount:      session.StepCount,
 					ModuleCache:    session.ModuleCache,
 					LoadingModules: session.LoadingModules,
 					Debugger:       session.Debugger,
+					ValueStack:     &ValueStack{},
+					LHSStack:       &LHSStack{},
 				}
 
 				// Push Done task to current stack (restore context later)
@@ -1869,6 +1935,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 						OldStack:      session.Stack,
 						OldTaskStack:  session.TaskStack,
 						OldValueStack: session.ValueStack,
+						OldLHSStack:   session.LHSStack,
 						ModSession:    modSession,
 					},
 				})
@@ -1876,6 +1943,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				// Switch current session fields
 				session.Executor = modExecutor
 				session.Stack = modSession.Stack
+				session.ValueStack = modSession.ValueStack
+				session.LHSStack = modSession.LHSStack
 				session.UnwindMode = UnwindNone
 
 				// Push Global variables init
@@ -1966,7 +2035,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					Ref: &VMClosure{
 						FunctionType: fn.FunctionType,
 						BodyTasks:    cloneTasks(fn.BodyTasks),
-						Upvalues:     make(map[string]*Var),
+						UpvalueSlots: nil,
+						UpvalueNames: nil,
 						Context:      modSession,
 					},
 				}
@@ -1994,6 +2064,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.Stack = data.OldStack
 		session.TaskStack = data.OldTaskStack
 		session.ValueStack = data.OldValueStack
+		session.LHSStack = data.OldLHSStack
 		session.UnwindMode = UnwindNone
 
 		res := &Var{
@@ -2029,15 +2100,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		closure := &VMClosure{
 			FunctionType: data.FunctionType,
 			BodyTasks:    data.BodyTasks,
-			Upvalues:     make(map[string]*Var),
+			UpvalueSlots: make([]*Var, len(data.CaptureRefs)),
+			UpvalueNames: make([]string, len(data.CaptureRefs)),
 			Context:      clCtx,
 		}
-		for _, name := range data.CaptureNames {
-			cellVar, err := session.CaptureVar(name)
+		for i, capture := range data.CaptureRefs {
+			cellVar, err := session.CaptureSymbol(capture)
 			if err != nil {
-				return fmt.Errorf("failed to capture variable %s: %w", name, err)
+				return fmt.Errorf("failed to capture variable %s: %w", capture.Name, err)
 			}
-			closure.Upvalues[name] = cellVar
+			closure.UpvalueSlots[i] = cellVar
+			closure.UpvalueNames[i] = capture.Name
 		}
 		v := NewVar(ast.TypeClosure, TypeClosure)
 		v.Ref = closure
@@ -2134,135 +2207,123 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) boo
 	return false
 }
 
-func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op string) error {
-	switch desc := lhsDesc.(type) {
-	case *LHSEnv:
-		v, err := session.Load(desc.Name)
-		if err != nil {
-			return err
-		}
-		if v != nil {
-			if op == "++" {
-				v.I64++
+func (e *Executor) unwrapAddressVar(v *Var) *Var {
+	for v != nil {
+		switch v.VType {
+		case TypeCell:
+			v = v.Ref.(*Cell).Value
+		case TypeAny:
+			if inner, ok := v.Ref.(*Var); ok {
+				v = inner
+			} else if m, ok := v.Ref.(*VMMap); ok {
+				return &Var{VType: TypeMap, Ref: m, Type: v.Type}
+			} else if arr, ok := v.Ref.(*VMArray); ok {
+				return &Var{VType: TypeArray, Ref: arr, Type: v.Type}
+			} else if mod, ok := v.Ref.(*VMModule); ok {
+				return &Var{VType: TypeModule, Ref: mod, Type: v.Type}
 			} else {
-				v.I64--
+				return v
 			}
+		default:
+			return v
 		}
-		return nil
+	}
+	return nil
+}
+
+func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error) {
+	switch desc := lhs.(type) {
+	case nil:
+		return nil, nil
+	case *LHSEnv:
+		if desc.Sym.Kind != SymbolUnknown {
+			return session.LoadSymbol(desc.Sym)
+		}
+		return session.Load(desc.Name)
 	case *LHSIndex:
-		obj := desc.Obj
-		idx := desc.Index
+		obj := e.unwrapAddressVar(desc.Obj)
+		idx := e.unwrapAddressVar(desc.Index)
 		if obj == nil || idx == nil {
-			return nil
+			return nil, errors.New("index access on nil")
 		}
 		switch obj.VType {
-		case TypeMap:
-			m := obj.Ref.(*VMMap)
-			key := idx.Str
-			if idx.VType == TypeInt {
-				key = strconv.FormatInt(idx.I64, 10)
-			}
-			if val, exists := m.Data[key]; exists && val != nil {
-				if op == "++" {
-					val.I64++
-				} else {
-					val.I64--
-				}
-			}
 		case TypeArray:
 			arr := obj.Ref.(*VMArray)
 			i := int(idx.I64)
-			if i >= 0 && i < len(arr.Data) {
-				if val := arr.Data[i]; val != nil {
-					if op == "++" {
-						val.I64++
-					} else {
-						val.I64--
-					}
-				}
+			if i < 0 || i >= len(arr.Data) {
+				return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 			}
-		case TypeAny:
-			if obj.Ref != nil {
-				if inner, ok := obj.Ref.(*Var); ok {
-					return e.incDecLHSDesc(session, &LHSIndex{Obj: inner, Index: idx}, op)
-				}
-				if m, ok := obj.Ref.(*VMMap); ok {
-					key := idx.Str
-					if idx.VType == TypeInt {
-						key = strconv.FormatInt(idx.I64, 10)
-					}
-					if val, exists := m.Data[key]; exists && val != nil {
-						if op == "++" {
-							val.I64++
-						} else {
-							val.I64--
-						}
-					}
-				} else if arr, ok := obj.Ref.(*VMArray); ok {
-					i := int(idx.I64)
-					if i >= 0 && i < len(arr.Data) {
-						if val := arr.Data[i]; val != nil {
-							if op == "++" {
-								val.I64++
-							} else {
-								val.I64--
-							}
-						}
-					}
-				}
+			return e.unwrapAddressVar(arr.Data[i]), nil
+		case TypeMap:
+			m := obj.Ref.(*VMMap)
+			key, err := e.varToMapKey(idx)
+			if err != nil {
+				return nil, err
 			}
+			return e.unwrapAddressVar(m.Data[key]), nil
 		}
-		return nil
+		return nil, fmt.Errorf("type %v does not support index access", obj.VType)
 	case *LHSMember:
-		obj := desc.Obj
+		obj := e.unwrapAddressVar(desc.Obj)
 		if obj == nil {
-			return nil
+			return nil, errors.New("member access on nil object")
 		}
 		switch obj.VType {
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			if val, exists := m.Data[desc.Property]; exists && val != nil {
-				if op == "++" {
-					val.I64++
-				} else {
-					val.I64--
-				}
+			return e.unwrapAddressVar(m.Data[desc.Property]), nil
+		case TypeModule:
+			mod := obj.Ref.(*VMModule)
+			if mod.Context == nil {
+				return nil, &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
 			}
-		case TypeAny:
-			if obj.Ref != nil {
-				if inner, ok := obj.Ref.(*Var); ok {
-					return e.incDecLHSDesc(session, &LHSMember{Obj: inner, Property: desc.Property}, op)
-				}
-				if m, ok := obj.Ref.(*VMMap); ok {
-					if val, exists := m.Data[desc.Property]; exists && val != nil {
-						if op == "++" {
-							val.I64++
-						} else {
-							val.I64--
-						}
-					}
-				}
+			return mod.Context.Load(desc.Property)
+		case TypeHandle:
+			if obj.Ref == nil {
+				return nil, errors.New("member access on nil pointer")
 			}
+			ref, ok := obj.Ref.(*Var)
+			if !ok {
+				return nil, errors.New("type Handle does not support member access")
+			}
+			return e.loadAddress(session, &LHSMember{Obj: ref, Property: desc.Property})
 		}
-		return nil
+		return nil, fmt.Errorf("type %v does not support member access", obj.VType)
+	case *LHSDeref:
+		target := e.unwrapAddressVar(desc.Target)
+		if target == nil {
+			return nil, errors.New("dereference of nil pointer")
+		}
+		if target.VType != TypeHandle {
+			return nil, fmt.Errorf("type %v does not support dereference", target.VType)
+		}
+		if target.Ref == nil {
+			return nil, errors.New("dereference of nil pointer")
+		}
+		ref, ok := target.Ref.(*Var)
+		if !ok {
+			return nil, errors.New("type Handle does not support dereference")
+		}
+		return e.unwrapAddressVar(ref), nil
 	}
-	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhsDesc), IsPanic: true}
+	return nil, &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
 }
 
-func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, val *Var) error {
-	if lhsDesc == nil {
+func (e *Executor) storeAddress(session *StackContext, lhs interface{}, val *Var) error {
+	switch desc := lhs.(type) {
+	case nil:
 		return nil
-	}
-	switch desc := lhsDesc.(type) {
 	case *LHSEnv:
+		if desc.Sym.Kind != SymbolUnknown {
+			return session.StoreSymbol(desc.Sym, val)
+		}
 		return session.Store(desc.Name, val)
 	case *LHSIndex:
-		obj := desc.Obj
-		idx := desc.Index
+		obj := e.unwrapAddressVar(desc.Obj)
+		idx := e.unwrapAddressVar(desc.Index)
 		if obj == nil || idx == nil {
 			return errors.New("assignment to nil object or index")
 		}
-
 		switch obj.VType {
 		case TypeArray:
 			arr := obj.Ref.(*VMArray)
@@ -2280,35 +2341,13 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			}
 			m.Data[key] = val
 			return nil
-		case TypeAny:
-			if obj.Ref != nil {
-				if inner, ok := obj.Ref.(*Var); ok {
-					return e.assignToLHSDesc(session, &LHSIndex{Obj: inner, Index: idx}, val)
-				}
-				if m, ok := obj.Ref.(*VMMap); ok {
-					key, err := e.varToMapKey(idx)
-					if err != nil {
-						return err
-					}
-					m.Data[key] = val
-					return nil
-				} else if arr, ok := obj.Ref.(*VMArray); ok {
-					i := int(idx.I64)
-					if i >= 0 && i < len(arr.Data) {
-						arr.Data[i] = val
-						return nil
-					}
-					return &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
-				}
-			}
 		}
 		return fmt.Errorf("type %v does not support index assignment", obj.VType)
 	case *LHSMember:
-		obj := desc.Obj
+		obj := e.unwrapAddressVar(desc.Obj)
 		if obj == nil {
 			return errors.New("member assignment on nil object")
 		}
-
 		switch obj.VType {
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
@@ -2321,31 +2360,53 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			}
 			return mod.Context.Store(desc.Property, val)
 		case TypeHandle:
-			if obj.Ref != nil {
-				if valVar, ok := obj.Ref.(*Var); ok {
-					if desc.Property == "__deref__" {
-						copyVarData(valVar, val)
-						return nil
-					}
-					return e.assignToLHSDesc(session, &LHSMember{Obj: valVar, Property: desc.Property}, val)
-				}
+			if obj.Ref == nil {
+				return errors.New("member assignment on nil pointer")
 			}
-			return errors.New("type Handle does not support member assignment")
-		case TypeAny:
-			if obj.Ref != nil {
-				if inner, ok := obj.Ref.(*Var); ok {
-					return e.assignToLHSDesc(session, &LHSMember{Obj: inner, Property: desc.Property}, val)
-				}
-				if m, ok := obj.Ref.(*VMMap); ok {
-					m.Data[desc.Property] = val
-					return nil
-				}
+			ref, ok := obj.Ref.(*Var)
+			if !ok {
+				return errors.New("type Handle does not support member assignment")
 			}
-			return errors.New("unsupported Any wrapper for member assignment")
+			return e.storeAddress(session, &LHSMember{Obj: ref, Property: desc.Property}, val)
 		}
 		return fmt.Errorf("type %v does not support member assignment", obj.VType)
+	case *LHSDeref:
+		target := e.unwrapAddressVar(desc.Target)
+		if target == nil {
+			return errors.New("assignment through nil pointer")
+		}
+		if target.VType != TypeHandle || target.Ref == nil {
+			return errors.New("type Handle does not support dereference assignment")
+		}
+		ref, ok := target.Ref.(*Var)
+		if !ok {
+			return errors.New("type Handle does not support dereference assignment")
+		}
+		copyVarData(ref, val)
+		return nil
 	}
-	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhsDesc), IsPanic: true}
+	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+}
+
+func (e *Executor) updateAddress(session *StackContext, lhs interface{}, op string) error {
+	addr, ok := lhs.(LHSValue)
+	if !ok && lhs != nil {
+		return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+	}
+	current, err := e.loadAddress(session, addr)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return nil
+	}
+	next := current.Copy()
+	if op == "++" {
+		next.I64++
+	} else {
+		next.I64--
+	}
+	return e.storeAddress(session, lhs, next)
 }
 
 func (e *Executor) Run(session *StackContext) error {
@@ -2565,6 +2626,8 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 				dataStr = cd.Name
 			} else if ld, ok := task.Data.(*LoadVarData); ok {
 				dataStr = ld.Name
+			} else if sym, ok := task.Data.(SymbolRef); ok {
+				dataStr = fmt.Sprintf("%s[%d]", sym.Name, sym.Slot)
 			} else {
 				dataStr = fmt.Sprintf("%v", task.Data)
 			}
@@ -2589,6 +2652,14 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 		case OpCall:
 			if cd, ok := task.Data.(*CallData); ok {
 				comment = "Call " + cd.Name
+			}
+		case OpLoadLocal, OpLoadUpvalue:
+			if sym, ok := task.Data.(SymbolRef); ok {
+				comment = fmt.Sprintf("Load %s slot %d", sym.Name, sym.Slot)
+			}
+		case OpStoreLocal, OpStoreUpvalue:
+			if sym, ok := task.Data.(SymbolRef); ok {
+				comment = fmt.Sprintf("Store %s slot %d", sym.Name, sym.Slot)
 			}
 		case OpAssign:
 			comment = "Assignment"
@@ -2627,10 +2698,12 @@ func (e *Executor) GetProgram() *ast.ProgramStmt {
 func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	oldTasks := session.TaskStack
 	oldValues := session.ValueStack
+	oldLHS := session.LHSStack
 	oldUnwind := session.UnwindMode
 
 	session.TaskStack = []Task{}
 	session.ValueStack = &ValueStack{}
+	session.LHSStack = &LHSStack{}
 	session.UnwindMode = UnwindNone
 	if session.ModuleCache == nil {
 		session.ModuleCache = make(map[string]*Var)
@@ -2647,6 +2720,7 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 
 	session.TaskStack = oldTasks
 	session.ValueStack = oldValues
+	session.LHSStack = oldLHS
 	session.UnwindMode = oldUnwind
 	return err
 }
@@ -2654,10 +2728,12 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, error) {
 	oldTasks := ctx.TaskStack
 	oldValues := ctx.ValueStack
+	oldLHS := ctx.LHSStack
 	oldUnwind := ctx.UnwindMode
 
 	ctx.TaskStack = []Task{{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}}}
 	ctx.ValueStack = &ValueStack{}
+	ctx.LHSStack = &LHSStack{}
 	ctx.UnwindMode = UnwindNone
 	if ctx.ModuleCache == nil {
 		ctx.ModuleCache = make(map[string]*Var)
@@ -2674,6 +2750,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 
 	ctx.TaskStack = oldTasks
 	ctx.ValueStack = oldValues
+	ctx.LHSStack = oldLHS
 	ctx.UnwindMode = oldUnwind
 	return res, err
 }

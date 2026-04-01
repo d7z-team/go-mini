@@ -41,6 +41,10 @@ const (
 	OpSlice
 	OpMember
 	OpLoadVar
+	OpLoadLocal
+	OpLoadUpvalue
+	OpStoreLocal
+	OpStoreUpvalue
 	OpResumeUnwind
 	OpImportInit
 	OpImportDone
@@ -125,6 +129,14 @@ func (op OpCode) String() string {
 		return "MEMBER"
 	case OpLoadVar:
 		return "LOAD_VAR"
+	case OpLoadLocal:
+		return "LOAD_LOCAL"
+	case OpLoadUpvalue:
+		return "LOAD_UPVALUE"
+	case OpStoreLocal:
+		return "STORE_LOCAL"
+	case OpStoreUpvalue:
+		return "STORE_UPVALUE"
 	case OpResumeUnwind:
 		return "RESUME_UNWIND"
 	case OpImportInit:
@@ -272,6 +284,7 @@ type FinallyData struct {
 
 type CatchData struct {
 	VarName string
+	Sym     SymbolRef
 	Body    []Task
 }
 
@@ -311,6 +324,8 @@ type DoCallData struct {
 type RangeData struct {
 	Key    string
 	Value  string
+	KeySym SymbolRef
+	ValSym SymbolRef
 	Define bool
 	Body   []Task
 	Obj    *Var
@@ -325,6 +340,7 @@ type ImportData struct {
 	OldStack      *Stack
 	OldTaskStack  []Task
 	OldValueStack *ValueStack
+	OldLHSStack   *LHSStack
 	ModSession    *StackContext
 }
 
@@ -361,6 +377,59 @@ func (vs *ValueStack) Clear() {
 	vs.data = vs.data[:0]
 }
 
+func (vs *ValueStack) Truncate(n int) {
+	if n < 0 {
+		n = 0
+	}
+	if n > len(vs.data) {
+		return
+	}
+	vs.data = vs.data[:n]
+}
+
+// LHSStack stores assignment targets separately from expression values.
+type LHSStack struct {
+	data []LHSValue
+}
+
+func (ls *LHSStack) Push(v LHSValue) {
+	ls.data = append(ls.data, v)
+}
+
+func (ls *LHSStack) Pop() LHSValue {
+	if len(ls.data) == 0 {
+		return nil
+	}
+	v := ls.data[len(ls.data)-1]
+	ls.data = ls.data[:len(ls.data)-1]
+	return v
+}
+
+func (ls *LHSStack) Peek() LHSValue {
+	if len(ls.data) == 0 {
+		return nil
+	}
+	return ls.data[len(ls.data)-1]
+}
+
+func (ls *LHSStack) Len() int {
+	return len(ls.data)
+}
+
+func (ls *LHSStack) Clear() {
+	ls.data = ls.data[:0]
+}
+
+func (ls *LHSStack) Truncate(n int) {
+	if n < 0 {
+		n = 0
+	}
+	if n > len(ls.data) {
+		return
+	}
+	ls.data = ls.data[:n]
+}
+
 // Data structures for Task Data field
 
 // LHS resolution type
@@ -377,7 +446,17 @@ const (
 // LHS Descriptors
 type LHSEnv struct {
 	Name string
+	Sym  SymbolRef
 }
+
+type LHSValue interface {
+	isLHSValue()
+}
+
+func (*LHSEnv) isLHSValue()    {}
+func (*LHSIndex) isLHSValue()  {}
+func (*LHSMember) isLHSValue() {}
+func (*LHSDeref) isLHSValue()  {}
 
 type LHSData struct {
 	Kind     LHSType
@@ -406,6 +485,10 @@ type LHSIndex struct {
 type LHSMember struct {
 	Obj      *Var
 	Property string
+}
+
+type LHSDeref struct {
+	Target *Var
 }
 
 // Assignment Data

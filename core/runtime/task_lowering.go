@@ -132,6 +132,31 @@ func (s *loweringScope) resolveOrImplicit(name string) SymbolRef {
 	return SymbolRef{Name: name, Kind: SymbolGlobal, Slot: -1}
 }
 
+func loadTasksForSymbol(sym SymbolRef) []Task {
+	switch sym.Kind {
+	case SymbolLocal:
+		return []Task{{Op: OpLoadLocal, Data: sym}}
+	case SymbolUpvalue:
+		return []Task{{Op: OpLoadUpvalue, Data: sym}}
+	default:
+		return []Task{{Op: OpLoadVar, Data: &LoadVarData{Name: sym.Name, Sym: sym}}}
+	}
+}
+
+func storeTasksForSymbol(sym SymbolRef) []Task {
+	switch sym.Kind {
+	case SymbolLocal:
+		return []Task{{Op: OpStoreLocal, Data: sym}}
+	case SymbolUpvalue:
+		return []Task{{Op: OpStoreUpvalue, Data: sym}}
+	default:
+		return []Task{
+			{Op: OpAssign},
+			{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeEnv, Name: sym.Name, Sym: sym}},
+		}
+	}
+}
+
 func predeclareInnerBlockBindings(stmt ast.Stmt, scope *loweringScope) {
 	if stmt == nil || scope == nil {
 		return
@@ -296,6 +321,21 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if n == nil {
 			return nil, true
 		}
+		if _, ok := data.(*Var); !ok {
+			if ident, ok := n.LHS.(*ast.IdentifierExpr); ok && ident != nil {
+				sym := scope.resolveOrImplicit(string(ident.Name))
+				switch sym.Kind {
+				case SymbolLocal:
+					out := []Task{{Op: OpStoreLocal, Data: sym}}
+					out = append(out, e.tasksForExprInScope(n.Value, scope)...)
+					return out, true
+				case SymbolUpvalue:
+					out := []Task{{Op: OpStoreUpvalue, Data: sym}}
+					out = append(out, e.tasksForExprInScope(n.Value, scope)...)
+					return out, true
+				}
+			}
+		}
 		out := []Task{{Op: OpAssign}}
 		if v, ok := data.(*Var); ok {
 			out = append(out, Task{Op: OpPush, Data: v})
@@ -354,12 +394,32 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			return nil, true
 		}
 		loopScope := scope.childBlock()
+		initTasks := make([]Task, 0)
+		if n.Init != nil {
+			initStmt, ok := n.Init.(ast.Stmt)
+			if !ok {
+				return nil, false
+			}
+			initTasks = e.tasksForStmtInScope(initStmt, nil, loopScope)
+		}
+		bodyScope := loopScope.childBlock()
 		bodyStmt, ok := n.Body.(ast.Stmt)
 		if !ok {
 			return nil, false
 		}
+		copyIn := make([]Task, 0)
+		copyBack := make([]Task, 0)
+		for name, outerSym := range loopScope.bindings {
+			if outerSym.Kind == SymbolLocal {
+				innerSym := bodyScope.declare(name)
+				copyIn = append(copyIn, storeTasksForSymbol(innerSym)...)
+				copyIn = append(copyIn, loadTasksForSymbol(outerSym)...)
+				copyBack = append(copyBack, storeTasksForSymbol(outerSym)...)
+				copyBack = append(copyBack, loadTasksForSymbol(innerSym)...)
+			}
+		}
 		loop := &ForData{
-			Body: e.tasksForStmtInScope(bodyStmt, nil, loopScope),
+			Body: append(append(copyBack, e.tasksForStmtInScope(bodyStmt, nil, bodyScope)...), copyIn...),
 		}
 		if n.Cond != nil {
 			loop.Cond = e.tasksForExprInScope(n.Cond, loopScope)
@@ -375,13 +435,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			{Op: OpScopeExit},
 			{Op: OpLoopBoundary, Data: loop},
 		}
-		if n.Init != nil {
-			initStmt, ok := n.Init.(ast.Stmt)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, e.tasksForStmtInScope(initStmt, nil, loopScope)...)
-		}
+		out = append(out, initTasks...)
 		out = append(out, Task{Op: OpScopeEnter, Data: "for"})
 		return out, true
 	case *ast.RangeStmt:
@@ -390,22 +444,28 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		}
 		rangeScope := scope.childBlock()
 		var keySym, valueSym SymbolRef
-		if n.Define {
-			if n.Key != "" {
+		if n.Key != "" {
+			if n.Define {
 				keySym = rangeScope.declare(string(n.Key))
+			} else {
+				keySym = scope.resolveOrImplicit(string(n.Key))
 			}
-			if n.Value != "" {
+		}
+		if n.Value != "" {
+			if n.Define {
 				valueSym = rangeScope.declare(string(n.Value))
+			} else {
+				valueSym = scope.resolveOrImplicit(string(n.Value))
 			}
 		}
 		rData := &RangeData{
 			Key:    string(n.Key),
 			Value:  string(n.Value),
+			KeySym: keySym,
+			ValSym: valueSym,
 			Define: n.Define,
 			Body:   e.tasksForStmtInScope(n.Body, nil, rangeScope),
 		}
-		_ = keySym
-		_ = valueSym
 		out := []Task{{Op: OpRangeInit, Data: rData}}
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
@@ -426,6 +486,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			}
 			out = append(out, Task{Op: OpCatchBoundary, Data: &CatchData{
 				VarName: string(n.Catch.VarName),
+				Sym:     catchScope.resolveOrImplicit(string(n.Catch.VarName)),
 				Body:    e.tasksForStmtInScope(n.Catch.Body, nil, catchScope),
 			}})
 		}
@@ -565,7 +626,15 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		if n == nil {
 			return []Task{{Op: OpPush}}, true
 		}
-		return []Task{{Op: OpLoadVar, Data: &LoadVarData{Name: string(n.Name), Sym: scope.resolveOrImplicit(string(n.Name))}}}, true
+		sym := scope.resolveOrImplicit(string(n.Name))
+		switch sym.Kind {
+		case SymbolLocal:
+			return []Task{{Op: OpLoadLocal, Data: sym}}, true
+		case SymbolUpvalue:
+			return []Task{{Op: OpLoadUpvalue, Data: sym}}, true
+		default:
+			return []Task{{Op: OpLoadVar, Data: &LoadVarData{Name: string(n.Name), Sym: sym}}}, true
+		}
 	case *ast.ConstRefExpr:
 		if n == nil {
 			return []Task{{Op: OpPush}}, true

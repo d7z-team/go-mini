@@ -223,6 +223,11 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 			for root.Parent != nil {
 				root = root.Parent
 			}
+			if root.Globals != nil {
+				for k, v := range root.Globals {
+					session.Stack.Globals[k] = v
+				}
+			}
 			if root.MemoryPtr != nil {
 				for k, v := range root.MemoryPtr {
 					session.Stack.MemoryPtr[k] = v

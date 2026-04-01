@@ -81,17 +81,23 @@
 - [x] **补充符号解析异常场景测试**: 已覆盖 shadowing、分支内声明、for/range/catch 局部变量、typed-nil AST 边界。
 
 ### M. 运行时栈帧重构
-- [ ] **新增 `OpLoadLocal` / `OpStoreLocal`**。
-- [ ] **新增 `OpLoadUpvalue` / `OpStoreUpvalue`**。
-- [ ] **将 `Scope` 主存储从 `map[string]*Var` 迁移为 `[]*Var` 数组布局**。
-- [ ] **保留调试名表**: 仅调试/LSP/错误报告保留 slot->name 映射。
-- [ ] **重构 `CaptureVar/Load/Store/NewVar`**: 逐步从名字查找迁移到 slot 访问。
-- [ ] **让 runtime 真正消费 `SymbolRef`**: 当前 `LoadVarData/DeclareVarData/LHSData/CallData/ClosureData` 已带符号元信息，但执行仍按名字路径运行。
+- [x] **新增 `OpLoadLocal` / `OpStoreLocal`**。
+- [x] **新增 `OpLoadUpvalue` / `OpStoreUpvalue`**。
+- [x] **将根作用域全局绑定迁移到专用 global store**: session root/global 已使用独立 `Globals` 仓库，避免继续把全局变量塞进通用 `MemoryPtr`。
+- [x] **将 `Scope` 主存储从 `map[string]*Var` 迁移为 `[]*Var` 数组布局**: locals/upvalues/return 已全部落到 `SlotFrame` 数组布局，globals 落到 root `Globals` 仓库，`MemoryPtr` 仅保留兼容名字绑定。
+- [x] **清理 `MemoryPtr` / `SlotFrame` 双写同步**: local/upvalue/param/return/global 已不再镜像双写，`MemoryPtr` 只剩非索引化兼容绑定仓库。
+- [x] **移除参数的名字别名主依赖**: 参数 slot 已成为主路径，名字查找仅通过 `SlotFrame` 名表兜底。
+- [x] **保留调试名表**: 已建立 `SlotFrame` 的 slot->name 与 name->slot 索引，供调试/兼容查找使用。
+- [x] **统一调试导出到 `SlotFrame` 名表**: debugger 变量导出已优先走 `SlotFrame` 名表，`MemoryPtr` 仅保留 global/import/module 兼容回退。
+- [x] **重构 `CaptureVar/Load/Store/NewVar`**: 现有名字 API 已统一优先走 `SlotFrame` 名表与 slot/upvalue，`MemoryPtr` 仅保留 global/import/module 兼容路径。
+- [x] **收敛特殊作用域绑定到 slot**: `range`/`catch`/`__return__`/参数/`nil` 与 root globals 已接入 slot/builtin/global-store 主路径，module session 也复用同一套 root/global store 规则。
+- [x] **让 runtime 真正消费 `SymbolRef`**: `LoadVarData/DeclareVarData/LHSData/CallData/ClosureData` 已接入 slot/upvalue 主路径，名字查找仅保留兼容兜底。
 
 ### N. 闭包与调用链路收口
-- [ ] **`VMClosure.Upvalues` 改为索引结构**，不再用 `map[string]*Var`。
-- [ ] **函数入参与返回值走固定 frame 布局**。
-- [ ] **评估并收敛 `ValueStack` 与 call frame 的职责边界**。
+- [x] **`VMClosure.Upvalues` 改为索引结构**，不再用 `map[string]*Var`。
+- [x] **移除 closure/runtime 对名字型 upvalue map 的主依赖**: closure 已仅保留 `UpvalueSlots + UpvalueNames`。
+- [x] **函数入参与返回值走固定 frame 布局**。
+- [x] **评估并收敛 `ValueStack` 与 call frame 的职责边界**: `CallBoundary` 已记录并恢复 `valueBase/lhsBase`，临时 LHS 状态已从 `ValueStack` 分离为独立 `LHSStack`。
 
 ---
 
@@ -99,8 +105,8 @@
 **目标**: 去掉当前赋值路径中的“值栈 + LHS 描述符 + Any 包装”混杂状态，简化寻址与更新逻辑。**
 
 ### O. 左值与寻址模型重构
-- [ ] **引入专门的 `LHSStack` 或 `Address` 模型**，彻底分离“表达式值”与“赋值目标”。
-- [ ] **`OpEvalLHS` 不再往 `ValueStack` 压入 `TypeAny` 包装描述符**。
+- [x] **引入专门的 `LHSStack` 或 `Address` 模型**，彻底分离“表达式值”与“赋值目标”。
+- [x] **`OpEvalLHS` 不再往 `ValueStack` 压入 `TypeAny` 包装描述符**。
 - [ ] **抽出统一 `resolveAddress/loadAddress/storeAddress/updateAddress` 原语**。
 - [ ] **合并 `Assignment` 与 `IncDec` 寻址路径**，减少重复实现。
 

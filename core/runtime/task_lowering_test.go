@@ -46,6 +46,25 @@ func visitLoweredTasks(tasks []Task, visit func(Task)) {
 	}
 }
 
+func taskLoadSymbol(task Task) (string, SymbolKind, bool) {
+	switch task.Op {
+	case OpLoadVar:
+		load, ok := task.Data.(*LoadVarData)
+		if !ok {
+			return "", SymbolUnknown, false
+		}
+		return load.Name, load.Sym.Kind, true
+	case OpLoadLocal, OpLoadUpvalue:
+		sym, ok := task.Data.(SymbolRef)
+		if !ok {
+			return "", SymbolUnknown, false
+		}
+		return sym.Name, sym.Kind, true
+	default:
+		return "", SymbolUnknown, false
+	}
+}
+
 func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 	exec, err := NewExecutor(&ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
@@ -562,15 +581,18 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 			if decl.Name == "y" && decl.Sym.Kind == SymbolLocal {
 				sawLocalDecl = true
 			}
-		case OpLoadVar:
-			load := task.Data.(*LoadVarData)
-			switch load.Name {
+		case OpLoadVar, OpLoadLocal, OpLoadUpvalue:
+			name, kind, ok := taskLoadSymbol(task)
+			if !ok {
+				continue
+			}
+			switch name {
 			case "x":
-				sawParamLoad = load.Sym.Kind == SymbolLocal
+				sawParamLoad = kind == SymbolLocal
 			case "y":
-				sawLocalLoad = load.Sym.Kind == SymbolLocal
+				sawLocalLoad = kind == SymbolLocal
 			case "g":
-				sawGlobalLoad = load.Sym.Kind == SymbolGlobal
+				sawGlobalLoad = kind == SymbolGlobal
 			}
 		case OpCall:
 			call := task.Data.(*CallData)
@@ -618,13 +640,15 @@ for _, item := range []int64{1} {
 
 	var sawValueLocal, sawItemLocal bool
 	visitLoweredTasks(tasks, func(task Task) {
-		if data, ok := task.Data.(*LoadVarData); ok {
-			if data.Name == "value" && data.Sym.Kind == SymbolLocal {
-				sawValueLocal = true
-			}
-			if data.Name == "item" && data.Sym.Kind == SymbolLocal {
-				sawItemLocal = true
-			}
+		name, kind, ok := taskLoadSymbol(task)
+		if !ok {
+			return
+		}
+		if name == "value" && kind == SymbolLocal {
+			sawValueLocal = true
+		}
+		if name == "item" && kind == SymbolLocal {
+			sawItemLocal = true
 		}
 	})
 
@@ -671,14 +695,14 @@ println(value)
 			t.Fatal("expected statement to lower")
 		}
 		visitLoweredTasks(tasks, func(task Task) {
-			load, ok := task.Data.(*LoadVarData)
-			if !ok || load.Name != "value" {
+			name, kind, ok := taskLoadSymbol(task)
+			if !ok || name != "value" {
 				return
 			}
-			if load.Sym.Kind == SymbolLocal {
+			if kind == SymbolLocal {
 				sawLocalShadow = true
 			}
-			if load.Sym.Kind == SymbolGlobal {
+			if kind == SymbolGlobal {
 				sawGlobalValue = true
 			}
 		})
@@ -706,8 +730,8 @@ println(value)
 	}
 	var sawCatchLocal bool
 	visitLoweredTasks(tasks, func(task Task) {
-		load, ok := task.Data.(*LoadVarData)
-		if ok && load.Name == "err" && load.Sym.Kind == SymbolLocal {
+		name, kind, ok := taskLoadSymbol(task)
+		if ok && name == "err" && kind == SymbolLocal {
 			sawCatchLocal = true
 		}
 	})

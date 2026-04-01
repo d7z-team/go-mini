@@ -1031,6 +1031,12 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 }
 
 func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallData, args []*Var, closure *VMClosure) error {
+	if session.ValueStack == nil {
+		session.ValueStack = &ValueStack{}
+	}
+	if session.LHSStack == nil {
+		session.LHSStack = &LHSStack{}
+	}
 	old := session.Stack
 	oldExec := session.Executor
 	ft := ast.FunctionType{}
@@ -1071,6 +1077,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	newStack := &Stack{
 		Parent:    root,
 		MemoryPtr: make(map[string]*Var),
+		Frame:     &SlotFrame{},
 		Scope:     name,
 		Depth:     newDepth,
 	}
@@ -1079,26 +1086,26 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 
 	// Inject captured variables
 	if closure != nil {
-		for k, v := range closure.Upvalues {
-			_ = session.AddVariable(k, v)
-		}
+		newStack.Frame.Upvalues = append(newStack.Frame.Upvalues, closure.UpvalueSlots...)
+		newStack.Frame.UpvalueNames = append(newStack.Frame.UpvalueNames, closure.UpvalueNames...)
 	}
 
 	// Inject params
 	for i, p := range ft.Params {
-		_ = session.NewVar(string(p.Name), p.Type)
+		paramSym := SymbolRef{Name: string(p.Name), Kind: SymbolLocal, Slot: i}
+		_ = session.DeclareSymbol(paramSym, p.Type)
 		if ft.Variadic && i == len(ft.Params)-1 {
 			var variadicArgs []*Var
 			if i < len(args) {
 				variadicArgs = args[i:]
 			}
-			_ = session.Store(string(p.Name), &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
+			_ = session.StoreSymbol(paramSym, &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
 		} else if i < len(args) && args[i] != nil {
-			_ = session.Store(string(p.Name), args[i])
+			_ = session.StoreSymbol(paramSym, args[i])
 		}
 	}
 	if !ft.Return.IsVoid() {
-		_ = session.NewVar("__return__", ft.Return)
+		_ = session.InitReturn(ft.Return)
 	}
 
 	// Push CallBoundary
@@ -1108,6 +1115,8 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			"oldStack":  old,
 			"oldExec":   oldExec,
 			"hasReturn": !ft.Return.IsVoid(),
+			"valueBase": session.ValueStack.Len(),
+			"lhsBase":   session.LHSStack.Len(),
 		},
 	})
 	// Push Defers execution

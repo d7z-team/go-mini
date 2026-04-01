@@ -126,8 +126,9 @@ type Cell struct {
 type VMClosure struct {
 	FunctionType ast.FunctionType
 	BodyTasks    []Task
-	Upvalues     map[string]*Var // Captured environment variables (should be TypeCell)
-	Context      *StackContext   // 闭包所属的母上下文
+	UpvalueSlots []*Var
+	UpvalueNames []string
+	Context      *StackContext // 闭包所属的母上下文
 }
 
 type VMMethodValue struct {
@@ -425,9 +426,24 @@ func NewBytes(v []byte) *Var {
 	return res
 }
 
+type SlotFrame struct {
+	Locals       []*Var
+	LocalNames   []string
+	LocalIndex   map[string]int
+	Upvalues     []*Var
+	UpvalueNames []string
+	UpvalueIndex map[string]int
+	Return       *Var
+	ReturnName   string
+}
+
 type Stack struct {
 	Parent    *Stack
 	MemoryPtr map[string]*Var
+	Globals   map[string]*Var
+	Frame     *SlotFrame
+	FrameBase *SlotFrame
+	FrameSync int
 	Scope     string
 	interrupt string
 	Depth     int
@@ -481,6 +497,7 @@ type StackContext struct {
 	// 迭代执行器状态 (Iterative Executor State)
 	TaskStack  []Task
 	ValueStack *ValueStack
+	LHSStack   *LHSStack
 	UnwindMode UnwindMode
 
 	// resumeSignal is used to unblock the execution loop after a pause.
@@ -537,6 +554,40 @@ func (s *Stack) DumpVariables() map[string]string {
 	result := make(map[string]string)
 	curr := s
 	for curr != nil {
+		if curr.Frame != nil {
+			for i, name := range curr.Frame.LocalNames {
+				if name == "" {
+					continue
+				}
+				if _, exists := result[name]; exists {
+					continue
+				}
+				if i < len(curr.Frame.Locals) && curr.Frame.Locals[i] != nil {
+					result[name] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Locals[i]).Interface())
+				}
+			}
+			for i, name := range curr.Frame.UpvalueNames {
+				if name == "" {
+					continue
+				}
+				if _, exists := result[name]; exists {
+					continue
+				}
+				if i < len(curr.Frame.Upvalues) && curr.Frame.Upvalues[i] != nil {
+					result[name] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Upvalues[i]).Interface())
+				}
+			}
+			if curr.Frame.Return != nil && curr.Frame.ReturnName != "" {
+				if _, exists := result[curr.Frame.ReturnName]; !exists {
+					result[curr.Frame.ReturnName] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Return).Interface())
+				}
+			}
+		}
+		for name, variable := range curr.Globals {
+			if _, exists := result[name]; !exists {
+				result[name] = fmt.Sprintf("%v", variable.Interface())
+			}
+		}
 		for name, variable := range curr.MemoryPtr {
 			if _, exists := result[name]; !exists {
 				result[name] = fmt.Sprintf("%v", variable.Interface())
@@ -547,10 +598,104 @@ func (s *Stack) DumpVariables() map[string]string {
 	return result
 }
 
+func (f *SlotFrame) ensureLocalSlot(slot int, name string) {
+	if f == nil || slot < 0 {
+		return
+	}
+	if f.LocalIndex == nil {
+		f.LocalIndex = make(map[string]int)
+	}
+	for len(f.Locals) <= slot {
+		f.Locals = append(f.Locals, nil)
+	}
+	for len(f.LocalNames) <= slot {
+		f.LocalNames = append(f.LocalNames, "")
+	}
+	if name != "" && f.LocalNames[slot] == "" {
+		f.LocalNames[slot] = name
+		f.LocalIndex[name] = slot
+	}
+}
+
+func (f *SlotFrame) ensureUpvalueSlot(slot int, name string) {
+	if f == nil || slot < 0 {
+		return
+	}
+	if f.UpvalueIndex == nil {
+		f.UpvalueIndex = make(map[string]int)
+	}
+	for len(f.Upvalues) <= slot {
+		f.Upvalues = append(f.Upvalues, nil)
+	}
+	for len(f.UpvalueNames) <= slot {
+		f.UpvalueNames = append(f.UpvalueNames, "")
+	}
+	if name != "" && f.UpvalueNames[slot] == "" {
+		f.UpvalueNames[slot] = name
+		f.UpvalueIndex[name] = slot
+	}
+}
+
+func unwrapCell(v *Var) *Var {
+	if v != nil && v.VType == TypeCell {
+		return v.Ref.(*Cell).Value
+	}
+	return v
+}
+
+func lookupFrameVarByName(frame *SlotFrame, name string) *Var {
+	if frame == nil || name == "" {
+		return nil
+	}
+	if slot, ok := frame.LocalIndex[name]; ok && slot >= 0 && slot < len(frame.Locals) {
+		return frame.Locals[slot]
+	}
+	if slot, ok := frame.UpvalueIndex[name]; ok && slot >= 0 && slot < len(frame.Upvalues) {
+		return frame.Upvalues[slot]
+	}
+	if frame.ReturnName == name {
+		return frame.Return
+	}
+	return nil
+}
+
+func lookupFrameSymbolByName(frame *SlotFrame, name string) (SymbolRef, bool) {
+	if frame == nil || name == "" {
+		return SymbolRef{}, false
+	}
+	if slot, ok := frame.LocalIndex[name]; ok {
+		return SymbolRef{Name: name, Kind: SymbolLocal, Slot: slot}, true
+	}
+	if slot, ok := frame.UpvalueIndex[name]; ok {
+		return SymbolRef{Name: name, Kind: SymbolUpvalue, Slot: slot}, true
+	}
+	return SymbolRef{}, false
+}
+
+func rootStack(s *Stack) *Stack {
+	for s != nil && s.Parent != nil {
+		s = s.Parent
+	}
+	return s
+}
+
+func loadRootGlobal(s *Stack, name string) (*Var, bool) {
+	root := rootStack(s)
+	if root == nil || root.Globals == nil {
+		return nil, false
+	}
+	v, ok := root.Globals[name]
+	return v, ok
+}
+
 func (ctx *StackContext) ScopeApply(scope string) {
 	newDepth := 1
+	var frame *SlotFrame
+	var globals map[string]*Var
 	if ctx.Stack != nil {
 		newDepth = ctx.Stack.Depth + 1
+		frame = ctx.Stack.Frame
+		globals = ctx.Stack.Globals
 	}
 	if newDepth > DefaultMaxStackDepth {
 		panic(errors.New("stack overflow"))
@@ -558,8 +703,104 @@ func (ctx *StackContext) ScopeApply(scope string) {
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Var),
+		Globals:   globals,
+		Frame:     frame,
+		FrameBase: frame,
 		Scope:     scope,
 		Depth:     newDepth,
+	}
+}
+
+func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
+	if frame == nil {
+		return &SlotFrame{}
+	}
+	locals := make([]*Var, len(frame.Locals))
+	for i, v := range frame.Locals {
+		if v != nil {
+			locals[i] = v.Copy()
+		}
+	}
+	cloned := &SlotFrame{
+		Locals:       locals,
+		LocalNames:   append([]string(nil), frame.LocalNames...),
+		Upvalues:     append([]*Var(nil), frame.Upvalues...),
+		UpvalueNames: append([]string(nil), frame.UpvalueNames...),
+		Return:       frame.Return,
+		ReturnName:   frame.ReturnName,
+	}
+	if len(frame.LocalIndex) > 0 {
+		cloned.LocalIndex = make(map[string]int, len(frame.LocalIndex))
+		for k, v := range frame.LocalIndex {
+			cloned.LocalIndex[k] = v
+		}
+	}
+	if len(frame.UpvalueIndex) > 0 {
+		cloned.UpvalueIndex = make(map[string]int, len(frame.UpvalueIndex))
+		for k, v := range frame.UpvalueIndex {
+			cloned.UpvalueIndex[k] = v
+		}
+	}
+	return cloned
+}
+
+func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
+	newDepth := 1
+	var globals map[string]*Var
+	var parentFrame *SlotFrame
+	if ctx.Stack != nil {
+		newDepth = ctx.Stack.Depth + 1
+		globals = ctx.Stack.Globals
+		parentFrame = ctx.Stack.Frame
+	}
+	if newDepth > DefaultMaxStackDepth {
+		panic(errors.New("stack overflow"))
+	}
+	clonedFrame := cloneSlotFrame(parentFrame)
+	syncLimit := 0
+	if parentFrame != nil {
+		syncLimit = len(parentFrame.Locals)
+	}
+	ctx.Stack = &Stack{
+		Parent:    ctx.Stack,
+		MemoryPtr: make(map[string]*Var),
+		Globals:   globals,
+		Frame:     clonedFrame,
+		FrameBase: parentFrame,
+		FrameSync: syncLimit,
+		Scope:     scope,
+		Depth:     newDepth,
+	}
+}
+
+func (ctx *StackContext) SyncLoopScope() {
+	if ctx.Stack == nil || ctx.Stack.FrameBase == nil || ctx.Stack.Frame == nil {
+		return
+	}
+	base := ctx.Stack.FrameBase
+	loop := ctx.Stack.Frame
+	limit := ctx.Stack.FrameSync
+	if limit > len(loop.Locals) {
+		limit = len(loop.Locals)
+	}
+	for i := 0; i < limit; i++ {
+		src := loop.Locals[i]
+		if src == nil {
+			continue
+		}
+		base.ensureLocalSlot(i, "")
+		dst := base.Locals[i]
+		if dst == nil {
+			base.Locals[i] = src.Copy()
+			continue
+		}
+		if src.VType == TypeCell {
+			src = src.Ref.(*Cell).Value
+		}
+		if dst.VType == TypeCell {
+			dst = dst.Ref.(*Cell).Value
+		}
+		copyVarData(dst, src)
 	}
 }
 
@@ -574,6 +815,11 @@ func (ctx *StackContext) ScopeExit() {
 }
 
 func (ctx *StackContext) Store(variable string, expr *Var) error {
+	if ctx.Stack != nil {
+		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, variable); ok {
+			return ctx.StoreSymbol(sym, expr)
+		}
+	}
 	v, err := ctx.loadVar(variable)
 	if err != nil {
 		return ctx.AddVariable(variable, expr)
@@ -628,26 +874,84 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 }
 
 func (ctx *StackContext) AddVariable(name string, v *Var) error {
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
+		ctx.Stack.Globals[name] = v.Copy()
+		return nil
+	}
 	ctx.Stack.MemoryPtr[name] = v.Copy()
 	return nil
 }
 
+func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind ast.GoMiniType) error {
+	if sym.Kind != SymbolLocal || ctx.Stack == nil {
+		return ctx.NewVar(sym.Name, kind)
+	}
+	if ctx.Stack.Frame == nil {
+		ctx.Stack.Frame = &SlotFrame{}
+	}
+	ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
+	var v *Var
+	if exec, ok := ctx.Executor.(*Executor); ok {
+		v = exec.initializeType(ctx, kind, 0)
+	} else {
+		v = &Var{Type: kind, VType: TypeAny}
+	}
+	ctx.Stack.Frame.Locals[sym.Slot] = v
+	return nil
+}
+
 func (ctx *StackContext) Load(name string) (*Var, error) {
+	if name == "nil" {
+		return nil, nil
+	}
+	if ctx.Stack != nil {
+		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+			return ctx.LoadSymbol(sym)
+		}
+	}
 	v, err := ctx.loadVar(name)
 	if err != nil {
 		return nil, err
 	}
-	if v != nil && v.VType == TypeCell {
-		val := v.Ref.(*Cell).Value
-		return val, nil
+	return unwrapCell(v), nil
+}
+
+func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
+	switch sym.Kind {
+	case SymbolLocal:
+		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 && sym.Slot < len(ctx.Stack.Frame.Locals) {
+			if v := ctx.Stack.Frame.Locals[sym.Slot]; v != nil {
+				return unwrapCell(v), nil
+			}
+		}
+	case SymbolUpvalue:
+		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 && sym.Slot < len(ctx.Stack.Frame.Upvalues) {
+			if v := ctx.Stack.Frame.Upvalues[sym.Slot]; v != nil {
+				return unwrapCell(v), nil
+			}
+		}
+	case SymbolGlobal:
+		if v, ok := loadRootGlobal(ctx.Stack, sym.Name); ok {
+			return unwrapCell(v), nil
+		}
+	case SymbolBuiltin, SymbolUnknown:
 	}
-	return v, nil
+	return ctx.Load(sym.Name)
 }
 
 func (ctx *StackContext) loadVar(variable string) (*Var, error) {
+	if variable == "nil" {
+		return nil, nil
+	}
 	s := ctx.Stack
 	for s != nil {
 		if v, ok := s.MemoryPtr[variable]; ok {
+			return v, nil
+		}
+		if v := lookupFrameVarByName(s.Frame, variable); v != nil {
+			return v, nil
+		}
+		if v, ok := s.Globals[variable]; ok {
 			return v, nil
 		}
 		s = s.Parent
@@ -656,9 +960,22 @@ func (ctx *StackContext) loadVar(variable string) (*Var, error) {
 }
 
 func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
+	if ctx.Stack != nil {
+		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+			return ctx.CaptureSymbol(sym)
+		}
+	}
 	s := ctx.Stack
 	for s != nil {
-		if v, ok := s.MemoryPtr[name]; ok {
+		v, ok := s.MemoryPtr[name]
+		if !ok {
+			v = lookupFrameVarByName(s.Frame, name)
+			ok = v != nil
+		}
+		if !ok {
+			v, ok = s.Globals[name]
+		}
+		if ok {
 			if v != nil && v.VType != TypeCell {
 				cellValue := v.Copy()
 				v.VType = TypeCell
@@ -670,6 +987,44 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 		s = s.Parent
 	}
 	return nil, fmt.Errorf("undefined capture: %s", name)
+}
+
+func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
+	switch sym.Kind {
+	case SymbolLocal:
+		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 {
+			ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
+			v := ctx.Stack.Frame.Locals[sym.Slot]
+			if v == nil {
+				return nil, fmt.Errorf("undefined local capture: %s", sym.Name)
+			}
+			if v.VType != TypeCell {
+				cellValue := v.Copy()
+				v.VType = TypeCell
+				v.Ref = &Cell{Value: cellValue}
+				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+			}
+			return v, nil
+		}
+	case SymbolUpvalue:
+		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 && sym.Slot < len(ctx.Stack.Frame.Upvalues) {
+			if v := ctx.Stack.Frame.Upvalues[sym.Slot]; v != nil {
+				return v, nil
+			}
+			return nil, fmt.Errorf("undefined upvalue capture: %s", sym.Name)
+		}
+	case SymbolGlobal:
+		if v, ok := loadRootGlobal(ctx.Stack, sym.Name); ok {
+			if v != nil && v.VType != TypeCell {
+				cellValue := v.Copy()
+				v.VType = TypeCell
+				v.Ref = &Cell{Value: cellValue}
+				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+			}
+			return v, nil
+		}
+	}
+	return ctx.CaptureVar(sym.Name)
 }
 
 func (ctx *StackContext) Interrupt() bool {
@@ -689,8 +1044,18 @@ func (ctx *StackContext) SetInterrupt(scopeName, interruptType string) error {
 }
 
 func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
+	if ctx.Stack != nil {
+		if _, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+			return nil
+		}
+	}
 	if _, ok := ctx.Stack.MemoryPtr[name]; ok {
 		return nil
+	}
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
+		if _, ok := ctx.Stack.Globals[name]; ok {
+			return nil
+		}
 	}
 	// 确保变量被正确初始化为零值
 	var v *Var
@@ -699,8 +1064,165 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
+		ctx.Stack.Globals[name] = v
+		return nil
+	}
 	ctx.Stack.MemoryPtr[name] = v
 	return nil
+}
+
+func (ctx *StackContext) InitReturn(kind ast.GoMiniType) error {
+	if ctx.Stack == nil {
+		return fmt.Errorf("missing stack for return slot")
+	}
+	if ctx.Stack.Frame == nil {
+		ctx.Stack.Frame = &SlotFrame{}
+	}
+	if ctx.Stack.Frame.Return != nil {
+		return nil
+	}
+	var v *Var
+	if exec, ok := ctx.Executor.(*Executor); ok {
+		v = exec.initializeType(ctx, kind, 0)
+	} else {
+		v = &Var{Type: kind, VType: TypeAny}
+	}
+	ctx.Stack.Frame.Return = v
+	ctx.Stack.Frame.ReturnName = "__return__"
+	return nil
+}
+
+func (ctx *StackContext) LoadReturn() (*Var, error) {
+	if ctx.Stack != nil && ctx.Stack.Frame != nil && ctx.Stack.Frame.Return != nil {
+		return unwrapCell(ctx.Stack.Frame.Return), nil
+	}
+	return ctx.Load("__return__")
+}
+
+func (ctx *StackContext) StoreReturn(expr *Var) error {
+	if ctx.Stack == nil || ctx.Stack.Frame == nil || ctx.Stack.Frame.Return == nil {
+		return ctx.Store("__return__", expr)
+	}
+	v := ctx.Stack.Frame.Return
+	if v.VType == TypeCell {
+		v = v.Ref.(*Cell).Value
+	}
+	if expr == nil {
+		v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+		return nil
+	}
+	copyVarData(v, expr)
+	return nil
+}
+
+func (ctx *StackContext) coerceAssignedValue(target *Var, expr *Var) (*Var, error) {
+	if target == nil || expr == nil {
+		return expr, nil
+	}
+	if target.Type.IsInterface() && !expr.Type.IsInterface() {
+		wrapped, err := ctx.Executor.CheckSatisfaction(expr, target.Type)
+		if err != nil {
+			return nil, err
+		}
+		return wrapped, nil
+	}
+	return expr, nil
+}
+
+func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
+	switch sym.Kind {
+	case SymbolLocal:
+		if ctx.Stack == nil {
+			return ctx.Store(sym.Name, expr)
+		}
+		if ctx.Stack.Frame == nil {
+			ctx.Stack.Frame = &SlotFrame{}
+		}
+		ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
+		v := ctx.Stack.Frame.Locals[sym.Slot]
+		if v == nil {
+			if expr == nil {
+				v = &Var{Type: "Any", VType: TypeAny}
+			} else {
+				v = expr.Copy()
+			}
+			ctx.Stack.Frame.Locals[sym.Slot] = v
+			return nil
+		}
+		if v.VType == TypeCell {
+			v = v.Ref.(*Cell).Value
+		}
+		if expr == nil {
+			v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+			return nil
+		}
+		var err error
+		expr, err = ctx.coerceAssignedValue(v, expr)
+		if err != nil {
+			return err
+		}
+		copyVarData(v, expr)
+		return nil
+	case SymbolUpvalue:
+		if ctx.Stack != nil && ctx.Stack.Frame != nil {
+			ctx.Stack.Frame.ensureUpvalueSlot(sym.Slot, sym.Name)
+			v := ctx.Stack.Frame.Upvalues[sym.Slot]
+			if v == nil {
+				if expr == nil {
+					v = &Var{Type: "Any", VType: TypeAny}
+				} else {
+					v = expr.Copy()
+				}
+				ctx.Stack.Frame.Upvalues[sym.Slot] = v
+				return nil
+			}
+			if v.VType == TypeCell {
+				v = v.Ref.(*Cell).Value
+			}
+			if expr == nil {
+				v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+				return nil
+			}
+			var err error
+			expr, err = ctx.coerceAssignedValue(v, expr)
+			if err != nil {
+				return err
+			}
+			copyVarData(v, expr)
+			return nil
+		}
+	case SymbolGlobal:
+		if root := rootStack(ctx.Stack); root != nil {
+			if root.Globals == nil {
+				root.Globals = make(map[string]*Var)
+			}
+			v := root.Globals[sym.Name]
+			if v == nil {
+				if expr == nil {
+					root.Globals[sym.Name] = &Var{Type: "Any", VType: TypeAny}
+				} else {
+					root.Globals[sym.Name] = expr.Copy()
+				}
+				return nil
+			}
+			if v.VType == TypeCell {
+				v = v.Ref.(*Cell).Value
+			}
+			if expr == nil {
+				v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+				return nil
+			}
+			var err error
+			expr, err = ctx.coerceAssignedValue(v, expr)
+			if err != nil {
+				return err
+			}
+			copyVarData(v, expr)
+			return nil
+		}
+	}
+	return ctx.Store(sym.Name, expr)
 }
 
 func (ctx *StackContext) WithFuncScope(name string, exec func(*Stack, *StackContext) error) error {
