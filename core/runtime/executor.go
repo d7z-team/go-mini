@@ -16,18 +16,13 @@ import (
 )
 
 type Executor struct {
-	structSchemas    map[string]*RuntimeStructSpec
-	structTypeIDs    map[string]*RuntimeStructSpec
-	interfaceSpecs   map[string]*RuntimeInterfaceSpec
-	interfaceTypeIDs map[string]*RuntimeInterfaceSpec
-	namedTypes       map[string]RuntimeType
-	namedTypeIDs     map[string]RuntimeType
-	consts           map[string]string
-	globals          map[ast.Ident]*RuntimeGlobal
-	functions        map[ast.Ident]*RuntimeFunction
-	mainTasks        []Task
-	program          *ast.ProgramStmt
-	globalInitOrder  []ast.Ident
+	metadata        *runtimeMetadataRegistry
+	consts          map[string]string
+	globals         map[ast.Ident]*RuntimeGlobal
+	functions       map[ast.Ident]*RuntimeFunction
+	mainTasks       []Task
+	program         *ast.ProgramStmt
+	globalInitOrder []ast.Ident
 
 	routes map[string]FFIRoute
 
@@ -53,6 +48,90 @@ type RuntimeFunction struct {
 	BodyTasks    []Task
 }
 
+type runtimeMetadataRegistry struct {
+	namedTypesByName   map[string]RuntimeType
+	namedTypesByTypeID map[string]RuntimeType
+	structsByName      map[string]*RuntimeStructSpec
+	structsByTypeID    map[string]*RuntimeStructSpec
+	interfacesByName   map[string]*RuntimeInterfaceSpec
+	interfacesByTypeID map[string]*RuntimeInterfaceSpec
+}
+
+func newRuntimeMetadataRegistry() *runtimeMetadataRegistry {
+	return &runtimeMetadataRegistry{
+		namedTypesByName:   make(map[string]RuntimeType),
+		namedTypesByTypeID: make(map[string]RuntimeType),
+		structsByName:      make(map[string]*RuntimeStructSpec),
+		structsByTypeID:    make(map[string]*RuntimeStructSpec),
+		interfacesByName:   make(map[string]*RuntimeInterfaceSpec),
+		interfacesByTypeID: make(map[string]*RuntimeInterfaceSpec),
+	}
+}
+
+func (r *runtimeMetadataRegistry) registerNamedType(name string, typeInfo RuntimeType) {
+	r.namedTypesByName[name] = typeInfo
+	switch typeInfo.Kind {
+	case RuntimeTypeNamed, RuntimeTypeStruct, RuntimeTypeInterface:
+	default:
+		return
+	}
+	if typeInfo.TypeID != "" {
+		r.namedTypesByTypeID[typeInfo.TypeID] = typeInfo
+	}
+}
+
+func (r *runtimeMetadataRegistry) registerInterfaceSpec(name string, spec *RuntimeInterfaceSpec) {
+	if spec == nil {
+		if existing, ok := r.interfacesByName[name]; ok && existing != nil && existing.TypeID != "" {
+			delete(r.interfacesByTypeID, existing.TypeID)
+		}
+		delete(r.interfacesByName, name)
+		return
+	}
+	r.interfacesByName[name] = spec
+	if spec.TypeID != "" {
+		r.interfacesByTypeID[spec.TypeID] = spec
+	}
+}
+
+func (r *runtimeMetadataRegistry) registerStructSchema(name string, spec *RuntimeStructSpec) {
+	if spec == nil {
+		if existing, ok := r.structsByName[name]; ok && existing != nil && existing.TypeID != "" {
+			delete(r.structsByTypeID, existing.TypeID)
+		}
+		delete(r.structsByName, name)
+		return
+	}
+	r.structsByName[name] = spec
+	if spec.TypeID != "" {
+		r.structsByTypeID[spec.TypeID] = spec
+	}
+}
+
+func (r *runtimeMetadataRegistry) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
+	if typeInfo, ok := r.namedTypesByName[string(typ)]; ok {
+		return typeInfo, true
+	}
+	typeInfo, ok := r.namedTypesByTypeID[CanonicalTypeID(string(typ))]
+	return typeInfo, ok
+}
+
+func (r *runtimeMetadataRegistry) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+	if spec, ok := r.interfacesByName[string(typ)]; ok {
+		return spec, true
+	}
+	spec, ok := r.interfacesByTypeID[CanonicalTypeID(string(typ))]
+	return spec, ok
+}
+
+func (r *runtimeMetadataRegistry) resolveStructSchema(typ ast.GoMiniType) (*RuntimeStructSpec, bool) {
+	if schema, ok := r.structsByName[string(typ)]; ok {
+		return schema, true
+	}
+	schema, ok := r.structsByTypeID[CanonicalTypeID(string(typ))]
+	return schema, ok
+}
+
 func (e *Executor) LastSession() *StackContext {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -74,25 +153,20 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		globalInitOrder = program.DeclaredGlobalOrder()
 	}
 	result := &Executor{
-		program:          program,
-		globalInitOrder:  globalInitOrder,
-		structSchemas:    make(map[string]*RuntimeStructSpec),
-		structTypeIDs:    make(map[string]*RuntimeStructSpec),
-		interfaceSpecs:   make(map[string]*RuntimeInterfaceSpec),
-		interfaceTypeIDs: make(map[string]*RuntimeInterfaceSpec),
-		namedTypes:       make(map[string]RuntimeType),
-		namedTypeIDs:     make(map[string]RuntimeType),
-		globals:          make(map[ast.Ident]*RuntimeGlobal),
-		functions:        make(map[ast.Ident]*RuntimeFunction),
-		consts:           make(map[string]string),
-		routes:           make(map[string]FFIRoute),
-		interfaceCache:   make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
+		program:         program,
+		globalInitOrder: globalInitOrder,
+		metadata:        newRuntimeMetadataRegistry(),
+		globals:         make(map[ast.Ident]*RuntimeGlobal),
+		functions:       make(map[ast.Ident]*RuntimeFunction),
+		consts:          make(map[string]string),
+		routes:          make(map[string]FFIRoute),
+		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
 			spec := runtimeStructSpecFromStmt(stmt)
 			if spec != nil {
-				result.registerStructSchema(string(ident), spec)
+				result.metadata.registerStructSchema(string(ident), spec)
 			}
 		}
 	}
@@ -100,7 +174,7 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		for ident, stmt := range program.Interfaces {
 			spec, err := ParseRuntimeInterfaceSpec(stmt.Type)
 			if err == nil && spec != nil {
-				result.registerInterfaceSpec(string(ident), spec)
+				result.metadata.registerInterfaceSpec(string(ident), spec)
 			}
 		}
 	}
@@ -108,7 +182,7 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		for ident, t := range program.Types {
 			typeInfo, err := ParseRuntimeType(t)
 			if err == nil {
-				result.registerNamedType(string(ident), typeInfo)
+				result.metadata.registerNamedType(string(ident), typeInfo)
 			}
 		}
 	}
@@ -203,69 +277,62 @@ func cloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
 	}
 }
 
-func (e *Executor) registerNamedType(name string, typeInfo RuntimeType) {
-	e.namedTypes[name] = typeInfo
-	switch typeInfo.Kind {
-	case RuntimeTypeNamed, RuntimeTypeStruct, RuntimeTypeInterface:
-	default:
-		return
-	}
-	if typeInfo.TypeID != "" {
-		e.namedTypeIDs[typeInfo.TypeID] = typeInfo
-	}
-}
-
-func (e *Executor) registerInterfaceSpec(name string, spec *RuntimeInterfaceSpec) {
-	if spec == nil {
-		delete(e.interfaceSpecs, name)
-		return
-	}
-	e.interfaceSpecs[name] = spec
-	if spec.TypeID != "" {
-		e.interfaceTypeIDs[spec.TypeID] = spec
-	}
-}
-
-func (e *Executor) registerStructSchema(name string, spec *RuntimeStructSpec) {
-	if spec == nil {
-		delete(e.structSchemas, name)
-		return
-	}
-	e.structSchemas[name] = spec
-	if spec.TypeID != "" {
-		e.structTypeIDs[spec.TypeID] = spec
-	}
-}
-
 func (e *Executor) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
-	if typeInfo, ok := e.namedTypes[string(typ)]; ok {
-		return typeInfo, true
+	return e.metadata.resolveNamedType(typ)
+}
+
+func (e *Executor) resolveNamedTypeChain(typ ast.GoMiniType) (RuntimeType, bool, error) {
+	current := typ
+	seen := map[ast.GoMiniType]struct{}{}
+	for {
+		if _, dup := seen[current]; dup {
+			return RuntimeType{}, false, fmt.Errorf("cyclic named type resolution: %s", typ)
+		}
+		seen[current] = struct{}{}
+		next, ok := e.resolveNamedType(current)
+		if !ok {
+			if current == typ {
+				return RuntimeType{}, false, nil
+			}
+			resolved, err := ParseRuntimeType(current)
+			if err != nil {
+				return RuntimeType{}, false, err
+			}
+			return resolved, true, nil
+		}
+		if next.Raw == current {
+			return next, true, nil
+		}
+		current = next.Raw
 	}
-	typeInfo, ok := e.namedTypeIDs[CanonicalTypeID(string(typ))]
-	return typeInfo, ok
 }
 
 func (e *Executor) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
 	if typ.IsInterface() {
-		spec, err := ParseRuntimeInterfaceSpec(typ)
-		if err == nil && spec != nil {
-			return spec, true
-		}
-		return nil, false
+		return e.cachedInterfaceSpec(typ)
 	}
-	if spec, ok := e.interfaceSpecs[string(typ)]; ok {
+	return e.metadata.resolveInterfaceSpec(typ)
+}
+
+func (e *Executor) cachedInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+	e.mu.RLock()
+	spec, ok := e.interfaceCache[typ]
+	e.mu.RUnlock()
+	if ok && spec != nil {
 		return spec, true
 	}
-	spec, ok := e.interfaceTypeIDs[CanonicalTypeID(string(typ))]
-	return spec, ok
+	parsedSpec, err := ParseRuntimeInterfaceSpec(typ)
+	if err != nil || parsedSpec == nil {
+		return nil, false
+	}
+	e.mu.Lock()
+	e.interfaceCache[typ] = parsedSpec
+	e.mu.Unlock()
+	return parsedSpec, true
 }
 
 func (e *Executor) resolveStructSchema(typ ast.GoMiniType) (*RuntimeStructSpec, bool) {
-	if schema, ok := e.structSchemas[string(typ)]; ok {
-		return schema, true
-	}
-	schema, ok := e.structTypeIDs[CanonicalTypeID(string(typ))]
-	return schema, ok
+	return e.metadata.resolveStructSchema(typ)
 }
 
 func (e *Executor) SetGlobalInitOrder(order []ast.Ident) {
@@ -332,10 +399,10 @@ func (e *Executor) RegisterStructSpec(name string, spec *RuntimeStructSpec) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if spec == nil {
-		delete(e.structSchemas, name)
+		delete(e.metadata.structsByName, name)
 		return
 	}
-	e.registerStructSchema(name, spec)
+	e.metadata.registerStructSchema(name, spec)
 }
 
 func (e *Executor) RegisterConstant(name string, val string) {
@@ -432,19 +499,9 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		}
 	}
 
-	e.mu.RLock()
-	spec, ok := e.interfaceCache[actualInterfaceType]
-	e.mu.RUnlock()
-
+	spec, ok := e.cachedInterfaceSpec(actualInterfaceType)
 	if !ok {
-		parsedSpec, err := ParseRuntimeInterfaceSpec(actualInterfaceType)
-		if err != nil {
-			return nil, fmt.Errorf("invalid interface type: %s", actualInterfaceType)
-		}
-		spec = parsedSpec
-		e.mu.Lock()
-		e.interfaceCache[actualInterfaceType] = spec
-		e.mu.Unlock()
+		return nil, fmt.Errorf("invalid interface type: %s", actualInterfaceType)
 	}
 
 	vtable := make([]*Var, len(spec.Methods))
@@ -1894,7 +1951,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				exports[name] = NewString(val)
 			}
 		}
-		for name, s := range modExec.structSchemas {
+		for name, s := range modExec.metadata.structsByName {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				exports[string(name)] = &Var{
 					VType: TypeAny,

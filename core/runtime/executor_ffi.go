@@ -155,7 +155,7 @@ func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeTy
 	case RuntimeTypeStruct:
 		return e.serializeStructSchema(buf, v, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields})
 	case RuntimeTypeNamed:
-		if schema, ok := e.structSchemas[typ.TypeID]; ok {
+		if schema, ok := e.resolveStructSchema(typ.Raw); ok {
 			return e.serializeStructSchema(buf, v, schema)
 		}
 		return e.serializeVar(buf, v, typ.Raw)
@@ -239,28 +239,15 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 }
 
 func (e *Executor) lookupStructSchema(typ RuntimeType) (*RuntimeStructSpec, bool) {
-	if schema, ok := e.structSchemas[typ.TypeID]; ok {
-		return schema, true
-	}
-	if schema, ok := e.structSchemas[string(typ.Raw)]; ok {
-		return schema, true
+	if typ.Raw != "" {
+		if schema, ok := e.resolveStructSchema(typ.Raw); ok {
+			return schema, true
+		}
 	}
 	if typ.TypeID == "" {
 		return nil, false
 	}
-	var matched *RuntimeStructSpec
-	for key, schema := range e.structSchemas {
-		if key == typ.TypeID || strings.HasSuffix(key, "."+typ.TypeID) || strings.HasSuffix(key, "/"+typ.TypeID) {
-			if matched != nil {
-				return nil, false
-			}
-			matched = schema
-		}
-	}
-	if matched != nil {
-		return matched, true
-	}
-	return nil, false
+	return e.resolveStructSchema(ast.GoMiniType(typ.TypeID))
 }
 
 func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {

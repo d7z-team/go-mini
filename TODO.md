@@ -62,6 +62,10 @@
 - [x] **定义接口方法索引/vtable**: 消除 `CheckSatisfaction` 中昂贵的字符串签名匹配。
 - [x] **重构 `CheckSatisfaction`**: 基于 `RuntimeInterfaceSpec` 与方法索引校验。
 - [x] **收敛命名类型解析**: 命名类型、别名类型、FFI canonical path 类型统一走同一解析表。
+- [x] **补齐命名类型防环机制**: 覆盖 primitive alias、alias 链、自引用/环引用，避免 `initializeType` / type resolution 自旋。
+- [x] **统一 metadata registry**: 收敛 `namedTypes/namedTypeIDs`、`structSchemas/structTypeIDs`、`interfaceSpecs/interfaceTypeIDs` 的双表同步逻辑。
+- [x] **移除接口 satisfaction 热路径懒解析**: `CheckSatisfaction` 不再在 cache miss 时运行期 `ParseRuntimeInterfaceSpec(...)`。
+- [x] **清理 struct schema 线性扫描 fallback**: 统一 raw/typeID/canonical 查询路径，避免全表匹配。
 
 ---
 
@@ -102,6 +106,7 @@
 - [ ] **统一 `TypeAny` 自动拆箱**: 将 Any 穿透收敛到 `Var`/地址边界，而非散落在 opcode 中。
 - [ ] **统一 `TypeCell` 读取语义**: 尽量避免各 opcode 手动拆 `Cell`。
 - [ ] **明确 VM 指针语义与 FFI Handle/Ptr 语义边界**，避免再次混用。
+- [ ] **拆分 `TypeAny` 清理清单**: 分别收敛算术、成员访问、调用、FFI、LHS 五类路径中的手动拆箱逻辑。
 
 ---
 
@@ -127,18 +132,31 @@
 **目标**: 用专项 benchmark 和迁移用例证明重构收益，不以“架构更漂亮”代替验收。**
 
 ### S. 测试与迁移验证
+- [ ] **重构测试分层**: 将 VM 原生语义、FFI/ffigo 通道、ffilib 标准库、端到端脚本场景拆分为独立测试目录/套件，避免长期混在 `core/e2e`。
+- [ ] **建立分层测试门禁**: `runtime unit`、`ffi bridge`、`ffilib integration`、`script e2e` 分层执行，并分别设定超时与失败归因。
+- [ ] **拆分 ffilib 测试责任**: 标准库 host/bridge/schema 行为不再依赖脚本级 e2e 混合验证。
+- [ ] **拆分 FFI/ffigo 与 VM 原生测试责任**: 宿主编解码、handle、bridge 协议与 VM 语义测试分离。
 - [ ] **补充 FFI schema 兼容测试**: 覆盖旧版字符串 spec 和新版 schema 注册。
 - [ ] **补充 ffigen 生成产物回归测试**: stdlib、业务 service、reverse proxy、canonical path。
 - [ ] **补充 import 隔离回归测试**: panic、circular import、partial init。
 - [ ] **补充 slot/upvalue 回归测试**: shadowing、closure、nested functions、loop capture。
 - [ ] **补充 LHS/deref/Any 回归测试**。
+- [ ] **补充命名类型/接口 vtable/canonical path 组合回归**: 覆盖 alias 链、FFI canonical type、interface satisfaction 交叉场景。
+- [ ] **将 `go test ./core/e2e` 设为阶段门禁**: 关键阶段收尾必须通过全量 e2e，而不是只跑局部用例。
 
 ### T. Benchmark 与指标
 - [ ] **建立局部变量 slot 访问 benchmark**。
 - [ ] **建立接口 satisfaction/vtable benchmark**。
 - [ ] **建立 FFI 编解码 benchmark**: 尤其是 struct、tuple、variadic、handle。
+- [ ] **建立 metadata 解析/命中 benchmark**: 覆盖 named type、interface spec、struct schema 的注册期/运行期命中成本。
 - [ ] **建立 import 初始化开销 benchmark**。
 - [ ] **对比重构前后指标**: 目标符号查找开销降低 50% 以上，GC 压力降低 20% 以上。
+
+### U. 兼容层退场与收口
+- [ ] **移除 `ffigen` legacy registrar 分支**: 生成器不再输出 `RegisterFFI/RegisterStructSpec` 兼容代码。
+- [ ] **移除 runtime 对旧字符串 spec 的兼容主路径**: 旧接口保留薄适配层，但执行/注册主链路只消费 schema。
+- [ ] **制定兼容层下线顺序**: 先生成器、再标准库、再业务样例，最后删除 legacy API。
+- [ ] **补充兼容层退场回归**: 确保删除 legacy 分支后 stdlib/业务生成物仍可稳定运行。
 
 ---
 

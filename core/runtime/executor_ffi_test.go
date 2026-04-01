@@ -9,10 +9,10 @@ import (
 
 func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
-		structSchemas: map[string]*RuntimeStructSpec{},
+		metadata: newRuntimeMetadataRegistry(),
 	}
 	schema := MustParseRuntimeStructSpec("demo.Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
-	exec.structSchemas[schema.TypeID] = schema
+	exec.metadata.registerStructSchema(schema.Name, schema)
 
 	v := &Var{
 		VType: TypeMap,
@@ -62,5 +62,25 @@ func TestToVarDecodesPointerAndStructAnyValues(t *testing.T) {
 	data := structVal.Ref.(*VMMap).Data
 	if data["Msg"].Str != "ok" || data["Count"].I64 != 2 {
 		t.Fatalf("unexpected decoded struct data: %#v", data)
+	}
+}
+
+func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+	}
+	schema := MustParseRuntimeStructSpec("demo.Type", ast.GoMiniType("struct { Value Int64; }"))
+	exec.metadata.registerStructSchema("demo.Type", schema)
+
+	typ, err := ParseRuntimeType("Ptr<demo.Type>")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType failed: %v", err)
+	}
+	resolved, ok := exec.lookupStructSchema(typ)
+	if !ok || resolved == nil {
+		t.Fatal("expected canonical struct schema lookup to succeed")
+	}
+	if resolved.TypeID != "demo.Type" {
+		t.Fatalf("unexpected resolved schema: %+v", resolved)
 	}
 }

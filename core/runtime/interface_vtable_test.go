@@ -107,3 +107,48 @@ func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 		t.Fatalf("unexpected initialized alias value: %#v", res)
 	}
 }
+
+func TestResolveNamedTypeChainDetectsCycles(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types: map[ast.Ident]ast.GoMiniType{
+			"A": "B",
+			"B": "A",
+		},
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	if _, _, err := exec.resolveNamedTypeChain("A"); err == nil {
+		t.Fatal("expected named type cycle to be detected")
+	}
+}
+
+func TestCachedInterfaceSpecReusesParsedLiteral(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	spec1, ok := exec.cachedInterfaceSpec("interface{Close() Error;}")
+	if !ok || spec1 == nil {
+		t.Fatal("expected cachedInterfaceSpec to parse literal interface")
+	}
+	spec2, ok := exec.cachedInterfaceSpec("interface{Close() Error;}")
+	if !ok || spec2 == nil {
+		t.Fatal("expected cachedInterfaceSpec to reuse literal interface")
+	}
+	if spec1 != spec2 {
+		t.Fatal("expected interface literal spec to be cached and reused")
+	}
+}

@@ -1139,15 +1139,8 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
 	shape := t
-	for {
-		if actual, ok := e.resolveNamedType(shape); ok {
-			if actual.Raw == shape {
-				break
-			}
-			shape = actual.Raw
-			continue
-		}
-		break
+	if resolved, ok, err := e.resolveNamedTypeChain(t); err == nil && ok {
+		shape = resolved.Raw
 	}
 
 	if shape.IsPtr() {
