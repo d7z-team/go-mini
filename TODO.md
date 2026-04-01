@@ -125,10 +125,11 @@
 **目标**: 让模块加载、编译产物、执行 IR 真正成为可隔离、可缓存、可序列化的工业化管线。**
 
 ### Q. 模块加载沙箱化
-- [ ] **重构 `OpImportInit`**: 不再通过直接切换当前 session/executor 字段来“劫持”执行流。
-- [ ] **引入独立 module session**: 模块初始化在隔离上下文执行。
-- [ ] **引入显式 commit/rollback 机制**: 模块初始化失败时主 session 状态不被污染。
+- [x] **重构 `OpImportInit`**: import 主路径已改为在独立模块上下文中同步执行并返回模块值，不再直接切换父 `session.Executor/Stack/ValueStack/LHSStack` 劫持执行流。
+- [x] **引入独立 module session**: 脚本模块初始化已在独立 `module session` 中执行，父 session 仅接收成功产物与 step/module 状态回写。
+- [x] **引入显式 commit/rollback 机制**: 模块初始化仅在成功后写入 `ModuleCache`；失败路径会回滚 `LoadingModules`，并保持父 session/module cache 不被半初始化状态污染。
 - [ ] **补充循环依赖、panic、部分初始化场景测试**。
+- [ ] **补记语法约束缺口：`panic` 目前未作为“结束结构”参与语义建模**。这会影响“模块初始化失败即终止/回滚”的静态表达能力；后续需要在语法/语义层明确 `panic` 的终止属性，再回头收紧 import/init failure 与 unreachable/partial-init 相关校验。
 
 ### R. IR/Bytecode 管线统一
 - [ ] **统一 `core/runtime/task.go` 与 `core/compiler/bytecode.go` 的指令集定义**。

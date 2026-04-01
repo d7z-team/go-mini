@@ -1870,65 +1870,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			prog, err := e.Loader(path)
 			if err == nil {
 				session.LoadingModules[path] = true
-				modExecutor, err := NewExecutor(prog)
+				res, err := e.executeImportedProgram(session, path, prog)
+				delete(session.LoadingModules, path)
 				if err != nil {
-					delete(session.LoadingModules, path)
 					return err
 				}
-				modExecutor.Loader = e.Loader
-				modExecutor.routes = e.routes
-
-				modSession := &StackContext{
-					Context:        session.Context,
-					Executor:       modExecutor,
-					Stack:          &Stack{MemoryPtr: make(map[string]*Var), Globals: make(map[string]*Var), Frame: &SlotFrame{}, Scope: "global", Depth: 1},
-					StepLimit:      session.StepLimit,
-					StepCount:      session.StepCount,
-					ModuleCache:    session.ModuleCache,
-					LoadingModules: session.LoadingModules,
-					Debugger:       session.Debugger,
-					ValueStack:     &ValueStack{},
-					LHSStack:       &LHSStack{},
-				}
-
-				// Push Done task to current stack (restore context later)
-				session.TaskStack = append(session.TaskStack, Task{
-					Op: OpImportDone,
-					Data: &ImportData{
-						Path:          path,
-						OldExecutor:   session.Executor,
-						OldStack:      session.Stack,
-						OldTaskStack:  session.TaskStack,
-						OldValueStack: session.ValueStack,
-						OldLHSStack:   session.LHSStack,
-						ModSession:    modSession,
-					},
-				})
-
-				// Switch current session fields
-				session.Executor = modExecutor
-				session.Stack = modSession.Stack
-				session.ValueStack = modSession.ValueStack
-				session.LHSStack = modSession.LHSStack
-				session.UnwindMode = UnwindNone
-
-				// Push Global variables init
-				for i := len(modExecutor.globalInitOrder) - 1; i >= 0; i-- {
-					name := modExecutor.globalInitOrder[i]
-					global, ok := modExecutor.lookupGlobal(name)
-					if !ok {
-						continue
-					}
-					if global == nil || !global.HasInit {
-						continue
-					}
-					session.TaskStack = append(session.TaskStack, Task{Op: OpInitVar, Data: string(name)})
-					session.TaskStack = append(session.TaskStack, cloneTasks(global.InitPlan)...)
-				}
-
-				// Push Main block execution
-				session.TaskStack = append(session.TaskStack, cloneTasks(modExecutor.mainTasks)...)
-
+				session.ModuleCache[path] = res
+				session.ValueStack.Push(res)
 				return nil
 			}
 		}
@@ -1977,73 +1925,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return fmt.Errorf("failed to load module %s", path)
 
 	case OpImportDone:
-		data := task.Data.(*ImportData)
-		path := data.Path
-		modSession := data.ModSession
-		modExec := modSession.Executor.(*Executor)
-
-		delete(session.LoadingModules, path)
-
-		exports := make(map[string]*Var)
-		for name := range modExec.globals {
-			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				v, err := modSession.Load(string(name))
-				if err == nil {
-					exports[string(name)] = v
-				}
-			}
-		}
-		for name, fn := range modExec.functions {
-			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				exports[string(name)] = &Var{
-					VType: TypeClosure,
-					Ref: &VMClosure{
-						FunctionType: fn.FunctionType,
-						BodyTasks:    cloneTasks(fn.BodyTasks),
-						UpvalueSlots: nil,
-						UpvalueNames: nil,
-						Context:      modSession,
-					},
-				}
-			}
-		}
-		for name, val := range modExec.consts {
-			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				exports[name] = NewString(val)
-			}
-		}
-		for name, s := range modExec.metadata.structsByName {
-			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				exports[string(name)] = &Var{
-					VType: TypeAny,
-					Ref:   cloneRuntimeStructSpec(s),
-				}
-			}
-		}
-
-		// modSession.Stack should remain its own global stack for future member access to module variables
-		// modSession.Stack = session.Stack <--- REMOVED THIS LINE
-
-		// Restore session
-		session.Executor = data.OldExecutor.(ExecutorAPI)
-		session.Stack = data.OldStack
-		session.TaskStack = data.OldTaskStack
-		session.ValueStack = data.OldValueStack
-		session.LHSStack = data.OldLHSStack
-		session.UnwindMode = UnwindNone
-
-		res := &Var{
-			VType: TypeModule,
-			Ref: &VMModule{
-				Name:    path,
-				Data:    exports,
-				Context: modSession,
-			},
-		}
-
-		session.ModuleCache[path] = res
-		session.ValueStack.Push(res)
-		return nil
+		return fmt.Errorf("OpImportDone should not be reached in synchronous import mode")
 	case OpPush:
 		if v, ok := task.Data.(*Var); ok {
 			session.ValueStack.Push(v)
@@ -2709,6 +2591,78 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 
 func (e *Executor) GetProgram() *ast.ProgramStmt {
 	return e.program
+}
+
+func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modSession *StackContext) *Var {
+	exports := make(map[string]*Var)
+	for name := range modExec.globals {
+		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+			v, err := modSession.Load(string(name))
+			if err == nil {
+				exports[string(name)] = v
+			}
+		}
+	}
+	for name, fn := range modExec.functions {
+		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+			exports[string(name)] = &Var{
+				VType: TypeClosure,
+				Ref: &VMClosure{
+					FunctionType: fn.FunctionType,
+					BodyTasks:    cloneTasks(fn.BodyTasks),
+					UpvalueSlots: nil,
+					UpvalueNames: nil,
+					Context:      modSession,
+				},
+			}
+		}
+	}
+	for name, val := range modExec.consts {
+		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+			exports[name] = NewString(val)
+		}
+	}
+	for name, s := range modExec.metadata.structsByName {
+		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+			exports[string(name)] = &Var{
+				VType: TypeAny,
+				Ref:   cloneRuntimeStructSpec(s),
+			}
+		}
+	}
+
+	return &Var{
+		VType: TypeModule,
+		Ref: &VMModule{
+			Name:    path,
+			Data:    exports,
+			Context: modSession,
+		},
+	}
+}
+
+func (e *Executor) executeImportedProgram(parent *StackContext, path string, prog *ast.ProgramStmt) (*Var, error) {
+	modExecutor, err := NewExecutor(prog)
+	if err != nil {
+		return nil, err
+	}
+	modExecutor.Loader = e.Loader
+	modExecutor.StepLimit = e.StepLimit
+	modExecutor.routes = e.routes
+
+	modSession := modExecutor.NewSession(parent.Context, "global")
+	modSession.StepLimit = parent.StepLimit
+	modSession.StepCount = parent.StepCount
+	modSession.ModuleCache = parent.ModuleCache
+	modSession.LoadingModules = parent.LoadingModules
+	modSession.Debugger = parent.Debugger
+
+	if err := modExecutor.InitializeSession(modSession, nil, false); err != nil {
+		parent.StepCount = modSession.StepCount
+		return nil, err
+	}
+	parent.StepCount = modSession.StepCount
+	return e.buildImportedModuleValue(path, modExecutor, modSession), nil
 }
 
 func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
