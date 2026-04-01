@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 type IOHost struct{}
@@ -140,8 +140,8 @@ func (f *File) WriteNative(p []byte) (n int, err error) {
 
 // RegisterIOAll 为方便外部调用提供的注册函数
 func RegisterIOAll(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	RegisterConstant(string, string)
 }, impl IO, registry *ffigo.HandleRegistry,
 ) {

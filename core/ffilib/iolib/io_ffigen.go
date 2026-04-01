@@ -10,6 +10,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -298,6 +299,17 @@ var IO_FFI_Metadata = []struct {
 	{"WriteString", 3, "function(Any, String) tuple(Int64, Error)", "WriteString 将字符串写入 w"},
 }
 
+var IO_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"ReadAll", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)")), "ReadAll 读取所有数据"},
+	{"Copy", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any, Any) tuple(Int64, Error)")), "Copy 将 src 的数据拷贝到 dst"},
+	{"WriteString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any, String) tuple(Int64, Error)")), "WriteString 将字符串写入 w"},
+}
+
 type IO_Bridge struct {
 	Impl     IO
 	Registry *ffigo.HandleRegistry
@@ -318,19 +330,32 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterIO(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl IO, registry *ffigo.HandleRegistry) {
+func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "io"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range IO_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range IO_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range IO_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 	executor.RegisterConstant("io.SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 	executor.RegisterConstant("io.SeekEnd", ffigo.ToConstantString(io.SeekEnd))
@@ -377,6 +402,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	switch methodID {
 	case MethodID_File_Write:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -401,6 +427,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteAt:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -430,6 +457,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Seek:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -462,6 +490,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Close:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -483,6 +512,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Sync:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -504,6 +534,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Truncate:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -530,6 +561,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteString:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -554,6 +586,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Name:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -567,6 +600,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteNative:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -611,6 +645,23 @@ var File_FFI_Metadata = []struct {
 	{"WriteNative", 9, "function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
+var File_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Write", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)")), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{"WriteAt", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)")), "WriteAt 正常工作：支持偏移量写入"},
+	{"Seek", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)")), ""},
+	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) Error")), ""},
+	{"Sync", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) Error")), ""},
+	{"Truncate", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, Int64) Error")), ""},
+	{"WriteString", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)")), ""},
+	{"Name", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) String")), ""},
+	{"WriteNative", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)")), "满足 io.Writer 接口，供宿主侧其他库使用"},
+}
+
 type File_Bridge struct {
 	Impl     *File
 	Registry *ffigo.HandleRegistry
@@ -631,20 +682,35 @@ func (b *File_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFile(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, registry *ffigo.HandleRegistry) {
+var File_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
+
+func RegisterFile(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &File_Bridge{Impl: nil, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_io.File"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range File_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range File_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+		schemaRegistrar.RegisterStructSchema("io.File", File_StructSchema)
+	} else {
+		for _, m := range File_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
+		legacyRegistrar.RegisterStructSpec("io.File", File_StructSchema.Spec)
 	}
-	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("io.File", "struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }")
 }

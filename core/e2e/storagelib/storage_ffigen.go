@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -99,6 +100,16 @@ var StorageAPI_FFI_Metadata = []struct {
 	{"GetStatus", 2, "function() Int64", ""},
 }
 
+var StorageAPI_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"SetCapacity", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Void")), ""},
+	{"GetStatus", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
+}
+
 type StorageAPI_Bridge struct {
 	Impl     StorageAPI
 	Registry *ffigo.HandleRegistry
@@ -119,18 +130,31 @@ func (b *StorageAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStorageAPI(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl StorageAPI, registry *ffigo.HandleRegistry) {
+func RegisterStorageAPI(executor interface{ RegisterConstant(string, string) }, impl StorageAPI, registry *ffigo.HandleRegistry) {
 	bridge := &StorageAPI_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "storage"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range StorageAPI_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range StorageAPI_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range StorageAPI_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

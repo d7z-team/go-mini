@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -375,6 +376,21 @@ var Regexp_FFI_Metadata = []struct {
 	{"Split", 7, "function(String, String, Int64) tuple(Array<String>, Error)", ""},
 }
 
+var Regexp_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Match", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, TypeBytes) tuple(Bool, Error)")), ""},
+	{"MatchString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(Bool, Error)")), ""},
+	{"QuoteMeta", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"FindString", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
+	{"FindStringSubmatch", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Array<String>")), ""},
+	{"ReplaceAllString", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, String) tuple(String, Error)")), ""},
+	{"Split", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, Int64) tuple(Array<String>, Error)")), ""},
+}
+
 type Regexp_Bridge struct {
 	Impl     Regexp
 	Registry *ffigo.HandleRegistry
@@ -395,18 +411,31 @@ func (b *Regexp_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterRegexp(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Regexp, registry *ffigo.HandleRegistry) {
+func RegisterRegexp(executor interface{ RegisterConstant(string, string) }, impl Regexp, registry *ffigo.HandleRegistry) {
 	bridge := &Regexp_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "regexp"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Regexp_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Regexp_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Regexp_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

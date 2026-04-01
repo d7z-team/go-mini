@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -470,6 +471,28 @@ var Bytes_FFI_Metadata = []struct {
 	{"ReplaceAll", 14, "function(TypeBytes, TypeBytes, TypeBytes) TypeBytes", ""},
 }
 
+var Bytes_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Contains", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool")), ""},
+	{"Count", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64")), ""},
+	{"HasPrefix", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool")), ""},
+	{"HasSuffix", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool")), ""},
+	{"Index", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64")), ""},
+	{"LastIndex", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64")), ""},
+	{"ToLower", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+	{"ToUpper", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+	{"Trim", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, String) TypeBytes")), ""},
+	{"TrimSpace", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+	{"Split", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes) Array<TypeBytes>")), ""},
+	{"Join", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<TypeBytes>, TypeBytes) TypeBytes")), ""},
+	{"Repeat", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, Int64) TypeBytes")), ""},
+	{"ReplaceAll", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes, TypeBytes, TypeBytes) TypeBytes")), ""},
+}
+
 type Bytes_Bridge struct {
 	Impl     Bytes
 	Registry *ffigo.HandleRegistry
@@ -490,18 +513,31 @@ func (b *Bytes_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBytes(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Bytes, registry *ffigo.HandleRegistry) {
+func RegisterBytes(executor interface{ RegisterConstant(string, string) }, impl Bytes, registry *ffigo.HandleRegistry) {
 	bridge := &Bytes_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "bytes"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Bytes_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Bytes_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Bytes_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -172,6 +173,16 @@ var JSON_FFI_Metadata = []struct {
 	{"Unmarshal", 2, "function(TypeBytes) tuple(Any, Error)", ""},
 }
 
+var JSON_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Marshal", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)")), ""},
+	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) tuple(Any, Error)")), ""},
+}
+
 type JSON_Bridge struct {
 	Impl     JSON
 	Registry *ffigo.HandleRegistry
@@ -192,18 +203,31 @@ func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterJSON(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl JSON, registry *ffigo.HandleRegistry) {
+func RegisterJSON(executor interface{ RegisterConstant(string, string) }, impl JSON, registry *ffigo.HandleRegistry) {
 	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "encoding/json"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range JSON_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range JSON_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range JSON_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

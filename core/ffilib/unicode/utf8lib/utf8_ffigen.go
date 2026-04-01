@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -221,6 +222,20 @@ var UTF8_FFI_Metadata = []struct {
 	{"ValidString", 6, "function(String) Bool", ""},
 }
 
+var UTF8_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Int64, Int64)")), ""},
+	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) TypeBytes")), ""},
+	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
+	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Int64")), ""},
+	{"RuneLen", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Int64")), ""},
+	{"ValidString", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
+}
+
 type UTF8_Bridge struct {
 	Impl     UTF8
 	Registry *ffigo.HandleRegistry
@@ -241,18 +256,31 @@ func (b *UTF8_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterUTF8(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl UTF8, registry *ffigo.HandleRegistry) {
+func RegisterUTF8(executor interface{ RegisterConstant(string, string) }, impl UTF8, registry *ffigo.HandleRegistry) {
 	bridge := &UTF8_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "unicode/utf8"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range UTF8_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range UTF8_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range UTF8_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

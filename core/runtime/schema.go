@@ -304,6 +304,30 @@ func (s *RuntimeInterfaceSpec) MethodStringMap() map[string]string {
 	return res
 }
 
+func MustParseRuntimeFuncSig(spec ast.GoMiniType) *RuntimeFuncSig {
+	sig, err := ParseRuntimeFuncSig(spec)
+	if err != nil {
+		panic(err)
+	}
+	return sig
+}
+
+func MustParseRuntimeStructSpec(name string, spec ast.GoMiniType) *RuntimeStructSpec {
+	parsed, err := ParseRuntimeStructSpec(name, spec)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
+func MustParseRuntimeInterfaceSpec(spec ast.GoMiniType) *RuntimeInterfaceSpec {
+	parsed, err := ParseRuntimeInterfaceSpec(spec)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
 func parseRuntimeStructType(spec ast.GoMiniType) (RuntimeType, error) {
 	raw := strings.TrimSpace(string(spec))
 	start := strings.Index(raw, "{")

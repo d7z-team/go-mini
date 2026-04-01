@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -526,6 +527,32 @@ var Math_FFI_Metadata = []struct {
 	{"IsInf", 18, "function(Float64, Int64) Bool", ""},
 }
 
+var Math_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Abs", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Ceil", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Floor", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Round", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Sqrt", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Pow", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
+	{"Min", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
+	{"Max", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
+	{"Sin", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Cos", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Tan", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Exp", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Log", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Log10", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"NaN", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Float64")), ""},
+	{"IsNaN", 16, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Bool")), ""},
+	{"Inf", 17, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Float64")), ""},
+	{"IsInf", 18, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Int64) Bool")), ""},
+}
+
 type Math_Bridge struct {
 	Impl     Math
 	Registry *ffigo.HandleRegistry
@@ -546,19 +573,32 @@ func (b *Math_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMath(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Math, registry *ffigo.HandleRegistry) {
+func RegisterMath(executor interface{ RegisterConstant(string, string) }, impl Math, registry *ffigo.HandleRegistry) {
 	bridge := &Math_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "math"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Math_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Math_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Math_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 	executor.RegisterConstant("math.E", ffigo.ToConstantString(2.71828182845904523536))
 	executor.RegisterConstant("math.Pi", ffigo.ToConstantString(3.14159265358979323846))

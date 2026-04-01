@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 )
 
@@ -39,6 +40,7 @@ func (__p *BrowserModuleProxy) OpenBrowser(ctx context.Context, url string) (*ot
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.Browser
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -79,6 +81,7 @@ func BrowserModuleHostRouter(ctx context.Context, impl BrowserModule, registry *
 		url = string(reqBuf.ReadString())
 		r0, err := impl.OpenBrowser(ctx, url)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -108,6 +111,15 @@ var BrowserModule_FFI_Metadata = []struct {
 	{"OpenBrowser", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>, Error)", ""},
 }
 
+var BrowserModule_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"OpenBrowser", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>, Error)")), ""},
+}
+
 type BrowserModule_Bridge struct {
 	Impl     BrowserModule
 	Registry *ffigo.HandleRegistry
@@ -128,19 +140,32 @@ func (b *BrowserModule_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBrowserModule(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl BrowserModule, registry *ffigo.HandleRegistry) {
+func RegisterBrowserModule(executor interface{ RegisterConstant(string, string) }, impl BrowserModule, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserModule_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "browser"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range BrowserModule_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range BrowserModule_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range BrowserModule_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -161,6 +186,7 @@ func (__p *BrowserServiceProxy) NewPage(b *other.Browser) (*other.Page, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if b == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -179,6 +205,7 @@ func (__p *BrowserServiceProxy) NewPage(b *other.Browser) (*other.Page, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.Page
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -216,6 +243,7 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 	switch methodID {
 	case MethodID_BrowserService_NewPage:
 		var b *other.Browser
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				b = obj.(*other.Browser)
@@ -225,6 +253,7 @@ func BrowserServiceHostRouter(ctx context.Context, impl BrowserService, registry
 		}
 		r0, err := impl.NewPage(b)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -254,6 +283,15 @@ var BrowserService_FFI_Metadata = []struct {
 	{"NewPage", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error)", ""},
 }
 
+var BrowserService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"NewPage", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error)")), ""},
+}
+
 type BrowserService_Bridge struct {
 	Impl     BrowserService
 	Registry *ffigo.HandleRegistry
@@ -274,21 +312,40 @@ func (b *BrowserService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBrowserService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl BrowserService, registry *ffigo.HandleRegistry) {
+var BrowserService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser", ast.GoMiniType("struct { NewPage function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error); }"))
+
+func RegisterBrowserService(executor interface{ RegisterConstant(string, string) }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range BrowserService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range BrowserService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range BrowserService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser", "struct { NewPage function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser>) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, Error); }")
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser", BrowserService_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Browser", BrowserService_StructSchema.Spec)
+	}
 }
 
 const (
@@ -308,6 +365,7 @@ func (__p *PageServiceProxy) Locator(p *other.Page, selectors ...string) (*other
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if p == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -330,6 +388,7 @@ func (__p *PageServiceProxy) Locator(p *other.Page, selectors ...string) (*other
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *other.CdpSelector
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -367,6 +426,7 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 	switch methodID {
 	case MethodID_PageService_Locator:
 		var p *other.Page
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				p = obj.(*other.Page)
@@ -382,6 +442,7 @@ func PageServiceHostRouter(ctx context.Context, impl PageService, registry *ffig
 		}
 		r0, err := impl.Locator(p, selectors...)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -411,6 +472,15 @@ var PageService_FFI_Metadata = []struct {
 	{"Locator", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error)", ""},
 }
 
+var PageService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Locator", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error)")), ""},
+}
+
 type PageService_Bridge struct {
 	Impl     PageService
 	Registry *ffigo.HandleRegistry
@@ -431,21 +501,40 @@ func (b *PageService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterPageService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl PageService, registry *ffigo.HandleRegistry) {
+var PageService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page", ast.GoMiniType("struct { Locator function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error); }"))
+
+func RegisterPageService(executor interface{ RegisterConstant(string, string) }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range PageService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range PageService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range PageService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page", "struct { Locator function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page>, ...String) tuple(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>, Error); }")
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page", PageService_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.Page", PageService_StructSchema.Spec)
+	}
 }
 
 const (
@@ -465,6 +554,7 @@ func (__p *CdpSelectorServiceProxy) Click(s *other.CdpSelector) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if s == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -512,6 +602,7 @@ func CdpSelectorServiceHostRouter(ctx context.Context, impl CdpSelectorService, 
 	switch methodID {
 	case MethodID_CdpSelectorService_Click:
 		var s *other.CdpSelector
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				s = obj.(*other.CdpSelector)
@@ -545,6 +636,15 @@ var CdpSelectorService_FFI_Metadata = []struct {
 	{"Click", 1, "function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error", ""},
 }
 
+var CdpSelectorService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Click", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error")), ""},
+}
+
 type CdpSelectorService_Bridge struct {
 	Impl     CdpSelectorService
 	Registry *ffigo.HandleRegistry
@@ -565,19 +665,38 @@ func (b *CdpSelectorService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterCdpSelectorService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
+var CdpSelectorService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector", ast.GoMiniType("struct { Click function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error; }"))
+
+func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, string) }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range CdpSelectorService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range CdpSelectorService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range CdpSelectorService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector", "struct { Click function(Ptr<gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector>) Error; }")
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector", CdpSelectorService_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/examples/browser_e2e/other.CdpSelector", CdpSelectorService_StructSchema.Spec)
+	}
 }

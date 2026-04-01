@@ -1886,6 +1886,9 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 			}
 		case TypeAny:
 			if obj.Ref != nil {
+				if inner, ok := obj.Ref.(*Var); ok {
+					return e.incDecLHSDesc(session, &LHSIndex{Obj: inner, Index: idx}, op)
+				}
 				if m, ok := obj.Ref.(*VMMap); ok {
 					key := idx.Str
 					if idx.VType == TypeInt {
@@ -1930,6 +1933,9 @@ func (e *Executor) incDecLHSDesc(session *StackContext, lhsDesc interface{}, op 
 			}
 		case TypeAny:
 			if obj.Ref != nil {
+				if inner, ok := obj.Ref.(*Var); ok {
+					return e.incDecLHSDesc(session, &LHSMember{Obj: inner, Property: desc.Property}, op)
+				}
 				if m, ok := obj.Ref.(*VMMap); ok {
 					if val, exists := m.Data[desc.Property]; exists && val != nil {
 						if op == "++" {
@@ -1979,6 +1985,9 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			return nil
 		case TypeAny:
 			if obj.Ref != nil {
+				if inner, ok := obj.Ref.(*Var); ok {
+					return e.assignToLHSDesc(session, &LHSIndex{Obj: inner, Index: idx}, val)
+				}
 				if m, ok := obj.Ref.(*VMMap); ok {
 					key, err := e.varToMapKey(idx)
 					if err != nil {
@@ -2027,6 +2036,9 @@ func (e *Executor) assignToLHSDesc(session *StackContext, lhsDesc interface{}, v
 			return errors.New("type Handle does not support member assignment")
 		case TypeAny:
 			if obj.Ref != nil {
+				if inner, ok := obj.Ref.(*Var); ok {
+					return e.assignToLHSDesc(session, &LHSMember{Obj: inner, Property: desc.Property}, val)
+				}
 				if m, ok := obj.Ref.(*VMMap); ok {
 					m.Data[desc.Property] = val
 					return nil

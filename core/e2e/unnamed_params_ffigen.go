@@ -105,6 +105,16 @@ var Logger_FFI_Metadata = []struct {
 	{"Internal", 2, "function(String, String, Int64) Void", "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
 }
 
+var Logger_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Log", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, Int64) Void")), ""},
+	{"Internal", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, Int64) Void")), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
+}
+
 type Logger_Bridge struct {
 	Impl     Logger
 	Registry *ffigo.HandleRegistry
@@ -125,19 +135,32 @@ func (b *Logger_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterLogger(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Logger, registry *ffigo.HandleRegistry) {
+func RegisterLogger(executor interface{ RegisterConstant(string, string) }, impl Logger, registry *ffigo.HandleRegistry) {
 	bridge := &Logger_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "logger"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Logger_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Logger_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Logger_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -228,6 +251,16 @@ var Callback_FFI_Metadata = []struct {
 	{"OnRaw", 2, "function(Int64, TypeBytes) Void", "OnRaw uses unnamed parameters in a reverse proxy"},
 }
 
+var Callback_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"OnEvent", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, String) Void")), ""},
+	{"OnRaw", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, TypeBytes) Void")), "OnRaw uses unnamed parameters in a reverse proxy"},
+}
+
 type Callback_Bridge struct {
 	Impl     Callback
 	Registry *ffigo.HandleRegistry
@@ -248,19 +281,32 @@ func (b *Callback_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterCallback(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Callback, registry *ffigo.HandleRegistry) {
+func RegisterCallback(executor interface{ RegisterConstant(string, string) }, impl Callback, registry *ffigo.HandleRegistry) {
 	bridge := &Callback_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "callback"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Callback_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Callback_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Callback_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -280,8 +326,8 @@ func (__p *Callback_ReverseProxy) OnEvent(arg0 int64, arg1 string) {
 	args[0] = __p.program.ToVar(__p.ctx, arg0, __p.bridge)
 	args[1] = __p.program.ToVar(__p.ctx, arg1, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "OnEvent", args)
-	_ = err
 	_ = resVar
+	_ = err
 	return
 }
 
@@ -290,7 +336,7 @@ func (__p *Callback_ReverseProxy) OnRaw(arg0 int64, arg1 []byte) {
 	args[0] = __p.program.ToVar(__p.ctx, arg0, __p.bridge)
 	args[1] = __p.program.ToVar(__p.ctx, arg1, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "OnRaw", args)
-	_ = err
 	_ = resVar
+	_ = err
 	return
 }

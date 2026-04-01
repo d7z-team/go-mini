@@ -398,7 +398,13 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	// 穿透 TypeAny
 	if obj.VType == TypeAny && obj.Ref != nil {
 		if inner, ok := obj.Ref.(*Var); ok {
-			return e.evalMemberExprDirect(nil, inner, property)
+			switch inner.VType {
+			case TypeMap, TypeModule, TypeInterface, TypeHandle, TypeAny, TypeError:
+				return e.evalMemberExprDirect(nil, inner, property)
+			default:
+				// Scalar values wrapped by Any should return nil for unknown members.
+				return nil, nil
+			}
 		}
 	}
 
@@ -762,6 +768,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "String":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
+				if arg.VType == TypeAny && arg.Ref != nil {
+					if inner, ok := arg.Ref.(*Var); ok {
+						arg = inner
+					}
+				}
 				switch arg.VType {
 				case TypeString:
 					session.ValueStack.Push(NewString(arg.Str))
@@ -785,6 +796,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "TypeBytes":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
+				if arg.VType == TypeAny && arg.Ref != nil {
+					if inner, ok := arg.Ref.(*Var); ok {
+						arg = inner
+					}
+				}
 				switch arg.VType {
 				case TypeBytes:
 					session.ValueStack.Push(arg)
@@ -799,6 +815,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "Int64":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
+				if arg.VType == TypeAny && arg.Ref != nil {
+					if inner, ok := arg.Ref.(*Var); ok {
+						arg = inner
+					}
+				}
 				switch arg.VType {
 				case TypeInt:
 					session.ValueStack.Push(arg)
@@ -824,6 +845,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "Float64":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
+				if arg.VType == TypeAny && arg.Ref != nil {
+					if inner, ok := arg.Ref.(*Var); ok {
+						arg = inner
+					}
+				}
 				switch arg.VType {
 				case TypeFloat:
 					session.ValueStack.Push(arg)
@@ -848,7 +874,13 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			return nil
 		case "Bool":
 			if len(args) > 0 && args[0] != nil {
-				b, _ := args[0].ToBool()
+				arg := args[0]
+				if arg.VType == TypeAny && arg.Ref != nil {
+					if inner, ok := arg.Ref.(*Var); ok {
+						arg = inner
+					}
+				}
+				b, _ := arg.ToBool()
 				session.ValueStack.Push(NewBool(b))
 				return nil
 			}
@@ -903,21 +935,13 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				}
 				// 动态 FFI 路由：如果 Receiver 是一个带 Bridge 的 Handle，直接发起调用
 				if ref.Receiver != nil && ref.Receiver.VType == TypeHandle && ref.Receiver.Bridge != nil {
-					// 构造临时路由。注意：这里我们暂时假设返回值为 Any。
-					// 完善的做法是：如果 callable 带有签名信息，可以从中提取。
+					// 动态接口调用保持 Any 边界，与宿主侧 InterfaceData/Invoke 契约一致。
 					route := FFIRoute{
 						Bridge:   ref.Receiver.Bridge,
 						MethodID: 0, // 对于接口调用，通常我们传方法名字符串
 						Name:     ref.Method,
 						Returns:  "Any", // 默认
 						Return:   "Any",
-					}
-					// 如果 c 有类型信息且是接口方法签名
-					if c.Type != "" {
-						if ft, ok := c.Type.ReadFunc(); ok {
-							route.Returns = string(ft.Return)
-							route.Return = ft.Return
-						}
 					}
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
 				}

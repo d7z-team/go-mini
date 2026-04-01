@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -36,6 +37,7 @@ func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *TestObj
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -50,6 +52,7 @@ func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if a == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -59,6 +62,7 @@ func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 			buf.WriteUvarint(0)
 		}
 	}
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if b == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -144,6 +148,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	case MethodID_AdvancedFFI_GetSameObject:
 		r0 := impl.GetSameObject()
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -152,6 +157,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		return resBuf.Bytes(), nil
 	case MethodID_AdvancedFFI_IsSame:
 		var a *TestObj
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				a = obj.(*TestObj)
@@ -160,6 +166,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 			}
 		}
 		var b *TestObj
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				b = obj.(*TestObj)
@@ -219,6 +226,18 @@ var AdvancedFFI_FFI_Metadata = []struct {
 	{"EchoEmbedded", 4, "function(EmbeddedStruct) EmbeddedStruct", "Embedded structs"},
 }
 
+var AdvancedFFI_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<test.TestObj>")), "Identity check"},
+	{"IsSame", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool")), ""},
+	{"EchoMap", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<Bool, String>) Map<Float64, Bool>")), "Map keys"},
+	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(EmbeddedStruct) EmbeddedStruct")), "Embedded structs"},
+}
+
 type AdvancedFFI_Bridge struct {
 	Impl     AdvancedFFI
 	Registry *ffigo.HandleRegistry
@@ -239,18 +258,31 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterAdvancedFFI(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
+func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "test"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range AdvancedFFI_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range AdvancedFFI_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range AdvancedFFI_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

@@ -12,8 +12,8 @@ import (
 	"image/jpeg"
 	"image/png"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // Image 是图像句柄 (对应 Go 的 image.RGBA)
@@ -229,8 +229,8 @@ func (h *ImageHost) Decode(ctx context.Context, data []byte) (*Image, string, er
 
 // RegisterImageAll 为方便外部调用提供的注册函数
 func RegisterImageAll(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
+	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	RegisterConstant(string, string)
 }, impl ImageLib, registry *ffigo.HandleRegistry,
 ) {

@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -202,6 +203,18 @@ var Base64_FFI_Metadata = []struct {
 	{"URLDecodeString", 4, "function(String) tuple(TypeBytes, Error)", ""},
 }
 
+var Base64_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
+	{"DecodeString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
+	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
+	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
+}
+
 type Base64_Bridge struct {
 	Impl     Base64
 	Registry *ffigo.HandleRegistry
@@ -222,18 +235,31 @@ func (b *Base64_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBase64(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Base64, registry *ffigo.HandleRegistry) {
+func RegisterBase64(executor interface{ RegisterConstant(string, string) }, impl Base64, registry *ffigo.HandleRegistry) {
 	bridge := &Base64_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "encoding/base64"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Base64_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Base64_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Base64_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

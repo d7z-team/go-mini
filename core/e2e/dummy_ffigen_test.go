@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -44,6 +45,7 @@ func (__p *MockOSProxy) Open(name string) (*File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -73,6 +75,7 @@ func (__p *MockOSProxy) Name(f *File) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -96,6 +99,7 @@ func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -141,6 +145,7 @@ func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -186,6 +191,7 @@ func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -231,6 +237,7 @@ func (__p *MockOSProxy) Close(f *File) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -318,6 +325,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -335,6 +343,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Name:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -348,6 +357,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Stat:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -371,6 +381,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Read:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -395,6 +406,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Write:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -419,6 +431,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Close:
 		var f *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				f = obj.(*File)
@@ -475,6 +488,21 @@ var MockOS_FFI_Metadata = []struct {
 	{"Deep", 7, "function(Nested) Nested", ""},
 }
 
+var MockOS_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Open", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<native.File>, Error)")), ""},
+	{"Name", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.File>) String")), ""},
+	{"Stat", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.File>) tuple(FileInfo, Error)")), ""},
+	{"Read", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)")), ""},
+	{"Write", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)")), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.File>) Error")), ""},
+	{"Deep", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Nested) Nested")), ""},
+}
+
 type MockOS_Bridge struct {
 	Impl     MockOS
 	Registry *ffigo.HandleRegistry
@@ -495,19 +523,32 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockOS(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl MockOS, registry *ffigo.HandleRegistry) {
+func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "os"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range MockOS_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range MockOS_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range MockOS_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -596,6 +637,16 @@ var ContextMock_FFI_Metadata = []struct {
 	{"WithoutContext", 2, "function(String) String", ""},
 }
 
+var ContextMock_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"WithContext", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+}
+
 type ContextMock_Bridge struct {
 	Impl     ContextMock
 	Registry *ffigo.HandleRegistry
@@ -616,19 +667,32 @@ func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterContextMock(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl ContextMock, registry *ffigo.HandleRegistry) {
+func RegisterContextMock(executor interface{ RegisterConstant(string, string) }, impl ContextMock, registry *ffigo.HandleRegistry) {
 	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "ctx_test"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range ContextMock_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range ContextMock_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range ContextMock_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -674,6 +738,7 @@ func (__p *NativeMockProxy) GetPtr() *NativeStruct {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *NativeStruct
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -707,6 +772,7 @@ func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if s == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -754,6 +820,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case MethodID_NativeMock_GetPtr:
 		r0 := impl.GetPtr()
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -773,6 +840,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 		return resBuf.Bytes(), nil
 	case MethodID_NativeMock_SetPtr:
 		var s *NativeStruct
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				s = obj.(*NativeStruct)
@@ -801,6 +869,18 @@ var NativeMock_FFI_Metadata = []struct {
 	{"SetPtr", 4, "function(Ptr<native.NativeStruct>) Int64", ""},
 }
 
+var NativeMock_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() NativeStruct")), ""},
+	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<native.NativeStruct>")), ""},
+	{"SetStruct", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(NativeStruct) Int64")), ""},
+	{"SetPtr", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.NativeStruct>) Int64")), ""},
+}
+
 type NativeMock_Bridge struct {
 	Impl     NativeMock
 	Registry *ffigo.HandleRegistry
@@ -821,18 +901,31 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterNativeMock(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl NativeMock, registry *ffigo.HandleRegistry) {
+func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "native"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range NativeMock_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range NativeMock_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range NativeMock_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

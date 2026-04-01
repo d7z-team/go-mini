@@ -292,7 +292,6 @@ func main() {
 	}
 
 	var interfaces []string
-	anyReverse := false
 	for _, spec := range ifaceSpecs {
 		isReverse := false
 		isStruct := false
@@ -300,7 +299,6 @@ func main() {
 			for _, line := range spec.Doc.List {
 				if strings.Contains(line.Text, "ffigen:reverse") {
 					isReverse = true
-					anyReverse = true
 				}
 				if strings.Contains(line.Text, "ffigen:struct") {
 					isStruct = true
@@ -328,10 +326,7 @@ func main() {
 	}
 
 	// Write all candidate imports first
-	for alias, path := range stdPackages {
-		if alias == "runtime" && !anyReverse {
-			continue
-		}
+	for _, path := range stdPackages {
 		fmt.Fprintf(&sb, "\t\"%s\"\n", path)
 	}
 	for alias, path := range knownImports {
@@ -540,6 +535,37 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' method '%s' expects receiver type '%s', but ffigen:methods specifies '%s'. Please ensure the ffigen:methods prefix exactly matches the receiver type (including package prefix).", name, method.Names[0].Name, receiverTypeClean, methodsPrefix))
 			}
 		}
+	}
+
+	buildStructSchemaLiteral := func(structName string, includeFields bool, includeMethods bool) string {
+		var fieldsSB strings.Builder
+		fieldsSB.WriteString("struct { ")
+		if includeFields {
+			if str, ok := structs[structName]; ok {
+				var keys []string
+				fMap := make(map[string]string)
+				getFields(structs, structName, fMap)
+				for k := range fMap {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					fmt.Fprintf(&fieldsSB, "%s %s; ", k, fMap[k])
+				}
+				_ = str
+			}
+		}
+		if includeMethods {
+			for _, method := range iface.Methods.List {
+				if len(method.Names) == 0 {
+					continue
+				}
+				mName := method.Names[0].Name
+				fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
+			}
+		}
+		fieldsSB.WriteString("}")
+		return fieldsSB.String()
 	}
 
 	fmt.Fprintf(&sb, "const (\n")
@@ -898,6 +924,21 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\t{\"%s\", %d, \"%s\", \"%s\"},\n", methodName, i+1, getSpec(method.Type.(*ast.FuncType)), doc)
 	}
 	fmt.Fprintf(&sb, "}\n\n")
+	fmt.Fprintf(&sb, "var %s_FFI_Schemas = []struct {\n\tName     string\n\tMethodID uint32\n\tSig      *runtime.RuntimeFuncSig\n\tDoc      string\n}{\n", name)
+	for i, method := range iface.Methods.List {
+		if len(method.Names) == 0 {
+			continue
+		}
+		methodName := method.Names[0].Name
+		doc := ""
+		if method.Doc != nil {
+			doc = strings.ReplaceAll(method.Doc.Text(), "\"", "\\\"")
+			doc = strings.ReplaceAll(doc, "\n", " ")
+			doc = strings.TrimSpace(doc)
+		}
+		fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, getSpec(method.Type.(*ast.FuncType)), doc)
+	}
+	fmt.Fprintf(&sb, "}\n\n")
 
 	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, implType)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name)
@@ -908,44 +949,28 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
+		fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, resolveCanonicalType(name), buildStructSchemaLiteral(name, true, true))
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
+		fmt.Fprintf(&sb, "\tschemaRegistrar, hasSchema := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
+		fmt.Fprintf(&sb, "\tlegacyRegistrar, hasLegacy := executor.(interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) })\n")
+		fmt.Fprintf(&sb, "\tif !hasSchema && !hasLegacy { panic(\"ffigen: executor does not support FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
-
-		// Register struct metadata
-		fmt.Fprintf(&sb, "\t// Register struct metadata for validation and code completion\n")
-		var fieldsSB strings.Builder
-		fieldsSB.WriteString("struct { ")
-		if str, ok := structs[name]; ok {
-			var keys []string
-			fMap := make(map[string]string)
-			getFields(structs, name, fMap)
-			for k := range fMap {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				fmt.Fprintf(&fieldsSB, "%s %s; ", k, fMap[k])
-			}
-			_ = str
-		}
-		for _, method := range iface.Methods.List {
-			if len(method.Names) == 0 {
-				continue
-			}
-			mName := method.Names[0].Name
-			fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
-		}
-		fieldsSB.WriteString("}")
-		fmt.Fprintf(&sb, "\texecutor.RegisterStructSpec(\"%s\", \"%s\")\n", resolveCanonicalType(name), fieldsSB.String())
+		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", name, resolveCanonicalType(name), name, name, resolveCanonicalType(name), name)
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
+		if methodsPrefix != "" {
+			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, resolveCanonicalType(methodsPrefix), buildStructSchemaLiteral("", false, true))
+		}
+		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
+		fmt.Fprintf(&sb, "\tschemaRegistrar, hasSchema := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
+		fmt.Fprintf(&sb, "\tlegacyRegistrar, hasLegacy := executor.(interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) })\n")
+		fmt.Fprintf(&sb, "\tif !hasSchema && !hasLegacy { panic(\"ffigen: executor does not support FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n", name)
+		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n", name)
+		fmt.Fprintf(&sb, "\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n\t}\n", name)
 
 		if isModule && fixedPrefix != "" && len(constants) > 0 {
 			var keys []string
@@ -959,26 +984,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		if methodsPrefix != "" {
-			// Register as a struct if it's a method set
-			var fieldsSB strings.Builder
-			fieldsSB.WriteString("struct { ")
-			for _, method := range iface.Methods.List {
-				if len(method.Names) == 0 {
-					continue
-				}
-				mName := method.Names[0].Name
-				fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
-			}
-			fieldsSB.WriteString("}")
-			fmt.Fprintf(&sb, "\texecutor.RegisterStructSpec(\"%s\", \"%s\")\n", resolveCanonicalType(methodsPrefix), fieldsSB.String())
+			fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", resolveCanonicalType(methodsPrefix), name, resolveCanonicalType(methodsPrefix), name)
 		}
 		fmt.Fprintf(&sb, "}\n")
 	} else {
 		// Generic Library registration: Requires 'impl' and explicit prefix
-		fmt.Fprintf(&sb, "func Register%sLibrary(executor interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType); RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
+		fmt.Fprintf(&sb, "func Register%sLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
+		fmt.Fprintf(&sb, "\tschemaRegistrar, hasSchema := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
+		fmt.Fprintf(&sb, "\tlegacyRegistrar, hasLegacy := executor.(interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) })\n")
+		fmt.Fprintf(&sb, "\tif !hasSchema && !hasLegacy { panic(\"ffigen: executor does not support FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Metadata {\n\t\texecutor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t}\n}\n", name)
+		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n\t}\n}\n", name, name)
 	}
 
 	if isReverse && !isStruct {
@@ -1032,9 +1049,33 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			for i, pn := range pNames {
 				fmt.Fprintf(&sb, "\targs[%d] = __p.program.ToVar(__p.ctx, %s, __p.bridge)\n", i, pn)
 			}
-			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = err\n\t_ = resVar\n", mName)
+			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = resVar\n", mName)
 			if fType.Results != nil {
 				var rStmts []string
+				resultTypes := make([]string, 0, len(fType.Results.List))
+				hasErrorReturn := false
+				errorIndex := -1
+				for i, r := range fType.Results.List {
+					rt := typeToString(r.Type)
+					resultTypes = append(resultTypes, rt)
+					if rt == "error" {
+						hasErrorReturn = true
+						errorIndex = i
+					}
+				}
+				if hasErrorReturn {
+					zeroReturns := make([]string, 0, len(resultTypes))
+					for i, rt := range resultTypes {
+						if i == errorIndex {
+							zeroReturns = append(zeroReturns, "err")
+							continue
+						}
+						zeroReturns = append(zeroReturns, zeroValue(toGoType(rt)))
+					}
+					fmt.Fprintf(&sb, "\tif err != nil { return %s }\n", strings.Join(zeroReturns, ", "))
+				} else {
+					fmt.Fprintf(&sb, "\t_ = err\n")
+				}
 				if len(fType.Results.List) > 1 {
 					fmt.Fprintf(&sb, "\tvar elements []*runtime.Var\n\tif resVar != nil && resVar.VType == runtime.TypeArray { if arr, ok := resVar.Ref.(*runtime.VMArray); ok { elements = arr.Data } }\n")
 					for i, r := range fType.Results.List {
@@ -1055,6 +1096,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(rStmts, ", "))
 			} else {
+				fmt.Fprintf(&sb, "\t_ = err\n")
 				fmt.Fprintf(&sb, "\treturn\n")
 			}
 			fmt.Fprintf(&sb, "}\n\n")
@@ -1066,6 +1108,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
+		fmt.Fprintf(sb, "\t// Ptr<T> crosses the FFI boundary as an opaque handle ID.\n")
 		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteUvarint(0)\n\t} else {\n", prefix, bufName)
 		if isHost {
 			fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.Register(%s)))\n", bufName, prefix)
@@ -1174,6 +1217,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 
 func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName string, isHost bool) {
 	if strings.HasPrefix(pType, "Ptr<") {
+		fmt.Fprintf(sb, "\t// Ptr<T> is restored from the opaque handle ID written on the FFI wire.\n")
 		if isHost {
 			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, err := registry.GetWithAudit(id); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, varName, toGoType(pType), varName)
 		} else {

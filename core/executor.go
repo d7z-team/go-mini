@@ -408,6 +408,12 @@ func (e *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID
 	e.registerFFILocked(name, bridge, methodID, spec, doc)
 }
 
+func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, methodID uint32, sig *runtime.RuntimeFuncSig, doc string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.registerFFISchemaLocked(name, bridge, methodID, sig, doc)
+}
+
 // RegisterConstant 注册一个全局常量到执行器
 func (e *MiniExecutor) RegisterConstant(name string, val string) {
 	e.mu.Lock()
@@ -508,6 +514,12 @@ func (e *MiniExecutor) RegisterStructSpec(name string, spec ast.GoMiniType) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.registerStructSpecLocked(name, spec)
+}
+
+func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeStructSpec) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.registerStructSchemaLocked(name, spec)
 }
 
 func (e *MiniExecutor) AddStructSpec(name string, spec ast.GoMiniType) {
@@ -958,15 +970,18 @@ func (e *MiniExecutor) ExportMetadata() string {
 }
 
 func (e *MiniExecutor) registerFFILocked(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
+	funcSig, _ := runtime.ParseRuntimeFuncSig(spec)
+	e.registerFFISchemaLocked(name, bridge, methodID, funcSig, doc)
+}
+
+func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) {
 	returns := "Void"
 	returnType := ast.GoMiniType("Void")
-	funcSig, err := runtime.ParseRuntimeFuncSig(spec)
-	if err == nil && funcSig != nil {
+	spec := ast.GoMiniType("")
+	if funcSig != nil {
+		spec = funcSig.Spec
 		returns = string(funcSig.Function.Return)
 		returnType = funcSig.Function.Return
-	} else if callFunc, ok := spec.ReadCallFunc(); ok {
-		returns = string(callFunc.Returns)
-		returnType = callFunc.Returns
 	}
 
 	e.routes[name] = runtime.FFIRoute{
@@ -979,16 +994,19 @@ func (e *MiniExecutor) registerFFILocked(name string, bridge ffigo.FFIBridge, me
 		FuncSig:  funcSig,
 		Return:   returnType,
 	}
-	if spec == "" {
-		return
+	if funcSig != nil {
+		e.funcSchemas[ast.Ident(name)] = funcSig
 	}
-	e.funcSchemas[ast.Ident(name)] = funcSig
 }
 
 func (e *MiniExecutor) registerStructSpecLocked(name string, spec ast.GoMiniType) {
-	parsed, err := runtime.ParseRuntimeStructSpec(name, spec)
-	if err == nil {
-		e.structsMeta[ast.Ident(name)] = parsed
+	parsed, _ := runtime.ParseRuntimeStructSpec(name, spec)
+	e.registerStructSchemaLocked(name, parsed)
+}
+
+func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) {
+	if spec != nil {
+		e.structsMeta[ast.Ident(name)] = spec
 		return
 	}
 	delete(e.structsMeta, ast.Ident(name))

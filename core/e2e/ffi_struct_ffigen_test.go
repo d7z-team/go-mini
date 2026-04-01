@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -131,6 +132,16 @@ var MockShapeAPI_FFI_Metadata = []struct {
 	{"Area", 2, "function(Rect) Int64", ""},
 }
 
+var MockShapeAPI_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"GetRect", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Rect")), ""},
+	{"Area", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Rect) Int64")), ""},
+}
+
 type MockShapeAPI_Bridge struct {
 	Impl     MockShapeAPI
 	Registry *ffigo.HandleRegistry
@@ -151,17 +162,30 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockShapeAPILibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
+func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range MockShapeAPI_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range MockShapeAPI_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range MockShapeAPI_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

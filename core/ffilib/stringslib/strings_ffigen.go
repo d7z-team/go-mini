@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -563,6 +564,31 @@ var Strings_FFI_Metadata = []struct {
 	{"Join", 17, "function(Array<String>, String) String", ""},
 }
 
+var Strings_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Contains", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
+	{"ContainsAny", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
+	{"Count", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
+	{"HasPrefix", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
+	{"HasSuffix", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
+	{"Index", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
+	{"LastIndex", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
+	{"ToLower", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"ToUpper", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Trim", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
+	{"TrimSpace", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"TrimPrefix", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
+	{"TrimSuffix", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
+	{"Replace", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, String, Int64) String")), ""},
+	{"ReplaceAll", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, String) String")), ""},
+	{"Split", 16, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Array<String>")), ""},
+	{"Join", 17, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<String>, String) String")), ""},
+}
+
 type Strings_Bridge struct {
 	Impl     Strings
 	Registry *ffigo.HandleRegistry
@@ -583,18 +609,31 @@ func (b *Strings_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStrings(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Strings, registry *ffigo.HandleRegistry) {
+func RegisterStrings(executor interface{ RegisterConstant(string, string) }, impl Strings, registry *ffigo.HandleRegistry) {
 	bridge := &Strings_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "strings"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Strings_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Strings_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Strings_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

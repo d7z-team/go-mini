@@ -11,6 +11,7 @@ import (
 	a_other "gopkg.d7z.net/go-mini/core/e2e/internal/a/other"
 	b_other "gopkg.d7z.net/go-mini/core/e2e/internal/b/other"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -38,6 +39,7 @@ func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *a_other.Type
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -59,6 +61,7 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *b_other.Type
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -86,6 +89,7 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 		name = string(reqBuf.ReadString())
 		r0 := impl.NewA(ctx, name)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -100,6 +104,7 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 		}
 		r0 := impl.NewB(ctx, id)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -119,6 +124,16 @@ var TestCanonicalService_FFI_Metadata = []struct {
 }{
 	{"NewA", 1, "function(String) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>", ""},
 	{"NewB", 2, "function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>", ""},
+}
+
+var TestCanonicalService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"NewA", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>")), ""},
+	{"NewB", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>")), ""},
 }
 
 type TestCanonicalService_Bridge struct {
@@ -141,19 +156,32 @@ func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterTestCanonicalService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
+func RegisterTestCanonicalService(executor interface{ RegisterConstant(string, string) }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
 	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "test_canonical"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range TestCanonicalService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range TestCanonicalService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range TestCanonicalService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -174,6 +202,7 @@ func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -205,6 +234,7 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	switch methodID {
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				t = obj.(*a_other.Type)
@@ -230,6 +260,15 @@ var ATypeService_FFI_Metadata = []struct {
 	{"Hello", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String", ""},
 }
 
+var ATypeService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String")), ""},
+}
+
 type ATypeService_Bridge struct {
 	Impl     ATypeService
 	Registry *ffigo.HandleRegistry
@@ -250,21 +289,40 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterATypeService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl ATypeService, registry *ffigo.HandleRegistry) {
+var ATypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ast.GoMiniType("struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String; }"))
+
+func RegisterATypeService(executor interface{ RegisterConstant(string, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range ATypeService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range ATypeService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range ATypeService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", "struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String; }")
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ATypeService_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ATypeService_StructSchema.Spec)
+	}
 }
 
 const (
@@ -284,6 +342,7 @@ func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -315,6 +374,7 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	switch methodID {
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				t = obj.(*b_other.Type)
@@ -340,6 +400,15 @@ var BTypeService_FFI_Metadata = []struct {
 	{"Hello", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String", ""},
 }
 
+var BTypeService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String")), ""},
+}
+
 type BTypeService_Bridge struct {
 	Impl     BTypeService
 	Registry *ffigo.HandleRegistry
@@ -360,19 +429,38 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBTypeService(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl BTypeService, registry *ffigo.HandleRegistry) {
+var BTypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", ast.GoMiniType("struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String; }"))
+
+func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range BTypeService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range BTypeService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range BTypeService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
-	executor.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", "struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String; }")
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", BTypeService_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", BTypeService_StructSchema.Spec)
+	}
 }

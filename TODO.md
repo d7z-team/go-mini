@@ -32,17 +32,17 @@
 - [x] **保留兼容层**: 对外 API 仍允许传入旧字符串 spec，但内部只保留解析后的 schema。
 
 ### H. ffigen 生成器升级
-- [ ] **升级 `ffigen` 元数据输出**: 生成代码能够输出可直接注册的 schema 结构，而不是只输出字符串 spec。
-- [ ] **保留第一阶段兼容模式**: 允许生成代码继续调用旧版 `RegisterFFI/RegisterStructSpec`，由运行时兼容层接管。
-- [ ] **统一指针/句柄语义**: 明确 `Ptr<T>` 在 FFI 边界上表示 handle，不与 VM 内部解引用语义混用。
-- [ ] **统一 reverse proxy 契约**: 生成的 `*_ReverseProxy` 与 `ToVar/InvokeCallable` 新表示兼容。
-- [ ] **补充 ffigen 迁移样例**: 至少覆盖 stdlib、普通 service、struct-direct、reverse proxy 四类生成模式。
+- [x] **升级 `ffigen` 元数据输出**: 生成代码能够输出可直接注册的 schema 结构，而不是只输出字符串 spec。
+- [x] **保留第一阶段兼容模式**: 允许生成代码继续调用旧版 `RegisterFFI/RegisterStructSpec`，由运行时兼容层接管。
+- [x] **统一指针/句柄语义**: 明确 `Ptr<T>` 在 FFI 边界上表示 handle，不与 VM 内部解引用语义混用。
+- [x] **统一 reverse proxy 契约**: 生成的 `*_ReverseProxy` 与 `ToVar/InvokeCallable` 新表示兼容。
+- [x] **补充 ffigen 迁移样例**: 至少覆盖 stdlib、普通 service、struct-direct、reverse proxy 四类生成模式。
 
 ### I. Runtime FFI 编解码脱 AST
 - [ ] **移除 `evalFFI` 对 `ast.GoMiniType.ReadCallFunc()` 的运行时依赖**。
 - [ ] **移除 `serializeVar/deserializeVar` 对 `ast.GoMiniType` 字符串分支的主依赖**。
 - [ ] **移除 FFI struct 编解码对 `e.program.Structs` 的依赖**，改为直接读取 `RuntimeStructSpec`。
-- [ ] **统一 Interface 编解码**: `VMInterface` 不再长期持有 `map[string]*ast.FunctionType`，改为运行时接口 schema。
+- [x] **统一 Interface 编解码**: `VMInterface` 不再长期持有 `map[string]*ast.FunctionType`，改为运行时接口 schema。
 - [ ] **明确 Any/Handle/Error/Tuple 在线路协议中的表示**，减少启发式 fallback。
 
 ---

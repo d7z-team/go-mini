@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -339,6 +340,18 @@ var MapTest_FFI_Metadata = []struct {
 	{"EchoIntMap", 4, "function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", ""},
 }
 
+var MapTest_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"EchoMap", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<String, String>) tuple(Map<String, String>, Error)")), ""},
+	{"GetMap", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() tuple(Map<String, Int64>, Error)")), ""},
+	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<String, Int64>) tuple(Int64, Error)")), ""},
+	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)")), ""},
+}
+
 type MapTest_Bridge struct {
 	Impl     MapTest
 	Registry *ffigo.HandleRegistry
@@ -359,17 +372,30 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMapTestLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
+func RegisterMapTestLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
 	bridge := &MapTest_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range MapTest_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range MapTest_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range MapTest_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

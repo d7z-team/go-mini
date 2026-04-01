@@ -10,6 +10,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -71,6 +72,15 @@ var SHA256_FFI_Metadata = []struct {
 	{"Sum256", 1, "function(TypeBytes) TypeBytes", ""},
 }
 
+var SHA256_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Sum256", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+}
+
 type SHA256_Bridge struct {
 	Impl     SHA256
 	Registry *ffigo.HandleRegistry
@@ -91,19 +101,32 @@ func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterSHA256(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl SHA256, registry *ffigo.HandleRegistry) {
+func RegisterSHA256(executor interface{ RegisterConstant(string, string) }, impl SHA256, registry *ffigo.HandleRegistry) {
 	bridge := &SHA256_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "crypto/sha256"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range SHA256_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range SHA256_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range SHA256_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 	executor.RegisterConstant("crypto/sha256.BlockSize", ffigo.ToConstantString(sha256.BlockSize))
 	executor.RegisterConstant("crypto/sha256.Size", ffigo.ToConstantString(sha256.Size))

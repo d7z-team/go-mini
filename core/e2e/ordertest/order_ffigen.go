@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -41,6 +42,7 @@ func (__p *OrderServiceProxy) New(id string) (*Order, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Order
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -70,6 +72,7 @@ func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) erro
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -111,6 +114,7 @@ func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -152,6 +156,7 @@ func (__p *OrderServiceProxy) Close(o *Order) error {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
+	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		buf.WriteUvarint(0)
 	} else {
@@ -208,6 +213,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		id = string(reqBuf.ReadString())
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -225,6 +231,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
 		var o *Order
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
@@ -250,6 +257,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
 		var o *Order
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
@@ -272,6 +280,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
 		var o *Order
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				o = obj.(*Order)
@@ -308,6 +317,18 @@ var OrderService_FFI_Metadata = []struct {
 	{"Close", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>) Error", "Close 关闭订单"},
 }
 
+var OrderService_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>, Error)")), "New 创建新订单"},
+	{"AddItem", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>, String, Float64) Error")), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>) tuple(Float64, Error)")), "GetTotal 获取总价"},
+	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>) Error")), "Close 关闭订单"},
+}
+
 type OrderService_Bridge struct {
 	Impl     OrderService
 	Registry *ffigo.HandleRegistry
@@ -328,17 +349,30 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterOrderServiceLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, prefix string, impl OrderService, registry *ffigo.HandleRegistry) {
+func RegisterOrderServiceLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl OrderService, registry *ffigo.HandleRegistry) {
 	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range OrderService_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range OrderService_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range OrderService_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

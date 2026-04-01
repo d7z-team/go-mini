@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -88,6 +89,15 @@ var MockGeometry_FFI_Metadata = []struct {
 	{"SumX", 1, "function(Array<RobustPoint>) Int64", ""},
 }
 
+var MockGeometry_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"SumX", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<RobustPoint>) Int64")), ""},
+}
+
 type MockGeometry_Bridge struct {
 	Impl     MockGeometry
 	Registry *ffigo.HandleRegistry
@@ -108,17 +118,30 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockGeometryLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
+func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range MockGeometry_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range MockGeometry_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range MockGeometry_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -249,6 +250,18 @@ var Fmt_FFI_Metadata = []struct {
 	{"Sprintf", 4, "function(String, ...Any) String", ""},
 }
 
+var Fmt_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Print", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...Any) Void")), ""},
+	{"Println", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...Any) Void")), ""},
+	{"Printf", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...Any) Void")), ""},
+	{"Sprintf", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...Any) String")), ""},
+}
+
 type Fmt_Bridge struct {
 	Impl     Fmt
 	Registry *ffigo.HandleRegistry
@@ -269,18 +282,31 @@ func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFmt(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Fmt, registry *ffigo.HandleRegistry) {
+func RegisterFmt(executor interface{ RegisterConstant(string, string) }, impl Fmt, registry *ffigo.HandleRegistry) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "fmt"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Fmt_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Fmt_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Fmt_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

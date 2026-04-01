@@ -1,0 +1,87 @@
+package e2e
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestFFIGenMigrationSamples(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		patterns []string
+	}{
+		{
+			name: "StdlibDualRegistration",
+			path: "../ffilib/iolib/io_ffigen.go",
+			patterns: []string{
+				"schemaRegistrar, hasSchema := executor.(interface {",
+				"legacyRegistrar, hasLegacy := executor.(interface {",
+				"legacyRegistrar.RegisterFFI(",
+			},
+		},
+		{
+			name: "ServiceDualRegistration",
+			path: "canonical_type_ffigen.go",
+			patterns: []string{
+				"schemaRegistrar.RegisterFFISchema(",
+				"legacyRegistrar.RegisterFFI(",
+			},
+		},
+		{
+			name: "StructDirectSchemaRegistration",
+			path: "structtest/ffigen.go",
+			patterns: []string{
+				"RegisterStructSchema(",
+				"RegisterStructSpec(",
+				"Ptr<calc.Calculator>",
+			},
+		},
+		{
+			name: "ReverseProxyCompat",
+			path: "reverse_ffigen_test.go",
+			patterns: []string{
+				"type ScriptCalculator_ReverseProxy struct {",
+				"InvokeCallable(",
+				"if err != nil {",
+				"return 0, err",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content, err := os.ReadFile(tt.path)
+			if err != nil {
+				t.Fatalf("read %s: %v", tt.path, err)
+			}
+			code := string(content)
+			for _, pattern := range tt.patterns {
+				if !strings.Contains(code, pattern) {
+					t.Fatalf("expected %s to contain %q", tt.path, pattern)
+				}
+			}
+		})
+	}
+}
+
+func TestFFIGenPtrIsOpaqueHandleContract(t *testing.T) {
+	content, err := os.ReadFile("structtest/ffigen.go")
+	if err != nil {
+		t.Fatalf("read generated struct sample: %v", err)
+	}
+	code := string(content)
+
+	required := []string{
+		"Ptr<T> crosses the FFI boundary as an opaque handle ID.",
+		"Ptr<T> is restored from the opaque handle ID written on the FFI wire.",
+		"registry.Register(",
+		"ReadUvarint()",
+	}
+	for _, pattern := range required {
+		if !strings.Contains(code, pattern) {
+			t.Fatalf("generated struct sample missing pointer/handle contract marker %q", pattern)
+		}
+	}
+}

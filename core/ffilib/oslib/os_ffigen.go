@@ -11,6 +11,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -46,6 +47,7 @@ func (__p *OSProxy) Open(name string) (*iolib.File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -85,6 +87,7 @@ func (__p *OSProxy) Create(name string) (*iolib.File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -126,6 +129,7 @@ func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, erro
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
+	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
 			if obj, ok := __p.registry.Get(id); ok {
@@ -289,6 +293,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -309,6 +314,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -339,6 +345,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		}
 		r0, err := impl.OpenFile(name, flag, perm)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -429,6 +436,21 @@ var OS_FFI_Metadata = []struct {
 	{"Getenv", 7, "function(String) String", ""},
 }
 
+var OS_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Open", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)")), ""},
+	{"Create", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)")), ""},
+	{"OpenFile", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)")), ""},
+	{"ReadFile", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
+	{"WriteFile", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, TypeBytes) Error")), ""},
+	{"Remove", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Error")), ""},
+	{"Getenv", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+}
+
 type OS_Bridge struct {
 	Impl     OS
 	Registry *ffigo.HandleRegistry
@@ -449,19 +471,32 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterOS(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl OS, registry *ffigo.HandleRegistry) {
+func RegisterOS(executor interface{ RegisterConstant(string, string) }, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "os"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range OS_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range OS_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range OS_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 	executor.RegisterConstant("os.DevNull", ffigo.ToConstantString(os.DevNull))
 	executor.RegisterConstant("os.O_APPEND", ffigo.ToConstantString(os.O_APPEND))

@@ -180,6 +180,17 @@ var ScriptCalculator_FFI_Metadata = []struct {
 	{"Divide", 3, "function(Int64, Int64) tuple(Int64, Error)", ""},
 }
 
+var ScriptCalculator_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Add", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) Int64")), ""},
+	{"Format", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) String")), ""},
+	{"Divide", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) tuple(Int64, Error)")), ""},
+}
+
 type ScriptCalculator_Bridge struct {
 	Impl     ScriptCalculator
 	Registry *ffigo.HandleRegistry
@@ -200,18 +211,31 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterScriptCalculatorLibrary(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
+func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range ScriptCalculator_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range ScriptCalculator_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range ScriptCalculator_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }
 
@@ -231,8 +255,8 @@ func (__p *ScriptCalculator_ReverseProxy) Add(a int64, b int64) int64 {
 	args[0] = __p.program.ToVar(__p.ctx, a, __p.bridge)
 	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Add", args)
-	_ = err
 	_ = resVar
+	_ = err
 	var ret0 int64 = 0
 	if resVar != nil {
 		if raw := resVar.Interface(); raw != nil {
@@ -252,8 +276,8 @@ func (__p *ScriptCalculator_ReverseProxy) Format(prefix string, val int64) strin
 	args[0] = __p.program.ToVar(__p.ctx, prefix, __p.bridge)
 	args[1] = __p.program.ToVar(__p.ctx, val, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Format", args)
-	_ = err
 	_ = resVar
+	_ = err
 	var ret0 string = ""
 	if resVar != nil {
 		if raw := resVar.Interface(); raw != nil {
@@ -270,8 +294,10 @@ func (__p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error
 	args[0] = __p.program.ToVar(__p.ctx, a, __p.bridge)
 	args[1] = __p.program.ToVar(__p.ctx, b, __p.bridge)
 	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Divide", args)
-	_ = err
 	_ = resVar
+	if err != nil {
+		return 0, err
+	}
 	var elements []*runtime.Var
 	if resVar != nil && resVar.VType == runtime.TypeArray {
 		if arr, ok := resVar.Ref.(*runtime.VMArray); ok {

@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -33,6 +34,7 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	switch methodID {
 	case MethodID_Calculator_Add:
 		var c *Calculator
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
@@ -51,6 +53,7 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_Multiply:
 		var c *Calculator
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
@@ -74,6 +77,7 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_GetBase:
 		var c *Calculator
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
 				c = obj.(*Calculator)
@@ -101,6 +105,17 @@ var Calculator_FFI_Metadata = []struct {
 	{"GetBase", 3, "function(Ptr<calc.Calculator>) Int64", ""},
 }
 
+var Calculator_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Add", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64) Int64")), ""},
+	{"Multiply", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64, Int64) Int64")), ""},
+	{"GetBase", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>) Int64")), ""},
+}
+
 type Calculator_Bridge struct {
 	Impl     *Calculator
 	Registry *ffigo.HandleRegistry
@@ -121,22 +136,37 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterCalculator(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, registry *ffigo.HandleRegistry) {
+var Calculator_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }"))
+
+func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "__method_calc.Calculator"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Calculator_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Calculator_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+		schemaRegistrar.RegisterStructSchema("calc.Calculator", Calculator_StructSchema)
+	} else {
+		for _, m := range Calculator_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
+		legacyRegistrar.RegisterStructSpec("calc.Calculator", Calculator_StructSchema.Spec)
 	}
-	// Register struct metadata for validation and code completion
-	executor.RegisterStructSpec("calc.Calculator", "struct { Base int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }")
 }
 
 const (
@@ -161,6 +191,7 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 		}
 		r0 := impl.New(base)
 		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
@@ -179,6 +210,15 @@ var Factory_FFI_Metadata = []struct {
 	Doc      string
 }{
 	{"New", 1, "function(Int64) Ptr<calc.Calculator>", ""},
+}
+
+var Factory_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<calc.Calculator>")), ""},
 }
 
 type Factory_Bridge struct {
@@ -201,18 +241,31 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFactory(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl *Factory, registry *ffigo.HandleRegistry) {
+func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "calc"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Factory_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Factory_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Factory_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

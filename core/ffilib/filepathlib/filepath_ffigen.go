@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -426,6 +427,26 @@ var Filepath_FFI_Metadata = []struct {
 	{"VolumeName", 12, "function(String) String", ""},
 }
 
+var Filepath_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Base", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Clean", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Dir", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Ext", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"IsAbs", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
+	{"Join", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...String) String")), ""},
+	{"Match", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(Bool, Error)")), ""},
+	{"Rel", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(String, Error)")), ""},
+	{"Split", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, String)")), ""},
+	{"ToSlash", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"FromSlash", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"VolumeName", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+}
+
 type Filepath_Bridge struct {
 	Impl     Filepath
 	Registry *ffigo.HandleRegistry
@@ -446,18 +467,31 @@ func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFilepath(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Filepath, registry *ffigo.HandleRegistry) {
+func RegisterFilepath(executor interface{ RegisterConstant(string, string) }, impl Filepath, registry *ffigo.HandleRegistry) {
 	bridge := &Filepath_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "filepath"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Filepath_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Filepath_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Filepath_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 }

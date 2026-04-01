@@ -10,6 +10,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 const (
@@ -497,6 +498,24 @@ var Strconv_FFI_Metadata = []struct {
 	{"Unquote", 10, "function(String) tuple(String, Error)", ""},
 }
 
+var Strconv_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Atoi", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Int64, Error)")), ""},
+	{"Itoa", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) String")), ""},
+	{"ParseBool", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Bool, Error)")), ""},
+	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) tuple(Float64, Error)")), ""},
+	{"ParseInt", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64, Int64) tuple(Int64, Error)")), ""},
+	{"FormatBool", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Bool) String")), ""},
+	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Uint8, Int64, Int64) String")), ""},
+	{"FormatInt", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) String")), ""},
+	{"Quote", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Unquote", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, Error)")), ""},
+}
+
 type Strconv_Bridge struct {
 	Impl     Strconv
 	Registry *ffigo.HandleRegistry
@@ -517,19 +536,32 @@ func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStrconv(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-	RegisterStructSpec(string, ast.GoMiniType)
-	RegisterConstant(string, string)
-}, impl Strconv, registry *ffigo.HandleRegistry) {
+func RegisterStrconv(executor interface{ RegisterConstant(string, string) }, impl Strconv, registry *ffigo.HandleRegistry) {
 	bridge := &Strconv_Bridge{Impl: impl, Registry: registry}
+	schemaRegistrar, hasSchema := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	legacyRegistrar, hasLegacy := executor.(interface {
+		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+		RegisterStructSpec(string, ast.GoMiniType)
+	})
+	if !hasSchema && !hasLegacy {
+		panic("ffigen: executor does not support FFI registration")
+	}
 	prefix := "strconv"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range Strconv_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	if hasSchema {
+		for _, m := range Strconv_FFI_Schemas {
+			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		}
+	} else {
+		for _, m := range Strconv_FFI_Metadata {
+			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+		}
 	}
 	executor.RegisterConstant("strconv.IntSize", ffigo.ToConstantString(strconv.IntSize))
 }
