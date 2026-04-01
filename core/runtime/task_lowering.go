@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"reflect"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 )
@@ -131,87 +132,28 @@ func (s *loweringScope) resolveOrImplicit(name string) SymbolRef {
 	return SymbolRef{Name: name, Kind: SymbolGlobal, Slot: -1}
 }
 
-func predeclareFunctionLocals(stmt ast.Stmt, scope *loweringScope) {
-	if stmt == nil || scope == nil || scope.fn == nil {
+func predeclareInnerBlockBindings(stmt ast.Stmt, scope *loweringScope) {
+	if stmt == nil || scope == nil {
 		return
 	}
 	switch n := stmt.(type) {
 	case *ast.BlockStmt:
-		if n == nil {
+		if n == nil || !n.Inner {
 			return
 		}
 		for _, child := range n.Children {
-			if child == nil {
-				continue
-			}
-			predeclareFunctionLocals(child, scope)
+			predeclareInnerBlockBindings(child, scope)
 		}
 	case *ast.GenDeclStmt:
 		if n == nil {
 			return
 		}
 		scope.declare(string(n.Name))
-	case *ast.IfStmt:
-		if n == nil {
-			return
-		}
-		predeclareFunctionLocals(n.Body, scope)
-		predeclareFunctionLocals(n.ElseBody, scope)
-	case *ast.ForStmt:
-		if n == nil {
-			return
-		}
-		if initStmt, ok := n.Init.(ast.Stmt); ok {
-			predeclareFunctionLocals(initStmt, scope)
-		}
-		if updateStmt, ok := n.Update.(ast.Stmt); ok {
-			predeclareFunctionLocals(updateStmt, scope)
-		}
-		if bodyStmt, ok := n.Body.(ast.Stmt); ok {
-			predeclareFunctionLocals(bodyStmt, scope)
-		}
-	case *ast.RangeStmt:
-		if n == nil {
-			return
-		}
-		if n.Define {
-			if n.Key != "" {
-				scope.declare(string(n.Key))
-			}
-			if n.Value != "" {
-				scope.declare(string(n.Value))
-			}
-		}
-		predeclareFunctionLocals(n.Body, scope)
-	case *ast.TryStmt:
-		if n == nil {
-			return
-		}
-		predeclareFunctionLocals(n.Body, scope)
-		if n.Catch != nil {
-			if n.Catch.VarName != "" {
-				scope.declare(string(n.Catch.VarName))
-			}
-			predeclareFunctionLocals(n.Catch.Body, scope)
-		}
-		predeclareFunctionLocals(n.Finally, scope)
-	case *ast.SwitchStmt:
-		if n == nil {
-			return
-		}
-		if initStmt, ok := n.Init.(ast.Stmt); ok {
-			predeclareFunctionLocals(initStmt, scope)
-		}
-		for _, child := range n.Body.Children {
-			if clause, ok := child.(*ast.CaseClause); ok {
-				predeclareFunctionLocals(&ast.BlockStmt{Children: clause.Body, Inner: true}, scope)
-			}
-		}
 	}
 }
 
 func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
-	if node == nil {
+	if isNilNode(node) {
 		return tasks
 	}
 	base := node.GetBase()
@@ -232,6 +174,19 @@ func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
 		}
 	}
 	return tasks
+}
+
+func isNilNode(node ast.Node) bool {
+	if node == nil {
+		return true
+	}
+	value := reflect.ValueOf(node)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (e *Executor) TasksForStmt(stmt ast.Stmt) []Task {
@@ -285,10 +240,32 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 	case *ast.BadStmt:
 		return nil, false // Will be handled by the caller or panic
 	case *ast.BlockStmt:
-		childScope := scope.childBlock()
+		if n == nil {
+			return nil, true
+		}
+		childScope := scope
+		if !n.Inner {
+			childScope = scope.childBlock()
+		}
 		for _, child := range n.Children {
-			if decl, ok := child.(*ast.GenDeclStmt); ok {
-				childScope.declare(string(decl.Name))
+			switch stmt := child.(type) {
+			case *ast.GenDeclStmt:
+				childScope.declare(string(stmt.Name))
+			case *ast.BlockStmt:
+				predeclareInnerBlockBindings(stmt, childScope)
+			case *ast.RangeStmt:
+				if stmt != nil && stmt.Define {
+					if stmt.Key != "" {
+						childScope.declare(string(stmt.Key))
+					}
+					if stmt.Value != "" {
+						childScope.declare(string(stmt.Value))
+					}
+				}
+			case *ast.TryStmt:
+				if stmt != nil && stmt.Catch != nil && stmt.Catch.VarName != "" {
+					childScope.declare(string(stmt.Catch.VarName))
+				}
 			}
 		}
 		out := make([]Task, 0)
@@ -303,6 +280,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		}
 		return out, true
 	case *ast.GenDeclStmt:
+		if n == nil {
+			return nil, true
+		}
 		sym := scope.declare(string(n.Name))
 		return []Task{{
 			Op: OpDeclareVar,
@@ -313,6 +293,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			},
 		}}, true
 	case *ast.AssignmentStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := []Task{{Op: OpAssign}}
 		if v, ok := data.(*Var); ok {
 			out = append(out, Task{Op: OpPush, Data: v})
@@ -323,6 +306,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, e.tasksForLHSInScope(n.LHS, scope)...)
 		return out, true
 	case *ast.MultiAssignmentStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := []Task{{Op: OpMultiAssign, Data: len(n.LHS)}}
 		out = append(out, e.tasksForExprInScope(n.Value, scope)...)
 		for i := len(n.LHS) - 1; i >= 0; i-- {
@@ -330,18 +316,30 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		}
 		return out, true
 	case *ast.IncDecStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := []Task{{Op: OpIncDec, Data: string(n.Operator)}}
 		out = append(out, e.tasksForLHSInScope(n.Operand, scope)...)
 		return out, true
 	case *ast.ReturnStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := []Task{{Op: OpReturn, Data: len(n.Results)}}
 		for i := len(n.Results) - 1; i >= 0; i-- {
 			out = append(out, e.tasksForExprInScope(n.Results[i], scope)...)
 		}
 		return out, true
 	case *ast.InterruptStmt:
+		if n == nil {
+			return nil, true
+		}
 		return []Task{{Op: OpInterrupt, Data: n.InterruptType}}, true
 	case *ast.IfStmt:
+		if n == nil {
+			return nil, true
+		}
 		branch := &BranchData{
 			Then: e.tasksForStmtInScope(n.Body, nil, scope.childBlock()),
 		}
@@ -352,6 +350,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, e.tasksForExprInScope(n.Cond, scope)...)
 		return out, true
 	case *ast.ForStmt:
+		if n == nil {
+			return nil, true
+		}
 		loopScope := scope.childBlock()
 		bodyStmt, ok := n.Body.(ast.Stmt)
 		if !ok {
@@ -384,6 +385,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, Task{Op: OpScopeEnter, Data: "for"})
 		return out, true
 	case *ast.RangeStmt:
+		if n == nil {
+			return nil, true
+		}
 		rangeScope := scope.childBlock()
 		var keySym, valueSym SymbolRef
 		if n.Define {
@@ -406,6 +410,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
 	case *ast.TryStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := make([]Task, 0, 3)
 		if n.Finally != nil {
 			out = append(out, Task{Op: OpFinally, Data: &FinallyData{
@@ -425,6 +432,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, e.tasksForStmtInScope(n.Body, nil, scope.childBlock())...)
 		return out, true
 	case *ast.DeferStmt:
+		if n == nil {
+			return nil, true
+		}
 		call, ok := n.Call.(*ast.CallExprStmt)
 		if !ok {
 			return nil, false
@@ -434,6 +444,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			PopResult: !call.GetBase().Type.IsVoid(),
 		}}}, true
 	case *ast.SwitchStmt:
+		if n == nil {
+			return nil, true
+		}
 		plan := &SwitchData{
 			IsType:    n.IsType,
 			HasTag:    n.Tag != nil,
@@ -506,6 +519,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		}
 		return out, true
 	case *ast.ExpressionStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := make([]Task, 0)
 		if n.X != nil && !n.GetBase().Type.IsVoid() {
 			out = append(out, Task{Op: OpPop})
@@ -513,6 +529,9 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
 	case *ast.CallExprStmt:
+		if n == nil {
+			return nil, true
+		}
 		out := make([]Task, 0)
 		if !n.GetBase().Type.IsVoid() {
 			out = append(out, Task{Op: OpPop})
@@ -534,23 +553,38 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 	case *ast.BadExpr:
 		return nil, false
 	case *ast.LiteralExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		val, err := e.evalLiteralDirect(n)
 		if err != nil {
 			return nil, false
 		}
 		return []Task{{Op: OpPush, Data: val}}, true
 	case *ast.IdentifierExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		return []Task{{Op: OpLoadVar, Data: &LoadVarData{Name: string(n.Name), Sym: scope.resolveOrImplicit(string(n.Name))}}}, true
 	case *ast.ConstRefExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		if val, ok := e.consts[string(n.Name)]; ok {
 			return []Task{{Op: OpPush, Data: e.evalLiteralToVar(val)}}, true
 		}
 		return nil, false
 	case *ast.UnaryExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpApplyUnary, Data: string(n.Operator)}}
 		out = append(out, e.tasksForExprInScope(n.Operand, scope)...)
 		return out, true
 	case *ast.BinaryExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		op := string(n.Operator)
 		if op == "&&" || op == "And" || op == "||" || op == "Or" {
 			out := []Task{{Op: OpJumpIf, Data: &JumpData{
@@ -565,6 +599,9 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		out = append(out, e.tasksForExprInScope(n.Left, scope)...)
 		return out, true
 	case *ast.IndexExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpIndex, Data: &IndexData{
 			Multi:      n.Multi,
 			ResultType: n.GetBase().Type,
@@ -573,10 +610,16 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		out = append(out, e.tasksForExprInScope(n.Object, scope)...)
 		return out, true
 	case *ast.MemberExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpMember, Data: string(n.Property)}}
 		out = append(out, e.tasksForExprInScope(n.Object, scope)...)
 		return out, true
 	case *ast.TypeAssertExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpAssert, Data: &AssertData{
 			TargetType: n.Type,
 			Multi:      n.Multi,
@@ -585,6 +628,9 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
 	case *ast.CompositeExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		entries := make([]CompositeEntryData, len(n.Values))
 		out := []Task{{Op: OpComposite, Data: &CompositeData{
 			Type:    n.Type,
@@ -604,6 +650,9 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		}
 		return out, true
 	case *ast.SliceExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpSlice, Data: &SliceData{
 			HasLow:  n.Low != nil,
 			HasHigh: n.High != nil,
@@ -617,10 +666,16 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
 	case *ast.StarExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		out := []Task{{Op: OpApplyUnary, Data: "Dereference"}}
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
 	case *ast.CallExprStmt:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		data := &CallData{
 			Mode:     CallByValue,
 			ArgCount: len(n.Args),
@@ -651,13 +706,18 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		}
 		return out, true
 	case *ast.ImportExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		return []Task{{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}}}, true
 	case *ast.FuncLitExpr:
+		if n == nil {
+			return []Task{{Op: OpPush}}, true
+		}
 		fnScope := scope.childFunction()
 		for _, p := range n.Params {
 			fnScope.declare(string(p.Name))
 		}
-		predeclareFunctionLocals(n.Body, fnScope)
 		captures := make([]string, len(n.CaptureNames))
 		copy(captures, n.CaptureNames)
 		return []Task{{Op: OpMakeClosure, Data: &ClosureData{
@@ -681,6 +741,14 @@ func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]Task
 			},
 		}}, true
 	case *ast.IdentifierExpr:
+		if lhs == nil {
+			return []Task{{
+				Op: OpEvalLHS,
+				Data: &LHSData{
+					Kind: LHSTypeNone,
+				},
+			}}, true
+		}
 		return []Task{{
 			Op: OpEvalLHS,
 			Data: &LHSData{
@@ -690,11 +758,27 @@ func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]Task
 			},
 		}}, true
 	case *ast.IndexExpr:
+		if lhs == nil {
+			return []Task{{
+				Op: OpEvalLHS,
+				Data: &LHSData{
+					Kind: LHSTypeNone,
+				},
+			}}, true
+		}
 		out := []Task{{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeIndex}}}
 		out = append(out, e.tasksForExprInScope(lhs.Index, scope)...)
 		out = append(out, e.tasksForExprInScope(lhs.Object, scope)...)
 		return out, true
 	case *ast.MemberExpr:
+		if lhs == nil {
+			return []Task{{
+				Op: OpEvalLHS,
+				Data: &LHSData{
+					Kind: LHSTypeNone,
+				},
+			}}, true
+		}
 		out := []Task{{Op: OpEvalLHS, Data: &LHSData{
 			Kind:     LHSTypeMember,
 			Property: string(lhs.Property),
@@ -702,6 +786,14 @@ func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]Task
 		out = append(out, e.tasksForExprInScope(lhs.Object, scope)...)
 		return out, true
 	case *ast.StarExpr:
+		if lhs == nil {
+			return []Task{{
+				Op: OpEvalLHS,
+				Data: &LHSData{
+					Kind: LHSTypeNone,
+				},
+			}}, true
+		}
 		out := []Task{{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeStar}}}
 		out = append(out, e.tasksForExprInScope(lhs.X, scope)...)
 		return out, true

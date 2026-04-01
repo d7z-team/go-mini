@@ -77,8 +77,8 @@
 - [x] **为局部变量分配固定 slot**。
 - [x] **为闭包捕获分配 upvalue 索引**。
 - [x] **让 lowering 输出带 slot 信息的任务数据**，而不是只输出变量名。
-- [ ] **收敛局部预声明为精确作用域分析**: 当前 `predeclareFunctionLocals` 仍是函数级近似方案，后续需要替换为按 block/branch/loop 精确建模。
-- [ ] **补充符号解析异常场景测试**: 覆盖 shadowing、分支内声明、for/range/catch 局部变量、typed-nil AST 边界。
+- [x] **收敛局部预声明为精确作用域分析**: 已移除函数级 `predeclareFunctionLocals` 依赖，改为按 block/synthetic inner block 精确建模。
+- [x] **补充符号解析异常场景测试**: 已覆盖 shadowing、分支内声明、for/range/catch 局部变量、typed-nil AST 边界。
 
 ### M. 运行时栈帧重构
 - [ ] **新增 `OpLoadLocal` / `OpStoreLocal`**。

@@ -224,7 +224,6 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		for _, p := range fn.Params {
 			fnScope.declare(string(p.Name))
 		}
-		predeclareFunctionLocals(fn.Body, fnScope)
 		rf := result.functions[ident]
 		rf.BodyTasks = result.tasksForStmtInScope(fn.Body, nil, fnScope)
 		result.functions[ident] = rf

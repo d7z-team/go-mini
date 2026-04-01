@@ -53,7 +53,7 @@ go-mini/
 │       ├── executor_eval.go     # 调用与内置函数
 │       └── scope.go             # Stack/Var/Closure
 ├── TODO.md                      # 当前重构总任务（唯一清单）
-└── AGENT.md                     # 本文档
+└── AGENTS.md                    # 本文档
 ```
 
 ## 3. 关键设计约束（必须遵守）

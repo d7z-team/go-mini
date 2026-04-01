@@ -8,6 +8,44 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
+func visitLoweredTasks(tasks []Task, visit func(Task)) {
+	for _, task := range tasks {
+		visit(task)
+		switch data := task.Data.(type) {
+		case *BranchData:
+			visitLoweredTasks(data.Then, visit)
+			visitLoweredTasks(data.Else, visit)
+		case *ForData:
+			visitLoweredTasks(data.Cond, visit)
+			visitLoweredTasks(data.Body, visit)
+			visitLoweredTasks(data.Update, visit)
+		case *RangeData:
+			visitLoweredTasks(data.Body, visit)
+		case *CatchData:
+			visitLoweredTasks(data.Body, visit)
+		case *FinallyData:
+			visitLoweredTasks(data.Body, visit)
+		case *DeferData:
+			visitLoweredTasks(data.Tasks, visit)
+		case *SwitchData:
+			visitLoweredTasks(data.Init, visit)
+			visitLoweredTasks(data.Tag, visit)
+			visitLoweredTasks(data.AssignLHS, visit)
+			visitLoweredTasks(data.DefaultBody, visit)
+			for _, c := range data.Cases {
+				visitLoweredTasks(c.Body, visit)
+				for _, exprs := range c.Exprs {
+					visitLoweredTasks(exprs, visit)
+				}
+			}
+		case *ClosureData:
+			visitLoweredTasks(data.BodyTasks, visit)
+		case *DoCallData:
+			visitLoweredTasks(data.BodyTasks, visit)
+		}
+	}
+}
+
 func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 	exec, err := NewExecutor(&ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
@@ -543,5 +581,195 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 	}
 	if !sawLocalDecl || !sawParamLoad || !sawLocalLoad || !sawGlobalLoad || !sawBuiltinCall {
 		t.Fatalf("missing expected symbol annotations: decl=%v param=%v local=%v global=%v builtin=%v", sawLocalDecl, sawParamLoad, sawLocalLoad, sawGlobalLoad, sawBuiltinCall)
+	}
+}
+
+func TestLoweringAnnotatesShortDeclAndRangeSymbols(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
+for _, item := range []int64{1} {
+	value := item
+	println(value)
+}
+`)
+	if err != nil {
+		t.Fatalf("convert stmts failed: %v", err)
+	}
+	if len(stmts) != 1 {
+		t.Fatalf("unexpected stmt count: %d", len(stmts))
+	}
+
+	scope := exec.newRootLoweringScope().childFunction()
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, scope)
+	if !ok {
+		t.Fatal("expected statement to lower")
+	}
+
+	var sawValueLocal, sawItemLocal bool
+	visitLoweredTasks(tasks, func(task Task) {
+		if data, ok := task.Data.(*LoadVarData); ok {
+			if data.Name == "value" && data.Sym.Kind == SymbolLocal {
+				sawValueLocal = true
+			}
+			if data.Name == "item" && data.Sym.Kind == SymbolLocal {
+				sawItemLocal = true
+			}
+		}
+	})
+
+	if !sawValueLocal || !sawItemLocal {
+		t.Fatalf("expected short-decl and range vars to be local: value=%v item=%v", sawValueLocal, sawItemLocal)
+	}
+}
+
+func TestLoweringAnnotatesShadowingAndCatchSymbols(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode: ast.BaseNode{ID: "test"},
+		Variables: map[ast.Ident]ast.Expr{
+			"value": nil,
+			"ok":    nil,
+		},
+		Constants: make(map[string]string),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
+if ok {
+	value := int64(2)
+	println(value)
+}
+println(value)
+`)
+	if err != nil {
+		t.Fatalf("convert stmts failed: %v", err)
+	}
+	if len(stmts) != 2 {
+		t.Fatalf("unexpected stmt count: %d", len(stmts))
+	}
+
+	fnScope := exec.newRootLoweringScope().childFunction()
+	var sawLocalShadow, sawGlobalValue bool
+	for _, stmt := range stmts {
+		tasks, ok := exec.lowerStmtTasks(stmt, nil, fnScope)
+		if !ok {
+			t.Fatal("expected statement to lower")
+		}
+		visitLoweredTasks(tasks, func(task Task) {
+			load, ok := task.Data.(*LoadVarData)
+			if !ok || load.Name != "value" {
+				return
+			}
+			if load.Sym.Kind == SymbolLocal {
+				sawLocalShadow = true
+			}
+			if load.Sym.Kind == SymbolGlobal {
+				sawGlobalValue = true
+			}
+		})
+	}
+
+	body, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`panic("boom")`)
+	if err != nil {
+		t.Fatalf("convert body failed: %v", err)
+	}
+	catchBody, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`println(err)`)
+	if err != nil {
+		t.Fatalf("convert catch body failed: %v", err)
+	}
+	tryStmt := &ast.TryStmt{
+		Body: &ast.BlockStmt{Children: body, Inner: true},
+		Catch: &ast.CatchClause{
+			VarName: "err",
+			Body:    &ast.BlockStmt{Children: catchBody, Inner: true},
+		},
+	}
+
+	tasks, ok := exec.lowerStmtTasks(tryStmt, nil, fnScope)
+	if !ok {
+		t.Fatal("expected try statement to lower")
+	}
+	var sawCatchLocal bool
+	visitLoweredTasks(tasks, func(task Task) {
+		load, ok := task.Data.(*LoadVarData)
+		if ok && load.Name == "err" && load.Sym.Kind == SymbolLocal {
+			sawCatchLocal = true
+		}
+	})
+
+	if !sawLocalShadow || !sawGlobalValue || !sawCatchLocal {
+		t.Fatalf("missing expected symbol annotations: localShadow=%v globalValue=%v catchLocal=%v", sawLocalShadow, sawGlobalValue, sawCatchLocal)
+	}
+}
+
+func TestLoweringHandlesTypedNilASTNodes(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	scope := exec.newRootLoweringScope().childFunction()
+	var nilBlock *ast.BlockStmt
+	var nilExpr *ast.IdentifierExpr
+	var nilIndex *ast.IndexExpr
+	var nilMember *ast.MemberExpr
+	var nilStar *ast.StarExpr
+	predeclareInnerBlockBindings(nilBlock, scope)
+
+	stmtCases := []ast.Stmt{
+		nilBlock,
+		&ast.IfStmt{Body: nilBlock, ElseBody: nilBlock},
+		&ast.RangeStmt{Define: true, Value: "item", Body: nilBlock},
+		&ast.TryStmt{Body: nilBlock, Catch: &ast.CatchClause{VarName: "err", Body: nilBlock}, Finally: nilBlock},
+	}
+	for _, stmt := range stmtCases {
+		if _, ok := exec.lowerStmtTasks(stmt, nil, exec.newRootLoweringScope()); !ok {
+			t.Fatalf("expected typed-nil stmt %T to lower safely", stmt)
+		}
+	}
+
+	exprCases := []ast.Expr{
+		nilExpr,
+		nilIndex,
+		(*ast.CallExprStmt)(nil),
+	}
+	for _, expr := range exprCases {
+		if _, ok := exec.lowerExprTasks(expr, exec.newRootLoweringScope()); !ok {
+			t.Fatalf("expected typed-nil expr %T to lower safely", expr)
+		}
+	}
+
+	lhsCases := []ast.Expr{
+		nilExpr,
+		nilIndex,
+		nilMember,
+		nilStar,
+	}
+	for _, expr := range lhsCases {
+		if _, ok := exec.lowerLHSTasks(expr, exec.newRootLoweringScope()); !ok {
+			t.Fatalf("expected typed-nil lhs %T to lower safely", expr)
+		}
 	}
 }
