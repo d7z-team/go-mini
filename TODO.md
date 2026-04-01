@@ -73,10 +73,12 @@
 **目标**: 热路径不再通过变量名做 `map` 查找，闭包捕获与局部变量访问全部索引化。**
 
 ### L. Lowering/编译期符号解析
-- [ ] **引入符号解析上下文**: 区分 `Global/Local/Upvalue/Builtin/FFI`。
-- [ ] **为局部变量分配固定 slot**。
-- [ ] **为闭包捕获分配 upvalue 索引**。
-- [ ] **让 lowering 输出带 slot 信息的任务数据**，而不是只输出变量名。
+- [x] **引入符号解析上下文**: 区分 `Global/Local/Upvalue/Builtin/FFI`。
+- [x] **为局部变量分配固定 slot**。
+- [x] **为闭包捕获分配 upvalue 索引**。
+- [x] **让 lowering 输出带 slot 信息的任务数据**，而不是只输出变量名。
+- [ ] **收敛局部预声明为精确作用域分析**: 当前 `predeclareFunctionLocals` 仍是函数级近似方案，后续需要替换为按 block/branch/loop 精确建模。
+- [ ] **补充符号解析异常场景测试**: 覆盖 shadowing、分支内声明、for/range/catch 局部变量、typed-nil AST 边界。
 
 ### M. 运行时栈帧重构
 - [ ] **新增 `OpLoadLocal` / `OpStoreLocal`**。
@@ -84,6 +86,7 @@
 - [ ] **将 `Scope` 主存储从 `map[string]*Var` 迁移为 `[]*Var` 数组布局**。
 - [ ] **保留调试名表**: 仅调试/LSP/错误报告保留 slot->name 映射。
 - [ ] **重构 `CaptureVar/Load/Store/NewVar`**: 逐步从名字查找迁移到 slot 访问。
+- [ ] **让 runtime 真正消费 `SymbolRef`**: 当前 `LoadVarData/DeclareVarData/LHSData/CallData/ClosureData` 已带符号元信息，但执行仍按名字路径运行。
 
 ### N. 闭包与调用链路收口
 - [ ] **`VMClosure.Upvalues` 改为索引结构**，不再用 `map[string]*Var`。

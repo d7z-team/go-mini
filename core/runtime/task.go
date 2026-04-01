@@ -182,6 +182,23 @@ type Task struct {
 type DeclareVarData struct {
 	Name string
 	Kind ast.GoMiniType
+	Sym  SymbolRef
+}
+
+type SymbolKind uint8
+
+const (
+	SymbolUnknown SymbolKind = iota
+	SymbolGlobal
+	SymbolLocal
+	SymbolUpvalue
+	SymbolBuiltin
+)
+
+type SymbolRef struct {
+	Name string
+	Kind SymbolKind
+	Slot int
 }
 
 type BranchData struct {
@@ -281,6 +298,7 @@ type CallData struct {
 	Name     string
 	ArgCount int
 	Ellipsis bool
+	Sym      SymbolRef
 }
 
 type DoCallData struct {
@@ -365,12 +383,19 @@ type LHSData struct {
 	Kind     LHSType
 	Name     string
 	Property string
+	Sym      SymbolRef
 }
 
 type ClosureData struct {
 	FunctionType ast.FunctionType
 	BodyTasks    []Task
 	CaptureNames []string
+	CaptureRefs  []SymbolRef
+}
+
+type LoadVarData struct {
+	Name string
+	Sym  SymbolRef
 }
 
 type LHSIndex struct {

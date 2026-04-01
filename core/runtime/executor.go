@@ -191,15 +191,11 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	}
 	if program.Variables != nil {
 		for ident, expr := range program.Variables {
-			global := &RuntimeGlobal{
+			result.globals[ident] = &RuntimeGlobal{
 				Name:     ident,
 				HasInit:  expr != nil,
 				InitExpr: expr,
 			}
-			if expr != nil {
-				global.InitPlan = result.tasksForExpr(expr)
-			}
-			result.globals[ident] = global
 		}
 	}
 	if program.Functions != nil {
@@ -210,11 +206,30 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 			result.functions[ident] = &RuntimeFunction{
 				Name:         ident,
 				FunctionType: fn.FunctionType,
-				BodyTasks:    result.tasksForStmt(fn.Body, nil),
 			}
 		}
 	}
-	result.mainTasks = result.buildStmtPlan(program.Main)
+	rootScope := result.newRootLoweringScope()
+	for ident, global := range result.globals {
+		if global.HasInit && global.InitExpr != nil {
+			global.InitPlan = result.tasksForExprInScope(global.InitExpr, rootScope)
+		}
+		result.globals[ident] = global
+	}
+	for ident, fn := range program.Functions {
+		if fn == nil {
+			continue
+		}
+		fnScope := rootScope.childFunction()
+		for _, p := range fn.Params {
+			fnScope.declare(string(p.Name))
+		}
+		predeclareFunctionLocals(fn.Body, fnScope)
+		rf := result.functions[ident]
+		rf.BodyTasks = result.tasksForStmtInScope(fn.Body, nil, fnScope)
+		result.functions[ident] = rf
+	}
+	result.mainTasks = result.buildStmtPlanWithScope(program.Main, rootScope)
 	return result, nil
 }
 
@@ -349,12 +364,16 @@ func cloneTasks(tasks []Task) []Task {
 }
 
 func (e *Executor) buildStmtPlan(stmts []ast.Stmt) []Task {
+	return e.buildStmtPlanWithScope(stmts, e.newRootLoweringScope())
+}
+
+func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope) []Task {
 	if len(stmts) == 0 {
 		return nil
 	}
 	plan := make([]Task, 0)
 	for i := len(stmts) - 1; i >= 0; i-- {
-		plan = append(plan, e.tasksForStmt(stmts[i], nil)...)
+		plan = append(plan, e.tasksForStmtInScope(stmts[i], nil, scope)...)
 	}
 	return plan
 }
@@ -1036,7 +1055,15 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.TaskStack = append(session.TaskStack, rightTasks...)
 		return nil
 	case OpLoadVar:
-		name := task.Data.(string)
+		var name string
+		switch data := task.Data.(type) {
+		case string:
+			name = data
+		case *LoadVarData:
+			name = data.Name
+		default:
+			return fmt.Errorf("OpLoadVar missing LoadVarData")
+		}
 		v, err := session.Load(name)
 		if err != nil {
 			exec := session.Executor.(*Executor)
@@ -2537,6 +2564,8 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 				}
 			} else if cd, ok := task.Data.(*CallData); ok {
 				dataStr = cd.Name
+			} else if ld, ok := task.Data.(*LoadVarData); ok {
+				dataStr = ld.Name
 			} else {
 				dataStr = fmt.Sprintf("%v", task.Data)
 			}
@@ -2573,7 +2602,12 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 		case OpPush:
 			comment = "Literal value"
 		case OpLoadVar:
-			comment = fmt.Sprintf("Load variable '%v'", task.Data)
+			switch data := task.Data.(type) {
+			case *LoadVarData:
+				comment = fmt.Sprintf("Load variable '%v'", data.Name)
+			default:
+				comment = fmt.Sprintf("Load variable '%v'", task.Data)
+			}
 		case OpPop:
 			comment = "Pop stack"
 		}

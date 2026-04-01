@@ -26,7 +26,7 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 		t.Fatalf("convert expr failed: %v", err)
 	}
 
-	tasks, ok := exec.lowerExprTasks(expr)
+	tasks, ok := exec.lowerExprTasks(expr, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected expression to be lowered")
 	}
@@ -80,7 +80,7 @@ if ok {
 		t.Fatalf("unexpected stmt count: %d", len(stmts))
 	}
 
-	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected statement to be lowered")
 	}
@@ -140,7 +140,7 @@ for i := 0; i < 3; i++ {
 		t.Fatalf("unexpected stmt count: %d", len(stmts))
 	}
 
-	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected for statement to be lowered")
 	}
@@ -191,7 +191,7 @@ for idx, value := range items {
 		t.Fatalf("unexpected stmt count: %d", len(stmts))
 	}
 
-	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected range statement to be lowered")
 	}
@@ -251,7 +251,7 @@ func TestLowerStmtTasksBuildsDataOnlyTryPlan(t *testing.T) {
 		Finally: &ast.BlockStmt{Children: finallyBody, Inner: true},
 	}
 
-	tasks, ok := exec.lowerStmtTasks(tryStmt, nil)
+	tasks, ok := exec.lowerStmtTasks(tryStmt, nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected try statement to be lowered")
 	}
@@ -304,7 +304,7 @@ func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
 		t.Fatalf("unexpected stmt count: %d", len(stmts))
 	}
 
-	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected defer statement to be lowered")
 	}
@@ -350,7 +350,7 @@ default:
 		t.Fatalf("unexpected stmt count: %d", len(stmts))
 	}
 
-	tasks, ok := exec.lowerStmtTasks(stmts[0], nil)
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected switch statement to be lowered")
 	}
@@ -421,7 +421,7 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 		}},
 	}
 
-	tasks, ok := exec.lowerStmtTasks(switchStmt, nil)
+	tasks, ok := exec.lowerStmtTasks(switchStmt, nil, exec.newRootLoweringScope())
 	if !ok {
 		t.Fatal("expected type switch statement to be lowered")
 	}
@@ -483,5 +483,65 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 	}
 	if len(closure.BodyTasks) == 0 {
 		t.Fatal("expected lowered body tasks on closure")
+	}
+}
+
+func TestLoweringAnnotatesSymbols(t *testing.T) {
+	exec, err := NewExecutor(&ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: map[ast.Ident]ast.Expr{"g": nil},
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	if err != nil {
+		t.Fatalf("new executor failed: %v", err)
+	}
+
+	expr, err := ffigo.NewGoToASTConverter().ConvertExprSource(`func(x Int64) Int64 { var y Int64; println(g); return x + y + g }`)
+	if err != nil {
+		t.Fatalf("convert expr failed: %v", err)
+	}
+
+	tasks, ok := exec.lowerExprTasks(expr, exec.newRootLoweringScope())
+	if !ok {
+		t.Fatal("expected expression to lower")
+	}
+	if len(tasks) != 1 || tasks[0].Op != OpMakeClosure {
+		t.Fatalf("unexpected outer tasks: %+v", tasks)
+	}
+	data, ok := tasks[0].Data.(*ClosureData)
+	if !ok {
+		t.Fatalf("unexpected closure data: %T", tasks[0].Data)
+	}
+
+	var sawLocalDecl, sawParamLoad, sawLocalLoad, sawGlobalLoad, sawBuiltinCall bool
+	for _, task := range data.BodyTasks {
+		switch task.Op {
+		case OpDeclareVar:
+			decl := task.Data.(*DeclareVarData)
+			if decl.Name == "y" && decl.Sym.Kind == SymbolLocal {
+				sawLocalDecl = true
+			}
+		case OpLoadVar:
+			load := task.Data.(*LoadVarData)
+			switch load.Name {
+			case "x":
+				sawParamLoad = load.Sym.Kind == SymbolLocal
+			case "y":
+				sawLocalLoad = load.Sym.Kind == SymbolLocal
+			case "g":
+				sawGlobalLoad = load.Sym.Kind == SymbolGlobal
+			}
+		case OpCall:
+			call := task.Data.(*CallData)
+			if call.Name == "println" {
+				sawBuiltinCall = call.Sym.Kind == SymbolBuiltin
+			}
+		}
+	}
+	if !sawLocalDecl || !sawParamLoad || !sawLocalLoad || !sawGlobalLoad || !sawBuiltinCall {
+		t.Fatalf("missing expected symbol annotations: decl=%v param=%v local=%v global=%v builtin=%v", sawLocalDecl, sawParamLoad, sawLocalLoad, sawGlobalLoad, sawBuiltinCall)
 	}
 }
