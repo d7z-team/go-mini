@@ -301,11 +301,6 @@ func (e *Executor) lowerExprTasks(expr ast.Expr) ([]Task, bool) {
 	case *ast.IdentifierExpr:
 		return []Task{{Op: OpLoadVar, Data: string(n.Name)}}, true
 	case *ast.ConstRefExpr:
-		if e.program != nil {
-			if val, ok := e.program.Constants[string(n.Name)]; ok {
-				return []Task{{Op: OpPush, Data: e.evalLiteralToVar(val)}}, true
-			}
-		}
 		if val, ok := e.consts[string(n.Name)]; ok {
 			return []Task{{Op: OpPush, Data: e.evalLiteralToVar(val)}}, true
 		}

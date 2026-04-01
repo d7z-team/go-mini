@@ -447,7 +447,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 			}
 			// Also check internal functions
-			if _, ok := e.program.Functions[ast.Ident(methodName)]; ok {
+			if _, ok := e.lookupFunction(methodName); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 			}
 		}
@@ -1009,12 +1009,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	}
 
 	// 5. Internal Function Call
-	if f, ok := e.program.Functions[ast.Ident(name)]; ok {
-		bodyTasks := e.tasksForStmt(f.Body, nil)
+	if fn, ok := e.lookupFunction(name); ok {
 		return e.setupFuncCall(session, name, &DoCallData{
 			Name:         name,
-			FunctionType: f.FunctionType,
-			BodyTasks:    bodyTasks,
+			FunctionType: fn.FunctionType,
+			BodyTasks:    cloneTasks(fn.BodyTasks),
 			Args:         args,
 		}, args, nil)
 	}
@@ -1136,8 +1135,8 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
 	shape := t
 	for {
-		if actual, ok := e.types[string(shape)]; ok {
-			shape = actual
+		if actual, ok := e.resolveNamedType(shape); ok {
+			shape = actual.Raw
 			continue
 		}
 		break
@@ -1165,10 +1164,9 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.structs[string(shape)]; ok {
-		for _, fName := range sDef.FieldNames {
-			fType := sDef.Fields[fName]
-			mData[string(fName)] = e.initializeType(ctx, fType, depth+1)
+	if sDef, ok := e.structSchemas[string(shape)]; ok {
+		for _, field := range sDef.Fields {
+			mData[field.Name] = e.initializeType(ctx, field.Type, depth+1)
 		}
 	}
 	return &Var{VType: TypeMap, Ref: &VMMap{Data: mData}, Type: t}

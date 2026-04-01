@@ -16,12 +16,13 @@ import (
 )
 
 type Executor struct {
-	structs         map[string]*ast.StructStmt
 	structSchemas   map[string]*RuntimeStructSpec
-	interfaces      map[string]*ast.InterfaceStmt
-	types           map[string]ast.GoMiniType
+	interfaceSpecs  map[string]*RuntimeInterfaceSpec
+	namedTypes      map[string]RuntimeType
 	consts          map[string]string
-	funcs           map[ast.Ident]*Var
+	globals         map[ast.Ident]*RuntimeGlobal
+	functions       map[ast.Ident]*RuntimeFunction
+	mainTasks       []Task
 	program         *ast.ProgramStmt
 	globalInitOrder []ast.Ident
 
@@ -34,6 +35,19 @@ type Executor struct {
 	interfaceCache map[ast.GoMiniType]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
 	lastSession    *StackContext
+}
+
+type RuntimeGlobal struct {
+	Name     ast.Ident
+	HasInit  bool
+	InitExpr ast.Expr
+	InitPlan []Task
+}
+
+type RuntimeFunction struct {
+	Name         ast.Ident
+	FunctionType ast.FunctionType
+	BodyTasks    []Task
 }
 
 func (e *Executor) LastSession() *StackContext {
@@ -59,40 +73,197 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	result := &Executor{
 		program:         program,
 		globalInitOrder: globalInitOrder,
-		structs:         make(map[string]*ast.StructStmt),
 		structSchemas:   make(map[string]*RuntimeStructSpec),
-		interfaces:      make(map[string]*ast.InterfaceStmt),
-		types:           make(map[string]ast.GoMiniType),
-		funcs:           make(map[ast.Ident]*Var),
+		interfaceSpecs:  make(map[string]*RuntimeInterfaceSpec),
+		namedTypes:      make(map[string]RuntimeType),
+		globals:         make(map[ast.Ident]*RuntimeGlobal),
+		functions:       make(map[ast.Ident]*RuntimeFunction),
 		consts:          make(map[string]string),
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
-			result.structs[string(ident)] = stmt
+			spec := runtimeStructSpecFromStmt(stmt)
+			if spec != nil {
+				result.structSchemas[string(ident)] = spec
+			}
 		}
 	}
 	if program.Interfaces != nil {
 		for ident, stmt := range program.Interfaces {
-			result.interfaces[string(ident)] = stmt
+			spec, err := ParseRuntimeInterfaceSpec(stmt.Type)
+			if err == nil && spec != nil {
+				result.interfaceSpecs[string(ident)] = spec
+			}
 		}
 	}
 	if program.Types != nil {
 		for ident, t := range program.Types {
-			result.types[string(ident)] = t
+			typeInfo, err := ParseRuntimeType(t)
+			if err == nil {
+				result.namedTypes[string(ident)] = typeInfo
+			}
 		}
 	}
 	for s, s2 := range program.Constants {
 		result.consts[s] = s2
 	}
+	if program.Variables != nil {
+		for ident, expr := range program.Variables {
+			global := &RuntimeGlobal{
+				Name:     ident,
+				HasInit:  expr != nil,
+				InitExpr: expr,
+			}
+			if expr != nil {
+				global.InitPlan = result.tasksForExpr(expr)
+			}
+			result.globals[ident] = global
+		}
+	}
+	if program.Functions != nil {
+		for ident, fn := range program.Functions {
+			if fn == nil {
+				continue
+			}
+			result.functions[ident] = &RuntimeFunction{
+				Name:         ident,
+				FunctionType: fn.FunctionType,
+				BodyTasks:    result.tasksForStmt(fn.Body, nil),
+			}
+		}
+	}
+	result.mainTasks = result.buildStmtPlan(program.Main)
 	return result, nil
+}
+
+func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
+	if stmt == nil {
+		return nil
+	}
+	fields := make([]RuntimeStructField, 0, len(stmt.FieldNames))
+	byName := make(map[string]RuntimeStructField, len(stmt.Fields))
+	for _, fieldName := range stmt.FieldNames {
+		fieldType := stmt.Fields[fieldName]
+		typeInfo, err := ParseRuntimeType(fieldType)
+		if err != nil {
+			return nil
+		}
+		field := RuntimeStructField{
+			Name:     string(fieldName),
+			Type:     fieldType,
+			TypeInfo: typeInfo,
+		}
+		fields = append(fields, field)
+		byName[field.Name] = field
+	}
+	typeInfo := RuntimeType{
+		Kind:   RuntimeTypeStruct,
+		Raw:    ast.GoMiniType(stmt.Name),
+		TypeID: CanonicalTypeID(string(stmt.Name)),
+		Fields: fields,
+	}
+	return &RuntimeStructSpec{
+		Name:     string(stmt.Name),
+		TypeID:   CanonicalTypeID(string(stmt.Name)),
+		Spec:     ast.GoMiniType(stmt.Name),
+		TypeInfo: typeInfo,
+		Fields:   fields,
+		ByName:   byName,
+	}
+}
+
+func cloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
+	if spec == nil {
+		return nil
+	}
+	fields := append([]RuntimeStructField(nil), spec.Fields...)
+	byName := make(map[string]RuntimeStructField, len(spec.ByName))
+	for k, v := range spec.ByName {
+		byName[k] = v
+	}
+	typeInfo := spec.TypeInfo
+	typeInfo.Fields = append([]RuntimeStructField(nil), spec.TypeInfo.Fields...)
+	return &RuntimeStructSpec{
+		Name:     spec.Name,
+		TypeID:   spec.TypeID,
+		Spec:     spec.Spec,
+		TypeInfo: typeInfo,
+		Fields:   fields,
+		ByName:   byName,
+	}
+}
+
+func (e *Executor) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
+	typeInfo, ok := e.namedTypes[string(typ)]
+	return typeInfo, ok
+}
+
+func (e *Executor) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+	if typ.IsInterface() {
+		spec, err := ParseRuntimeInterfaceSpec(typ)
+		if err == nil && spec != nil {
+			return spec, true
+		}
+		return nil, false
+	}
+	spec, ok := e.interfaceSpecs[string(typ)]
+	return spec, ok
 }
 
 func (e *Executor) SetGlobalInitOrder(order []ast.Ident) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.globalInitOrder = append([]ast.Ident(nil), order...)
+}
+
+func cloneTasks(tasks []Task) []Task {
+	if len(tasks) == 0 {
+		return nil
+	}
+	return append([]Task(nil), tasks...)
+}
+
+func (e *Executor) buildStmtPlan(stmts []ast.Stmt) []Task {
+	if len(stmts) == 0 {
+		return nil
+	}
+	plan := make([]Task, 0)
+	for i := len(stmts) - 1; i >= 0; i-- {
+		plan = append(plan, e.tasksForStmt(stmts[i], nil)...)
+	}
+	return plan
+}
+
+func (e *Executor) lookupFunction(name string) (*RuntimeFunction, bool) {
+	fn, ok := e.functions[ast.Ident(name)]
+	return fn, ok
+}
+
+func (e *Executor) lookupGlobal(name ast.Ident) (*RuntimeGlobal, bool) {
+	global, ok := e.globals[name]
+	return global, ok
+}
+
+func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
+	oldTasks := ctx.TaskStack
+	oldValues := ctx.ValueStack
+
+	ctx.TaskStack = cloneTasks(plan)
+	ctx.ValueStack = &ValueStack{}
+
+	err := e.Run(ctx)
+	if err != nil {
+		ctx.TaskStack = oldTasks
+		ctx.ValueStack = oldValues
+		return nil, err
+	}
+
+	res := ctx.ValueStack.Pop()
+	ctx.TaskStack = oldTasks
+	ctx.ValueStack = oldValues
+	return res, nil
 }
 
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
@@ -162,26 +333,8 @@ func (e *Executor) CleanupSession(session *StackContext) {
 	}
 }
 
-// ExecExpr 模拟原 Executor.ExecExpr 用于初始化全局变量 (临时回退机制，直至完全重构)
 func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
-	// 在完全迭代化之前，先使用一个临时的子 Run()
-	oldTasks := ctx.TaskStack
-	oldValues := ctx.ValueStack
-
-	ctx.TaskStack = e.tasksForExpr(s)
-	ctx.ValueStack = &ValueStack{}
-
-	err := e.Run(ctx)
-	if err != nil {
-		ctx.TaskStack = oldTasks
-		ctx.ValueStack = oldValues
-		return nil, err
-	}
-
-	res := ctx.ValueStack.Pop()
-	ctx.TaskStack = oldTasks
-	ctx.ValueStack = oldValues
-	return res, nil
+	return e.runExprPlan(ctx, e.tasksForExpr(s))
 }
 
 func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error) {
@@ -208,16 +361,15 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	actualInterfaceType := interfaceType
 	if !interfaceType.IsInterface() {
 		// 3. Resolve named type ONLY if it could be an interface or struct
-		if actual, ok := e.types[string(interfaceType)]; ok {
-			if actual.IsInterface() {
-				return e.CheckSatisfaction(val, actual)
+		if actual, ok := e.resolveNamedType(interfaceType); ok {
+			if actual.Kind == RuntimeTypeInterface {
+				return e.CheckSatisfaction(val, actual.Raw)
 			}
-			// If it's a struct alias, we'll find it below via structs map
 		}
 
 		// 4. Resolve named interface
-		if iStmt, ok := e.interfaces[string(interfaceType)]; ok {
-			actualInterfaceType = iStmt.Type
+		if spec, ok := e.resolveInterfaceSpec(interfaceType); ok {
+			actualInterfaceType = spec.Spec
 		} else {
 			// If it wasn't an exact match and isn't an interface, it fails (like Go)
 			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.Type, interfaceType)
@@ -294,8 +446,8 @@ func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *as
 		tName := string(val.Type)
 		if tName != "" && tName != "Any" {
 			mName := fmt.Sprintf("__method_%s_%s", tName, name)
-			if f, ok := e.program.Functions[ast.Ident(mName)]; ok {
-				return e.isSignatureCompatible(&f.FunctionType, expectedSig)
+			if fn, ok := e.lookupFunction(mName); ok {
+				return e.isSignatureCompatible(&fn.FunctionType, expectedSig)
 			}
 		}
 	case TypeModule:
@@ -454,13 +606,13 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 
 	// 注入脚本定义的全局变量
 	for _, name := range e.globalInitOrder {
-		expr, ok := e.program.Variables[name]
+		global, ok := e.lookupGlobal(name)
 		if !ok {
 			continue
 		}
 		var val *Var
-		if expr != nil {
-			v, err := e.ExecExpr(session, expr)
+		if global.HasInit {
+			v, err := e.runExprPlan(session, global.InitPlan)
 			if err != nil {
 				return fmt.Errorf("failed to initialize global var %s: %w", name, err)
 			}
@@ -492,9 +644,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	}()
 
 	// 压入执行入口任务: Main 块 (包初始化逻辑)
-	for i := len(e.program.Main) - 1; i >= 0; i-- {
-		session.TaskStack = append(session.TaskStack, e.tasksForStmt(e.program.Main[i], nil)...)
-	}
+	session.TaskStack = append(session.TaskStack, cloneTasks(e.mainTasks)...)
 
 	err = e.Run(session)
 	if err != nil {
@@ -503,16 +653,15 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 
 	// 自动寻找并执行 main() 入口函数
 	if invokeMain {
-		if f, ok := e.program.Functions["main"]; ok {
+		if fn, ok := e.lookupFunction("main"); ok {
 			session.TaskStack = append(session.TaskStack, Task{
 				Op:   OpCallBoundary,
 				Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
 			})
-			bodyTasks := e.tasksForStmt(f.Body, nil)
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
-				Name:         string(f.Name),
-				FunctionType: f.FunctionType,
-				BodyTasks:    bodyTasks,
+				Name:         string(fn.Name),
+				FunctionType: fn.FunctionType,
+				BodyTasks:    cloneTasks(fn.BodyTasks),
 			}})
 
 			// Start run loop again for main func
@@ -1587,22 +1736,21 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.UnwindMode = UnwindNone
 
 				// Push Global variables init
-				var names []string
-				for name := range prog.Variables {
-					names = append(names, string(name))
-				}
-				sort.Strings(names)
-				for i := len(names) - 1; i >= 0; i-- {
-					name := names[i]
-					expr := prog.Variables[ast.Ident(name)]
-					session.TaskStack = append(session.TaskStack, Task{Op: OpInitVar, Data: name})
-					session.TaskStack = append(session.TaskStack, e.tasksForExpr(expr)...)
+				for i := len(modExecutor.globalInitOrder) - 1; i >= 0; i-- {
+					name := modExecutor.globalInitOrder[i]
+					global, ok := modExecutor.lookupGlobal(name)
+					if !ok {
+						continue
+					}
+					if global == nil || !global.HasInit {
+						continue
+					}
+					session.TaskStack = append(session.TaskStack, Task{Op: OpInitVar, Data: string(name)})
+					session.TaskStack = append(session.TaskStack, cloneTasks(global.InitPlan)...)
 				}
 
 				// Push Main block execution
-				for i := len(prog.Main) - 1; i >= 0; i-- {
-					session.TaskStack = append(session.TaskStack, e.tasksForStmt(prog.Main[i], nil)...)
-				}
+				session.TaskStack = append(session.TaskStack, cloneTasks(modExecutor.mainTasks)...)
 
 				return nil
 			}
@@ -1655,12 +1803,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		data := task.Data.(*ImportData)
 		path := data.Path
 		modSession := data.ModSession
-		prog := modSession.Executor.(*Executor).program
+		modExec := modSession.Executor.(*Executor)
 
 		delete(session.LoadingModules, path)
 
 		exports := make(map[string]*Var)
-		for name := range prog.Variables {
+		for name := range modExec.globals {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				v, err := modSession.Load(string(name))
 				if err == nil {
@@ -1668,29 +1816,29 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 			}
 		}
-		for name, fn := range prog.Functions {
+		for name, fn := range modExec.functions {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				exports[string(name)] = &Var{
 					VType: TypeClosure,
 					Ref: &VMClosure{
 						FunctionType: fn.FunctionType,
-						BodyTasks:    modSession.Executor.(*Executor).tasksForStmt(fn.Body, nil),
+						BodyTasks:    cloneTasks(fn.BodyTasks),
 						Upvalues:     make(map[string]*Var),
 						Context:      modSession,
 					},
 				}
 			}
 		}
-		for name, val := range prog.Constants {
+		for name, val := range modExec.consts {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				exports[name] = NewString(val)
 			}
 		}
-		for name, s := range prog.Structs {
+		for name, s := range modExec.structSchemas {
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				exports[string(name)] = &Var{
 					VType: TypeAny,
-					Ref:   s,
+					Ref:   cloneRuntimeStructSpec(s),
 				}
 			}
 		}
@@ -1828,7 +1976,7 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) boo
 			}
 		}
 
-		if targetType.IsInterface() || e.interfaces[string(targetType)] != nil {
+		if targetType.IsInterface() || e.interfaceSpecs[string(targetType)] != nil {
 			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
 				return true
 			}

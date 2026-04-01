@@ -51,11 +51,11 @@
 **目标**: 执行器内存结构不再持有 `ast.*` 元数据，类型检查和方法匹配全部转向 runtime metadata。**
 
 ### J. Executor 元数据清理
-- [ ] **移除 `Executor.structs` 对 `*ast.StructStmt` 的持有**。
-- [ ] **移除 `Executor.interfaces` 对 `*ast.InterfaceStmt` 的持有**。
-- [ ] **移除 `Executor.types` 对 `ast.GoMiniType` 直接映射的主依赖**。
-- [ ] **移除 `Executor.program` 在执行热路径中的类型元数据职责**，仅保留调试/LSP 所需边界。
-- [ ] **清理 `ExecExpr` 临时回退逻辑**，避免继续以 AST expr 作为执行期补丁入口。
+- [x] **移除 `Executor.structs` 对 `*ast.StructStmt` 的持有**。
+- [x] **移除 `Executor.interfaces` 对 `*ast.InterfaceStmt` 的持有**。
+- [x] **移除 `Executor.types` 对 `ast.GoMiniType` 直接映射的主依赖**。
+- [x] **移除 `Executor.program` 在执行热路径中的类型元数据职责**，仅保留调试/LSP 所需边界。
+- [x] **清理 `ExecExpr` 临时回退逻辑**，避免继续以 AST expr 作为执行期补丁入口。
 
 ### K. 接口与结构体运行时优化
 - [ ] **定义 `StructLayout`**: 字段顺序、偏移、大小、字段索引在 lowering/构建期完成。
