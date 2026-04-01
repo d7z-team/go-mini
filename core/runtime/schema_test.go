@@ -44,6 +44,12 @@ func TestParseRuntimeStructSpec(t *testing.T) {
 	if spec.TypeID != "Example" {
 		t.Fatalf("unexpected type id: %s", spec.TypeID)
 	}
+	if spec.Layout.Size != 3 {
+		t.Fatalf("unexpected layout size: %d", spec.Layout.Size)
+	}
+	if spec.Layout.FieldIndex["Value"] != 1 || spec.Layout.FieldOffset["Child"] != 2 {
+		t.Fatalf("unexpected struct layout: %+v", spec.Layout)
+	}
 }
 
 func TestParseRuntimeInterfaceSpec(t *testing.T) {
@@ -62,6 +68,12 @@ func TestParseRuntimeInterfaceSpec(t *testing.T) {
 	}
 	if got := spec.MethodStringMap()["Close"]; got != "function() Error" {
 		t.Fatalf("unexpected close signature: %s", got)
+	}
+	if spec.MethodIndex["Close"] != 0 || spec.MethodIndex["Read"] != 1 {
+		t.Fatalf("unexpected method index map: %+v", spec.MethodIndex)
+	}
+	if spec.Methods[0].Name != "Close" || spec.Methods[1].Name != "Read" {
+		t.Fatalf("expected deterministic method order, got %+v", spec.Methods)
 	}
 }
 

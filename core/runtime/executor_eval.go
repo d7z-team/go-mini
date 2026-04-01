@@ -413,17 +413,22 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if inter.Spec == nil {
 			return nil, &VMError{Message: fmt.Sprintf("interface contract missing for %s", obj.Type), IsPanic: true}
 		}
-		sig, ok := inter.Spec.ByName[property]
-		if !ok || sig == nil {
+		idx, ok := inter.Spec.MethodIndex[property]
+		if !ok {
 			return nil, &VMError{Message: fmt.Sprintf("method %s not in interface contract %s", property, obj.Type), IsPanic: true}
 		}
-		// 如果 Target 是一个 FFI Handle，我们需要一个通用的路由方式
-		// 我们可以利用 VMMethodValue，但在 Invoke 时需要知道这是个 FFI 调用
+		if idx < len(inter.VTable) && inter.VTable[idx] != nil {
+			return inter.VTable[idx], nil
+		}
+		sig := inter.Spec.ByName[property]
+		if sig == nil {
+			return nil, &VMError{Message: fmt.Sprintf("method %s missing vtable entry for %s", property, obj.Type), IsPanic: true}
+		}
 		return &Var{
 			VType: TypeClosure,
 			Ref: &VMMethodValue{
 				Receiver: inter.Target,
-				Method:   property, // 对于 FFI 接口，直接存方法名
+				Method:   property,
 			},
 			Type: sig.Spec,
 		}, nil
@@ -1136,6 +1141,9 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 	shape := t
 	for {
 		if actual, ok := e.resolveNamedType(shape); ok {
+			if actual.Raw == shape {
+				break
+			}
 			shape = actual.Raw
 			continue
 		}
@@ -1164,7 +1172,7 @@ func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.structSchemas[string(shape)]; ok {
+	if sDef, ok := e.resolveStructSchema(shape); ok {
 		for _, field := range sDef.Fields {
 			mData[field.Name] = e.initializeType(ctx, field.Type, depth+1)
 		}

@@ -58,10 +58,10 @@
 - [x] **清理 `ExecExpr` 临时回退逻辑**，避免继续以 AST expr 作为执行期补丁入口。
 
 ### K. 接口与结构体运行时优化
-- [ ] **定义 `StructLayout`**: 字段顺序、偏移、大小、字段索引在 lowering/构建期完成。
-- [ ] **定义接口方法索引/vtable**: 消除 `CheckSatisfaction` 中昂贵的字符串签名匹配。
-- [ ] **重构 `CheckSatisfaction`**: 基于 `RuntimeInterfaceSpec` 与方法索引校验。
-- [ ] **收敛命名类型解析**: 命名类型、别名类型、FFI canonical path 类型统一走同一解析表。
+- [x] **定义 `StructLayout`**: 字段顺序、偏移、大小、字段索引在 lowering/构建期完成。
+- [x] **定义接口方法索引/vtable**: 消除 `CheckSatisfaction` 中昂贵的字符串签名匹配。
+- [x] **重构 `CheckSatisfaction`**: 基于 `RuntimeInterfaceSpec` 与方法索引校验。
+- [x] **收敛命名类型解析**: 命名类型、别名类型、FFI canonical path 类型统一走同一解析表。
 
 ---
 

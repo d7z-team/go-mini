@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -66,22 +67,32 @@ type RuntimeStructSpec struct {
 	Spec   ast.GoMiniType
 
 	TypeInfo RuntimeType
+	Layout   StructLayout
 	Fields   []RuntimeStructField
 	ByName   map[string]RuntimeStructField
 }
 
+type StructLayout struct {
+	FieldOrder  []string
+	FieldIndex  map[string]int
+	FieldOffset map[string]int
+	Size        int
+}
+
 type RuntimeInterfaceMethod struct {
-	Name string
-	Spec *RuntimeFuncSig
+	Index int
+	Name  string
+	Spec  *RuntimeFuncSig
 }
 
 type RuntimeInterfaceSpec struct {
 	TypeID string
 	Spec   ast.GoMiniType
 
-	TypeInfo RuntimeType
-	Methods  []RuntimeInterfaceMethod
-	ByName   map[string]*RuntimeFuncSig
+	TypeInfo    RuntimeType
+	Methods     []RuntimeInterfaceMethod
+	ByName      map[string]*RuntimeFuncSig
+	MethodIndex map[string]int
 }
 
 func CanonicalTypeID(name string) string {
@@ -251,12 +262,14 @@ func ParseRuntimeStructSpec(name string, spec ast.GoMiniType) (*RuntimeStructSpe
 	for _, field := range fields {
 		byName[field.Name] = field
 	}
+	layout := buildStructLayout(fields)
 
 	return &RuntimeStructSpec{
 		Name:     name,
 		TypeID:   CanonicalTypeID(name),
 		Spec:     spec,
 		TypeInfo: typeInfo,
+		Layout:   layout,
 		Fields:   fields,
 		ByName:   byName,
 	}, nil
@@ -273,21 +286,24 @@ func ParseRuntimeInterfaceSpec(spec ast.GoMiniType) (*RuntimeInterfaceSpec, erro
 
 	methods := make([]RuntimeInterfaceMethod, len(typeInfo.Methods))
 	byName := make(map[string]*RuntimeFuncSig, len(typeInfo.Methods))
+	methodIndex := make(map[string]int, len(typeInfo.Methods))
 	for i, method := range typeInfo.Methods {
 		fnSig, err := ParseRuntimeFuncSig(method.Spec.Spec)
 		if err != nil {
 			return nil, err
 		}
-		methods[i] = RuntimeInterfaceMethod{Name: method.Name, Spec: fnSig}
+		methods[i] = RuntimeInterfaceMethod{Index: i, Name: method.Name, Spec: fnSig}
 		byName[method.Name] = fnSig
+		methodIndex[method.Name] = i
 	}
 
 	return &RuntimeInterfaceSpec{
-		TypeID:   typeInfo.TypeID,
-		Spec:     spec,
-		TypeInfo: typeInfo,
-		Methods:  methods,
-		ByName:   byName,
+		TypeID:      typeInfo.TypeID,
+		Spec:        spec,
+		TypeInfo:    typeInfo,
+		Methods:     methods,
+		ByName:      byName,
+		MethodIndex: methodIndex,
 	}, nil
 }
 
@@ -365,13 +381,36 @@ func parseRuntimeStructType(spec ast.GoMiniType) (RuntimeType, error) {
 	}, nil
 }
 
+func buildStructLayout(fields []RuntimeStructField) StructLayout {
+	order := make([]string, len(fields))
+	index := make(map[string]int, len(fields))
+	offset := make(map[string]int, len(fields))
+	for i, field := range fields {
+		order[i] = field.Name
+		index[field.Name] = i
+		offset[field.Name] = i
+	}
+	return StructLayout{
+		FieldOrder:  order,
+		FieldIndex:  index,
+		FieldOffset: offset,
+		Size:        len(fields),
+	}
+}
+
 func parseRuntimeInterfaceType(spec ast.GoMiniType) (RuntimeType, error) {
 	methods, ok := spec.ReadInterfaceMethods()
 	if !ok {
 		return RuntimeType{}, fmt.Errorf("invalid interface type: %s", spec)
 	}
-	items := make([]RuntimeInterfaceMethod, 0, len(methods))
-	for name, fn := range methods {
+	names := make([]string, 0, len(methods))
+	for name := range methods {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	items := make([]RuntimeInterfaceMethod, 0, len(names))
+	for index, name := range names {
+		fn := methods[name]
 		if fn == nil {
 			continue
 		}
@@ -380,7 +419,7 @@ func parseRuntimeInterfaceType(spec ast.GoMiniType) (RuntimeType, error) {
 		if err != nil {
 			return RuntimeType{}, err
 		}
-		items = append(items, RuntimeInterfaceMethod{Name: name, Spec: fnSig})
+		items = append(items, RuntimeInterfaceMethod{Index: index, Name: name, Spec: fnSig})
 	}
 	return RuntimeType{
 		Kind:    RuntimeTypeInterface,

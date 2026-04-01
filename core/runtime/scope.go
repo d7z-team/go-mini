@@ -110,6 +110,7 @@ const (
 type VMInterface struct {
 	Target *Var
 	Spec   *RuntimeInterfaceSpec
+	VTable []*Var
 }
 
 type VMModule struct {

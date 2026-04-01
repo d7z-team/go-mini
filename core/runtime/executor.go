@@ -16,15 +16,18 @@ import (
 )
 
 type Executor struct {
-	structSchemas   map[string]*RuntimeStructSpec
-	interfaceSpecs  map[string]*RuntimeInterfaceSpec
-	namedTypes      map[string]RuntimeType
-	consts          map[string]string
-	globals         map[ast.Ident]*RuntimeGlobal
-	functions       map[ast.Ident]*RuntimeFunction
-	mainTasks       []Task
-	program         *ast.ProgramStmt
-	globalInitOrder []ast.Ident
+	structSchemas    map[string]*RuntimeStructSpec
+	structTypeIDs    map[string]*RuntimeStructSpec
+	interfaceSpecs   map[string]*RuntimeInterfaceSpec
+	interfaceTypeIDs map[string]*RuntimeInterfaceSpec
+	namedTypes       map[string]RuntimeType
+	namedTypeIDs     map[string]RuntimeType
+	consts           map[string]string
+	globals          map[ast.Ident]*RuntimeGlobal
+	functions        map[ast.Ident]*RuntimeFunction
+	mainTasks        []Task
+	program          *ast.ProgramStmt
+	globalInitOrder  []ast.Ident
 
 	routes map[string]FFIRoute
 
@@ -71,22 +74,25 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		globalInitOrder = program.DeclaredGlobalOrder()
 	}
 	result := &Executor{
-		program:         program,
-		globalInitOrder: globalInitOrder,
-		structSchemas:   make(map[string]*RuntimeStructSpec),
-		interfaceSpecs:  make(map[string]*RuntimeInterfaceSpec),
-		namedTypes:      make(map[string]RuntimeType),
-		globals:         make(map[ast.Ident]*RuntimeGlobal),
-		functions:       make(map[ast.Ident]*RuntimeFunction),
-		consts:          make(map[string]string),
-		routes:          make(map[string]FFIRoute),
-		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
+		program:          program,
+		globalInitOrder:  globalInitOrder,
+		structSchemas:    make(map[string]*RuntimeStructSpec),
+		structTypeIDs:    make(map[string]*RuntimeStructSpec),
+		interfaceSpecs:   make(map[string]*RuntimeInterfaceSpec),
+		interfaceTypeIDs: make(map[string]*RuntimeInterfaceSpec),
+		namedTypes:       make(map[string]RuntimeType),
+		namedTypeIDs:     make(map[string]RuntimeType),
+		globals:          make(map[ast.Ident]*RuntimeGlobal),
+		functions:        make(map[ast.Ident]*RuntimeFunction),
+		consts:           make(map[string]string),
+		routes:           make(map[string]FFIRoute),
+		interfaceCache:   make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
 			spec := runtimeStructSpecFromStmt(stmt)
 			if spec != nil {
-				result.structSchemas[string(ident)] = spec
+				result.registerStructSchema(string(ident), spec)
 			}
 		}
 	}
@@ -94,7 +100,7 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		for ident, stmt := range program.Interfaces {
 			spec, err := ParseRuntimeInterfaceSpec(stmt.Type)
 			if err == nil && spec != nil {
-				result.interfaceSpecs[string(ident)] = spec
+				result.registerInterfaceSpec(string(ident), spec)
 			}
 		}
 	}
@@ -102,7 +108,7 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		for ident, t := range program.Types {
 			typeInfo, err := ParseRuntimeType(t)
 			if err == nil {
-				result.namedTypes[string(ident)] = typeInfo
+				result.registerNamedType(string(ident), typeInfo)
 			}
 		}
 	}
@@ -169,6 +175,7 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
 		TypeID:   CanonicalTypeID(string(stmt.Name)),
 		Spec:     ast.GoMiniType(stmt.Name),
 		TypeInfo: typeInfo,
+		Layout:   buildStructLayout(fields),
 		Fields:   fields,
 		ByName:   byName,
 	}
@@ -190,13 +197,51 @@ func cloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
 		TypeID:   spec.TypeID,
 		Spec:     spec.Spec,
 		TypeInfo: typeInfo,
+		Layout:   spec.Layout,
 		Fields:   fields,
 		ByName:   byName,
 	}
 }
 
+func (e *Executor) registerNamedType(name string, typeInfo RuntimeType) {
+	e.namedTypes[name] = typeInfo
+	switch typeInfo.Kind {
+	case RuntimeTypeNamed, RuntimeTypeStruct, RuntimeTypeInterface:
+	default:
+		return
+	}
+	if typeInfo.TypeID != "" {
+		e.namedTypeIDs[typeInfo.TypeID] = typeInfo
+	}
+}
+
+func (e *Executor) registerInterfaceSpec(name string, spec *RuntimeInterfaceSpec) {
+	if spec == nil {
+		delete(e.interfaceSpecs, name)
+		return
+	}
+	e.interfaceSpecs[name] = spec
+	if spec.TypeID != "" {
+		e.interfaceTypeIDs[spec.TypeID] = spec
+	}
+}
+
+func (e *Executor) registerStructSchema(name string, spec *RuntimeStructSpec) {
+	if spec == nil {
+		delete(e.structSchemas, name)
+		return
+	}
+	e.structSchemas[name] = spec
+	if spec.TypeID != "" {
+		e.structTypeIDs[spec.TypeID] = spec
+	}
+}
+
 func (e *Executor) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
-	typeInfo, ok := e.namedTypes[string(typ)]
+	if typeInfo, ok := e.namedTypes[string(typ)]; ok {
+		return typeInfo, true
+	}
+	typeInfo, ok := e.namedTypeIDs[CanonicalTypeID(string(typ))]
 	return typeInfo, ok
 }
 
@@ -208,8 +253,19 @@ func (e *Executor) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSp
 		}
 		return nil, false
 	}
-	spec, ok := e.interfaceSpecs[string(typ)]
+	if spec, ok := e.interfaceSpecs[string(typ)]; ok {
+		return spec, true
+	}
+	spec, ok := e.interfaceTypeIDs[CanonicalTypeID(string(typ))]
 	return spec, ok
+}
+
+func (e *Executor) resolveStructSchema(typ ast.GoMiniType) (*RuntimeStructSpec, bool) {
+	if schema, ok := e.structSchemas[string(typ)]; ok {
+		return schema, true
+	}
+	schema, ok := e.structTypeIDs[CanonicalTypeID(string(typ))]
+	return schema, ok
 }
 
 func (e *Executor) SetGlobalInitOrder(order []ast.Ident) {
@@ -279,7 +335,7 @@ func (e *Executor) RegisterStructSpec(name string, spec *RuntimeStructSpec) {
 		delete(e.structSchemas, name)
 		return
 	}
-	e.structSchemas[name] = spec
+	e.registerStructSchema(name, spec)
 }
 
 func (e *Executor) RegisterConstant(name string, val string) {
@@ -391,10 +447,16 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		e.mu.Unlock()
 	}
 
+	vtable := make([]*Var, len(spec.Methods))
 	for _, method := range spec.Methods {
-		if method.Spec == nil || !e.hasMethodWithSignature(inner, method.Name, &method.Spec.Function) {
+		if method.Spec == nil {
+			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceType, method.Name)
+		}
+		callable, ok := e.resolveMethodValue(inner, method.Name)
+		if !ok || !e.isCallableCompatible(callable, &method.Spec.Function) {
 			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, method.Name)
 		}
+		vtable[method.Index] = callable
 	}
 
 	return &Var{
@@ -403,78 +465,76 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		Ref: &VMInterface{
 			Target: inner.Copy(),
 			Spec:   spec,
+			VTable: vtable,
 		},
 	}, nil
 }
 
-func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *ast.FunctionType) bool {
+func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 	if val == nil {
-		return false
+		return nil, false
 	}
-
-	// 穿透 TypeAny
 	if val.VType == TypeAny && val.Ref != nil {
 		if inner, ok := val.Ref.(*Var); ok {
-			return e.hasMethodWithSignature(inner, name, expectedSig)
+			return e.resolveMethodValue(inner, name)
 		}
 	}
 
 	switch val.VType {
+	case TypeError:
+		if name == "Error" {
+			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
+		}
 	case TypeHandle:
-		tName := string(val.Type)
-		tName = strings.TrimPrefix(tName, "Ptr<")
-		tName = strings.TrimPrefix(tName, "*")
-		tName = strings.TrimSuffix(tName, ">")
+		tName := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(string(val.Type), "Ptr<"), "*"), ">")
 		methodName := fmt.Sprintf("__method_%s_%s", tName, name)
-		if route, ok := e.routes[methodName]; ok {
-			// 校验 FFI 签名
-			if route.FuncSig != nil {
-				return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
-			}
-			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
-				return e.isSignatureCompatible(fType, expectedSig)
-			}
-			return true // 兜底：如果没拿到签名但路由存在，暂且通过
+		if _, ok := e.routes[methodName]; ok {
+			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 		}
 	case TypeMap:
 		if m, ok := val.Ref.(*VMMap); ok {
 			if v, ok := m.Data[name]; ok {
-				return e.isCallableCompatible(v, expectedSig)
+				return v, true
 			}
 		}
-		// 检查 Mangle 后的脚本方法
 		tName := string(val.Type)
 		if tName != "" && tName != "Any" {
-			mName := fmt.Sprintf("__method_%s_%s", tName, name)
-			if fn, ok := e.lookupFunction(mName); ok {
-				return e.isSignatureCompatible(&fn.FunctionType, expectedSig)
+			methodName := fmt.Sprintf("__method_%s_%s", tName, name)
+			if _, ok := e.routes[methodName]; ok {
+				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
+			}
+			if _, ok := e.lookupFunction(methodName); ok {
+				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 			}
 		}
 	case TypeModule:
 		if mod, ok := val.Ref.(*VMModule); ok {
-			var v *Var
 			if mod.Context != nil {
-				if vLoad, err := mod.Context.Load(name); err == nil {
-					v = vLoad
+				if v, err := mod.Context.Load(name); err == nil && v != nil {
+					return v, true
 				}
 			}
-			if v == nil {
-				v = mod.Data[name]
+			if v := mod.Data[name]; v != nil {
+				return v, true
 			}
-			if v != nil {
-				return e.isCallableCompatible(v, expectedSig)
+			routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
+			if route, ok := e.routes[routeKey]; ok {
+				return &Var{VType: TypeAny, Ref: route}, true
 			}
 		}
 	case TypeInterface:
-		if inter, ok := val.Ref.(*VMInterface); ok {
-			if inter.Spec != nil {
-				if sig, ok := inter.Spec.ByName[name]; ok && sig != nil {
-					return e.isSignatureCompatible(&sig.Function, expectedSig)
-				}
+		if inter, ok := val.Ref.(*VMInterface); ok && inter.Spec != nil {
+			if idx, ok := inter.Spec.MethodIndex[name]; ok && idx < len(inter.VTable) && inter.VTable[idx] != nil {
+				return inter.VTable[idx], true
 			}
 		}
 	}
-	return false
+	return nil, false
+}
+
+func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *ast.FunctionType) bool {
+	callable, ok := e.resolveMethodValue(val, name)
+	return ok && e.isCallableCompatible(callable, expectedSig)
 }
 
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
@@ -1976,7 +2036,13 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) boo
 			}
 		}
 
-		if targetType.IsInterface() || e.interfaceSpecs[string(targetType)] != nil {
+		if targetType.IsInterface() {
+			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
+				return true
+			}
+			continue
+		}
+		if _, ok := e.resolveInterfaceSpec(targetType); ok {
 			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
 				return true
 			}
