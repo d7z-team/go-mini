@@ -17,6 +17,7 @@ import (
 
 type Executor struct {
 	structs         map[string]*ast.StructStmt
+	structSchemas   map[string]*RuntimeStructSpec
 	interfaces      map[string]*ast.InterfaceStmt
 	types           map[string]ast.GoMiniType
 	consts          map[string]string
@@ -30,7 +31,7 @@ type Executor struct {
 
 	StepLimit int64
 
-	interfaceCache map[ast.GoMiniType]map[string]*ast.FunctionType
+	interfaceCache map[ast.GoMiniType]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
 	lastSession    *StackContext
 }
@@ -59,12 +60,13 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 		program:         program,
 		globalInitOrder: globalInitOrder,
 		structs:         make(map[string]*ast.StructStmt),
+		structSchemas:   make(map[string]*RuntimeStructSpec),
 		interfaces:      make(map[string]*ast.InterfaceStmt),
 		types:           make(map[string]ast.GoMiniType),
 		funcs:           make(map[ast.Ident]*Var),
 		consts:          make(map[string]string),
 		routes:          make(map[string]FFIRoute),
-		interfaceCache:  make(map[ast.GoMiniType]map[string]*ast.FunctionType),
+		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
@@ -97,6 +99,16 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.routes[name] = route
+}
+
+func (e *Executor) RegisterStructSpec(name string, spec *RuntimeStructSpec) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if spec == nil {
+		delete(e.structSchemas, name)
+		return
+	}
+	e.structSchemas[name] = spec
 }
 
 func (e *Executor) RegisterConstant(name string, val string) {
@@ -213,23 +225,23 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	}
 
 	e.mu.RLock()
-	methods, ok := e.interfaceCache[actualInterfaceType]
+	spec, ok := e.interfaceCache[actualInterfaceType]
 	e.mu.RUnlock()
 
 	if !ok {
-		parsedMethods, ok := actualInterfaceType.ReadInterfaceMethods()
-		if !ok {
+		parsedSpec, err := ParseRuntimeInterfaceSpec(actualInterfaceType)
+		if err != nil {
 			return nil, fmt.Errorf("invalid interface type: %s", actualInterfaceType)
 		}
-		methods = parsedMethods
+		spec = parsedSpec
 		e.mu.Lock()
-		e.interfaceCache[actualInterfaceType] = methods
+		e.interfaceCache[actualInterfaceType] = spec
 		e.mu.Unlock()
 	}
 
-	for name, sig := range methods {
-		if !e.hasMethodWithSignature(inner, name, sig) {
-			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, name)
+	for _, method := range spec.Methods {
+		if method.Spec == nil || !e.hasMethodWithSignature(inner, method.Name, &method.Spec.Function) {
+			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, method.Name)
 		}
 	}
 
@@ -237,8 +249,8 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		Type:  interfaceType,
 		VType: TypeInterface,
 		Ref: &VMInterface{
-			Target:  inner.Copy(),
-			Methods: methods,
+			Target: inner.Copy(),
+			Spec:   spec,
 		},
 	}, nil
 }
@@ -264,6 +276,9 @@ func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *as
 		methodName := fmt.Sprintf("__method_%s_%s", tName, name)
 		if route, ok := e.routes[methodName]; ok {
 			// 校验 FFI 签名
+			if route.FuncSig != nil {
+				return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
+			}
 			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
 				return e.isSignatureCompatible(fType, expectedSig)
 			}
@@ -300,8 +315,10 @@ func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *as
 		}
 	case TypeInterface:
 		if inter, ok := val.Ref.(*VMInterface); ok {
-			if sig, ok := inter.Methods[name]; ok {
-				return e.isSignatureCompatible(sig, expectedSig)
+			if inter.Spec != nil {
+				if sig, ok := inter.Spec.ByName[name]; ok && sig != nil {
+					return e.isSignatureCompatible(&sig.Function, expectedSig)
+				}
 			}
 		}
 	}
@@ -316,6 +333,9 @@ func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) b
 	}
 	if v.VType == TypeAny && v.Ref != nil {
 		if route, ok := v.Ref.(FFIRoute); ok {
+			if route.FuncSig != nil {
+				return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
+			}
 			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
 				return e.isSignatureCompatible(fType, expectedSig)
 			}

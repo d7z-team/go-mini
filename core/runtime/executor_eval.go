@@ -404,8 +404,11 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 
 	if obj.VType == TypeInterface {
 		inter := obj.Ref.(*VMInterface)
-		sig, ok := inter.Methods[property]
-		if !ok {
+		if inter.Spec == nil {
+			return nil, &VMError{Message: fmt.Sprintf("interface contract missing for %s", obj.Type), IsPanic: true}
+		}
+		sig, ok := inter.Spec.ByName[property]
+		if !ok || sig == nil {
 			return nil, &VMError{Message: fmt.Sprintf("method %s not in interface contract %s", property, obj.Type), IsPanic: true}
 		}
 		// 如果 Target 是一个 FFI Handle，我们需要一个通用的路由方式
@@ -416,7 +419,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 				Receiver: inter.Target,
 				Method:   property, // 对于 FFI 接口，直接存方法名
 			},
-			Type: ast.GoMiniType(sig.String()),
+			Type: sig.Spec,
 		}, nil
 	}
 
@@ -907,11 +910,13 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 						MethodID: 0, // 对于接口调用，通常我们传方法名字符串
 						Name:     ref.Method,
 						Returns:  "Any", // 默认
+						Return:   "Any",
 					}
 					// 如果 c 有类型信息且是接口方法签名
 					if c.Type != "" {
 						if ft, ok := c.Type.ReadFunc(); ok {
 							route.Returns = string(ft.Return)
+							route.Return = ft.Return
 						}
 					}
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
@@ -936,6 +941,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			MethodID: 0,
 			Name:     name,
 			Returns:  "Any",
+			Return:   "Any",
 		}
 		// If we had the signature, we could set route.Returns here
 		return e.evalFFIAndPush(session, route, args)

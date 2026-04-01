@@ -7,13 +7,16 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 type Config struct {
-	Loader       func(path string) (*ast.ProgramStmt, error)
-	Specs        map[ast.Ident]ast.GoMiniType
-	Constants    map[string]string
-	MaxTypeDepth int
+	Loader        func(path string) (*ast.ProgramStmt, error)
+	Specs         map[ast.Ident]ast.GoMiniType
+	FuncSchemas   map[ast.Ident]*runtime.RuntimeFuncSig
+	StructSchemas map[ast.Ident]*runtime.RuntimeStructSpec
+	Constants     map[string]string
+	MaxTypeDepth  int
 }
 
 type Compiler struct {
@@ -101,7 +104,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		Program:  program,
 	}
 
-	validator, err := ast.NewValidator(program, c.cfg.Specs, c.cfg.Constants, tolerant)
+	validator, err := ast.NewValidator(program, c.resolvedSpecs(), c.cfg.Constants, tolerant)
 	if err != nil {
 		return artifact, nil, err
 	}
@@ -134,6 +137,31 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	artifact.GlobalInitOrder = order
 	artifact.Bytecode = buildBytecode(artifact.Program, artifact.GlobalInitOrder)
 	return artifact, semanticCtx, nil
+}
+
+func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
+	size := len(c.cfg.Specs) + len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas)
+	if size == 0 {
+		return nil
+	}
+
+	res := make(map[ast.Ident]ast.GoMiniType, size)
+	for k, v := range c.cfg.Specs {
+		res[k] = v
+	}
+	for k, v := range c.cfg.FuncSchemas {
+		if v == nil {
+			continue
+		}
+		res[k] = v.Spec
+	}
+	for k, v := range c.cfg.StructSchemas {
+		if v == nil {
+			continue
+		}
+		res[k] = v.Spec
+	}
+	return res
 }
 
 func (c *Compiler) CompileExprSource(code string) (ast.Expr, error) {

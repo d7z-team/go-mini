@@ -17,7 +17,17 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	defer ffigo.ReleaseBuffer(buf)
 
 	// 获取函数签名以获取参数类型列表
-	fn, ok := ast.GoMiniType(route.Spec).ReadCallFunc()
+	var (
+		fn *ast.CallFunctionType
+		ok bool
+	)
+	if route.FuncSig != nil {
+		call := route.FuncSig.Function.ToCallFunctionType()
+		fn = &call
+		ok = true
+	} else {
+		fn, ok = ast.GoMiniType(route.Spec).ReadCallFunc()
+	}
 
 	// 序列化参数
 	if ok && fn.Variadic {
@@ -123,7 +133,10 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	}
 
 	reader := ffigo.NewReader(retData)
-	retType := ast.GoMiniType(route.Returns)
+	retType := route.Return
+	if retType.IsEmpty() {
+		retType = ast.GoMiniType(route.Returns)
+	}
 
 	// 检查是否是 Tuple
 	if retType.IsTuple() {
@@ -258,11 +271,7 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 			return nil
 		}
 		if iface, ok := v.Ref.(*VMInterface); ok {
-			methods := make(map[string]string)
-			for k, v := range iface.Methods {
-				methods[k] = v.String()
-			}
-			buf.WriteRawInterface(iface.Target.Handle, methods)
+			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
 		} else {
 			buf.WriteRawInterface(0, nil)
 		}
@@ -305,22 +314,40 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 	default:
 		// 结构体序列化
 		if name, ok := typ.StructName(); ok {
-			if sDef, ok := e.program.Structs[name]; ok {
+			if sDef, ok := e.structSchemas[string(name)]; ok {
 				var mData map[string]*Var
 				if v != nil && v.VType == TypeMap {
 					mData = v.Ref.(*VMMap).Data
 				}
-				for _, fName := range sDef.FieldNames {
-					fType := sDef.Fields[fName]
+				for _, field := range sDef.Fields {
 					var fVal *Var
 					if mData != nil {
-						fVal = mData[string(fName)]
+						fVal = mData[field.Name]
 					}
-					if err := e.serializeVar(buf, fVal, fType); err != nil {
+					if err := e.serializeVar(buf, fVal, field.Type); err != nil {
 						return err
 					}
 				}
 				return nil
+			}
+			if e.program != nil {
+				if sDef, ok := e.program.Structs[name]; ok {
+					var mData map[string]*Var
+					if v != nil && v.VType == TypeMap {
+						mData = v.Ref.(*VMMap).Data
+					}
+					for _, fName := range sDef.FieldNames {
+						fType := sDef.Fields[fName]
+						var fVal *Var
+						if mData != nil {
+							fVal = mData[string(fName)]
+						}
+						if err := e.serializeVar(buf, fVal, fType); err != nil {
+							return err
+						}
+					}
+					return nil
+				}
 			}
 		}
 		// Custom named types (like 'Order') that are handles
@@ -394,12 +421,8 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			return
 		}
 		if iface, ok := v.Ref.(*VMInterface); ok {
-			methods := make(map[string]string)
-			for k, v := range iface.Methods {
-				methods[k] = v.String()
-			}
 			buf.WriteByte(ffigo.TypeTagInterface)
-			buf.WriteRawInterface(iface.Target.Handle, methods)
+			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
 		} else {
 			buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
@@ -466,7 +489,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			ifaceStr.WriteString(";")
 		}
 		ifaceStr.WriteString("}")
-		methods, _ := ast.GoMiniType(ifaceStr.String()).ReadInterfaceMethods()
+		ifaceSpec, _ := ParseRuntimeInterfaceSpec(ast.GoMiniType(ifaceStr.String()))
 
 		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge, Type: "TypeHandle"}
 		if v.Handle != 0 {
@@ -476,8 +499,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		res = &Var{
 			VType: TypeInterface,
 			Ref: &VMInterface{
-				Target:  target,
-				Methods: methods,
+				Target: target,
+				Spec:   ifaceSpec,
 			},
 			Bridge: bridge,
 		}
@@ -719,18 +742,32 @@ func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, t
 			res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
 		default:
 			if name, ok := typ.StructName(); ok {
-				if sDef, ok := e.program.Structs[name]; ok {
+				if sDef, ok := e.structSchemas[string(name)]; ok {
 					resMap := make(map[string]*Var)
-					for _, fName := range sDef.FieldNames {
-						fType := sDef.Fields[fName]
-						val, err := e.deserializeVar(session, reader, fType, bridge)
+					for _, field := range sDef.Fields {
+						val, err := e.deserializeVar(session, reader, field.Type, bridge)
 						if err != nil {
 							return nil, err
 						}
-						resMap[string(fName)] = val
+						resMap[field.Name] = val
 					}
 					res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
 					break
+				}
+				if e.program != nil {
+					if sDef, ok := e.program.Structs[name]; ok {
+						resMap := make(map[string]*Var)
+						for _, fName := range sDef.FieldNames {
+							fType := sDef.Fields[fName]
+							val, err := e.deserializeVar(session, reader, fType, bridge)
+							if err != nil {
+								return nil, err
+							}
+							resMap[string(fName)] = val
+						}
+						res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+						break
+					}
 				}
 			}
 			// Fallback: If it's an unknown named type, assume it's an opaque handle

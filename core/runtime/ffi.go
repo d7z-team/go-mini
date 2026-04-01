@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -12,4 +13,6 @@ type FFIRoute struct {
 	Returns  string
 	Spec     string
 	Doc      string
+	FuncSig  *RuntimeFuncSig
+	Return   ast.GoMiniType
 }

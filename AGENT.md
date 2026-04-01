@@ -117,7 +117,7 @@ GOCACHE=/tmp/go-build-cache go test ./...
 - [ ] 非 debugger 主路径未引入新的 AST 任务依赖。
 - [ ] 新能力已在 lowering 和 dispatch 两端闭环。
 - [ ] 相关 runtime 单测和 e2e 测试已补齐或更新。
-- [ ] `go test ./...` 通过。
+- [ ] `make test` 测试通过。
 - [ ] `TODO.md` 状态已同步（完成项/剩余项）。
 
 ## 6. 文档协作规则
@@ -128,4 +128,3 @@ GOCACHE=/tmp/go-build-cache go test ./...
 
 ## 其他说明
 
-所有的对话均使用 **简体中文** ，专业术语使用  **简体中文（英语缩写/全称）** 

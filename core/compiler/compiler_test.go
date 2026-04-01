@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestCompileSourceResolvesGlobalInitDependencies(t *testing.T) {
@@ -94,5 +95,44 @@ func main() {}
 	}
 	if !strings.Contains(string(payload), "\"globals\"") {
 		t.Fatalf("unexpected bytecode payload: %s", payload)
+	}
+}
+
+func TestCompileSourceAcceptsParsedSchema(t *testing.T) {
+	funcSig, err := runtime.ParseRuntimeFuncSig("function(String, ...Any) String")
+	if err != nil {
+		t.Fatalf("parse func schema failed: %v", err)
+	}
+	structSig, err := runtime.ParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }")
+	if err != nil {
+		t.Fatalf("parse struct schema failed: %v", err)
+	}
+
+	c := New(Config{
+		FuncSchemas: map[ast.Ident]*runtime.RuntimeFuncSig{
+			"fmt.Sprintf": funcSig,
+		},
+		StructSchemas: map[ast.Ident]*runtime.RuntimeStructSpec{
+			"demo.Payload": structSig,
+		},
+	})
+
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+import "fmt"
+
+type Payload struct {
+	Msg string
+	Count int
+}
+
+var msg = fmt.Sprintf("%s", "hi")
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed with parsed schema: %v", err)
+	}
+	if artifact == nil || artifact.Program == nil {
+		t.Fatal("expected compiled artifact")
 	}
 }

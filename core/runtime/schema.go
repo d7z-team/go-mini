@@ -1,0 +1,367 @@
+package runtime
+
+import (
+	"fmt"
+	"strings"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+)
+
+type RuntimeTypeKind uint8
+
+const (
+	RuntimeTypeInvalid RuntimeTypeKind = iota
+	RuntimeTypeVoid
+	RuntimeTypeAny
+	RuntimeTypePrimitive
+	RuntimeTypeNamed
+	RuntimeTypePointer
+	RuntimeTypeArray
+	RuntimeTypeMap
+	RuntimeTypeTuple
+	RuntimeTypeFunction
+	RuntimeTypeStruct
+	RuntimeTypeInterface
+)
+
+// RuntimeType is a parsed, structural view of Go-Mini type metadata.
+type RuntimeType struct {
+	Kind RuntimeTypeKind
+	Raw  ast.GoMiniType
+
+	// TypeID is the canonical named type identifier when the type carries one.
+	TypeID string
+
+	Elem   *RuntimeType
+	Key    *RuntimeType
+	Value  *RuntimeType
+	Params []RuntimeType
+	Return *RuntimeType
+
+	Variadic bool
+	Fields   []RuntimeStructField
+	Methods  []RuntimeInterfaceMethod
+}
+
+// RuntimeFuncSig is the parsed FFI function schema cached at registration time.
+type RuntimeFuncSig struct {
+	Spec       ast.GoMiniType
+	Function   ast.FunctionType
+	ParamTypes []RuntimeType
+	ReturnType RuntimeType
+}
+
+// RuntimeStructField stores a field in declaration order for FFI struct codecs.
+type RuntimeStructField struct {
+	Name string
+	Type ast.GoMiniType
+
+	TypeInfo RuntimeType
+}
+
+// RuntimeStructSpec is the parsed FFI struct schema cached at registration time.
+type RuntimeStructSpec struct {
+	Name   string
+	TypeID string
+	Spec   ast.GoMiniType
+
+	TypeInfo RuntimeType
+	Fields   []RuntimeStructField
+	ByName   map[string]RuntimeStructField
+}
+
+type RuntimeInterfaceMethod struct {
+	Name string
+	Spec *RuntimeFuncSig
+}
+
+type RuntimeInterfaceSpec struct {
+	TypeID string
+	Spec   ast.GoMiniType
+
+	TypeInfo RuntimeType
+	Methods  []RuntimeInterfaceMethod
+	ByName   map[string]*RuntimeFuncSig
+}
+
+func CanonicalTypeID(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimPrefix(name, "*")
+	if strings.HasPrefix(name, "Ptr<") && strings.HasSuffix(name, ">") {
+		return CanonicalTypeID(name[4 : len(name)-1])
+	}
+	return name
+}
+
+func ParseRuntimeType(spec ast.GoMiniType) (RuntimeType, error) {
+	spec = ast.GoMiniType(strings.TrimSpace(string(spec)))
+	if spec.IsEmpty() || spec.IsVoid() {
+		return RuntimeType{Kind: RuntimeTypeVoid, Raw: spec}, nil
+	}
+	if spec == ast.TypeAny || spec == ast.TypeModule || spec == ast.TypeClosure {
+		return RuntimeType{Kind: RuntimeTypeAny, Raw: spec, TypeID: CanonicalTypeID(string(spec))}, nil
+	}
+	if spec.IsPrimitive() {
+		return RuntimeType{Kind: RuntimeTypePrimitive, Raw: spec, TypeID: CanonicalTypeID(string(spec))}, nil
+	}
+	if spec.IsPtr() {
+		elem, ok := spec.GetPtrElementType()
+		if !ok {
+			return RuntimeType{}, fmt.Errorf("invalid pointer type: %s", spec)
+		}
+		elemType, err := ParseRuntimeType(elem)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypePointer,
+			Raw:    spec,
+			TypeID: elemType.TypeID,
+			Elem:   &elemType,
+		}, nil
+	}
+	if spec.IsArray() {
+		elem, ok := spec.ReadArrayItemType()
+		if !ok {
+			return RuntimeType{}, fmt.Errorf("invalid array type: %s", spec)
+		}
+		elemType, err := ParseRuntimeType(elem)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypeArray,
+			Raw:    spec,
+			TypeID: elemType.TypeID,
+			Elem:   &elemType,
+		}, nil
+	}
+	if spec.IsMap() {
+		key, value, ok := spec.GetMapKeyValueTypes()
+		if !ok {
+			return RuntimeType{}, fmt.Errorf("invalid map type: %s", spec)
+		}
+		keyType, err := ParseRuntimeType(key)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		valueType, err := ParseRuntimeType(value)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypeMap,
+			Raw:    spec,
+			TypeID: valueType.TypeID,
+			Key:    &keyType,
+			Value:  &valueType,
+		}, nil
+	}
+	if types, ok := spec.ReadTuple(); ok {
+		params := make([]RuntimeType, 0, len(types))
+		for _, item := range types {
+			itemType, err := ParseRuntimeType(item)
+			if err != nil {
+				return RuntimeType{}, err
+			}
+			params = append(params, itemType)
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypeTuple,
+			Raw:    spec,
+			TypeID: CanonicalTypeID(string(spec)),
+			Params: params,
+		}, nil
+	}
+	if fn, ok := spec.ReadFunc(); ok {
+		params := make([]RuntimeType, 0, len(fn.Params))
+		for _, p := range fn.Params {
+			paramType, err := ParseRuntimeType(p.Type)
+			if err != nil {
+				return RuntimeType{}, err
+			}
+			params = append(params, paramType)
+		}
+		retType, err := ParseRuntimeType(fn.Return)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:     RuntimeTypeFunction,
+			Raw:      spec,
+			TypeID:   CanonicalTypeID(string(spec)),
+			Params:   params,
+			Return:   &retType,
+			Variadic: fn.Variadic,
+		}, nil
+	}
+	if spec.IsStruct() {
+		return parseRuntimeStructType(spec)
+	}
+	if spec.IsInterface() {
+		return parseRuntimeInterfaceType(spec)
+	}
+	return RuntimeType{
+		Kind:   RuntimeTypeNamed,
+		Raw:    spec,
+		TypeID: CanonicalTypeID(string(spec)),
+	}, nil
+}
+
+func ParseRuntimeFuncSig(spec ast.GoMiniType) (*RuntimeFuncSig, error) {
+	if spec.IsEmpty() {
+		return nil, nil
+	}
+	fn, ok := spec.ReadFunc()
+	if !ok {
+		return nil, fmt.Errorf("invalid function spec: %s", spec)
+	}
+	params := make([]RuntimeType, 0, len(fn.Params))
+	for _, p := range fn.Params {
+		paramType, err := ParseRuntimeType(p.Type)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, paramType)
+	}
+	retType, err := ParseRuntimeType(fn.Return)
+	if err != nil {
+		return nil, err
+	}
+	return &RuntimeFuncSig{
+		Spec:       spec,
+		Function:   *fn,
+		ParamTypes: params,
+		ReturnType: retType,
+	}, nil
+}
+
+func ParseRuntimeStructSpec(name string, spec ast.GoMiniType) (*RuntimeStructSpec, error) {
+	if spec.IsEmpty() {
+		return nil, nil
+	}
+	typeInfo, err := parseRuntimeStructType(spec)
+	if err != nil {
+		return nil, fmt.Errorf("invalid struct spec for %s: %w", name, err)
+	}
+
+	fields := make([]RuntimeStructField, len(typeInfo.Fields))
+	byName := make(map[string]RuntimeStructField, len(typeInfo.Fields))
+	copy(fields, typeInfo.Fields)
+	for _, field := range fields {
+		byName[field.Name] = field
+	}
+
+	return &RuntimeStructSpec{
+		Name:     name,
+		TypeID:   CanonicalTypeID(name),
+		Spec:     spec,
+		TypeInfo: typeInfo,
+		Fields:   fields,
+		ByName:   byName,
+	}, nil
+}
+
+func ParseRuntimeInterfaceSpec(spec ast.GoMiniType) (*RuntimeInterfaceSpec, error) {
+	if spec.IsEmpty() {
+		return nil, nil
+	}
+	typeInfo, err := parseRuntimeInterfaceType(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	methods := make([]RuntimeInterfaceMethod, len(typeInfo.Methods))
+	byName := make(map[string]*RuntimeFuncSig, len(typeInfo.Methods))
+	for i, method := range typeInfo.Methods {
+		fnSig, err := ParseRuntimeFuncSig(method.Spec.Spec)
+		if err != nil {
+			return nil, err
+		}
+		methods[i] = RuntimeInterfaceMethod{Name: method.Name, Spec: fnSig}
+		byName[method.Name] = fnSig
+	}
+
+	return &RuntimeInterfaceSpec{
+		TypeID:   typeInfo.TypeID,
+		Spec:     spec,
+		TypeInfo: typeInfo,
+		Methods:  methods,
+		ByName:   byName,
+	}, nil
+}
+
+func (s *RuntimeInterfaceSpec) MethodStringMap() map[string]string {
+	if s == nil {
+		return nil
+	}
+	res := make(map[string]string, len(s.Methods))
+	for _, method := range s.Methods {
+		if method.Spec != nil {
+			res[method.Name] = string(method.Spec.Spec)
+		}
+	}
+	return res
+}
+
+func parseRuntimeStructType(spec ast.GoMiniType) (RuntimeType, error) {
+	raw := strings.TrimSpace(string(spec))
+	start := strings.Index(raw, "{")
+	if start == -1 || !strings.HasSuffix(raw, "}") {
+		return RuntimeType{}, fmt.Errorf("malformed struct type: %s", spec)
+	}
+	inner := raw[start+1 : len(raw)-1]
+	parts := strings.Split(inner, ";")
+	fields := make([]RuntimeStructField, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		items := strings.SplitN(part, " ", 2)
+		if len(items) != 2 {
+			return RuntimeType{}, fmt.Errorf("invalid struct field: %s", part)
+		}
+		fieldType := ast.GoMiniType(strings.TrimSpace(items[1]))
+		typeInfo, err := ParseRuntimeType(fieldType)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		fields = append(fields, RuntimeStructField{
+			Name:     strings.TrimSpace(items[0]),
+			Type:     fieldType,
+			TypeInfo: typeInfo,
+		})
+	}
+	return RuntimeType{
+		Kind:   RuntimeTypeStruct,
+		Raw:    spec,
+		TypeID: CanonicalTypeID(string(spec)),
+		Fields: fields,
+	}, nil
+}
+
+func parseRuntimeInterfaceType(spec ast.GoMiniType) (RuntimeType, error) {
+	methods, ok := spec.ReadInterfaceMethods()
+	if !ok {
+		return RuntimeType{}, fmt.Errorf("invalid interface type: %s", spec)
+	}
+	items := make([]RuntimeInterfaceMethod, 0, len(methods))
+	for name, fn := range methods {
+		if fn == nil {
+			continue
+		}
+		methodSpec := fn.MiniType()
+		fnSig, err := ParseRuntimeFuncSig(methodSpec)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		items = append(items, RuntimeInterfaceMethod{Name: name, Spec: fnSig})
+	}
+	return RuntimeType{
+		Kind:    RuntimeTypeInterface,
+		Raw:     spec,
+		TypeID:  CanonicalTypeID(string(spec)),
+		Methods: items,
+	}, nil
+}

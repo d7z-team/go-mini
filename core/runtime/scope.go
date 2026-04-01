@@ -108,8 +108,8 @@ const (
 )
 
 type VMInterface struct {
-	Target  *Var
-	Methods map[string]*ast.FunctionType // Allowed methods with their signatures
+	Target *Var
+	Spec   *RuntimeInterfaceSpec
 }
 
 type VMModule struct {
@@ -374,8 +374,8 @@ func (v *Var) Copy() *Var {
 	if v.VType == TypeInterface {
 		if inter, ok := v.Ref.(*VMInterface); ok {
 			res.Ref = &VMInterface{
-				Target:  inter.Target.Copy(),
-				Methods: inter.Methods,
+				Target: inter.Target.Copy(),
+				Spec:   inter.Spec,
 			}
 		}
 	}
