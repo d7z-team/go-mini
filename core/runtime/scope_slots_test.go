@@ -196,6 +196,21 @@ func TestStackContextReturnSlot(t *testing.T) {
 	}
 }
 
+func TestReturnSlotAPIsRequireFrameSlot(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+
+	if _, err := session.LoadReturn(); err == nil {
+		t.Fatal("expected LoadReturn to fail without frame slot")
+	}
+	if err := session.StoreReturn(NewInt(1)); err == nil {
+		t.Fatal("expected StoreReturn to fail without frame slot")
+	}
+	if _, exists := session.Stack.MemoryPtr["__return__"]; exists {
+		t.Fatalf("return slot API should not recreate MemoryPtr fallback: %#v", session.Stack.MemoryPtr["__return__"])
+	}
+}
+
 func TestSetupFuncCallInitializesParamSlots(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
@@ -395,10 +410,17 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 	}
 
 	if err := exec.dispatch(session, Task{Op: OpCallBoundary, Data: map[string]interface{}{
-		"oldStack":  outerStack,
-		"hasReturn": true,
-		"valueBase": 1,
-		"lhsBase":   1,
+		"oldStack": outerStack,
+	}}); err == nil {
+		t.Fatal("expected legacy map payload to be rejected")
+	}
+
+	if err := exec.dispatch(session, Task{Op: OpCallBoundary, Data: &CallBoundaryData{
+		Name:      "sum",
+		OldStack:  outerStack,
+		HasReturn: true,
+		ValueBase: 1,
+		LHSBase:   1,
 	}}); err != nil {
 		t.Fatalf("call boundary failed: %v", err)
 	}
@@ -421,5 +443,45 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 	}
 	if _, ok := session.LHSStack.Peek().(*LHSEnv); !ok {
 		t.Fatalf("unexpected outer LHS stack entry: %#v", session.LHSStack.Peek())
+	}
+}
+
+func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	session.ScopeApply("fn")
+
+	local := SymbolRef{Name: "n", Kind: SymbolLocal, Slot: 0}
+	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+		t.Fatalf("declare local symbol failed: %v", err)
+	}
+	if err := exec.assignAddress(session, &LHSEnv{Name: "n", Sym: local}, NewInt(4)); err != nil {
+		t.Fatalf("assign address failed: %v", err)
+	}
+	if err := exec.updateAddress(session, &LHSEnv{Name: "n", Sym: local}, "++"); err != nil {
+		t.Fatalf("update address failed: %v", err)
+	}
+	got, err := exec.loadAddress(session, &LHSEnv{Name: "n", Sym: local})
+	if err != nil {
+		t.Fatalf("load address failed: %v", err)
+	}
+	if got == nil || got.I64 != 5 {
+		t.Fatalf("unexpected local address value: %#v", got)
+	}
+
+	arr := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1), NewInt(2)}}, Type: "[]Int64"}
+	index := &LHSIndex{Obj: arr, Index: NewInt(1)}
+	if err := exec.assignAddress(session, index, NewInt(9)); err != nil {
+		t.Fatalf("assign indexed address failed: %v", err)
+	}
+	if err := exec.updateAddress(session, index, "--"); err != nil {
+		t.Fatalf("update indexed address failed: %v", err)
+	}
+	got, err = exec.loadAddress(session, index)
+	if err != nil {
+		t.Fatalf("load indexed address failed: %v", err)
+	}
+	if got == nil || got.I64 != 8 {
+		t.Fatalf("unexpected indexed address value: %#v", got)
 	}
 }

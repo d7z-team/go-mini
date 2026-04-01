@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -110,6 +111,15 @@ func TestTypeMapRobustness(t *testing.T) {
 				t.Fatalf("failed to create runtime: %v", err)
 			}
 			err = prog.Execute(context.Background())
+			if tt.name == "AnyWrappedScalarMemberAccess" {
+				if err == nil {
+					t.Fatal("expected scalar Any member access to fail")
+				}
+				if !strings.Contains(err.Error(), "does not support member access") {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Errorf("execution failed: %v", err)
 			}

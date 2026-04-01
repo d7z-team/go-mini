@@ -1,11 +1,18 @@
 package runtime
 
 import (
+	"context"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
+
+type testFFIBridge struct{}
+
+func (testFFIBridge) Call(context.Context, uint32, []byte) ([]byte, error)  { return nil, nil }
+func (testFFIBridge) Invoke(context.Context, string, []byte) ([]byte, error) { return nil, nil }
+func (testFFIBridge) DestroyHandle(uint32) error                             { return nil }
 
 func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
@@ -51,6 +58,9 @@ func TestToVarDecodesPointerAndStructAnyValues(t *testing.T) {
 	if !ok || inner.VType != TypeInt || inner.I64 != 7 {
 		t.Fatalf("unexpected pointer payload: %#v", ptrVal.Ref)
 	}
+	if ptrVal.Bridge != nil {
+		t.Fatalf("vm pointer should not carry host bridge: %#v", ptrVal)
+	}
 
 	structVal := exec.ToVar(nil, &ffigo.VMStruct{Fields: []ffigo.StructField{
 		{Name: "Msg", Value: "ok"},
@@ -82,5 +92,20 @@ func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	}
 	if resolved.TypeID != "demo.Type" {
 		t.Fatalf("unexpected resolved schema: %+v", resolved)
+	}
+}
+
+func TestSerializeVarToAnyKeepsOpaqueHandleOpaque(t *testing.T) {
+	exec := &Executor{}
+	v := &Var{VType: TypeHandle, Handle: 42, Bridge: testFFIBridge{}}
+
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	exec.serializeVarToAny(buf, v)
+
+	decoded := ffigo.NewReader(buf.Bytes()).ReadAny()
+	id, ok := decoded.(uint32)
+	if !ok || id != 42 {
+		t.Fatalf("expected opaque handle id, got %#v", decoded)
 	}
 }

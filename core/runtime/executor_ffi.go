@@ -250,17 +250,12 @@ func (e *Executor) lookupStructSchema(typ RuntimeType) (*RuntimeStructSpec, bool
 	return e.resolveStructSchema(ast.GoMiniType(typ.TypeID))
 }
 
+func (e *Executor) unwrapFFIValue(v *Var) *Var {
+	return e.unwrapValue(v)
+}
+
 func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {
-	if v != nil && v.VType == TypeCell && v.Ref != nil {
-		if cell, ok := v.Ref.(*Cell); ok {
-			v = cell.Value
-		}
-	}
-	if v != nil && v.VType == TypeAny && v.Ref != nil {
-		if inner, ok := v.Ref.(*Var); ok {
-			v = inner
-		}
-	}
+	v = e.unwrapFFIValue(v)
 
 	switch typ.Kind {
 	case RuntimeTypeVoid:
@@ -336,7 +331,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		if schema, ok := e.lookupStructSchema(typ); ok {
 			return e.serializeStructSchema(buf, v, schema)
 		}
-		if v != nil && v.VType == TypeHandle {
+		if e.isOpaqueHandle(v) {
 			buf.WriteUvarint(uint64(v.Handle))
 			return nil
 		}
@@ -344,7 +339,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		return nil
 	case RuntimeTypePointer:
 		hVal := uint32(0)
-		if v != nil {
+		if e.isOpaqueHandle(v) {
 			hVal, _ = v.ToHandle()
 		}
 		buf.WriteUvarint(uint64(hVal))
@@ -421,7 +416,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
 	typeInfo, err := ParseRuntimeType(typ)
 	if err != nil {
-		if v != nil && v.VType == TypeHandle {
+		if e.isOpaqueHandle(v) {
 			buf.WriteUvarint(uint64(v.Handle))
 			return nil
 		}
@@ -432,22 +427,12 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
+	v = e.unwrapFFIValue(v)
 	if v == nil {
 		buf.WriteAny(nil)
 		return
 	}
 	switch v.VType {
-	case TypeAny:
-		if v.Ref == nil {
-			buf.WriteAny(nil)
-			return
-		}
-		if inner, ok := v.Ref.(*Var); ok {
-			e.serializeVarToAny(buf, inner)
-			return
-		}
-		buf.WriteAny(v.Ref)
-		return
 	case TypeInt:
 		buf.WriteAny(v.I64)
 	case TypeFloat:
@@ -467,12 +452,10 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		}
 	case TypeHandle:
 		// Internal VM pointers travel as pointer-tagged Any values.
-		if v.Bridge == nil && v.Ref != nil {
-			if inner, ok := v.Ref.(*Var); ok {
-				buf.WriteByte(ffigo.TypeTagPointer)
-				e.serializeVarToAny(buf, inner)
-				return
-			}
+		if inner, ok := e.vmPointerTarget(v); ok {
+			buf.WriteByte(ffigo.TypeTagPointer)
+			e.serializeVarToAny(buf, inner)
+			return
 		}
 		// Host-visible handles always travel as opaque handle IDs.
 		buf.WriteAny(v.Handle)
@@ -643,7 +626,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
 	case *ffigo.VMPointer:
 		inner := e.ToVar(session, v.Value, bridge)
-		res = &Var{VType: TypeHandle, Type: "Ptr<Any>", Bridge: bridge, Ref: inner}
+		res = &Var{VType: TypeHandle, Type: "Ptr<Any>", Ref: inner}
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
 	}

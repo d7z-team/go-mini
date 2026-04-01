@@ -14,13 +14,8 @@ import (
 // Wait, isEmptyVar is private in the package, so we can just use it without redefining it.
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
-	// 解包 Cell
-	if l != nil && l.VType == TypeCell {
-		l = l.Ref.(*Cell).Value
-	}
-	if r != nil && r.VType == TypeCell {
-		r = r.Ref.(*Cell).Value
-	}
+	l = e.unwrapValue(l)
+	r = e.unwrapValue(r)
 
 	// 允许比较运算的操作数为 nil
 	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
@@ -267,11 +262,9 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 }
 
 func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) {
+	val = e.unwrapValue(val)
 	if val == nil {
 		return nil, &VMError{Message: "unary op with nil operand", IsPanic: true}
-	}
-	if val.VType == TypeCell {
-		val = val.Ref.(*Cell).Value
 	}
 	switch operator {
 	case "!", "Not":
@@ -288,12 +281,7 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 			return NewInt(^val.I64), nil
 		}
 	case "Dereference":
-		if val.VType == TypeHandle && val.Ref != nil {
-			if res, ok := val.Ref.(*Var); ok {
-				return res, nil
-			}
-		}
-		return nil, &VMError{Message: fmt.Sprintf("cannot dereference type %v", val.VType), IsPanic: true}
+		return e.dereferenceValue(val)
 	}
 	return nil, &VMError{Message: "unsupported unary op " + operator, IsPanic: true}
 }
@@ -388,24 +376,9 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 }
 
 func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property string) (*Var, error) {
+	obj = e.unwrapValue(obj)
 	if obj == nil || isEmptyVar(obj) {
 		return nil, &VMError{Message: "member access on nil object: " + property, IsPanic: true}
-	}
-	if obj.VType == TypeCell {
-		obj = obj.Ref.(*Cell).Value
-	}
-
-	// 穿透 TypeAny
-	if obj.VType == TypeAny && obj.Ref != nil {
-		if inner, ok := obj.Ref.(*Var); ok {
-			switch inner.VType {
-			case TypeMap, TypeModule, TypeInterface, TypeHandle, TypeAny, TypeError:
-				return e.evalMemberExprDirect(nil, inner, property)
-			default:
-				// Scalar values wrapped by Any should return nil for unknown members.
-				return nil, nil
-			}
-		}
 	}
 
 	if obj.VType == TypeInterface {
@@ -459,10 +432,8 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		return nil, nil
 	case TypeHandle:
 		// Check if it's a pointer to something that has fields (like a struct in Ref)
-		if obj.Ref != nil {
-			if valVar, ok := obj.Ref.(*Var); ok {
-				return e.evalMemberExprDirect(nil, valVar, property)
-			}
+		if valVar, ok := e.vmPointerTarget(obj); ok {
+			return e.evalMemberExprDirect(nil, valVar, property)
 		}
 		// Handle method extraction (implicit binding)
 		tName := string(obj.Type)
@@ -588,9 +559,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "make requires at least 1 argument", IsPanic: true}
 			}
 			typVar := args[0]
-			if typVar != nil && typVar.VType == TypeCell {
-				typVar = typVar.Ref.(*Cell).Value
-			}
+			typVar = e.unwrapValue(typVar)
 			if typVar == nil || (typVar.VType != TypeString && typVar.Type != "String") {
 				return &VMError{Message: "make first argument must be a type string", IsPanic: true}
 			}
@@ -645,22 +614,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "len requires exactly 1 argument", IsPanic: true}
 			}
 			obj := args[0]
-			if obj.VType == TypeCell {
-				obj = obj.Ref.(*Cell).Value
-			}
+			obj = e.unwrapValue(obj)
 			if obj == nil {
 				session.ValueStack.Push(NewInt(0))
 				return nil
-			}
-			if obj.VType == TypeAny && obj.Ref != nil {
-				if arr, ok := obj.Ref.(*VMArray); ok {
-					session.ValueStack.Push(NewInt(int64(len(arr.Data))))
-					return nil
-				}
-				if m, ok := obj.Ref.(*VMMap); ok {
-					session.ValueStack.Push(NewInt(int64(len(m.Data))))
-					return nil
-				}
 			}
 			switch obj.VType {
 			case TypeString:
@@ -682,9 +639,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "cap requires exactly 1 argument", IsPanic: true}
 			}
 			obj := args[0]
-			if obj.VType == TypeCell {
-				obj = obj.Ref.(*Cell).Value
-			}
+			obj = e.unwrapValue(obj)
 			if obj == nil {
 				session.ValueStack.Push(NewInt(0))
 				return nil
@@ -728,17 +683,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "delete requires map and key", IsPanic: true}
 			}
 			obj := args[0]
-			if obj.VType == TypeAny && obj.Ref != nil {
-				if m, ok := obj.Ref.(*VMMap); ok {
-					key := args[1].Str
-					if args[1].VType == TypeInt {
-						key = strconv.FormatInt(args[1].I64, 10)
-					}
-					delete(m.Data, key)
-					session.ValueStack.Push(nil)
-					return nil
-				}
-			}
+			obj = e.unwrapValue(obj)
 			if obj.VType == TypeMap {
 				m := obj.Ref.(*VMMap)
 				key := args[1].Str
@@ -773,11 +718,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "String":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
-				if arg.VType == TypeAny && arg.Ref != nil {
-					if inner, ok := arg.Ref.(*Var); ok {
-						arg = inner
-					}
-				}
+				arg = e.unwrapValue(arg)
 				switch arg.VType {
 				case TypeString:
 					session.ValueStack.Push(NewString(arg.Str))
@@ -801,11 +742,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "TypeBytes":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
-				if arg.VType == TypeAny && arg.Ref != nil {
-					if inner, ok := arg.Ref.(*Var); ok {
-						arg = inner
-					}
-				}
+				arg = e.unwrapValue(arg)
 				switch arg.VType {
 				case TypeBytes:
 					session.ValueStack.Push(arg)
@@ -820,11 +757,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "Int64":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
-				if arg.VType == TypeAny && arg.Ref != nil {
-					if inner, ok := arg.Ref.(*Var); ok {
-						arg = inner
-					}
-				}
+				arg = e.unwrapValue(arg)
 				switch arg.VType {
 				case TypeInt:
 					session.ValueStack.Push(arg)
@@ -850,11 +783,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "Float64":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
-				if arg.VType == TypeAny && arg.Ref != nil {
-					if inner, ok := arg.Ref.(*Var); ok {
-						arg = inner
-					}
-				}
+				arg = e.unwrapValue(arg)
 				switch arg.VType {
 				case TypeFloat:
 					session.ValueStack.Push(arg)
@@ -880,11 +809,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		case "Bool":
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
-				if arg.VType == TypeAny && arg.Ref != nil {
-					if inner, ok := arg.Ref.(*Var); ok {
-						arg = inner
-					}
-				}
+				arg = e.unwrapValue(arg)
 				b, _ := arg.ToBool()
 				session.ValueStack.Push(NewBool(b))
 				return nil
@@ -920,11 +845,12 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 
 	// 2. Closure / Method Value / FFI Route
 	if callable != nil {
-		c := callable
-		if c.VType == TypeAny && c.Ref != nil {
-			if v, ok := c.Ref.(*Var); ok && v.VType == TypeClosure {
-				c = v
-			} else if route, ok := c.Ref.(FFIRoute); ok {
+		c := e.unwrapValue(callable)
+		if c == nil {
+			c = callable
+		}
+		if c != nil {
+			if route, ok := c.Ref.(FFIRoute); ok {
 				return e.evalFFIAndPush(session, route, args)
 			}
 		}
@@ -1111,12 +1037,13 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	// Push CallBoundary
 	session.TaskStack = append(session.TaskStack, Task{
 		Op: OpCallBoundary,
-		Data: map[string]interface{}{
-			"oldStack":  old,
-			"oldExec":   oldExec,
-			"hasReturn": !ft.Return.IsVoid(),
-			"valueBase": session.ValueStack.Len(),
-			"lhsBase":   session.LHSStack.Len(),
+		Data: &CallBoundaryData{
+			Name:      name,
+			OldStack:  old,
+			OldExec:   oldExec,
+			HasReturn: !ft.Return.IsVoid(),
+			ValueBase: session.ValueStack.Len(),
+			LHSBase:   session.LHSStack.Len(),
 		},
 	})
 	// Push Defers execution

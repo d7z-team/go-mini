@@ -1097,12 +1097,12 @@ func (ctx *StackContext) LoadReturn() (*Var, error) {
 	if ctx.Stack != nil && ctx.Stack.Frame != nil && ctx.Stack.Frame.Return != nil {
 		return unwrapCell(ctx.Stack.Frame.Return), nil
 	}
-	return ctx.Load("__return__")
+	return nil, fmt.Errorf("missing return slot")
 }
 
 func (ctx *StackContext) StoreReturn(expr *Var) error {
 	if ctx.Stack == nil || ctx.Stack.Frame == nil || ctx.Stack.Frame.Return == nil {
-		return ctx.Store("__return__", expr)
+		return fmt.Errorf("missing return slot")
 	}
 	v := ctx.Stack.Frame.Return
 	if v.VType == TypeCell {
@@ -1276,10 +1276,8 @@ func (ctx *StackContext) GenerateStackTrace(current *Task) []StackFrame {
 			callerName := "main"
 			for j := i - 1; j >= 0; j-- {
 				if ctx.TaskStack[j].Op == OpCallBoundary {
-					if d2, ok := ctx.TaskStack[j].Data.(map[string]interface{}); ok {
-						if name, ok := d2["name"].(string); ok && name != "" {
-							callerName = name
-						}
+					if d2, ok := ctx.TaskStack[j].Data.(*CallBoundaryData); ok && d2 != nil && d2.Name != "" {
+						callerName = d2.Name
 						break
 					}
 				}

@@ -98,6 +98,8 @@
 - [x] **移除 closure/runtime 对名字型 upvalue map 的主依赖**: closure 已仅保留 `UpvalueSlots + UpvalueNames`。
 - [x] **函数入参与返回值走固定 frame 布局**。
 - [x] **评估并收敛 `ValueStack` 与 call frame 的职责边界**: `CallBoundary` 已记录并恢复 `valueBase/lhsBase`，临时 LHS 状态已从 `ValueStack` 分离为独立 `LHSStack`。
+- [x] **收紧调用链路兼容回退**: `LoadReturn/StoreReturn` 已改为严格依赖 frame return slot，调用热路径不再回退到 `"__return__"` 名字绑定。
+- [x] **将 `OpCallBoundary` 元数据结构化**: 已收敛为 `CallBoundaryData` 强类型 payload，统一承载 `name/oldStack/oldExec/valueBase/lhsBase`。
 
 ---
 
@@ -107,15 +109,15 @@
 ### O. 左值与寻址模型重构
 - [x] **引入专门的 `LHSStack` 或 `Address` 模型**，彻底分离“表达式值”与“赋值目标”。
 - [x] **`OpEvalLHS` 不再往 `ValueStack` 压入 `TypeAny` 包装描述符**。
-- [ ] **抽出统一 `resolveAddress/loadAddress/storeAddress/updateAddress` 原语**。
-- [ ] **合并 `Assignment` 与 `IncDec` 寻址路径**，减少重复实现。
+- [x] **抽出统一 `resolveAddress/loadAddress/storeAddress/updateAddress` 原语**: `LHSEnv/LHSIndex/LHSMember/LHSDeref` 已统一收敛为可读写地址解析入口，赋值/成员写入/索引写入/解引用写入共享同一套寻址原语。
+- [x] **合并 `Assignment` 与 `IncDec` 寻址路径**，减少重复实现: `OpAssign` 与 `OpIncDec` 已统一走 `LHSValue -> resolveAddress -> store/update` 流程，多赋值也复用同一组地址原语。
 
 ### P. 指针与 Any/Box 语义统一
-- [ ] **废弃 `__deref__` 成员 hack**，建立原生解引用 load/store 原语。
-- [ ] **统一 `TypeAny` 自动拆箱**: 将 Any 穿透收敛到 `Var`/地址边界，而非散落在 opcode 中。
-- [ ] **统一 `TypeCell` 读取语义**: 尽量避免各 opcode 手动拆 `Cell`。
-- [ ] **明确 VM 指针语义与 FFI Handle/Ptr 语义边界**，避免再次混用。
-- [ ] **拆分 `TypeAny` 清理清单**: 分别收敛算术、成员访问、调用、FFI、LHS 五类路径中的手动拆箱逻辑。
+- [x] **废弃 `__deref__` 成员 hack**，建立原生解引用 load/store 原语: `*p` 的读写已统一走 `Dereference` + `LHSDeref` + `dereferenceValue/resolveAddress`，不再依赖成员式 hack。
+- [x] **统一 `TypeAny` 自动拆箱**: VM 主路径已收敛到 `unwrapValue`/地址边界，算术、成员访问、调用、常用 builtin 与接口契约校验不再各自手写 `TypeAny -> *Var/*VMMap/*VMArray` 拆箱。
+- [x] **统一 `TypeCell` 读取语义**: VM 主路径已优先走 `unwrapValue`/slot-frame 读取，减少 opcode/builtin 中散落的 `TypeCell` 手动拆箱；剩余清理主要集中在 FFI 编解码边界。
+- [x] **明确 VM 指针语义与 FFI Handle/Ptr 语义边界**，避免再次混用: 已显式区分 VM 内部 pointer (`TypeHandle + Ref(*Var) + Bridge=nil`) 与宿主 opaque handle (`TypeHandle + Bridge/Handle`)，并在 member/deref/FFI Any 编解码路径按边界分别处理。
+- [x] **拆分 `TypeAny` 清理清单**: 算术、成员访问、调用、FFI、LHS 五类主路径已统一收敛到 `unwrapValue`/`unwrapFFIValue`/地址原语，剩余零散兼容分支不再构成独立语义路径。
 
 ---
 
@@ -148,7 +150,7 @@
 - [ ] **补充 FFI schema 兼容测试**: 覆盖旧版字符串 spec 和新版 schema 注册。
 - [ ] **补充 ffigen 生成产物回归测试**: stdlib、业务 service、reverse proxy、canonical path。
 - [ ] **补充 import 隔离回归测试**: panic、circular import、partial init。
-- [ ] **补充 slot/upvalue 回归测试**: shadowing、closure、nested functions、loop capture。
+- [ ] **补充 slot/upvalue 专项回归测试**: 基础 slot/upvalue/frame 边界单测已补到 `scope_slots_test.go`，剩余需要补齐 shadowing、nested functions、多层 upvalue 转发、loop capture 的 runtime/e2e 组合回归。
 - [ ] **补充 LHS/deref/Any 回归测试**。
 - [ ] **补充命名类型/接口 vtable/canonical path 组合回归**: 覆盖 alias 链、FFI canonical type、interface satisfaction 交叉场景。
 - [ ] **将 `go test ./core/e2e` 设为阶段门禁**: 关键阶段收尾必须通过全量 e2e，而不是只跑局部用例。

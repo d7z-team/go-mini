@@ -321,6 +321,15 @@ type DoCallData struct {
 	Args         []*Var
 }
 
+type CallBoundaryData struct {
+	Name      string
+	OldStack  *Stack
+	OldExec   ExecutorAPI
+	HasReturn bool
+	ValueBase int
+	LHSBase   int
+}
+
 type RangeData struct {
 	Key    string
 	Value  string

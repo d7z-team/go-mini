@@ -493,11 +493,9 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	}
 
 	// 2. Any penetration
-	inner := val
-	if val.VType == TypeAny && val.Ref != nil {
-		if v, ok := val.Ref.(*Var); ok {
-			inner = v
-		}
+	inner := e.unwrapValue(val)
+	if inner == nil {
+		inner = val
 	}
 	if inner.Type.Equals(interfaceType) {
 		return inner.Copy(), nil
@@ -550,13 +548,9 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 }
 
 func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
+	val = e.unwrapValue(val)
 	if val == nil {
 		return nil, false
-	}
-	if val.VType == TypeAny && val.Ref != nil {
-		if inner, ok := val.Ref.(*Var); ok {
-			return e.resolveMethodValue(inner, name)
-		}
 	}
 
 	switch val.VType {
@@ -617,22 +611,21 @@ func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *as
 }
 
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
+	v = e.unwrapValue(v)
+	if v == nil {
+		return false
+	}
 	if v.VType == TypeClosure {
 		if cl, ok := v.Ref.(*VMClosure); ok {
 			return e.isSignatureCompatible(&cl.FunctionType, expectedSig)
 		}
 	}
-	if v.VType == TypeAny && v.Ref != nil {
-		if route, ok := v.Ref.(FFIRoute); ok {
-			if route.FuncSig != nil {
-				return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
-			}
-			if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
-				return e.isSignatureCompatible(fType, expectedSig)
-			}
+	if route, ok := v.Ref.(FFIRoute); ok {
+		if route.FuncSig != nil {
+			return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
 		}
-		if inner, ok := v.Ref.(*Var); ok {
-			return e.isCallableCompatible(inner, expectedSig)
+		if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
+			return e.isSignatureCompatible(fType, expectedSig)
 		}
 	}
 	return true // 默认放行，由运行期进一步处理
@@ -800,7 +793,13 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 		if fn, ok := e.lookupFunction("main"); ok {
 			session.TaskStack = append(session.TaskStack, Task{
 				Op:   OpCallBoundary,
-				Data: map[string]interface{}{"oldStack": session.Stack, "hasReturn": false},
+				Data: &CallBoundaryData{
+					Name:      "main",
+					OldStack:  session.Stack,
+					HasReturn: false,
+					ValueBase: session.ValueStack.Len(),
+					LHSBase:   session.LHSStack.Len(),
+				},
 			})
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
 				Name:         string(fn.Name),
@@ -888,9 +887,12 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	}
 
 	if task.Op == OpCallBoundary {
-		data := task.Data.(map[string]interface{})
-		oldStack := data["oldStack"].(*Stack)
-		hasReturn := data["hasReturn"].(bool)
+		data, ok := task.Data.(*CallBoundaryData)
+		if !ok || data == nil {
+			return false, fmt.Errorf("OpCallBoundary data is not *CallBoundaryData: %T", task.Data)
+		}
+		oldStack := data.OldStack
+		hasReturn := data.HasReturn
 
 		if session.UnwindMode == UnwindReturn {
 			session.UnwindMode = UnwindNone
@@ -899,16 +901,16 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 				session.ValueStack.Push(res)
 			}
 			session.Stack = oldStack
-			if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
-				session.Executor = oldExec.(ExecutorAPI)
+			if data.OldExec != nil {
+				session.Executor = data.OldExec
 			}
 			return true, nil
 		}
 
 		// If it's a panic, still restore the stack and continue unwinding
 		session.Stack = oldStack
-		if oldExec, ok := data["oldExec"]; ok && oldExec != nil {
-			session.Executor = oldExec.(ExecutorAPI)
+		if data.OldExec != nil {
+			session.Executor = data.OldExec
 		}
 		return false, nil
 	}
@@ -1156,7 +1158,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		val := session.ValueStack.Pop()
 		lhs := session.LHSStack.Pop()
-		return e.storeAddress(session, lhs, val)
+		return e.assignAddress(session, lhs, val)
 	case OpDoCall:
 		call := task.Data.(*DoCallData)
 		return e.setupFuncCall(session, call.Name, call, call.Args, nil)
@@ -1166,7 +1168,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		lhsCount := task.Data.(int)
 		val := session.ValueStack.Pop()
-		descs := make([]interface{}, lhsCount)
+		descs := make([]LHSValue, lhsCount)
 		for i := lhsCount - 1; i >= 0; i-- {
 			descs[i] = session.LHSStack.Pop()
 		}
@@ -1282,6 +1284,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		if data.Multi {
+			obj = e.unwrapValue(obj)
 			if obj == nil || isEmptyVar(obj) {
 				return errors.New("index access on nil")
 			}
@@ -1305,18 +1308,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: data.ResultType})
 				return nil
-			}
-			// Fallback for Any
-			if obj.VType == TypeAny && obj.Ref != nil {
-				if inner, ok := obj.Ref.(*Var); ok {
-					// Recursively handle if it's a Map inside Any
-					if inner.VType == TypeMap {
-						// Simple trick: replace obj and re-dispatch
-						session.ValueStack.Push(inner)
-						session.ValueStack.Push(idx)
-						return e.dispatch(session, task)
-					}
-				}
 			}
 			return fmt.Errorf("multi-index only supported for maps, got %v", obj.VType)
 		}
@@ -1358,17 +1349,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			// ValueStack has [V1, V2, ..., VN]
 			// So we must pop in reverse: V_N first, then V_N-1...
 			for i := len(entries) - 1; i >= 0; i-- {
-				val := session.ValueStack.Pop()
-				if val != nil && (val.Type == "" || val.Type == "Any") {
-					val.Type = elemType
-					if val.VType == TypeAny && val.Ref != nil {
-						if _, ok := val.Ref.(*VMArray); ok {
-							val.VType = TypeArray
-						} else if _, ok := val.Ref.(*VMMap); ok {
-							val.VType = TypeMap
-						}
-					}
-				}
+				val := e.normalizeTypedValue(session.ValueStack.Pop(), elemType)
 				res[i] = val
 			}
 			session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ})
@@ -1385,15 +1366,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// So we must pop in reverse order: V_i then K_i
 		for i := len(entries) - 1; i >= 0; i-- {
 			val := session.ValueStack.Pop()
-			if val != nil && isMap && (val.Type == "" || val.Type == "Any") {
-				val.Type = valType
-				if val.VType == TypeAny && val.Ref != nil {
-					if _, ok := val.Ref.(*VMArray); ok {
-						val.VType = TypeArray
-					} else if _, ok := val.Ref.(*VMMap); ok {
-						val.VType = TypeMap
-					}
-				}
+			if isMap {
+				val = e.normalizeTypedValue(val, valType)
 			}
 
 			keyName := ""
@@ -1450,22 +1424,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// 处理变长参数展开 f(args...)
 		ellipsis := data.Ellipsis
 		if ellipsis && len(args) > 0 {
-			last := args[len(args)-1]
+			last := e.unwrapValue(args[len(args)-1])
 			if last != nil && last.VType == TypeArray {
 				arr := last.Ref.(*VMArray)
 				newArgs := make([]*Var, len(args)-1+len(arr.Data))
 				copy(newArgs, args[:len(args)-1])
 				copy(newArgs[len(args)-1:], arr.Data)
 				args = newArgs
-			} else if last != nil && last.VType == TypeAny && last.Ref != nil {
-				// 支持 Any 包装下的 Array 展开
-				if inner, ok := last.Ref.(*Var); ok && inner.VType == TypeArray {
-					arr := inner.Ref.(*VMArray)
-					newArgs := make([]*Var, len(args)-1+len(arr.Data))
-					copy(newArgs, args[:len(args)-1])
-					copy(newArgs[len(args)-1:], arr.Data)
-					args = newArgs
-				}
 			}
 		}
 
@@ -1526,18 +1491,18 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		return e.invokeCall(session, name, receiver, mod, callable, finalArgs)
 	case OpCallBoundary:
-		dataMap, ok := task.Data.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("OpCallBoundary data is not map[string]interface{}: %T (%v)", task.Data, task.Data)
+		data, ok := task.Data.(*CallBoundaryData)
+		if !ok || data == nil {
+			return fmt.Errorf("OpCallBoundary data is not *CallBoundaryData: %T (%v)", task.Data, task.Data)
 		}
-		oldStack := dataMap["oldStack"].(*Stack)
-		hasReturn := dataMap["hasReturn"].(bool)
-		valueBase, _ := dataMap["valueBase"].(int)
-		lhsBase, _ := dataMap["lhsBase"].(int)
+		oldStack := data.OldStack
+		hasReturn := data.HasReturn
+		valueBase := data.ValueBase
+		lhsBase := data.LHSBase
 
 		// Restore executor if saved (cross-module calls)
-		if oldExec, ok := dataMap["oldExec"]; ok {
-			session.Executor = oldExec.(ExecutorAPI)
+		if data.OldExec != nil {
+			session.Executor = data.OldExec
 		}
 
 		var retVal *Var
@@ -2207,7 +2172,7 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) boo
 	return false
 }
 
-func (e *Executor) unwrapAddressVar(v *Var) *Var {
+func (e *Executor) unwrapValue(v *Var) *Var {
 	for v != nil {
 		switch v.VType {
 		case TypeCell:
@@ -2221,6 +2186,10 @@ func (e *Executor) unwrapAddressVar(v *Var) *Var {
 				return &Var{VType: TypeArray, Ref: arr, Type: v.Type}
 			} else if mod, ok := v.Ref.(*VMModule); ok {
 				return &Var{VType: TypeModule, Ref: mod, Type: v.Type}
+			} else if inter, ok := v.Ref.(*VMInterface); ok {
+				return &Var{VType: TypeInterface, Ref: inter, Type: v.Type}
+			} else if errObj, ok := v.Ref.(*VMError); ok {
+				return &Var{VType: TypeError, Ref: errObj, Type: v.Type}
 			} else {
 				return v
 			}
@@ -2231,15 +2200,92 @@ func (e *Executor) unwrapAddressVar(v *Var) *Var {
 	return nil
 }
 
-func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error) {
+func (e *Executor) vmPointerTarget(v *Var) (*Var, bool) {
+	if v == nil || v.VType != TypeHandle || v.Ref == nil || v.Bridge != nil {
+		return nil, false
+	}
+	target, ok := v.Ref.(*Var)
+	if !ok {
+		return nil, false
+	}
+	return target, true
+}
+
+func (e *Executor) isVMPointer(v *Var) bool {
+	_, ok := e.vmPointerTarget(v)
+	return ok
+}
+
+func (e *Executor) isOpaqueHandle(v *Var) bool {
+	if v == nil || v.VType != TypeHandle {
+		return false
+	}
+	if e.isVMPointer(v) {
+		return false
+	}
+	return v.Bridge != nil || v.Handle != 0
+}
+
+func (e *Executor) normalizeTypedValue(v *Var, targetType ast.GoMiniType) *Var {
+	v = e.unwrapValue(v)
+	if v == nil {
+		return nil
+	}
+	if v.Type == "" || v.Type == ast.TypeAny {
+		v.Type = targetType
+	}
+	return v
+}
+
+func (e *Executor) unwrapAddressVar(v *Var) *Var {
+	return e.unwrapValue(v)
+}
+
+func (e *Executor) dereferenceValue(v *Var) (*Var, error) {
+	v = e.unwrapValue(v)
+	if v == nil {
+		return nil, errors.New("dereference of nil pointer")
+	}
+	target, ok := e.vmPointerTarget(v)
+	if !ok {
+		return nil, &VMError{Message: fmt.Sprintf("cannot dereference type %v", v.VType), IsPanic: true}
+	}
+	return e.unwrapValue(target), nil
+}
+
+type resolvedAddress struct {
+	load  func() (*Var, error)
+	store func(*Var) error
+}
+
+func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolvedAddress, error) {
 	switch desc := lhs.(type) {
 	case nil:
-		return nil, nil
+		return &resolvedAddress{
+			load: func() (*Var, error) { return nil, nil },
+			store: func(*Var) error {
+				return nil
+			},
+		}, nil
 	case *LHSEnv:
 		if desc.Sym.Kind != SymbolUnknown {
-			return session.LoadSymbol(desc.Sym)
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return session.LoadSymbol(desc.Sym)
+				},
+				store: func(val *Var) error {
+					return session.StoreSymbol(desc.Sym, val)
+				},
+			}, nil
 		}
-		return session.Load(desc.Name)
+		return &resolvedAddress{
+			load: func() (*Var, error) {
+				return session.Load(desc.Name)
+			},
+			store: func(val *Var) error {
+				return session.Store(desc.Name, val)
+			},
+		}, nil
 	case *LHSIndex:
 		obj := e.unwrapAddressVar(desc.Obj)
 		idx := e.unwrapAddressVar(desc.Index)
@@ -2253,14 +2299,30 @@ func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error
 			if i < 0 || i >= len(arr.Data) {
 				return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 			}
-			return e.unwrapAddressVar(arr.Data[i]), nil
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return e.unwrapAddressVar(arr.Data[i]), nil
+				},
+				store: func(val *Var) error {
+					arr.Data[i] = val
+					return nil
+				},
+			}, nil
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
 			key, err := e.varToMapKey(idx)
 			if err != nil {
 				return nil, err
 			}
-			return e.unwrapAddressVar(m.Data[key]), nil
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return e.unwrapAddressVar(m.Data[key]), nil
+				},
+				store: func(val *Var) error {
+					m.Data[key] = val
+					return nil
+				},
+			}, nil
 		}
 		return nil, fmt.Errorf("type %v does not support index access", obj.VType)
 	case *LHSMember:
@@ -2271,22 +2333,37 @@ func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error
 		switch obj.VType {
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			return e.unwrapAddressVar(m.Data[desc.Property]), nil
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return e.unwrapAddressVar(m.Data[desc.Property]), nil
+				},
+				store: func(val *Var) error {
+					m.Data[desc.Property] = val
+					return nil
+				},
+			}, nil
 		case TypeModule:
 			mod := obj.Ref.(*VMModule)
 			if mod.Context == nil {
 				return nil, &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
 			}
-			return mod.Context.Load(desc.Property)
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return mod.Context.Load(desc.Property)
+				},
+				store: func(val *Var) error {
+					return mod.Context.Store(desc.Property, val)
+				},
+			}, nil
 		case TypeHandle:
 			if obj.Ref == nil {
 				return nil, errors.New("member access on nil pointer")
 			}
-			ref, ok := obj.Ref.(*Var)
+			ref, ok := e.vmPointerTarget(obj)
 			if !ok {
 				return nil, errors.New("type Handle does not support member access")
 			}
-			return e.loadAddress(session, &LHSMember{Obj: ref, Property: desc.Property})
+			return e.resolveAddress(session, &LHSMember{Obj: ref, Property: desc.Property})
 		}
 		return nil, fmt.Errorf("type %v does not support member access", obj.VType)
 	case *LHSDeref:
@@ -2294,106 +2371,45 @@ func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error
 		if target == nil {
 			return nil, errors.New("dereference of nil pointer")
 		}
-		if target.VType != TypeHandle {
+		if !e.isVMPointer(target) {
 			return nil, fmt.Errorf("type %v does not support dereference", target.VType)
 		}
-		if target.Ref == nil {
-			return nil, errors.New("dereference of nil pointer")
-		}
-		ref, ok := target.Ref.(*Var)
-		if !ok {
-			return nil, errors.New("type Handle does not support dereference")
-		}
-		return e.unwrapAddressVar(ref), nil
+		return &resolvedAddress{
+			load: func() (*Var, error) {
+				return e.dereferenceValue(target)
+			},
+			store: func(val *Var) error {
+				ref, _ := e.vmPointerTarget(target)
+				copyVarData(ref, val)
+				return nil
+			},
+		}, nil
 	}
 	return nil, &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
 }
 
-func (e *Executor) storeAddress(session *StackContext, lhs interface{}, val *Var) error {
-	switch desc := lhs.(type) {
-	case nil:
-		return nil
-	case *LHSEnv:
-		if desc.Sym.Kind != SymbolUnknown {
-			return session.StoreSymbol(desc.Sym, val)
-		}
-		return session.Store(desc.Name, val)
-	case *LHSIndex:
-		obj := e.unwrapAddressVar(desc.Obj)
-		idx := e.unwrapAddressVar(desc.Index)
-		if obj == nil || idx == nil {
-			return errors.New("assignment to nil object or index")
-		}
-		switch obj.VType {
-		case TypeArray:
-			arr := obj.Ref.(*VMArray)
-			i := int(idx.I64)
-			if i < 0 || i >= len(arr.Data) {
-				return &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
-			}
-			arr.Data[i] = val
-			return nil
-		case TypeMap:
-			m := obj.Ref.(*VMMap)
-			key, err := e.varToMapKey(idx)
-			if err != nil {
-				return err
-			}
-			m.Data[key] = val
-			return nil
-		}
-		return fmt.Errorf("type %v does not support index assignment", obj.VType)
-	case *LHSMember:
-		obj := e.unwrapAddressVar(desc.Obj)
-		if obj == nil {
-			return errors.New("member assignment on nil object")
-		}
-		switch obj.VType {
-		case TypeMap:
-			m := obj.Ref.(*VMMap)
-			m.Data[desc.Property] = val
-			return nil
-		case TypeModule:
-			mod := obj.Ref.(*VMModule)
-			if mod.Context == nil {
-				return &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
-			}
-			return mod.Context.Store(desc.Property, val)
-		case TypeHandle:
-			if obj.Ref == nil {
-				return errors.New("member assignment on nil pointer")
-			}
-			ref, ok := obj.Ref.(*Var)
-			if !ok {
-				return errors.New("type Handle does not support member assignment")
-			}
-			return e.storeAddress(session, &LHSMember{Obj: ref, Property: desc.Property}, val)
-		}
-		return fmt.Errorf("type %v does not support member assignment", obj.VType)
-	case *LHSDeref:
-		target := e.unwrapAddressVar(desc.Target)
-		if target == nil {
-			return errors.New("assignment through nil pointer")
-		}
-		if target.VType != TypeHandle || target.Ref == nil {
-			return errors.New("type Handle does not support dereference assignment")
-		}
-		ref, ok := target.Ref.(*Var)
-		if !ok {
-			return errors.New("type Handle does not support dereference assignment")
-		}
-		copyVarData(ref, val)
-		return nil
+func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error) {
+	addr, err := e.resolveAddress(session, lhs)
+	if err != nil {
+		return nil, err
 	}
-	return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+	return addr.load()
 }
 
-func (e *Executor) updateAddress(session *StackContext, lhs interface{}, op string) error {
-	addr, ok := lhs.(LHSValue)
-	if !ok && lhs != nil {
-		return &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+func (e *Executor) storeAddress(session *StackContext, lhs LHSValue, val *Var) error {
+	addr, err := e.resolveAddress(session, lhs)
+	if err != nil {
+		return err
 	}
-	current, err := e.loadAddress(session, addr)
+	return addr.store(val)
+}
+
+func (e *Executor) assignAddress(session *StackContext, lhs LHSValue, val *Var) error {
+	return e.storeAddress(session, lhs, val)
+}
+
+func (e *Executor) updateAddress(session *StackContext, lhs LHSValue, op string) error {
+	current, err := e.loadAddress(session, lhs)
 	if err != nil {
 		return err
 	}
