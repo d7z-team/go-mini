@@ -16,33 +16,21 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	// 获取函数签名以获取参数类型列表
-	var (
-		fn *ast.CallFunctionType
-		ok bool
-	)
-	if route.FuncSig != nil {
-		call := route.FuncSig.Function.ToCallFunctionType()
-		fn = &call
-		ok = true
-	} else {
-		fn, ok = ast.GoMiniType(route.Spec).ReadCallFunc()
+	funcSig := route.FuncSig
+	if funcSig == nil && route.Spec != "" {
+		funcSig, _ = ParseRuntimeFuncSig(ast.GoMiniType(route.Spec))
 	}
 
 	// 序列化参数
-	if ok && fn.Variadic {
+	if funcSig != nil && funcSig.Function.Variadic {
 		// 1. 序列化常规参数
-		numNormal := len(fn.Params) - 1
+		numNormal := len(funcSig.ParamTypes) - 1
 		for i := 0; i < numNormal; i++ {
 			arg := &Var{VType: TypeAny} // 默认
 			if i < len(args) {
 				arg = args[i]
 			}
-			if route.FuncSig != nil {
-				if err := e.serializeRuntimeType(buf, arg, route.FuncSig.ParamTypes[i]); err != nil {
-					return nil, err
-				}
-			} else if err := e.serializeVar(buf, arg, fn.Params[i]); err != nil {
+			if err := e.serializeRuntimeType(buf, arg, funcSig.ParamTypes[i]); err != nil {
 				return nil, err
 			}
 		}
@@ -53,14 +41,10 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 			numVariadic = len(args) - numNormal
 		}
 		buf.WriteUvarint(uint64(numVariadic))
-		itemType := fn.Params[numNormal]
+		itemType := funcSig.ParamTypes[numNormal]
 		if numVariadic > 0 {
 			for i := 0; i < numVariadic; i++ {
-				if route.FuncSig != nil {
-					if err := e.serializeRuntimeType(buf, args[numNormal+i], route.FuncSig.ParamTypes[numNormal]); err != nil {
-						return nil, err
-					}
-				} else if err := e.serializeVar(buf, args[numNormal+i], itemType); err != nil {
+				if err := e.serializeRuntimeType(buf, args[numNormal+i], itemType); err != nil {
 					return nil, err
 				}
 			}
@@ -68,15 +52,11 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	} else {
 		// 普通非变长函数序列化
 		for i, arg := range args {
-			var argType ast.GoMiniType = "Any"
-			if ok && i < len(fn.Params) {
-				argType = fn.Params[i]
+			argType := RuntimeType{Kind: RuntimeTypeAny, Raw: ast.TypeAny, TypeID: CanonicalTypeID(string(ast.TypeAny))}
+			if funcSig != nil && i < len(funcSig.ParamTypes) {
+				argType = funcSig.ParamTypes[i]
 			}
-			if route.FuncSig != nil && i < len(route.FuncSig.ParamTypes) {
-				if err := e.serializeRuntimeType(buf, arg, route.FuncSig.ParamTypes[i]); err != nil {
-					return nil, err
-				}
-			} else if err := e.serializeVar(buf, arg, argType); err != nil {
+			if err := e.serializeRuntimeType(buf, arg, argType); err != nil {
 				return nil, err
 			}
 		}
@@ -145,40 +125,11 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	}
 
 	reader := ffigo.NewReader(retData)
-	retType := route.Return
-	if retType.IsEmpty() {
-		retType = ast.GoMiniType(route.Returns)
+	if funcSig != nil {
+		return e.deserializeRuntimeType(session, reader, funcSig.ReturnType, route.Bridge)
 	}
-
-	// 检查是否是 Tuple
-	if retType.IsTuple() {
-		if route.FuncSig != nil && route.FuncSig.ReturnType.Kind == RuntimeTypeTuple {
-			tupleData := make([]*Var, len(route.FuncSig.ReturnType.Params))
-			for i, t := range route.FuncSig.ReturnType.Params {
-				val, err := e.deserializeRuntimeType(session, reader, t, route.Bridge)
-				if err != nil {
-					return nil, err
-				}
-				tupleData[i] = val
-			}
-			return &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}, Type: retType}, nil
-		}
-		types, _ := retType.ReadTuple()
-		tupleData := make([]*Var, len(types))
-		for i, t := range types {
-			val, err := e.deserializeVar(session, reader, t, route.Bridge)
-			if err != nil {
-				return nil, err
-			}
-			tupleData[i] = val
-		}
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}, Type: retType}, nil
-	}
-
-	if route.FuncSig != nil {
-		return e.deserializeRuntimeType(session, reader, route.FuncSig.ReturnType, route.Bridge)
-	}
-	return e.deserializeVar(session, reader, retType, route.Bridge)
+	retType, _ := ParseRuntimeType(route.Return)
+	return e.deserializeRuntimeType(session, reader, retType, route.Bridge)
 }
 
 func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {
@@ -214,25 +165,14 @@ func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeTy
 }
 
 func (e *Executor) deserializeRuntimeType(session *StackContext, reader *ffigo.Reader, typ RuntimeType, bridge ffigo.FFIBridge) (*Var, error) {
-	switch typ.Kind {
-	case RuntimeTypeVoid:
-		return nil, nil
-	case RuntimeTypeAny:
-		return e.wrapAnyVar(session, e.ToVar(session, reader.ReadAny(), bridge)), nil
-	case RuntimeTypePrimitive, RuntimeTypePointer, RuntimeTypeArray, RuntimeTypeMap, RuntimeTypeTuple, RuntimeTypeFunction:
-		return e.deserializeVar(session, reader, typ.Raw, bridge)
-	case RuntimeTypeInterface:
-		return e.deserializeVar(session, reader, typ.Raw, bridge)
-	case RuntimeTypeStruct:
-		return e.deserializeStructSchema(session, reader, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields}, bridge)
-	case RuntimeTypeNamed:
-		if schema, ok := e.structSchemas[typ.TypeID]; ok {
-			return e.deserializeStructSchema(session, reader, schema, bridge)
+	res, err := e.deserializeParsedType(session, reader, typ, bridge)
+	if res != nil {
+		res.Type = typ.Raw
+		if session != nil && session.Stack != nil {
+			res.stack = weak.Make(session.Stack)
 		}
-		return e.deserializeVar(session, reader, typ.Raw, bridge)
-	default:
-		return e.deserializeVar(session, reader, typ.Raw, bridge)
 	}
+	return res, err
 }
 
 func (e *Executor) serializeStructSchema(buf *ffigo.Buffer, v *Var, schema *RuntimeStructSpec) error {
@@ -298,89 +238,178 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 	return nil
 }
 
-func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
-	// 如果 typ 是 Any，回退到动态序列化
-	if typ == "Any" {
-		e.serializeVarToAny(buf, v)
-		return nil
+func (e *Executor) lookupStructSchema(typ RuntimeType) (*RuntimeStructSpec, bool) {
+	if schema, ok := e.structSchemas[typ.TypeID]; ok {
+		return schema, true
+	}
+	if schema, ok := e.structSchemas[string(typ.Raw)]; ok {
+		return schema, true
+	}
+	if typ.TypeID == "" {
+		return nil, false
+	}
+	var matched *RuntimeStructSpec
+	for key, schema := range e.structSchemas {
+		if key == typ.TypeID || strings.HasSuffix(key, "."+typ.TypeID) || strings.HasSuffix(key, "/"+typ.TypeID) {
+			if matched != nil {
+				return nil, false
+			}
+			matched = schema
+		}
+	}
+	if matched != nil {
+		return matched, true
+	}
+	return nil, false
+}
+
+func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {
+	if v != nil && v.VType == TypeCell && v.Ref != nil {
+		if cell, ok := v.Ref.(*Cell); ok {
+			v = cell.Value
+		}
+	}
+	if v != nil && v.VType == TypeAny && v.Ref != nil {
+		if inner, ok := v.Ref.(*Var); ok {
+			v = inner
+		}
 	}
 
-	// 严格按照 typ 类型进行序列化，防止协议层错位
-	switch {
-	case typ == "String":
-		str := ""
-		if v != nil {
-			str = v.Str
-			if v.VType == TypeBytes {
-				str = string(v.B)
-			}
-			if v.VType == TypeError {
-				str, _ = v.ToError()
-			}
-		}
-		buf.WriteString(str)
-	case typ == "Float64":
-		fVal := 0.0
-		if v != nil {
-			fVal, _ = v.ToFloat()
-		}
-		buf.WriteFloat64(fVal)
-	case typ == "Uint32" || typ == "uint32" || typ == "Int32" || typ == "int32":
-		iVal := int64(0)
-		if v != nil {
-			iVal, _ = v.ToInt()
-		}
-		buf.WriteUvarint(uint64(iVal))
-	case typ.IsNumeric():
-		iVal := int64(0)
-		if v != nil {
-			iVal, _ = v.ToInt()
-		}
-		buf.WriteVarint(iVal)
-	case typ == "Bool":
-		bVal := false
-		if v != nil {
-			bVal, _ = v.ToBool()
-		}
-		buf.WriteBool(bVal)
-	case typ == "Error" || typ == "error":
-		msg := ""
-		handle := uint32(0)
-		if v != nil {
-			msg, _ = v.ToError()
-			if v.VType == TypeError {
-				if err, ok := v.Ref.(*VMError); ok {
-					handle = err.Handle
+	switch typ.Kind {
+	case RuntimeTypeVoid:
+		return nil
+	case RuntimeTypeAny:
+		e.serializeVarToAny(buf, v)
+		return nil
+	case RuntimeTypePrimitive, RuntimeTypeNamed:
+		switch typ.Raw {
+		case "String":
+			str := ""
+			if v != nil {
+				str = v.Str
+				if v.VType == TypeBytes {
+					str = string(v.B)
+				}
+				if v.VType == TypeError {
+					str, _ = v.ToError()
 				}
 			}
+			buf.WriteString(str)
+			return nil
+		case "Float64":
+			fVal := 0.0
+			if v != nil {
+				fVal, _ = v.ToFloat()
+			}
+			buf.WriteFloat64(fVal)
+			return nil
+		case "Uint32", "uint32", "Int32", "int32":
+			iVal := int64(0)
+			if v != nil {
+				iVal, _ = v.ToInt()
+			}
+			buf.WriteUvarint(uint64(iVal))
+			return nil
+		case "Bool":
+			bVal := false
+			if v != nil {
+				bVal, _ = v.ToBool()
+			}
+			buf.WriteBool(bVal)
+			return nil
+		case "Error", "error":
+			msg := ""
+			handle := uint32(0)
+			if v != nil {
+				msg, _ = v.ToError()
+				if v.VType == TypeError {
+					if err, ok := v.Ref.(*VMError); ok {
+						handle = err.Handle
+					}
+				}
+			}
+			buf.WriteRawError(msg, handle)
+			return nil
+		case "TypeBytes":
+			var bVal []byte
+			if v != nil {
+				bVal, _ = v.ToBytes()
+			}
+			buf.WriteBytes(bVal)
+			return nil
 		}
-		buf.WriteRawError(msg, handle)
-	case typ == "TypeBytes":
-		var bVal []byte
-		if v != nil {
-			bVal, _ = v.ToBytes()
+		if typ.Raw.IsNumeric() {
+			iVal := int64(0)
+			if v != nil {
+				iVal, _ = v.ToInt()
+			}
+			buf.WriteVarint(iVal)
+			return nil
 		}
-		buf.WriteBytes(bVal)
-	case typ.IsPtr() || typ == "TypeHandle":
+		if schema, ok := e.lookupStructSchema(typ); ok {
+			return e.serializeStructSchema(buf, v, schema)
+		}
+		if v != nil && v.VType == TypeHandle {
+			buf.WriteUvarint(uint64(v.Handle))
+			return nil
+		}
+		e.serializeVarToAny(buf, v)
+		return nil
+	case RuntimeTypePointer:
 		hVal := uint32(0)
 		if v != nil {
 			hVal, _ = v.ToHandle()
 		}
 		buf.WriteUvarint(uint64(hVal))
-	case typ.IsArray():
+		return nil
+	case RuntimeTypeArray:
 		if v == nil || v.VType != TypeArray {
 			buf.WriteUvarint(0)
 			return nil
 		}
 		arr := v.Ref.(*VMArray)
 		buf.WriteUvarint(uint64(len(arr.Data)))
-		itemType, _ := typ.ReadArrayItemType()
 		for _, item := range arr.Data {
-			if err := e.serializeVar(buf, item, itemType); err != nil {
+			if err := e.serializeParsedType(buf, item, *typ.Elem); err != nil {
 				return err
 			}
 		}
-	case typ.IsInterface():
+		return nil
+	case RuntimeTypeMap:
+		if v == nil || v.VType != TypeMap {
+			buf.WriteUvarint(0)
+			return nil
+		}
+		vmMap := v.Ref.(*VMMap)
+		buf.WriteUvarint(uint64(len(vmMap.Data)))
+		for k, val := range vmMap.Data {
+			if err := e.serializeKey(buf, k, typ.Key.Raw); err != nil {
+				return err
+			}
+			if err := e.serializeParsedType(buf, val, *typ.Value); err != nil {
+				return err
+			}
+		}
+		return nil
+	case RuntimeTypeTuple:
+		if v == nil || v.VType != TypeArray {
+			for range typ.Params {
+				buf.WriteAny(nil)
+			}
+			return nil
+		}
+		arr := v.Ref.(*VMArray)
+		for i, t := range typ.Params {
+			var arg *Var
+			if i < len(arr.Data) {
+				arg = arr.Data[i]
+			}
+			if err := e.serializeParsedType(buf, arg, t); err != nil {
+				return err
+			}
+		}
+		return nil
+	case RuntimeTypeInterface:
 		if v == nil || v.VType != TypeInterface || v.Ref == nil {
 			buf.WriteRawInterface(0, nil)
 			return nil
@@ -390,90 +419,29 @@ func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) e
 		} else {
 			buf.WriteRawInterface(0, nil)
 		}
-	case typ.IsMap():
-		if v == nil || v.VType != TypeMap {
-			buf.WriteUvarint(0)
-			return nil
-		}
-		kType, vType, ok := typ.GetMapKeyValueTypes()
-		if ok {
-			vmMap := v.Ref.(*VMMap)
-			buf.WriteUvarint(uint64(len(vmMap.Data)))
-			for k, val := range vmMap.Data {
-				if err := e.serializeKey(buf, k, kType); err != nil {
-					return err
-				}
-				if err := e.serializeVar(buf, val, vType); err != nil {
-					return err
-				}
-			}
-		}
-	case typ.IsTuple():
-		types, _ := typ.ReadTuple()
-		if v == nil || v.VType != TypeArray {
-			for range types {
-				buf.WriteAny(nil)
-			}
-			return nil
-		}
-		arr := v.Ref.(*VMArray)
-		for i, t := range types {
-			var arg *Var
-			if i < len(arr.Data) {
-				arg = arr.Data[i]
-			}
-			if err := e.serializeVar(buf, arg, t); err != nil {
-				return err
-			}
-		}
+		return nil
+	case RuntimeTypeStruct:
+		return e.serializeStructSchema(buf, v, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields})
+	case RuntimeTypeFunction:
+		e.serializeVarToAny(buf, v)
+		return nil
 	default:
-		// 结构体序列化
-		if name, ok := typ.StructName(); ok {
-			if sDef, ok := e.structSchemas[string(name)]; ok {
-				var mData map[string]*Var
-				if v != nil && v.VType == TypeMap {
-					mData = v.Ref.(*VMMap).Data
-				}
-				for _, field := range sDef.Fields {
-					var fVal *Var
-					if mData != nil {
-						fVal = mData[field.Name]
-					}
-					if err := e.serializeVar(buf, fVal, field.Type); err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-			if e.program != nil {
-				if sDef, ok := e.program.Structs[name]; ok {
-					var mData map[string]*Var
-					if v != nil && v.VType == TypeMap {
-						mData = v.Ref.(*VMMap).Data
-					}
-					for _, fName := range sDef.FieldNames {
-						fType := sDef.Fields[fName]
-						var fVal *Var
-						if mData != nil {
-							fVal = mData[string(fName)]
-						}
-						if err := e.serializeVar(buf, fVal, fType); err != nil {
-							return err
-						}
-					}
-					return nil
-				}
-			}
-		}
-		// Custom named types (like 'Order') that are handles
+		e.serializeVarToAny(buf, v)
+		return nil
+	}
+}
+
+func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
+	typeInfo, err := ParseRuntimeType(typ)
+	if err != nil {
 		if v != nil && v.VType == TypeHandle {
 			buf.WriteUvarint(uint64(v.Handle))
 			return nil
 		}
-		// 其他情况回退到 Any 动态序列化
 		e.serializeVarToAny(buf, v)
+		return nil
 	}
-	return nil
+	return e.serializeParsedType(buf, v, typeInfo)
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
@@ -511,6 +479,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			buf.WriteAny(nil)
 		}
 	case TypeHandle:
+		// Internal VM pointers travel as pointer-tagged Any values.
 		if v.Bridge == nil && v.Ref != nil {
 			if inner, ok := v.Ref.(*Var); ok {
 				buf.WriteByte(ffigo.TypeTagPointer)
@@ -518,6 +487,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 				return
 			}
 		}
+		// Host-visible handles always travel as opaque handle IDs.
 		buf.WriteAny(v.Handle)
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
@@ -528,13 +498,16 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
-		// 启发式判断：如果有具体类型且不是 Map<，则视为 Struct
-		isStruct := !v.Type.IsEmpty() && !v.Type.IsMap() && v.Type != "Any"
-		if isStruct {
+		if schema, ok := e.lookupAnyStructSchema(v); ok {
 			buf.WriteByte(ffigo.TypeTagStruct)
-		} else {
-			buf.WriteByte(ffigo.TypeTagMap)
+			buf.WriteUvarint(uint64(len(schema.Fields)))
+			for _, field := range schema.Fields {
+				buf.WriteString(field.Name)
+				e.serializeVarToAny(buf, vmMap.Data[field.Name])
+			}
+			return
 		}
+		buf.WriteByte(ffigo.TypeTagMap)
 		buf.WriteUvarint(uint64(len(vmMap.Data)))
 		for k, val := range vmMap.Data {
 			buf.WriteString(k)
@@ -556,6 +529,20 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	default:
 		buf.WriteAny(nil)
 	}
+}
+
+func (e *Executor) lookupAnyStructSchema(v *Var) (*RuntimeStructSpec, bool) {
+	if v == nil || v.Type.IsEmpty() || v.Type.IsMap() || v.Type == ast.TypeAny {
+		return nil, false
+	}
+	typeInfo, err := ParseRuntimeType(v.Type)
+	if err != nil {
+		return nil, false
+	}
+	if typeInfo.Kind == RuntimeTypeStruct || typeInfo.Kind == RuntimeTypeNamed {
+		return e.lookupStructSchema(typeInfo)
+	}
+	return nil, false
 }
 
 func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
@@ -661,11 +648,20 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			resArr[i] = e.ToVar(session, raw, bridge)
 		}
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
+	case *ffigo.VMStruct:
+		resMap := make(map[string]*Var, len(v.Fields))
+		for _, field := range v.Fields {
+			resMap[field.Name] = e.ToVar(session, field.Value, bridge)
+		}
+		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+	case *ffigo.VMPointer:
+		inner := e.ToVar(session, v.Value, bridge)
+		res = &Var{VType: TypeHandle, Type: "Ptr<Any>", Bridge: bridge, Ref: inner}
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
 	}
 
-	if res != nil && session.Stack != nil {
+	if res != nil && session != nil && session.Stack != nil {
 		res.stack = weak.Make(session.Stack)
 	}
 	return res
@@ -707,6 +703,12 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 		return val, nil
 	}
 	if _, ok := val.(ffigo.ErrorData); ok {
+		return val, nil
+	}
+	if _, ok := val.(*ffigo.VMStruct); ok {
+		return val, nil
+	}
+	if _, ok := val.(*ffigo.VMPointer); ok {
 		return val, nil
 	}
 
@@ -808,128 +810,126 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (s
 	}
 }
 
-func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
-	if typ.IsVoid() {
+func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Reader, typ RuntimeType, bridge ffigo.FFIBridge) (*Var, error) {
+	if typ.Kind == RuntimeTypeVoid {
 		return nil, nil
 	}
 	if reader.Available() == 0 {
 		return nil, nil
 	}
 
-	var res *Var
-	var err error
+	var (
+		res *Var
+		err error
+	)
 
-	// 规范化类型字符串，防止因空格或不可见字符导致的匹配失败
-	typ = ast.GoMiniType(strings.TrimSpace(string(typ)))
-
-	if typ == "Any" {
+	switch typ.Kind {
+	case RuntimeTypeAny:
 		res = e.wrapAnyVar(session, e.ToVar(session, reader.ReadAny(), bridge))
-	} else {
-		switch {
-		case typ == "String":
+	case RuntimeTypePrimitive, RuntimeTypeNamed:
+		switch typ.Raw {
+		case "String":
 			res = NewString(reader.ReadString())
-		case typ == "Int64" || typ == "int" || typ == "int64":
+		case "Int64", "int", "int64":
 			res = NewInt(reader.ReadVarint())
-		case typ == "Uint32" || typ == "uint32" || typ == "Int32" || typ == "int32":
+		case "Uint32", "uint32", "Int32", "int32":
 			res = NewInt(int64(reader.ReadUvarint()))
-		case typ == "Float64":
+		case "Float64":
 			res = NewFloat(reader.ReadFloat64())
-		case typ == "Bool":
+		case "Bool":
 			res = NewBool(reader.ReadBool())
-		case typ == "Error" || typ == "error":
+		case "Error", "error":
 			res = e.ToVar(session, reader.ReadRawError(), bridge)
-		case typ == "TypeBytes":
+		case "TypeBytes":
 			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
-		case typ.IsPtr() || typ == "TypeHandle":
+		default:
+			if typ.Raw.IsNumeric() {
+				res = NewInt(reader.ReadVarint())
+				break
+			}
+			if schema, ok := e.lookupStructSchema(typ); ok {
+				res, err = e.deserializeStructSchema(session, reader, schema, bridge)
+				break
+			}
 			id := uint32(reader.ReadUvarint())
 			var h *VMHandle
 			if id != 0 {
 				h = NewVMHandle(id, bridge)
 			}
 			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
-		case typ.IsArray():
-			count := int(reader.ReadUvarint())
-			itemType, _ := typ.ReadArrayItemType()
-			arrData := make([]*Var, count)
-			for i := 0; i < count; i++ {
-				val, err := e.deserializeVar(session, reader, itemType, bridge)
-				if err != nil {
-					return nil, err
-				}
-				arrData[i] = val
-			}
-			res = &Var{VType: TypeArray, Ref: &VMArray{Data: arrData}}
-		case typ.IsMap():
-			count := int(reader.ReadUvarint())
-			kType, vType, _ := typ.GetMapKeyValueTypes()
-			mapData := make(map[string]*Var)
-			for i := 0; i < count; i++ {
-				k, err := e.deserializeKey(reader, kType)
-				if err != nil {
-					return nil, err
-				}
-				val, err := e.deserializeVar(session, reader, vType, bridge)
-				if err != nil {
-					return nil, err
-				}
-				mapData[k] = val
-			}
-			res = &Var{VType: TypeMap, Ref: &VMMap{Data: mapData}}
-		case typ.IsTuple():
-			types, _ := typ.ReadTuple()
-			tupleData := make([]*Var, len(types))
-			for i, t := range types {
-				val, err := e.deserializeVar(session, reader, t, bridge)
-				if err != nil {
-					return nil, err
-				}
-				tupleData[i] = val
-			}
-			res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
-		default:
-			if name, ok := typ.StructName(); ok {
-				if sDef, ok := e.structSchemas[string(name)]; ok {
-					resMap := make(map[string]*Var)
-					for _, field := range sDef.Fields {
-						val, err := e.deserializeVar(session, reader, field.Type, bridge)
-						if err != nil {
-							return nil, err
-						}
-						resMap[field.Name] = val
-					}
-					res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
-					break
-				}
-				if e.program != nil {
-					if sDef, ok := e.program.Structs[name]; ok {
-						resMap := make(map[string]*Var)
-						for _, fName := range sDef.FieldNames {
-							fType := sDef.Fields[fName]
-							val, err := e.deserializeVar(session, reader, fType, bridge)
-							if err != nil {
-								return nil, err
-							}
-							resMap[string(fName)] = val
-						}
-						res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
-						break
-					}
-				}
-			}
-			// Fallback: If it's an unknown named type, assume it's an opaque handle
-			if reader.Available() > 0 {
-				id := uint32(reader.ReadUvarint())
-				var h *VMHandle
-				if id != 0 {
-					h = NewVMHandle(id, bridge)
-				}
-				res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
-				break
-			}
-			return nil, fmt.Errorf("unsupported FFI return type: %s", typ)
 		}
+	case RuntimeTypePointer:
+		id := uint32(reader.ReadUvarint())
+		var h *VMHandle
+		if id != 0 {
+			h = NewVMHandle(id, bridge)
+		}
+		res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
+	case RuntimeTypeArray:
+		count := int(reader.ReadUvarint())
+		arrData := make([]*Var, count)
+		for i := 0; i < count; i++ {
+			val, err := e.deserializeParsedType(session, reader, *typ.Elem, bridge)
+			if err != nil {
+				return nil, err
+			}
+			arrData[i] = val
+		}
+		res = &Var{VType: TypeArray, Ref: &VMArray{Data: arrData}}
+	case RuntimeTypeMap:
+		count := int(reader.ReadUvarint())
+		mapData := make(map[string]*Var, count)
+		for i := 0; i < count; i++ {
+			k, err := e.deserializeKey(reader, typ.Key.Raw)
+			if err != nil {
+				return nil, err
+			}
+			val, err := e.deserializeParsedType(session, reader, *typ.Value, bridge)
+			if err != nil {
+				return nil, err
+			}
+			mapData[k] = val
+		}
+		res = &Var{VType: TypeMap, Ref: &VMMap{Data: mapData}}
+	case RuntimeTypeTuple:
+		tupleData := make([]*Var, len(typ.Params))
+		for i, t := range typ.Params {
+			val, err := e.deserializeParsedType(session, reader, t, bridge)
+			if err != nil {
+				return nil, err
+			}
+			tupleData[i] = val
+		}
+		res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
+	case RuntimeTypeInterface:
+		res = e.ToVar(session, reader.ReadRawInterface(), bridge)
+	case RuntimeTypeStruct:
+		res, err = e.deserializeStructSchema(session, reader, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields}, bridge)
+	case RuntimeTypeFunction:
+		res = e.wrapAnyVar(session, e.ToVar(session, reader.ReadAny(), bridge))
+	default:
+		return nil, fmt.Errorf("unsupported FFI return type: %s", typ.Raw)
 	}
 
+	if err != nil {
+		return nil, err
+	}
+	if res != nil {
+		res.Type = typ.Raw
+		if session != nil && session.Stack != nil {
+			res.stack = weak.Make(session.Stack)
+		}
+	}
+	return res, nil
+}
+
+func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
+	typ = ast.GoMiniType(strings.TrimSpace(string(typ)))
+	typeInfo, err := ParseRuntimeType(typ)
+	if err != nil {
+		return nil, err
+	}
+	res, err := e.deserializeParsedType(session, reader, typeInfo, bridge)
 	if res != nil {
 		res.Type = typ
 		if session.Stack != nil {

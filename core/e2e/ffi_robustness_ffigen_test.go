@@ -118,6 +118,8 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -139,9 +141,11 @@ func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, st
 		for _, m := range MockGeometry_FFI_Schemas {
 			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 		}
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", RobustPoint_FFI_StructSchema)
 	} else {
 		for _, m := range MockGeometry_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", RobustPoint_FFI_StructSchema.Spec)
 	}
 }

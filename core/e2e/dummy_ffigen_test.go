@@ -523,6 +523,12 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.File", ast.GoMiniType("struct { Name String; }"))
+
+var FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
+
+var Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.Nested", ast.GoMiniType("struct { Info FileInfo; Level Int64; }"))
+
 func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -549,6 +555,15 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 		for _, m := range MockOS_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+	}
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("native.File", File_FFI_StructSchema)
+		schemaRegistrar.RegisterStructSchema("native.FileInfo", FileInfo_FFI_StructSchema)
+		schemaRegistrar.RegisterStructSchema("native.Nested", Nested_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("native.File", File_FFI_StructSchema.Spec)
+		legacyRegistrar.RegisterStructSpec("native.FileInfo", FileInfo_FFI_StructSchema.Spec)
+		legacyRegistrar.RegisterStructSpec("native.Nested", Nested_FFI_StructSchema.Spec)
 	}
 }
 
@@ -901,6 +916,8 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
+
 func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -927,5 +944,10 @@ func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, 
 		for _, m := range NativeMock_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+	}
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("native.NativeStruct", NativeStruct_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("native.NativeStruct", NativeStruct_FFI_StructSchema.Spec)
 	}
 }

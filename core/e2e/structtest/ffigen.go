@@ -136,7 +136,7 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Calculator_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }"))
+var Calculator_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }"))
 
 func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
@@ -241,6 +241,8 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; }"))
+
 func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -267,5 +269,10 @@ func RegisterFactory(executor interface{ RegisterConstant(string, string) }, imp
 		for _, m := range Factory_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+	}
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("calc.Calculator", Calculator_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("calc.Calculator", Calculator_FFI_StructSchema.Spec)
 	}
 }

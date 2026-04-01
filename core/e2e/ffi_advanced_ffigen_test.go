@@ -258,6 +258,10 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
+
+var EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
+
 func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -284,5 +288,12 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 		for _, m := range AdvancedFFI_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+	}
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
+		schemaRegistrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("test.TestObj", TestObj_FFI_StructSchema.Spec)
+		legacyRegistrar.RegisterStructSpec("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema.Spec)
 	}
 }

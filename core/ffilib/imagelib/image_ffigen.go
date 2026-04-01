@@ -190,6 +190,8 @@ func (b *ImageLib_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", ast.GoMiniType("struct { RGBA Ptr<image.RGBA>; }"))
+
 func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, impl ImageLib, registry *ffigo.HandleRegistry) {
 	bridge := &ImageLib_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -216,6 +218,11 @@ func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, im
 		for _, m := range ImageLib_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+	}
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("image.Image", Image_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("image.Image", Image_FFI_StructSchema.Spec)
 	}
 }
 

@@ -550,7 +550,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				sort.Strings(keys)
 				for _, k := range keys {
-					fmt.Fprintf(&fieldsSB, "%s %s; ", k, fMap[k])
+					fmt.Fprintf(&fieldsSB, "%s %s; ", k, normalizeSchemaType(fMap[k]))
 				}
 				_ = str
 			}
@@ -567,6 +567,8 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fieldsSB.WriteString("}")
 		return fieldsSB.String()
 	}
+
+	referencedStructs := collectReferencedStructs(iface, structs)
 
 	fmt.Fprintf(&sb, "const (\n")
 	for i, method := range iface.Methods.List {
@@ -947,6 +949,17 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, method, args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
+	for _, structName := range referencedStructs {
+		if isStruct && structName == name {
+			continue
+		}
+		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n",
+			structSchemaVarName(structName),
+			resolveCanonicalType(structName),
+			buildStructSchemaLiteral(structName, true, false),
+		)
+	}
+
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
 		fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, resolveCanonicalType(name), buildStructSchemaLiteral(name, true, true))
@@ -956,7 +969,21 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tlegacyRegistrar, hasLegacy := executor.(interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) })\n")
 		fmt.Fprintf(&sb, "\tif !hasSchema && !hasLegacy { panic(\"ffigen: executor does not support FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", name, resolveCanonicalType(name), name, name, resolveCanonicalType(name), name)
+		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n", name)
+		for _, structName := range referencedStructs {
+			if structName == name {
+				continue
+			}
+			fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+		}
+		fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n", resolveCanonicalType(name), name, name)
+		for _, structName := range referencedStructs {
+			if structName == name {
+				continue
+			}
+			fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s.Spec)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+		}
+		fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", resolveCanonicalType(name), name)
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
@@ -984,7 +1011,31 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		if methodsPrefix != "" {
-			fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", resolveCanonicalType(methodsPrefix), name, resolveCanonicalType(methodsPrefix), name)
+			fmt.Fprintf(&sb, "\tif hasSchema {\n")
+			for _, structName := range referencedStructs {
+				if structName == methodsPrefix {
+					continue
+				}
+				fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			}
+			fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n\t} else {\n", resolveCanonicalType(methodsPrefix), name)
+			for _, structName := range referencedStructs {
+				if structName == methodsPrefix {
+					continue
+				}
+				fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s.Spec)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			}
+			fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s_StructSchema.Spec)\n\t}\n", resolveCanonicalType(methodsPrefix), name)
+		} else if len(referencedStructs) > 0 {
+			fmt.Fprintf(&sb, "\tif hasSchema {\n")
+			for _, structName := range referencedStructs {
+				fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			}
+			fmt.Fprintf(&sb, "\t} else {\n")
+			for _, structName := range referencedStructs {
+				fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s.Spec)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			}
+			fmt.Fprintf(&sb, "\t}\n")
 		}
 		fmt.Fprintf(&sb, "}\n")
 	} else {
@@ -995,7 +1046,15 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tlegacyRegistrar, hasLegacy := executor.(interface{ RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string); RegisterStructSpec(string, ast.GoMiniType) })\n")
 		fmt.Fprintf(&sb, "\tif !hasSchema && !hasLegacy { panic(\"ffigen: executor does not support FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
-		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n\t}\n}\n", name, name)
+		fmt.Fprintf(&sb, "\tif hasSchema {\n\t\tfor _, m := range %s_FFI_Schemas {\n\t\t\tschemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t\t}\n", name)
+		for _, structName := range referencedStructs {
+			fmt.Fprintf(&sb, "\t\tschemaRegistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+		}
+		fmt.Fprintf(&sb, "\t} else {\n\t\tfor _, m := range %s_FFI_Metadata {\n\t\t\tlegacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)\n\t\t}\n", name)
+		for _, structName := range referencedStructs {
+			fmt.Fprintf(&sb, "\t\tlegacyRegistrar.RegisterStructSpec(\"%s\", %s.Spec)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+		}
+		fmt.Fprintf(&sb, "\t}\n}\n")
 	}
 
 	if isReverse && !isStruct {
@@ -1104,6 +1163,120 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	}
 
 	return sb.String()
+}
+
+func structSchemaVarName(typeName string) string {
+	replacer := strings.NewReplacer("/", "_", ".", "_", "<", "_", ">", "", ",", "_", " ", "_", "*", "_")
+	return replacer.Replace(typeName) + "_FFI_StructSchema"
+}
+
+func normalizeSchemaType(typeName string) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return "Any"
+	}
+	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+		return "Ptr<" + normalizeSchemaType(typeName[4:len(typeName)-1]) + ">"
+	}
+	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
+		return "Array<" + normalizeSchemaType(typeName[6:len(typeName)-1]) + ">"
+	}
+	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
+		inner := typeName[4 : len(typeName)-1]
+		parts := strings.SplitN(inner, ",", 2)
+		if len(parts) == 2 {
+			return fmt.Sprintf("Map<%s, %s>", normalizeSchemaType(strings.TrimSpace(parts[0])), normalizeSchemaType(strings.TrimSpace(parts[1])))
+		}
+	}
+	switch typeName {
+	case "string":
+		return "String"
+	case "bool":
+		return "Bool"
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "byte":
+		return "Int64"
+	case "float32", "float64":
+		return "Float64"
+	case "[]byte":
+		return "TypeBytes"
+	case "error":
+		return "Error"
+	case "any", "interface{}":
+		return "Any"
+	}
+	if strings.Contains(typeName, ".") {
+		return resolveCanonicalType(typeName)
+	}
+	return typeName
+}
+
+func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType) []string {
+	seen := make(map[string]bool)
+	var ordered []string
+	var visitType func(string)
+	visitType = func(typeName string) {
+		typeName = strings.TrimSpace(typeName)
+		if typeName == "" {
+			return
+		}
+		if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+			visitType(typeName[4 : len(typeName)-1])
+			return
+		}
+		if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
+			visitType(typeName[6 : len(typeName)-1])
+			return
+		}
+		if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
+			inner := typeName[4 : len(typeName)-1]
+			parts := strings.SplitN(inner, ",", 2)
+			if len(parts) == 2 {
+				visitType(strings.TrimSpace(parts[0]))
+				visitType(strings.TrimSpace(parts[1]))
+			}
+			return
+		}
+		if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
+			inner := typeName[6 : len(typeName)-1]
+			for _, part := range strings.Split(inner, ",") {
+				visitType(strings.TrimSpace(part))
+			}
+			return
+		}
+		if isPrimitive(typeName) || strings.HasPrefix(typeName, "interface{") {
+			return
+		}
+		localName := typeName
+		if idx := strings.LastIndex(localName, "."); idx >= 0 {
+			localName = localName[idx+1:]
+		}
+		if !seen[localName] && structs[localName] != nil {
+			seen[localName] = true
+			ordered = append(ordered, localName)
+			fieldMap := make(map[string]string)
+			getFields(structs, localName, fieldMap)
+			for _, fieldType := range fieldMap {
+				visitType(fieldType)
+			}
+		}
+	}
+	for _, method := range iface.Methods.List {
+		if len(method.Names) == 0 {
+			continue
+		}
+		funcType := method.Type.(*ast.FuncType)
+		if funcType.Params != nil {
+			for _, param := range funcType.Params.List {
+				visitType(typeToString(param.Type))
+			}
+		}
+		if funcType.Results != nil {
+			for _, result := range funcType.Results.List {
+				visitType(typeToString(result.Type))
+			}
+		}
+	}
+	return ordered
 }
 
 func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName string, isHost bool) {

@@ -400,6 +400,8 @@ func (b *Module_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMiniType("struct { T time.Time; }"))
+
 func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl Module, registry *ffigo.HandleRegistry) {
 	bridge := &Module_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -445,6 +447,11 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
 	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
 	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
+	if hasSchema {
+		schemaRegistrar.RegisterStructSchema("time.Time", Time_FFI_StructSchema)
+	} else {
+		legacyRegistrar.RegisterStructSpec("time.Time", Time_FFI_StructSchema.Spec)
+	}
 }
 
 const (

@@ -39,11 +39,11 @@
 - [x] **补充 ffigen 迁移样例**: 至少覆盖 stdlib、普通 service、struct-direct、reverse proxy 四类生成模式。
 
 ### I. Runtime FFI 编解码脱 AST
-- [ ] **移除 `evalFFI` 对 `ast.GoMiniType.ReadCallFunc()` 的运行时依赖**。
-- [ ] **移除 `serializeVar/deserializeVar` 对 `ast.GoMiniType` 字符串分支的主依赖**。
-- [ ] **移除 FFI struct 编解码对 `e.program.Structs` 的依赖**，改为直接读取 `RuntimeStructSpec`。
+- [x] **移除 `evalFFI` 对 `ast.GoMiniType.ReadCallFunc()` 的运行时依赖**。
+- [x] **移除 `serializeVar/deserializeVar` 对 `ast.GoMiniType` 字符串分支的主依赖**。
+- [x] **移除 FFI struct 编解码对 `e.program.Structs` 的依赖**，改为直接读取 `RuntimeStructSpec`。
 - [x] **统一 Interface 编解码**: `VMInterface` 不再长期持有 `map[string]*ast.FunctionType`，改为运行时接口 schema。
-- [ ] **明确 Any/Handle/Error/Tuple 在线路协议中的表示**，减少启发式 fallback。
+- [x] **明确 Any/Handle/Error/Tuple 在线路协议中的表示**，减少启发式 fallback。
 
 ---
 

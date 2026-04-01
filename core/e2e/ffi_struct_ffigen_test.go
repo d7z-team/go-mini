@@ -162,6 +162,10 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e.Rect", ast.GoMiniType("struct { A Point; B Point; }"))
+
+var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e.Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
 	schemaRegistrar, hasSchema := executor.(interface {
@@ -183,9 +187,13 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 		for _, m := range MockShapeAPI_FFI_Schemas {
 			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 		}
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Rect", Rect_FFI_StructSchema)
+		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Point", Point_FFI_StructSchema)
 	} else {
 		for _, m := range MockShapeAPI_FFI_Metadata {
 			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
 		}
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.Rect", Rect_FFI_StructSchema.Spec)
+		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.Point", Point_FFI_StructSchema.Spec)
 	}
 }
