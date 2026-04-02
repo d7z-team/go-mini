@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,19 @@ func TestOpIndexMultiUnwrapsAnyMap(t *testing.T) {
 	items := got.Ref.(*VMArray).Data
 	if len(items) != 2 || items[0].I64 != 9 || !items[1].Bool {
 		t.Fatalf("unexpected multi-index tuple: %#v", items)
+	}
+}
+
+func TestEvalMemberExprRejectsAnyWrappedScalar(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+
+	scalar := &Var{VType: TypeAny, Type: "Any", Ref: NewFloat(1.5)}
+	_, err := exec.evalMemberExprDirect(session, scalar, "something")
+	if err == nil {
+		t.Fatal("expected Any-wrapped scalar member access to fail")
+	}
+	if err.Error() == "" || !strings.Contains(err.Error(), "does not support member access") {
+		t.Fatalf("unexpected member access error: %v", err)
 	}
 }

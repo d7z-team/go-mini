@@ -53,6 +53,23 @@ func TestClosureStress(t *testing.T) {
 			}`,
 		},
 		{
+			name: "Nested Upvalue Forwarding Mutation",
+			code: `
+			package main
+			func main() {
+				x := 1
+				mid := func() func() int64 {
+					return func() int64 {
+						x += 1
+						return x
+					}
+				}
+				inc := mid()
+				if inc() != 2 { panic("nested upvalue mutation failed") }
+				if x != 2 { panic("outer value not updated by nested closure") }
+			}`,
+		},
+		{
 			name: "Variable Shadowing in Closure",
 			code: `
 			package main

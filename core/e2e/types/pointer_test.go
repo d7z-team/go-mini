@@ -90,4 +90,30 @@ func TestPointerSemantics(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+
+	t.Run("Any Wrapped Pointer Assignment", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			raw := new(Int64)
+			var boxed Any = raw
+			*boxed = 88
+			if *raw != 88 {
+				panic("any-wrapped pointer write failed")
+			}
+			*boxed += 2
+			if *boxed != 90 {
+				panic("any-wrapped pointer read failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 }

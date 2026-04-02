@@ -169,6 +169,78 @@ func TestStackContextUpvalueSlotsShareCapturedCell(t *testing.T) {
 	}
 }
 
+func TestCaptureSymbolForUpvalueForwardsSharedCellAcrossNestedClosures(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	outer := exec.NewSession(context.Background(), "global")
+	outer.ScopeApply("outer")
+
+	local := SymbolRef{Name: "counter", Kind: SymbolLocal, Slot: 0}
+	if err := outer.DeclareSymbol(local, "Int64"); err != nil {
+		t.Fatalf("declare local symbol failed: %v", err)
+	}
+	if err := outer.StoreSymbol(local, NewInt(1)); err != nil {
+		t.Fatalf("store local symbol failed: %v", err)
+	}
+
+	cell, err := outer.CaptureSymbol(local)
+	if err != nil {
+		t.Fatalf("capture local symbol failed: %v", err)
+	}
+
+	mid := &StackContext{
+		Context:  context.Background(),
+		Executor: exec,
+		Stack: &Stack{
+			Parent: outer.Stack,
+			Frame: &SlotFrame{
+				Upvalues:     []*Var{cell},
+				UpvalueNames: []string{"counter"},
+			},
+			Scope: "mid",
+			Depth: outer.Stack.Depth + 1,
+		},
+		ValueStack: &ValueStack{},
+		LHSStack:   &LHSStack{},
+	}
+	upvalue := SymbolRef{Name: "counter", Kind: SymbolUpvalue, Slot: 0}
+
+	forwarded, err := mid.CaptureSymbol(upvalue)
+	if err != nil {
+		t.Fatalf("capture forwarded upvalue failed: %v", err)
+	}
+	if forwarded != cell {
+		t.Fatalf("expected nested capture to reuse shared cell: outer=%p mid=%p", cell, forwarded)
+	}
+
+	inner := &StackContext{
+		Context:  context.Background(),
+		Executor: exec,
+		Stack: &Stack{
+			Parent: mid.Stack,
+			Frame: &SlotFrame{
+				Upvalues:     []*Var{forwarded},
+				UpvalueNames: []string{"counter"},
+			},
+			Scope: "inner",
+			Depth: mid.Stack.Depth + 1,
+		},
+		ValueStack: &ValueStack{},
+		LHSStack:   &LHSStack{},
+	}
+
+	if err := inner.StoreSymbol(upvalue, NewInt(5)); err != nil {
+		t.Fatalf("store nested upvalue failed: %v", err)
+	}
+
+	got, err := outer.LoadSymbol(local)
+	if err != nil {
+		t.Fatalf("load outer local after nested write failed: %v", err)
+	}
+	if got == nil || got.I64 != 5 {
+		t.Fatalf("expected nested upvalue write to reach outer local, got %#v", got)
+	}
+}
+
 func TestStackContextReturnSlot(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
@@ -480,5 +552,47 @@ func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 	}
 	if got == nil || got.I64 != 8 {
 		t.Fatalf("unexpected indexed address value: %#v", got)
+	}
+}
+
+func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+
+	innerMap := &Var{
+		VType: TypeMap,
+		Type:  "Map<String,Int64>",
+		Ref:   &VMMap{Data: map[string]*Var{"count": NewInt(1)}},
+	}
+	anyMap := &Var{VType: TypeAny, Type: "Any", Ref: innerMap}
+	member := &LHSMember{Obj: anyMap, Property: "count"}
+
+	if err := exec.assignAddress(session, member, NewInt(9)); err != nil {
+		t.Fatalf("assign wrapped member failed: %v", err)
+	}
+	got, err := exec.loadAddress(session, member)
+	if err != nil {
+		t.Fatalf("load wrapped member failed: %v", err)
+	}
+	if got == nil || got.I64 != 9 {
+		t.Fatalf("unexpected wrapped member value: %#v", got)
+	}
+
+	ptr := &Var{VType: TypeHandle, Handle: 7, Type: "Ptr<Int64>", Ref: NewInt(3)}
+	anyPtr := &Var{VType: TypeAny, Type: "Any", Ref: &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}}
+	deref := &LHSDeref{Target: anyPtr}
+
+	if err := exec.assignAddress(session, deref, NewInt(11)); err != nil {
+		t.Fatalf("assign wrapped dereference failed: %v", err)
+	}
+	if err := exec.updateAddress(session, deref, "++"); err != nil {
+		t.Fatalf("update wrapped dereference failed: %v", err)
+	}
+	got, err = exec.loadAddress(session, deref)
+	if err != nil {
+		t.Fatalf("load wrapped dereference failed: %v", err)
+	}
+	if got == nil || got.I64 != 12 {
+		t.Fatalf("unexpected wrapped dereference value: %#v", got)
 	}
 }

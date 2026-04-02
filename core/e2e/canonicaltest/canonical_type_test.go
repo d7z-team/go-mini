@@ -68,3 +68,50 @@ func TestCanonicalTypeSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCanonicalTypeSatisfiesInterfaceAcrossDistinctCanonicalPaths(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	impl := &CanonicalTestImpl{}
+	registry := executor.HandleRegistry()
+
+	canonicaltest.RegisterTestCanonicalService(executor, impl, registry)
+	canonicaltest.RegisterATypeService(executor, &AImpl{}, registry)
+	canonicaltest.RegisterBTypeService(executor, &BImpl{}, registry)
+
+	code := `
+	package main
+	import "test_canonical"
+
+	type Greeter interface {
+		Hello() String
+	}
+
+	func readHello(g Greeter) String {
+		return g.Hello()
+	}
+
+	func main() {
+		a := test_canonical.NewA("Gemini")
+		b := test_canonical.NewB(66)
+
+		if readHello(a) != "Hello A: Gemini" {
+			panic("canonical interface dispatch for A failed")
+		}
+		if readHello(b) != "Hello B: B" {
+			panic("canonical interface dispatch for B failed")
+		}
+	}
+	`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = prog.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}

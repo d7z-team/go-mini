@@ -149,11 +149,11 @@
 - [x] **拆分 ffilib 测试责任**: stdlib/json/time/strings/os/filepath/math/io/image 等回归已迁到 `core/ffilib/*/tests`，并压成最小 smoke/contract test。
 - [x] **拆分 FFI/ffigo 与 VM 原生测试责任**: `ffigen` 输入/输出、reverse proxy、桥接样例与迁移回归已迁到 `cmd/ffigen/tests`；`canonicaltest/structtest/storagelib` 夹具测试已下沉到各自模块目录；`core/e2e` 已不再承担夹具堆放职责，只保留按语义分类组织的脚本执行主线回归；LSP host-FFI 交叉场景归入 `core/tests`。
 - [ ] **补充 ffigen 生成产物回归测试**: stdlib、业务 service、reverse proxy、canonical path。
-- [ ] **补充 import 隔离回归测试**: panic、circular import、partial init。
-- [ ] **补充 slot/upvalue 专项回归测试**: 基础 slot/upvalue/frame 边界单测已补到 `scope_slots_test.go`，剩余需要补齐 shadowing、nested functions、多层 upvalue 转发、loop capture 的 runtime/e2e 组合回归。
-- [ ] **补充 LHS/deref/Any 回归测试**。
-- [ ] **补充命名类型/接口 vtable/canonical path 组合回归**: 覆盖 alias 链、FFI canonical type、interface satisfaction 交叉场景。
-- [ ] **将 `go test ./core/e2e` 设为阶段门禁**: 关键阶段收尾必须通过全量 e2e，而不是只跑局部用例。
+- [x] **补充 import 隔离回归测试**: 已覆盖 panic、circular import、direct partial init 与 transitive partial init，不允许污染 `ModuleCache/LoadingModules`。
+- [x] **补充 slot/upvalue 专项回归测试**: 已补齐 `scope_slots_test.go` 的多层 upvalue 转发共享 cell 回归，以及 `core/e2e/functions` 里的 nested closure mutation / shadowing / loop capture 组合回归。
+- [x] **补充 LHS/deref/Any 回归测试**: 已补 `Any` 包 map/member、`Any+Cell+Ptr` 解引用写回、`Any` 包标量成员访问报错，以及 e2e 的 `Any` 包指针读写回归。
+- [x] **补充命名类型/接口 vtable/canonical path 组合回归**: 已覆盖 alias 链、FFI canonical type、interface satisfaction 与 canonical path 交叉场景。
+- [x] **将 `go test ./core/e2e/...` 设为阶段门禁**: 关键阶段收尾必须通过全量 e2e 语义树，而不是只跑局部用例。
 
 ### T. Benchmark 与指标
 - [ ] **建立局部变量 slot 访问 benchmark**。
