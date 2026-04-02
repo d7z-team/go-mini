@@ -134,7 +134,7 @@
 ### R. IR/Bytecode 管线统一
 - [x] **统一 `core/runtime/task.go` 与 `core/compiler/bytecode.go` 的指令集定义**: bytecode builder 已改为直接复用 `runtime.OpCode.String()` 输出真实 runtime opcode；少数 runtime 中不存在的展示专用指令已显式标成 pseudo op，避免继续伪装成同一套 IR。
 - [x] **明确唯一执行 IR**: 当前执行主路径已明确为 `lowered task plan`，并已作为 `bytecode.executable` 段稳定挂入 bytecode 工件；`NewRuntimeByCompiled` 现在可直接消费 bytecode roundtrip 后恢复出的 executable plan。
-- [ ] **将 lowering 从 `Executor` 启动路径移出**，成为独立编译步骤。
+- [ ] **将 lowering 从 `Executor` 启动路径移出**，成为独立编译步骤: 已新增 `bytecode -> blueprint + executable -> runtime` 直接装载链路，`NewRuntimeByBytecodeJSON` 不再依赖内存中的原始 AST/Artifact；剩余收尾是继续压缩 `runtime.NewExecutor(program)` 的即时 lowering fallback，并把 AST-only 构造收成兼容路径。
 - [x] **实现 lowered IR / bytecode 持久化**，支持“一次编译，多次加载”。
 - [ ] **清理展示型 bytecode 与真实执行 IR 双轨并存问题**: bytecode 现已同时承载展示指令和 `executable` task plan，且支持 JSON roundtrip 后直接再执行；剩余工作是继续压缩 AST 启动路径，并决定是否进一步收敛为单一 bytecode 执行模型。
 

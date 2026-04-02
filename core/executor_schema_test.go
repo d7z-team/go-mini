@@ -121,6 +121,64 @@ func main() {
 	}
 }
 
+func TestNewRuntimeByBytecodeJSONRebuildsProgramBlueprint(t *testing.T) {
+	exec := NewMiniExecutor()
+	compiled, err := exec.CompileGoCode(`
+package main
+
+type Payload struct {
+	Msg string
+}
+
+type Reader interface {
+	Read() string
+}
+
+const Version = "v1"
+
+var counter = 1
+
+func main() {
+	counter = counter + 1
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	payload, err := compiled.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatalf("marshal bytecode failed: %v", err)
+	}
+
+	prog, err := exec.NewRuntimeByBytecodeJSON(payload)
+	if err != nil {
+		t.Fatalf("load by bytecode json failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	rebuilt := prog.GetAst()
+	if rebuilt == nil {
+		t.Fatal("expected rebuilt program")
+	}
+	if rebuilt.Package != "main" {
+		t.Fatalf("unexpected package: %s", rebuilt.Package)
+	}
+	if rebuilt.Constants["Version"] != "v1" {
+		t.Fatalf("unexpected constant map: %#v", rebuilt.Constants)
+	}
+	if rebuilt.Structs["Payload"] == nil {
+		t.Fatalf("expected rebuilt struct metadata: %#v", rebuilt.Structs)
+	}
+	if rebuilt.Interfaces["Reader"] == nil {
+		t.Fatalf("expected rebuilt interface metadata: %#v", rebuilt.Interfaces)
+	}
+	if rebuilt.Functions["main"] == nil {
+		t.Fatalf("expected rebuilt function stubs: %#v", rebuilt.Functions)
+	}
+}
+
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
 	payload := []byte(`{"format":"go-mini-bytecode","version":1,"opcode_set":"runtime.opcode.v1","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":1}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":2}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":3}},{"op":32}]}}`)
 	_, err := bytecode.UnmarshalJSON(payload)

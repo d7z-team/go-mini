@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
@@ -615,6 +616,22 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 		Compiled: compiled,
 		executor: executor,
 	}, nil
+}
+
+func (e *MiniExecutor) NewRuntimeByBytecode(program *bytecode.Program) (*MiniProgram, error) {
+	compiled, err := compiler.ArtifactFromBytecode(program)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByCompiled(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*MiniProgram, error) {
+	program, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByBytecode(program)
 }
 
 func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {

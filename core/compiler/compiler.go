@@ -31,6 +31,28 @@ type Artifact struct {
 	Bytecode        *bytecode.Program
 }
 
+func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
+	if program == nil {
+		return nil, fmt.Errorf("invalid bytecode program")
+	}
+	if err := program.Validate(); err != nil {
+		return nil, err
+	}
+	rebuilt, err := program.RebuildProgram()
+	if err != nil {
+		return nil, err
+	}
+	artifact := &Artifact{
+		Filename: "bytecode",
+		Program:  rebuilt,
+		Bytecode: program,
+	}
+	if program.Executable != nil {
+		artifact.GlobalInitOrder = append([]ast.Ident(nil), program.Executable.GlobalInitOrder...)
+	}
+	return artifact, nil
+}
+
 func New(cfg Config) *Compiler {
 	return &Compiler{cfg: cfg}
 }

@@ -26,6 +26,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 	if err != nil {
 		return nil
 	}
+	bc.Blueprint = bytecode.NewBlueprint(program)
 	bc.Executable = prepared
 
 	for _, name := range globalInitOrder {
