@@ -25,27 +25,81 @@ function getExecPath(context) {
 }
 
 async function runFile(context, uri) {
-    let filePath;
-    if (uri && uri.fsPath) {
-        filePath = uri.fsPath;
-    } else {
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            filePath = editor.document.uri.fsPath;
-        }
-    }
-
+    const filePath = await resolveTargetFile(uri);
     if (!filePath) {
         vscode.window.showErrorMessage('No file to run');
         return;
     }
 
+    await saveTargetFile(uri);
     const execPath = getExecPath(context);
-    const terminal = vscode.window.activeTerminal || vscode.window.createTerminal('Go-Mini');
+    executeInTerminal('Go-Mini', `"${execPath}" -run "${filePath}"`);
+}
+
+async function compileFile(context, uri) {
+    const filePath = await resolveTargetFile(uri);
+    if (!filePath) {
+        vscode.window.showErrorMessage('No file to compile');
+        return;
+    }
+
+    await saveTargetFile(uri);
+    const defaultOutput = filePath.replace(/\.[^.]+$/, '.json');
+    const targetUri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(defaultOutput),
+        filters: {
+            'Go-Mini Bytecode': ['json']
+        }
+    });
+    if (!targetUri) {
+        return;
+    }
+
+    const execPath = getExecPath(context);
+    executeInTerminal('Go-Mini Compile', `"${execPath}" -o "${targetUri.fsPath}" "${filePath}"`);
+}
+
+async function disassembleFile(context, uri) {
+    const filePath = await resolveTargetFile(uri);
+    if (!filePath) {
+        vscode.window.showErrorMessage('No file to disassemble');
+        return;
+    }
+
+    await saveTargetFile(uri);
+    const execPath = getExecPath(context);
+    executeInTerminal('Go-Mini Disasm', `"${execPath}" -d "${filePath}"`);
+}
+
+async function resolveTargetFile(uri) {
+    if (uri && uri.fsPath) {
+        return uri.fsPath;
+    }
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+        return editor.document.uri.fsPath;
+    }
+    return "";
+}
+
+async function saveTargetFile(uri) {
+    if (uri && uri.fsPath) {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.uri.fsPath === uri.fsPath) {
+            await editor.document.save();
+        }
+        return;
+    }
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+        await editor.document.save();
+    }
+}
+
+function executeInTerminal(name, command) {
+    const terminal = vscode.window.activeTerminal || vscode.window.createTerminal(name);
     terminal.show();
-    
-    // 引号处理防止路径空格
-    terminal.sendText(`"${execPath}" "${filePath}"`);
+    terminal.sendText(command);
 }
 
 async function startClient(context) {
@@ -87,6 +141,12 @@ function activate(context) {
     // 注册运行命令
     context.subscriptions.push(
         vscode.commands.registerCommand('go-mini.runFile', (uri) => runFile(context, uri))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('go-mini.compileFile', (uri) => compileFile(context, uri))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('go-mini.disassembleFile', (uri) => disassembleFile(context, uri))
     );
 
     // 监听配置变更自动重启

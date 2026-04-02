@@ -1,24 +1,105 @@
 # Go-Mini
 
-Go-Mini is a high-performance, absolutely isolated Go-like script executor. It is designed for maximum security and I/O efficiency by cutting off direct memory sharing between the host and the VM.
+Go-Mini is a Go-like scripting engine with a bytecode-first execution model.
 
-## Key Features
+The architecture is split into clear layers:
 
-- **Absolute Memory Isolation**: No shared pointers between Host and VM.
-- **Zero-Reflection**: The entire execution path (Parser, Validator, Executor) is free of Go's `reflect` package.
-- **Raw-FFI IPC**: High-performance binary communication via `ffigo.Buffer` and `ffigo.Bridge`.
-- **Thread-Safe Execution**: The `Executor` acts as a stateless blueprint. A single compiled `MiniProgram` can be executed concurrently across thousands of host goroutines without locks or data races.
-- **Static Code Generation**: FFI wrappers are generated at compile-time using `cmd/ffigen`.
-- **Data Reduction**: All scalar types are mapped to `Int64` or `Float64` for simplicity.
-- **Reference Semantics**: Script-defined structs and arrays use **reference semantics** for performance. Assignments and method calls do not trigger a deep copy.
+- Frontend: Go AST -> Mini AST conversion, semantic validation, and LSP queries
+- Compiler: stable `go-mini-bytecode` artifacts and executable `PreparedProgram`
+- Runtime: executes lowered task plans instead of high-level AST
+- FFI: schema-only bridge generation via `cmd/ffigen`
 
-## Architecture
+## Highlights
 
-The project is structured around a **Message Passing** architecture:
-1.  **VM**: Executes AST nodes, maintains its own stack and heap.
-2.  **FFI Bridge**: The only channel for communication, passing `MethodID` and `[]byte`.
-3.  **Host**: Receives binary requests, routes them to native Go functions, and returns binary responses.
+- `bytecode-first`
+  Serialization, loading, and disassembly all use `go-mini-bytecode`.
+- `no-AST runtime`
+  The non-debug execution path consumes prepared plans and bytecode.
+- `schema-only FFI`
+  Runtime FFI registration is based on parsed schemas.
+- `short VM type names`
+  `ffigen:module` defines VM-facing type namespaces such as `order.Order` and `io.File`.
 
-## Getting Started
+## Key Directories
 
-Refer to `TODO.md` for current refactoring progress and design details.
+```text
+cmd/
+  exec/      # bytecode-first CLI: compile, disassemble, execute
+  ffigen/    # FFI code generator
+core/
+  ast/       # AST, semantics, LSP queries
+  compiler/  # bytecode / executable blueprint compilation
+  runtime/   # VM runtime consuming prepared plans
+  ffilib/    # standard library FFI modules
+  e2e/       # language and module end-to-end tests
+```
+
+## Quick Start
+
+### Execute Script From Go
+
+```go
+executor := engine.NewMiniExecutor()
+executor.InjectStandardLibraries()
+
+program, err := executor.NewRuntimeByGoCode(`
+package main
+func main() {
+    println("hello")
+}
+`)
+if err != nil {
+    panic(err)
+}
+if err := program.Execute(context.Background()); err != nil {
+    panic(err)
+}
+```
+
+### Export Bytecode
+
+```go
+executor := engine.NewMiniExecutor()
+compiled, err := executor.CompileGoCode(`package main`)
+if err != nil {
+    panic(err)
+}
+payload, err := compiled.MarshalBytecodeJSON()
+if err != nil {
+    panic(err)
+}
+_ = payload
+```
+
+### CLI
+
+```bash
+# run source
+mini-exec -run script.mini
+
+# compile to bytecode JSON
+mini-exec -o script.json script.mini
+
+# disassemble
+mini-exec -d script.mini
+
+# execute from bytecode
+mini-exec -bytecode script.json
+```
+
+## FFI Generation
+
+`ffigen` uses a minimal CLI:
+
+```bash
+go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
+```
+
+Naming rules:
+
+- VM-visible namespaces come from `ffigen:module`
+- Local types use short names such as `order.Order`
+- Cross-package FFI types resolve to the imported module namespace, such as `io.File`
+- Full Go import paths stay internal and are not exposed in VM schema text
+
+See [DOCS.md](./DOCS.md), [LSP.md](./LSP.md), and [AGENTS.md](./AGENTS.md) for details.

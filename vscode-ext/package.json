@@ -61,6 +61,16 @@
         "command": "go-mini.runFile",
         "title": "Go-Mini: Run Current File",
         "icon": "$(play)"
+      },
+      {
+        "command": "go-mini.compileFile",
+        "title": "Go-Mini: Compile Current File to Bytecode",
+        "icon": "$(package)"
+      },
+      {
+        "command": "go-mini.disassembleFile",
+        "title": "Go-Mini: Disassemble Current File",
+        "icon": "$(symbol-method)"
       }
     ],
     "menus": {
@@ -69,12 +79,32 @@
           "command": "go-mini.runFile",
           "group": "navigation",
           "when": "resourceExtname == .mini"
+        },
+        {
+          "command": "go-mini.compileFile",
+          "group": "navigation@1",
+          "when": "resourceExtname == .mini"
+        },
+        {
+          "command": "go-mini.disassembleFile",
+          "group": "navigation@2",
+          "when": "resourceExtname == .mini"
         }
       ],
       "explorer/context": [
         {
           "command": "go-mini.runFile",
           "group": "navigation",
+          "when": "resourceExtname == .mini"
+        },
+        {
+          "command": "go-mini.compileFile",
+          "group": "navigation@1",
+          "when": "resourceExtname == .mini"
+        },
+        {
+          "command": "go-mini.disassembleFile",
+          "group": "navigation@2",
           "when": "resourceExtname == .mini"
         }
       ]
