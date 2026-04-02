@@ -146,3 +146,35 @@ func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFFIStructMethodGroupedParametersE2E(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	registry := executor.HandleRegistry()
+	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
+	structtest.RegisterTable(executor, registry)
+
+	code := `
+	package main
+	import "calc"
+
+	func main() {
+		tbl := calc.NewTable()
+		tbl.SetString(1, 2, "hello")
+		if tbl.GetString(1, 2) != "hello" {
+			panic("ffi grouped-parameter method call failed")
+		}
+	}
+	`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = prog.Execute(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}

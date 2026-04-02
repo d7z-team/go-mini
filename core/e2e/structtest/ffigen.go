@@ -148,7 +148,131 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 }
 
 const (
-	MethodID_Factory_New = 1
+	MethodID_Table_SetString = 1
+	MethodID_Table_GetString = 2
+)
+
+func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "SetString":
+			methodID = MethodID_Table_SetString
+		case "GetString":
+			methodID = MethodID_Table_GetString
+		}
+	}
+
+	reqBuf := ffigo.NewReader(args)
+	switch methodID {
+	case MethodID_Table_SetString:
+		var __recv *Table
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				__recv = obj.(*Table)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var row int
+		{
+			tmp := reqBuf.ReadVarint()
+			row = int(tmp)
+		}
+		var col int
+		{
+			tmp := reqBuf.ReadVarint()
+			col = int(tmp)
+		}
+		var val string
+		val = string(reqBuf.ReadString())
+		__recv.SetString(row, col, val)
+		resBuf := ffigo.GetBuffer()
+		return resBuf.Bytes(), nil
+	case MethodID_Table_GetString:
+		var __recv *Table
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				__recv = obj.(*Table)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var row int
+		{
+			tmp := reqBuf.ReadVarint()
+			row = int(tmp)
+		}
+		var col int
+		{
+			tmp := reqBuf.ReadVarint()
+			col = int(tmp)
+		}
+		r0 := __recv.GetString(row, col)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+
+var Table_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"SetString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64, String) Void")), ""},
+	{"GetString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64) String")), ""},
+}
+
+type Table_Bridge struct {
+	Impl     *Table
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Table_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+	return TableHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+}
+
+func (b *Table_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return TableHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+}
+
+func (b *Table_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}
+
+var Table_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", ast.GoMiniType("struct { Values Map<String, String>; SetString function(Ptr<calc.Table>, Int64, Int64, String) Void; GetString function(Ptr<calc.Table>, Int64, Int64) String; }"))
+
+func RegisterTable(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
+	bridge := &Table_Bridge{Impl: nil, Registry: registry}
+	registrar, ok := executor.(interface {
+		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	})
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
+	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
+	registrar.RegisterFFISchema("__method_calc.Table_SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_calc.Table_GetString", bridge, Table_FFI_Schemas[1].MethodID, Table_FFI_Schemas[1].Sig, Table_FFI_Schemas[1].Doc)
+	registerStructSchema("calc.Table", Table_StructSchema)
+}
+
+const (
+	MethodID_Factory_New      = 1
+	MethodID_Factory_NewTable = 2
 )
 
 func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
@@ -156,6 +280,8 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 		switch methodName {
 		case "New":
 			methodID = MethodID_Factory_New
+		case "NewTable":
+			methodID = MethodID_Factory_NewTable
 		}
 	}
 
@@ -176,6 +302,16 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 			resBuf.WriteUvarint(uint64(registry.Register(r0)))
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_Factory_NewTable:
+		r0 := impl.NewTable()
+		resBuf := ffigo.GetBuffer()
+		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+		}
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -188,6 +324,7 @@ var Factory_FFI_Schemas = []struct {
 	Doc      string
 }{
 	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<calc.Calculator>")), ""},
+	{"NewTable", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<calc.Table>")), ""},
 }
 
 type Factory_Bridge struct {
@@ -212,6 +349,8 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 
 var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; }"))
 
+var calc_Table_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", ast.GoMiniType("struct { Values Map<String, String>; }"))
+
 func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -228,5 +367,7 @@ func RegisterFactory(executor interface{ RegisterConstant(string, string) }, imp
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("calc.New", bridge, Factory_FFI_Schemas[0].MethodID, Factory_FFI_Schemas[0].Sig, Factory_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("calc.NewTable", bridge, Factory_FFI_Schemas[1].MethodID, Factory_FFI_Schemas[1].Sig, Factory_FFI_Schemas[1].Doc)
 	registerStructSchema("calc.Calculator", calc_Calculator_FFI_StructSchema)
+	registerStructSchema("calc.Table", calc_Table_FFI_StructSchema)
 }

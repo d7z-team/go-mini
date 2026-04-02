@@ -143,6 +143,41 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 	}
 }
 
+func TestRunDirectoryModePreservesGroupedStructMethodParametersInSchema(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "table.go", `package pkgmode
+
+// ffigen:methods Table
+type Table struct{}
+
+func (t *Table) SetString(row, col int, val string) {}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	required := `SetString function(Ptr<Table>, Int64, Int64, String) Void;`
+	if !strings.Contains(code, required) {
+		t.Fatalf("expected grouped params to be preserved in struct schema, missing %q in:\n%s", required, code)
+	}
+}
+
 func TestRunDirectoryModeRejectsMultipleModules(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "a.go", `package pkgmode

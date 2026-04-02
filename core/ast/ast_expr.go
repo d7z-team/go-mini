@@ -600,7 +600,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					// 对于结构体方法，第一个参数通常是接收者。
 					// 如果是通过对象访问（不是包名），我们需要剥离接收者以便支持方法值和简化调用校验。
 					if objType != "Package" && objType != TypeModule {
-						if len(sig.Params) > 0 {
+						if len(sig.Params) > 0 && structMethodHasReceiver(sig, objType) {
 							sig.Params = sig.Params[1:]
 						}
 					}
@@ -652,6 +652,19 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 	ctx.WithNode(m).AddErrorf("%s", err.Error())
 	return err
+}
+
+func structMethodHasReceiver(sig CallFunctionType, objType GoMiniType) bool {
+	if len(sig.Params) == 0 {
+		return false
+	}
+	first := sig.Params[0]
+	objBase := GoMiniType(objType.BaseName())
+	firstBase := GoMiniType(first.BaseName())
+	if objBase == "" || firstBase == "" {
+		return false
+	}
+	return objBase == firstBase
 }
 
 func (m *MemberExpr) Optimize(ctx *OptimizeContext) Node {
