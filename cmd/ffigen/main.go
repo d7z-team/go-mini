@@ -403,7 +403,6 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 				if mat.moduleName == "" && !mat.methodsMarked && !mat.reverse {
 					continue
 				}
-				isModule := mat.moduleName != ""
 				methodsPrefix := mat.methodsPrefix
 				if mat.methodsMarked && methodsPrefix == "" {
 					methodsPrefix = typeSpec.Name.Name
@@ -412,7 +411,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 				if len(methods) == 0 {
 					continue
 				}
-				virtualIface := synthesizeInterface(methods, !isModule)
+				virtualIface := synthesizeInterface(methods, mat.methodsMarked)
 				virtualSpec := *typeSpec
 				virtualSpec.Type = virtualIface
 				targets = append(targets, ffigenTarget{
@@ -1587,6 +1586,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfVar)
 		} else if len(referencedStructs) > 0 {
 			for _, structName := range referencedStructs {
+				if isStruct && structName == name {
+					continue
+				}
 				schemaVar := structSchemaVarName(displayTypeName(structName))
 				if schemas != nil {
 					schemaVar = referencedSchemaVars[structName]

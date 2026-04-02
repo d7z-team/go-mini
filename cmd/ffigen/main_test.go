@@ -146,6 +146,130 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 	}
 }
 
+func TestRunDirectoryModeUsesInjectedReceiverForModuleQualifiedStructMethods(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "browser.go", `package pkgmode
+
+// ffigen:module browser
+// ffigen:methods Browser
+type Browser struct{}
+
+func (o *Browser) AutoPage(url string) *Browser {
+	return o
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, "r0 := __recv.AutoPage(url)") {
+		t.Fatalf("expected generated module-qualified struct method to use injected receiver, got:\n%s", code)
+	}
+	if strings.Contains(code, "r0 := impl.AutoPage(url)") {
+		t.Fatalf("generated code still routes module-qualified struct method through impl:\n%s", code)
+	}
+}
+
+func TestRunDirectoryModeDoesNotInjectReceiverForModuleOnlyStruct(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "factory.go", `package pkgmode
+
+// ffigen:module calc
+type Factory struct{}
+
+func (f *Factory) New(base int64) *Factory {
+	return f
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if strings.Contains(code, "impl.New(__recv, base)") || strings.Contains(code, "var __recv *Factory") {
+		t.Fatalf("module-only struct should not inject receiver, got:\n%s", code)
+	}
+	if !strings.Contains(code, "r0 := impl.New(base)") {
+		t.Fatalf("expected module-only struct method to remain impl-based, got:\n%s", code)
+	}
+	if strings.Contains(code, "registerStructSchema(\"calc.Factory\"") {
+		t.Fatalf("module-only struct should not self-register a struct schema, got:\n%s", code)
+	}
+}
+
+func TestRunFileModeDoesNotInjectReceiverForModuleOnlyStruct(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	sourcePath := filepath.Join(workspace, "factory.go")
+	writeTestFile(t, workspace, "factory.go", `package pkgmode
+
+// ffigen:module calc
+type Factory struct{}
+
+func (f *Factory) New(base int64) *Factory {
+	return f
+}
+`)
+
+	outputPath := filepath.Join(workspace, "ffigen_factory.go")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputPath
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runFileMode([]string{sourcePath}); err != nil {
+		t.Fatalf("runFileMode: %v", err)
+	}
+
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if strings.Contains(code, "impl.New(__recv, base)") || strings.Contains(code, "var __recv *Factory") {
+		t.Fatalf("file mode module-only struct should not inject receiver, got:\n%s", code)
+	}
+	if !strings.Contains(code, "r0 := impl.New(base)") {
+		t.Fatalf("expected file mode module-only struct method to remain impl-based, got:\n%s", code)
+	}
+	if strings.Contains(code, "registerStructSchema(\"calc.Factory\"") {
+		t.Fatalf("file mode module-only struct should not self-register a struct schema, got:\n%s", code)
+	}
+}
+
 func TestRunDirectoryModePreservesGroupedStructMethodParametersInSchema(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "table.go", `package pkgmode
