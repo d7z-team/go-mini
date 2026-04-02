@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg hexlib -path gopkg.d7z.net/go-mini/core/ffilib/encoding/hexlib -out hex_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg hexlib -out hex_ffigen.go interface.go
 package hexlib
 
 // Hex 接口定义了 Hex 编码操作

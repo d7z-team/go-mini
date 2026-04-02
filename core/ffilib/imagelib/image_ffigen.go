@@ -4,7 +4,6 @@ package imagelib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -191,14 +190,8 @@ func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, im
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "image"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range ImageLib_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("image.Decode", bridge, ImageLib_FFI_Schemas[0].MethodID, ImageLib_FFI_Schemas[0].Sig, ImageLib_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("image.NewRGBA", bridge, ImageLib_FFI_Schemas[1].MethodID, ImageLib_FFI_Schemas[1].Sig, ImageLib_FFI_Schemas[1].Doc)
 	registrar.RegisterStructSchema("image.Image", Image_FFI_StructSchema)
 }
 
@@ -729,13 +722,20 @@ func RegisterImage(executor interface{ RegisterConstant(string, string) }, regis
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_image.Image"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Image_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("__method_image.Image_Bounds", bridge, Image_FFI_Schemas[0].MethodID, Image_FFI_Schemas[0].Sig, Image_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Size", bridge, Image_FFI_Schemas[1].MethodID, Image_FFI_Schemas[1].Sig, Image_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Width", bridge, Image_FFI_Schemas[2].MethodID, Image_FFI_Schemas[2].Sig, Image_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Height", bridge, Image_FFI_Schemas[3].MethodID, Image_FFI_Schemas[3].Sig, Image_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_At", bridge, Image_FFI_Schemas[4].MethodID, Image_FFI_Schemas[4].Sig, Image_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Set", bridge, Image_FFI_Schemas[5].MethodID, Image_FFI_Schemas[5].Sig, Image_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Fill", bridge, Image_FFI_Schemas[6].MethodID, Image_FFI_Schemas[6].Sig, Image_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Clear", bridge, Image_FFI_Schemas[7].MethodID, Image_FFI_Schemas[7].Sig, Image_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Clone", bridge, Image_FFI_Schemas[8].MethodID, Image_FFI_Schemas[8].Sig, Image_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_SubImage", bridge, Image_FFI_Schemas[9].MethodID, Image_FFI_Schemas[9].Sig, Image_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Draw", bridge, Image_FFI_Schemas[10].MethodID, Image_FFI_Schemas[10].Sig, Image_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Resize", bridge, Image_FFI_Schemas[11].MethodID, Image_FFI_Schemas[11].Sig, Image_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_Crop", bridge, Image_FFI_Schemas[12].MethodID, Image_FFI_Schemas[12].Sig, Image_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_EncodePNG", bridge, Image_FFI_Schemas[13].MethodID, Image_FFI_Schemas[13].Sig, Image_FFI_Schemas[13].Doc)
+	registrar.RegisterFFISchema("__method_image.Image_EncodeJPEG", bridge, Image_FFI_Schemas[14].MethodID, Image_FFI_Schemas[14].Sig, Image_FFI_Schemas[14].Doc)
 	registrar.RegisterStructSchema("image.Image", Image_StructSchema)
 }

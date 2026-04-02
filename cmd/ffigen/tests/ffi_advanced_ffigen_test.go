@@ -4,7 +4,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -223,7 +222,7 @@ var AdvancedFFI_FFI_Schemas = []struct {
 	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<test.TestObj>")), "Identity check"},
 	{"IsSame", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool")), ""},
 	{"EchoMap", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<Bool, String>) Map<Float64, Bool>")), "Map keys"},
-	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(EmbeddedStruct) EmbeddedStruct")), "Embedded structs"},
+	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(test.EmbeddedStruct) test.EmbeddedStruct")), "Embedded structs"},
 }
 
 type AdvancedFFI_Bridge struct {
@@ -259,14 +258,37 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "test"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range AdvancedFFI_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("test.GetSameObject", bridge, AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("test.IsSame", bridge, AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("test.EchoMap", bridge, AdvancedFFI_FFI_Schemas[2].MethodID, AdvancedFFI_FFI_Schemas[2].Sig, AdvancedFFI_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("test.EchoEmbedded", bridge, AdvancedFFI_FFI_Schemas[3].MethodID, AdvancedFFI_FFI_Schemas[3].Sig, AdvancedFFI_FFI_Schemas[3].Doc)
+	executor.RegisterConstant("test.MethodID_Callback_OnEvent", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_Callback_OnRaw", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_ContextMock_WithContext", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_ContextMock_WithoutContext", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_Logger_Internal", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_Logger_Log", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
+	executor.RegisterConstant("test.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
+	executor.RegisterConstant("test.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_MockOS_Close", ffigo.ToConstantString(6))
+	executor.RegisterConstant("test.MethodID_MockOS_Deep", ffigo.ToConstantString(7))
+	executor.RegisterConstant("test.MethodID_MockOS_Name", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_MockOS_Open", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_MockOS_Read", ffigo.ToConstantString(4))
+	executor.RegisterConstant("test.MethodID_MockOS_Stat", ffigo.ToConstantString(3))
+	executor.RegisterConstant("test.MethodID_MockOS_Write", ffigo.ToConstantString(5))
+	executor.RegisterConstant("test.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_NativeMock_GetPtr", ffigo.ToConstantString(2))
+	executor.RegisterConstant("test.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
+	executor.RegisterConstant("test.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("test.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
+	executor.RegisterConstant("test.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
+	executor.RegisterConstant("test.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
 	registrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
 	registrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
 }

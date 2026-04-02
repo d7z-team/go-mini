@@ -12,16 +12,7 @@ func TestOrderFFIGen(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	executor.InjectStandardLibraries()
 	impl := ordertest.NewOrderImpl()
-
-	// 1. 注册模块级函数和方法集
-	for _, m := range ordertest.OrderService_FFI_Schemas {
-		if m.Name == "New" {
-			executor.RegisterFFISchema("order."+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, m.Sig, m.Doc)
-		} else {
-			// 使用全路径 ID
-			executor.RegisterFFISchema("__method_gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order_"+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, m.Sig, m.Doc)
-		}
-	}
+	ordertest.RegisterOrderService(executor, impl, executor.HandleRegistry())
 	code := `
 	package main
 	import "order"

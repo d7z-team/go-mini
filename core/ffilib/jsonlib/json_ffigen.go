@@ -4,7 +4,6 @@ package jsonlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -202,12 +201,6 @@ func RegisterJSON(executor interface{ RegisterConstant(string, string) }, impl J
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "encoding/json"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range JSON_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("encoding/json.Marshal", bridge, JSON_FFI_Schemas[0].MethodID, JSON_FFI_Schemas[0].Sig, JSON_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("encoding/json.Unmarshal", bridge, JSON_FFI_Schemas[1].MethodID, JSON_FFI_Schemas[1].Sig, JSON_FFI_Schemas[1].Doc)
 }

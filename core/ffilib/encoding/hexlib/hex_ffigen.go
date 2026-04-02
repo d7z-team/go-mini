@@ -4,7 +4,6 @@ package hexlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -179,12 +178,7 @@ func RegisterHex(executor interface{ RegisterConstant(string, string) }, impl He
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "encoding/hex"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Hex_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("encoding/hex.EncodeToString", bridge, Hex_FFI_Schemas[0].MethodID, Hex_FFI_Schemas[0].Sig, Hex_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("encoding/hex.DecodeString", bridge, Hex_FFI_Schemas[1].MethodID, Hex_FFI_Schemas[1].Sig, Hex_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("encoding/hex.Dump", bridge, Hex_FFI_Schemas[2].MethodID, Hex_FFI_Schemas[2].Sig, Hex_FFI_Schemas[2].Doc)
 }

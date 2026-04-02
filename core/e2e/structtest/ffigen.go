@@ -4,7 +4,6 @@ package structtest
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -136,14 +135,9 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_calc.Calculator"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Calculator_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("__method_calc.Calculator_Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_calc.Calculator_Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("__method_calc.Calculator_GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
 	registrar.RegisterStructSchema("calc.Calculator", Calculator_StructSchema)
 }
 
@@ -221,13 +215,6 @@ func RegisterFactory(executor interface{ RegisterConstant(string, string) }, imp
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "calc"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Factory_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("calc.New", bridge, Factory_FFI_Schemas[0].MethodID, Factory_FFI_Schemas[0].Sig, Factory_FFI_Schemas[0].Doc)
 	registrar.RegisterStructSchema("calc.Calculator", Calculator_FFI_StructSchema)
 }

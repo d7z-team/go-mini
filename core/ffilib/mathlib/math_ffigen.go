@@ -4,7 +4,6 @@ package mathlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -556,14 +555,24 @@ func RegisterMath(executor interface{ RegisterConstant(string, string) }, impl M
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "math"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Math_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("math.Abs", bridge, Math_FFI_Schemas[0].MethodID, Math_FFI_Schemas[0].Sig, Math_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("math.Ceil", bridge, Math_FFI_Schemas[1].MethodID, Math_FFI_Schemas[1].Sig, Math_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("math.Floor", bridge, Math_FFI_Schemas[2].MethodID, Math_FFI_Schemas[2].Sig, Math_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("math.Round", bridge, Math_FFI_Schemas[3].MethodID, Math_FFI_Schemas[3].Sig, Math_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("math.Sqrt", bridge, Math_FFI_Schemas[4].MethodID, Math_FFI_Schemas[4].Sig, Math_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("math.Pow", bridge, Math_FFI_Schemas[5].MethodID, Math_FFI_Schemas[5].Sig, Math_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("math.Min", bridge, Math_FFI_Schemas[6].MethodID, Math_FFI_Schemas[6].Sig, Math_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("math.Max", bridge, Math_FFI_Schemas[7].MethodID, Math_FFI_Schemas[7].Sig, Math_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("math.Sin", bridge, Math_FFI_Schemas[8].MethodID, Math_FFI_Schemas[8].Sig, Math_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("math.Cos", bridge, Math_FFI_Schemas[9].MethodID, Math_FFI_Schemas[9].Sig, Math_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("math.Tan", bridge, Math_FFI_Schemas[10].MethodID, Math_FFI_Schemas[10].Sig, Math_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("math.Exp", bridge, Math_FFI_Schemas[11].MethodID, Math_FFI_Schemas[11].Sig, Math_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("math.Log", bridge, Math_FFI_Schemas[12].MethodID, Math_FFI_Schemas[12].Sig, Math_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("math.Log10", bridge, Math_FFI_Schemas[13].MethodID, Math_FFI_Schemas[13].Sig, Math_FFI_Schemas[13].Doc)
+	registrar.RegisterFFISchema("math.NaN", bridge, Math_FFI_Schemas[14].MethodID, Math_FFI_Schemas[14].Sig, Math_FFI_Schemas[14].Doc)
+	registrar.RegisterFFISchema("math.IsNaN", bridge, Math_FFI_Schemas[15].MethodID, Math_FFI_Schemas[15].Sig, Math_FFI_Schemas[15].Doc)
+	registrar.RegisterFFISchema("math.Inf", bridge, Math_FFI_Schemas[16].MethodID, Math_FFI_Schemas[16].Sig, Math_FFI_Schemas[16].Doc)
+	registrar.RegisterFFISchema("math.IsInf", bridge, Math_FFI_Schemas[17].MethodID, Math_FFI_Schemas[17].Sig, Math_FFI_Schemas[17].Doc)
 	executor.RegisterConstant("math.E", ffigo.ToConstantString(2.71828182845904523536))
 	executor.RegisterConstant("math.Pi", ffigo.ToConstantString(3.14159265358979323846))
 }

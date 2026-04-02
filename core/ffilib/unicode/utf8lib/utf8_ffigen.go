@@ -4,7 +4,6 @@ package utf8lib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -251,12 +250,10 @@ func RegisterUTF8(executor interface{ RegisterConstant(string, string) }, impl U
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "unicode/utf8"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range UTF8_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("unicode/utf8.DecodeRuneInString", bridge, UTF8_FFI_Schemas[0].MethodID, UTF8_FFI_Schemas[0].Sig, UTF8_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("unicode/utf8.EncodeRune", bridge, UTF8_FFI_Schemas[1].MethodID, UTF8_FFI_Schemas[1].Sig, UTF8_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("unicode/utf8.FullRuneInString", bridge, UTF8_FFI_Schemas[2].MethodID, UTF8_FFI_Schemas[2].Sig, UTF8_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("unicode/utf8.RuneCountInString", bridge, UTF8_FFI_Schemas[3].MethodID, UTF8_FFI_Schemas[3].Sig, UTF8_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("unicode/utf8.RuneLen", bridge, UTF8_FFI_Schemas[4].MethodID, UTF8_FFI_Schemas[4].Sig, UTF8_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("unicode/utf8.ValidString", bridge, UTF8_FFI_Schemas[5].MethodID, UTF8_FFI_Schemas[5].Sig, UTF8_FFI_Schemas[5].Doc)
 }

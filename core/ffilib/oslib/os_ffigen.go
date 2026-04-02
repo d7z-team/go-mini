@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -465,14 +464,13 @@ func RegisterOS(executor interface{ RegisterConstant(string, string) }, impl OS,
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "os"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range OS_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("os.Open", bridge, OS_FFI_Schemas[0].MethodID, OS_FFI_Schemas[0].Sig, OS_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("os.Create", bridge, OS_FFI_Schemas[1].MethodID, OS_FFI_Schemas[1].Sig, OS_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("os.OpenFile", bridge, OS_FFI_Schemas[2].MethodID, OS_FFI_Schemas[2].Sig, OS_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("os.ReadFile", bridge, OS_FFI_Schemas[3].MethodID, OS_FFI_Schemas[3].Sig, OS_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("os.WriteFile", bridge, OS_FFI_Schemas[4].MethodID, OS_FFI_Schemas[4].Sig, OS_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("os.Remove", bridge, OS_FFI_Schemas[5].MethodID, OS_FFI_Schemas[5].Sig, OS_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("os.Getenv", bridge, OS_FFI_Schemas[6].MethodID, OS_FFI_Schemas[6].Sig, OS_FFI_Schemas[6].Doc)
 	executor.RegisterConstant("os.DevNull", ffigo.ToConstantString(os.DevNull))
 	executor.RegisterConstant("os.O_APPEND", ffigo.ToConstantString(os.O_APPEND))
 	executor.RegisterConstant("os.O_CREATE", ffigo.ToConstantString(os.O_CREATE))

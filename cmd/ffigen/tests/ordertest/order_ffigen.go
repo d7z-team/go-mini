@@ -4,7 +4,6 @@ package ordertest
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -311,10 +310,10 @@ var OrderService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>, Error)")), "New 创建新订单"},
-	{"AddItem", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>, String, Float64) Error")), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>) tuple(Float64, Error)")), "GetTotal 获取总价"},
-	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>) Error")), "Close 关闭订单"},
+	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<order.Order>, Error)")), "New 创建新订单"},
+	{"AddItem", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>, String, Float64) Error")), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>) tuple(Float64, Error)")), "GetTotal 获取总价"},
+	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>) Error")), "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {
@@ -337,7 +336,13 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterOrderServiceLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl OrderService, registry *ffigo.HandleRegistry) {
+var Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { Closed Bool; ID String; Items Array<order.Item>; }"))
+
+var Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", ast.GoMiniType("struct { Name String; Price Float64; }"))
+
+var OrderService_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }"))
+
+func RegisterOrderService(executor interface{ RegisterConstant(string, string) }, impl OrderService, registry *ffigo.HandleRegistry) {
 	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
@@ -346,11 +351,10 @@ func RegisterOrderServiceLibrary(executor interface{ RegisterConstant(string, st
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range OrderService_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("order.New", bridge, OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_order.Order_AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("__method_order.Order_GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("__method_order.Order_Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
+	registrar.RegisterStructSchema("order.Item", Item_FFI_StructSchema)
+	registrar.RegisterStructSchema("order.Order", OrderService_StructSchema)
 }

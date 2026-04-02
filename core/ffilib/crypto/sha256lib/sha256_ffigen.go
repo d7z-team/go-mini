@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -101,14 +100,7 @@ func RegisterSHA256(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "crypto/sha256"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range SHA256_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("crypto/sha256.Sum256", bridge, SHA256_FFI_Schemas[0].MethodID, SHA256_FFI_Schemas[0].Sig, SHA256_FFI_Schemas[0].Doc)
 	executor.RegisterConstant("crypto/sha256.BlockSize", ffigo.ToConstantString(sha256.BlockSize))
 	executor.RegisterConstant("crypto/sha256.Size", ffigo.ToConstantString(sha256.Size))
 }

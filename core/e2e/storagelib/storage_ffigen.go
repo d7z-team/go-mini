@@ -4,7 +4,6 @@ package storagelib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -129,12 +128,6 @@ func RegisterStorageAPI(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "storage"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range StorageAPI_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("storage.SetCapacity", bridge, StorageAPI_FFI_Schemas[0].MethodID, StorageAPI_FFI_Schemas[0].Sig, StorageAPI_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("storage.GetStatus", bridge, StorageAPI_FFI_Schemas[1].MethodID, StorageAPI_FFI_Schemas[1].Sig, StorageAPI_FFI_Schemas[1].Doc)
 }

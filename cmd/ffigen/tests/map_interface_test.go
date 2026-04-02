@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out ffi_map_ffigen_test.go map_interface_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out ffi_map_ffigen_test.go map_interface_test.go
 package tests
 
 import "context"

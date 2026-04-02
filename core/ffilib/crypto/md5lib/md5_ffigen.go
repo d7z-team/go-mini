@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -101,14 +100,7 @@ func RegisterMD5(executor interface{ RegisterConstant(string, string) }, impl MD
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "crypto/md5"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range MD5_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("crypto/md5.Sum", bridge, MD5_FFI_Schemas[0].MethodID, MD5_FFI_Schemas[0].Sig, MD5_FFI_Schemas[0].Doc)
 	executor.RegisterConstant("crypto/md5.BlockSize", ffigo.ToConstantString(md5.BlockSize))
 	executor.RegisterConstant("crypto/md5.Size", ffigo.ToConstantString(md5.Size))
 }

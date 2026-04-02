@@ -4,7 +4,6 @@ package sortlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -302,12 +301,10 @@ func RegisterSort(executor interface{ RegisterConstant(string, string) }, impl S
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "sort"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Sort_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("sort.Ints", bridge, Sort_FFI_Schemas[0].MethodID, Sort_FFI_Schemas[0].Sig, Sort_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("sort.Float64s", bridge, Sort_FFI_Schemas[1].MethodID, Sort_FFI_Schemas[1].Sig, Sort_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("sort.Strings", bridge, Sort_FFI_Schemas[2].MethodID, Sort_FFI_Schemas[2].Sig, Sort_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("sort.IntsAreSorted", bridge, Sort_FFI_Schemas[3].MethodID, Sort_FFI_Schemas[3].Sig, Sort_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("sort.Float64sAreSorted", bridge, Sort_FFI_Schemas[4].MethodID, Sort_FFI_Schemas[4].Sig, Sort_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("sort.StringsAreSorted", bridge, Sort_FFI_Schemas[5].MethodID, Sort_FFI_Schemas[5].Sig, Sort_FFI_Schemas[5].Doc)
 }

@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg byteslib -module bytes -path gopkg.d7z.net/go-mini/core/ffilib/byteslib -out bytes_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg byteslib -out bytes_ffigen.go interface.go
 package byteslib
 
 // Bytes 接口定义了字节切片处理操作

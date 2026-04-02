@@ -4,7 +4,6 @@ package byteslib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -500,12 +499,18 @@ func RegisterBytes(executor interface{ RegisterConstant(string, string) }, impl 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "bytes"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Bytes_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("bytes.Contains", bridge, Bytes_FFI_Schemas[0].MethodID, Bytes_FFI_Schemas[0].Sig, Bytes_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("bytes.Count", bridge, Bytes_FFI_Schemas[1].MethodID, Bytes_FFI_Schemas[1].Sig, Bytes_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("bytes.HasPrefix", bridge, Bytes_FFI_Schemas[2].MethodID, Bytes_FFI_Schemas[2].Sig, Bytes_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("bytes.HasSuffix", bridge, Bytes_FFI_Schemas[3].MethodID, Bytes_FFI_Schemas[3].Sig, Bytes_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("bytes.Index", bridge, Bytes_FFI_Schemas[4].MethodID, Bytes_FFI_Schemas[4].Sig, Bytes_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("bytes.LastIndex", bridge, Bytes_FFI_Schemas[5].MethodID, Bytes_FFI_Schemas[5].Sig, Bytes_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("bytes.ToLower", bridge, Bytes_FFI_Schemas[6].MethodID, Bytes_FFI_Schemas[6].Sig, Bytes_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("bytes.ToUpper", bridge, Bytes_FFI_Schemas[7].MethodID, Bytes_FFI_Schemas[7].Sig, Bytes_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("bytes.Trim", bridge, Bytes_FFI_Schemas[8].MethodID, Bytes_FFI_Schemas[8].Sig, Bytes_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("bytes.TrimSpace", bridge, Bytes_FFI_Schemas[9].MethodID, Bytes_FFI_Schemas[9].Sig, Bytes_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("bytes.Split", bridge, Bytes_FFI_Schemas[10].MethodID, Bytes_FFI_Schemas[10].Sig, Bytes_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("bytes.Join", bridge, Bytes_FFI_Schemas[11].MethodID, Bytes_FFI_Schemas[11].Sig, Bytes_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("bytes.Repeat", bridge, Bytes_FFI_Schemas[12].MethodID, Bytes_FFI_Schemas[12].Sig, Bytes_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("bytes.ReplaceAll", bridge, Bytes_FFI_Schemas[13].MethodID, Bytes_FFI_Schemas[13].Sig, Bytes_FFI_Schemas[13].Doc)
 }

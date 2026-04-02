@@ -4,7 +4,6 @@ package regexplib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -405,12 +404,11 @@ func RegisterRegexp(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "regexp"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Regexp_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("regexp.Match", bridge, Regexp_FFI_Schemas[0].MethodID, Regexp_FFI_Schemas[0].Sig, Regexp_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("regexp.MatchString", bridge, Regexp_FFI_Schemas[1].MethodID, Regexp_FFI_Schemas[1].Sig, Regexp_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("regexp.QuoteMeta", bridge, Regexp_FFI_Schemas[2].MethodID, Regexp_FFI_Schemas[2].Sig, Regexp_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("regexp.FindString", bridge, Regexp_FFI_Schemas[3].MethodID, Regexp_FFI_Schemas[3].Sig, Regexp_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("regexp.FindStringSubmatch", bridge, Regexp_FFI_Schemas[4].MethodID, Regexp_FFI_Schemas[4].Sig, Regexp_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("regexp.ReplaceAllString", bridge, Regexp_FFI_Schemas[5].MethodID, Regexp_FFI_Schemas[5].Sig, Regexp_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("regexp.Split", bridge, Regexp_FFI_Schemas[6].MethodID, Regexp_FFI_Schemas[6].Sig, Regexp_FFI_Schemas[6].Doc)
 }

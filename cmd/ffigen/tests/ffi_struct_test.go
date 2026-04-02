@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out ffi_struct_ffigen_test.go ffi_struct_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out ffi_struct_ffigen_test.go ffi_struct_test.go
 package tests
 
 import (

@@ -4,7 +4,6 @@ package randlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -273,12 +272,11 @@ func RegisterRand(executor interface{ RegisterConstant(string, string) }, impl R
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "math/rand"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Rand_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("math/rand.Float64", bridge, Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("math/rand.Int", bridge, Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("math/rand.Intn", bridge, Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("math/rand.Int63", bridge, Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("math/rand.Int63n", bridge, Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("math/rand.Seed", bridge, Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("math/rand.Perm", bridge, Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
 }

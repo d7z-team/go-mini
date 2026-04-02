@@ -4,7 +4,6 @@ package errorslib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -124,12 +123,5 @@ func RegisterErrors(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "errors"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Errors_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("errors.New", bridge, Errors_FFI_Schemas[0].MethodID, Errors_FFI_Schemas[0].Sig, Errors_FFI_Schemas[0].Doc)
 }

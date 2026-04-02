@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg sha256lib -path gopkg.d7z.net/go-mini/core/ffilib/crypto/sha256lib -out sha256_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg sha256lib -out sha256_ffigen.go interface.go
 package sha256lib
 
 import (

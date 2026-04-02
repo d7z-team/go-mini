@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg imagelib -module image -path gopkg.d7z.net/go-mini/core/ffilib/imagelib -out image_ffigen.go interface.go host.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg imagelib -out image_ffigen.go interface.go host.go
 package imagelib
 
 import "context"

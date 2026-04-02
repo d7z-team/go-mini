@@ -4,7 +4,6 @@ package base64lib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -232,12 +231,8 @@ func RegisterBase64(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "encoding/base64"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Base64_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("encoding/base64.EncodeToString", bridge, Base64_FFI_Schemas[0].MethodID, Base64_FFI_Schemas[0].Sig, Base64_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("encoding/base64.DecodeString", bridge, Base64_FFI_Schemas[1].MethodID, Base64_FFI_Schemas[1].Sig, Base64_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("encoding/base64.URLEncodeToString", bridge, Base64_FFI_Schemas[2].MethodID, Base64_FFI_Schemas[2].Sig, Base64_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("encoding/base64.URLDecodeString", bridge, Base64_FFI_Schemas[3].MethodID, Base64_FFI_Schemas[3].Sig, Base64_FFI_Schemas[3].Doc)
 }

@@ -150,9 +150,9 @@ func (c *Calculator) Add(x Int64) Int64 { return c.Base + x }
 在你的接口或结构体文件顶部添加 `//go:generate` 指令，并将其集成到项目的 `make gen` 流程中。
 
 ```go
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -path <import-path> -out order_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
-*注：`-path` 参数可选。如果省略，`ffigen` 会尝试自动推导当前包的完整导入路径。*
+*注：`ffigen` 现在只保留 `-pkg` 和 `-out`。模块名以源码中的 `ffigen:module` 注释为准。*
 
 ### 4. 注册到执行引擎
 

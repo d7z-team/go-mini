@@ -4,7 +4,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -134,14 +133,35 @@ func RegisterLogger(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "logger"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Logger_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("logger.Log", bridge, Logger_FFI_Schemas[0].MethodID, Logger_FFI_Schemas[0].Sig, Logger_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("logger.Internal", bridge, Logger_FFI_Schemas[1].MethodID, Logger_FFI_Schemas[1].Sig, Logger_FFI_Schemas[1].Doc)
+	executor.RegisterConstant("logger.MethodID_AdvancedFFI_EchoEmbedded", ffigo.ToConstantString(4))
+	executor.RegisterConstant("logger.MethodID_AdvancedFFI_EchoMap", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_AdvancedFFI_GetSameObject", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_AdvancedFFI_IsSame", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_ContextMock_WithContext", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_ContextMock_WithoutContext", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
+	executor.RegisterConstant("logger.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_MockOS_Close", ffigo.ToConstantString(6))
+	executor.RegisterConstant("logger.MethodID_MockOS_Deep", ffigo.ToConstantString(7))
+	executor.RegisterConstant("logger.MethodID_MockOS_Name", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_MockOS_Open", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_MockOS_Read", ffigo.ToConstantString(4))
+	executor.RegisterConstant("logger.MethodID_MockOS_Stat", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_MockOS_Write", ffigo.ToConstantString(5))
+	executor.RegisterConstant("logger.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_NativeMock_GetPtr", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
+	executor.RegisterConstant("logger.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
+	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
 }
 
 const (
@@ -260,14 +280,35 @@ func RegisterCallback(executor interface{ RegisterConstant(string, string) }, im
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "callback"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Callback_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("callback.OnEvent", bridge, Callback_FFI_Schemas[0].MethodID, Callback_FFI_Schemas[0].Sig, Callback_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("callback.OnRaw", bridge, Callback_FFI_Schemas[1].MethodID, Callback_FFI_Schemas[1].Sig, Callback_FFI_Schemas[1].Doc)
+	executor.RegisterConstant("callback.MethodID_AdvancedFFI_EchoEmbedded", ffigo.ToConstantString(4))
+	executor.RegisterConstant("callback.MethodID_AdvancedFFI_EchoMap", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_AdvancedFFI_GetSameObject", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_AdvancedFFI_IsSame", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_ContextMock_WithContext", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_ContextMock_WithoutContext", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
+	executor.RegisterConstant("callback.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_MockOS_Close", ffigo.ToConstantString(6))
+	executor.RegisterConstant("callback.MethodID_MockOS_Deep", ffigo.ToConstantString(7))
+	executor.RegisterConstant("callback.MethodID_MockOS_Name", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_MockOS_Open", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_MockOS_Read", ffigo.ToConstantString(4))
+	executor.RegisterConstant("callback.MethodID_MockOS_Stat", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_MockOS_Write", ffigo.ToConstantString(5))
+	executor.RegisterConstant("callback.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_NativeMock_GetPtr", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
+	executor.RegisterConstant("callback.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
+	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
 }
 
 type Callback_ReverseProxy struct {

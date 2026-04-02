@@ -1,4 +1,4 @@
-//go:generate go run ../../../cmd/ffigen/main.go -pkg structtest -path gopkg.d7z.net/go-mini/core/e2e/structtest -out ffigen.go host.go
+//go:generate go run ../../../cmd/ffigen/main.go -pkg structtest -out ffigen.go host.go
 package structtest
 
 import "context"

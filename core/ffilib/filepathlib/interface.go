@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg filepathlib -module filepath -path gopkg.d7z.net/go-mini/core/ffilib/filepathlib -out filepath_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg filepathlib -out filepath_ffigen.go interface.go
 package filepathlib
 
 // Filepath 接口定义了路径处理操作

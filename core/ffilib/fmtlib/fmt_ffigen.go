@@ -4,7 +4,6 @@ package fmtlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -279,12 +278,9 @@ func RegisterFmt(executor interface{ RegisterConstant(string, string) }, impl Fm
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "fmt"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Fmt_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("fmt.Print", bridge, Fmt_FFI_Schemas[0].MethodID, Fmt_FFI_Schemas[0].Sig, Fmt_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("fmt.Println", bridge, Fmt_FFI_Schemas[1].MethodID, Fmt_FFI_Schemas[1].Sig, Fmt_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("fmt.Printf", bridge, Fmt_FFI_Schemas[2].MethodID, Fmt_FFI_Schemas[2].Sig, Fmt_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("fmt.Sprintf", bridge, Fmt_FFI_Schemas[3].MethodID, Fmt_FFI_Schemas[3].Sig, Fmt_FFI_Schemas[3].Doc)
+	executor.RegisterConstant("fmt.FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
 }

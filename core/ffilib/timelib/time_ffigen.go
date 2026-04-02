@@ -4,7 +4,6 @@ package timelib
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 )
 import (
@@ -396,14 +395,13 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "time"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Module_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("time.Now", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("time.Unix", bridge, Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("time.Sleep", bridge, Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("time.Since", bridge, Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("time.Until", bridge, Module_FFI_Schemas[4].MethodID, Module_FFI_Schemas[4].Sig, Module_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("time.Parse", bridge, Module_FFI_Schemas[5].MethodID, Module_FFI_Schemas[5].Sig, Module_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("time.ParseDuration", bridge, Module_FFI_Schemas[6].MethodID, Module_FFI_Schemas[6].Sig, Module_FFI_Schemas[6].Doc)
 	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
 	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
 	executor.RegisterConstant("time.Kitchen", ffigo.ToConstantString(time.Kitchen))
@@ -870,13 +868,24 @@ func RegisterTime(executor interface{ RegisterConstant(string, string) }, regist
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_time.Time"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Time_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("__method_time.Time_Year", bridge, Time_FFI_Schemas[0].MethodID, Time_FFI_Schemas[0].Sig, Time_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Month", bridge, Time_FFI_Schemas[1].MethodID, Time_FFI_Schemas[1].Sig, Time_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Day", bridge, Time_FFI_Schemas[2].MethodID, Time_FFI_Schemas[2].Sig, Time_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Hour", bridge, Time_FFI_Schemas[3].MethodID, Time_FFI_Schemas[3].Sig, Time_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Minute", bridge, Time_FFI_Schemas[4].MethodID, Time_FFI_Schemas[4].Sig, Time_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Second", bridge, Time_FFI_Schemas[5].MethodID, Time_FFI_Schemas[5].Sig, Time_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Nanosecond", bridge, Time_FFI_Schemas[6].MethodID, Time_FFI_Schemas[6].Sig, Time_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Unix", bridge, Time_FFI_Schemas[7].MethodID, Time_FFI_Schemas[7].Sig, Time_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_UnixMilli", bridge, Time_FFI_Schemas[8].MethodID, Time_FFI_Schemas[8].Sig, Time_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_UnixMicro", bridge, Time_FFI_Schemas[9].MethodID, Time_FFI_Schemas[9].Sig, Time_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_UnixNano", bridge, Time_FFI_Schemas[10].MethodID, Time_FFI_Schemas[10].Sig, Time_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Format", bridge, Time_FFI_Schemas[11].MethodID, Time_FFI_Schemas[11].Sig, Time_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Add", bridge, Time_FFI_Schemas[12].MethodID, Time_FFI_Schemas[12].Sig, Time_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Sub", bridge, Time_FFI_Schemas[13].MethodID, Time_FFI_Schemas[13].Sig, Time_FFI_Schemas[13].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_IsZero", bridge, Time_FFI_Schemas[14].MethodID, Time_FFI_Schemas[14].Sig, Time_FFI_Schemas[14].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Before", bridge, Time_FFI_Schemas[15].MethodID, Time_FFI_Schemas[15].Sig, Time_FFI_Schemas[15].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_After", bridge, Time_FFI_Schemas[16].MethodID, Time_FFI_Schemas[16].Sig, Time_FFI_Schemas[16].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_Equal", bridge, Time_FFI_Schemas[17].MethodID, Time_FFI_Schemas[17].Sig, Time_FFI_Schemas[17].Doc)
+	registrar.RegisterFFISchema("__method_time.Time_String", bridge, Time_FFI_Schemas[18].MethodID, Time_FFI_Schemas[18].Sig, Time_FFI_Schemas[18].Doc)
 	registrar.RegisterStructSchema("time.Time", Time_StructSchema)
 }

@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out ffi_robustness_ffigen_test.go robustness_test.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out ffi_robustness_ffigen_test.go robustness_test.go
 package tests
 
 import (
@@ -41,8 +41,6 @@ func TestRobustness(t *testing.T) {
 	package main
 	import "fmt"
 	import "e2e"
-
-	type RobustPoint struct { X Int64; Y Int64 }
 
 	func main() {
 		// 1. 测试 len() 的各种场景

@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg stringslib -module strings -path gopkg.d7z.net/go-mini/core/ffilib/stringslib -out strings_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg stringslib -out strings_ffigen.go interface.go
 package stringslib
 
 // Strings 接口定义了字符串处理操作

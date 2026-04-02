@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg timelib -module time -path gopkg.d7z.net/go-mini/core/ffilib/timelib -out time_ffigen.go interface.go host.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg timelib -out time_ffigen.go interface.go host.go
 package timelib
 
 import (

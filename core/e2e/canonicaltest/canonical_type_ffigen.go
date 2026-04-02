@@ -4,7 +4,6 @@ package canonicaltest
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -122,8 +121,8 @@ var TestCanonicalService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewA", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type>")), ""},
-	{"NewB", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type>")), ""},
+	{"NewA", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Ptr<a_other.Type>")), ""},
+	{"NewB", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<b_other.Type>")), ""},
 }
 
 type TestCanonicalService_Bridge struct {
@@ -155,14 +154,8 @@ func RegisterTestCanonicalService(executor interface{ RegisterConstant(string, s
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "test_canonical"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range TestCanonicalService_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("test_canonical.NewA", bridge, TestCanonicalService_FFI_Schemas[0].MethodID, TestCanonicalService_FFI_Schemas[0].Sig, TestCanonicalService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("test_canonical.NewB", bridge, TestCanonicalService_FFI_Schemas[1].MethodID, TestCanonicalService_FFI_Schemas[1].Sig, TestCanonicalService_FFI_Schemas[1].Doc)
 }
 
 const (
@@ -237,7 +230,7 @@ var ATypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type>) String")), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<a_other.Type>) String")), ""},
 }
 
 type ATypeService_Bridge struct {
@@ -260,7 +253,7 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var ATypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type", ast.GoMiniType("struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type>) String; }"))
+var ATypeService_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", ast.GoMiniType("struct { Hello function(Ptr<a_other.Type>) String; }"))
 
 func RegisterATypeService(executor interface{ RegisterConstant(string, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
@@ -271,15 +264,8 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range ATypeService_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
-	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type", ATypeService_StructSchema)
+	registrar.RegisterFFISchema("__method_a_other.Type_Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
+	registrar.RegisterStructSchema("a_other.Type", ATypeService_StructSchema)
 }
 
 const (
@@ -354,7 +340,7 @@ var BTypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type>) String")), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<b_other.Type>) String")), ""},
 }
 
 type BTypeService_Bridge struct {
@@ -377,7 +363,7 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var BTypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type", ast.GoMiniType("struct { Hello function(Ptr<gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type>) String; }"))
+var BTypeService_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", ast.GoMiniType("struct { Hello function(Ptr<b_other.Type>) String; }"))
 
 func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
@@ -388,13 +374,6 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range BTypeService_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
-	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type", BTypeService_StructSchema)
+	registrar.RegisterFFISchema("__method_b_other.Type_Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
+	registrar.RegisterStructSchema("b_other.Type", BTypeService_StructSchema)
 }

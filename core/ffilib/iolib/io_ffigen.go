@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -328,14 +327,9 @@ func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO,
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "io"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range IO_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("io.ReadAll", bridge, IO_FFI_Schemas[0].MethodID, IO_FFI_Schemas[0].Sig, IO_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("io.Copy", bridge, IO_FFI_Schemas[1].MethodID, IO_FFI_Schemas[1].Sig, IO_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("io.WriteString", bridge, IO_FFI_Schemas[2].MethodID, IO_FFI_Schemas[2].Sig, IO_FFI_Schemas[2].Doc)
 	executor.RegisterConstant("io.SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 	executor.RegisterConstant("io.SeekEnd", ffigo.ToConstantString(io.SeekEnd))
 	executor.RegisterConstant("io.SeekStart", ffigo.ToConstantString(io.SeekStart))
@@ -655,13 +649,14 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "__method_io.File"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range File_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("__method_io.File_Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("__method_io.File_WriteAt", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("__method_io.File_Seek", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("__method_io.File_Close", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("__method_io.File_Sync", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("__method_io.File_Truncate", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("__method_io.File_WriteString", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("__method_io.File_Name", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("__method_io.File_WriteNative", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
 	registrar.RegisterStructSchema("io.File", File_StructSchema)
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -492,7 +491,7 @@ var Strconv_FFI_Schemas = []struct {
 	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) tuple(Float64, Error)")), ""},
 	{"ParseInt", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64, Int64) tuple(Int64, Error)")), ""},
 	{"FormatBool", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Bool) String")), ""},
-	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Uint8, Int64, Int64) String")), ""},
+	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Int64, Int64, Int64) String")), ""},
 	{"FormatInt", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) String")), ""},
 	{"Quote", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
 	{"Unquote", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, Error)")), ""},
@@ -527,13 +526,15 @@ func RegisterStrconv(executor interface{ RegisterConstant(string, string) }, imp
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "strconv"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Strconv_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("strconv.Atoi", bridge, Strconv_FFI_Schemas[0].MethodID, Strconv_FFI_Schemas[0].Sig, Strconv_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("strconv.Itoa", bridge, Strconv_FFI_Schemas[1].MethodID, Strconv_FFI_Schemas[1].Sig, Strconv_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("strconv.ParseBool", bridge, Strconv_FFI_Schemas[2].MethodID, Strconv_FFI_Schemas[2].Sig, Strconv_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("strconv.ParseFloat", bridge, Strconv_FFI_Schemas[3].MethodID, Strconv_FFI_Schemas[3].Sig, Strconv_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("strconv.ParseInt", bridge, Strconv_FFI_Schemas[4].MethodID, Strconv_FFI_Schemas[4].Sig, Strconv_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("strconv.FormatBool", bridge, Strconv_FFI_Schemas[5].MethodID, Strconv_FFI_Schemas[5].Sig, Strconv_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("strconv.FormatFloat", bridge, Strconv_FFI_Schemas[6].MethodID, Strconv_FFI_Schemas[6].Sig, Strconv_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("strconv.FormatInt", bridge, Strconv_FFI_Schemas[7].MethodID, Strconv_FFI_Schemas[7].Sig, Strconv_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("strconv.Quote", bridge, Strconv_FFI_Schemas[8].MethodID, Strconv_FFI_Schemas[8].Sig, Strconv_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("strconv.Unquote", bridge, Strconv_FFI_Schemas[9].MethodID, Strconv_FFI_Schemas[9].Sig, Strconv_FFI_Schemas[9].Doc)
 	executor.RegisterConstant("strconv.IntSize", ffigo.ToConstantString(strconv.IntSize))
 }

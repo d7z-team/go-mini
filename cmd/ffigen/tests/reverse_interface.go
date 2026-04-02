@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out reverse_ffigen_test.go reverse_interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out reverse_ffigen_test.go reverse_interface.go
 package tests
 
 // ffigen:reverse

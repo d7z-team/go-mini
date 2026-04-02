@@ -1,6 +1,6 @@
 package tests
 
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out unnamed_params_ffigen.go unnamed_params_interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out unnamed_params_ffigen.go unnamed_params_interface.go
 
 import "context"
 

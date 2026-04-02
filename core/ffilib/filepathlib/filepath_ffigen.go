@@ -4,7 +4,6 @@ package filepathlib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -456,12 +455,16 @@ func RegisterFilepath(executor interface{ RegisterConstant(string, string) }, im
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "filepath"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Filepath_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("filepath.Base", bridge, Filepath_FFI_Schemas[0].MethodID, Filepath_FFI_Schemas[0].Sig, Filepath_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("filepath.Clean", bridge, Filepath_FFI_Schemas[1].MethodID, Filepath_FFI_Schemas[1].Sig, Filepath_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("filepath.Dir", bridge, Filepath_FFI_Schemas[2].MethodID, Filepath_FFI_Schemas[2].Sig, Filepath_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("filepath.Ext", bridge, Filepath_FFI_Schemas[3].MethodID, Filepath_FFI_Schemas[3].Sig, Filepath_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("filepath.IsAbs", bridge, Filepath_FFI_Schemas[4].MethodID, Filepath_FFI_Schemas[4].Sig, Filepath_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("filepath.Join", bridge, Filepath_FFI_Schemas[5].MethodID, Filepath_FFI_Schemas[5].Sig, Filepath_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("filepath.Match", bridge, Filepath_FFI_Schemas[6].MethodID, Filepath_FFI_Schemas[6].Sig, Filepath_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("filepath.Rel", bridge, Filepath_FFI_Schemas[7].MethodID, Filepath_FFI_Schemas[7].Sig, Filepath_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("filepath.Split", bridge, Filepath_FFI_Schemas[8].MethodID, Filepath_FFI_Schemas[8].Sig, Filepath_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("filepath.ToSlash", bridge, Filepath_FFI_Schemas[9].MethodID, Filepath_FFI_Schemas[9].Sig, Filepath_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("filepath.FromSlash", bridge, Filepath_FFI_Schemas[10].MethodID, Filepath_FFI_Schemas[10].Sig, Filepath_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("filepath.VolumeName", bridge, Filepath_FFI_Schemas[11].MethodID, Filepath_FFI_Schemas[11].Sig, Filepath_FFI_Schemas[11].Doc)
 }

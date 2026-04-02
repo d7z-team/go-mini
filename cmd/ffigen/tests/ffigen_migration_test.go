@@ -43,7 +43,8 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../cmd/ffigen/tests/ordertest/order_ffigen.go",
 			patterns: []string{
 				"var OrderService_FFI_Schemas = []struct {",
-				"Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>",
+				"Ptr<order.Order>",
+				"registrar.RegisterFFISchema(\"__method_order.Order_AddItem\"",
 				"registrar.RegisterFFISchema(",
 			},
 		},

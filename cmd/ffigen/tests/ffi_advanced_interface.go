@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -path gopkg.d7z.net/go-mini/cmd/ffigen/tests -out ffi_advanced_ffigen_test.go ffi_advanced_interface.go
+//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out ffi_advanced_ffigen_test.go ffi_advanced_interface.go
 package tests
 
 import (

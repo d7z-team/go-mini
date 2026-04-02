@@ -4,7 +4,6 @@ package stringslib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -593,12 +592,21 @@ func RegisterStrings(executor interface{ RegisterConstant(string, string) }, imp
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "strings"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range Strings_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("strings.Contains", bridge, Strings_FFI_Schemas[0].MethodID, Strings_FFI_Schemas[0].Sig, Strings_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("strings.ContainsAny", bridge, Strings_FFI_Schemas[1].MethodID, Strings_FFI_Schemas[1].Sig, Strings_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("strings.Count", bridge, Strings_FFI_Schemas[2].MethodID, Strings_FFI_Schemas[2].Sig, Strings_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("strings.HasPrefix", bridge, Strings_FFI_Schemas[3].MethodID, Strings_FFI_Schemas[3].Sig, Strings_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("strings.HasSuffix", bridge, Strings_FFI_Schemas[4].MethodID, Strings_FFI_Schemas[4].Sig, Strings_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("strings.Index", bridge, Strings_FFI_Schemas[5].MethodID, Strings_FFI_Schemas[5].Sig, Strings_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("strings.LastIndex", bridge, Strings_FFI_Schemas[6].MethodID, Strings_FFI_Schemas[6].Sig, Strings_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("strings.ToLower", bridge, Strings_FFI_Schemas[7].MethodID, Strings_FFI_Schemas[7].Sig, Strings_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("strings.ToUpper", bridge, Strings_FFI_Schemas[8].MethodID, Strings_FFI_Schemas[8].Sig, Strings_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("strings.Trim", bridge, Strings_FFI_Schemas[9].MethodID, Strings_FFI_Schemas[9].Sig, Strings_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("strings.TrimSpace", bridge, Strings_FFI_Schemas[10].MethodID, Strings_FFI_Schemas[10].Sig, Strings_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("strings.TrimPrefix", bridge, Strings_FFI_Schemas[11].MethodID, Strings_FFI_Schemas[11].Sig, Strings_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("strings.TrimSuffix", bridge, Strings_FFI_Schemas[12].MethodID, Strings_FFI_Schemas[12].Sig, Strings_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("strings.Replace", bridge, Strings_FFI_Schemas[13].MethodID, Strings_FFI_Schemas[13].Sig, Strings_FFI_Schemas[13].Doc)
+	registrar.RegisterFFISchema("strings.ReplaceAll", bridge, Strings_FFI_Schemas[14].MethodID, Strings_FFI_Schemas[14].Sig, Strings_FFI_Schemas[14].Doc)
+	registrar.RegisterFFISchema("strings.Split", bridge, Strings_FFI_Schemas[15].MethodID, Strings_FFI_Schemas[15].Sig, Strings_FFI_Schemas[15].Doc)
+	registrar.RegisterFFISchema("strings.Join", bridge, Strings_FFI_Schemas[16].MethodID, Strings_FFI_Schemas[16].Sig, Strings_FFI_Schemas[16].Doc)
 }

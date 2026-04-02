@@ -18,22 +18,40 @@ import (
 )
 
 var (
-	pkgName  = flag.String("pkg", "", "package name")
-	basePath = flag.String("path", "", "full import path of the current package (optional, will try to derive if empty)")
-	outFile  = flag.String("out", "", "output file")
-	module   = flag.String("module", "", "logical module name (e.g. 'time' or 'os')")
-	scanAll  = flag.Bool("scan", false, "scan all .go files in the directory for methods")
+	pkgName = flag.String("pkg", "", "package name")
+	outFile = flag.String("out", "", "output file")
 
 	// 类型推导上下文
 	typeInfo     *types.Info
 	fset         *token.FileSet
 	knownImports map[string]string
+	moduleCache  map[string]string
+	packagePath  string
 )
+
+type targetMeta struct {
+	moduleName    string
+	methodsPrefix string
+	methodsMarked bool
+	reverse       bool
+	structTarget  bool
+}
+
+type ffigenTarget struct {
+	spec *ast.TypeSpec
+	meta targetMeta
+}
+
+type displayTypeResolver struct {
+	moduleName        string
+	importAliases     map[string]string
+	collidingBaseName map[string]bool
+}
 
 func main() {
 	flag.Parse()
 	if *pkgName == "" || *outFile == "" {
-		fmt.Println("Usage: ffigen -pkg <name> [-path <full_import_path>] -out <file> [input files...]")
+		fmt.Println("Usage: ffigen -pkg <name> -out <file> [input files...]")
 		os.Exit(1)
 	}
 
@@ -42,24 +60,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Try to derive basePath if not provided
-	if *basePath == "" {
-		// Run go list in the directory of the first input file
+	{
 		dir := filepath.Dir(flag.Args()[0])
 		cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}")
 		cmd.Dir = dir
 		out, err := cmd.Output()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error deriving import path in %s: %v\n", dir, err)
-			fmt.Fprintf(os.Stderr, "Please provide -path explicitly.\n")
 			os.Exit(1)
 		}
-		derived := strings.TrimSpace(string(out))
-		if derived == "" || derived == "." {
-			fmt.Fprintf(os.Stderr, "Error: derived import path is empty or invalid. Please provide -path explicitly.\n")
+		packagePath = strings.TrimSpace(string(out))
+		if packagePath == "" || packagePath == "." {
+			fmt.Fprintf(os.Stderr, "Error: derived import path is empty or invalid.\n")
 			os.Exit(1)
 		}
-		basePath = &derived
 	}
 
 	fset = token.NewFileSet()
@@ -79,9 +93,8 @@ func main() {
 		}
 
 		dir := filepath.Dir(absPath)
-		if *scanAll && !seenDirs[dir] {
+		if !seenDirs[dir] {
 			seenDirs[dir] = true
-			// Parse all .go files in this directory
 			entries, err := os.ReadDir(dir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error reading directory %s: %v\n", dir, err)
@@ -143,43 +156,12 @@ func main() {
 	typeInfo = info
 	_, _ = conf.Check(*pkgName, fset, allFiles, info)
 
-	// Step 0: Find ffigen:module in allFiles and update *module if found
-	for _, f := range allFiles {
-		if f.Doc != nil {
-			for _, line := range f.Doc.List {
-				if strings.Contains(line.Text, "ffigen:module") {
-					parts := strings.Fields(line.Text)
-					for i, p := range parts {
-						if p == "ffigen:module" && i+1 < len(parts) {
-							*module = parts[i+1]
-							break
-						}
-					}
-				}
-			}
-		}
-		// Also scan GenDecl docs (some files might have it there)
-		for _, decl := range f.Decls {
-			if gd, ok := decl.(*ast.GenDecl); ok && gd.Doc != nil {
-				for _, line := range gd.Doc.List {
-					if strings.Contains(line.Text, "ffigen:module") {
-						parts := strings.Fields(line.Text)
-						for i, p := range parts {
-							if p == "ffigen:module" && i+1 < len(parts) {
-								*module = parts[i+1]
-								break
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	var ifaceSpecs []*ast.TypeSpec
-	globalConsts := make(map[string]map[string]string) // pkg -> name -> value
+	packageDefaultModule := derivePackageDefaultModule(allFiles)
+	var targets []ffigenTarget
+	globalConsts := make(map[string]string)
 	structs := make(map[string]*ast.StructType)
 	knownImports = make(map[string]string)
+	moduleCache = make(map[string]string)
 
 	// Step 1: Collect package-wide information from allFiles
 	for _, node := range allFiles {
@@ -204,29 +186,13 @@ func main() {
 						}
 					}
 					if valSpec, ok := spec.(*ast.ValueSpec); ok {
-						hasFfigenModule := false
-						if gd.Doc != nil {
-							for _, line := range gd.Doc.List {
-								if strings.Contains(line.Text, "ffigen:module") {
-									hasFfigenModule = true
-									break
-								}
+						for i, name := range valSpec.Names {
+							if !name.IsExported() || i >= len(valSpec.Values) {
+								continue
 							}
-						}
-
-						if hasFfigenModule || *scanAll {
-							for i, name := range valSpec.Names {
-								if name.IsExported() {
-									if i < len(valSpec.Values) {
-										val := exprToString(valSpec.Values[i])
-										if val != "" {
-											if globalConsts[*pkgName] == nil {
-												globalConsts[*pkgName] = make(map[string]string)
-											}
-											globalConsts[*pkgName][name.Name] = val
-										}
-									}
-								}
+							val := exprToString(valSpec.Values[i])
+							if val != "" {
+								globalConsts[name.Name] = val
 							}
 						}
 					}
@@ -242,45 +208,39 @@ func main() {
 			if gd, ok := n.(*ast.GenDecl); ok {
 				for _, spec := range gd.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-						if typeSpec.Doc == nil {
-							typeSpec.Doc = gd.Doc
-						}
-
-						hasFfigen := false
-						if typeSpec.Doc != nil {
-							for _, line := range typeSpec.Doc.List {
-								if strings.Contains(line.Text, "ffigen:") {
-									hasFfigen = true
-									break
-								}
-							}
-						}
+						meta := parseTargetMeta(resolveTargetDoc(node, gd, typeSpec))
 
 						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-							ifaceSpecs = append(ifaceSpecs, typeSpec)
+							targets = append(targets, ffigenTarget{
+								spec: typeSpec,
+								meta: materializeTargetMeta(meta, packageDefaultModule),
+							})
 						} else if _, ok := typeSpec.Type.(*ast.StructType); ok {
-							if hasFfigen {
+							if meta.moduleName != "" || meta.methodsMarked || meta.reverse {
 								isModule := false
-								if typeSpec.Doc != nil {
-									for _, line := range typeSpec.Doc.List {
-										if strings.Contains(line.Text, "ffigen:module") {
-											isModule = true
-											break
-										}
-									}
+								if meta.moduleName != "" {
+									isModule = true
+								}
+								methodsPrefix := meta.methodsPrefix
+								if meta.methodsMarked && methodsPrefix == "" {
+									methodsPrefix = typeSpec.Name.Name
 								}
 
 								methods := findMethodsForStruct(allFiles, typeSpec.Name.Name)
 								if len(methods) > 0 {
-									// Only add receiver if it's NOT a module (i.e. it's ffigen:methods)
 									virtualIface := synthesizeInterface(methods, !isModule)
 									virtualSpec := *typeSpec
 									virtualSpec.Type = virtualIface
-									if virtualSpec.Doc == nil {
-										virtualSpec.Doc = &ast.CommentGroup{}
-									}
-									virtualSpec.Doc.List = append(virtualSpec.Doc.List, &ast.Comment{Text: "// ffigen:struct"})
-									ifaceSpecs = append(ifaceSpecs, &virtualSpec)
+									targets = append(targets, ffigenTarget{
+										spec: &virtualSpec,
+										meta: materializeTargetMeta(targetMeta{
+											moduleName:    meta.moduleName,
+											methodsPrefix: methodsPrefix,
+											methodsMarked: meta.methodsMarked,
+											reverse:       meta.reverse,
+											structTarget:  true,
+										}, packageDefaultModule),
+									})
 								}
 							}
 						}
@@ -292,20 +252,8 @@ func main() {
 	}
 
 	var interfaces []string
-	for _, spec := range ifaceSpecs {
-		isReverse := false
-		isStruct := false
-		if spec.Doc != nil {
-			for _, line := range spec.Doc.List {
-				if strings.Contains(line.Text, "ffigen:reverse") {
-					isReverse = true
-				}
-				if strings.Contains(line.Text, "ffigen:struct") {
-					isStruct = true
-				}
-			}
-		}
-		interfaces = append(interfaces, generateCode(*pkgName, spec, structs, isReverse, isStruct, globalConsts[*pkgName]))
+	for _, target := range targets {
+		interfaces = append(interfaces, generateCode(*pkgName, target.spec, structs, target.meta, globalConsts))
 	}
 
 	fullInterfaces := strings.Join(interfaces, "\n")
@@ -466,40 +414,433 @@ func resolveToBasicType(e ast.Expr) string {
 	return ""
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, isReverse, isStruct bool, constants map[string]string) string {
+func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
+	var meta targetMeta
+	if doc == nil {
+		return meta
+	}
+	for _, comment := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+		if !strings.HasPrefix(text, "ffigen:") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(text, "ffigen:module"):
+			meta.moduleName = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:module"))
+		case strings.HasPrefix(text, "ffigen:methods"):
+			meta.methodsMarked = true
+			meta.methodsPrefix = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:methods"))
+		case text == "ffigen:reverse":
+			meta.reverse = true
+		}
+	}
+	return meta
+}
+
+func derivePackageDefaultModule(files []*ast.File) string {
+	return deriveModuleFromFiles(fset, files)
+}
+
+func materializeTargetMeta(meta targetMeta, defaultModule string) targetMeta {
+	if meta.moduleName == "" && meta.methodsPrefix != "" {
+		meta.moduleName = defaultModule
+	}
+	return meta
+}
+
+func resolveImportedModule(importPath string) string {
+	if importPath == "" {
+		return ""
+	}
+	if moduleName, ok := moduleCache[importPath]; ok {
+		return moduleName
+	}
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", importPath)
+	out, err := cmd.Output()
+	if err != nil {
+		moduleCache[importPath] = ""
+		return ""
+	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" {
+		moduleCache[importPath] = ""
+		return ""
+	}
+	tempSet := token.NewFileSet()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		moduleCache[importPath] = ""
+		return ""
+	}
+	var files []*ast.File
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+		filePath := filepath.Join(dir, entry.Name())
+		file, parseErr := parser.ParseFile(tempSet, filePath, nil, parser.ParseComments)
+		if parseErr == nil {
+			files = append(files, file)
+		}
+	}
+	moduleName := deriveModuleFromFiles(tempSet, files)
+	moduleCache[importPath] = moduleName
+	return moduleName
+}
+
+func deriveModuleFromFiles(fileSet *token.FileSet, files []*ast.File) string {
+	modules := make(map[string]bool)
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				doc := resolveTargetDocWithFileSet(fileSet, file, genDecl, typeSpec)
+				meta := parseTargetMeta(doc)
+				if meta.moduleName != "" {
+					modules[meta.moduleName] = true
+				}
+			}
+		}
+	}
+	if len(modules) != 1 {
+		return ""
+	}
+	for moduleName := range modules {
+		return moduleName
+	}
+	return ""
+}
+
+func resolveTargetDoc(file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {
+	return resolveTargetDocWithFileSet(fset, file, genDecl, typeSpec)
+}
+
+func resolveTargetDocWithFileSet(fileSet *token.FileSet, file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {
+	if typeSpec.Doc != nil {
+		return typeSpec.Doc
+	}
+	if genDecl.Doc != nil {
+		return genDecl.Doc
+	}
+	specLine := fileSet.Position(typeSpec.Pos()).Line
+	var best *ast.CommentGroup
+	bestLine := -1
+	for _, group := range file.Comments {
+		endLine := fileSet.Position(group.End()).Line
+		if endLine >= specLine || specLine-endLine > 2 {
+			continue
+		}
+		if endLine > bestLine {
+			best = group
+			bestLine = endLine
+		}
+	}
+	return best
+}
+
+func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string) *displayTypeResolver {
+	resolver := &displayTypeResolver{
+		moduleName:        moduleName,
+		importAliases:     make(map[string]string, len(knownImports)),
+		collidingBaseName: make(map[string]bool),
+	}
+	for alias, path := range knownImports {
+		resolver.importAliases[alias] = path
+	}
+	nameOwners := make(map[string]string)
+	record := func(typeName string) {
+		for _, named := range collectNamedTypeRefs(typeName) {
+			baseName := named
+			if idx := strings.LastIndex(baseName, "."); idx >= 0 {
+				baseName = baseName[idx+1:]
+			}
+			owner := named
+			if idx := strings.Index(owner, "."); idx >= 0 {
+				owner = owner[:idx]
+			}
+			if previous, ok := nameOwners[baseName]; ok && previous != owner {
+				resolver.collidingBaseName[baseName] = true
+				continue
+			}
+			nameOwners[baseName] = owner
+		}
+	}
+	record(methodsPrefix)
+	if iface != nil {
+		for _, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
+			}
+			funcType := method.Type.(*ast.FuncType)
+			if funcType.Params != nil {
+				for _, param := range funcType.Params.List {
+					record(typeToString(param.Type))
+				}
+			}
+			if funcType.Results != nil {
+				for _, result := range funcType.Results.List {
+					record(typeToString(result.Type))
+				}
+			}
+		}
+	}
+	for _, structName := range collectReferencedStructs(iface, structs) {
+		fieldMap := make(map[string]string)
+		getFields(structs, structName, fieldMap)
+		for _, fieldType := range fieldMap {
+			record(fieldType)
+		}
+	}
+	return resolver
+}
+
+func collectNamedTypeRefs(typeName string) []string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return nil
+	}
+	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+		return collectNamedTypeRefs(typeName[4 : len(typeName)-1])
+	}
+	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
+		return collectNamedTypeRefs(typeName[6 : len(typeName)-1])
+	}
+	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
+		inner := typeName[4 : len(typeName)-1]
+		parts := strings.SplitN(inner, ",", 2)
+		if len(parts) != 2 {
+			return nil
+		}
+		return append(
+			collectNamedTypeRefs(strings.TrimSpace(parts[0])),
+			collectNamedTypeRefs(strings.TrimSpace(parts[1]))...,
+		)
+	}
+	if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
+		var refs []string
+		for _, part := range strings.Split(typeName[6:len(typeName)-1], ",") {
+			refs = append(refs, collectNamedTypeRefs(strings.TrimSpace(part))...)
+		}
+		return refs
+	}
+	if isPrimitive(typeName) || typeName == "error" || typeName == "any" || typeName == "interface{}" || typeName == "context.Context" || typeName == "Context" {
+		return nil
+	}
+	return []string{typeName}
+}
+
+func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return "Any"
+	}
+	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+		return "Ptr<" + r.NormalizeTypeString(typeName[4:len(typeName)-1]) + ">"
+	}
+	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
+		return "Array<" + r.NormalizeTypeString(typeName[6:len(typeName)-1]) + ">"
+	}
+	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
+		inner := typeName[4 : len(typeName)-1]
+		parts := strings.SplitN(inner, ",", 2)
+		if len(parts) == 2 {
+			return fmt.Sprintf("Map<%s, %s>", r.NormalizeTypeString(strings.TrimSpace(parts[0])), r.NormalizeTypeString(strings.TrimSpace(parts[1])))
+		}
+	}
+	if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
+		var normalized []string
+		for _, part := range strings.Split(typeName[6:len(typeName)-1], ",") {
+			normalized = append(normalized, r.NormalizeTypeString(strings.TrimSpace(part)))
+		}
+		return "tuple(" + strings.Join(normalized, ", ") + ")"
+	}
+	switch typeName {
+	case "string":
+		return "String"
+	case "bool":
+		return "Bool"
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "byte":
+		return "Int64"
+	case "float32", "float64":
+		return "Float64"
+	case "[]byte":
+		return "TypeBytes"
+	case "error":
+		return "Error"
+	case "any", "interface{}":
+		return "Any"
+	case "context.Context", "Context":
+		return "Context"
+	}
+	return r.displayName(typeName)
+}
+
+func (r *displayTypeResolver) VMType(expr ast.Expr) string {
+	if bt := resolveToBasicType(expr); bt != "" {
+		switch {
+		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
+			return "Int64"
+		case strings.HasPrefix(bt, "float"):
+			return "Float64"
+		case bt == "string":
+			return "String"
+		case bt == "bool":
+			return "Bool"
+		}
+	}
+	switch t := expr.(type) {
+	case *ast.ArrayType:
+		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
+			return "TypeBytes"
+		}
+		return fmt.Sprintf("Array<%s>", r.VMType(t.Elt))
+	case *ast.MapType:
+		return fmt.Sprintf("Map<%s, %s>", r.VMType(t.Key), r.VMType(t.Value))
+	case *ast.StarExpr:
+		return fmt.Sprintf("Ptr<%s>", r.VMType(t.X))
+	case *ast.Ellipsis:
+		return fmt.Sprintf("Array<%s>", r.VMType(t.Elt))
+	case *ast.InterfaceType:
+		if t.Methods == nil || len(t.Methods.List) == 0 {
+			return "Any"
+		}
+		return "Any"
+	default:
+		return r.NormalizeTypeString(typeToString(expr))
+	}
+}
+
+func (r *displayTypeResolver) displayName(typeName string) string {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" {
+		return "Any"
+	}
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		if len(parts) == 2 {
+			if importPath, ok := knownImports[parts[0]]; ok {
+				if moduleName := resolveImportedModule(importPath); moduleName != "" {
+					return moduleName + "." + parts[1]
+				}
+				return typeName
+			}
+		}
+		if r.moduleName == "" {
+			return typeName
+		}
+		return r.moduleName + "." + typeName
+	}
+	if r.moduleName == "" {
+		return typeName
+	}
+	return r.moduleName + "." + typeName
+}
+
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, meta targetMeta, constants map[string]string) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 
 	var sb strings.Builder
-	fixedPrefix := *module
-	methodsPrefix := ""
-	isModule := *module != ""
-	if spec.Doc != nil {
-		for _, line := range spec.Doc.List {
-			if strings.Contains(line.Text, "ffigen:module") {
-				isModule = true
-				parts := strings.Fields(line.Text)
-				for i, p := range parts {
-					if p == "ffigen:module" && i+1 < len(parts) {
-						fixedPrefix = parts[i+1]
-						break
+	methodsPrefix := meta.methodsPrefix
+	moduleName := meta.moduleName
+	isReverse := meta.reverse
+	isStruct := meta.structTarget
+	isModule := moduleName != ""
+
+	displayResolver := newDisplayTypeResolver(moduleName, iface, structs, methodsPrefix)
+	displayTypeName := func(typeName string) string { return displayResolver.NormalizeTypeString(typeName) }
+	vmType := func(expr ast.Expr) string { return displayResolver.VMType(expr) }
+	funcSpec := func(funcType *ast.FuncType) string {
+		var params []string
+		if funcType.Params != nil {
+			for i, p := range funcType.Params.List {
+				pType := vmType(p.Type)
+				if i == 0 && (pType == "context.Context" || pType == "Context") {
+					continue
+				}
+				prefix := ""
+				if _, ok := p.Type.(*ast.Ellipsis); ok {
+					prefix = "..."
+					if strings.HasPrefix(pType, "Array<") && strings.HasSuffix(pType, ">") {
+						pType = pType[6 : len(pType)-1]
+					}
+				}
+				if len(p.Names) == 0 {
+					params = append(params, prefix+pType)
+				} else {
+					for range p.Names {
+						params = append(params, prefix+pType)
 					}
 				}
 			}
-			if strings.Contains(line.Text, "ffigen:methods") {
-				parts := strings.Fields(line.Text)
-				for i, p := range parts {
-					if p == "ffigen:methods" {
-						if i+1 < len(parts) {
-							methodsPrefix = parts[i+1]
-						} else {
-							methodsPrefix = name
-						}
-						fixedPrefix = "__method_" + resolveCanonicalType(methodsPrefix)
-						break
-					}
+		}
+		var results []string
+		if funcType.Results != nil {
+			for _, r := range funcType.Results.List {
+				t := vmType(r.Type)
+				if t == "error" {
+					results = append(results, "Error")
+				} else {
+					results = append(results, t)
 				}
 			}
+		}
+		actualRet := "Void"
+		if len(results) > 1 {
+			actualRet = "tuple(" + strings.Join(results, ", ") + ")"
+		} else if len(results) == 1 {
+			actualRet = results[0]
+		}
+		return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
+	}
+	fixedPrefix := moduleName
+	if methodsPrefix != "" {
+		fixedPrefix = "__method_" + displayTypeName(methodsPrefix)
+	}
+	methodHasReceiver := func(funcType *ast.FuncType) bool {
+		hasContext := false
+		if funcType.Params != nil && len(funcType.Params.List) > 0 {
+			pType := typeToString(funcType.Params.List[0].Type)
+			if pType == "context.Context" || pType == "Context" {
+				hasContext = true
+			}
+		}
+		paramIdx := 0
+		if hasContext {
+			paramIdx = 1
+		}
+		if funcType.Params == nil || len(funcType.Params.List) <= paramIdx {
+			return false
+		}
+		receiverType := typeToString(funcType.Params.List[paramIdx].Type)
+		receiverType = strings.TrimPrefix(receiverType, "Ptr<")
+		receiverType = strings.TrimSuffix(receiverType, ">")
+		return receiverType == methodsPrefix
+	}
+	writeBoundRegistrations := func(indent string) {
+		for i, method := range iface.Methods.List {
+			if len(method.Names) == 0 {
+				continue
+			}
+			methodName := method.Names[0].Name
+			funcType := method.Type.(*ast.FuncType)
+			routePrefix := fixedPrefix
+			if moduleName != "" && methodsPrefix != "" && !methodHasReceiver(funcType) {
+				routePrefix = moduleName
+			}
+			routeSep := "."
+			if strings.HasPrefix(routePrefix, "__method_") {
+				routeSep = "_"
+			}
+			fmt.Fprintf(&sb, "%sregistrar.RegisterFFISchema(\"%s%s%s\", bridge, %s_FFI_Schemas[%d].MethodID, %s_FFI_Schemas[%d].Sig, %s_FFI_Schemas[%d].Doc)\n",
+				indent, routePrefix, routeSep, methodName, name, i, name, i, name, i)
 		}
 	}
 
@@ -509,31 +850,13 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				continue
 			}
 			funcType := method.Type.(*ast.FuncType)
-			hasContext := false
-			if funcType.Params != nil && len(funcType.Params.List) > 0 {
-				pType := typeToString(funcType.Params.List[0].Type)
-				if pType == "context.Context" || pType == "Context" {
-					hasContext = true
-				}
+			if methodHasReceiver(funcType) {
+				continue
 			}
-
-			paramIdx := 0
-			if hasContext {
-				paramIdx = 1
+			if moduleName != "" {
+				continue
 			}
-
-			if funcType.Params == nil || len(funcType.Params.List) <= paramIdx {
-				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' has ffigen:methods '%s', but method '%s' has no receiver parameter. The first parameter (or second, if the first is context.Context) must be the receiver.", name, methodsPrefix, method.Names[0].Name))
-			}
-
-			receiverType := typeToString(funcType.Params.List[paramIdx].Type)
-			receiverTypeClean := strings.TrimPrefix(receiverType, "Ptr<")
-			receiverTypeClean = strings.TrimSuffix(receiverTypeClean, ">")
-
-			// Validation should still use the Go-source visible name (e.g. other.Page)
-			if receiverTypeClean != methodsPrefix {
-				panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' method '%s' expects receiver type '%s', but ffigen:methods specifies '%s'. Please ensure the ffigen:methods prefix exactly matches the receiver type (including package prefix).", name, method.Names[0].Name, receiverTypeClean, methodsPrefix))
-			}
+			panic(fmt.Sprintf("ffigen:methods validation failed! Interface '%s' method '%s' must use receiver '%s' (or declare ffigen:module for module-level functions).", name, method.Names[0].Name, methodsPrefix))
 		}
 	}
 
@@ -550,7 +873,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				sort.Strings(keys)
 				for _, k := range keys {
-					fmt.Fprintf(&fieldsSB, "%s %s; ", k, normalizeSchemaType(fMap[k]))
+					fmt.Fprintf(&fieldsSB, "%s %s; ", k, displayTypeName(fMap[k]))
 				}
 				_ = str
 			}
@@ -561,7 +884,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					continue
 				}
 				mName := method.Names[0].Name
-				fmt.Fprintf(&fieldsSB, "%s %s; ", mName, getSpec(method.Type.(*ast.FuncType)))
+				fmt.Fprintf(&fieldsSB, "%s %s; ", mName, funcSpec(method.Type.(*ast.FuncType)))
 			}
 		}
 		fieldsSB.WriteString("}")
@@ -923,7 +1246,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			doc = strings.ReplaceAll(doc, "\n", " ")
 			doc = strings.TrimSpace(doc)
 		}
-		fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, getSpec(method.Type.(*ast.FuncType)), doc)
+		fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), doc)
 	}
 	fmt.Fprintf(&sb, "}\n\n")
 
@@ -940,39 +1263,37 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n",
 			structSchemaVarName(structName),
-			resolveCanonicalType(structName),
+			displayTypeName(structName),
 			buildStructSchemaLiteral(structName, true, false),
 		)
 	}
 
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
-		fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, resolveCanonicalType(name), buildStructSchemaLiteral(name, true, true))
+		fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(name), buildStructSchemaLiteral(name, true, true))
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
+		writeBoundRegistrations("\t")
 		for _, structName := range referencedStructs {
 			if structName == name {
 				continue
 			}
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
 		}
-		fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", resolveCanonicalType(name), name)
+		fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", displayTypeName(name), name)
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
 		if methodsPrefix != "" {
-			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, resolveCanonicalType(methodsPrefix), buildStructSchemaLiteral("", false, true))
+			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		fmt.Fprintf(&sb, "\tprefix := \"%s\"\n\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n", fixedPrefix)
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
+		writeBoundRegistrations("\t")
 
 		if isModule && fixedPrefix != "" && len(constants) > 0 {
 			var keys []string
@@ -991,12 +1312,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				if structName == methodsPrefix {
 					continue
 				}
-				fmt.Fprintf(&sb, "registrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+				fmt.Fprintf(&sb, "registrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
 			}
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", resolveCanonicalType(methodsPrefix), name)
+			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", displayTypeName(methodsPrefix), name)
 		} else if len(referencedStructs) > 0 {
 			for _, structName := range referencedStructs {
-				fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+				fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
 			}
 		}
 		fmt.Fprintf(&sb, "}\n")
@@ -1009,7 +1330,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
 		for _, structName := range referencedStructs {
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", resolveCanonicalType(structName), structSchemaVarName(structName))
+			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
 		}
 		fmt.Fprintf(&sb, "}\n")
 	}
@@ -1125,46 +1446,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 func structSchemaVarName(typeName string) string {
 	replacer := strings.NewReplacer("/", "_", ".", "_", "<", "_", ">", "", ",", "_", " ", "_", "*", "_")
 	return replacer.Replace(typeName) + "_FFI_StructSchema"
-}
-
-func normalizeSchemaType(typeName string) string {
-	typeName = strings.TrimSpace(typeName)
-	if typeName == "" {
-		return "Any"
-	}
-	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-		return "Ptr<" + normalizeSchemaType(typeName[4:len(typeName)-1]) + ">"
-	}
-	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
-		return "Array<" + normalizeSchemaType(typeName[6:len(typeName)-1]) + ">"
-	}
-	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
-		inner := typeName[4 : len(typeName)-1]
-		parts := strings.SplitN(inner, ",", 2)
-		if len(parts) == 2 {
-			return fmt.Sprintf("Map<%s, %s>", normalizeSchemaType(strings.TrimSpace(parts[0])), normalizeSchemaType(strings.TrimSpace(parts[1])))
-		}
-	}
-	switch typeName {
-	case "string":
-		return "String"
-	case "bool":
-		return "Bool"
-	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "byte":
-		return "Int64"
-	case "float32", "float64":
-		return "Float64"
-	case "[]byte":
-		return "TypeBytes"
-	case "error":
-		return "Error"
-	case "any", "interface{}":
-		return "Any"
-	}
-	if strings.Contains(typeName, ".") {
-		return resolveCanonicalType(typeName)
-	}
-	return typeName
 }
 
 func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType) []string {
@@ -1485,150 +1766,6 @@ func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[
 				}
 			}
 		}
-	}
-}
-
-func getSpec(funcType *ast.FuncType) string {
-	var params []string
-	if funcType.Params != nil {
-		for i, p := range funcType.Params.List {
-			pType := toVMType(p.Type)
-			if i == 0 && (pType == "context.Context" || pType == "Context") {
-				continue
-			}
-			prefix := ""
-			if _, ok := p.Type.(*ast.Ellipsis); ok {
-				prefix = "..."
-				if strings.HasPrefix(pType, "Array<") && strings.HasSuffix(pType, ">") {
-					pType = pType[6 : len(pType)-1]
-				}
-			}
-			if len(p.Names) == 0 {
-				params = append(params, prefix+pType)
-			} else {
-				for range p.Names {
-					params = append(params, prefix+pType)
-				}
-			}
-		}
-	}
-	var results []string
-	if funcType.Results != nil {
-		for _, r := range funcType.Results.List {
-			t := toVMType(r.Type)
-			if t == "error" {
-				results = append(results, "Error")
-			} else {
-				results = append(results, t)
-			}
-		}
-	}
-	actualRet := "Void"
-	if len(results) > 1 {
-		actualRet = "tuple(" + strings.Join(results, ", ") + ")"
-	} else if len(results) == 1 {
-		actualRet = results[0]
-	}
-	return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
-}
-
-func resolveCanonicalType(name string) string {
-	if !strings.Contains(name, ".") {
-		if *module != "" {
-			return *module + "." + name
-		}
-		if *basePath != "" {
-			return toLogicalPath(*basePath) + "." + name
-		}
-		return name
-	}
-	parts := strings.SplitN(name, ".", 2)
-	prefix := parts[0]
-	if fullPath, ok := knownImports[prefix]; ok {
-		return toLogicalPath(fullPath) + "." + parts[1]
-	}
-	return name
-}
-
-func toLogicalPath(fullPath string) string {
-	const stdPrefix = "gopkg.d7z.net/go-mini/core/ffilib/"
-	if strings.HasPrefix(fullPath, stdPrefix) {
-		rel := strings.TrimPrefix(fullPath, stdPrefix)
-		parts := strings.Split(rel, "/")
-		for i, p := range parts {
-			if strings.HasSuffix(p, "lib") {
-				parts[i] = strings.TrimSuffix(p, "lib")
-			}
-		}
-		return strings.Join(parts, "/")
-	}
-	return fullPath
-}
-func toVMType(expr ast.Expr) string {
-	if bt := resolveToBasicType(expr); bt != "" {
-		switch {
-		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
-			return "Int64"
-		case strings.HasPrefix(bt, "float"):
-			return "Float64"
-		case bt == "string":
-			return "String"
-		case bt == "bool":
-			return "Bool"
-		}
-	}
-	switch t := expr.(type) {
-	case *ast.Ident:
-		name := t.Name
-		switch name {
-		case "int", "int8", "int16", "int32", "int64", "uint", "uint16", "uint32":
-			return "Int64"
-		case "float64", "float32":
-			return "Float64"
-		case "string":
-			return "String"
-		case "bool":
-			return "Bool"
-		case "byte", "uint8":
-			return "Uint8"
-		case "any", "interface{}":
-			return "Any"
-		case "error":
-			return "Error"
-		}
-		if strings.Contains(name, ".") {
-			return resolveCanonicalType(name)
-		}
-		return name
-	case *ast.ArrayType:
-		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-			return "TypeBytes"
-		}
-		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
-	case *ast.MapType:
-		return fmt.Sprintf("Map<%s, %s>", toVMType(t.Key), toVMType(t.Value))
-	case *ast.StarExpr:
-		inner := toVMType(t.X)
-		if !strings.Contains(inner, ".") && !isPrimitive(inner) {
-			inner = resolveCanonicalType(inner)
-		}
-		return fmt.Sprintf("Ptr<%s>", inner)
-	case *ast.Ellipsis:
-		return fmt.Sprintf("Array<%s>", toVMType(t.Elt))
-	case *ast.SelectorExpr:
-		var name string
-		if x, ok := t.X.(*ast.Ident); ok {
-			name = x.Name + "." + t.Sel.Name
-		} else {
-			name = t.Sel.Name
-		}
-		return resolveCanonicalType(name)
-	case *ast.InterfaceType:
-		// Interfaces are always handles, so canonicalize methods if possible?
-		// Actually ffigen interface processing is elsewhere.
-		return "Any"
-	default:
-		return "Any"
 	}
 }
 

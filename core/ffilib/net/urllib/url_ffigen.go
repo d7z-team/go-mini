@@ -4,7 +4,6 @@ package urllib
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -189,12 +188,7 @@ func RegisterURL(executor interface{ RegisterConstant(string, string) }, impl UR
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	prefix := "net/url"
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
-	for _, m := range URL_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-	}
+	registrar.RegisterFFISchema("net/url.QueryEscape", bridge, URL_FFI_Schemas[0].MethodID, URL_FFI_Schemas[0].Sig, URL_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("net/url.QueryUnescape", bridge, URL_FFI_Schemas[1].MethodID, URL_FFI_Schemas[1].Sig, URL_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("net/url.JoinPath", bridge, URL_FFI_Schemas[2].MethodID, URL_FFI_Schemas[2].Sig, URL_FFI_Schemas[2].Doc)
 }
