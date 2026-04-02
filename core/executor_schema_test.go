@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"gopkg.d7z.net/go-mini/core/bytecode"
 )
 
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
@@ -58,5 +61,73 @@ func TestExportMetadataIncludesRegisteredFFISignatures(t *testing.T) {
 	meta := exec.ExportMetadata()
 	if !strings.Contains(meta, `"Call": "function(String, ...Any) tuple(Void, String) // demo route"`) {
 		t.Fatalf("expected exported metadata to include parsed route signature, got:\n%s", meta)
+	}
+}
+
+func TestCompiledBytecodeJSONRoundTripRemainsExecutable(t *testing.T) {
+	exec := NewMiniExecutor()
+	compiled, err := exec.CompileGoCode(`
+package main
+
+var counter = 1
+
+func inc(v int) int {
+	return v + counter
+}
+
+func main() {
+	counter = inc(1)
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		t.Fatal("expected executable bytecode")
+	}
+
+	payload, err := compiled.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatalf("marshal bytecode failed: %v", err)
+	}
+	decoded, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		t.Fatalf("unmarshal bytecode failed: %v", err)
+	}
+
+	compiled.Bytecode = decoded
+	compiled.Program.Variables["counter"] = nil
+	compiled.Program.Functions["inc"].Body = nil
+	compiled.Program.Main = nil
+
+	prog, err := exec.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		t.Fatalf("new runtime by compiled failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	session := prog.LastSession()
+	if session == nil {
+		t.Fatal("expected last session")
+	}
+	counter, loadErr := session.Load("counter")
+	if loadErr != nil {
+		t.Fatalf("load counter failed: %v", loadErr)
+	}
+	if counter.I64 != 2 {
+		t.Fatalf("unexpected counter value after bytecode roundtrip: %#v", counter)
+	}
+}
+
+func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
+	payload := []byte(`{"format":"go-mini-bytecode","version":1,"opcode_set":"runtime.opcode.v1","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":1}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":2}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":3}},{"op":32}]}}`)
+	_, err := bytecode.UnmarshalJSON(payload)
+	if err == nil {
+		t.Fatal("expected executable task decode failure")
+	}
+	if !strings.Contains(err.Error(), "opcode") && !strings.Contains(err.Error(), "deserializable") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

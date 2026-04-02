@@ -148,6 +148,17 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 	if program == nil {
 		return nil, errors.New("invalid program")
 	}
+	prepared, err := PrepareProgram(program)
+	if err != nil {
+		return nil, err
+	}
+	return NewExecutorFromPrepared(program, prepared)
+}
+
+func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram) (*Executor, error) {
+	if program == nil {
+		return nil, errors.New("invalid program")
+	}
 	globalInitOrder, err := program.GlobalInitOrder()
 	if err != nil {
 		globalInitOrder = program.DeclaredGlobalOrder()
@@ -209,27 +220,62 @@ func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
 			}
 		}
 	}
-	rootScope := result.newRootLoweringScope()
-	for ident, global := range result.globals {
-		if global.HasInit && global.InitExpr != nil {
-			global.InitPlan = result.tasksForExprInScope(global.InitExpr, rootScope)
+	if prepared != nil {
+		result.applyPreparedProgram(prepared)
+	} else {
+		rootScope := result.newRootLoweringScope()
+		for ident, global := range result.globals {
+			if global.HasInit && global.InitExpr != nil {
+				global.InitPlan = result.tasksForExprInScope(global.InitExpr, rootScope)
+			}
+			result.globals[ident] = global
 		}
-		result.globals[ident] = global
+		for ident, fn := range program.Functions {
+			if fn == nil {
+				continue
+			}
+			fnScope := rootScope.childFunction()
+			for _, p := range fn.Params {
+				fnScope.declare(string(p.Name))
+			}
+			rf := result.functions[ident]
+			rf.BodyTasks = result.tasksForStmtInScope(fn.Body, nil, fnScope)
+			result.functions[ident] = rf
+		}
+		result.mainTasks = result.buildStmtPlanWithScope(program.Main, rootScope)
 	}
-	for ident, fn := range program.Functions {
-		if fn == nil {
-			continue
-		}
-		fnScope := rootScope.childFunction()
-		for _, p := range fn.Params {
-			fnScope.declare(string(p.Name))
-		}
-		rf := result.functions[ident]
-		rf.BodyTasks = result.tasksForStmtInScope(fn.Body, nil, fnScope)
-		result.functions[ident] = rf
-	}
-	result.mainTasks = result.buildStmtPlanWithScope(program.Main, rootScope)
 	return result, nil
+}
+
+func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
+	prepared = clonePreparedProgram(prepared)
+	if prepared == nil {
+		return
+	}
+	e.globalInitOrder = append([]ast.Ident(nil), prepared.GlobalInitOrder...)
+	for ident, global := range prepared.Globals {
+		rg, ok := e.globals[ident]
+		if !ok || rg == nil {
+			rg = &RuntimeGlobal{Name: ident}
+		}
+		if global != nil {
+			rg.HasInit = global.HasInit
+			rg.InitPlan = cloneTasks(global.InitPlan)
+		}
+		e.globals[ident] = rg
+	}
+	for ident, fn := range prepared.Functions {
+		rf, ok := e.functions[ident]
+		if !ok || rf == nil {
+			rf = &RuntimeFunction{Name: ident}
+		}
+		if fn != nil {
+			rf.FunctionType = fn.FunctionType
+			rf.BodyTasks = cloneTasks(fn.BodyTasks)
+		}
+		e.functions[ident] = rf
+	}
+	e.mainTasks = cloneTasks(prepared.MainTasks)
 }
 
 func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
@@ -792,7 +838,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	if invokeMain {
 		if fn, ok := e.lookupFunction("main"); ok {
 			session.TaskStack = append(session.TaskStack, Task{
-				Op:   OpCallBoundary,
+				Op: OpCallBoundary,
 				Data: &CallBoundaryData{
 					Name:      "main",
 					OldStack:  session.Stack,

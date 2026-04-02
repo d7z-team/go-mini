@@ -579,7 +579,29 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 		return nil, errors.New("invalid compiled program")
 	}
 
-	executor, err := e.prepareExecutor(compiled.Program)
+	var (
+		executor *runtime.Executor
+		err      error
+	)
+	if compiled.Bytecode != nil && compiled.Bytecode.Executable != nil {
+		executor, err = runtime.NewExecutorFromPrepared(compiled.Program, compiled.Bytecode.Executable)
+		if err == nil {
+			executor.Loader = e.getLoader()
+			e.mu.RLock()
+			for name, route := range e.routes {
+				executor.RegisterRoute(name, route)
+			}
+			for name, spec := range e.structsMeta {
+				executor.RegisterStructSpec(string(name), spec)
+			}
+			for name, val := range e.constants {
+				executor.RegisterConstant(name, val)
+			}
+			e.mu.RUnlock()
+		}
+	} else {
+		executor, err = e.prepareExecutor(compiled.Program)
+	}
 	if err != nil {
 		return nil, err
 	}

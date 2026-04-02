@@ -128,15 +128,15 @@
 - [x] **重构 `OpImportInit`**: import 主路径已改为在独立模块上下文中同步执行并返回模块值，不再直接切换父 `session.Executor/Stack/ValueStack/LHSStack` 劫持执行流。
 - [x] **引入独立 module session**: 脚本模块初始化已在独立 `module session` 中执行，父 session 仅接收成功产物与 step/module 状态回写。
 - [x] **引入显式 commit/rollback 机制**: 模块初始化仅在成功后写入 `ModuleCache`；失败路径会回滚 `LoadingModules`，并保持父 session/module cache 不被半初始化状态污染。
-- [ ] **补充循环依赖、panic、部分初始化场景测试**。
-- [ ] **补记语法约束缺口：`panic` 目前未作为“结束结构”参与语义建模**。这会影响“模块初始化失败即终止/回滚”的静态表达能力；后续需要在语法/语义层明确 `panic` 的终止属性，再回头收紧 import/init failure 与 unreachable/partial-init 相关校验。
+- [x] **补充循环依赖、panic、部分初始化场景测试**: 已覆盖 circular import、运行期初始化失败导致的 rollback、以及 partial-init 不写入 `ModuleCache/LoadingModules` 的隔离回归。
+- [x] **将 `panic` 纳入结束结构语义建模**: 返回路径分析已将 `panic(...)` 视为终止调用，模块初始化失败/回滚现在可以通过前端语义正确表达；更细的 `unreachable` 诊断仍可后续单列增强。
 
 ### R. IR/Bytecode 管线统一
-- [ ] **统一 `core/runtime/task.go` 与 `core/compiler/bytecode.go` 的指令集定义**。
-- [ ] **明确唯一执行 IR**: 决定 runtime 直接执行 Task，还是编译成更稳定的 bytecode。
+- [x] **统一 `core/runtime/task.go` 与 `core/compiler/bytecode.go` 的指令集定义**: bytecode builder 已改为直接复用 `runtime.OpCode.String()` 输出真实 runtime opcode；少数 runtime 中不存在的展示专用指令已显式标成 pseudo op，避免继续伪装成同一套 IR。
+- [x] **明确唯一执行 IR**: 当前执行主路径已明确为 `lowered task plan`，并已作为 `bytecode.executable` 段稳定挂入 bytecode 工件；`NewRuntimeByCompiled` 现在可直接消费 bytecode roundtrip 后恢复出的 executable plan。
 - [ ] **将 lowering 从 `Executor` 启动路径移出**，成为独立编译步骤。
-- [ ] **实现 lowered IR / bytecode 持久化**，支持“一次编译，多次加载”。
-- [ ] **清理展示型 bytecode 与真实执行 IR 双轨并存问题**。
+- [x] **实现 lowered IR / bytecode 持久化**，支持“一次编译，多次加载”。
+- [ ] **清理展示型 bytecode 与真实执行 IR 双轨并存问题**: bytecode 现已同时承载展示指令和 `executable` task plan，且支持 JSON roundtrip 后直接再执行；剩余工作是继续压缩 AST 启动路径，并决定是否进一步收敛为单一 bytecode 执行模型。
 
 ---
 

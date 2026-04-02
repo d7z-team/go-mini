@@ -73,9 +73,13 @@ func main() {}
 	if artifact.Bytecode == nil {
 		t.Fatal("expected bytecode artifact, got nil")
 	}
+	if err := artifact.Bytecode.Validate(); err != nil {
+		t.Fatalf("expected valid bytecode artifact: %v", err)
+	}
 
 	asm := artifact.Bytecode.Disassemble()
 	expected := []string{
+		"go-mini-bytecode",
 		"section .data:",
 		"section .text:",
 		"global base",
@@ -95,6 +99,39 @@ func main() {}
 	}
 	if !strings.Contains(string(payload), "\"globals\"") {
 		t.Fatalf("unexpected bytecode payload: %s", payload)
+	}
+}
+
+func TestCompileSourceBytecodeUsesRuntimeOpcodeNames(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+var current = 1
+
+func main() {
+	current = current + 1
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if artifact.Bytecode == nil {
+		t.Fatal("expected bytecode artifact, got nil")
+	}
+
+	asm := artifact.Bytecode.Disassemble()
+	expected := []string{
+		runtime.OpPush.String(),
+		runtime.OpEvalLHS.String(),
+		runtime.OpLoadVar.String(),
+		runtime.OpAssign.String(),
+		runtime.OpApplyBinary.String(),
+	}
+	for _, sym := range expected {
+		if !strings.Contains(asm, sym) {
+			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
+		}
 	}
 }
 

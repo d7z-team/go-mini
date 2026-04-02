@@ -63,3 +63,60 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 		t.Fatal("broken module should not remain in loading set")
 	}
 }
+
+func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+		switch path {
+		case "panicmod":
+			code := `
+			package panicmod
+
+			func fail() string {
+				panic("boom")
+			}
+
+			var Exported = "partial"
+			var Trigger = fail()
+			`
+			converter := ffigo.NewGoToASTConverter()
+			node, err := converter.ConvertSource("snippet", code)
+			if err != nil {
+				return nil, err
+			}
+			return node.(*ast.ProgramStmt), nil
+		default:
+			return nil, fmt.Errorf("module not found: %s", path)
+		}
+	})
+
+	runtime, err := executor.NewRuntimeByGoCode(`
+	package main
+	import "panicmod"
+
+	func main() {}
+	`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	err = runtime.Execute(context.Background())
+	if err == nil {
+		t.Fatal("expected panicing module init to fail")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("unexpected execute error: %v", err)
+	}
+
+	session := runtime.LastSession()
+	if session == nil {
+		t.Fatal("expected last session")
+	}
+	if _, ok := session.ModuleCache["panicmod"]; ok {
+		t.Fatalf("panicmod should not be committed into cache: %#v", session.ModuleCache["panicmod"])
+	}
+	if session.LoadingModules["panicmod"] {
+		t.Fatal("panicmod should not remain in loading set")
+	}
+}

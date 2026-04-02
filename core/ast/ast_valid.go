@@ -520,8 +520,20 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return nil
 	}
 
+	externalSpecs := make(map[Ident]GoMiniType, len(c.root.vars))
+	for name, typ := range c.root.vars {
+		externalSpecs[name] = typ
+	}
+
+	externalConsts := make(map[string]string, len(prog.Constants))
+	if c.root.program != nil {
+		for name, val := range c.root.program.Constants {
+			externalConsts[name] = val
+		}
+	}
+
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidator(prog, nil, nil, c.root.Tolerant)
+	v, _ := NewValidator(prog, externalSpecs, externalConsts, c.root.Tolerant)
 	v.root.Path = path
 	v.SetLoader(c.root.Loader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈

@@ -7,6 +7,12 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/runtime"
+)
+
+const (
+	// Pseudo ops are bytecode-only annotations. They are not executable runtime IR.
+	pseudoOpLoadConst = "PSEUDO_LOAD_CONST"
 )
 
 func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytecode.Program {
@@ -15,7 +21,12 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 	}
 
 	builder := &bytecodeBuilder{program: program}
-	bc := &bytecode.Program{}
+	bc := bytecode.NewProgram()
+	prepared, err := runtime.PrepareProgram(program)
+	if err != nil {
+		return nil
+	}
+	bc.Executable = prepared
 
 	for _, name := range globalInitOrder {
 		expr, ok := program.Variables[name]
@@ -93,7 +104,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 		if !ok {
 			return nil, false
 		}
-		assign := []bytecode.Instruction{b.instruction(n, "ASSIGN", "", "Assignment")}
+		assign := []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpAssign, "", "Assignment")}
 		return append(append(lhs, rhs...), assign...), true
 	case *ast.MultiAssignmentStmt:
 		out := make([]bytecode.Instruction, 0)
@@ -109,14 +120,14 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 			return nil, false
 		}
 		out = append(out, val...)
-		out = append(out, b.instruction(n, "MULTI_ASSIGN", fmt.Sprintf("%d", len(n.LHS)), "Multiple assignment"))
+		out = append(out, b.runtimeInstruction(n, runtime.OpMultiAssign, fmt.Sprintf("%d", len(n.LHS)), "Multiple assignment"))
 		return out, true
 	case *ast.IncDecStmt:
 		lhs, ok := b.compileLHS(n.Operand)
 		if !ok {
 			return nil, false
 		}
-		return append(lhs, b.instruction(n, "INC_DEC", string(n.Operator), "Inc/Dec")), true
+		return append(lhs, b.runtimeInstruction(n, runtime.OpIncDec, string(n.Operator), "Inc/Dec")), true
 	case *ast.ReturnStmt:
 		out := make([]bytecode.Instruction, 0)
 		for _, expr := range n.Results {
@@ -126,7 +137,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 			}
 			out = append(out, code...)
 		}
-		out = append(out, b.instruction(n, "RETURN", fmt.Sprintf("%d", len(n.Results)), fmt.Sprintf("Return %d values", len(n.Results))))
+		out = append(out, b.runtimeInstruction(n, runtime.OpReturn, fmt.Sprintf("%d", len(n.Results)), fmt.Sprintf("Return %d values", len(n.Results))))
 		return out, true
 	case *ast.IfStmt:
 		cond, ok := b.compileExpr(n.Cond)
@@ -138,7 +149,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 		if n.ElseBody != nil {
 			comment = "Branch if false to ELSE"
 		}
-		out = append(out, b.instruction(n, "BRANCH_IF", "", comment))
+		out = append(out, b.runtimeInstruction(n, runtime.OpBranchIf, "", comment))
 		body, ok := b.compileStmt(n.Body)
 		if !ok {
 			return nil, false
@@ -157,7 +168,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 	case *ast.CallExprStmt:
 		return b.compileExpr(n)
 	case *ast.InterruptStmt:
-		return []bytecode.Instruction{b.instruction(n, "INTERRUPT", n.InterruptType, "Interrupt")}, true
+		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpInterrupt, n.InterruptType, "Interrupt")}, true
 	default:
 		return nil, false
 	}
@@ -168,14 +179,14 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 	case nil:
 		return nil, true
 	case *ast.LiteralExpr:
-		return []bytecode.Instruction{b.instruction(n, "PUSH", formatLiteral(n.Value), "literal")}, true
+		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpPush, formatLiteral(n.Value), "literal")}, true
 	case *ast.IdentifierExpr:
-		return []bytecode.Instruction{b.instruction(n, "LOAD_VAR", string(n.Name), "identifier")}, true
+		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpLoadVar, string(n.Name), "identifier")}, true
 	case *ast.ConstRefExpr:
 		if val, ok := b.program.Constants[string(n.Name)]; ok {
-			return []bytecode.Instruction{b.instruction(n, "PUSH", formatLiteral(val), "const")}, true
+			return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpPush, formatLiteral(val), "const")}, true
 		}
-		return []bytecode.Instruction{b.instruction(n, "LOAD_CONST", string(n.Name), "const")}, true
+		return []bytecode.Instruction{b.instruction(n, pseudoOpLoadConst, string(n.Name), "const")}, true
 	case *ast.BinaryExpr:
 		left, ok := b.compileExpr(n.Left)
 		if !ok {
@@ -187,14 +198,14 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 		}
 		out := append([]bytecode.Instruction{}, left...)
 		out = append(out, right...)
-		out = append(out, b.instruction(n, "BINARY_OP", string(n.Operator), ""))
+		out = append(out, b.runtimeInstruction(n, runtime.OpApplyBinary, string(n.Operator), ""))
 		return out, true
 	case *ast.UnaryExpr:
 		operand, ok := b.compileExpr(n.Operand)
 		if !ok {
 			return nil, false
 		}
-		return append(operand, b.instruction(n, "UNARY_OP", string(n.Operator), "")), true
+		return append(operand, b.runtimeInstruction(n, runtime.OpApplyUnary, string(n.Operator), "")), true
 	case *ast.CallExprStmt:
 		out := make([]bytecode.Instruction, 0)
 		if member, ok := n.Func.(*ast.MemberExpr); ok {
@@ -221,14 +232,14 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 			out = append(out, code...)
 		}
 
-		out = append(out, b.instruction(n, "CALL", b.callName(n.Func), "Call "+b.callName(n.Func)))
+		out = append(out, b.runtimeInstruction(n, runtime.OpCall, b.callName(n.Func), "Call "+b.callName(n.Func)))
 		return out, true
 	case *ast.MemberExpr:
 		obj, ok := b.compileExpr(n.Object)
 		if !ok {
 			return nil, false
 		}
-		return append(obj, b.instruction(n, "MEMBER", string(n.Property), "member access")), true
+		return append(obj, b.runtimeInstruction(n, runtime.OpMember, string(n.Property), "member access")), true
 	case *ast.IndexExpr:
 		obj, ok := b.compileExpr(n.Object)
 		if !ok {
@@ -240,7 +251,7 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 		}
 		out := append([]bytecode.Instruction{}, obj...)
 		out = append(out, idx...)
-		out = append(out, b.instruction(n, "INDEX", "", "index access"))
+		out = append(out, b.runtimeInstruction(n, runtime.OpIndex, "", "index access"))
 		return out, true
 	case *ast.SliceExpr:
 		out, ok := b.compileExpr(n.X)
@@ -261,22 +272,22 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 			}
 			out = append(out, code...)
 		}
-		out = append(out, b.instruction(n, "SLICE", "", "slice"))
+		out = append(out, b.runtimeInstruction(n, runtime.OpSlice, "", "slice"))
 		return out, true
 	case *ast.TypeAssertExpr:
 		out, ok := b.compileExpr(n.X)
 		if !ok {
 			return nil, false
 		}
-		return append(out, b.instruction(n, "ASSERT", string(n.Type), "type assertion")), true
+		return append(out, b.runtimeInstruction(n, runtime.OpAssert, string(n.Type), "type assertion")), true
 	case *ast.StarExpr:
 		out, ok := b.compileExpr(n.X)
 		if !ok {
 			return nil, false
 		}
-		return append(out, b.instruction(n, "UNARY_OP", "Dereference", "")), true
+		return append(out, b.runtimeInstruction(n, runtime.OpApplyUnary, "Dereference", "")), true
 	case *ast.ImportExpr:
-		return []bytecode.Instruction{b.instruction(n, "IMPORT_INIT", n.Path, "import")}, true
+		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpImportInit, n.Path, "import")}, true
 	default:
 		return nil, false
 	}
@@ -285,13 +296,13 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 func (b *bytecodeBuilder) compileLHS(expr ast.Expr) ([]bytecode.Instruction, bool) {
 	switch n := expr.(type) {
 	case *ast.IdentifierExpr:
-		return []bytecode.Instruction{b.instruction(n, "EVAL_LHS", string(n.Name), "identifier")}, true
+		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpEvalLHS, string(n.Name), "identifier")}, true
 	case *ast.MemberExpr:
 		obj, ok := b.compileExpr(n.Object)
 		if !ok {
 			return nil, false
 		}
-		return append(obj, b.instruction(n, "EVAL_LHS", string(n.Property), "member target")), true
+		return append(obj, b.runtimeInstruction(n, runtime.OpEvalLHS, string(n.Property), "member target")), true
 	case *ast.IndexExpr:
 		obj, ok := b.compileExpr(n.Object)
 		if !ok {
@@ -303,17 +314,21 @@ func (b *bytecodeBuilder) compileLHS(expr ast.Expr) ([]bytecode.Instruction, boo
 		}
 		out := append([]bytecode.Instruction{}, obj...)
 		out = append(out, idx...)
-		out = append(out, b.instruction(n, "EVAL_LHS", "[]", "index target"))
+		out = append(out, b.runtimeInstruction(n, runtime.OpEvalLHS, "[]", "index target"))
 		return out, true
 	case *ast.StarExpr:
 		out, ok := b.compileExpr(n.X)
 		if !ok {
 			return nil, false
 		}
-		return append(out, b.instruction(n, "EVAL_LHS", "*", "deref target")), true
+		return append(out, b.runtimeInstruction(n, runtime.OpEvalLHS, "*", "deref target")), true
 	default:
 		return nil, false
 	}
+}
+
+func (b *bytecodeBuilder) runtimeInstruction(node ast.Node, op runtime.OpCode, operand, comment string) bytecode.Instruction {
+	return b.instruction(node, op.String(), operand, comment)
 }
 
 func (b *bytecodeBuilder) instruction(node ast.Node, op, operand, comment string) bytecode.Instruction {

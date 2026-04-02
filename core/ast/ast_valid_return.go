@@ -64,6 +64,8 @@ func (a *ReturnAnalyzer) analyzeNode(node Node) bool {
 		return a.analyzeFor(n)
 	case *ReturnStmt:
 		return a.analyzeReturn(n)
+	case *CallExprStmt:
+		return a.analyzeCall(n)
 	case *SwitchStmt:
 		return a.analyzeSwitch(n)
 	case *TryStmt:
@@ -74,6 +76,19 @@ func (a *ReturnAnalyzer) analyzeNode(node Node) bool {
 		// 其他节点不会产生返回
 		return false
 	}
+}
+
+func (a *ReturnAnalyzer) analyzeCall(call *CallExprStmt) bool {
+	if call == nil {
+		return false
+	}
+
+	ref, ok := call.Func.(*ConstRefExpr)
+	if !ok {
+		return false
+	}
+
+	return ref.Name == "panic"
 }
 
 // analyzeBlock 分析代码块
