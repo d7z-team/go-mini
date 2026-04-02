@@ -50,3 +50,23 @@ type NativeMock interface {
 	SetStruct(s NativeStruct) int64
 	SetPtr(s *NativeStruct) int64
 }
+
+type Selector struct {
+	Value int64
+}
+
+// ffigen:methods Selector
+type VariadicPointerMethods interface {
+	GetByPlaceholder(s *Selector, text string, exact ...bool) *Selector
+}
+
+// ffigen:methods Page
+type Page struct {
+	Value int64
+}
+
+func (p *Page) GetByPlaceholder(text string, exact ...bool) *Selector {
+	_ = text
+	_ = exact
+	return &Selector{Value: 1}
+}

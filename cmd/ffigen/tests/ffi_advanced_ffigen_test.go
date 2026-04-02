@@ -11,6 +11,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
+
+var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
+
 const (
 	MethodID_AdvancedFFI_GetSameObject = 1
 	MethodID_AdvancedFFI_IsSame        = 2
@@ -245,10 +249,6 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
-
-var EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
-
 func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -257,6 +257,12 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
+	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("test.GetSameObject", bridge, AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("test.IsSame", bridge, AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
@@ -286,9 +292,11 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 	executor.RegisterConstant("test.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
 	executor.RegisterConstant("test.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
 	executor.RegisterConstant("test.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("test.MethodID_Page_GetByPlaceholder", ffigo.ToConstantString(1))
 	executor.RegisterConstant("test.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
 	executor.RegisterConstant("test.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
 	executor.RegisterConstant("test.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
-	registrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
-	registrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
+	executor.RegisterConstant("test.MethodID_VariadicPointerMethods_GetByPlaceholder", ffigo.ToConstantString(1))
+	registerStructSchema("test.TestObj", test_TestObj_FFI_StructSchema)
+	registerStructSchema("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
 }

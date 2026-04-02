@@ -12,6 +12,8 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 const (
 	MethodID_MockGeometry_SumX = 1
 )
@@ -109,8 +111,6 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
-
 func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -120,6 +120,12 @@ func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, st
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -127,5 +133,5 @@ func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, st
 	for _, m := range MockGeometry_FFI_Schemas {
 		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	registrar.RegisterStructSchema("RobustPoint", RobustPoint_FFI_StructSchema)
+	registerStructSchema("RobustPoint", RobustPoint_FFI_StructSchema)
 }

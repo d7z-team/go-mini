@@ -159,9 +159,11 @@ func RegisterLogger(executor interface{ RegisterConstant(string, string) }, impl
 	executor.RegisterConstant("logger.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
 	executor.RegisterConstant("logger.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
 	executor.RegisterConstant("logger.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("logger.MethodID_Page_GetByPlaceholder", ffigo.ToConstantString(1))
 	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
 	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
 	executor.RegisterConstant("logger.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
+	executor.RegisterConstant("logger.MethodID_VariadicPointerMethods_GetByPlaceholder", ffigo.ToConstantString(1))
 }
 
 const (
@@ -306,9 +308,11 @@ func RegisterCallback(executor interface{ RegisterConstant(string, string) }, im
 	executor.RegisterConstant("callback.MethodID_NativeMock_GetStruct", ffigo.ToConstantString(1))
 	executor.RegisterConstant("callback.MethodID_NativeMock_SetPtr", ffigo.ToConstantString(4))
 	executor.RegisterConstant("callback.MethodID_NativeMock_SetStruct", ffigo.ToConstantString(3))
+	executor.RegisterConstant("callback.MethodID_Page_GetByPlaceholder", ffigo.ToConstantString(1))
 	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
 	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
 	executor.RegisterConstant("callback.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
+	executor.RegisterConstant("callback.MethodID_VariadicPointerMethods_GetByPlaceholder", ffigo.ToConstantString(1))
 }
 
 type Callback_ReverseProxy struct {

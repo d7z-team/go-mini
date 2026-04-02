@@ -110,3 +110,28 @@ func TestFFIGenPtrIsOpaqueHandleContract(t *testing.T) {
 		}
 	}
 }
+
+func TestFFIGenStructMethodsVariadicPointerReturn(t *testing.T) {
+	content, err := os.ReadFile("dummy_ffigen_test.go")
+	if err != nil {
+		t.Fatalf("read generated dummy sample: %v", err)
+	}
+	code := string(content)
+
+	required := []string{
+		"case MethodID_Page_GetByPlaceholder:",
+		"r0 := p.GetByPlaceholder(text, exact...)",
+		"if r0 == nil {",
+		"resBuf.WriteUvarint(0)",
+		"resBuf.WriteUvarint(uint64(registry.Register(r0)))",
+		"return resBuf.Bytes(), nil",
+	}
+	for _, pattern := range required {
+		if !strings.Contains(code, pattern) {
+			t.Fatalf("generated struct-method sample missing %q", pattern)
+		}
+	}
+	if count := strings.Count(code, "var Selector_FFI_StructSchema = "); count != 1 {
+		t.Fatalf("expected Selector_FFI_StructSchema to be emitted once, got %d", count)
+	}
+}
