@@ -298,6 +298,13 @@ func (p *MiniProgram) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, 
 	return p.Compiled.MarshalIndentBytecodeJSON(prefix, indent)
 }
 
+func (p *MiniProgram) Bytecode() (*bytecode.Program, error) {
+	if p == nil || p.Compiled == nil || p.Compiled.Bytecode == nil {
+		return nil, errors.New("program does not contain bytecode")
+	}
+	return p.Compiled.Bytecode, nil
+}
+
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
 		bridges:        make(map[uint32]ffigo.FFIBridge),
@@ -440,6 +447,28 @@ func (e *MiniExecutor) CompileGoCodeToBytecodeJSON(code string) ([]byte, error) 
 		return nil, err
 	}
 	return compiled.MarshalBytecodeJSON()
+}
+
+func (e *MiniExecutor) CompileGoCodeToBytecode(code string) (*bytecode.Program, error) {
+	compiled, err := e.CompileGoCode(code)
+	if err != nil {
+		return nil, err
+	}
+	if compiled == nil || compiled.Bytecode == nil {
+		return nil, errors.New("compiled program missing bytecode")
+	}
+	return compiled.Bytecode, nil
+}
+
+func (e *MiniExecutor) CompileGoFileToBytecode(filename, code string) (*bytecode.Program, error) {
+	compiled, err := e.CompileGoFile(filename, code)
+	if err != nil {
+		return nil, err
+	}
+	if compiled == nil || compiled.Bytecode == nil {
+		return nil, errors.New("compiled program missing bytecode")
+	}
+	return compiled.Bytecode, nil
 }
 
 func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
@@ -614,6 +643,14 @@ func (e *MiniExecutor) NewRuntimeByBytecode(program *bytecode.Program) (*MiniPro
 		return nil, err
 	}
 	return e.NewRuntimeByCompiled(compiled)
+}
+
+func (e *MiniExecutor) ArtifactFromBytecode(program *bytecode.Program) (*compiler.Artifact, error) {
+	return compiler.ArtifactFromBytecode(program)
+}
+
+func (e *MiniExecutor) ArtifactFromBytecodeJSON(payload []byte) (*compiler.Artifact, error) {
+	return compiler.ArtifactFromBytecodeJSON(payload)
 }
 
 func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*MiniProgram, error) {

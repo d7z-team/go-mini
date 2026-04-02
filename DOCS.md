@@ -46,7 +46,103 @@ if err != nil {
 _ = loaded
 ```
 
-## 2. CLI
+## 2. 编程接口
+
+### 2.1 编译为 Artifact
+
+```go
+executor := engine.NewMiniExecutor()
+
+artifact, err := executor.CompileGoCode(`
+package main
+func main() {}
+`)
+if err != nil {
+    panic(err)
+}
+```
+
+`Artifact` 是编译产物，包含：
+
+- `Program`: 重建蓝图用的 AST metadata
+- `Bytecode`: 稳定 `go-mini-bytecode`
+
+### 2.2 直接编译为 bytecode.Program
+
+```go
+bytecodeProgram, err := executor.CompileGoCodeToBytecode(`
+package main
+func main() {}
+`)
+if err != nil {
+    panic(err)
+}
+```
+
+如果你已经有文件名，也可以：
+
+```go
+bytecodeProgram, err := executor.CompileGoFileToBytecode("script.mini", source)
+```
+
+### 2.3 从 MiniProgram 取出 bytecode
+
+```go
+program, err := executor.NewRuntimeByGoCode(`
+package main
+func main() {}
+`)
+if err != nil {
+    panic(err)
+}
+
+bytecodeProgram, err := program.Bytecode()
+if err != nil {
+    panic(err)
+}
+_ = bytecodeProgram
+```
+
+### 2.4 bytecode JSON 互转
+
+```go
+program, err := executor.NewRuntimeByGoCode(source)
+if err != nil {
+    panic(err)
+}
+
+payload, err := program.MarshalBytecodeJSON()
+if err != nil {
+    panic(err)
+}
+
+loaded, err := executor.NewRuntimeByBytecodeJSON(payload)
+if err != nil {
+    panic(err)
+}
+_ = loaded
+```
+
+如果你只想把 JSON 恢复成编译产物，而不是立刻执行：
+
+```go
+artifact, err := executor.ArtifactFromBytecodeJSON(payload)
+if err != nil {
+    panic(err)
+}
+_ = artifact
+```
+
+### 2.5 推荐的互转路径
+
+- 源码执行：`NewRuntimeByGoCode`
+- 源码编译：`CompileGoCode`
+- 源码转 bytecode：`CompileGoCodeToBytecode`
+- 程序导出：`MarshalBytecodeJSON`
+- bytecode JSON 装载：`NewRuntimeByBytecodeJSON`
+- bytecode JSON 恢复编译产物：`ArtifactFromBytecodeJSON`
+
+## 3. CLI
 
 `cmd/exec` 使用 bytecode-first 模型：
 
@@ -64,7 +160,7 @@ mini-exec -d script.mini
 mini-exec -bytecode script.json
 ```
 
-## 3. 安全与沙盒
+## 4. 安全与沙盒
 
 ### 指令步数限制
 
@@ -82,11 +178,11 @@ p := new(Int64)
 println(*p)
 ```
 
-## 4. FFI 生成器
+## 5. FFI 生成器
 
 `ffigen` 负责把 Go 接口或结构体导出为 schema-only FFI 桥接代码。
 
-### 4.1 参数模型
+### 5.1 参数模型
 
 现在只保留两个参数：
 
@@ -102,7 +198,41 @@ go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go inter
 - `-pkg`
 - `-out`
 
-### 4.2 注释约定
+### 5.2 目录模式与文件模式
+
+`ffigen` 现在分两种正式模式。
+
+#### 目录模式
+
+输入是一个目录，`-out` 也必须是目录：
+
+```bash
+go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out ./gen ./
+```
+
+目录模式行为：
+
+- 按整个 Go package 处理
+- 输出文件名固定为 `ffigen_<pkg>.go`
+- 自动跳过已有 `ffigen_*.go`
+- 包内 `ffigen:module` 最多只能有一个
+- 适合正式生成
+
+#### 文件模式
+
+输入是一个或多个 `.go` 文件，`-out` 是输出文件：
+
+```bash
+go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
+```
+
+文件模式行为：
+
+- 维持单文件/多文件生成习惯
+- 适合局部样例和历史用法
+- 不允许抢占目录模式的保留文件名 `ffigen_<pkg>.go`
+
+### 5.3 注释约定
 
 ```go
 // ffigen:module order
@@ -121,7 +251,7 @@ type ScriptHandler interface {
 }
 ```
 
-### 4.3 命名规则
+### 5.4 命名规则
 
 VM 可见类型名以 `ffigen:module` 为准：
 
@@ -129,7 +259,7 @@ VM 可见类型名以 `ffigen:module` 为准：
 - 跨模块类型：优先解析为对方模块名，例如 `io.File`
 - 完整 Go import path 不会暴露到 `Ptr<T>`、struct schema、方法前缀中
 
-### 4.4 导出模式
+### 5.5 导出模式
 
 #### 接口导出
 
@@ -151,7 +281,7 @@ type Calculator struct {
 
 结构体上只写 `ffigen:methods` 时，默认使用结构体名作为方法集前缀。
 
-### 4.5 注册
+### 5.6 注册
 
 生成后直接调用 `RegisterXXX`：
 
@@ -162,7 +292,7 @@ registry := executor.HandleRegistry()
 orderlib.RegisterOrderAPI(executor, impl, registry)
 ```
 
-## 5. Interface 与反向代理
+## 6. Interface 与反向代理
 
 `go-mini` 支持命名接口、匿名接口、接口嵌入、类型断言、type switch，以及 `ffigen:reverse` 生成的反向代理。
 
@@ -180,7 +310,7 @@ proxy := NewScriptHandler_ReverseProxy(program, session, callable, bridge)
 err := proxy.OnEvent("login", "user_1")
 ```
 
-## 6. LSP / IDE
+## 7. LSP / IDE
 
 LSP 和查询能力建立在 AST 蓝图之上，执行主路径使用 compiled artifact / prepared program。常用 API：
 

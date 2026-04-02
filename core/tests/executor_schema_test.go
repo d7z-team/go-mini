@@ -260,3 +260,67 @@ func main() {}
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCompileGoCodeToBytecodeReturnsExecutableProgram(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	program, err := exec.CompileGoCodeToBytecode(`
+package main
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile to bytecode failed: %v", err)
+	}
+	if program == nil {
+		t.Fatal("expected bytecode program")
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("unexpected invalid bytecode: %v", err)
+	}
+	if program.Executable == nil {
+		t.Fatal("expected executable bytecode payload")
+	}
+}
+
+func TestMiniProgramBytecodeAccessor(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	bytecodeProgram, err := prog.Bytecode()
+	if err != nil {
+		t.Fatalf("bytecode accessor failed: %v", err)
+	}
+	if bytecodeProgram == nil || bytecodeProgram.Executable == nil {
+		t.Fatal("expected executable bytecode program")
+	}
+}
+
+func TestArtifactFromBytecodeJSONRoundTrip(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+const Version = "v1"
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	payload, err := prog.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatalf("marshal bytecode failed: %v", err)
+	}
+	artifact, err := exec.ArtifactFromBytecodeJSON(payload)
+	if err != nil {
+		t.Fatalf("artifact from bytecode json failed: %v", err)
+	}
+	if artifact == nil || artifact.Bytecode == nil || artifact.Program == nil {
+		t.Fatal("expected rebuilt artifact")
+	}
+	if artifact.Program.Constants["Version"] != "v1" {
+		t.Fatalf("unexpected rebuilt constants: %#v", artifact.Program.Constants)
+	}
+}

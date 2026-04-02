@@ -53,6 +53,14 @@ func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
 	return artifact, nil
 }
 
+func ArtifactFromBytecodeJSON(data []byte) (*Artifact, error) {
+	program, err := bytecode.UnmarshalJSON(data)
+	if err != nil {
+		return nil, err
+	}
+	return ArtifactFromBytecode(program)
+}
+
 func New(cfg Config) *Compiler {
 	return &Compiler{cfg: cfg}
 }
