@@ -135,10 +135,16 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_calc.Calculator_Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("__method_calc.Calculator_Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("__method_calc.Calculator_GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
-	registrar.RegisterStructSchema("calc.Calculator", Calculator_StructSchema)
+	registerStructSchema("calc.Calculator", Calculator_StructSchema)
 }
 
 const (
@@ -204,7 +210,7 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; }"))
+var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; }"))
 
 func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
@@ -215,6 +221,12 @@ func RegisterFactory(executor interface{ RegisterConstant(string, string) }, imp
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("calc.New", bridge, Factory_FFI_Schemas[0].MethodID, Factory_FFI_Schemas[0].Sig, Factory_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("calc.Calculator", Calculator_FFI_StructSchema)
+	registerStructSchema("calc.Calculator", calc_Calculator_FFI_StructSchema)
 }

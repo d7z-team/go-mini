@@ -179,7 +179,7 @@ func (b *ImageLib_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", ast.GoMiniType("struct { RGBA Ptr<image.RGBA>; }"))
+var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", ast.GoMiniType("struct { RGBA Ptr<image.RGBA>; }"))
 
 func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, impl ImageLib, registry *ffigo.HandleRegistry) {
 	bridge := &ImageLib_Bridge{Impl: impl, Registry: registry}
@@ -190,9 +190,15 @@ func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, im
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("image.Decode", bridge, ImageLib_FFI_Schemas[0].MethodID, ImageLib_FFI_Schemas[0].Sig, ImageLib_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("image.NewRGBA", bridge, ImageLib_FFI_Schemas[1].MethodID, ImageLib_FFI_Schemas[1].Sig, ImageLib_FFI_Schemas[1].Doc)
-	registrar.RegisterStructSchema("image.Image", Image_FFI_StructSchema)
+	registerStructSchema("image.Image", image_Image_FFI_StructSchema)
 }
 
 const (
@@ -722,6 +728,12 @@ func RegisterImage(executor interface{ RegisterConstant(string, string) }, regis
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_image.Image_Bounds", bridge, Image_FFI_Schemas[0].MethodID, Image_FFI_Schemas[0].Sig, Image_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("__method_image.Image_Size", bridge, Image_FFI_Schemas[1].MethodID, Image_FFI_Schemas[1].Sig, Image_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("__method_image.Image_Width", bridge, Image_FFI_Schemas[2].MethodID, Image_FFI_Schemas[2].Sig, Image_FFI_Schemas[2].Doc)
@@ -737,5 +749,5 @@ func RegisterImage(executor interface{ RegisterConstant(string, string) }, regis
 	registrar.RegisterFFISchema("__method_image.Image_Crop", bridge, Image_FFI_Schemas[12].MethodID, Image_FFI_Schemas[12].Sig, Image_FFI_Schemas[12].Doc)
 	registrar.RegisterFFISchema("__method_image.Image_EncodePNG", bridge, Image_FFI_Schemas[13].MethodID, Image_FFI_Schemas[13].Sig, Image_FFI_Schemas[13].Doc)
 	registrar.RegisterFFISchema("__method_image.Image_EncodeJPEG", bridge, Image_FFI_Schemas[14].MethodID, Image_FFI_Schemas[14].Sig, Image_FFI_Schemas[14].Doc)
-	registrar.RegisterStructSchema("image.Image", Image_StructSchema)
+	registerStructSchema("image.Image", Image_StructSchema)
 }

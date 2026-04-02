@@ -264,8 +264,14 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_a_other.Type_Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("a_other.Type", ATypeService_StructSchema)
+	registerStructSchema("a_other.Type", ATypeService_StructSchema)
 }
 
 const (
@@ -374,6 +380,12 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_b_other.Type_Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("b_other.Type", BTypeService_StructSchema)
+	registerStructSchema("b_other.Type", BTypeService_StructSchema)
 }

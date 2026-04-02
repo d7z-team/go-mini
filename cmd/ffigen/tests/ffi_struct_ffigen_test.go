@@ -165,6 +165,12 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -172,6 +178,6 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 	for _, m := range MockShapeAPI_FFI_Schemas {
 		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	registrar.RegisterStructSchema("Rect", Rect_FFI_StructSchema)
-	registrar.RegisterStructSchema("Point", Point_FFI_StructSchema)
+	registerStructSchema("Rect", Rect_FFI_StructSchema)
+	registerStructSchema("Point", Point_FFI_StructSchema)
 }

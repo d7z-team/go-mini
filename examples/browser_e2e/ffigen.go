@@ -287,8 +287,14 @@ func RegisterBrowserService(executor interface{ RegisterConstant(string, string)
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_other.Browser_NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("other.Browser", BrowserService_StructSchema)
+	registerStructSchema("other.Browser", BrowserService_StructSchema)
 }
 
 const (
@@ -446,8 +452,14 @@ func RegisterPageService(executor interface{ RegisterConstant(string, string) },
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_other.Page_Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("other.Page", PageService_StructSchema)
+	registerStructSchema("other.Page", PageService_StructSchema)
 }
 
 const (
@@ -580,6 +592,12 @@ func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, str
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_other.CdpSelector_Click", bridge, CdpSelectorService_FFI_Schemas[0].MethodID, CdpSelectorService_FFI_Schemas[0].Sig, CdpSelectorService_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("other.CdpSelector", CdpSelectorService_StructSchema)
+	registerStructSchema("other.CdpSelector", CdpSelectorService_StructSchema)
 }

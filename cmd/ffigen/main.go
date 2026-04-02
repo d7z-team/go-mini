@@ -42,6 +42,49 @@ type ffigenTarget struct {
 	meta targetMeta
 }
 
+type generationMode int
+
+const (
+	modeFiles generationMode = iota
+	modeDirectory
+)
+
+type schemaDecl struct {
+	varName     string
+	displayName string
+	specLiteral string
+}
+
+type schemaRegistry struct {
+	ordered []schemaDecl
+	byVar   map[string]int
+}
+
+func newSchemaRegistry() *schemaRegistry {
+	return &schemaRegistry{byVar: make(map[string]int)}
+}
+
+func (r *schemaRegistry) Ensure(displayName, specLiteral string) string {
+	varName := structSchemaVarName(displayName)
+	if idx, ok := r.byVar[varName]; ok {
+		if existing := r.ordered[idx].specLiteral; existing == "" || (specLiteral != "" && len(specLiteral) > len(existing)) {
+			r.ordered[idx] = schemaDecl{
+				varName:     varName,
+				displayName: displayName,
+				specLiteral: specLiteral,
+			}
+		}
+		return varName
+	}
+	r.byVar[varName] = len(r.ordered)
+	r.ordered = append(r.ordered, schemaDecl{
+		varName:     varName,
+		displayName: displayName,
+		specLiteral: specLiteral,
+	})
+	return varName
+}
+
 type displayTypeResolver struct {
 	moduleName        string
 	importAliases     map[string]string
@@ -60,96 +103,216 @@ func main() {
 		os.Exit(1)
 	}
 
-	{
-		dir := filepath.Dir(flag.Args()[0])
-		cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}")
-		cmd.Dir = dir
-		out, err := cmd.Output()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error deriving import path in %s: %v\n", dir, err)
+	mode, err := detectGenerationMode(flag.Args())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
+	}
+	switch mode {
+	case modeDirectory:
+		if err := runDirectoryMode(flag.Args()[0]); err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
 		}
-		packagePath = strings.TrimSpace(string(out))
-		if packagePath == "" || packagePath == "." {
-			fmt.Fprintf(os.Stderr, "Error: derived import path is empty or invalid.\n")
+	case modeFiles:
+		if err := runFileMode(flag.Args()); err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
+		}
+	default:
+		fmt.Fprintln(os.Stderr, "Error: unsupported generation mode")
+		os.Exit(1)
+	}
+}
+
+func detectGenerationMode(args []string) (generationMode, error) {
+	if len(args) == 0 {
+		return modeFiles, fmt.Errorf("no input provided")
+	}
+	hasDir := false
+	hasFile := false
+	for _, arg := range args {
+		info, err := os.Stat(arg)
+		if err != nil {
+			return modeFiles, err
+		}
+		if info.IsDir() {
+			hasDir = true
+		} else {
+			hasFile = true
 		}
 	}
+	if hasDir && hasFile {
+		return modeFiles, fmt.Errorf("cannot mix directories and files")
+	}
+	if hasDir {
+		if len(args) != 1 {
+			return modeFiles, fmt.Errorf("directory mode accepts exactly one directory")
+		}
+		return modeDirectory, nil
+	}
+	return modeFiles, nil
+}
 
+func runDirectoryMode(dir string) error {
+	info, err := os.Stat(*outFile)
+	if err == nil && !info.IsDir() {
+		return fmt.Errorf("directory mode requires -out to be a directory")
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(*outFile, 0o755); err != nil {
+		return err
+	}
+
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if err := initPackagePath(absDir); err != nil {
+		return err
+	}
+
+	files, err := parseDirectoryFiles(absDir, "")
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("no non-generated go files found in %s", dir)
+	}
+
+	pkgModules, pkgData, err := collectPackageData(files, files)
+	if err != nil {
+		return err
+	}
+	if len(pkgModules) > 1 {
+		return fmt.Errorf("directory mode allows at most one ffigen:module per package")
+	}
+	outputPath := filepath.Join(*outFile, fmt.Sprintf("ffigen_%s.go", *pkgName))
+	return generatePackageOutput(outputPath, files, files, pkgData, true)
+}
+
+func runFileMode(args []string) error {
+	firstDir := filepath.Dir(args[0])
+	if err := initPackagePath(firstDir); err != nil {
+		return err
+	}
+	reservedName := fmt.Sprintf("ffigen_%s.go", *pkgName)
+	if filepath.Base(*outFile) == reservedName {
+		return fmt.Errorf("file mode cannot write reserved package output name %s", reservedName)
+	}
+	allFiles, inputFiles, err := parseFileInputs(args, *outFile)
+	if err != nil {
+		return err
+	}
+	_, pkgData, err := collectPackageData(allFiles, inputFiles)
+	if err != nil {
+		return err
+	}
+	return generatePackageOutput(*outFile, allFiles, inputFiles, pkgData, false)
+}
+
+func initPackagePath(dir string) error {
+	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("deriving import path in %s: %w", dir, err)
+	}
+	packagePath = strings.TrimSpace(string(out))
+	if packagePath == "" || packagePath == "." {
+		return fmt.Errorf("derived import path is empty or invalid")
+	}
+	return nil
+}
+
+func parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
 	fset = token.NewFileSet()
-	var allFiles []*ast.File
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []*ast.File
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+		filePath := filepath.Join(dir, entry.Name())
+		absFilePath, _ := filepath.Abs(filePath)
+		if absOutFile != "" && absFilePath == absOutFile {
+			continue
+		}
+		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("parsing file %s: %w", filePath, err)
+		}
+		if isGeneratedFile(entry.Name(), file) {
+			continue
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
+func parseFileInputs(args []string, outFile string) ([]*ast.File, []*ast.File, error) {
+	fset = token.NewFileSet()
 	seenDirs := make(map[string]bool)
-
-	// Map to quickly find parsed files by their absolute path
 	parsedFiles := make(map[string]*ast.File)
+	absOutFile, _ := filepath.Abs(outFile)
+	var allFiles []*ast.File
 
-	absOutFile, _ := filepath.Abs(*outFile)
-
-	for _, arg := range flag.Args() {
+	for _, arg := range args {
 		absPath, err := filepath.Abs(arg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting absolute path for %s: %v\n", arg, err)
-			os.Exit(1)
+			return nil, nil, fmt.Errorf("getting absolute path for %s: %w", arg, err)
 		}
-
 		dir := filepath.Dir(absPath)
 		if !seenDirs[dir] {
 			seenDirs[dir] = true
-			entries, err := os.ReadDir(dir)
+			dirFiles, err := parseDirectoryFiles(dir, absOutFile)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error reading directory %s: %v\n", dir, err)
-				os.Exit(1)
+				return nil, nil, err
 			}
-
-			for _, entry := range entries {
-				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-					continue
-				}
-
-				filePath := filepath.Join(dir, entry.Name())
-				absFilePath, _ := filepath.Abs(filePath)
-
-				// Skip the output file to avoid circularity/conflicts
-				if absFilePath == absOutFile {
-					continue
-				}
-
-				f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error parsing file %s: %v\n", filePath, err)
-					os.Exit(1)
-				}
-				if isGeneratedFile(entry.Name(), f) {
-					continue
-				}
-
-				allFiles = append(allFiles, f)
-				parsedFiles[absFilePath] = f
+			for _, file := range dirFiles {
+				pos := fset.Position(file.Pos())
+				absFile, _ := filepath.Abs(pos.Filename)
+				parsedFiles[absFile] = file
+				allFiles = append(allFiles, file)
 			}
 		}
-
-		// Ensure the explicitly provided file is in parsedFiles even if it was skipped or is elsewhere
 		if _, ok := parsedFiles[absPath]; !ok {
-			f, err := parser.ParseFile(fset, absPath, nil, parser.ParseComments)
+			file, err := parser.ParseFile(fset, absPath, nil, parser.ParseComments)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error parsing explicitly provided file %s: %v\n", absPath, err)
-				os.Exit(1)
+				return nil, nil, fmt.Errorf("parsing explicitly provided file %s: %w", absPath, err)
 			}
-			allFiles = append(allFiles, f)
-			parsedFiles[absPath] = f
+			if isGeneratedFile(filepath.Base(absPath), file) {
+				continue
+			}
+			parsedFiles[absPath] = file
+			allFiles = append(allFiles, file)
 		}
 	}
 
-	// Reconstruct inputFiles in the order they were provided
 	var inputFiles []*ast.File
-	for _, arg := range flag.Args() {
-		abs, _ := filepath.Abs(arg)
-		if f, ok := parsedFiles[abs]; ok {
-			inputFiles = append(inputFiles, f)
+	for _, arg := range args {
+		absPath, _ := filepath.Abs(arg)
+		if file, ok := parsedFiles[absPath]; ok {
+			inputFiles = append(inputFiles, file)
 		}
 	}
+	return allFiles, inputFiles, nil
+}
 
-	// 执行类型检查以获取跨包的 Underlying 类型信息
+type packageData struct {
+	defaultModule string
+	targets       []ffigenTarget
+	structs       map[string]*ast.StructType
+	constants     map[string]string
+	ownedStructs  map[string]bool
+}
+
+func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData, error) {
 	conf := types.Config{Importer: importer.Default()}
 	info := &types.Info{
 		Types: make(map[ast.Expr]types.TypeAndValue),
@@ -159,18 +322,15 @@ func main() {
 	typeInfo = info
 	_, _ = conf.Check(*pkgName, fset, allFiles, info)
 
-	packageDefaultModule := derivePackageDefaultModule(allFiles)
-	var targets []ffigenTarget
-	globalConsts := make(map[string]string)
-	structs := make(map[string]*ast.StructType)
 	knownImports = make(map[string]string)
 	moduleCache = make(map[string]string)
+	structs := make(map[string]*ast.StructType)
+	globalConsts := make(map[string]string)
 
-	// Step 1: Collect package-wide information from allFiles
 	for _, node := range allFiles {
 		for _, imp := range node.Imports {
 			path := strings.Trim(imp.Path.Value, "\"")
-			var alias string
+			alias := ""
 			if imp.Name != nil {
 				alias = imp.Name.Name
 			} else {
@@ -179,24 +339,24 @@ func main() {
 			}
 			knownImports[alias] = path
 		}
-
 		ast.Inspect(node, func(n ast.Node) bool {
-			if gd, ok := n.(*ast.GenDecl); ok {
-				for _, spec := range gd.Specs {
-					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-						if str, ok := typeSpec.Type.(*ast.StructType); ok {
-							structs[typeSpec.Name.Name] = str
-						}
+			gd, ok := n.(*ast.GenDecl)
+			if !ok {
+				return true
+			}
+			for _, spec := range gd.Specs {
+				if typeSpec, ok := spec.(*ast.TypeSpec); ok {
+					if str, ok := typeSpec.Type.(*ast.StructType); ok {
+						structs[typeSpec.Name.Name] = str
 					}
-					if valSpec, ok := spec.(*ast.ValueSpec); ok {
-						for i, name := range valSpec.Names {
-							if !name.IsExported() || i >= len(valSpec.Values) {
-								continue
-							}
-							val := exprToString(valSpec.Values[i])
-							if val != "" {
-								globalConsts[name.Name] = val
-							}
+				}
+				if valSpec, ok := spec.(*ast.ValueSpec); ok {
+					for i, name := range valSpec.Names {
+						if !name.IsExported() || i >= len(valSpec.Values) {
+							continue
+						}
+						if val := exprToString(valSpec.Values[i]); val != "" {
+							globalConsts[name.Name] = val
 						}
 					}
 				}
@@ -205,68 +365,98 @@ func main() {
 		})
 	}
 
-	// Step 2: Collect ffigen targets from inputFiles in order
-	for _, node := range inputFiles {
+	defaultModule := derivePackageDefaultModule(allFiles)
+	packageMode := len(allFiles) == len(targetFiles)
+	moduleNames := make(map[string]bool)
+	var targets []ffigenTarget
+	ownedStructs := make(map[string]bool)
+	for _, node := range targetFiles {
 		ast.Inspect(node, func(n ast.Node) bool {
-			if gd, ok := n.(*ast.GenDecl); ok {
-				for _, spec := range gd.Specs {
-					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
-						meta := parseTargetMeta(resolveTargetDoc(node, gd, typeSpec))
-
-						if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-							targets = append(targets, ffigenTarget{
-								spec: typeSpec,
-								meta: materializeTargetMeta(meta, packageDefaultModule),
-							})
-						} else if _, ok := typeSpec.Type.(*ast.StructType); ok {
-							if meta.moduleName != "" || meta.methodsMarked || meta.reverse {
-								isModule := false
-								if meta.moduleName != "" {
-									isModule = true
-								}
-								methodsPrefix := meta.methodsPrefix
-								if meta.methodsMarked && methodsPrefix == "" {
-									methodsPrefix = typeSpec.Name.Name
-								}
-
-								methods := findMethodsForStruct(allFiles, typeSpec.Name.Name)
-								if len(methods) > 0 {
-									virtualIface := synthesizeInterface(methods, !isModule)
-									virtualSpec := *typeSpec
-									virtualSpec.Type = virtualIface
-									targets = append(targets, ffigenTarget{
-										spec: &virtualSpec,
-										meta: materializeTargetMeta(targetMeta{
-											moduleName:    meta.moduleName,
-											methodsPrefix: methodsPrefix,
-											methodsMarked: meta.methodsMarked,
-											reverse:       meta.reverse,
-											structTarget:  true,
-										}, packageDefaultModule),
-									})
-								}
-							}
-						}
-					}
+			gd, ok := n.(*ast.GenDecl)
+			if !ok {
+				return true
+			}
+			for _, spec := range gd.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
 				}
+				meta := parseTargetMeta(resolveTargetDoc(node, gd, typeSpec))
+				mat := materializeTargetMeta(meta, defaultModule)
+				if mat.moduleName != "" {
+					moduleNames[mat.moduleName] = true
+				}
+				if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+					if !packageMode || mat.moduleName != "" || mat.methodsMarked || mat.reverse {
+						targets = append(targets, ffigenTarget{spec: typeSpec, meta: mat})
+					}
+					continue
+				}
+				if _, ok := typeSpec.Type.(*ast.StructType); !ok {
+					continue
+				}
+				if mat.moduleName == "" && !mat.methodsMarked && !mat.reverse {
+					continue
+				}
+				isModule := mat.moduleName != ""
+				methodsPrefix := mat.methodsPrefix
+				if mat.methodsMarked && methodsPrefix == "" {
+					methodsPrefix = typeSpec.Name.Name
+				}
+				methods := findMethodsForStruct(allFiles, typeSpec.Name.Name)
+				if len(methods) == 0 {
+					continue
+				}
+				virtualIface := synthesizeInterface(methods, !isModule)
+				virtualSpec := *typeSpec
+				virtualSpec.Type = virtualIface
+				targets = append(targets, ffigenTarget{
+					spec: &virtualSpec,
+					meta: materializeTargetMeta(targetMeta{
+						moduleName:    mat.moduleName,
+						methodsPrefix: methodsPrefix,
+						methodsMarked: mat.methodsMarked,
+						reverse:       mat.reverse,
+						structTarget:  true,
+					}, defaultModule),
+				})
+				ownedStructs[typeSpec.Name.Name] = true
 			}
 			return true
 		})
 	}
 
-	var interfaces []string
-	for _, target := range targets {
-		interfaces = append(interfaces, generateCode(*pkgName, target.spec, structs, target.meta, globalConsts))
+	return moduleNames, packageData{
+		defaultModule: defaultModule,
+		targets:       targets,
+		structs:       structs,
+		constants:     globalConsts,
+		ownedStructs:  ownedStructs,
+	}, nil
+}
+
+func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, data packageData, packageMode bool) error {
+	var schemas *schemaRegistry
+	if packageMode {
+		schemas = newSchemaRegistry()
 	}
 
-	fullInterfaces := strings.Join(interfaces, "\n")
+	var generated []string
+	for _, target := range data.targets {
+		generated = append(generated, generateCode(*pkgName, target.spec, data.structs, target.meta, data.constants, schemas, data.ownedStructs, packageMode))
+	}
+
+	var schemaDefs strings.Builder
+	if schemas != nil {
+		for _, decl := range schemas.ordered {
+			fmt.Fprintf(&schemaDefs, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", decl.varName, decl.displayName, decl.specLiteral)
+		}
+	}
 
 	var sb strings.Builder
 	sb.WriteString("// Code generated by ffigen. DO NOT EDIT.\n")
 	fmt.Fprintf(&sb, "package %s\n\n", *pkgName)
 	sb.WriteString("import (\n")
-
-	// Standard packages potentially used
 	stdPackages := map[string]string{
 		"context": "context",
 		"fmt":     "fmt",
@@ -275,8 +465,6 @@ func main() {
 		"ffigo":   "gopkg.d7z.net/go-mini/core/ffigo",
 		"runtime": "gopkg.d7z.net/go-mini/core/runtime",
 	}
-
-	// Write all candidate imports first
 	for _, path := range stdPackages {
 		fmt.Fprintf(&sb, "\t\"%s\"\n", path)
 	}
@@ -291,19 +479,18 @@ func main() {
 		}
 	}
 	sb.WriteString(")\n\n")
-	sb.WriteString(fullInterfaces)
+	sb.WriteString(schemaDefs.String())
+	sb.WriteString(strings.Join(generated, "\n"))
+	return writeFormattedSource(outputPath, sb.String())
+}
 
-	// Now parse the whole thing and find actually used aliases
-	source := sb.String()
+func writeFormattedSource(outputPath, source string) error {
 	fsetOut := token.NewFileSet()
 	fOut, err := parser.ParseFile(fsetOut, "", source, parser.ParseComments)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing generated code for import cleanup: %v\n", err)
-		// Fallback to writing as is
-		_ = os.WriteFile(*outFile, []byte(source), 0o644)
-		return
+		_ = os.WriteFile(outputPath, []byte(source), 0o644)
+		return fmt.Errorf("parsing generated code for import cleanup: %w", err)
 	}
-
 	usedAliases := make(map[string]bool)
 	ast.Inspect(fOut, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -311,7 +498,7 @@ func main() {
 			if id, ok := node.X.(*ast.Ident); ok {
 				usedAliases[id.Name] = true
 			}
-		case *ast.Field: // Handle parameter and result types
+		case *ast.Field:
 			if node.Type != nil {
 				ast.Inspect(node.Type, func(tn ast.Node) bool {
 					if se, ok := tn.(*ast.SelectorExpr); ok {
@@ -325,83 +512,60 @@ func main() {
 		}
 		return true
 	})
-
-	// Filter and sort imports into two groups
 	var stdSpecs []ast.Spec
 	var extSpecs []ast.Spec
 	var otherDecls []ast.Decl
-
 	for _, decl := range fOut.Decls {
 		if gd, ok := decl.(*ast.GenDecl); ok && gd.Tok == token.IMPORT {
 			for _, spec := range gd.Specs {
 				is := spec.(*ast.ImportSpec)
 				path := strings.Trim(is.Path.Value, "\"")
-				var alias string
+				alias := ""
 				if is.Name != nil {
 					alias = is.Name.Name
 				} else {
 					alias = path[strings.LastIndex(path, "/")+1:]
 				}
-				if usedAliases[alias] {
-					// Reset positions to allow re-sorting
-					if is.Name != nil {
-						is.Name.NamePos = token.NoPos
-					}
-					is.Path.ValuePos = token.NoPos
-					is.EndPos = token.NoPos
-
-					if !strings.Contains(path, ".") {
-						stdSpecs = append(stdSpecs, is)
-					} else {
-						extSpecs = append(extSpecs, is)
-					}
+				if !usedAliases[alias] {
+					continue
+				}
+				if is.Name != nil {
+					is.Name.NamePos = token.NoPos
+				}
+				is.Path.ValuePos = token.NoPos
+				is.EndPos = token.NoPos
+				if !strings.Contains(path, ".") {
+					stdSpecs = append(stdSpecs, is)
+				} else {
+					extSpecs = append(extSpecs, is)
 				}
 			}
 		} else {
 			otherDecls = append(otherDecls, decl)
 		}
 	}
-
 	sortSpecs := func(specs []ast.Spec) {
 		sort.Slice(specs, func(i, j int) bool {
-			pathI := strings.Trim(specs[i].(*ast.ImportSpec).Path.Value, "\"")
-			pathJ := strings.Trim(specs[j].(*ast.ImportSpec).Path.Value, "\"")
-			return pathI < pathJ
+			return strings.Trim(specs[i].(*ast.ImportSpec).Path.Value, "\"") < strings.Trim(specs[j].(*ast.ImportSpec).Path.Value, "\"")
 		})
 	}
 	sortSpecs(stdSpecs)
 	sortSpecs(extSpecs)
-
-	// Reconstruct Decls: standard imports, then external imports, then others
 	var newDecls []ast.Decl
 	if len(stdSpecs) > 0 {
-		newDecls = append(newDecls, &ast.GenDecl{
-			Tok:    token.IMPORT,
-			Specs:  stdSpecs,
-			Lparen: 1, // dummy value to force parenthesis if more than one, but we'll use a specific style
-		})
+		newDecls = append(newDecls, &ast.GenDecl{Tok: token.IMPORT, Specs: stdSpecs, Lparen: 1})
 	}
 	if len(extSpecs) > 0 {
-		newDecls = append(newDecls, &ast.GenDecl{
-			Tok:    token.IMPORT,
-			Specs:  extSpecs,
-			Lparen: 1,
-		})
+		newDecls = append(newDecls, &ast.GenDecl{Tok: token.IMPORT, Specs: extSpecs, Lparen: 1})
 	}
 	newDecls = append(newDecls, otherDecls...)
 	fOut.Decls = newDecls
-
-	// Format and write
 	var finalBuf bytes.Buffer
 	if err := format.Node(&finalBuf, fsetOut, fOut); err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting generated code: %v\n", err)
-		_ = os.WriteFile(*outFile, []byte(source), 0o644)
-		return
+		_ = os.WriteFile(outputPath, []byte(source), 0o644)
+		return fmt.Errorf("formatting generated code: %w", err)
 	}
-
-	if err := os.WriteFile(*outFile, finalBuf.Bytes(), 0o644); err != nil {
-		panic(err)
-	}
+	return os.WriteFile(outputPath, finalBuf.Bytes(), 0o644)
 }
 
 func resolveToBasicType(e ast.Expr) string {
@@ -569,7 +733,7 @@ func resolveTargetDocWithFileSet(fileSet *token.FileSet, file *ast.File, genDecl
 	return best
 }
 
-func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string) *displayTypeResolver {
+func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string, ownedStructs map[string]bool, currentOwned string, packageMode bool) *displayTypeResolver {
 	resolver := &displayTypeResolver{
 		moduleName:        moduleName,
 		importAliases:     make(map[string]string, len(knownImports)),
@@ -615,7 +779,7 @@ func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs
 			}
 		}
 	}
-	for _, structName := range collectReferencedStructs(iface, structs) {
+	for _, structName := range collectReferencedStructs(iface, structs, ownedStructs, currentOwned, packageMode) {
 		fieldMap := make(map[string]string)
 		getFields(structs, structName, fieldMap)
 		for _, fieldType := range fieldMap {
@@ -767,7 +931,7 @@ func (r *displayTypeResolver) displayName(typeName string) string {
 	return r.moduleName + "." + typeName
 }
 
-func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, meta targetMeta, constants map[string]string) string {
+func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.StructType, meta targetMeta, constants map[string]string, schemas *schemaRegistry, ownedStructs map[string]bool, packageMode bool) string {
 	name := spec.Name.Name
 	iface := spec.Type.(*ast.InterfaceType)
 
@@ -777,8 +941,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	isReverse := meta.reverse
 	isStruct := meta.structTarget
 	isModule := moduleName != ""
+	currentOwned := ""
+	if isStruct && meta.methodsPrefix != "" {
+		currentOwned = meta.methodsPrefix
+	}
 
-	displayResolver := newDisplayTypeResolver(moduleName, iface, structs, methodsPrefix)
+	displayResolver := newDisplayTypeResolver(moduleName, iface, structs, methodsPrefix, ownedStructs, currentOwned, packageMode)
 	displayTypeName := func(typeName string) string { return displayResolver.NormalizeTypeString(typeName) }
 	vmType := func(expr ast.Expr) string { return displayResolver.VMType(expr) }
 	funcSpec := func(funcType *ast.FuncType) string {
@@ -915,7 +1083,22 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		return fieldsSB.String()
 	}
 
-	referencedStructs := collectReferencedStructs(iface, structs)
+	referencedStructs := collectReferencedStructs(iface, structs, ownedStructs, currentOwned, packageMode)
+	referencedSchemaVars := make(map[string]string, len(referencedStructs))
+	if schemas != nil {
+		for _, structName := range referencedStructs {
+			referencedSchemaVars[structName] = schemas.Ensure(displayTypeName(structName), buildStructSchemaLiteral(structName, true, false))
+		}
+	}
+	selfSchemaVar := ""
+	if schemas != nil && methodsPrefix != "" {
+		includeFields := isStruct || structs[methodsPrefix] != nil
+		schemaName := methodsPrefix
+		if isStruct {
+			schemaName = name
+		}
+		selfSchemaVar = schemas.Ensure(displayTypeName(schemaName), buildStructSchemaLiteral(schemaName, includeFields, true))
+	}
 
 	fmt.Fprintf(&sb, "const (\n")
 	for i, method := range iface.Methods.List {
@@ -1281,42 +1464,64 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, method, args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
-	for _, structName := range referencedStructs {
-		if isStruct && structName == name {
-			continue
+	if schemas == nil {
+		for _, structName := range referencedStructs {
+			if isStruct && structName == name {
+				continue
+			}
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n",
+				structSchemaVarName(displayTypeName(structName)),
+				displayTypeName(structName),
+				buildStructSchemaLiteral(structName, true, false),
+			)
 		}
-		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n",
-			structSchemaVarName(structName),
-			displayTypeName(structName),
-			buildStructSchemaLiteral(structName, true, false),
-		)
 	}
 
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
-		fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(name), buildStructSchemaLiteral(name, true, true))
+		if schemas == nil {
+			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(name), buildStructSchemaLiteral(name, true, true))
+		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
+		fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
+		fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
+		fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
+		fmt.Fprintf(&sb, "\t}\n")
 		writeBoundRegistrations("\t")
 		for _, structName := range referencedStructs {
 			if structName == name {
 				continue
 			}
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
+			schemaVar := structSchemaVarName(displayTypeName(structName))
+			if schemas != nil {
+				schemaVar = referencedSchemaVars[structName]
+			}
+			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 		}
-		fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", displayTypeName(name), name)
+		selfVar := name + "_StructSchema"
+		if schemas != nil {
+			selfVar = selfSchemaVar
+		}
+		fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(name), selfVar)
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
-		if methodsPrefix != "" {
+		if methodsPrefix != "" && schemas == nil {
 			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
+		if methodsPrefix != "" || len(referencedStructs) > 0 {
+			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
+			fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
+			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
+			fmt.Fprintf(&sb, "\t}\n")
+		}
 		writeBoundRegistrations("\t")
 
 		if isModule && fixedPrefix != "" && len(constants) > 0 {
@@ -1331,17 +1536,28 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		if methodsPrefix != "" {
-			fmt.Fprintf(&sb, "\t")
 			for _, structName := range referencedStructs {
 				if structName == methodsPrefix {
 					continue
 				}
-				fmt.Fprintf(&sb, "registrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
+				schemaVar := structSchemaVarName(displayTypeName(structName))
+				if schemas != nil {
+					schemaVar = referencedSchemaVars[structName]
+				}
+				fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 			}
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s_StructSchema)\n", displayTypeName(methodsPrefix), name)
+			selfVar := name + "_StructSchema"
+			if schemas != nil {
+				selfVar = selfSchemaVar
+			}
+			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfVar)
 		} else if len(referencedStructs) > 0 {
 			for _, structName := range referencedStructs {
-				fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
+				schemaVar := structSchemaVarName(displayTypeName(structName))
+				if schemas != nil {
+					schemaVar = referencedSchemaVars[structName]
+				}
+				fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 			}
 		}
 		fmt.Fprintf(&sb, "}\n")
@@ -1351,10 +1567,20 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
+		if len(referencedStructs) > 0 {
+			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
+			fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
+			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
+			fmt.Fprintf(&sb, "\t}\n")
+		}
 		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
 		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
 		for _, structName := range referencedStructs {
-			fmt.Fprintf(&sb, "\tregistrar.RegisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), structSchemaVarName(structName))
+			schemaVar := structSchemaVarName(displayTypeName(structName))
+			if schemas != nil {
+				schemaVar = referencedSchemaVars[structName]
+			}
+			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 		}
 		fmt.Fprintf(&sb, "}\n")
 	}
@@ -1472,7 +1698,7 @@ func structSchemaVarName(typeName string) string {
 	return replacer.Replace(typeName) + "_FFI_StructSchema"
 }
 
-func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType) []string {
+func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType, ownedStructs map[string]bool, currentOwned string, packageMode bool) []string {
 	seen := make(map[string]bool)
 	var ordered []string
 	var visitType func(string)
@@ -1511,6 +1737,9 @@ func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.
 		localName := typeName
 		if idx := strings.LastIndex(localName, "."); idx >= 0 {
 			localName = localName[idx+1:]
+		}
+		if packageMode && ownedStructs != nil && ownedStructs[localName] && localName != currentOwned {
+			return
 		}
 		if !seen[localName] && structs[localName] != nil {
 			seen[localName] = true

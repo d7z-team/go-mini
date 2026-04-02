@@ -507,11 +507,11 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
+var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
 
-var FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
+var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
 
-var Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
+var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
 
 func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
@@ -522,6 +522,12 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("os.Open", bridge, MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("os.Name", bridge, MockOS_FFI_Schemas[1].MethodID, MockOS_FFI_Schemas[1].Sig, MockOS_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("os.Stat", bridge, MockOS_FFI_Schemas[2].MethodID, MockOS_FFI_Schemas[2].Sig, MockOS_FFI_Schemas[2].Doc)
@@ -529,9 +535,9 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 	registrar.RegisterFFISchema("os.Write", bridge, MockOS_FFI_Schemas[4].MethodID, MockOS_FFI_Schemas[4].Sig, MockOS_FFI_Schemas[4].Doc)
 	registrar.RegisterFFISchema("os.Close", bridge, MockOS_FFI_Schemas[5].MethodID, MockOS_FFI_Schemas[5].Sig, MockOS_FFI_Schemas[5].Doc)
 	registrar.RegisterFFISchema("os.Deep", bridge, MockOS_FFI_Schemas[6].MethodID, MockOS_FFI_Schemas[6].Sig, MockOS_FFI_Schemas[6].Doc)
-	registrar.RegisterStructSchema("os.File", File_FFI_StructSchema)
-	registrar.RegisterStructSchema("os.FileInfo", FileInfo_FFI_StructSchema)
-	registrar.RegisterStructSchema("os.Nested", Nested_FFI_StructSchema)
+	registerStructSchema("os.File", os_File_FFI_StructSchema)
+	registerStructSchema("os.FileInfo", os_FileInfo_FFI_StructSchema)
+	registerStructSchema("os.Nested", os_Nested_FFI_StructSchema)
 }
 
 const (
@@ -845,7 +851,7 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
+var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
 
 func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
@@ -856,11 +862,17 @@ func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("native.GetStruct", bridge, NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("native.GetPtr", bridge, NativeMock_FFI_Schemas[1].MethodID, NativeMock_FFI_Schemas[1].Sig, NativeMock_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("native.SetStruct", bridge, NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("native.SetPtr", bridge, NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
-	registrar.RegisterStructSchema("native.NativeStruct", NativeStruct_FFI_StructSchema)
+	registerStructSchema("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
 }
 
 const (
@@ -951,7 +963,13 @@ func RegisterPage(executor interface{ RegisterConstant(string, string) }, regist
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("__method_Page_GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
-	registrar.RegisterStructSchema("Selector", Selector_FFI_StructSchema)
-	registrar.RegisterStructSchema("Page", Page_StructSchema)
+	registerStructSchema("Selector", Selector_FFI_StructSchema)
+	registerStructSchema("Page", Page_StructSchema)
 }

@@ -245,9 +245,9 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
 
-var EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
+var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
 
 func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
@@ -258,10 +258,16 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	registrar.RegisterFFISchema("test.GetSameObject", bridge, AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("test.IsSame", bridge, AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("test.EchoMap", bridge, AdvancedFFI_FFI_Schemas[2].MethodID, AdvancedFFI_FFI_Schemas[2].Sig, AdvancedFFI_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("test.EchoEmbedded", bridge, AdvancedFFI_FFI_Schemas[3].MethodID, AdvancedFFI_FFI_Schemas[3].Sig, AdvancedFFI_FFI_Schemas[3].Doc)
-	registrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
-	registrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
+	registerStructSchema("test.TestObj", test_TestObj_FFI_StructSchema)
+	registerStructSchema("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
 }
