@@ -9,7 +9,7 @@ import (
 
 func newEmptyExecutor(t *testing.T) *Executor {
 	t.Helper()
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -17,9 +17,6 @@ func newEmptyExecutor(t *testing.T) *Executor {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 	return exec
 }
 

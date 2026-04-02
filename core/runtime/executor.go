@@ -26,7 +26,8 @@ type Executor struct {
 
 	routes map[string]FFIRoute
 
-	Loader func(path string) (*ast.ProgramStmt, error)
+	Loader         func(path string) (*ast.ProgramStmt, error)
+	PreparedLoader func(path string) (*ast.ProgramStmt, *PreparedProgram, error)
 
 	StepLimit int64
 
@@ -144,20 +145,12 @@ func (e *Executor) SetLastSession(session *StackContext) {
 	e.lastSession = session
 }
 
-func NewExecutor(program *ast.ProgramStmt) (*Executor, error) {
-	if program == nil {
-		return nil, errors.New("invalid program")
-	}
-	prepared, err := PrepareProgram(program)
-	if err != nil {
-		return nil, err
-	}
-	return NewExecutorFromPrepared(program, prepared)
-}
-
 func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram) (*Executor, error) {
 	if program == nil {
 		return nil, errors.New("invalid program")
+	}
+	if prepared == nil {
+		return nil, errors.New("missing prepared program")
 	}
 	globalInitOrder, err := program.GlobalInitOrder()
 	if err != nil {
@@ -220,30 +213,7 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 			}
 		}
 	}
-	if prepared != nil {
-		result.applyPreparedProgram(prepared)
-	} else {
-		rootScope := result.newRootLoweringScope()
-		for ident, global := range result.globals {
-			if global.HasInit && global.InitExpr != nil {
-				global.InitPlan = result.tasksForExprInScope(global.InitExpr, rootScope)
-			}
-			result.globals[ident] = global
-		}
-		for ident, fn := range program.Functions {
-			if fn == nil {
-				continue
-			}
-			fnScope := rootScope.childFunction()
-			for _, p := range fn.Params {
-				fnScope.declare(string(p.Name))
-			}
-			rf := result.functions[ident]
-			rf.BodyTasks = result.tasksForStmtInScope(fn.Body, nil, fnScope)
-			result.functions[ident] = rf
-		}
-		result.mainTasks = result.buildStmtPlanWithScope(program.Main, rootScope)
-	}
+	result.applyPreparedProgram(prepared)
 	return result, nil
 }
 
@@ -1912,11 +1882,24 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return fmt.Errorf("circular dependency detected: %s", path)
 		}
 
-		if e.Loader != nil {
+		if e.PreparedLoader != nil {
+			prog, prepared, err := e.PreparedLoader(path)
+			if err == nil {
+				session.LoadingModules[path] = true
+				res, err := e.executeImportedProgram(session, path, prog, prepared)
+				delete(session.LoadingModules, path)
+				if err != nil {
+					return err
+				}
+				session.ModuleCache[path] = res
+				session.ValueStack.Push(res)
+				return nil
+			}
+		} else if e.Loader != nil {
 			prog, err := e.Loader(path)
 			if err == nil {
 				session.LoadingModules[path] = true
-				res, err := e.executeImportedProgram(session, path, prog)
+				res, err := e.executeImportedProgram(session, path, prog, nil)
 				delete(session.LoadingModules, path)
 				if err != nil {
 					return err
@@ -2687,12 +2670,20 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	}
 }
 
-func (e *Executor) executeImportedProgram(parent *StackContext, path string, prog *ast.ProgramStmt) (*Var, error) {
-	modExecutor, err := NewExecutor(prog)
+func (e *Executor) executeImportedProgram(parent *StackContext, path string, prog *ast.ProgramStmt, prepared *PreparedProgram) (*Var, error) {
+	var err error
+	if prepared == nil {
+		prepared, err = PrepareProgram(prog)
+		if err != nil {
+			return nil, err
+		}
+	}
+	modExecutor, err := NewExecutorFromPrepared(prog, prepared)
 	if err != nil {
 		return nil, err
 	}
 	modExecutor.Loader = e.Loader
+	modExecutor.PreparedLoader = e.PreparedLoader
 	modExecutor.StepLimit = e.StepLimit
 	modExecutor.routes = e.routes
 

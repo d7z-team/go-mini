@@ -173,3 +173,25 @@ var msg = fmt.Sprintf("%s", "hi")
 		t.Fatal("expected compiled artifact")
 	}
 }
+
+func TestCompileSourceKeepsExecutableBytecodeWhenDisplayBytecodeUnsupported(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+func cleanup() {}
+
+func main() {
+	defer cleanup()
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if artifact.Bytecode == nil {
+		t.Fatal("expected bytecode artifact")
+	}
+	if artifact.Bytecode.Executable == nil {
+		t.Fatal("expected executable bytecode payload")
+	}
+}

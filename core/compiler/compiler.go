@@ -58,17 +58,11 @@ func New(cfg Config) *Compiler {
 }
 
 func (a *Artifact) MarshalJSON() ([]byte, error) {
-	if a == nil || a.Program == nil {
-		return nil, fmt.Errorf("cannot marshal empty artifact")
-	}
-	return json.Marshal(a.Program)
+	return a.MarshalBytecodeJSON()
 }
 
 func (a *Artifact) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
-	if a == nil || a.Program == nil {
-		return nil, fmt.Errorf("cannot marshal empty artifact")
-	}
-	return json.MarshalIndent(a.Program, prefix, indent)
+	return a.MarshalIndentBytecodeJSON(prefix, indent)
 }
 
 func (a *Artifact) MarshalBytecodeJSON() ([]byte, error) {

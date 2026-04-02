@@ -179,6 +179,61 @@ func main() {
 	}
 }
 
+func TestMiniProgramMarshalJSONDefaultsToBytecode(t *testing.T) {
+	exec := NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	payload, err := prog.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal json failed: %v", err)
+	}
+	if !strings.Contains(string(payload), `"format":"go-mini-bytecode"`) {
+		t.Fatalf("expected bytecode json, got: %s", payload)
+	}
+}
+
+func TestNewRuntimeByJSONAutoDetectsBytecode(t *testing.T) {
+	exec := NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+var counter = 1
+func main() { counter = counter + 1 }
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	payload, err := prog.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal json failed: %v", err)
+	}
+
+	loaded, err := exec.NewRuntimeByJSON(payload)
+	if err != nil {
+		t.Fatalf("load by generic json failed: %v", err)
+	}
+	if err := loaded.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestNewRuntimeByJSONRejectsASTPayload(t *testing.T) {
+	exec := NewMiniExecutor()
+	astPayload := []byte(`{"meta":"boot","constants":{},"variables":{},"types":{},"structs":{},"functions":{},"main":[]}`)
+	_, err := exec.NewRuntimeByJSON(astPayload)
+	if err == nil {
+		t.Fatal("expected ast payload rejection")
+	}
+	if !strings.Contains(err.Error(), "expected go-mini bytecode") {
+		t.Fatalf("unexpected ast json load error: %v", err)
+	}
+}
+
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
 	payload := []byte(`{"format":"go-mini-bytecode","version":1,"opcode_set":"runtime.opcode.v1","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":1}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":2}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":3}},{"op":32}]}}`)
 	_, err := bytecode.UnmarshalJSON(payload)
@@ -186,6 +241,26 @@ func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
 		t.Fatal("expected executable task decode failure")
 	}
 	if !strings.Contains(err.Error(), "opcode") && !strings.Contains(err.Error(), "deserializable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewRuntimeByCompiledRequiresExecutableBytecode(t *testing.T) {
+	exec := NewMiniExecutor()
+	compiled, err := exec.CompileGoCode(`
+package main
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	compiled.Bytecode = nil
+
+	_, err = exec.NewRuntimeByCompiled(compiled)
+	if err == nil {
+		t.Fatal("expected missing executable bytecode error")
+	}
+	if !strings.Contains(err.Error(), "missing executable bytecode") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

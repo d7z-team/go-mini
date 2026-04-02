@@ -66,7 +66,7 @@ func taskLoadSymbol(task Task) (string, SymbolKind, bool) {
 }
 
 func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -74,9 +74,6 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	expr, err := ffigo.NewGoToASTConverter().ConvertExprSource(`sum(1, 2)`)
 	if err != nil {
@@ -111,7 +108,7 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 }
 
 func TestLowerStmtTasksBuildsDataOnlyBranchPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -119,9 +116,6 @@ func TestLowerStmtTasksBuildsDataOnlyBranchPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 if ok {
@@ -173,7 +167,7 @@ if ok {
 }
 
 func TestLowerStmtTasksBuildsDataOnlyForPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -181,9 +175,6 @@ func TestLowerStmtTasksBuildsDataOnlyForPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 for i := 0; i < 3; i++ {
@@ -223,7 +214,7 @@ for i := 0; i < 3; i++ {
 }
 
 func TestLowerStmtTasksBuildsDataOnlyRangePlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -231,9 +222,6 @@ func TestLowerStmtTasksBuildsDataOnlyRangePlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 for idx, value := range items {
@@ -274,7 +262,7 @@ for idx, value := range items {
 }
 
 func TestLowerStmtTasksBuildsDataOnlyTryPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -282,9 +270,6 @@ func TestLowerStmtTasksBuildsDataOnlyTryPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	body, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`panic("boom")`)
 	if err != nil {
@@ -341,7 +326,7 @@ func TestLowerStmtTasksBuildsDataOnlyTryPlan(t *testing.T) {
 }
 
 func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -349,9 +334,6 @@ func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`defer cleanup(1)`)
 	if err != nil {
@@ -378,7 +360,7 @@ func TestLowerStmtTasksBuildsDataOnlyDeferPlan(t *testing.T) {
 }
 
 func TestLowerStmtTasksBuildsDataOnlySwitchPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -386,9 +368,6 @@ func TestLowerStmtTasksBuildsDataOnlySwitchPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 switch x {
@@ -440,7 +419,7 @@ default:
 }
 
 func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -448,9 +427,6 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	assign := &ast.AssignmentStmt{
 		LHS: &ast.IdentifierExpr{Name: "x"},
@@ -506,7 +482,7 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 }
 
 func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -514,9 +490,6 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	expr, err := ffigo.NewGoToASTConverter().ConvertExprSource(`func(x Int64) Int64 { return x + 1 }`)
 	if err != nil {
@@ -544,7 +517,7 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 }
 
 func TestLoweringAnnotatesSymbols(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: map[ast.Ident]ast.Expr{"g": nil},
@@ -552,9 +525,6 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	expr, err := ffigo.NewGoToASTConverter().ConvertExprSource(`func(x Int64) Int64 { var y Int64; println(g); return x + y + g }`)
 	if err != nil {
@@ -607,7 +577,7 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 }
 
 func TestLoweringAnnotatesShortDeclAndRangeSymbols(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -615,9 +585,6 @@ func TestLoweringAnnotatesShortDeclAndRangeSymbols(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 for _, item := range []int64{1} {
@@ -658,7 +625,7 @@ for _, item := range []int64{1} {
 }
 
 func TestLoweringAnnotatesShadowingAndCatchSymbols(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode: ast.BaseNode{ID: "test"},
 		Variables: map[ast.Ident]ast.Expr{
 			"value": nil,
@@ -669,9 +636,6 @@ func TestLoweringAnnotatesShadowingAndCatchSymbols(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`
 if ok {
@@ -742,7 +706,7 @@ println(value)
 }
 
 func TestLoweringHandlesTypedNilASTNodes(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
@@ -750,9 +714,6 @@ func TestLoweringHandlesTypedNilASTNodes(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	scope := exec.newRootLoweringScope().childFunction()
 	var nilBlock *ast.BlockStmt

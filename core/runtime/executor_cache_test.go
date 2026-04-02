@@ -47,10 +47,7 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		Body: &ast.BlockStmt{Children: bodyStmts, Inner: true},
 	}
 
-	exec, err := NewExecutor(prog)
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
+	exec := newExecutor(t, prog)
 	exec.program = nil
 
 	session := exec.NewSession(context.Background(), "global")

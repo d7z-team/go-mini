@@ -10,7 +10,7 @@ import (
 )
 
 func TestCompileAndExecuteSeparation(t *testing.T) {
-	// 阶段 1：在节点 A 进行编译和序列化
+	// 阶段 1：在节点 A 进行编译和 bytecode 序列化
 	executorA := engine.NewMiniExecutor()
 	code := `
 			package main
@@ -31,24 +31,19 @@ func TestCompileAndExecuteSeparation(t *testing.T) {
 		}
 	`
 
-	compiled, err := executorA.CompileGoCode(code)
+	// 将编译好的产物导出为 bytecode JSON 字节流 (模拟网络传输或数据库存储)
+	jsonPayload, err := executorA.CompileGoCodeToBytecodeJSON(code)
 	if err != nil {
-		t.Fatalf("Server A compilation failed: %v", err)
-	}
-
-	// 将编译好的产物导出为 JSON 字节流 (模拟网络传输或数据库存储)
-	jsonPayload, err := compiled.MarshalJSON()
-	if err != nil {
-		t.Fatalf("Failed to marshal AST to JSON: %v", err)
+		t.Fatalf("Failed to marshal bytecode to JSON: %v", err)
 	}
 
 	// 阶段 2：在节点 B 接收 JSON 并高并发执行
 	executorB := engine.NewMiniExecutor()
 
-	// 从 JSON 数据直接恢复为可执行的 MiniProgram 蓝图
-	progB, err := executorB.NewRuntimeByJSON(jsonPayload)
+	// 从 bytecode JSON 数据直接恢复为可执行的 MiniProgram 蓝图
+	progB, err := executorB.NewRuntimeByBytecodeJSON(jsonPayload)
 	if err != nil {
-		t.Fatalf("Server B failed to load program from JSON: %v", err)
+		t.Fatalf("Server B failed to load program from bytecode JSON: %v", err)
 	}
 
 	// 验证：开启高并发执行恢复出的蓝图

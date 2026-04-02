@@ -36,14 +36,19 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 		}
 		code, ok := builder.compileExpr(expr)
 		if !ok {
-			return nil
+			bc.Globals = nil
+			bc.Entry = nil
+			bc.Functions = nil
+			return bc
 		}
 		bc.Globals = append(bc.Globals, bytecode.Global{Name: string(name), Instructions: code})
 	}
 
 	entry, ok := builder.compileStatements(program.Main)
 	if !ok {
-		return nil
+		bc.Entry = nil
+		bc.Functions = nil
+		return bc
 	}
 	bc.Entry = entry
 
@@ -60,7 +65,8 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 		}
 		code, ok := builder.compileStatements([]ast.Stmt{fn.Body})
 		if !ok {
-			return nil
+			bc.Functions = nil
+			return bc
 		}
 		bc.Functions = append(bc.Functions, bytecode.Function{
 			Name:         name,

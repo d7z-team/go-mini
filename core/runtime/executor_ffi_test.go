@@ -10,7 +10,7 @@ import (
 
 type testFFIBridge struct{}
 
-func (testFFIBridge) Call(context.Context, uint32, []byte) ([]byte, error)  { return nil, nil }
+func (testFFIBridge) Call(context.Context, uint32, []byte) ([]byte, error)   { return nil, nil }
 func (testFFIBridge) Invoke(context.Context, string, []byte) ([]byte, error) { return nil, nil }
 func (testFFIBridge) DestroyHandle(uint32) error                             { return nil }
 

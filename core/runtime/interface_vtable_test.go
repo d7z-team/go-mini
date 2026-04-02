@@ -7,7 +7,7 @@ import (
 )
 
 func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types: map[ast.Ident]ast.GoMiniType{
@@ -16,9 +16,6 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	methodSig := ast.FunctionType{Return: "Error"}
 	readSig := ast.FunctionType{Return: "tuple(Int64, Error)"}
@@ -64,16 +61,13 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 }
 
 func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types:     make(map[ast.Ident]ast.GoMiniType),
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	spec := MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }")
 	exec.RegisterStructSpec("demo.Type", spec)
@@ -88,7 +82,7 @@ func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
 }
 
 func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types: map[ast.Ident]ast.GoMiniType{
@@ -98,9 +92,6 @@ func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	res := exec.initializeType(nil, "UserID", 0)
 	if res == nil || res.VType != TypeInt || res.Type != "UserID" || res.I64 != 0 {
@@ -109,7 +100,7 @@ func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 }
 
 func TestResolveNamedTypeChainDetectsCycles(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types: map[ast.Ident]ast.GoMiniType{
@@ -119,9 +110,6 @@ func TestResolveNamedTypeChainDetectsCycles(t *testing.T) {
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	if _, _, err := exec.resolveNamedTypeChain("A"); err == nil {
 		t.Fatal("expected named type cycle to be detected")
@@ -129,16 +117,13 @@ func TestResolveNamedTypeChainDetectsCycles(t *testing.T) {
 }
 
 func TestCachedInterfaceSpecReusesParsedLiteral(t *testing.T) {
-	exec, err := NewExecutor(&ast.ProgramStmt{
+	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types:     make(map[ast.Ident]ast.GoMiniType),
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
-	if err != nil {
-		t.Fatalf("new executor failed: %v", err)
-	}
 
 	spec1, ok := exec.cachedInterfaceSpec("interface{Close() Error;}")
 	if !ok || spec1 == nil {

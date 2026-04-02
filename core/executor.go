@@ -44,10 +44,11 @@ type MiniExecutor struct {
 	routes    map[string]runtime.FFIRoute
 	constants map[string]string
 
-	registry    *ffigo.HandleRegistry
-	modules     map[string]*ast.ProgramStmt // 预加载的模块蓝图
-	funcSchemas map[ast.Ident]*runtime.RuntimeFuncSig
-	structsMeta map[ast.Ident]*runtime.RuntimeStructSpec
+	registry       *ffigo.HandleRegistry
+	modules        map[string]*ast.ProgramStmt // 预加载的模块蓝图
+	moduleBytecode map[string]*bytecode.Program
+	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
+	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }
@@ -276,23 +277,38 @@ func (p *MiniProgram) Disassemble() string {
 }
 
 func (p *MiniProgram) MarshalJSON() ([]byte, error) {
-	return json.Marshal(p.executor.GetProgram())
+	return p.MarshalBytecodeJSON()
 }
 
 func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
-	return json.MarshalIndent(p.executor.GetProgram(), prefix, indent)
+	return p.MarshalIndentBytecodeJSON(prefix, indent)
+}
+
+func (p *MiniProgram) MarshalBytecodeJSON() ([]byte, error) {
+	if p == nil || p.Compiled == nil {
+		return nil, fmt.Errorf("cannot marshal bytecode from empty program")
+	}
+	return p.Compiled.MarshalBytecodeJSON()
+}
+
+func (p *MiniProgram) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, error) {
+	if p == nil || p.Compiled == nil {
+		return nil, fmt.Errorf("cannot marshal bytecode from empty program")
+	}
+	return p.Compiled.MarshalIndentBytecodeJSON(prefix, indent)
 }
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges:      make(map[uint32]ffigo.FFIBridge),
-		routes:       make(map[string]runtime.FFIRoute),
-		constants:    make(map[string]string),
-		registry:     ffigo.NewHandleRegistry(),
-		modules:      make(map[string]*ast.ProgramStmt),
-		funcSchemas:  make(map[ast.Ident]*runtime.RuntimeFuncSig),
-		structsMeta:  make(map[ast.Ident]*runtime.RuntimeStructSpec),
-		MaxTypeDepth: 256,
+		bridges:        make(map[uint32]ffigo.FFIBridge),
+		routes:         make(map[string]runtime.FFIRoute),
+		constants:      make(map[string]string),
+		registry:       ffigo.NewHandleRegistry(),
+		modules:        make(map[string]*ast.ProgramStmt),
+		moduleBytecode: make(map[string]*bytecode.Program),
+		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		MaxTypeDepth:   256,
 	}
 
 	// 默认注册 panic 签名以便通过验证
@@ -338,7 +354,7 @@ func NewMiniExecutor() *MiniExecutor {
 	return res
 }
 
-func (e *MiniExecutor) getLoader() func(path string) (*ast.ProgramStmt, error) {
+func (e *MiniExecutor) moduleProgramLoader() func(path string) (*ast.ProgramStmt, error) {
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
@@ -352,13 +368,33 @@ func (e *MiniExecutor) getLoader() func(path string) (*ast.ProgramStmt, error) {
 	}
 }
 
-func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Executor, error) {
-	executor, err := runtime.NewExecutor(program)
-	if err != nil {
-		return nil, err
+func (e *MiniExecutor) modulePreparedLoader() func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
+	return func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
+		e.mu.RLock()
+		if prog, ok := e.modules[path]; ok {
+			if bc, ok := e.moduleBytecode[path]; ok && bc != nil && bc.Executable != nil {
+				e.mu.RUnlock()
+				return prog, bc.Executable, nil
+			}
+			e.mu.RUnlock()
+			return prog, nil, nil
+		}
+		loader := e.Loader
+		e.mu.RUnlock()
+		if loader != nil {
+			prog, err := loader(path)
+			return prog, nil, err
+		}
+		return nil, nil, fmt.Errorf("module not found: %s", path)
 	}
+}
 
-	executor.Loader = e.getLoader()
+func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
+	if executor == nil {
+		return
+	}
+	executor.Loader = e.moduleProgramLoader()
+	executor.PreparedLoader = e.modulePreparedLoader()
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -371,13 +407,12 @@ func (e *MiniExecutor) prepareExecutor(program *ast.ProgramStmt) (*runtime.Execu
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
 	}
-	return executor, nil
 }
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	schema := e.GetExportedSchema()
 	return compiler.New(compiler.Config{
-		Loader:        e.getLoader(),
+		Loader:        e.moduleProgramLoader(),
 		Specs:         e.GetExportedSpecs(),
 		FuncSchemas:   schema.Funcs,
 		StructSchemas: schema.Structs,
@@ -395,6 +430,17 @@ func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.modules[path] = prog.GetAst()
+	if prog != nil && prog.Compiled != nil && prog.Compiled.Bytecode != nil {
+		e.moduleBytecode[path] = prog.Compiled.Bytecode
+	}
+}
+
+func (e *MiniExecutor) CompileGoCodeToBytecodeJSON(code string) ([]byte, error) {
+	compiled, err := e.CompileGoCode(code)
+	if err != nil {
+		return nil, err
+	}
+	return compiled.MarshalBytecodeJSON()
 }
 
 func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
@@ -402,8 +448,9 @@ func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
 }
 
 func (e *MiniExecutor) Executor() *runtime.Executor {
-	// We need a dummy executor or create one from a dummy program to access the methods
-	executor, _ := e.prepareExecutor(&ast.ProgramStmt{})
+	prepared, _ := runtime.PrepareProgram(&ast.ProgramStmt{})
+	executor, _ := runtime.NewExecutorFromPrepared(&ast.ProgramStmt{}, prepared)
+	e.applyExecutorConfig(executor)
 	return executor
 }
 
@@ -579,33 +626,15 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 	if compiled == nil || compiled.Program == nil {
 		return nil, errors.New("invalid compiled program")
 	}
-
-	var (
-		executor *runtime.Executor
-		err      error
-	)
-	if compiled.Bytecode != nil && compiled.Bytecode.Executable != nil {
-		executor, err = runtime.NewExecutorFromPrepared(compiled.Program, compiled.Bytecode.Executable)
-		if err == nil {
-			executor.Loader = e.getLoader()
-			e.mu.RLock()
-			for name, route := range e.routes {
-				executor.RegisterRoute(name, route)
-			}
-			for name, spec := range e.structsMeta {
-				executor.RegisterStructSpec(string(name), spec)
-			}
-			for name, val := range e.constants {
-				executor.RegisterConstant(name, val)
-			}
-			e.mu.RUnlock()
-		}
-	} else {
-		executor, err = e.prepareExecutor(compiled.Program)
+	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		return nil, errors.New("compiled program missing executable bytecode")
 	}
+
+	executor, err := runtime.NewExecutorFromPrepared(compiled.Program, compiled.Bytecode.Executable)
 	if err != nil {
 		return nil, err
 	}
+	e.applyExecutorConfig(executor)
 	if len(compiled.GlobalInitOrder) > 0 {
 		executor.SetGlobalInitOrder(compiled.GlobalInitOrder)
 	}
@@ -765,9 +794,10 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	}
 
 	// 创建最小化的无状态执行器
-	executor, _ := e.prepareExecutor(&ast.ProgramStmt{
-		BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"},
-	})
+	base := &ast.ProgramStmt{BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"}}
+	prepared, _ := runtime.PrepareProgram(base)
+	executor, _ := runtime.NewExecutorFromPrepared(base, prepared)
+	e.applyExecutorConfig(executor)
 
 	session := executor.NewSession(ctx, "eval")
 	defer executor.CleanupSession(session)
@@ -847,9 +877,10 @@ func (e *MiniExecutor) MustExecute(ctx context.Context, code string, env map[str
 // Import 手动加载一个模块并返回其导出的成员对象
 func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
 	// 创建一个最简的执行器环境来执行加载
-	executor, _ := e.prepareExecutor(&ast.ProgramStmt{
-		BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"},
-	})
+	base := &ast.ProgramStmt{BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"}}
+	prepared, _ := runtime.PrepareProgram(base)
+	executor, _ := runtime.NewExecutorFromPrepared(base, prepared)
+	e.applyExecutorConfig(executor)
 
 	session := executor.NewSession(ctx, "loader")
 	defer executor.CleanupSession(session)
@@ -857,40 +888,15 @@ func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	return executor.ImportModule(session, &ast.ImportExpr{Path: path})
 }
 
-// NewRuntimeByJSON 从序列化后的 JSON AST 数据加载并构建执行环境
+// NewRuntimeByJSON 从序列化后的 bytecode JSON 数据加载并构建执行环境。
 func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
-	node, err := Unmarshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("JSON 反序列化失败: %w", err)
+	var probe struct {
+		Format string `json:"format"`
 	}
-
-	program, ok := node.(*ast.ProgramStmt)
-	if !ok {
-		// 如果不是 ProgramStmt，则封装为一个
-		program = &ast.ProgramStmt{
-			BaseNode:  ast.BaseNode{ID: "boot", Meta: "boot"},
-			Constants: make(map[string]string),
-			Variables: make(map[ast.Ident]ast.Expr),
-			Types:     make(map[ast.Ident]ast.GoMiniType),
-			Structs:   make(map[ast.Ident]*ast.StructStmt),
-			Functions: make(map[ast.Ident]*ast.FunctionStmt),
-			Main:      make([]ast.Stmt, 0),
-		}
-		if block, ok := node.(*ast.BlockStmt); ok {
-			program.Main = block.Children
-		}
+	if err := json.Unmarshal(data, &probe); err == nil && probe.Format == bytecode.FormatGoMiniBytecode {
+		return e.NewRuntimeByBytecodeJSON(data)
 	}
-
-	compiled, semanticCtx, err := e.newCompiler().CompileProgram("json", "", program, false)
-	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
-	}
-
-	return e.NewRuntimeByCompiled(compiled)
+	return nil, fmt.Errorf("invalid json payload: expected go-mini bytecode")
 }
 
 // LSP Metadata Export
