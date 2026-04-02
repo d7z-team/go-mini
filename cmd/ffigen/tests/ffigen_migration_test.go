@@ -44,7 +44,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"var OrderService_FFI_Schemas = []struct {",
 				"Ptr<order.Order>",
-				"registrar.RegisterFFISchema(\"__method_order.Order_AddItem\"",
+				"registrar.RegisterFFISchema(\"order.Order.AddItem\"",
 				"registrar.RegisterFFISchema(",
 			},
 		},

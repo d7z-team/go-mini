@@ -139,6 +139,39 @@ func (e *Executor) LastSession() *StackContext {
 	return e.lastSession
 }
 
+func normalizeMethodReceiverType(typeName string) string {
+	typeName = strings.TrimPrefix(typeName, "Ptr<")
+	typeName = strings.TrimPrefix(typeName, "*")
+	typeName = strings.TrimSuffix(typeName, ">")
+	return typeName
+}
+
+func methodRouteName(typeName, method string) string {
+	return normalizeMethodReceiverType(typeName) + "." + method
+}
+
+func legacyMethodRouteName(typeName, method string) string {
+	return fmt.Sprintf("__method_%s_%s", normalizeMethodReceiverType(typeName), method)
+}
+
+func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
+	methodName := methodRouteName(typeName, method)
+	if _, ok := e.routes[methodName]; ok {
+		return methodName, true
+	}
+	if _, ok := e.lookupFunction(methodName); ok {
+		return methodName, true
+	}
+	legacyName := legacyMethodRouteName(typeName, method)
+	if _, ok := e.routes[legacyName]; ok {
+		return legacyName, true
+	}
+	if _, ok := e.lookupFunction(legacyName); ok {
+		return legacyName, true
+	}
+	return "", false
+}
+
 func (e *Executor) SetLastSession(session *StackContext) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -575,9 +608,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
 		}
 	case TypeHandle:
-		tName := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(string(val.Type), "Ptr<"), "*"), ">")
-		methodName := fmt.Sprintf("__method_%s_%s", tName, name)
-		if _, ok := e.routes[methodName]; ok {
+		if methodName, ok := e.resolveMethodRoute(string(val.Type), name); ok {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 		}
 	case TypeMap:
@@ -588,11 +619,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 		tName := string(val.Type)
 		if tName != "" && tName != "Any" {
-			methodName := fmt.Sprintf("__method_%s_%s", tName, name)
-			if _, ok := e.routes[methodName]; ok {
-				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
-			}
-			if _, ok := e.lookupFunction(methodName); ok {
+			if methodName, ok := e.resolveMethodRoute(tName, name); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 			}
 		}

@@ -969,7 +969,7 @@ func RegisterPage(executor interface{ RegisterConstant(string, string) }, regist
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_Page_GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("Page.GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
 	registerStructSchema("Selector", Selector_FFI_StructSchema)
 	registerStructSchema("Page", Page_StructSchema)
 }

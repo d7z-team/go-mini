@@ -655,14 +655,14 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_io.File_Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("__method_io.File_WriteAt", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("__method_io.File_Seek", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("__method_io.File_Close", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("__method_io.File_Sync", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("__method_io.File_Truncate", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("__method_io.File_WriteString", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("__method_io.File_Name", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("__method_io.File_WriteNative", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("io.File.Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("io.File.WriteAt", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("io.File.Seek", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("io.File.Close", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("io.File.Sync", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("io.File.Truncate", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("io.File.WriteString", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("io.File.Name", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("io.File.WriteNative", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
 	registerStructSchema("io.File", File_StructSchema)
 }

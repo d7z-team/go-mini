@@ -60,6 +60,9 @@ type BrowserModule interface {
 	if !strings.Contains(code, "func RegisterPage(") {
 		t.Fatalf("expected owned struct target to be generated")
 	}
+	if !strings.Contains(code, `registrar.RegisterFFISchema("browser.Page.Title"`) {
+		t.Fatalf("expected owned struct methods to use dotted method routes")
+	}
 }
 
 func TestRunDirectoryModeDoesNotTreatVariadicArgumentAsStructReceiver(t *testing.T) {

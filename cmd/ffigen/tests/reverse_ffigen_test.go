@@ -4,7 +4,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -316,12 +315,8 @@ func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
 	for _, m := range ScriptCalculator_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		registrar.RegisterFFISchema(prefix+"."+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	registerStructSchema("ReversePoint", ReversePoint_FFI_StructSchema)
 }

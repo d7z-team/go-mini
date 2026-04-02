@@ -270,7 +270,7 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_a_other.Type_Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("a_other.Type.Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
 	registerStructSchema("a_other.Type", ATypeService_StructSchema)
 }
 
@@ -386,6 +386,6 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_b_other.Type_Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("b_other.Type.Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
 	registerStructSchema("b_other.Type", BTypeService_StructSchema)
 }

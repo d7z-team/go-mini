@@ -4,7 +4,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -171,12 +170,8 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	sep := "."
-	if strings.HasPrefix(prefix, "__method_") {
-		sep = "_"
-	}
 	for _, m := range MockShapeAPI_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		registrar.RegisterFFISchema(prefix+"."+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	registerStructSchema("Rect", Rect_FFI_StructSchema)
 	registerStructSchema("Point", Point_FFI_StructSchema)

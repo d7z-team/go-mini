@@ -358,9 +358,9 @@ func RegisterOrderService(executor interface{ RegisterConstant(string, string) }
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("order.New", bridge, OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("__method_order.Order_AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("__method_order.Order_GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("__method_order.Order_Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("order.Order.AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("order.Order.GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("order.Order.Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
 	registerStructSchema("order.Item", order_Item_FFI_StructSchema)
 	registerStructSchema("order.Order", OrderService_StructSchema)
 }

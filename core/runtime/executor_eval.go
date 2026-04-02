@@ -420,12 +420,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		// Try to look up as a method if it has a type name
 		tName := string(obj.Type)
 		if tName != "" && tName != "Any" && !strings.HasPrefix(tName, "Map<") {
-			methodName := fmt.Sprintf("__method_%s_%s", tName, property)
-			if _, ok := e.routes[methodName]; ok {
-				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
-			}
-			// Also check internal functions
-			if _, ok := e.lookupFunction(methodName); ok {
+			if methodName, ok := e.resolveMethodRoute(tName, property); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 			}
 		}
@@ -440,12 +435,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if tName == "" {
 			tName = obj.VType.String()
 		}
-		tName = strings.TrimPrefix(tName, "Ptr<")
-		tName = strings.TrimPrefix(tName, "*")
-		tName = strings.TrimSuffix(tName, ">")
-		methodName := fmt.Sprintf("__method_%s_%s", tName, property)
-
-		if _, ok := e.routes[methodName]; ok {
+		if methodName, ok := e.resolveMethodRoute(tName, property); ok {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 		}
 	case TypeModule:
@@ -480,12 +470,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	if tName == "" {
 		tName = obj.VType.String()
 	}
-	tName = strings.TrimPrefix(tName, "Ptr<")
-	tName = strings.TrimPrefix(tName, "*")
-	tName = strings.TrimSuffix(tName, ">")
-	methodName := fmt.Sprintf("__method_%s_%s", tName, property)
-
-	if _, ok := e.routes[methodName]; ok {
+	if methodName, ok := e.resolveMethodRoute(tName, property); ok {
 		return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 	}
 

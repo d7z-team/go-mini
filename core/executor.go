@@ -961,21 +961,26 @@ func (e *MiniExecutor) ExportMetadata() string {
 
 	// 2. 处理 FFI Routes 和 Methods
 	for routeName, route := range e.routes {
+		sig := e.formatRouteSchema(route)
 		if strings.HasPrefix(routeName, "__method_") {
-			// __method_TypeName_MethodName
 			parts := strings.Split(routeName, "_")
-			if len(parts) >= 5 { // ["", "", "method", "TypeName", "MethodName"]
+			if len(parts) >= 5 {
 				typeName := parts[3]
 				methodName := strings.Join(parts[4:], "_")
-				sig := e.formatRouteSchema(route)
-				// FFI 结构体通常归属于 "__ffi__"
 				st := getStruct("__ffi__", typeName)
 				st.Methods[methodName] = sig
 			}
-		} else if strings.Contains(routeName, ".") {
+			continue
+		}
+		if strings.Count(routeName, ".") >= 2 {
+			parts := strings.SplitN(routeName, ".", 3)
+			modName, typeName, methodName := parts[0], parts[1], parts[2]
+			getStruct(modName, typeName).Methods[methodName] = sig
+			continue
+		}
+		if strings.Contains(routeName, ".") {
 			parts := strings.SplitN(routeName, ".", 2)
 			modName, funcName := parts[0], parts[1]
-			sig := e.formatRouteSchema(route)
 			getModule(modName).Functions[funcName] = sig
 		}
 	}

@@ -81,6 +81,30 @@ func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
 	}
 }
 
+func TestResolveMethodRouteSupportsDottedMethodKeys(t *testing.T) {
+	exec := newExecutor(t, &ast.ProgramStmt{
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+
+	exec.routes["demo.Type.Call"] = FFIRoute{
+		Name:    "demo.Type.Call",
+		MethodID: 1,
+		FuncSig: MustParseRuntimeFuncSig("function(Ptr<demo.Type>) Void"),
+	}
+
+	methodName, ok := exec.resolveMethodRoute("Ptr<demo.Type>", "Call")
+	if !ok {
+		t.Fatal("expected dotted method route to resolve")
+	}
+	if methodName != "demo.Type.Call" {
+		t.Fatalf("unexpected method route: %s", methodName)
+	}
+}
+
 func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 	exec := newExecutor(t, &ast.ProgramStmt{
 		Constants: make(map[string]string),

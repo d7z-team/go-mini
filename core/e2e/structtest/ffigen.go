@@ -141,9 +141,9 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_calc.Calculator_Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("__method_calc.Calculator_Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("__method_calc.Calculator_GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("calc.Calculator.Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("calc.Calculator.Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("calc.Calculator.GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
 	registerStructSchema("calc.Calculator", Calculator_StructSchema)
 }
 
@@ -265,8 +265,8 @@ func RegisterTable(executor interface{ RegisterConstant(string, string) }, regis
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_calc.Table_SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("__method_calc.Table_GetString", bridge, Table_FFI_Schemas[1].MethodID, Table_FFI_Schemas[1].Sig, Table_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("calc.Table.SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("calc.Table.GetString", bridge, Table_FFI_Schemas[1].MethodID, Table_FFI_Schemas[1].Sig, Table_FFI_Schemas[1].Doc)
 	registerStructSchema("calc.Table", Table_StructSchema)
 }
 

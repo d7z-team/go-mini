@@ -293,7 +293,7 @@ func RegisterBrowserService(executor interface{ RegisterConstant(string, string)
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_other.Browser_NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("other.Browser.NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
 	registerStructSchema("other.Browser", BrowserService_StructSchema)
 }
 
@@ -458,7 +458,7 @@ func RegisterPageService(executor interface{ RegisterConstant(string, string) },
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_other.Page_Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("other.Page.Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
 	registerStructSchema("other.Page", PageService_StructSchema)
 }
 
@@ -598,6 +598,6 @@ func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, str
 		}
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("__method_other.CdpSelector_Click", bridge, CdpSelectorService_FFI_Schemas[0].MethodID, CdpSelectorService_FFI_Schemas[0].Sig, CdpSelectorService_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("other.CdpSelector.Click", bridge, CdpSelectorService_FFI_Schemas[0].MethodID, CdpSelectorService_FFI_Schemas[0].Sig, CdpSelectorService_FFI_Schemas[0].Doc)
 	registerStructSchema("other.CdpSelector", CdpSelectorService_StructSchema)
 }

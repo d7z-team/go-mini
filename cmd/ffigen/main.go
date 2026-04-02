@@ -981,6 +981,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 	displayResolver := newDisplayTypeResolver(moduleName, iface, structs, methodsPrefix, ownedStructs, currentOwned, packageMode)
 	displayTypeName := func(typeName string) string { return displayResolver.NormalizeTypeString(typeName) }
+	methodRoutePrefix := func(typeName string) string { return displayTypeName(typeName) }
 	vmType := func(expr ast.Expr) string { return displayResolver.VMType(expr) }
 	funcSpec := func(funcType *ast.FuncType) string {
 		var params []string
@@ -1027,7 +1028,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	}
 	fixedPrefix := moduleName
 	if methodsPrefix != "" {
-		fixedPrefix = "__method_" + displayTypeName(methodsPrefix)
+		fixedPrefix = methodRoutePrefix(methodsPrefix)
 	}
 	methodHasReceiver := func(funcType *ast.FuncType) bool {
 		hasContext := false
@@ -1061,15 +1062,11 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			methodName := method.Names[0].Name
 			funcType := method.Type.(*ast.FuncType)
 			routePrefix := fixedPrefix
-			if moduleName != "" && methodsPrefix != "" && !methodHasReceiver(funcType) {
+			if !isStruct && moduleName != "" && methodsPrefix != "" && !methodHasReceiver(funcType) {
 				routePrefix = moduleName
 			}
-			routeSep := "."
-			if strings.HasPrefix(routePrefix, "__method_") {
-				routeSep = "_"
-			}
 			fmt.Fprintf(&sb, "%sregistrar.RegisterFFISchema(\"%s%s%s\", bridge, %s_FFI_Schemas[%d].MethodID, %s_FFI_Schemas[%d].Sig, %s_FFI_Schemas[%d].Doc)\n",
-				indent, routePrefix, routeSep, methodName, name, i, name, i, name, i)
+				indent, routePrefix, ".", methodName, name, i, name, i, name, i)
 		}
 	}
 
@@ -1610,8 +1607,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
 			fmt.Fprintf(&sb, "\t}\n")
 		}
-		fmt.Fprintf(&sb, "\tsep := \".\"\n\tif strings.HasPrefix(prefix, \"__method_\") { sep = \"_\" }\n")
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+\".\"+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
 		for _, structName := range referencedStructs {
 			schemaVar := structSchemaVarName(displayTypeName(structName))
 			if schemas != nil {
