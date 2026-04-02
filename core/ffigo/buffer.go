@@ -105,55 +105,55 @@ func (b *Buffer) WriteRawInterface(handle uint32, methods map[string]string) {
 
 func (b *Buffer) WriteAny(v interface{}) {
 	if v == nil {
-		b.WriteByte(TypeTagUnknown)
+		_ = b.WriteByte(TypeTagUnknown)
 		return
 	}
 	switch val := v.(type) {
 	case int64:
-		b.WriteByte(TypeTagInt64)
+		_ = b.WriteByte(TypeTagInt64)
 		b.WriteVarint(val)
 	case int:
-		b.WriteByte(TypeTagInt64)
+		_ = b.WriteByte(TypeTagInt64)
 		b.WriteVarint(int64(val))
 	case float64:
-		b.WriteByte(TypeTagFloat64)
+		_ = b.WriteByte(TypeTagFloat64)
 		b.WriteFloat64(val)
 	case string:
-		b.WriteByte(TypeTagString)
+		_ = b.WriteByte(TypeTagString)
 		b.WriteString(val)
 	case []byte:
-		b.WriteByte(TypeTagBytes)
+		_ = b.WriteByte(TypeTagBytes)
 		b.WriteBytes(val)
 	case bool:
-		b.WriteByte(TypeTagBool)
+		_ = b.WriteByte(TypeTagBool)
 		b.WriteBool(val)
 	case uint32:
-		b.WriteByte(TypeTagHandle)
+		_ = b.WriteByte(TypeTagHandle)
 		b.WriteUvarint(uint64(val))
 	case map[string]interface{}:
-		b.WriteByte(TypeTagMap)
+		_ = b.WriteByte(TypeTagMap)
 		b.WriteUvarint(uint64(len(val)))
 		for k, v := range val {
 			b.WriteString(k)
 			b.WriteAny(v)
 		}
 	case []interface{}:
-		b.WriteByte(TypeTagArray)
+		_ = b.WriteByte(TypeTagArray)
 		b.WriteUvarint(uint64(len(val)))
 		for _, v := range val {
 			b.WriteAny(v)
 		}
 	case ErrorData:
-		b.WriteByte(TypeTagError)
+		_ = b.WriteByte(TypeTagError)
 		b.WriteRawError(val.Message, val.Handle)
 	case InterfaceData:
-		b.WriteByte(TypeTagInterface)
+		_ = b.WriteByte(TypeTagInterface)
 		b.WriteRawInterface(val.Handle, val.Methods)
 	case error:
-		b.WriteByte(TypeTagError)
+		_ = b.WriteByte(TypeTagError)
 		b.WriteRawError(val.Error(), 0)
 	default:
-		b.WriteByte(TypeTagUnknown)
+		_ = b.WriteByte(TypeTagUnknown)
 	}
 }
 
@@ -314,7 +314,7 @@ func (s *VMStruct) String() string {
 		}
 		buf.WriteString(f.Name)
 		buf.WriteString(":")
-		fmt.Fprintf(&buf, "%v", f.Value)
+		_, _ = fmt.Fprintf(&buf, "%v", f.Value)
 	}
 	buf.WriteString("}")
 	return buf.String()

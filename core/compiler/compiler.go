@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -32,7 +33,7 @@ type Artifact struct {
 
 func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
 	if program == nil {
-		return nil, fmt.Errorf("invalid bytecode program")
+		return nil, errors.New("invalid bytecode program")
 	}
 	if err := program.Validate(); err != nil {
 		return nil, err
@@ -66,14 +67,14 @@ func (a *Artifact) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 
 func (a *Artifact) MarshalBytecodeJSON() ([]byte, error) {
 	if a == nil || a.Bytecode == nil {
-		return nil, fmt.Errorf("cannot marshal empty bytecode artifact")
+		return nil, errors.New("cannot marshal empty bytecode artifact")
 	}
 	return json.Marshal(a.Bytecode)
 }
 
 func (a *Artifact) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, error) {
 	if a == nil || a.Bytecode == nil {
-		return nil, fmt.Errorf("cannot marshal empty bytecode artifact")
+		return nil, errors.New("cannot marshal empty bytecode artifact")
 	}
 	return json.MarshalIndent(a.Bytecode, prefix, indent)
 }
@@ -96,7 +97,7 @@ func (c *Compiler) CompileSource(filename, code string, tolerant bool) (*Artifac
 	}
 
 	if node == nil {
-		return nil, errs, nil, fmt.Errorf("failed to parse source")
+		return nil, errs, nil, errors.New("failed to parse source")
 	}
 
 	program, ok := node.(*ast.ProgramStmt)
@@ -110,7 +111,7 @@ func (c *Compiler) CompileSource(filename, code string, tolerant bool) (*Artifac
 
 func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramStmt, tolerant bool) (*Artifact, *ast.SemanticContext, error) {
 	if program == nil {
-		return nil, nil, fmt.Errorf("invalid program")
+		return nil, nil, errors.New("invalid program")
 	}
 
 	artifact := &Artifact{
@@ -138,10 +139,8 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	}
 
 	optimizeCtx := ast.NewOptimizeContext(validator)
-	if optimized := program.Optimize(optimizeCtx); optimized != nil {
-		if prog, ok := optimized.(*ast.ProgramStmt); ok {
-			artifact.Program = prog
-		}
+	if prog, ok := program.Optimize(optimizeCtx).(*ast.ProgramStmt); ok {
+		artifact.Program = prog
 	}
 
 	order, orderErr := artifact.Program.GlobalInitOrder()

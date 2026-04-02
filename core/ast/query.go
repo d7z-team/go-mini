@@ -855,6 +855,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 
 	return items
 }
+
 func inferLSPType(ctx *ValidContext, expr Node) GoMiniType {
 	return inferLSPTypeRecursive(ctx, expr, 0)
 }

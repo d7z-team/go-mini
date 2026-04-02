@@ -7,11 +7,11 @@ import (
 
 func TestReturnAnalyzerTreatsPanicAsTerminating(t *testing.T) {
 	program := &ProgramStmt{
-		Package:   "main",
-		Constants: map[string]string{},
-		Variables: map[Ident]Expr{},
-		Types:     map[Ident]GoMiniType{},
-		Structs:   map[Ident]*StructStmt{},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[Ident]Expr{},
+		Types:      map[Ident]GoMiniType{},
+		Structs:    map[Ident]*StructStmt{},
 		Interfaces: map[Ident]*InterfaceStmt{},
 		Functions: map[Ident]*FunctionStmt{
 			"fail": {
@@ -51,11 +51,11 @@ func TestReturnAnalyzerTreatsPanicAsTerminating(t *testing.T) {
 
 func TestReturnAnalyzerStillRejectsMissingReturn(t *testing.T) {
 	program := &ProgramStmt{
-		Package:   "main",
-		Constants: map[string]string{},
-		Variables: map[Ident]Expr{},
-		Types:     map[Ident]GoMiniType{},
-		Structs:   map[Ident]*StructStmt{},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[Ident]Expr{},
+		Types:      map[Ident]GoMiniType{},
+		Structs:    map[Ident]*StructStmt{},
 		Interfaces: map[Ident]*InterfaceStmt{},
 		Functions: map[Ident]*FunctionStmt{
 			"fail": {

@@ -1074,7 +1074,7 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 
 func (ctx *StackContext) InitReturn(kind ast.GoMiniType) error {
 	if ctx.Stack == nil {
-		return fmt.Errorf("missing stack for return slot")
+		return errors.New("missing stack for return slot")
 	}
 	if ctx.Stack.Frame == nil {
 		ctx.Stack.Frame = &SlotFrame{}
@@ -1097,12 +1097,12 @@ func (ctx *StackContext) LoadReturn() (*Var, error) {
 	if ctx.Stack != nil && ctx.Stack.Frame != nil && ctx.Stack.Frame.Return != nil {
 		return unwrapCell(ctx.Stack.Frame.Return), nil
 	}
-	return nil, fmt.Errorf("missing return slot")
+	return nil, errors.New("missing return slot")
 }
 
 func (ctx *StackContext) StoreReturn(expr *Var) error {
 	if ctx.Stack == nil || ctx.Stack.Frame == nil || ctx.Stack.Frame.Return == nil {
-		return fmt.Errorf("missing return slot")
+		return errors.New("missing return slot")
 	}
 	v := ctx.Stack.Frame.Return
 	if v.VType == TypeCell {
@@ -1116,7 +1116,7 @@ func (ctx *StackContext) StoreReturn(expr *Var) error {
 	return nil
 }
 
-func (ctx *StackContext) coerceAssignedValue(target *Var, expr *Var) (*Var, error) {
+func (ctx *StackContext) coerceAssignedValue(target, expr *Var) (*Var, error) {
 	if target == nil || expr == nil {
 		return expr, nil
 	}

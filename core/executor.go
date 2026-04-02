@@ -286,14 +286,14 @@ func (p *MiniProgram) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
 
 func (p *MiniProgram) MarshalBytecodeJSON() ([]byte, error) {
 	if p == nil || p.Compiled == nil {
-		return nil, fmt.Errorf("cannot marshal bytecode from empty program")
+		return nil, errors.New("cannot marshal bytecode from empty program")
 	}
 	return p.Compiled.MarshalBytecodeJSON()
 }
 
 func (p *MiniProgram) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, error) {
 	if p == nil || p.Compiled == nil {
-		return nil, fmt.Errorf("cannot marshal bytecode from empty program")
+		return nil, errors.New("cannot marshal bytecode from empty program")
 	}
 	return p.Compiled.MarshalIndentBytecodeJSON(prefix, indent)
 }
@@ -460,7 +460,7 @@ func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, me
 }
 
 // RegisterConstant 注册一个全局常量到执行器
-func (e *MiniExecutor) RegisterConstant(name string, val string) {
+func (e *MiniExecutor) RegisterConstant(name, val string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.constants[name] = val
@@ -857,7 +857,7 @@ func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
 	if err := json.Unmarshal(data, &probe); err == nil && probe.Format == bytecode.FormatGoMiniBytecode {
 		return e.NewRuntimeByBytecodeJSON(data)
 	}
-	return nil, fmt.Errorf("invalid json payload: expected go-mini bytecode")
+	return nil, errors.New("invalid json payload: expected go-mini bytecode")
 }
 
 // LSP Metadata Export

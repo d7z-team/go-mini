@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -79,10 +80,10 @@ func parseOptions(args []string) (*execOptions, error) {
 
 	if options.bytecode != "" {
 		if len(options.files) > 0 {
-			return nil, fmt.Errorf("cannot mix -bytecode with source files")
+			return nil, errors.New("cannot mix -bytecode with source files")
 		}
 		if options.output != "" {
-			return nil, fmt.Errorf("cannot use -o when loading bytecode")
+			return nil, errors.New("cannot use -o when loading bytecode")
 		}
 		if !options.run && !options.disassemble {
 			options.run = true
@@ -92,7 +93,7 @@ func parseOptions(args []string) (*execOptions, error) {
 
 	if len(options.files) == 0 {
 		flags.Usage()
-		return nil, fmt.Errorf("missing input files")
+		return nil, errors.New("missing input files")
 	}
 	if options.output == "" && !options.disassemble {
 		options.run = true
@@ -146,7 +147,7 @@ func loadSourceProgram(files []string) (*ast.ProgramStmt, error) {
 		mergeProgram(rootProgram, program)
 	}
 	if rootProgram == nil {
-		return nil, fmt.Errorf("no source program loaded")
+		return nil, errors.New("no source program loaded")
 	}
 	return rootProgram, nil
 }

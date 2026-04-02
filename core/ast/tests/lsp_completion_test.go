@@ -27,7 +27,6 @@ func main() {
 	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = prog.Check(semanticCtx)
-
 	// 预期没有验证错误，因为 os 应该被自动识别为 Package
 	if err != nil {
 		t.Errorf("Expected no validation error for unimported FFI package, got: %v", err)
@@ -412,7 +411,6 @@ func main() {
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
-
 	// 预期没有验证错误，因为宽容模式下我们已经识别了该包且在 Check 时能查找到成员
 	if err != nil {
 		t.Errorf("Expected no validation error for recognized but unimported package, but got: %v", err)

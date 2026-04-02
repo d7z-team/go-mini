@@ -1594,13 +1594,13 @@ func (i *InterruptStmt) Check(ctx *SemanticContext) error {
 	switch i.InterruptType {
 	case "break":
 		if _, ok := ctx.CheckAnyScope("for", "range", "switch"); !ok {
-			err := fmt.Errorf("break 语句只能在循环或 switch 中使用")
+			err := errors.New("break 语句只能在循环或 switch 中使用")
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
 	case "continue":
 		if _, ok := ctx.CheckAnyScope("for", "range"); !ok {
-			err := fmt.Errorf("continue 语句只能在循环中使用")
+			err := errors.New("continue 语句只能在循环中使用")
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}

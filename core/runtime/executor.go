@@ -443,7 +443,7 @@ func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
 	e.metadata.registerStructSchema(name, spec)
 }
 
-func (e *Executor) RegisterConstant(name string, val string) {
+func (e *Executor) RegisterConstant(name, val string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.consts[name] = val
@@ -868,7 +868,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 				Data: map[string]interface{}{"catch": data, "panic": session.PanicVar},
 			})
 		} else {
-			return false, fmt.Errorf("OpCatchBoundary missing CatchData")
+			return false, errors.New("OpCatchBoundary missing CatchData")
 		}
 		session.PanicVar = nil
 		return true, nil // Resume normal execution within Catch
@@ -1053,7 +1053,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			op = data.Operator
 			rightTasks = data.Right
 		} else {
-			return fmt.Errorf("OpJumpIf missing JumpData")
+			return errors.New("OpJumpIf missing JumpData")
 		}
 		l := session.ValueStack.Peek()
 		lb, err := l.ToBool()
@@ -1092,7 +1092,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			name = data.Name
 			sym = data.Sym
 		default:
-			return fmt.Errorf("OpLoadVar missing LoadVarData")
+			return errors.New("OpLoadVar missing LoadVarData")
 		}
 		var (
 			v   *Var
@@ -1127,7 +1127,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpLoadLocal:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok {
-			return fmt.Errorf("OpLoadLocal missing SymbolRef")
+			return errors.New("OpLoadLocal missing SymbolRef")
 		}
 		v, err := session.LoadSymbol(sym)
 		if err != nil {
@@ -1138,7 +1138,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpLoadUpvalue:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok {
-			return fmt.Errorf("OpLoadUpvalue missing SymbolRef")
+			return errors.New("OpLoadUpvalue missing SymbolRef")
 		}
 		v, err := session.LoadSymbol(sym)
 		if err != nil {
@@ -1149,13 +1149,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpStoreLocal:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok {
-			return fmt.Errorf("OpStoreLocal missing SymbolRef")
+			return errors.New("OpStoreLocal missing SymbolRef")
 		}
 		return session.StoreSymbol(sym, session.ValueStack.Pop())
 	case OpStoreUpvalue:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok {
-			return fmt.Errorf("OpStoreUpvalue missing SymbolRef")
+			return errors.New("OpStoreUpvalue missing SymbolRef")
 		}
 		return session.StoreSymbol(sym, session.ValueStack.Pop())
 	case OpScopeEnter:
@@ -1287,13 +1287,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
-		return fmt.Errorf("OpEvalLHS missing LHSData")
+		return errors.New("OpEvalLHS missing LHSData")
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
 		data, ok := task.Data.(*IndexData)
 		if !ok {
-			return fmt.Errorf("OpIndex missing IndexData")
+			return errors.New("OpIndex missing IndexData")
 		}
 
 		if data.Multi {
@@ -1351,7 +1351,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			typ = data.Type
 			entries = data.Entries
 		} else {
-			return fmt.Errorf("OpComposite missing CompositeData")
+			return errors.New("OpComposite missing CompositeData")
 		}
 		isArray := typ.IsArray()
 		isMap := typ.IsMap()
@@ -1551,7 +1551,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			multi = data.Multi
 			resultType = data.ResultType
 		} else {
-			return fmt.Errorf("OpAssert missing AssertData")
+			return errors.New("OpAssert missing AssertData")
 		}
 		res, err := e.CheckSatisfaction(val, targetType)
 		if multi {
@@ -1614,7 +1614,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			// Switch boundary, just a placeholder for break/continue
 			return nil
 		}
-		return fmt.Errorf("OpLoopBoundary missing ForData")
+		return errors.New("OpLoopBoundary missing ForData")
 	case OpForCond:
 		condVal := session.ValueStack.Pop()
 		b, err := condVal.ToBool()
@@ -1625,7 +1625,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			if data, ok := task.Data.(*ForData); ok {
 				e.scheduleForBody(session, data)
 			} else {
-				return fmt.Errorf("OpForCond missing ForData")
+				return errors.New("OpForCond missing ForData")
 			}
 		}
 		return nil
@@ -1747,7 +1747,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			})
 			return nil
 		}
-		return fmt.Errorf("OpSwitchTag missing SwitchData")
+		return errors.New("OpSwitchTag missing SwitchData")
 	case OpSwitchNextCase:
 		if state, ok := task.Data.(*SwitchState); ok {
 			if state.Index >= len(state.Plan.Cases) {
@@ -1781,7 +1781,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.TaskStack = append(session.TaskStack, task)
 			return nil
 		}
-		return fmt.Errorf("OpSwitchNextCase missing SwitchState")
+		return errors.New("OpSwitchNextCase missing SwitchState")
 	case OpSwitchMatchCase:
 		if state, ok := task.Data.(*SwitchState); ok {
 			val := session.ValueStack.Pop()
@@ -1794,14 +1794,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchNextCase, Data: state})
 			return nil
 		}
-		return fmt.Errorf("OpSwitchMatchCase missing SwitchState")
+		return errors.New("OpSwitchMatchCase missing SwitchState")
 	case OpCatchBoundary:
 		return nil
 	case OpFinally:
 		if data, ok := task.Data.(*FinallyData); ok {
 			session.TaskStack = append(session.TaskStack, data.Body...)
 		} else {
-			return fmt.Errorf("OpFinally missing FinallyData")
+			return errors.New("OpFinally missing FinallyData")
 		}
 		return nil
 	case OpCatchScopeEnter:
@@ -1821,7 +1821,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				panicVar = data["panic"].(*Var)
 			}
 		} else {
-			return fmt.Errorf("OpCatchScopeEnter missing Data")
+			return errors.New("OpCatchScopeEnter missing Data")
 		}
 		session.ScopeApply("catch")
 		if varName != "" {
@@ -1848,7 +1848,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			return nil
 		}
-		return fmt.Errorf("OpBranchIf missing BranchData")
+		return errors.New("OpBranchIf missing BranchData")
 	case OpInitVar:
 		name := task.Data.(string)
 		val := session.ValueStack.Pop()
@@ -1951,7 +1951,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return fmt.Errorf("failed to load module %s", path)
 
 	case OpImportDone:
-		return fmt.Errorf("OpImportDone should not be reached in synchronous import mode")
+		return errors.New("OpImportDone should not be reached in synchronous import mode")
 	case OpPush:
 		if v, ok := task.Data.(*Var); ok {
 			session.ValueStack.Push(v)

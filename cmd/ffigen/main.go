@@ -860,7 +860,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 	}
 
-	buildStructSchemaLiteral := func(structName string, includeFields bool, includeMethods bool) string {
+	buildStructSchemaLiteral := func(structName string, includeFields, includeMethods bool) string {
 		var fieldsSB strings.Builder
 		fieldsSB.WriteString("struct { ")
 		if includeFields {
@@ -1988,6 +1988,7 @@ func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.Interfa
 	}
 	return iface
 }
+
 func exprToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.BasicLit:

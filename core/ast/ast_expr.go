@@ -611,44 +611,42 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 				ctx.WithNode(m).AddErrorf("%s", err.Error())
 				return err
-			} else {
-				m.Type = met
-				return nil
 			}
-		} else {
-			// 结构体未在当前上下文中定义。
-			// 如果是内置类型（非 Package/Any），但又没找到 Struct 定义，说明确实不支持。
-			// 对于 FFI 宿主类型或跨包类型，通常我们会把它们注册为 Package 或 Any 或者是特定的命名的 Type。
-			// 如果走到这里，说明 typeName 不是 Package/Any 却没定义。
-			// 如果不是宽容模式，或者不是跨包/FFI 类型，默认放行可能不安全。
+			m.Type = met
+			return nil
+		}
+		// 结构体未在当前上下文中定义。
+		// 如果是内置类型（非 Package/Any），但又没找到 Struct 定义，说明确实不支持。
+		// 对于 FFI 宿主类型或跨包类型，通常我们会把它们注册为 Package 或 Any 或者是特定的命名的 Type。
+		// 如果走到这里，说明 typeName 不是 Package/Any 却没定义。
+		// 如果不是宽容模式，或者不是跨包/FFI 类型，默认放行可能不安全。
 
-			// 如果 typeName 包含点号，说明是跨包类型，且当前环境中没有加载该包的 AST，
-			// 或者它是一个 FFI 类型。在这种情况下，我们保持 Any 类型。
-			if strings.Contains(typeName, ".") {
-				m.Type = "Any"
-				return nil
-			}
-
-			// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
-			if strings.Contains(string(objType), ".") {
-				m.Type = "Any"
-				return nil
-			}
-
-			// 如果是宽容模式，我们也允许作为 Any。
-			if ctx.root.Tolerant {
-				m.Type = "Any"
-				return nil
-			}
-
-			// 否则，说明在当前包中引用了一个未定义的结构体。
-			// 但由于 go-mini 的隔离架构，有些类型可能确实没有 AST (例如从 Loader 返回的 ProgramStmt 可能还没被完全 Check)。
-			// 为了确保 TestModuleComprehensive 等综合测试通过（它们可能手动注入了 Point 类型），
-			// 我们目前仅在明确开启了某些严格模式时才报错。
-			// 目前，我们保持 Any 类型放行。
+		// 如果 typeName 包含点号，说明是跨包类型，且当前环境中没有加载该包的 AST，
+		// 或者它是一个 FFI 类型。在这种情况下，我们保持 Any 类型。
+		if strings.Contains(typeName, ".") {
 			m.Type = "Any"
 			return nil
 		}
+
+		// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
+		if strings.Contains(string(objType), ".") {
+			m.Type = "Any"
+			return nil
+		}
+
+		// 如果是宽容模式，我们也允许作为 Any。
+		if ctx.root.Tolerant {
+			m.Type = "Any"
+			return nil
+		}
+
+		// 否则，说明在当前包中引用了一个未定义的结构体。
+		// 但由于 go-mini 的隔离架构，有些类型可能确实没有 AST (例如从 Loader 返回的 ProgramStmt 可能还没被完全 Check)。
+		// 为了确保 TestModuleComprehensive 等综合测试通过（它们可能手动注入了 Point 类型），
+		// 我们目前仅在明确开启了某些严格模式时才报错。
+		// 目前，我们保持 Any 类型放行。
+		m.Type = "Any"
+		return nil
 	}
 
 	err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)

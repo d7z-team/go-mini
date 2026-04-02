@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -127,7 +128,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 			return nil, false
 		}
 		out = append(out, val...)
-		out = append(out, b.runtimeInstruction(n, runtime.OpMultiAssign, fmt.Sprintf("%d", len(n.LHS)), "Multiple assignment"))
+		out = append(out, b.runtimeInstruction(n, runtime.OpMultiAssign, strconv.Itoa(len(n.LHS)), "Multiple assignment"))
 		return out, true
 	case *ast.IncDecStmt:
 		lhs, ok := b.compileLHS(n.Operand)
@@ -144,7 +145,7 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 			}
 			out = append(out, code...)
 		}
-		out = append(out, b.runtimeInstruction(n, runtime.OpReturn, fmt.Sprintf("%d", len(n.Results)), fmt.Sprintf("Return %d values", len(n.Results))))
+		out = append(out, b.runtimeInstruction(n, runtime.OpReturn, strconv.Itoa(len(n.Results)), fmt.Sprintf("Return %d values", len(n.Results))))
 		return out, true
 	case *ast.IfStmt:
 		cond, ok := b.compileExpr(n.Cond)
