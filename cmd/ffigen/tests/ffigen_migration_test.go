@@ -39,6 +39,15 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			},
 		},
 		{
+			name: "BusinessServiceSchemaGeneration",
+			path: "../../../cmd/ffigen/tests/ordertest/order_ffigen.go",
+			patterns: []string{
+				"var OrderService_FFI_Schemas = []struct {",
+				"Ptr<gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest.Order>",
+				"registrar.RegisterFFISchema(",
+			},
+		},
+		{
 			name: "ReverseProxyCompat",
 			path: "../../../cmd/ffigen/tests/reverse_ffigen_test.go",
 			patterns: []string{
@@ -46,6 +55,15 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 				"InvokeCallable(",
 				"if err != nil {",
 				"return 0, err",
+			},
+		},
+		{
+			name: "CrossPackageImportGeneration",
+			path: "../../../cmd/ffigen/tests/importtest/ffigen.go",
+			patterns: []string{
+				"\"time\"",
+				"Sleep(ctx context.Context, d time.Duration) error",
+				"runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"function(Int64) Error\"))",
 			},
 		},
 	}

@@ -148,7 +148,7 @@
 - [x] **建立分层测试门禁**: `Makefile` 已提供 `test-runtime`、`test-ffilib`、`test-ast`、`test-debugger`、`test-core`、`test-ffigen`、`test-script-e2e` 与 `test-layered`；其中 `test-script-e2e` 已直接覆盖 `./core/e2e/...`，避免新增语义分类目录时漏跑。
 - [x] **拆分 ffilib 测试责任**: stdlib/json/time/strings/os/filepath/math/io/image 等回归已迁到 `core/ffilib/*/tests`，并压成最小 smoke/contract test。
 - [x] **拆分 FFI/ffigo 与 VM 原生测试责任**: `ffigen` 输入/输出、reverse proxy、桥接样例与迁移回归已迁到 `cmd/ffigen/tests`；`canonicaltest/structtest/storagelib` 夹具测试已下沉到各自模块目录；`core/e2e` 已不再承担夹具堆放职责，只保留按语义分类组织的脚本执行主线回归；LSP host-FFI 交叉场景归入 `core/tests`。
-- [ ] **补充 ffigen 生成产物回归测试**: stdlib、业务 service、reverse proxy、canonical path。
+- [x] **补充 ffigen 生成产物回归测试**: 已覆盖 stdlib、业务 service、reverse proxy、canonical path 与跨包 import 生成物。
 - [x] **补充 import 隔离回归测试**: 已覆盖 panic、circular import、direct partial init 与 transitive partial init，不允许污染 `ModuleCache/LoadingModules`。
 - [x] **补充 slot/upvalue 专项回归测试**: 已补齐 `scope_slots_test.go` 的多层 upvalue 转发共享 cell 回归，以及 `core/e2e/functions` 里的 nested closure mutation / shadowing / loop capture 组合回归。
 - [x] **补充 LHS/deref/Any 回归测试**: 已补 `Any` 包 map/member、`Any+Cell+Ptr` 解引用写回、`Any` 包标量成员访问报错，以及 e2e 的 `Any` 包指针读写回归。
