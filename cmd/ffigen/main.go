@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/format"
 	"go/importer"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"go/types"
 	"os"
@@ -132,6 +134,9 @@ func detectGenerationMode(args []string) (generationMode, error) {
 	hasDir := false
 	hasFile := false
 	for _, arg := range args {
+		if strings.HasSuffix(strings.ToLower(arg), ".go") && isGeneratedFilename(arg) {
+			return modeFiles, fmt.Errorf("generated file %s cannot be used as input", arg)
+		}
 		info, err := os.Stat(arg)
 		if err != nil {
 			return modeFiles, err
@@ -489,7 +494,7 @@ func writeFormattedSource(outputPath, source string) error {
 	fOut, err := parser.ParseFile(fsetOut, "", source, parser.ParseComments)
 	if err != nil {
 		_ = os.WriteFile(outputPath, []byte(source), 0o644)
-		return fmt.Errorf("parsing generated code for import cleanup: %w", err)
+		return fmt.Errorf("parsing generated code for import cleanup in %s: %w\n%s", outputPath, err, parserErrorContext(err, source))
 	}
 	usedAliases := make(map[string]bool)
 	ast.Inspect(fOut, func(n ast.Node) bool {
@@ -566,6 +571,30 @@ func writeFormattedSource(outputPath, source string) error {
 		return fmt.Errorf("formatting generated code: %w", err)
 	}
 	return os.WriteFile(outputPath, finalBuf.Bytes(), 0o644)
+}
+
+func parserErrorContext(err error, source string) string {
+	var parseErr scanner.ErrorList
+	if !errors.As(err, &parseErr) || len(parseErr) == 0 {
+		return ""
+	}
+	lines := strings.Split(source, "\n")
+	first := parseErr[0]
+	line := first.Pos.Line
+	start := line - 2
+	if start < 1 {
+		start = 1
+	}
+	end := line + 2
+	if end > len(lines) {
+		end = len(lines)
+	}
+	var sb strings.Builder
+	sb.WriteString("generated source context:\n")
+	for i := start; i <= end; i++ {
+		fmt.Fprintf(&sb, "%4d | %s\n", i, lines[i-1])
+	}
+	return sb.String()
 }
 
 func resolveToBasicType(e ast.Expr) string {
@@ -693,8 +722,7 @@ func resolveTargetDoc(file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSp
 }
 
 func isGeneratedFile(filename string, file *ast.File) bool {
-	lower := strings.ToLower(filename)
-	if strings.Contains(lower, "ffigen") && strings.HasSuffix(lower, ".go") {
+	if isGeneratedFilename(filename) {
 		return true
 	}
 	if file == nil {
@@ -708,6 +736,11 @@ func isGeneratedFile(filename string, file *ast.File) bool {
 		}
 	}
 	return false
+}
+
+func isGeneratedFilename(filename string) bool {
+	lower := strings.ToLower(filepath.Base(filename))
+	return strings.Contains(lower, "ffigen") && strings.HasSuffix(lower, ".go")
 }
 
 func resolveTargetDocWithFileSet(fileSet *token.FileSet, file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {
@@ -1010,6 +1043,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 		if funcType.Params == nil || len(funcType.Params.List) <= paramIdx {
 			return false
+		}
+		if isStruct {
+			field := funcType.Params.List[paramIdx]
+			return len(field.Names) > 0 && field.Names[0].Name == "__recv"
 		}
 		receiverType := typeToString(funcType.Params.List[paramIdx].Type)
 		receiverType = strings.TrimPrefix(receiverType, "Ptr<")
@@ -1393,7 +1430,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 		callPrefix := "impl."
 		callParams := paramVars
-		if isStruct && methodsPrefix != "" {
+		if isStruct && methodsPrefix != "" && methodHasReceiver(funcType) {
 			paramIdx := 0
 			if hasContext {
 				paramIdx = 1
@@ -2218,9 +2255,7 @@ func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.Interfa
 
 			// Ensure receiver has a name
 			recvField := *md.Recv.List[0]
-			if len(recvField.Names) == 0 {
-				recvField.Names = []*ast.Ident{ast.NewIdent("recv")}
-			}
+			recvField.Names = []*ast.Ident{ast.NewIdent("__recv")}
 
 			if hasContext {
 				newParams = append(newParams, ft.Params.List[0])

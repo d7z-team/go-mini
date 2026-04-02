@@ -62,6 +62,87 @@ type BrowserModule interface {
 	}
 }
 
+func TestRunDirectoryModeDoesNotTreatVariadicArgumentAsStructReceiver(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "selector.go", `package pkgmode
+
+// ffigen:methods Locator
+type Locator struct{}
+
+func (l *Locator) Locator() *Locator {
+	return l
+}
+
+// ffigen:module browser
+type BrowserModule interface {
+	All(selectors ...string) *Locator
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if strings.Contains(code, "....") {
+		t.Fatalf("generated code contains invalid variadic member access:\n%s", code)
+	}
+	if !strings.Contains(code, "r0 := impl.All(selectors...)") {
+		t.Fatalf("expected variadic module call to target impl directly")
+	}
+}
+
+func TestRunDirectoryModeUsesInjectedReceiverForStructMethods(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "selector.go", `package pkgmode
+
+// ffigen:methods CdpSelector
+type CdpSelector struct{}
+
+func (o *CdpSelector) DragTo(target *CdpSelector) {}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, "__recv.DragTo(target)") {
+		t.Fatalf("expected generated struct method call to use injected receiver, got:\n%s", code)
+	}
+	if strings.Contains(code, "target.DragTo()") {
+		t.Fatalf("generated code still misuses target as receiver:\n%s", code)
+	}
+}
+
 func TestRunDirectoryModeRejectsMultipleModules(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "a.go", `package pkgmode
@@ -113,6 +194,13 @@ type Demo interface {
 	err := runFileMode([]string{filepath.Join(workspace, "api.go")})
 	if err == nil || !strings.Contains(err.Error(), "reserved package output name") {
 		t.Fatalf("expected reserved-name rejection, got %v", err)
+	}
+}
+
+func TestDetectGenerationModeRejectsGeneratedFileInput(t *testing.T) {
+	mode, err := detectGenerationMode([]string{"./", "ffigen_ops.go"})
+	if err == nil || !strings.Contains(err.Error(), "generated file") {
+		t.Fatalf("expected generated-file rejection, got mode=%v err=%v", mode, err)
 	}
 }
 
