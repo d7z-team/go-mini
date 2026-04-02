@@ -144,11 +144,10 @@
 **目标**: 用专项 benchmark 和迁移用例证明重构收益，不以“架构更漂亮”代替验收。**
 
 ### S. 测试与迁移验证
-- [ ] **重构测试分层**: 将 VM 原生语义、FFI/ffigo 通道、ffilib 标准库、端到端脚本场景拆分为独立测试目录/套件，避免长期混在 `core/e2e`。
-- [ ] **建立分层测试门禁**: `runtime unit`、`ffi bridge`、`ffilib integration`、`script e2e` 分层执行，并分别设定超时与失败归因。
-- [ ] **拆分 ffilib 测试责任**: 标准库 host/bridge/schema 行为不再依赖脚本级 e2e 混合验证。
-- [ ] **拆分 FFI/ffigo 与 VM 原生测试责任**: 宿主编解码、handle、bridge 协议与 VM 语义测试分离。
-- [ ] **补充 FFI schema 兼容测试**: 覆盖旧版字符串 spec 和新版 schema 注册。
+- [x] **重构测试分层**: 场景型/黑盒型测试已统一下沉到各模块测试目录；`ffilib` 测试归入各实际模块 `tests`，debugger 归入 `core/debugger/tests`，LSP/查询诊断归入 `core/ast/tests` 与 `core/tests`，pipeline/序列化/无 AST 归入 `core/tests` 与 `core/runtime/tests`，`ffigen` 输入/输出回归归入 `cmd/ffigen/tests`，`core/e2e` 主线回归则按 `language/functions/types/modules/ffi/runtime/security` 语义目录直接放置测试文件，不再额外套 `tests` 子层。
+- [x] **建立分层测试门禁**: `Makefile` 已提供 `test-runtime`、`test-ffilib`、`test-ast`、`test-debugger`、`test-core`、`test-ffigen`、`test-script-e2e` 与 `test-layered`；其中 `test-script-e2e` 已直接覆盖 `./core/e2e/...`，避免新增语义分类目录时漏跑。
+- [x] **拆分 ffilib 测试责任**: stdlib/json/time/strings/os/filepath/math/io/image 等回归已迁到 `core/ffilib/*/tests`，并压成最小 smoke/contract test。
+- [x] **拆分 FFI/ffigo 与 VM 原生测试责任**: `ffigen` 输入/输出、reverse proxy、桥接样例与迁移回归已迁到 `cmd/ffigen/tests`；`canonicaltest/structtest/storagelib` 夹具测试已下沉到各自模块目录；`core/e2e` 已不再承担夹具堆放职责，只保留按语义分类组织的脚本执行主线回归；LSP host-FFI 交叉场景归入 `core/tests`。
 - [ ] **补充 ffigen 生成产物回归测试**: stdlib、业务 service、reverse proxy、canonical path。
 - [ ] **补充 import 隔离回归测试**: panic、circular import、partial init。
 - [ ] **补充 slot/upvalue 专项回归测试**: 基础 slot/upvalue/frame 边界单测已补到 `scope_slots_test.go`，剩余需要补齐 shadowing、nested functions、多层 upvalue 转发、loop capture 的 runtime/e2e 组合回归。

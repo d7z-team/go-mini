@@ -7,11 +7,14 @@ GOLINT          := $(BIN_DIR)/golangci-lint
 FFIGEN_BIN      := ./bin/ffigen
 LSP_SERVER_BIN  := ./bin/lsp-server
 EXEC_BIN        := ./bin/mini-exec
+TEST_GOCACHE    ?= /tmp/go-build-cache
+GO_TEST         := GOCACHE=$(TEST_GOCACHE) go test
 
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 
-.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix
+.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix \
+	test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e test-layered
 
 build: build-all
 
@@ -67,5 +70,28 @@ lint-fix: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
 
+test-runtime:
+	@$(GO_TEST) ./core/runtime ./core/runtime/tests
+
+test-ffilib:
+	@$(GO_TEST) ./core/ffilib/...
+
+test-ast:
+	@$(GO_TEST) ./core/ast ./core/ast/tests
+
+test-debugger:
+	@$(GO_TEST) ./core/debugger ./core/debugger/tests
+
+test-core:
+	@$(GO_TEST) ./core ./core/tests
+
+test-ffigen:
+	@$(GO_TEST) ./cmd/ffigen/tests
+
+test-script-e2e:
+	@$(GO_TEST) ./core/e2e/...
+
+test-layered: gen test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e
+
 test: gen
-	@go test -v -coverprofile=coverage.txt ./... -timeout 10s
+	@$(GO_TEST) -v -coverprofile=coverage.txt ./... -timeout 10s
