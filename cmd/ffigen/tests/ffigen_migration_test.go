@@ -120,7 +120,7 @@ func TestFFIGenStructMethodsVariadicPointerReturn(t *testing.T) {
 
 	required := []string{
 		"case MethodID_Page_GetByPlaceholder:",
-		"r0 := p.GetByPlaceholder(text, exact...)",
+		"r0 := __recv.GetByPlaceholder(text, exact...)",
 		"if r0 == nil {",
 		"resBuf.WriteUvarint(0)",
 		"resBuf.WriteUvarint(uint64(registry.Register(r0)))",

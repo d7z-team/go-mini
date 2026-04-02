@@ -258,16 +258,16 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Image_Bounds:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0, r1, r2, r3 := i.Bounds()
+		r0, r1, r2, r3 := __recv.Bounds()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
@@ -275,56 +275,56 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		resBuf.WriteVarint(int64(r3))
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Size:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0, r1 := i.Size()
+		r0, r1 := __recv.Size()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Width:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0 := i.Width()
+		r0 := __recv.Width()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Height:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0 := i.Height()
+		r0 := __recv.Height()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Image_At:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int
@@ -337,7 +337,7 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
-		r0, r1, r2, r3 := i.At(x, y)
+		r0, r1, r2, r3 := __recv.At(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
@@ -345,13 +345,13 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		resBuf.WriteVarint(int64(r3))
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Set:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int
@@ -384,17 +384,17 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			a = int(tmp)
 		}
-		i.Set(x, y, r, g, b, a)
+		__recv.Set(x, y, r, g, b, a)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Fill:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var r int
@@ -417,33 +417,33 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			a = int(tmp)
 		}
-		i.Fill(r, g, b, a)
+		__recv.Fill(r, g, b, a)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Clear:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		i.Clear()
+		__recv.Clear()
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Clone:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0 := i.Clone()
+		r0 := __recv.Clone()
 		resBuf := ffigo.GetBuffer()
 		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
@@ -453,13 +453,13 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_SubImage:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int
@@ -482,7 +482,7 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			height = int(tmp)
 		}
-		r0, err := i.SubImage(x, y, width, height)
+		r0, err := __recv.SubImage(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
 		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
@@ -501,13 +501,13 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Draw:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var src *Image
@@ -529,17 +529,17 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
-		i.Draw(ctx, src, x, y)
+		__recv.Draw(ctx, src, x, y)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Resize:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var width int
@@ -552,7 +552,7 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			height = int(tmp)
 		}
-		r0, err := i.Resize(width, height)
+		r0, err := __recv.Resize(width, height)
 		resBuf := ffigo.GetBuffer()
 		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
@@ -571,13 +571,13 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Crop:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int
@@ -600,7 +600,7 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			height = int(tmp)
 		}
-		r0, err := i.Crop(x, y, width, height)
+		r0, err := __recv.Crop(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
 		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
@@ -619,16 +619,16 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_EncodePNG:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0, err := i.EncodePNG()
+		r0, err := __recv.EncodePNG()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		if err != nil {
@@ -642,13 +642,13 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_EncodeJPEG:
-		var i *Image
+		var __recv *Image
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				i = obj.(*Image)
+				__recv = obj.(*Image)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "i", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var quality int
@@ -656,7 +656,7 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 			tmp := reqBuf.ReadVarint()
 			quality = int(tmp)
 		}
-		r0, err := i.EncodeJPEG(quality)
+		r0, err := __recv.EncodeJPEG(quality)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		if err != nil {

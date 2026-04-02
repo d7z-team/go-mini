@@ -890,13 +890,13 @@ func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Page_GetByPlaceholder:
-		var p *Page
+		var __recv *Page
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				p = obj.(*Page)
+				__recv = obj.(*Page)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "p", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var text string
@@ -907,7 +907,7 @@ func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 		for i_exact := 0; i_exact < l_exact; i_exact++ {
 			exact[i_exact] = bool(reqBuf.ReadBool())
 		}
-		r0 := p.GetByPlaceholder(text, exact...)
+		r0 := __recv.GetByPlaceholder(text, exact...)
 		resBuf := ffigo.GetBuffer()
 		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {

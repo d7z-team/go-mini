@@ -32,13 +32,13 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Calculator_Add:
-		var c *Calculator
+		var __recv *Calculator
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				c = obj.(*Calculator)
+				__recv = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int64
@@ -46,18 +46,18 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 			tmp := reqBuf.ReadVarint()
 			x = int64(tmp)
 		}
-		r0 := c.Add(ctx, x)
+		r0 := __recv.Add(ctx, x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_Multiply:
-		var c *Calculator
+		var __recv *Calculator
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				c = obj.(*Calculator)
+				__recv = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var x int64
@@ -70,21 +70,21 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 			tmp := reqBuf.ReadVarint()
 			y = int64(tmp)
 		}
-		r0 := c.Multiply(x, y)
+		r0 := __recv.Multiply(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Calculator_GetBase:
-		var c *Calculator
+		var __recv *Calculator
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
 			if obj, err := registry.GetWithAudit(id); err == nil {
-				c = obj.(*Calculator)
+				__recv = obj.(*Calculator)
 			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "c", err)
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
-		r0 := c.GetBase()
+		r0 := __recv.GetBase()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
