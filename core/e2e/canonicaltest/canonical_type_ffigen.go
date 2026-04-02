@@ -13,10 +13,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", ast.GoMiniType("struct { Hello function(Ptr<a_other.Type>) String; }"))
-
-var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", ast.GoMiniType("struct { Hello function(Ptr<b_other.Type>) String; }"))
-
 const (
 	MethodID_TestCanonicalService_NewA = 1
 	MethodID_TestCanonicalService_NewB = 2
@@ -257,6 +253,8 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var ATypeService_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", ast.GoMiniType("struct { Hello function(Ptr<a_other.Type>) String; }"))
+
 func RegisterATypeService(executor interface{ RegisterConstant(string, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -266,14 +264,8 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_a_other.Type_Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
-	registerStructSchema("a_other.Type", a_other_Type_FFI_StructSchema)
+	registrar.RegisterStructSchema("a_other.Type", ATypeService_StructSchema)
 }
 
 const (
@@ -371,6 +363,8 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var BTypeService_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", ast.GoMiniType("struct { Hello function(Ptr<b_other.Type>) String; }"))
+
 func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -380,12 +374,6 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_b_other.Type_Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
-	registerStructSchema("b_other.Type", b_other_Type_FFI_StructSchema)
+	registrar.RegisterStructSchema("b_other.Type", BTypeService_StructSchema)
 }

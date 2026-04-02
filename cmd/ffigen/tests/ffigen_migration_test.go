@@ -135,3 +135,25 @@ func TestFFIGenStructMethodsVariadicPointerReturn(t *testing.T) {
 		t.Fatalf("expected Selector_FFI_StructSchema to be emitted once, got %d", count)
 	}
 }
+
+func TestFFIGenDoesNotLeakSymbolsFromOtherGeneratedFiles(t *testing.T) {
+	content, err := os.ReadFile("unnamed_params_ffigen.go")
+	if err != nil {
+		t.Fatalf("read generated unnamed params sample: %v", err)
+	}
+	code := string(content)
+
+	disallowed := []string{
+		"MethodID_AdvancedFFI_",
+		"MethodID_ContextMock_",
+		"MethodID_MapTest_",
+		"MethodID_MockOS_",
+		"MethodID_Page_GetByPlaceholder",
+		"MethodID_VariadicPointerMethods_",
+	}
+	for _, pattern := range disallowed {
+		if strings.Contains(code, pattern) {
+			t.Fatalf("generated file leaked symbols from sibling ffigen output: %q", pattern)
+		}
+	}
+}

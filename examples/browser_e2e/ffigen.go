@@ -12,12 +12,6 @@ import (
 	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 )
 
-var other_Browser_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Browser", ast.GoMiniType("struct { NewPage function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error); }"))
-
-var other_Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Page", ast.GoMiniType("struct { Locator function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error); }"))
-
-var other_CdpSelector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.CdpSelector", ast.GoMiniType("struct { Click function(Ptr<other.CdpSelector>) Error; }"))
-
 const (
 	MethodID_BrowserModule_OpenBrowser = 1
 )
@@ -282,6 +276,8 @@ func (b *BrowserService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var BrowserService_StructSchema = runtime.MustParseRuntimeStructSpec("other.Browser", ast.GoMiniType("struct { NewPage function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error); }"))
+
 func RegisterBrowserService(executor interface{ RegisterConstant(string, string) }, impl BrowserService, registry *ffigo.HandleRegistry) {
 	bridge := &BrowserService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -291,14 +287,8 @@ func RegisterBrowserService(executor interface{ RegisterConstant(string, string)
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_other.Browser_NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
-	registerStructSchema("other.Browser", other_Browser_FFI_StructSchema)
+	registrar.RegisterStructSchema("other.Browser", BrowserService_StructSchema)
 }
 
 const (
@@ -445,6 +435,8 @@ func (b *PageService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var PageService_StructSchema = runtime.MustParseRuntimeStructSpec("other.Page", ast.GoMiniType("struct { Locator function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error); }"))
+
 func RegisterPageService(executor interface{ RegisterConstant(string, string) }, impl PageService, registry *ffigo.HandleRegistry) {
 	bridge := &PageService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -454,14 +446,8 @@ func RegisterPageService(executor interface{ RegisterConstant(string, string) },
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_other.Page_Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
-	registerStructSchema("other.Page", other_Page_FFI_StructSchema)
+	registrar.RegisterStructSchema("other.Page", PageService_StructSchema)
 }
 
 const (
@@ -583,6 +569,8 @@ func (b *CdpSelectorService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var CdpSelectorService_StructSchema = runtime.MustParseRuntimeStructSpec("other.CdpSelector", ast.GoMiniType("struct { Click function(Ptr<other.CdpSelector>) Error; }"))
+
 func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, string) }, impl CdpSelectorService, registry *ffigo.HandleRegistry) {
 	bridge := &CdpSelectorService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -592,12 +580,6 @@ func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, str
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_other.CdpSelector_Click", bridge, CdpSelectorService_FFI_Schemas[0].MethodID, CdpSelectorService_FFI_Schemas[0].Sig, CdpSelectorService_FFI_Schemas[0].Doc)
-	registerStructSchema("other.CdpSelector", other_CdpSelector_FFI_StructSchema)
+	registrar.RegisterStructSchema("other.CdpSelector", CdpSelectorService_StructSchema)
 }

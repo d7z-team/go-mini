@@ -11,10 +11,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { Closed Bool; ID String; Items Array<order.Item>; New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }"))
-
-var order_Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", ast.GoMiniType("struct { Name String; Price Float64; }"))
-
 const (
 	MethodID_OrderService_New      = 1
 	MethodID_OrderService_AddItem  = 2
@@ -340,6 +336,12 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { Closed Bool; ID String; Items Array<order.Item>; }"))
+
+var Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", ast.GoMiniType("struct { Name String; Price Float64; }"))
+
+var OrderService_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }"))
+
 func RegisterOrderService(executor interface{ RegisterConstant(string, string) }, impl OrderService, registry *ffigo.HandleRegistry) {
 	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -349,16 +351,10 @@ func RegisterOrderService(executor interface{ RegisterConstant(string, string) }
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("order.New", bridge, OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("__method_order.Order_AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("__method_order.Order_GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("__method_order.Order_Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
-	registerStructSchema("order.Item", order_Item_FFI_StructSchema)
-	registerStructSchema("order.Order", order_Order_FFI_StructSchema)
+	registrar.RegisterStructSchema("order.Item", Item_FFI_StructSchema)
+	registrar.RegisterStructSchema("order.Order", OrderService_StructSchema)
 }

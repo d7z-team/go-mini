@@ -11,18 +11,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
-
-var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
-
-var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
-
-var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
-
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Selector>, String, ...Bool) Ptr<Selector>; }"))
-
-var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }"))
-
 const (
 	MethodID_MockOS_Open  = 1
 	MethodID_MockOS_Name  = 2
@@ -519,6 +507,12 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
+
+var FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
+
+var Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
+
 func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -528,12 +522,6 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("os.Open", bridge, MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("os.Name", bridge, MockOS_FFI_Schemas[1].MethodID, MockOS_FFI_Schemas[1].Sig, MockOS_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("os.Stat", bridge, MockOS_FFI_Schemas[2].MethodID, MockOS_FFI_Schemas[2].Sig, MockOS_FFI_Schemas[2].Doc)
@@ -541,27 +529,9 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 	registrar.RegisterFFISchema("os.Write", bridge, MockOS_FFI_Schemas[4].MethodID, MockOS_FFI_Schemas[4].Sig, MockOS_FFI_Schemas[4].Doc)
 	registrar.RegisterFFISchema("os.Close", bridge, MockOS_FFI_Schemas[5].MethodID, MockOS_FFI_Schemas[5].Sig, MockOS_FFI_Schemas[5].Doc)
 	registrar.RegisterFFISchema("os.Deep", bridge, MockOS_FFI_Schemas[6].MethodID, MockOS_FFI_Schemas[6].Sig, MockOS_FFI_Schemas[6].Doc)
-	executor.RegisterConstant("os.MethodID_AdvancedFFI_EchoEmbedded", ffigo.ToConstantString(4))
-	executor.RegisterConstant("os.MethodID_AdvancedFFI_EchoMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("os.MethodID_AdvancedFFI_GetSameObject", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_AdvancedFFI_IsSame", ffigo.ToConstantString(2))
-	executor.RegisterConstant("os.MethodID_Callback_OnEvent", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_Callback_OnRaw", ffigo.ToConstantString(2))
-	executor.RegisterConstant("os.MethodID_Logger_Internal", ffigo.ToConstantString(2))
-	executor.RegisterConstant("os.MethodID_Logger_Log", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
-	executor.RegisterConstant("os.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
-	executor.RegisterConstant("os.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("os.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
-	executor.RegisterConstant("os.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
-	executor.RegisterConstant("os.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
-	executor.RegisterConstant("os.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
-	registerStructSchema("os.File", os_File_FFI_StructSchema)
-	registerStructSchema("os.FileInfo", os_FileInfo_FFI_StructSchema)
-	registerStructSchema("os.Nested", os_Nested_FFI_StructSchema)
+	registrar.RegisterStructSchema("os.File", File_FFI_StructSchema)
+	registrar.RegisterStructSchema("os.FileInfo", FileInfo_FFI_StructSchema)
+	registrar.RegisterStructSchema("os.Nested", Nested_FFI_StructSchema)
 }
 
 const (
@@ -680,24 +650,6 @@ func RegisterContextMock(executor interface{ RegisterConstant(string, string) },
 	}
 	registrar.RegisterFFISchema("ctx_test.WithContext", bridge, ContextMock_FFI_Schemas[0].MethodID, ContextMock_FFI_Schemas[0].Sig, ContextMock_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("ctx_test.WithoutContext", bridge, ContextMock_FFI_Schemas[1].MethodID, ContextMock_FFI_Schemas[1].Sig, ContextMock_FFI_Schemas[1].Doc)
-	executor.RegisterConstant("ctx_test.MethodID_AdvancedFFI_EchoEmbedded", ffigo.ToConstantString(4))
-	executor.RegisterConstant("ctx_test.MethodID_AdvancedFFI_EchoMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("ctx_test.MethodID_AdvancedFFI_GetSameObject", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_AdvancedFFI_IsSame", ffigo.ToConstantString(2))
-	executor.RegisterConstant("ctx_test.MethodID_Callback_OnEvent", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_Callback_OnRaw", ffigo.ToConstantString(2))
-	executor.RegisterConstant("ctx_test.MethodID_Logger_Internal", ffigo.ToConstantString(2))
-	executor.RegisterConstant("ctx_test.MethodID_Logger_Log", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
-	executor.RegisterConstant("ctx_test.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
-	executor.RegisterConstant("ctx_test.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("ctx_test.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
-	executor.RegisterConstant("ctx_test.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
-	executor.RegisterConstant("ctx_test.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
-	executor.RegisterConstant("ctx_test.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
 }
 
 const (
@@ -893,6 +845,8 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
+
 func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -902,174 +856,11 @@ func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("native.GetStruct", bridge, NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("native.GetPtr", bridge, NativeMock_FFI_Schemas[1].MethodID, NativeMock_FFI_Schemas[1].Sig, NativeMock_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("native.SetStruct", bridge, NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("native.SetPtr", bridge, NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
-	executor.RegisterConstant("native.MethodID_AdvancedFFI_EchoEmbedded", ffigo.ToConstantString(4))
-	executor.RegisterConstant("native.MethodID_AdvancedFFI_EchoMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("native.MethodID_AdvancedFFI_GetSameObject", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_AdvancedFFI_IsSame", ffigo.ToConstantString(2))
-	executor.RegisterConstant("native.MethodID_Callback_OnEvent", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_Callback_OnRaw", ffigo.ToConstantString(2))
-	executor.RegisterConstant("native.MethodID_Logger_Internal", ffigo.ToConstantString(2))
-	executor.RegisterConstant("native.MethodID_Logger_Log", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_MapTest_EchoIntMap", ffigo.ToConstantString(4))
-	executor.RegisterConstant("native.MethodID_MapTest_EchoMap", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_MapTest_GetMap", ffigo.ToConstantString(2))
-	executor.RegisterConstant("native.MethodID_MapTest_ProcessMap", ffigo.ToConstantString(3))
-	executor.RegisterConstant("native.MethodID_MockGeometry_SumX", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_MockShapeAPI_Area", ffigo.ToConstantString(2))
-	executor.RegisterConstant("native.MethodID_MockShapeAPI_GetRect", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_ScriptCalculator_Add", ffigo.ToConstantString(1))
-	executor.RegisterConstant("native.MethodID_ScriptCalculator_Divide", ffigo.ToConstantString(3))
-	executor.RegisterConstant("native.MethodID_ScriptCalculator_Format", ffigo.ToConstantString(2))
-	registerStructSchema("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
-}
-
-const (
-	MethodID_VariadicPointerMethods_GetByPlaceholder = 1
-)
-
-type VariadicPointerMethodsProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewVariadicPointerMethodsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) VariadicPointerMethods {
-	return &VariadicPointerMethodsProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *VariadicPointerMethodsProxy) GetByPlaceholder(s *Selector, text string, exact ...bool) *Selector {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if s == nil {
-		buf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(s)))
-		} else {
-			buf.WriteUvarint(0)
-		}
-	}
-	buf.WriteString(string(text))
-	buf.WriteUvarint(uint64(len(exact)))
-	for _, item := range exact {
-		buf.WriteBool(bool(item))
-	}
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_VariadicPointerMethods_GetByPlaceholder, buf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Selector
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*Selector)
-			}
-		}
-	}
-	return v_0
-}
-
-func VariadicPointerMethodsHostRouter(ctx context.Context, impl VariadicPointerMethods, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
-	if methodID == 0 && methodName != "" {
-		switch methodName {
-		case "GetByPlaceholder":
-			methodID = MethodID_VariadicPointerMethods_GetByPlaceholder
-		}
-	}
-
-	reqBuf := ffigo.NewReader(args)
-	switch methodID {
-	case MethodID_VariadicPointerMethods_GetByPlaceholder:
-		var s *Selector
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				s = obj.(*Selector)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "s", err)
-			}
-		}
-		var text string
-		text = string(reqBuf.ReadString())
-		var exact []bool
-		l_exact := int(reqBuf.ReadUvarint())
-		exact = make([]bool, l_exact)
-		for i_exact := 0; i_exact < l_exact; i_exact++ {
-			exact[i_exact] = bool(reqBuf.ReadBool())
-		}
-		r0 := impl.GetByPlaceholder(s, text, exact...)
-		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
-		return resBuf.Bytes(), nil
-	default:
-		return nil, fmt.Errorf("unknown method ID %d", methodID)
-	}
-}
-
-var VariadicPointerMethods_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<Selector>, String, ...Bool) Ptr<Selector>")), ""},
-}
-
-type VariadicPointerMethods_Bridge struct {
-	Impl     VariadicPointerMethods
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *VariadicPointerMethods_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return VariadicPointerMethodsHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
-}
-
-func (b *VariadicPointerMethods_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return VariadicPointerMethodsHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
-}
-
-func (b *VariadicPointerMethods_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
-}
-
-func RegisterVariadicPointerMethods(executor interface{ RegisterConstant(string, string) }, impl VariadicPointerMethods, registry *ffigo.HandleRegistry) {
-	bridge := &VariadicPointerMethods_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("__method_Selector_GetByPlaceholder", bridge, VariadicPointerMethods_FFI_Schemas[0].MethodID, VariadicPointerMethods_FFI_Schemas[0].Sig, VariadicPointerMethods_FFI_Schemas[0].Doc)
-	registerStructSchema("Selector", Selector_FFI_StructSchema)
+	registrar.RegisterStructSchema("native.NativeStruct", NativeStruct_FFI_StructSchema)
 }
 
 const (
@@ -1147,6 +938,10 @@ func (b *Page_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", ast.GoMiniType("struct { Value Int64; }"))
+
+var Page_StructSchema = runtime.MustParseRuntimeStructSpec("Page", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }"))
+
 func RegisterPage(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Page_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -1156,13 +951,7 @@ func RegisterPage(executor interface{ RegisterConstant(string, string) }, regist
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("__method_Page_GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
-	registerStructSchema("Selector", Selector_FFI_StructSchema)
-	registerStructSchema("Page", Page_FFI_StructSchema)
+	registrar.RegisterStructSchema("Selector", Selector_FFI_StructSchema)
+	registrar.RegisterStructSchema("Page", Page_StructSchema)
 }

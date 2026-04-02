@@ -55,11 +55,6 @@ type Selector struct {
 	Value int64
 }
 
-// ffigen:methods Selector
-type VariadicPointerMethods interface {
-	GetByPlaceholder(s *Selector, text string, exact ...bool) *Selector
-}
-
 // ffigen:methods Page
 type Page struct {
 	Value int64

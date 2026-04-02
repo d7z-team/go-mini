@@ -12,8 +12,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMiniType("struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }"))
-
 const (
 	MethodID_Module_Now           = 1
 	MethodID_Module_Unix          = 2
@@ -386,6 +384,8 @@ func (b *Module_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMiniType("struct { T time.Time; }"))
+
 func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl Module, registry *ffigo.HandleRegistry) {
 	bridge := &Module_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -394,12 +394,6 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("time.Now", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("time.Unix", bridge, Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
@@ -426,7 +420,7 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
 	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
 	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
-	registerStructSchema("time.Time", time_Time_FFI_StructSchema)
+	registrar.RegisterStructSchema("time.Time", Time_FFI_StructSchema)
 }
 
 const (
@@ -863,6 +857,8 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Time_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMiniType("struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }"))
+
 func RegisterTime(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -871,12 +867,6 @@ func RegisterTime(executor interface{ RegisterConstant(string, string) }, regist
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("__method_time.Time_Year", bridge, Time_FFI_Schemas[0].MethodID, Time_FFI_Schemas[0].Sig, Time_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("__method_time.Time_Month", bridge, Time_FFI_Schemas[1].MethodID, Time_FFI_Schemas[1].Sig, Time_FFI_Schemas[1].Doc)
@@ -897,5 +887,5 @@ func RegisterTime(executor interface{ RegisterConstant(string, string) }, regist
 	registrar.RegisterFFISchema("__method_time.Time_After", bridge, Time_FFI_Schemas[16].MethodID, Time_FFI_Schemas[16].Sig, Time_FFI_Schemas[16].Doc)
 	registrar.RegisterFFISchema("__method_time.Time_Equal", bridge, Time_FFI_Schemas[17].MethodID, Time_FFI_Schemas[17].Sig, Time_FFI_Schemas[17].Doc)
 	registrar.RegisterFFISchema("__method_time.Time_String", bridge, Time_FFI_Schemas[18].MethodID, Time_FFI_Schemas[18].Sig, Time_FFI_Schemas[18].Doc)
-	registerStructSchema("time.Time", time_Time_FFI_StructSchema)
+	registrar.RegisterStructSchema("time.Time", Time_StructSchema)
 }

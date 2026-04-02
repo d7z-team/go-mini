@@ -547,13 +547,6 @@ func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeSt
 	e.registerStructSchemaLocked(name, spec)
 }
 
-func (e *MiniExecutor) HasStructSchema(name string) bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	_, ok := e.structsMeta[ast.Ident(name)]
-	return ok
-}
-
 // DeclareStructSchema 仅用于在验证阶段声明一个合法的外部结构体 schema。
 func (e *MiniExecutor) DeclareStructSchema(name string, spec *runtime.RuntimeStructSpec) {
 	e.mu.Lock()

@@ -12,8 +12,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
-
 const (
 	MethodID_IO_ReadAll     = 1
 	MethodID_IO_Copy        = 2
@@ -640,6 +638,8 @@ func (b *File_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var File_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
+
 func RegisterFile(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &File_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -648,12 +648,6 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("__method_io.File_Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("__method_io.File_WriteAt", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
@@ -664,5 +658,5 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 	registrar.RegisterFFISchema("__method_io.File_WriteString", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
 	registrar.RegisterFFISchema("__method_io.File_Name", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
 	registrar.RegisterFFISchema("__method_io.File_WriteNative", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
-	registerStructSchema("io.File", io_File_FFI_StructSchema)
+	registrar.RegisterStructSchema("io.File", File_StructSchema)
 }

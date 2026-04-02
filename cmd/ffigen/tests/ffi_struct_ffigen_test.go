@@ -12,10 +12,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", ast.GoMiniType("struct { A Point; B Point; }"))
-
-var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
-
 const (
 	MethodID_MockShapeAPI_GetRect = 1
 	MethodID_MockShapeAPI_Area    = 2
@@ -156,6 +152,10 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", ast.GoMiniType("struct { A Point; B Point; }"))
+
+var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -165,12 +165,6 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -178,6 +172,6 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 	for _, m := range MockShapeAPI_FFI_Schemas {
 		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	registerStructSchema("Rect", Rect_FFI_StructSchema)
-	registerStructSchema("Point", Point_FFI_StructSchema)
+	registrar.RegisterStructSchema("Rect", Rect_FFI_StructSchema)
+	registrar.RegisterStructSchema("Point", Point_FFI_StructSchema)
 }
