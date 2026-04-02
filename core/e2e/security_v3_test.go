@@ -8,6 +8,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // SimpleBridge implements ffigo.FFIBridge for testing
@@ -42,7 +43,7 @@ func TestSecurityV3(t *testing.T) {
 				return nil, nil
 			},
 		}
-		e.RegisterFFI("test.int8", bridge, 1001, "function(Int64) Void", "Test int8 overflow")
+		e.RegisterFFISchema("test.int8", bridge, 1001, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "Test int8 overflow")
 
 		// 正常调用 (需要 import "test")
 		code := `package main
@@ -84,7 +85,7 @@ func TestSecurityV3(t *testing.T) {
 				return buf.Bytes(), nil
 			},
 		}
-		e.RegisterFFI("test.getBytes", bridge, 1002, "function() TypeBytes", "Test deep copy")
+		e.RegisterFFISchema("test.getBytes", bridge, 1002, runtime.MustParseRuntimeFuncSig("function() TypeBytes"), "Test deep copy")
 
 		code := `package main
 		import "test"

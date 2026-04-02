@@ -150,16 +150,6 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 	}
 }
 
-var ImageLib_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Decode", 1, "function(TypeBytes) tuple(Ptr<image.Image>, String, Error)", "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
-	{"NewRGBA", 2, "function(Int64, Int64) Ptr<image.Image>", "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
-}
-
 var ImageLib_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -194,36 +184,22 @@ var Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", a
 
 func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, impl ImageLib, registry *ffigo.HandleRegistry) {
 	bridge := &ImageLib_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "image"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range ImageLib_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range ImageLib_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range ImageLib_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("image.Image", Image_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("image.Image", Image_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("image.Image", Image_FFI_StructSchema)
 }
 
 const (
@@ -699,29 +675,6 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	}
 }
 
-var Image_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Bounds", 1, "function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64)", "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{"Size", 2, "function(Ptr<image.Image>) tuple(Int64, Int64)", "Size 返回 width, height"},
-	{"Width", 3, "function(Ptr<image.Image>) Int64", "Width 返回图像宽度"},
-	{"Height", 4, "function(Ptr<image.Image>) Int64", "Height 返回图像高度"},
-	{"At", 5, "function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", "At 返回 r, g, b, a (0-255)"},
-	{"Set", 6, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", "Set 设置指定像素的颜色"},
-	{"Fill", 7, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void", "Fill 用指定颜色填充整个图像"},
-	{"Clear", 8, "function(Ptr<image.Image>) Void", "Clear 将图像清空为透明"},
-	{"Clone", 9, "function(Ptr<image.Image>) Ptr<image.Image>", "Clone 复制当前图像"},
-	{"SubImage", 10, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", "SubImage 返回图像的子部分 (共享内存)"},
-	{"Draw", 11, "function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void", "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
-	{"Resize", 12, "function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error)", "Resize 缩放图像"},
-	{"Crop", 13, "function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", "Crop 裁剪图像"},
-	{"EncodePNG", 14, "function(Ptr<image.Image>) tuple(TypeBytes, Error)", "EncodePNG 将图像编码为 PNG 字节数组"},
-	{"EncodeJPEG", 15, "function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error)", "EncodeJPEG 将图像编码为 JPEG 字节数组"},
-}
-
 var Image_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -769,31 +722,20 @@ var Image_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", ast.G
 
 func RegisterImage(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Image_Bridge{Impl: nil, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_image.Image"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Image_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("image.Image", Image_StructSchema)
-	} else {
-		for _, m := range Image_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("image.Image", Image_StructSchema.Spec)
+	for _, m := range Image_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("image.Image", Image_StructSchema)
 }

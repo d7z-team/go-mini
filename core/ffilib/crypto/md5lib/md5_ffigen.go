@@ -63,15 +63,6 @@ func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 	}
 }
 
-var MD5_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Sum", 1, "function(TypeBytes) TypeBytes", ""},
-}
-
 var MD5_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -103,30 +94,20 @@ func (b *MD5_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterMD5(executor interface{ RegisterConstant(string, string) }, impl MD5, registry *ffigo.HandleRegistry) {
 	bridge := &MD5_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "crypto/md5"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range MD5_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range MD5_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range MD5_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("crypto/md5.BlockSize", ffigo.ToConstantString(md5.BlockSize))
 	executor.RegisterConstant("crypto/md5.Size", ffigo.ToConstantString(md5.Size))

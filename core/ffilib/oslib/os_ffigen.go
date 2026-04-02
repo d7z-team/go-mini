@@ -421,21 +421,6 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	}
 }
 
-var OS_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Open", 1, "function(String) tuple(Ptr<io.File>, Error)", ""},
-	{"Create", 2, "function(String) tuple(Ptr<io.File>, Error)", ""},
-	{"OpenFile", 3, "function(String, Int64, Int64) tuple(Ptr<io.File>, Error)", ""},
-	{"ReadFile", 4, "function(String) tuple(TypeBytes, Error)", ""},
-	{"WriteFile", 5, "function(String, TypeBytes) Error", ""},
-	{"Remove", 6, "function(String) Error", ""},
-	{"Getenv", 7, "function(String) String", ""},
-}
-
 var OS_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -473,30 +458,20 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterOS(executor interface{ RegisterConstant(string, string) }, impl OS, registry *ffigo.HandleRegistry) {
 	bridge := &OS_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "os"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range OS_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range OS_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range OS_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("os.DevNull", ffigo.ToConstantString(os.DevNull))
 	executor.RegisterConstant("os.O_APPEND", ffigo.ToConstantString(os.O_APPEND))

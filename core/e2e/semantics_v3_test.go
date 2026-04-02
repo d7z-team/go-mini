@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestSemanticsV3(t *testing.T) {
@@ -35,7 +36,7 @@ func TestSemanticsV3(t *testing.T) {
 	t.Run("ErrorToStringAssignment", func(t *testing.T) {
 		// 这里验证语义层面的兼容性
 		// 虽然无法直接在脚本写 Error 类型，但我们可以模拟 FFI 返回 Error 的场景
-		e.AddFuncSpec("getErr", "function() Error")
+		e.DeclareFuncSchema("getErr", runtime.MustParseRuntimeFuncSig("function() Error"))
 
 		code := `package main
 		func main() string {

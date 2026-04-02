@@ -63,15 +63,6 @@ func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 	}
 }
 
-var SHA256_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Sum256", 1, "function(TypeBytes) TypeBytes", ""},
-}
-
 var SHA256_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -103,30 +94,20 @@ func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterSHA256(executor interface{ RegisterConstant(string, string) }, impl SHA256, registry *ffigo.HandleRegistry) {
 	bridge := &SHA256_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "crypto/sha256"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range SHA256_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range SHA256_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range SHA256_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("crypto/sha256.BlockSize", ffigo.ToConstantString(sha256.BlockSize))
 	executor.RegisterConstant("crypto/sha256.Size", ffigo.ToConstantString(sha256.Size))

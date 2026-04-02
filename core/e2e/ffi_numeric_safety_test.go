@@ -85,9 +85,9 @@ func TestFFINumericSafety(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	// 注册全局 FFI 函数 (不带 api. 前缀，省去 import 麻烦)
-	executor.RegisterFFI("AcceptInt8", bridge, 1, "function(Int64) Void", "")
-	executor.RegisterFFI("AcceptUint16", bridge, 2, "function(Int64) Void", "")
-	executor.RegisterFFI("AcceptInt32", bridge, 3, "function(Int64) Void", "")
+	executor.RegisterFFISchema("AcceptInt8", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	executor.RegisterFFISchema("AcceptUint16", bridge, 2, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	executor.RegisterFFISchema("AcceptInt32", bridge, 3, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
 
 	tests := []struct {
 		name      string

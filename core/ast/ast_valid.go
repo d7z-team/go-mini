@@ -29,7 +29,7 @@ type ValidRoot struct {
 	Package       string
 	Imports       map[string]string
 	vars          map[Ident]GoMiniType
-	Loader        func(path string) (*ProgramStmt, error)
+	ModuleLoader  func(path string) (*ProgramStmt, error)
 	Imported      map[string]bool
 	ImportedRoots map[string]*ValidRoot
 	importStack   []string
@@ -493,7 +493,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return fmt.Errorf("invalid import path: %s", path)
 	}
 
-	if c.root.Loader == nil {
+	if c.root.ModuleLoader == nil {
 		return nil // 回退到 FFI 行为
 	}
 	if c.root.Imported[path] {
@@ -514,7 +514,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 
 	c.root.Imported[path] = true
 
-	prog, err := c.root.Loader(path)
+	prog, err := c.root.ModuleLoader(path)
 	if err != nil {
 		// 找不到模块时，假设其为 FFI 包
 		return nil
@@ -535,7 +535,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
 	v, _ := NewValidator(prog, externalSpecs, externalConsts, c.root.Tolerant)
 	v.root.Path = path
-	v.SetLoader(c.root.Loader)
+	v.SetModuleLoader(c.root.ModuleLoader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
 	err = prog.Check(NewSemanticContext(v))
 
@@ -553,8 +553,8 @@ func (c *ValidContext) ImportPackage(path string) error {
 	return nil
 }
 
-func (c *ValidContext) SetLoader(loader func(path string) (*ProgramStmt, error)) {
-	c.root.Loader = loader
+func (c *ValidContext) SetModuleLoader(loader func(path string) (*ProgramStmt, error)) {
+	c.root.ModuleLoader = loader
 }
 
 func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {

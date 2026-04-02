@@ -84,7 +84,7 @@ func TestJSONASTComprehensive(t *testing.T) {
 		t.Fatalf("Validation failed: %v", err)
 	}
 
-	runtime, err := executor.NewRuntimeByAst(program)
+	runtime, err := executor.NewRuntimeByProgram(program)
 	if err != nil {
 		t.Fatalf("NewRuntimeByAst failed: %v", err)
 	}

@@ -407,26 +407,6 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 	}
 }
 
-var Filepath_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Base", 1, "function(String) String", ""},
-	{"Clean", 2, "function(String) String", ""},
-	{"Dir", 3, "function(String) String", ""},
-	{"Ext", 4, "function(String) String", ""},
-	{"IsAbs", 5, "function(String) Bool", ""},
-	{"Join", 6, "function(...String) String", ""},
-	{"Match", 7, "function(String, String) tuple(Bool, Error)", ""},
-	{"Rel", 8, "function(String, String) tuple(String, Error)", ""},
-	{"Split", 9, "function(String) tuple(String, String)", ""},
-	{"ToSlash", 10, "function(String) String", ""},
-	{"FromSlash", 11, "function(String) String", ""},
-	{"VolumeName", 12, "function(String) String", ""},
-}
-
 var Filepath_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -469,29 +449,19 @@ func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterFilepath(executor interface{ RegisterConstant(string, string) }, impl Filepath, registry *ffigo.HandleRegistry) {
 	bridge := &Filepath_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "filepath"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Filepath_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Filepath_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Filepath_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

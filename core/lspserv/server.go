@@ -117,7 +117,7 @@ func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, err
 	}
 
 	// 运行校验以生成持久化 Scope
-	prog, errs := s.executor.NewMiniProgramByAstTolerant(combinedNode)
+	prog, errs := s.executor.NewMiniProgramByProgramTolerant(combinedNode)
 	pkg.combined = prog
 
 	// 将当前触发文件的诊断信息返回

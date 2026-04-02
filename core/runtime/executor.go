@@ -26,8 +26,8 @@ type Executor struct {
 
 	routes map[string]FFIRoute
 
-	Loader         func(path string) (*ast.ProgramStmt, error)
-	PreparedLoader func(path string) (*ast.ProgramStmt, *PreparedProgram, error)
+	ModuleLoader     func(path string) (*ast.ProgramStmt, error)
+	ModulePlanLoader func(path string) (*ast.ProgramStmt, *PreparedProgram, error)
 
 	StepLimit int64
 
@@ -433,7 +433,7 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 	e.routes[name] = route
 }
 
-func (e *Executor) RegisterStructSpec(name string, spec *RuntimeStructSpec) {
+func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if spec == nil {
@@ -639,9 +639,6 @@ func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) b
 	if route, ok := v.Ref.(FFIRoute); ok {
 		if route.FuncSig != nil {
 			return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
-		}
-		if fType, ok := ast.GoMiniType(route.Spec).ReadFunc(); ok {
-			return e.isSignatureCompatible(fType, expectedSig)
 		}
 	}
 	return true // 默认放行，由运行期进一步处理
@@ -1882,8 +1879,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return fmt.Errorf("circular dependency detected: %s", path)
 		}
 
-		if e.PreparedLoader != nil {
-			prog, prepared, err := e.PreparedLoader(path)
+		if e.ModulePlanLoader != nil {
+			prog, prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
 				session.LoadingModules[path] = true
 				res, err := e.executeImportedProgram(session, path, prog, prepared)
@@ -1895,8 +1892,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.ValueStack.Push(res)
 				return nil
 			}
-		} else if e.Loader != nil {
-			prog, err := e.Loader(path)
+		} else if e.ModuleLoader != nil {
+			prog, err := e.ModuleLoader(path)
 			if err == nil {
 				session.LoadingModules[path] = true
 				res, err := e.executeImportedProgram(session, path, prog, nil)
@@ -2682,8 +2679,8 @@ func (e *Executor) executeImportedProgram(parent *StackContext, path string, pro
 	if err != nil {
 		return nil, err
 	}
-	modExecutor.Loader = e.Loader
-	modExecutor.PreparedLoader = e.PreparedLoader
+	modExecutor.ModuleLoader = e.ModuleLoader
+	modExecutor.ModulePlanLoader = e.ModulePlanLoader
 	modExecutor.StepLimit = e.StepLimit
 	modExecutor.routes = e.routes
 

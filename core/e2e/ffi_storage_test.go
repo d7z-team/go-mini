@@ -7,6 +7,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/e2e/storagelib"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestFFIStorageOverflow(t *testing.T) {
@@ -16,8 +17,8 @@ func TestFFIStorageOverflow(t *testing.T) {
 	// 1. 手动注册 FFI 路由，避免点号带来的模块加载问题
 	// 直接模拟 RegisterStorageAPI 的核心逻辑，但改名以简化测试
 	bridge := &storagelib.StorageAPI_Bridge{Impl: impl, Registry: nil}
-	executor.RegisterFFI("StorageSetCapacity", bridge, storagelib.MethodID_StorageAPI_SetCapacity, "function(Int64) Void", "")
-	executor.RegisterFFI("StorageGetStatus", bridge, storagelib.MethodID_StorageAPI_GetStatus, "function() Int64", "")
+	executor.RegisterFFISchema("StorageSetCapacity", bridge, storagelib.MethodID_StorageAPI_SetCapacity, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	executor.RegisterFFISchema("StorageGetStatus", bridge, storagelib.MethodID_StorageAPI_GetStatus, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
 
 	tests := []struct {
 		name      string

@@ -449,28 +449,6 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 	}
 }
 
-var Bytes_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Contains", 1, "function(TypeBytes, TypeBytes) Bool", ""},
-	{"Count", 2, "function(TypeBytes, TypeBytes) Int64", ""},
-	{"HasPrefix", 3, "function(TypeBytes, TypeBytes) Bool", ""},
-	{"HasSuffix", 4, "function(TypeBytes, TypeBytes) Bool", ""},
-	{"Index", 5, "function(TypeBytes, TypeBytes) Int64", ""},
-	{"LastIndex", 6, "function(TypeBytes, TypeBytes) Int64", ""},
-	{"ToLower", 7, "function(TypeBytes) TypeBytes", ""},
-	{"ToUpper", 8, "function(TypeBytes) TypeBytes", ""},
-	{"Trim", 9, "function(TypeBytes, String) TypeBytes", ""},
-	{"TrimSpace", 10, "function(TypeBytes) TypeBytes", ""},
-	{"Split", 11, "function(TypeBytes, TypeBytes) Array<TypeBytes>", ""},
-	{"Join", 12, "function(Array<TypeBytes>, TypeBytes) TypeBytes", ""},
-	{"Repeat", 13, "function(TypeBytes, Int64) TypeBytes", ""},
-	{"ReplaceAll", 14, "function(TypeBytes, TypeBytes, TypeBytes) TypeBytes", ""},
-}
-
 var Bytes_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -515,29 +493,19 @@ func (b *Bytes_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterBytes(executor interface{ RegisterConstant(string, string) }, impl Bytes, registry *ffigo.HandleRegistry) {
 	bridge := &Bytes_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "bytes"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Bytes_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Bytes_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Bytes_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

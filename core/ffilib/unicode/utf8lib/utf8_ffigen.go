@@ -208,20 +208,6 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	}
 }
 
-var UTF8_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"DecodeRuneInString", 1, "function(String) tuple(Int64, Int64)", ""},
-	{"EncodeRune", 2, "function(Int64) TypeBytes", ""},
-	{"FullRuneInString", 3, "function(String) Bool", ""},
-	{"RuneCountInString", 4, "function(String) Int64", ""},
-	{"RuneLen", 5, "function(Int64) Int64", ""},
-	{"ValidString", 6, "function(String) Bool", ""},
-}
-
 var UTF8_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -258,29 +244,19 @@ func (b *UTF8_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterUTF8(executor interface{ RegisterConstant(string, string) }, impl UTF8, registry *ffigo.HandleRegistry) {
 	bridge := &UTF8_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "unicode/utf8"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range UTF8_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range UTF8_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range UTF8_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

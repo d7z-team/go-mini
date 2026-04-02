@@ -214,18 +214,6 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	}
 }
 
-var AdvancedFFI_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"GetSameObject", 1, "function() Ptr<test.TestObj>", "Identity check"},
-	{"IsSame", 2, "function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool", ""},
-	{"EchoMap", 3, "function(Map<Bool, String>) Map<Float64, Bool>", "Map keys"},
-	{"EchoEmbedded", 4, "function(EmbeddedStruct) EmbeddedStruct", "Embedded structs"},
-}
-
 var AdvancedFFI_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -264,36 +252,21 @@ var EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.E
 
 func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "test"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range AdvancedFFI_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range AdvancedFFI_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range AdvancedFFI_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
-		schemaRegistrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("test.TestObj", TestObj_FFI_StructSchema.Spec)
-		legacyRegistrar.RegisterStructSpec("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("test.TestObj", TestObj_FFI_StructSchema)
+	registrar.RegisterStructSchema("test.EmbeddedStruct", EmbeddedStruct_FFI_StructSchema)
 }

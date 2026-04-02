@@ -13,20 +13,20 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 		patterns []string
 	}{
 		{
-			name: "StdlibDualRegistration",
+			name: "StdlibSchemaOnlyRegistration",
 			path: "../ffilib/iolib/io_ffigen.go",
 			patterns: []string{
-				"schemaRegistrar, hasSchema := executor.(interface {",
-				"legacyRegistrar, hasLegacy := executor.(interface {",
-				"legacyRegistrar.RegisterFFI(",
+				"registrar, ok := executor.(interface {",
+				"registrar.RegisterFFISchema(",
+				"registrar.RegisterStructSchema(",
 			},
 		},
 		{
-			name: "ServiceDualRegistration",
+			name: "ServiceSchemaOnlyRegistration",
 			path: "canonical_type_ffigen.go",
 			patterns: []string{
-				"schemaRegistrar.RegisterFFISchema(",
-				"legacyRegistrar.RegisterFFI(",
+				"registrar.RegisterFFISchema(",
+				"panic(\"ffigen: executor does not support schema FFI registration\")",
 			},
 		},
 		{
@@ -34,7 +34,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "structtest/ffigen.go",
 			patterns: []string{
 				"RegisterStructSchema(",
-				"RegisterStructSpec(",
+				"registrar.RegisterStructSchema(",
 				"Ptr<calc.Calculator>",
 			},
 		},
@@ -60,6 +60,12 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			for _, pattern := range tt.patterns {
 				if !strings.Contains(code, pattern) {
 					t.Fatalf("expected %s to contain %q", tt.path, pattern)
+				}
+			}
+			disallowed := []string{"legacyRegistrar", "RegisterStructSpec(", "RegisterFFI("}
+			for _, pattern := range disallowed {
+				if strings.Contains(code, pattern) {
+					t.Fatalf("expected %s to drop legacy marker %q", tt.path, pattern)
 				}
 			}
 		})

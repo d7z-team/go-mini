@@ -14,7 +14,7 @@ import (
 func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		switch path {
 		case "broken":
 			code := `
@@ -67,7 +67,7 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		switch path {
 		case "panicmod":
 			code := `

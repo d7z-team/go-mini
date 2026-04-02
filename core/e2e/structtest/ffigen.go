@@ -94,17 +94,6 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	}
 }
 
-var Calculator_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Add", 1, "function(Ptr<calc.Calculator>, Int64) Int64", ""},
-	{"Multiply", 2, "function(Ptr<calc.Calculator>, Int64, Int64) Int64", ""},
-	{"GetBase", 3, "function(Ptr<calc.Calculator>) Int64", ""},
-}
-
 var Calculator_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -140,33 +129,22 @@ var Calculator_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculato
 
 func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_calc.Calculator"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Calculator_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("calc.Calculator", Calculator_StructSchema)
-	} else {
-		for _, m := range Calculator_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("calc.Calculator", Calculator_StructSchema.Spec)
+	for _, m := range Calculator_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("calc.Calculator", Calculator_StructSchema)
 }
 
 const (
@@ -203,15 +181,6 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	}
 }
 
-var Factory_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"New", 1, "function(Int64) Ptr<calc.Calculator>", ""},
-}
-
 var Factory_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -245,34 +214,20 @@ var Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calcu
 
 func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "calc"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Factory_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Factory_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Factory_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("calc.Calculator", Calculator_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("calc.Calculator", Calculator_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("calc.Calculator", Calculator_FFI_StructSchema)
 }

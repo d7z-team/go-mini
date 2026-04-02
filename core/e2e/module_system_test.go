@@ -10,13 +10,14 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // TestModuleComprehensive 综合测试：函数、变量、常量、结构体导出
 func TestModuleComprehensive(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		switch path {
 		case "lib":
 			code := `
@@ -88,7 +89,7 @@ func TestModuleComprehensive(t *testing.T) {
 func TestCircularDependency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		var code string
 		switch path {
 		case "a":
@@ -119,7 +120,7 @@ func TestNestedFFIPath(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	// 模拟注册一个嵌套路径的 FFI
-	executor.RegisterFFI("net.http.Get", nil, 1, "function(String) String", "")
+	executor.RegisterFFISchema("net.http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
 	code := `
 	package main

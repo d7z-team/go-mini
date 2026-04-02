@@ -6,14 +6,15 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := NewMiniExecutor()
-	exec.RegisterFFI("demo.Call", nil, 1, "function(String, ...Any) tuple(Void, String)", "demo route")
-	exec.RegisterStructSpec("demo.Payload", "struct { Msg String; Count Int64; }")
+	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }"))
 
-	schema := exec.GetExportedSchema()
+	schema := exec.ExportedSchema()
 	if schema == nil {
 		t.Fatal("expected schema snapshot")
 	}
@@ -40,23 +41,17 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 		t.Fatalf("unexpected struct field order: %+v", structSpec.Fields)
 	}
 
-	exportedSpecs := exec.GetExportedSpecs()
-	if got := exportedSpecs["demo.Call"]; got != "function(String, ...Any) tuple(Void, String)" {
+	if got := schema.Funcs["demo.Call"].Spec; got != "function(String, ...Any) tuple(Void, String)" {
 		t.Fatalf("unexpected exported function spec: %s", got)
 	}
-	if got := exportedSpecs["demo.Payload"]; got != "struct { Msg String; Count Int64; }" {
+	if got := schema.Structs["demo.Payload"].Spec; got != "struct { Msg String; Count Int64; }" {
 		t.Fatalf("unexpected exported struct spec: %s", got)
-	}
-
-	exportedStructs := exec.GetExportedStructs()
-	if got := exportedStructs["demo.Payload"]; got != "struct { Msg String; Count Int64; }" {
-		t.Fatalf("unexpected exported struct-only spec: %s", got)
 	}
 }
 
 func TestExportMetadataIncludesRegisteredFFISignatures(t *testing.T) {
 	exec := NewMiniExecutor()
-	exec.RegisterFFI("demo.Call", nil, 1, "function(String, ...Any) tuple(Void, String)", "demo route")
+	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
 
 	meta := exec.ExportMetadata()
 	if !strings.Contains(meta, `"Call": "function(String, ...Any) tuple(Void, String) // demo route"`) {

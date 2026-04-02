@@ -328,18 +328,6 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	}
 }
 
-var MapTest_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"EchoMap", 1, "function(Map<String, String>) tuple(Map<String, String>, Error)", ""},
-	{"GetMap", 2, "function() tuple(Map<String, Int64>, Error)", ""},
-	{"ProcessMap", 3, "function(Map<String, Int64>) tuple(Int64, Error)", ""},
-	{"EchoIntMap", 4, "function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", ""},
-}
-
 var MapTest_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -374,28 +362,18 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterMapTestLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
 	bridge := &MapTest_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range MapTest_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range MapTest_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range MapTest_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

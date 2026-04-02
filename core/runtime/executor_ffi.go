@@ -17,9 +17,6 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 	defer ffigo.ReleaseBuffer(buf)
 
 	funcSig := route.FuncSig
-	if funcSig == nil && route.Spec != "" {
-		funcSig, _ = ParseRuntimeFuncSig(ast.GoMiniType(route.Spec))
-	}
 
 	// 序列化参数
 	if funcSig != nil && funcSig.Function.Variadic {

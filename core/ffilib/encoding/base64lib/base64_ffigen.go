@@ -191,18 +191,6 @@ func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRe
 	}
 }
 
-var Base64_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"EncodeToString", 1, "function(TypeBytes) String", ""},
-	{"DecodeString", 2, "function(String) tuple(TypeBytes, Error)", ""},
-	{"URLEncodeToString", 3, "function(TypeBytes) String", ""},
-	{"URLDecodeString", 4, "function(String) tuple(TypeBytes, Error)", ""},
-}
-
 var Base64_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -237,29 +225,19 @@ func (b *Base64_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterBase64(executor interface{ RegisterConstant(string, string) }, impl Base64, registry *ffigo.HandleRegistry) {
 	bridge := &Base64_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "encoding/base64"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Base64_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Base64_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Base64_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

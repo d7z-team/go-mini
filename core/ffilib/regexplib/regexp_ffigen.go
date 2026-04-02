@@ -361,21 +361,6 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 	}
 }
 
-var Regexp_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Match", 1, "function(String, TypeBytes) tuple(Bool, Error)", ""},
-	{"MatchString", 2, "function(String, String) tuple(Bool, Error)", ""},
-	{"QuoteMeta", 3, "function(String) String", ""},
-	{"FindString", 4, "function(String, String) String", ""},
-	{"FindStringSubmatch", 5, "function(String, String) Array<String>", ""},
-	{"ReplaceAllString", 6, "function(String, String, String) tuple(String, Error)", ""},
-	{"Split", 7, "function(String, String, Int64) tuple(Array<String>, Error)", ""},
-}
-
 var Regexp_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -413,29 +398,19 @@ func (b *Regexp_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterRegexp(executor interface{ RegisterConstant(string, string) }, impl Regexp, registry *ffigo.HandleRegistry) {
 	bridge := &Regexp_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "regexp"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Regexp_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Regexp_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Regexp_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

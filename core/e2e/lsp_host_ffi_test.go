@@ -5,6 +5,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestLSPHostFFICompletion(t *testing.T) {
@@ -12,10 +13,10 @@ func TestLSPHostFFICompletion(t *testing.T) {
 	e.InjectStandardLibraries()
 	// 1. 注册 FFI 结构体
 	// 模拟 os.File
-	e.AddStructSpec("os.File", "struct { Read function(TypeBytes) tuple(Int64, Error); Close function() Error; Name String }")
+	e.DeclareStructSchema("os.File", runtime.MustParseRuntimeStructSpec("os.File", "struct { Read function(TypeBytes) tuple(Int64, Error); Close function() Error; Name String }"))
 
 	// 模拟返回该结构体的函数
-	e.AddFuncSpec("os.Open", "function(String) tuple(os.File, Error)")
+	e.DeclareFuncSchema("os.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(os.File, Error)"))
 
 	code := `package main
 import "os"

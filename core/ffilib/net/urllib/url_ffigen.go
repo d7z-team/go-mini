@@ -149,17 +149,6 @@ func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 	}
 }
 
-var URL_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"QueryEscape", 1, "function(String) String", ""},
-	{"QueryUnescape", 2, "function(String) tuple(String, Error)", ""},
-	{"JoinPath", 3, "function(String, ...String) String", ""},
-}
-
 var URL_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -193,29 +182,19 @@ func (b *URL_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterURL(executor interface{ RegisterConstant(string, string) }, impl URL, registry *ffigo.HandleRegistry) {
 	bridge := &URL_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "net/url"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range URL_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range URL_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range URL_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

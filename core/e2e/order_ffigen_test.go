@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/e2e/ordertest"
 )
 
@@ -15,12 +14,12 @@ func TestOrderFFIGen(t *testing.T) {
 	impl := ordertest.NewOrderImpl()
 
 	// 1. 注册模块级函数和方法集
-	for _, m := range ordertest.OrderService_FFI_Metadata {
+	for _, m := range ordertest.OrderService_FFI_Schemas {
 		if m.Name == "New" {
-			executor.RegisterFFI("order."+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+			executor.RegisterFFISchema("order."+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, m.Sig, m.Doc)
 		} else {
 			// 使用全路径 ID
-			executor.RegisterFFI("__method_gopkg.d7z.net/go-mini/core/e2e/ordertest.Order_"+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+			executor.RegisterFFISchema("__method_gopkg.d7z.net/go-mini/core/e2e/ordertest.Order_"+m.Name, &ordertest.OrderService_Bridge{Impl: impl, Registry: executor.HandleRegistry()}, m.MethodID, m.Sig, m.Doc)
 		}
 	}
 	code := `

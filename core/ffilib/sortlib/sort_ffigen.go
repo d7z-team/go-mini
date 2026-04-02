@@ -259,20 +259,6 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	}
 }
 
-var Sort_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Ints", 1, "function(Array<Int64>) Array<Int64>", ""},
-	{"Float64s", 2, "function(Array<Float64>) Array<Float64>", ""},
-	{"Strings", 3, "function(Array<String>) Array<String>", ""},
-	{"IntsAreSorted", 4, "function(Array<Int64>) Bool", ""},
-	{"Float64sAreSorted", 5, "function(Array<Float64>) Bool", ""},
-	{"StringsAreSorted", 6, "function(Array<String>) Bool", ""},
-}
-
 var Sort_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -309,29 +295,19 @@ func (b *Sort_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterSort(executor interface{ RegisterConstant(string, string) }, impl Sort, registry *ffigo.HandleRegistry) {
 	bridge := &Sort_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "sort"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Sort_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Sort_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Sort_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

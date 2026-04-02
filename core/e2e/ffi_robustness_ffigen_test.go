@@ -80,15 +80,6 @@ func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	}
 }
 
-var MockGeometry_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"SumX", 1, "function(Array<RobustPoint>) Int64", ""},
-}
-
 var MockGeometry_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -122,30 +113,19 @@ var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z
 
 func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range MockGeometry_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", RobustPoint_FFI_StructSchema)
-	} else {
-		for _, m := range MockGeometry_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", RobustPoint_FFI_StructSchema.Spec)
+	for _, m := range MockGeometry_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.RobustPoint", RobustPoint_FFI_StructSchema)
 }

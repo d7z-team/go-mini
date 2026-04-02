@@ -11,8 +11,7 @@ import (
 )
 
 type Config struct {
-	Loader        func(path string) (*ast.ProgramStmt, error)
-	Specs         map[ast.Ident]ast.GoMiniType
+	ModuleLoader  func(path string) (*ast.ProgramStmt, error)
 	FuncSchemas   map[ast.Ident]*runtime.RuntimeFuncSig
 	StructSchemas map[ast.Ident]*runtime.RuntimeStructSpec
 	Constants     map[string]string
@@ -128,7 +127,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
 		ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
 	}
-	validator.SetLoader(c.cfg.Loader)
+	validator.SetModuleLoader(c.cfg.ModuleLoader)
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	if err := program.Check(semanticCtx); err != nil {
@@ -156,15 +155,12 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 }
 
 func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
-	size := len(c.cfg.Specs) + len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas)
+	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas)
 	if size == 0 {
 		return nil
 	}
 
 	res := make(map[ast.Ident]ast.GoMiniType, size)
-	for k, v := range c.cfg.Specs {
-		res[k] = v
-	}
 	for k, v := range c.cfg.FuncSchemas {
 		if v == nil {
 			continue

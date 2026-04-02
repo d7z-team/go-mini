@@ -109,7 +109,7 @@ func TestTryCatchManual(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime, err := executor.NewRuntimeByAst(program)
+	runtime, err := executor.NewRuntimeByProgram(program)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -288,17 +288,6 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 	}
 }
 
-var IO_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"ReadAll", 1, "function(Any) tuple(TypeBytes, Error)", "ReadAll 读取所有数据"},
-	{"Copy", 2, "function(Any, Any) tuple(Int64, Error)", "Copy 将 src 的数据拷贝到 dst"},
-	{"WriteString", 3, "function(Any, String) tuple(Int64, Error)", "WriteString 将字符串写入 w"},
-}
-
 var IO_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -332,30 +321,20 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO, registry *ffigo.HandleRegistry) {
 	bridge := &IO_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "io"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range IO_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range IO_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range IO_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("io.SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 	executor.RegisterConstant("io.SeekEnd", ffigo.ToConstantString(io.SeekEnd))
@@ -628,23 +607,6 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	}
 }
 
-var File_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Write", 1, "function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"WriteAt", 2, "function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", "WriteAt 正常工作：支持偏移量写入"},
-	{"Seek", 3, "function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)", ""},
-	{"Close", 4, "function(Ptr<io.File>) Error", ""},
-	{"Sync", 5, "function(Ptr<io.File>) Error", ""},
-	{"Truncate", 6, "function(Ptr<io.File>, Int64) Error", ""},
-	{"WriteString", 7, "function(Ptr<io.File>, String) tuple(Int64, Error)", ""},
-	{"Name", 8, "function(Ptr<io.File>) String", ""},
-	{"WriteNative", 9, "function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", "满足 io.Writer 接口，供宿主侧其他库使用"},
-}
-
 var File_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -686,31 +648,20 @@ var File_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMini
 
 func RegisterFile(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &File_Bridge{Impl: nil, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_io.File"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range File_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("io.File", File_StructSchema)
-	} else {
-		for _, m := range File_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("io.File", File_StructSchema.Spec)
+	for _, m := range File_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("io.File", File_StructSchema)
 }

@@ -99,7 +99,7 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 	if err != nil {
 		return nil, nil, err
 	}
-	ctx.SetLoader(loader)
+	ctx.SetModuleLoader(loader)
 	if err := call(ctx); err != nil {
 		return nil, nil, err
 	}

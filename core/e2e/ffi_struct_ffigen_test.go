@@ -122,16 +122,6 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	}
 }
 
-var MockShapeAPI_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"GetRect", 1, "function() Rect", ""},
-	{"Area", 2, "function(Rect) Int64", ""},
-}
-
 var MockShapeAPI_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -168,32 +158,20 @@ var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.net/g
 
 func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range MockShapeAPI_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Rect", Rect_FFI_StructSchema)
-		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Point", Point_FFI_StructSchema)
-	} else {
-		for _, m := range MockShapeAPI_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.Rect", Rect_FFI_StructSchema.Spec)
-		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e.Point", Point_FFI_StructSchema.Spec)
+	for _, m := range MockShapeAPI_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Rect", Rect_FFI_StructSchema)
+	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e.Point", Point_FFI_StructSchema)
 }

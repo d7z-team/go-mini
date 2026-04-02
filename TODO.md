@@ -165,10 +165,10 @@
 - [ ] **对比重构前后指标**: 目标符号查找开销降低 50% 以上，GC 压力降低 20% 以上。
 
 ### U. 兼容层退场与收口
-- [ ] **移除 `ffigen` legacy registrar 分支**: 生成器不再输出 `RegisterFFI/RegisterStructSpec` 兼容代码。
-- [ ] **移除 runtime 对旧字符串 spec 的兼容主路径**: 旧接口保留薄适配层，但执行/注册主链路只消费 schema。
-- [ ] **制定兼容层下线顺序**: 先生成器、再标准库、再业务样例，最后删除 legacy API。
-- [ ] **补充兼容层退场回归**: 确保删除 legacy 分支后 stdlib/业务生成物仍可稳定运行。
+- [x] **移除 `ffigen` legacy registrar 分支**: `cmd/ffigen` 与仓库内 stdlib/业务生成物已切到 schema-only 注册，不再输出/依赖 `RegisterFFI/RegisterStructSpec` 双分支。
+- [x] **移除 runtime 对旧字符串 spec 的兼容主路径**: `MiniExecutor.RegisterFFI/RegisterStructSpec/AddFuncSpec/AddStructSpec` 与 `compiler.Config.Specs` 已删除；主链只保留 schema 注册与 schema 校验入口。
+- [x] **制定兼容层下线顺序**: 已按“生成器 -> 仓库内 stdlib 生成物 -> 业务/e2e 样例 -> 删除 legacy API”顺序完成收口。
+- [x] **补充兼容层退场回归**: 已补 `ffigen_migration_test` 并验证 `go test ./...`，确保 stdlib/业务生成物在 schema-only 下稳定运行。
 
 ---
 

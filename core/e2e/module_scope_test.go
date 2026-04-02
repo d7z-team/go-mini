@@ -15,7 +15,7 @@ func TestModulePrivateScope(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	// 模拟 service 模块，它引用了一个未导出的私有变量 utils
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		if path == "service" {
 			code := `
 			package service

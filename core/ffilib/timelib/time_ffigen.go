@@ -350,21 +350,6 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	}
 }
 
-var Module_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Now", 1, "function() Ptr<time.Time>", ""},
-	{"Unix", 2, "function(Int64, Int64) Ptr<time.Time>", ""},
-	{"Sleep", 3, "function(Int64) Void", ""},
-	{"Since", 4, "function(Ptr<time.Time>) Int64", ""},
-	{"Until", 5, "function(Ptr<time.Time>) Int64", ""},
-	{"Parse", 6, "function(String, String) tuple(Ptr<time.Time>, Error)", ""},
-	{"ParseDuration", 7, "function(String) tuple(Int64, Error)", ""},
-}
-
 var Module_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -404,30 +389,20 @@ var Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.
 
 func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl Module, registry *ffigo.HandleRegistry) {
 	bridge := &Module_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "time"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Module_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Module_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Module_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
 	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
@@ -447,11 +422,7 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
 	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
 	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("time.Time", Time_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("time.Time", Time_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("time.Time", Time_FFI_StructSchema)
 }
 
 const (
@@ -841,33 +812,6 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	}
 }
 
-var Time_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Year", 1, "function(Ptr<time.Time>) Int64", ""},
-	{"Month", 2, "function(Ptr<time.Time>) Int64", ""},
-	{"Day", 3, "function(Ptr<time.Time>) Int64", ""},
-	{"Hour", 4, "function(Ptr<time.Time>) Int64", ""},
-	{"Minute", 5, "function(Ptr<time.Time>) Int64", ""},
-	{"Second", 6, "function(Ptr<time.Time>) Int64", ""},
-	{"Nanosecond", 7, "function(Ptr<time.Time>) Int64", ""},
-	{"Unix", 8, "function(Ptr<time.Time>) Int64", ""},
-	{"UnixMilli", 9, "function(Ptr<time.Time>) Int64", ""},
-	{"UnixMicro", 10, "function(Ptr<time.Time>) Int64", ""},
-	{"UnixNano", 11, "function(Ptr<time.Time>) Int64", ""},
-	{"Format", 12, "function(Ptr<time.Time>, String) String", ""},
-	{"Add", 13, "function(Ptr<time.Time>, Int64) Ptr<time.Time>", ""},
-	{"Sub", 14, "function(Ptr<time.Time>, Ptr<time.Time>) Int64", ""},
-	{"IsZero", 15, "function(Ptr<time.Time>) Bool", ""},
-	{"Before", 16, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
-	{"After", 17, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
-	{"Equal", 18, "function(Ptr<time.Time>, Ptr<time.Time>) Bool", ""},
-	{"String", 19, "function(Ptr<time.Time>) String", ""},
-}
-
 var Time_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -919,31 +863,20 @@ var Time_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMi
 
 func RegisterTime(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Time_Bridge{Impl: nil, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_time.Time"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Time_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-		schemaRegistrar.RegisterStructSchema("time.Time", Time_StructSchema)
-	} else {
-		for _, m := range Time_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
-		legacyRegistrar.RegisterStructSpec("time.Time", Time_StructSchema.Spec)
+	for _, m := range Time_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registrar.RegisterStructSchema("time.Time", Time_StructSchema)
 }

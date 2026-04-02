@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // Outputter 接口定义了自定义输出操作
@@ -53,10 +53,10 @@ func (h *FmtHost) Sprintf(_ context.Context, format string, args ...any) string 
 
 // RegisterFmtAliases 注册全局的 print 和 println 别名
 func RegisterFmtAliases(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 }, impl Fmt, registry *ffigo.HandleRegistry,
 ) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
-	executor.RegisterFFI("print", bridge, MethodID_Fmt_Print, "function(...Any) Void", "Print values to stdout")
-	executor.RegisterFFI("println", bridge, MethodID_Fmt_Println, "function(...Any) Void", "Print values to stdout with newline")
+	executor.RegisterFFISchema("print", bridge, MethodID_Fmt_Print, runtime.MustParseRuntimeFuncSig("function(...Any) Void"), "Print values to stdout")
+	executor.RegisterFFISchema("println", bridge, MethodID_Fmt_Println, runtime.MustParseRuntimeFuncSig("function(...Any) Void"), "Print values to stdout with newline")
 }

@@ -229,21 +229,6 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	}
 }
 
-var Rand_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Float64", 1, "function() Float64", ""},
-	{"Int", 2, "function() Int64", ""},
-	{"Intn", 3, "function(Int64) Int64", ""},
-	{"Int63", 4, "function() Int64", ""},
-	{"Int63n", 5, "function(Int64) Int64", ""},
-	{"Seed", 6, "function(Int64) Void", ""},
-	{"Perm", 7, "function(Int64) Array<Int64>", ""},
-}
-
 var Rand_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -281,29 +266,19 @@ func (b *Rand_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterRand(executor interface{ RegisterConstant(string, string) }, impl Rand, registry *ffigo.HandleRegistry) {
 	bridge := &Rand_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "math/rand"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Rand_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Rand_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Rand_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

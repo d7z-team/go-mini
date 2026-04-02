@@ -539,31 +539,6 @@ func StringsHostRouter(ctx context.Context, impl Strings, registry *ffigo.Handle
 	}
 }
 
-var Strings_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Contains", 1, "function(String, String) Bool", ""},
-	{"ContainsAny", 2, "function(String, String) Bool", ""},
-	{"Count", 3, "function(String, String) Int64", ""},
-	{"HasPrefix", 4, "function(String, String) Bool", ""},
-	{"HasSuffix", 5, "function(String, String) Bool", ""},
-	{"Index", 6, "function(String, String) Int64", ""},
-	{"LastIndex", 7, "function(String, String) Int64", ""},
-	{"ToLower", 8, "function(String) String", ""},
-	{"ToUpper", 9, "function(String) String", ""},
-	{"Trim", 10, "function(String, String) String", ""},
-	{"TrimSpace", 11, "function(String) String", ""},
-	{"TrimPrefix", 12, "function(String, String) String", ""},
-	{"TrimSuffix", 13, "function(String, String) String", ""},
-	{"Replace", 14, "function(String, String, String, Int64) String", ""},
-	{"ReplaceAll", 15, "function(String, String, String) String", ""},
-	{"Split", 16, "function(String, String) Array<String>", ""},
-	{"Join", 17, "function(Array<String>, String) String", ""},
-}
-
 var Strings_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -611,29 +586,19 @@ func (b *Strings_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterStrings(executor interface{ RegisterConstant(string, string) }, impl Strings, registry *ffigo.HandleRegistry) {
 	bridge := &Strings_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "strings"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Strings_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Strings_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Strings_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

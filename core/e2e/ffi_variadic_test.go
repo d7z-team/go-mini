@@ -8,6 +8,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // PrinterAPI 演示变长参数
@@ -44,7 +45,7 @@ func (m *MockPrinter) Log(prefix string, args ...any) error {
 func RegisterPrinter(executor *engine.MiniExecutor, impl PrinterAPI) {
 	bridge := &PrinterBridge{impl: impl}
 	// 注意：FFI spec 中的变长参数由 ... 前缀标识
-	executor.RegisterFFI("printer.Log", bridge, 1, "function(String, ...Any) tuple(Void, String)", "Log with variadic args")
+	executor.RegisterFFISchema("printer.Log", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "Log with variadic args")
 }
 
 type PrinterBridge struct {

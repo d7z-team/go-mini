@@ -6,6 +6,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestMultiAssignment(t *testing.T) {
@@ -74,8 +75,8 @@ func TestMultiAssignment(t *testing.T) {
 	t.Run("TupleDestructuring", func(t *testing.T) {
 		// Mock a bridge that returns a Tuple
 		bridge := &mockTupleBridge{}
-		executor.RegisterFFI("math.DivMod", bridge, 1, "function(Int64, Int64) tuple(Int64, Int64)", "")
-		executor.AddFuncSpec("math.DivMod", "function(Int64, Int64) tuple(Int64, Int64)")
+		executor.RegisterFFISchema("math.DivMod", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
+		executor.DeclareFuncSchema("math.DivMod", runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"))
 
 		code := `
 		package main

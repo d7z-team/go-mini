@@ -3,12 +3,13 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"runtime"
+	goruntime "runtime"
 	"testing"
 	"time"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // MockResource 模拟一个宿主侧的句柄资源
@@ -52,9 +53,9 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []
 		return buf.Bytes(), nil
 
 	case 3: // 模拟 GC 压力
-		runtime.GC()
+		goruntime.GC()
 		time.Sleep(50 * time.Millisecond)
-		runtime.GC()
+		goruntime.GC()
 		return nil, nil
 	}
 	return nil, nil
@@ -75,9 +76,9 @@ func TestHandleGCLifecycleRegression(t *testing.T) {
 	registry := ffigo.NewHandleRegistry()
 	bridge := &lifecycleMockBridge{registry: registry, t: t}
 
-	executor.RegisterFFI("Screenshot", bridge, 1, "function() TypeHandle", "")
-	executor.RegisterFFI("GetWidth", bridge, 2, "function(TypeHandle) Int64", "")
-	executor.RegisterFFI("TriggerGC", bridge, 3, "function()", "")
+	executor.RegisterFFISchema("Screenshot", bridge, 1, miniruntime.MustParseRuntimeFuncSig("function() TypeHandle"), "")
+	executor.RegisterFFISchema("GetWidth", bridge, 2, miniruntime.MustParseRuntimeFuncSig("function(TypeHandle) Int64"), "")
+	executor.RegisterFFISchema("TriggerGC", bridge, 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	code := `
 		package main

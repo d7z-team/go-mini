@@ -15,7 +15,7 @@ func TestPathTraversalSecurity(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	// 设置一个简单的 Loader
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		return nil, nil // 路径校验应该在此之前发生
 	})
 
@@ -44,7 +44,7 @@ func TestImportDepthLimit(t *testing.T) {
 	// 构造一个链式导入 A -> B -> C ...
 	// 我们这里通过模拟 Loader 返回下一个模块来实现
 	depth := 0
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		depth++
 		next := fmt.Sprintf("m%d", depth)
 		code := fmt.Sprintf("package %s; import \"%s\"; func Run() {}", path, next)

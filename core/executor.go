@@ -39,10 +39,10 @@ import (
 type MiniExecutor struct {
 	mu sync.RWMutex
 
-	Loader    func(path string) (*ast.ProgramStmt, error)
-	bridges   map[uint32]ffigo.FFIBridge
-	routes    map[string]runtime.FFIRoute
-	constants map[string]string
+	ModuleLoader func(path string) (*ast.ProgramStmt, error)
+	bridges      map[uint32]ffigo.FFIBridge
+	routes       map[string]runtime.FFIRoute
+	constants    map[string]string
 
 	registry       *ffigo.HandleRegistry
 	modules        map[string]*ast.ProgramStmt // 预加载的模块蓝图
@@ -53,7 +53,7 @@ type MiniExecutor struct {
 	MaxTypeDepth int // 递归类型检查深度限制
 }
 
-type FFISchemaSnapshot struct {
+type ExportedSchemaSnapshot struct {
 	Funcs   map[ast.Ident]*runtime.RuntimeFuncSig
 	Structs map[ast.Ident]*runtime.RuntimeStructSpec
 }
@@ -312,23 +312,23 @@ func NewMiniExecutor() *MiniExecutor {
 	}
 
 	// 默认注册 panic 签名以便通过验证
-	res.mustRegisterFuncSchemaLocked("panic", "function(String) Void")
-	res.mustRegisterFuncSchemaLocked("recover", "function() Any")
-	res.mustRegisterFuncSchemaLocked("String", "function(Any) String")
-	res.mustRegisterFuncSchemaLocked("TypeBytes", "function(Any) TypeBytes")
-	res.mustRegisterFuncSchemaLocked("len", "function(Any) Int64")
-	res.mustRegisterFuncSchemaLocked("cap", "function(Any) Int64")
-	res.mustRegisterFuncSchemaLocked("make", "function(String, ...Int64) Any")
-	res.mustRegisterFuncSchemaLocked("new", "function(String) Any")
-	res.mustRegisterFuncSchemaLocked("append", "function(Any, ...Any) Any")
-	res.mustRegisterFuncSchemaLocked("delete", "function(Any, Any) Void")
-	res.mustRegisterFuncSchemaLocked("Int64", "function(Any) Int64")
-	res.mustRegisterFuncSchemaLocked("Float64", "function(Any) Float64")
-	res.mustRegisterFuncSchemaLocked("require", "function(String) TypeModule")
+	res.mustAddFuncSchemaLocked("panic", runtime.MustParseRuntimeFuncSig("function(String) Void"))
+	res.mustAddFuncSchemaLocked("recover", runtime.MustParseRuntimeFuncSig("function() Any"))
+	res.mustAddFuncSchemaLocked("String", runtime.MustParseRuntimeFuncSig("function(Any) String"))
+	res.mustAddFuncSchemaLocked("TypeBytes", runtime.MustParseRuntimeFuncSig("function(Any) TypeBytes"))
+	res.mustAddFuncSchemaLocked("len", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("cap", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("make", runtime.MustParseRuntimeFuncSig("function(String, ...Int64) Any"))
+	res.mustAddFuncSchemaLocked("new", runtime.MustParseRuntimeFuncSig("function(String) Any"))
+	res.mustAddFuncSchemaLocked("append", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Any"))
+	res.mustAddFuncSchemaLocked("delete", runtime.MustParseRuntimeFuncSig("function(Any, Any) Void"))
+	res.mustAddFuncSchemaLocked("Int64", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("Float64", runtime.MustParseRuntimeFuncSig("function(Any) Float64"))
+	res.mustAddFuncSchemaLocked("require", runtime.MustParseRuntimeFuncSig("function(String) TypeModule"))
 
 	// Inject non-IO libraries by default
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
-	res.RegisterFFI("errors.Is", nil, 999999999, "function(Error, TypeHandle) Bool", "Check if an error matches a target handle")
+	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, TypeHandle) Bool"), "Check if an error matches a target handle")
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
 	timelib.RegisterTimeAll(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
@@ -354,21 +354,21 @@ func NewMiniExecutor() *MiniExecutor {
 	return res
 }
 
-func (e *MiniExecutor) moduleProgramLoader() func(path string) (*ast.ProgramStmt, error) {
+func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if e.Loader != nil {
-			return e.Loader(path)
+		if e.ModuleLoader != nil {
+			return e.ModuleLoader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
 }
 
-func (e *MiniExecutor) modulePreparedLoader() func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
+func (e *MiniExecutor) modulePlanLoader() func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
 	return func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
 		e.mu.RLock()
 		if prog, ok := e.modules[path]; ok {
@@ -379,7 +379,7 @@ func (e *MiniExecutor) modulePreparedLoader() func(path string) (*ast.ProgramStm
 			e.mu.RUnlock()
 			return prog, nil, nil
 		}
-		loader := e.Loader
+		loader := e.ModuleLoader
 		e.mu.RUnlock()
 		if loader != nil {
 			prog, err := loader(path)
@@ -393,8 +393,8 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 	if executor == nil {
 		return
 	}
-	executor.Loader = e.moduleProgramLoader()
-	executor.PreparedLoader = e.modulePreparedLoader()
+	executor.ModuleLoader = e.moduleASTLoader()
+	executor.ModulePlanLoader = e.modulePlanLoader()
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -402,7 +402,7 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 		executor.RegisterRoute(name, route)
 	}
 	for name, spec := range e.structsMeta {
-		executor.RegisterStructSpec(string(name), spec)
+		executor.RegisterStructSchema(string(name), spec)
 	}
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
@@ -410,10 +410,9 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 }
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
-	schema := e.GetExportedSchema()
+	schema := e.ExportedSchema()
 	return compiler.New(compiler.Config{
-		Loader:        e.moduleProgramLoader(),
-		Specs:         e.GetExportedSpecs(),
+		ModuleLoader:  e.moduleASTLoader(),
 		FuncSchemas:   schema.Funcs,
 		StructSchemas: schema.Structs,
 		Constants:     e.GetExportedConstants(),
@@ -421,8 +420,8 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	})
 }
 
-func (e *MiniExecutor) SetLoader(loader func(path string) (*ast.ProgramStmt, error)) {
-	e.Loader = loader
+func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStmt, error)) {
+	e.ModuleLoader = loader
 }
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
@@ -454,13 +453,6 @@ func (e *MiniExecutor) Executor() *runtime.Executor {
 	return executor
 }
 
-// RegisterFFI 注册一个外部函数到特定的 Bridge 和 ID
-func (e *MiniExecutor) RegisterFFI(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.registerFFILocked(name, bridge, methodID, spec, doc)
-}
-
 func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, methodID uint32, sig *runtime.RuntimeFuncSig, doc string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -474,42 +466,42 @@ func (e *MiniExecutor) RegisterConstant(name string, val string) {
 	e.constants[name] = val
 }
 
-func (e *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge, spec ast.GoMiniType) {
+func (e *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.bridges[methodID] = bridge
 }
 
-type BridgeWrapper struct {
+type RoutedBridge struct {
 	Router func(ctx context.Context, methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *BridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+func (b *RoutedBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	return b.Router(ctx, methodID, args)
 }
 
-func (b *BridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("invoke not supported on BridgeWrapper")
+func (b *RoutedBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, errors.New("invoke not supported on RoutedBridge")
 }
 
-func (b *BridgeWrapper) DestroyHandle(handle uint32) error {
+func (b *RoutedBridge) DestroyHandle(handle uint32) error {
 	return nil // Base wrapper doesn't manage registry
 }
 
-type HandleBridgeWrapper struct {
+type RoutedHandleBridge struct {
 	Registry *ffigo.HandleRegistry
 	Router   func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *HandleBridgeWrapper) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+func (b *RoutedHandleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	return b.Router(ctx, b.Registry, methodID, args)
 }
 
-func (b *HandleBridgeWrapper) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("invoke not supported on HandleBridgeWrapper")
+func (b *RoutedHandleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+	return nil, errors.New("invoke not supported on RoutedHandleBridge")
 }
 
-func (b *HandleBridgeWrapper) DestroyHandle(handle uint32) error {
+func (b *RoutedHandleBridge) DestroyHandle(handle uint32) error {
 	b.Registry.Remove(handle)
 	return nil
 }
@@ -528,7 +520,6 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 	mathlib.RegisterMath(e, &mathlib.MathHost{}, e.registry)
 }
 
-// GetExportedSpecs 返回所有注册的 FFI 函数签名
 func (e *MiniExecutor) GetExportedConstants() map[string]string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -539,34 +530,15 @@ func (e *MiniExecutor) GetExportedConstants() map[string]string {
 	return res
 }
 
-func (e *MiniExecutor) GetExportedSpecs() map[ast.Ident]ast.GoMiniType {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	res := make(map[ast.Ident]ast.GoMiniType, len(e.funcSchemas)+len(e.structsMeta))
-	for k, v := range e.funcSchemas {
-		if v != nil {
-			res[k] = v.Spec
-		}
-	}
-	for k, v := range e.structsMeta {
-		if v != nil {
-			res[k] = v.Spec
-		}
-	}
-	return res
-}
-
-// AddFuncSpec 仅用于在验证阶段声明一个合法的外部函数
-func (e *MiniExecutor) AddFuncSpec(name string, spec ast.GoMiniType) {
+// DeclareFuncSchema 仅用于在验证阶段声明一个合法的外部函数。
+func (e *MiniExecutor) DeclareFuncSchema(name string, sig *runtime.RuntimeFuncSig) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.registerFuncSchemaLocked(name, spec)
-}
-
-func (e *MiniExecutor) RegisterStructSpec(name string, spec ast.GoMiniType) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.registerStructSpecLocked(name, spec)
+	if sig == nil {
+		delete(e.funcSchemas, ast.Ident(name))
+		return
+	}
+	e.funcSchemas[ast.Ident(name)] = sig
 }
 
 func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeStructSpec) {
@@ -575,29 +547,18 @@ func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeSt
 	e.registerStructSchemaLocked(name, spec)
 }
 
-func (e *MiniExecutor) AddStructSpec(name string, spec ast.GoMiniType) {
+// DeclareStructSchema 仅用于在验证阶段声明一个合法的外部结构体 schema。
+func (e *MiniExecutor) DeclareStructSchema(name string, spec *runtime.RuntimeStructSpec) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.registerStructSpecLocked(name, spec)
+	e.registerStructSchemaLocked(name, spec)
 }
 
-func (e *MiniExecutor) GetExportedStructs() map[ast.Ident]ast.GoMiniType {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	res := make(map[ast.Ident]ast.GoMiniType, len(e.structsMeta))
-	for k, v := range e.structsMeta {
-		if v != nil {
-			res[k] = v.Spec
-		}
-	}
-	return res
-}
-
-func (e *MiniExecutor) GetExportedSchema() *FFISchemaSnapshot {
+func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	res := &FFISchemaSnapshot{
+	res := &ExportedSchemaSnapshot{
 		Funcs:   make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
 		Structs: make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
 	}
@@ -610,7 +571,7 @@ func (e *MiniExecutor) GetExportedSchema() *FFISchemaSnapshot {
 	return res
 }
 
-func (e *MiniExecutor) NewRuntimeByAst(program *ast.ProgramStmt) (*MiniProgram, error) {
+func (e *MiniExecutor) NewRuntimeByProgram(program *ast.ProgramStmt) (*MiniProgram, error) {
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("ast", "", program, false)
 	if err != nil {
 		var logs []ast.Logs
@@ -715,7 +676,7 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 	return prog, errs
 }
 
-func (e *MiniExecutor) NewMiniProgramByAstTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
+func (e *MiniExecutor) NewMiniProgramByProgramTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
 	var errs []error
 	compiled, _, err := e.newCompiler().CompileProgram("ast", "", program, true)
 	if err != nil {
@@ -953,11 +914,11 @@ func (e *MiniExecutor) ExportMetadata() string {
 		return mod.Structs[structName]
 	}
 
-	// 1. 处理 Builtins 和 全局 Specs
+	// 1. 导出 builtin 函数签名
 	for name, spec := range e.funcSchemas {
 		sName := string(name)
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
-			meta.Builtins[sName] = e.formatSpecWithDoc(spec.Spec, "", spec)
+			meta.Builtins[sName] = e.formatSchemaWithDoc(spec.Spec, "", spec)
 		}
 	}
 
@@ -969,7 +930,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 			if len(parts) >= 5 { // ["", "", "method", "TypeName", "MethodName"]
 				typeName := parts[3]
 				methodName := strings.Join(parts[4:], "_")
-				sig := e.formatRouteSignature(route)
+				sig := e.formatRouteSchema(route)
 				// FFI 结构体通常归属于 "__ffi__"
 				st := getStruct("__ffi__", typeName)
 				st.Methods[methodName] = sig
@@ -977,7 +938,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 		} else if strings.Contains(routeName, ".") {
 			parts := strings.SplitN(routeName, ".", 2)
 			modName, funcName := parts[0], parts[1]
-			sig := e.formatRouteSignature(route)
+			sig := e.formatRouteSchema(route)
 			getModule(modName).Functions[funcName] = sig
 		}
 	}
@@ -1019,11 +980,6 @@ func (e *MiniExecutor) ExportMetadata() string {
 	return string(data)
 }
 
-func (e *MiniExecutor) registerFFILocked(name string, bridge ffigo.FFIBridge, methodID uint32, spec ast.GoMiniType, doc string) {
-	funcSig, _ := runtime.ParseRuntimeFuncSig(spec)
-	e.registerFFISchemaLocked(name, bridge, methodID, funcSig, doc)
-}
-
 func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) {
 	returns := "Void"
 	returnType := ast.GoMiniType("Void")
@@ -1035,23 +991,18 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 	}
 
 	e.routes[name] = runtime.FFIRoute{
-		Name:     name,
-		Bridge:   bridge,
-		MethodID: methodID,
-		Returns:  returns,
-		Spec:     string(spec),
-		Doc:      doc,
-		FuncSig:  funcSig,
-		Return:   returnType,
+		Name:      name,
+		Bridge:    bridge,
+		MethodID:  methodID,
+		Returns:   returns,
+		Signature: string(spec),
+		Doc:       doc,
+		FuncSig:   funcSig,
+		Return:    returnType,
 	}
 	if funcSig != nil {
 		e.funcSchemas[ast.Ident(name)] = funcSig
 	}
-}
-
-func (e *MiniExecutor) registerStructSpecLocked(name string, spec ast.GoMiniType) {
-	parsed, _ := runtime.ParseRuntimeStructSpec(name, spec)
-	e.registerStructSchemaLocked(name, parsed)
 }
 
 func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) {
@@ -1062,27 +1013,18 @@ func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.Run
 	delete(e.structsMeta, ast.Ident(name))
 }
 
-func (e *MiniExecutor) registerFuncSchemaLocked(name string, spec ast.GoMiniType) {
-	funcSig, err := runtime.ParseRuntimeFuncSig(spec)
-	if err != nil {
-		delete(e.funcSchemas, ast.Ident(name))
-		return
+func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.RuntimeFuncSig) {
+	if sig == nil {
+		panic("invalid builtin function schema: " + name)
 	}
-	e.funcSchemas[ast.Ident(name)] = funcSig
+	e.funcSchemas[ast.Ident(name)] = sig
 }
 
-func (e *MiniExecutor) mustRegisterFuncSchemaLocked(name string, spec ast.GoMiniType) {
-	e.registerFuncSchemaLocked(name, spec)
-	if e.funcSchemas[ast.Ident(name)] == nil {
-		panic("invalid builtin function schema: " + string(spec))
-	}
+func (e *MiniExecutor) formatRouteSchema(route runtime.FFIRoute) string {
+	return e.formatSchemaWithDoc(ast.GoMiniType(route.Signature), route.Doc, route.FuncSig)
 }
 
-func (e *MiniExecutor) formatRouteSignature(route runtime.FFIRoute) string {
-	return e.formatSpecWithDoc(ast.GoMiniType(route.Spec), route.Doc, route.FuncSig)
-}
-
-func (e *MiniExecutor) formatSpecWithDoc(spec ast.GoMiniType, doc string, parsed *runtime.RuntimeFuncSig) string {
+func (e *MiniExecutor) formatSchemaWithDoc(spec ast.GoMiniType, doc string, parsed *runtime.RuntimeFuncSig) string {
 	sig := string(spec)
 	if parsed != nil {
 		sig = string(parsed.Spec)

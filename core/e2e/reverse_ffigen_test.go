@@ -169,17 +169,6 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 	}
 }
 
-var ScriptCalculator_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Add", 1, "function(Int64, Int64) Int64", ""},
-	{"Format", 2, "function(String, Int64) String", ""},
-	{"Divide", 3, "function(Int64, Int64) tuple(Int64, Error)", ""},
-}
-
 var ScriptCalculator_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -213,29 +202,19 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range ScriptCalculator_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range ScriptCalculator_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range ScriptCalculator_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }
 

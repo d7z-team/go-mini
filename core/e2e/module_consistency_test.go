@@ -15,7 +15,7 @@ import (
 func TestModuleConsistency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		if path == "counter" {
 			code := `
 			package counter
@@ -115,7 +115,7 @@ func TestReadOnlyModuleProtection(t *testing.T) {
 func TestModuleClosureConsistency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetLoader(func(path string) (*ast.ProgramStmt, error) {
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		if path == "auth" {
 			code := `
 			package auth

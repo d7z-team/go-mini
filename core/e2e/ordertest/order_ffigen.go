@@ -305,18 +305,6 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	}
 }
 
-var OrderService_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"New", 1, "function(String) tuple(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>, Error)", "New 创建新订单"},
-	{"AddItem", 2, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>, String, Float64) Error", "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>) tuple(Float64, Error)", "GetTotal 获取总价"},
-	{"Close", 4, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/ordertest.Order>) Error", "Close 关闭订单"},
-}
-
 var OrderService_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -351,28 +339,18 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterOrderServiceLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl OrderService, registry *ffigo.HandleRegistry) {
 	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range OrderService_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range OrderService_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range OrderService_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

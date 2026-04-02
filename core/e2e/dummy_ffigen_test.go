@@ -473,21 +473,6 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	}
 }
 
-var MockOS_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Open", 1, "function(String) tuple(Ptr<native.File>, Error)", ""},
-	{"Name", 2, "function(Ptr<native.File>) String", ""},
-	{"Stat", 3, "function(Ptr<native.File>) tuple(FileInfo, Error)", ""},
-	{"Read", 4, "function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)", ""},
-	{"Write", 5, "function(Ptr<native.File>, TypeBytes) tuple(Int64, Error)", ""},
-	{"Close", 6, "function(Ptr<native.File>) Error", ""},
-	{"Deep", 7, "function(Nested) Nested", ""},
-}
-
 var MockOS_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -531,40 +516,24 @@ var Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.Nested"
 
 func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "os"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range MockOS_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range MockOS_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range MockOS_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("native.File", File_FFI_StructSchema)
-		schemaRegistrar.RegisterStructSchema("native.FileInfo", FileInfo_FFI_StructSchema)
-		schemaRegistrar.RegisterStructSchema("native.Nested", Nested_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("native.File", File_FFI_StructSchema.Spec)
-		legacyRegistrar.RegisterStructSpec("native.FileInfo", FileInfo_FFI_StructSchema.Spec)
-		legacyRegistrar.RegisterStructSpec("native.Nested", Nested_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("native.File", File_FFI_StructSchema)
+	registrar.RegisterStructSchema("native.FileInfo", FileInfo_FFI_StructSchema)
+	registrar.RegisterStructSchema("native.Nested", Nested_FFI_StructSchema)
 }
 
 const (
@@ -642,16 +611,6 @@ func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffig
 	}
 }
 
-var ContextMock_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"WithContext", 1, "function(String) String", ""},
-	{"WithoutContext", 2, "function(String) String", ""},
-}
-
 var ContextMock_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -684,30 +643,20 @@ func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterContextMock(executor interface{ RegisterConstant(string, string) }, impl ContextMock, registry *ffigo.HandleRegistry) {
 	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "ctx_test"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range ContextMock_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range ContextMock_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range ContextMock_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }
 
@@ -872,18 +821,6 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	}
 }
 
-var NativeMock_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"GetStruct", 1, "function() NativeStruct", ""},
-	{"GetPtr", 2, "function() Ptr<native.NativeStruct>", ""},
-	{"SetStruct", 3, "function(NativeStruct) Int64", ""},
-	{"SetPtr", 4, "function(Ptr<native.NativeStruct>) Int64", ""},
-}
-
 var NativeMock_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -920,34 +857,20 @@ var NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.N
 
 func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "native"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range NativeMock_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range NativeMock_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range NativeMock_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("native.NativeStruct", NativeStruct_FFI_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("native.NativeStruct", NativeStruct_FFI_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("native.NativeStruct", NativeStruct_FFI_StructSchema)
 }

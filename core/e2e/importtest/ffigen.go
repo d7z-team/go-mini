@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 	"strings"
 	"time"
 )
@@ -86,13 +87,13 @@ func ImportTesterHostRouter(ctx context.Context, impl ImportTester, registry *ff
 	}
 }
 
-var ImportTester_FFI_Metadata = []struct {
+var ImportTester_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
-	Spec     string
+	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Sleep", 1, "function(Int64) Error", ""},
+	{"Sleep", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Error")), ""},
 }
 
 type ImportTester_Bridge struct {
@@ -116,7 +117,7 @@ func (b *ImportTester_Bridge) DestroyHandle(handle uint32) error {
 }
 
 func RegisterImportTester(executor interface {
-	RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
+	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 }, impl ImportTester, registry *ffigo.HandleRegistry) {
 	bridge := &ImportTester_Bridge{Impl: impl, Registry: registry}
 	prefix := "tester"
@@ -124,7 +125,7 @@ func RegisterImportTester(executor interface {
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	for _, m := range ImportTester_FFI_Metadata {
-		executor.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
+	for _, m := range ImportTester_FFI_Schemas {
+		executor.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }

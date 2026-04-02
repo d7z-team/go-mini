@@ -30,8 +30,8 @@ var a = 1
 
 func TestCompileSourcePreservesDeclaredImportsBeforeGlobals(t *testing.T) {
 	c := New(Config{
-		Specs: map[ast.Ident]ast.GoMiniType{
-			"fmt.Sprintf": "function(String, ...Any) String",
+		FuncSchemas: map[ast.Ident]*runtime.RuntimeFuncSig{
+			"fmt.Sprintf": runtime.MustParseRuntimeFuncSig("function(String, ...Any) String"),
 		},
 	})
 	artifact, _, _, err := c.CompileSource("snippet", `

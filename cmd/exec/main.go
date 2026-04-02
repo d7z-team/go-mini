@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// 2. 语义校验和创建运行时
-	runtime, errs := executor.NewMiniProgramByAstTolerant(rootProgram)
+	runtime, errs := executor.NewMiniProgramByProgramTolerant(rootProgram)
 	if len(errs) > 0 {
 		fmt.Println("Semantic validation failed:")
 		for _, e := range errs {

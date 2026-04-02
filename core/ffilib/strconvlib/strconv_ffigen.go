@@ -480,24 +480,6 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	}
 }
 
-var Strconv_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Atoi", 1, "function(String) tuple(Int64, Error)", ""},
-	{"Itoa", 2, "function(Int64) String", ""},
-	{"ParseBool", 3, "function(String) tuple(Bool, Error)", ""},
-	{"ParseFloat", 4, "function(String, Int64) tuple(Float64, Error)", ""},
-	{"ParseInt", 5, "function(String, Int64, Int64) tuple(Int64, Error)", ""},
-	{"FormatBool", 6, "function(Bool) String", ""},
-	{"FormatFloat", 7, "function(Float64, Uint8, Int64, Int64) String", ""},
-	{"FormatInt", 8, "function(Int64, Int64) String", ""},
-	{"Quote", 9, "function(String) String", ""},
-	{"Unquote", 10, "function(String) tuple(String, Error)", ""},
-}
-
 var Strconv_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -538,30 +520,20 @@ func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterStrconv(executor interface{ RegisterConstant(string, string) }, impl Strconv, registry *ffigo.HandleRegistry) {
 	bridge := &Strconv_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "strconv"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range Strconv_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range Strconv_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range Strconv_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 	executor.RegisterConstant("strconv.IntSize", ffigo.ToConstantString(strconv.IntSize))
 }

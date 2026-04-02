@@ -6,6 +6,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 type ComplexNested struct {
@@ -56,8 +57,8 @@ func TestFFISerializationEdgeCases(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &ComplexBridge{t: t}
 
-	executor.RegisterFFI("test.Zero", bridge, 1, "function(Int64, String, Bool, Ptr<Any>) Void", "")
-	executor.RegisterFFI("test.Nested", bridge, 2, "function(Map<String, Array<Int64>>) Void", "")
+	executor.RegisterFFISchema("test.Zero", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, Ptr<Any>) Void"), "")
+	executor.RegisterFFISchema("test.Nested", bridge, 2, runtime.MustParseRuntimeFuncSig("function(Map<String, Array<Int64>>) Void"), "")
 
 	code := `
 package main

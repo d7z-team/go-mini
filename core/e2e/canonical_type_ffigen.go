@@ -116,16 +116,6 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	}
 }
 
-var TestCanonicalService_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"NewA", 1, "function(String) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>", ""},
-	{"NewB", 2, "function(Int64) Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>", ""},
-}
-
 var TestCanonicalService_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -158,30 +148,20 @@ func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
 
 func RegisterTestCanonicalService(executor interface{ RegisterConstant(string, string) }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
 	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "test_canonical"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range TestCanonicalService_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range TestCanonicalService_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range TestCanonicalService_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
 }
 
@@ -251,15 +231,6 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	}
 }
 
-var ATypeService_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Hello", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type>) String", ""},
-}
-
 var ATypeService_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -293,36 +264,22 @@ var ATypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.ne
 
 func RegisterATypeService(executor interface{ RegisterConstant(string, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
 	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range ATypeService_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range ATypeService_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range ATypeService_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ATypeService_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ATypeService_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/a/other.Type", ATypeService_StructSchema)
 }
 
 const (
@@ -391,15 +348,6 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	}
 }
 
-var BTypeService_FFI_Metadata = []struct {
-	Name     string
-	MethodID uint32
-	Spec     string
-	Doc      string
-}{
-	{"Hello", 1, "function(Ptr<gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type>) String", ""},
-}
-
 var BTypeService_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
@@ -433,34 +381,20 @@ var BTypeService_StructSchema = runtime.MustParseRuntimeStructSpec("gopkg.d7z.ne
 
 func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
 	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
-	schemaRegistrar, hasSchema := executor.(interface {
+	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
 	})
-	legacyRegistrar, hasLegacy := executor.(interface {
-		RegisterFFI(string, ffigo.FFIBridge, uint32, ast.GoMiniType, string)
-		RegisterStructSpec(string, ast.GoMiniType)
-	})
-	if !hasSchema && !hasLegacy {
-		panic("ffigen: executor does not support FFI registration")
+	if !ok {
+		panic("ffigen: executor does not support schema FFI registration")
 	}
 	prefix := "__method_gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type"
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
 	}
-	if hasSchema {
-		for _, m := range BTypeService_FFI_Schemas {
-			schemaRegistrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
-		}
-	} else {
-		for _, m := range BTypeService_FFI_Metadata {
-			legacyRegistrar.RegisterFFI(prefix+sep+m.Name, bridge, m.MethodID, ast.GoMiniType(m.Spec), m.Doc)
-		}
+	for _, m := range BTypeService_FFI_Schemas {
+		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
-	if hasSchema {
-		schemaRegistrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", BTypeService_StructSchema)
-	} else {
-		legacyRegistrar.RegisterStructSpec("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", BTypeService_StructSchema.Spec)
-	}
+	registrar.RegisterStructSchema("gopkg.d7z.net/go-mini/core/e2e/internal/b/other.Type", BTypeService_StructSchema)
 }
