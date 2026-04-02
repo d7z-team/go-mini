@@ -310,6 +310,29 @@ proxy := NewScriptHandler_ReverseProxy(program, session, callable, bridge)
 err := proxy.OnEvent("login", "user_1")
 ```
 
+`ffigen:reverse` 当前有几个需要明确的生成语义：
+
+- `context.Context` 会保留在生成后的 Go 方法签名里，但不会序列化进脚本参数列表；它只用于 `InvokeCallable` / bridge 调用上下文
+- 正向 proxy 的 variadic 仍保持 `...T`；反向 proxy 当前会生成成切片参数 `[]T`
+- 结构体参数和返回值会按 schema 编解码；前提是该类型能被 `ffigen` 收集并生成 schema
+
+例如：
+
+```go
+// ffigen:reverse
+type ScriptCalculator interface {
+    Log(ctx context.Context, msg string) string
+    Join(prefix string, values ...string) string
+}
+```
+
+当前生成结果等价于：
+
+```go
+func (__p *ScriptCalculator_ReverseProxy) Log(ctx context.Context, msg string) string
+func (__p *ScriptCalculator_ReverseProxy) Join(prefix string, values []string) string
+```
+
 ## 7. LSP / IDE
 
 LSP 和查询能力建立在 AST 蓝图之上，执行主路径使用 compiled artifact / prepared program。常用 API：

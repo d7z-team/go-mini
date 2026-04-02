@@ -13,9 +13,12 @@ import (
 )
 
 const (
-	MethodID_ScriptCalculator_Add    = 1
-	MethodID_ScriptCalculator_Format = 2
-	MethodID_ScriptCalculator_Divide = 3
+	MethodID_ScriptCalculator_Add         = 1
+	MethodID_ScriptCalculator_Format      = 2
+	MethodID_ScriptCalculator_Divide      = 3
+	MethodID_ScriptCalculator_Log         = 4
+	MethodID_ScriptCalculator_Join        = 5
+	MethodID_ScriptCalculator_AcceptPoint = 6
 )
 
 type ScriptCalculatorProxy struct {
@@ -99,6 +102,59 @@ func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 	return v_0, err_1
 }
 
+func (__p *ScriptCalculatorProxy) Log(ctx context.Context, msg string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(string(msg))
+
+	retData, err := __p.bridge.Call(ctx, MethodID_ScriptCalculator_Log, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = string(retBuf.ReadString())
+	return v_0
+}
+
+func (__p *ScriptCalculatorProxy) Join(prefix string, values ...string) string {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteString(string(prefix))
+	buf.WriteUvarint(uint64(len(values)))
+	for _, item := range values {
+		buf.WriteString(string(item))
+	}
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Join, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 string
+	v_0 = string(retBuf.ReadString())
+	return v_0
+}
+
+func (__p *ScriptCalculatorProxy) AcceptPoint(p ReversePoint) int64 {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+
+	buf.WriteVarint(int64(p.X))
+	buf.WriteVarint(int64(p.Y))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_AcceptPoint, buf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int64
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int64(tmp)
+	}
+	return v_0
+}
+
 func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
@@ -108,6 +164,12 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 			methodID = MethodID_ScriptCalculator_Format
 		case "Divide":
 			methodID = MethodID_ScriptCalculator_Divide
+		case "Log":
+			methodID = MethodID_ScriptCalculator_Log
+		case "Join":
+			methodID = MethodID_ScriptCalculator_Join
+		case "AcceptPoint":
+			methodID = MethodID_ScriptCalculator_AcceptPoint
 		}
 	}
 
@@ -164,6 +226,40 @@ func ScriptCalculatorHostRouter(ctx context.Context, impl ScriptCalculator, regi
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_ScriptCalculator_Log:
+		var msg string
+		msg = string(reqBuf.ReadString())
+		r0 := impl.Log(ctx, msg)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_ScriptCalculator_Join:
+		var prefix string
+		prefix = string(reqBuf.ReadString())
+		var values []string
+		l_values := int(reqBuf.ReadUvarint())
+		values = make([]string, l_values)
+		for i_values := 0; i_values < l_values; i_values++ {
+			values[i_values] = string(reqBuf.ReadString())
+		}
+		r0 := impl.Join(prefix, values...)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_ScriptCalculator_AcceptPoint:
+		var p ReversePoint
+		{
+			tmp := reqBuf.ReadVarint()
+			p.X = int64(tmp)
+		}
+		{
+			tmp := reqBuf.ReadVarint()
+			p.Y = int64(tmp)
+		}
+		r0 := impl.AcceptPoint(p)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -178,6 +274,9 @@ var ScriptCalculator_FFI_Schemas = []struct {
 	{"Add", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) Int64")), ""},
 	{"Format", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) String")), ""},
 	{"Divide", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) tuple(Int64, Error)")), ""},
+	{"Log", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Join", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...String) String")), ""},
+	{"AcceptPoint", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(ReversePoint) Int64")), ""},
 }
 
 type ScriptCalculator_Bridge struct {
@@ -200,6 +299,8 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
+var ReversePoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("ReversePoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -209,6 +310,12 @@ func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
+		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
+			return
+		}
+		registrar.RegisterStructSchema(name, spec)
+	}
 	sep := "."
 	if strings.HasPrefix(prefix, "__method_") {
 		sep = "_"
@@ -216,6 +323,7 @@ func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string
 	for _, m := range ScriptCalculator_FFI_Schemas {
 		registrar.RegisterFFISchema(prefix+sep+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
 	}
+	registerStructSchema("ReversePoint", ReversePoint_FFI_StructSchema)
 }
 
 type ScriptCalculator_ReverseProxy struct {
@@ -309,4 +417,59 @@ func (__p *ScriptCalculator_ReverseProxy) Divide(a int64, b int64) (int64, error
 		}
 	}
 	return ret0, ret1
+}
+
+func (__p *ScriptCalculator_ReverseProxy) Log(ctx context.Context, msg string) string {
+	args := make([]*runtime.Var, 1)
+	args[0] = __p.program.ToVar(__p.ctx, msg, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Log", args)
+	_ = resVar
+	_ = err
+	var ret0 string = ""
+	if resVar != nil {
+		if raw := resVar.Interface(); raw != nil {
+			if v, ok := raw.(string); ok {
+				ret0 = v
+			}
+		}
+	}
+	return ret0
+}
+
+func (__p *ScriptCalculator_ReverseProxy) Join(prefix string, values []string) string {
+	args := make([]*runtime.Var, 2)
+	args[0] = __p.program.ToVar(__p.ctx, prefix, __p.bridge)
+	args[1] = __p.program.ToVar(__p.ctx, values, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "Join", args)
+	_ = resVar
+	_ = err
+	var ret0 string = ""
+	if resVar != nil {
+		if raw := resVar.Interface(); raw != nil {
+			if v, ok := raw.(string); ok {
+				ret0 = v
+			}
+		}
+	}
+	return ret0
+}
+
+func (__p *ScriptCalculator_ReverseProxy) AcceptPoint(p ReversePoint) int64 {
+	args := make([]*runtime.Var, 1)
+	args[0] = __p.program.ToVar(__p.ctx, p, __p.bridge)
+	resVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, "AcceptPoint", args)
+	_ = resVar
+	_ = err
+	var ret0 int64 = 0
+	if resVar != nil {
+		if raw := resVar.Interface(); raw != nil {
+			switch v := raw.(type) {
+			case int64:
+				ret0 = int64(v)
+			case float64:
+				ret0 = int64(v)
+			}
+		}
+	}
+	return ret0
 }
