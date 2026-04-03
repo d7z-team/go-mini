@@ -174,6 +174,7 @@
 - [x] **明确 `ffigen` 的值对象 / 宿主对象生成边界**: 纯数据 struct、DTO、可完整字段编解码的类型应保持值语义 `T`；有方法集、共享身份、宿主资源或句柄生命周期的对象才生成 `Ptr<T>`/opaque handle。需要补齐判定规则、生成器回归与专项样例，避免把复杂类型无原则抬升为 `Ptr<T>`。
 - [x] **消除 `ffigen` 重复 `_FFI_StructSchema` 生成**: 同一包内多个 target 引用相同 struct/type 时，当前会各自重复生成 `X_FFI_StructSchema` / `X_StructSchema` 并触发 redeclare。需要引入包级 schema 去重与稳定命名策略，避免 `ffigen:module`、`ffigen:methods`、跨 target 共享类型时重复落盘。
 - [x] **移除基于 `__` 前缀的内部协议判断**: 当前 `converter/query/ast/runtime metadata` 仍有多处通过 `__method_`、`__ffi__` 这类字符串前缀识别内部方法或导出结构。需要改成显式结构化标记/路由分类，避免继续依赖字符串命名约定驱动语义。
+- [ ] **补充 FFI `bytes` 调用后 copy-back 语义**: 当前 `TypeBytes` 过 FFI 边界是值复制，host 修改 `[]byte` 不会自动反映回 VM。后续可评估增加显式 `inout/ref bytes` 语义，在单次 FFI 调用结束后将 host 返回的修改结果 copy-back 到原 VM bytearray；默认 `TypeBytes` 仍保持值传递，避免把共享引用/生命周期复杂度引入主链。
 - [ ] **补齐 LSP 链式调用推导剩余缺口**: 当前已补 `imported module -> ctor/function return struct -> member completion` 主链，但 `tuple return`、复杂 alias/命名接口、方法链返回接口/结构体后的继续推导仍未统一走完整 resolve 路径，需要专项测试与 `inferLSPTypeRecursive` 收口。
 - [ ] **收敛复合字面量启发式推导精度**: `CompositeExpr` 仍会在信息不足时回退到 `Map<..., Any>` / `Array<Any>`，后续应区分“动态 Any”与“被坏子表达式污染的 Any”，补齐更精确的错误来源诊断。
 - [ ] **清理剩余 `Any` 宽容分支**: `StarExpr`、`IndexExpr`、`SliceExpr` 等仍保留少量合法动态 `Any` 放行路径，需要进一步梳理哪些应保持动态语义，哪些应在前置错误场景下改为精确诊断。
