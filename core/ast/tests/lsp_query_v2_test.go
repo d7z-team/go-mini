@@ -196,3 +196,36 @@ func main() {
 		t.Errorf("Expected definition at line 3 (function), got line %d (%s)", def.GetBase().Loc.L, def.GetBase().Meta)
 	}
 }
+
+func TestSwitchInitNavigation(t *testing.T) {
+	code := `package main
+func main() {
+	switch v := 1; v {
+	case 1:
+		print(v)
+	}
+}`
+	conv := ffigo.NewGoToASTConverter()
+	prog, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	parentMap := ast.BuildParentMap(prog)
+	node := ast.FindNodeAt(prog, 5, 9)
+	if node == nil {
+		t.Fatal("Node at 5:9 not found")
+	}
+
+	def := ast.FindDefinition(prog, node, parentMap)
+	if def == nil {
+		t.Fatal("Definition of switch init variable not found")
+	}
+	if def.GetBase().Loc.L != 3 {
+		t.Fatalf("Expected switch init variable definition at line 3, got %d", def.GetBase().Loc.L)
+	}
+}

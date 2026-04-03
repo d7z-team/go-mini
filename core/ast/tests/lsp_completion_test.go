@@ -1,6 +1,7 @@
 package ast_test
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -411,9 +412,19 @@ func main() {
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
-	// 预期没有验证错误，因为宽容模式下我们已经识别了该包且在 Check 时能查找到成员
-	if err != nil {
-		t.Errorf("Expected no validation error for recognized but unimported package, but got: %v", err)
+	if err == nil {
+		t.Fatalf("Expected validation error for recognized but unimported package, but got none")
+	}
+
+	foundMissingImport := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "已解析但未导入") {
+			foundMissingImport = true
+			break
+		}
+	}
+	if !foundMissingImport {
+		t.Fatalf("Expected missing import diagnostic, got logs: %+v", validator.Logs())
 	}
 }
 
@@ -453,5 +464,31 @@ func main() {
 		t.Errorf("Expected validation error for non-existent member in recognized package, but got none")
 	} else {
 		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestCompletionDoesNotLeakFutureLocalVariables(t *testing.T) {
+	code := `package main
+func main() {
+	prin
+	later := 1
+}`
+
+	conv := ffigo.NewGoToASTConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	completions := ast.FindCompletionsAt(prog, 3, 5)
+	for _, item := range completions {
+		if item.Label == "later" {
+			t.Fatalf("future local variable leaked into completion list: %+v", completions)
+		}
 	}
 }

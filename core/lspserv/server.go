@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"go/scanner"
+	"net/url"
+	"path"
+	"strings"
 	"sync"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -20,7 +23,7 @@ type LSPServer struct {
 }
 
 type fileSession struct {
-	pkgName string
+	pkgKey  string
 	code    string
 }
 
@@ -46,21 +49,23 @@ func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, er
 		pkgName = prog.Package
 	}
 
-	s.sessions.Store(uri, &fileSession{pkgName: pkgName, code: code})
+	pkgKey := packageKeyForURI(uri, pkgName)
+	s.sessions.Store(uri, &fileSession{pkgKey: pkgKey, code: code})
 
-	return s.rebuildPackage(pkgName)
+	return s.rebuildPackage(pkgKey)
 }
 
-func (s *LSPServer) rebuildPackage(pkgName string) (map[string][]Diagnostic, error) {
-	val, _ := s.packages.LoadOrStore(pkgName, &packageState{files: make(map[string]string)})
+func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, error) {
+	val, _ := s.packages.LoadOrStore(pkgKey, &packageState{files: make(map[string]string)})
 	pkg := val.(*packageState)
 	pkg.mu.Lock()
 	defer pkg.mu.Unlock()
+	pkg.files = make(map[string]string)
 
 	// 收集该包下所有已知文件的最新代码
 	s.sessions.Range(func(key, value interface{}) bool {
 		sess := value.(*fileSession)
-		if sess.pkgName == pkgName {
+		if sess.pkgKey == pkgKey {
 			pkg.files[key.(string)] = sess.code
 		}
 		return true
@@ -153,6 +158,22 @@ func (s *LSPServer) rebuildPackage(pkgName string) (map[string][]Diagnostic, err
 }
 
 func mergeProgramStmts(dest, src *ast.ProgramStmt) {
+	if len(dest.Imports) == 0 {
+		dest.Imports = append(dest.Imports, src.Imports...)
+	} else {
+		seen := make(map[string]struct{}, len(dest.Imports))
+		for _, imp := range dest.Imports {
+			seen[imp.Alias+"|"+imp.Path] = struct{}{}
+		}
+		for _, imp := range src.Imports {
+			key := imp.Alias + "|" + imp.Path
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			dest.Imports = append(dest.Imports, imp)
+		}
+	}
 	for k, v := range src.Functions {
 		dest.Functions[k] = v
 	}
@@ -165,10 +186,31 @@ func mergeProgramStmts(dest, src *ast.ProgramStmt) {
 	for k, v := range src.Constants {
 		dest.Constants[k] = v
 	}
+	for k, v := range src.Types {
+		dest.Types[k] = v
+	}
 	for k, v := range src.Interfaces {
 		dest.Interfaces[k] = v
 	}
 	dest.Main = append(dest.Main, src.Main...)
+}
+
+func packageKeyForURI(uri, pkgName string) string {
+	if parsed, err := url.Parse(uri); err == nil {
+		dir := path.Dir(parsed.Path)
+		if dir == "." || dir == "/" || dir == "" {
+			dir = parsed.Host
+		} else if parsed.Host != "" {
+			dir = parsed.Host + dir
+		}
+		return strings.TrimRight(dir, "/") + "::" + pkgName
+	}
+
+	lastSlash := strings.LastIndex(uri, "/")
+	if lastSlash == -1 {
+		return uri + "::" + pkgName
+	}
+	return uri[:lastSlash] + "::" + pkgName
 }
 
 // GetCompletions 获取指定位置的补全建议
@@ -179,7 +221,7 @@ func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem 
 	}
 	sess := val.(*fileSession)
 
-	pVal, ok := s.packages.Load(sess.pkgName)
+	pVal, ok := s.packages.Load(sess.pkgKey)
 	if !ok {
 		return nil
 	}
@@ -212,7 +254,7 @@ func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
 	}
 	sess := val.(*fileSession)
 
-	pVal, ok := s.packages.Load(sess.pkgName)
+	pVal, ok := s.packages.Load(sess.pkgKey)
 	if !ok {
 		return nil
 	}
@@ -244,7 +286,7 @@ func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
 	}
 	sess := val.(*fileSession)
 
-	pVal, ok := s.packages.Load(sess.pkgName)
+	pVal, ok := s.packages.Load(sess.pkgKey)
 	if !ok {
 		return nil
 	}
@@ -281,7 +323,7 @@ func (s *LSPServer) GetReferences(uri string, line, char int) []Location {
 	}
 	sess := val.(*fileSession)
 
-	pVal, ok := s.packages.Load(sess.pkgName)
+	pVal, ok := s.packages.Load(sess.pkgKey)
 	if !ok {
 		return nil
 	}

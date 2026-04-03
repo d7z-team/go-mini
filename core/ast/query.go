@@ -347,10 +347,25 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 			if string(p.Key) == name || string(p.Value) == name {
 				return p
 			}
+		case *CatchClause:
+			if string(p.VarName) == name {
+				return p
+			}
 		case *ForStmt:
 			// 检查 For 循环初始化语句中的变量定义 (如 for i := 0; ...)
 			if p.Init != nil {
 				if d := findInStmt(p.Init.(Stmt), name); d != nil {
+					return d
+				}
+			}
+		case *SwitchStmt:
+			if init, ok := p.Init.(Stmt); ok {
+				if d := findInStmt(init, name); d != nil {
+					return d
+				}
+			}
+			if assign, ok := p.Assign.(Stmt); ok {
+				if d := findInStmt(assign, name); d != nil {
 					return d
 				}
 			}
@@ -631,6 +646,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 
 	items := make([]CompletionItem, 0)
 	seen := make(map[string]bool)
+	visibleLocals := collectVisibleLocalNames(node, parentMapOrEmpty(pMap), line, col)
 
 	// 1. 成员补全 (a.B)
 	// 如果当前节点本身就是 MemberExpr
@@ -674,6 +690,9 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	curr := ctx
 	for curr != nil {
 		for name, t := range curr.vars {
+			if _, ok := visibleLocals[string(name)]; !ok {
+				continue
+			}
 			if !seen[string(name)] {
 				kind := "var"
 				if strings.HasPrefix(string(t), "function") {
@@ -743,6 +762,151 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	}
 
 	return items
+}
+
+func parentMapOrEmpty(parentMap map[Node]Node) map[Node]Node {
+	if parentMap != nil {
+		return parentMap
+	}
+	return map[Node]Node{}
+}
+
+func collectVisibleLocalNames(target Node, parentMap map[Node]Node, line, col int) map[string]struct{} {
+	visible := make(map[string]struct{})
+	if target == nil {
+		return visible
+	}
+
+	switch n := target.(type) {
+	case *BlockStmt:
+		collectDeclaredBeforePositionInBlock(n, line, col, visible)
+	case *ProgramStmt:
+		collectDeclaredBeforePositionInProgram(n, line, col, visible)
+	}
+
+	curr := target
+	for curr != nil {
+		parent := parentMap[curr]
+		if parent == nil {
+			break
+		}
+
+		switch p := parent.(type) {
+		case *BlockStmt:
+			collectDeclaredBeforeNodeInBlock(p, curr, visible)
+		case *FunctionStmt:
+			for _, param := range p.Params {
+				if param.Name != "" {
+					visible[string(param.Name)] = struct{}{}
+				}
+			}
+		case *FuncLitExpr:
+			for _, param := range p.Params {
+				if param.Name != "" {
+					visible[string(param.Name)] = struct{}{}
+				}
+			}
+		case *RangeStmt:
+			if p.Body == curr {
+				if p.Key != "" {
+					visible[string(p.Key)] = struct{}{}
+				}
+				if p.Value != "" {
+					visible[string(p.Value)] = struct{}{}
+				}
+			}
+		case *ForStmt:
+			collectDeclaredNamesInNode(p.Init, visible)
+		case *SwitchStmt:
+			collectDeclaredNamesInNode(p.Init, visible)
+			collectDeclaredNamesInNode(p.Assign, visible)
+		case *CatchClause:
+			if p.Body == curr && p.VarName != "" {
+				visible[string(p.VarName)] = struct{}{}
+			}
+		}
+
+		curr = parent
+	}
+
+	return visible
+}
+
+func collectDeclaredBeforePositionInBlock(block *BlockStmt, line, col int, visible map[string]struct{}) {
+	for _, stmt := range block.Children {
+		if !startsBefore(stmt, line, col) {
+			break
+		}
+		collectDeclaredNamesInStmt(stmt, visible)
+	}
+}
+
+func collectDeclaredBeforePositionInProgram(prog *ProgramStmt, line, col int, visible map[string]struct{}) {
+	for _, stmt := range prog.Main {
+		if !startsBefore(stmt, line, col) {
+			break
+		}
+		collectDeclaredNamesInStmt(stmt, visible)
+	}
+}
+
+func collectDeclaredBeforeNodeInBlock(block *BlockStmt, curr Node, visible map[string]struct{}) {
+	for _, stmt := range block.Children {
+		if stmt == curr {
+			break
+		}
+		collectDeclaredNamesInStmt(stmt, visible)
+	}
+}
+
+func startsBefore(node Node, line, col int) bool {
+	if node == nil || node.GetBase() == nil || node.GetBase().Loc == nil {
+		return false
+	}
+	loc := node.GetBase().Loc
+	if loc.L != line {
+		return loc.L < line
+	}
+	return loc.C < col
+}
+
+func collectDeclaredNamesInNode(node Node, visible map[string]struct{}) {
+	switch n := node.(type) {
+	case Stmt:
+		collectDeclaredNamesInStmt(n, visible)
+	case *BlockStmt:
+		for _, child := range n.Children {
+			collectDeclaredNamesInStmt(child, visible)
+		}
+	}
+}
+
+func collectDeclaredNamesInStmt(stmt Stmt, visible map[string]struct{}) {
+	if stmt == nil {
+		return
+	}
+	switch s := stmt.(type) {
+	case *GenDeclStmt:
+		if s.Name != "" {
+			visible[string(s.Name)] = struct{}{}
+		}
+	case *AssignmentStmt:
+		if ident, ok := s.LHS.(*IdentifierExpr); ok && ident.Name != "" {
+			visible[string(ident.Name)] = struct{}{}
+		}
+	case *MultiAssignmentStmt:
+		for _, lhs := range s.LHS {
+			if ident, ok := lhs.(*IdentifierExpr); ok && ident.Name != "" {
+				visible[string(ident.Name)] = struct{}{}
+			}
+		}
+	case *BlockStmt:
+		if s.Inner {
+			for _, child := range s.Children {
+				collectDeclaredNamesInStmt(child, visible)
+			}
+		}
+	}
 }
 
 func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {

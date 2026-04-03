@@ -461,6 +461,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if objType == "Package" || objType == TypeModule {
 		if id, ok := m.Object.(*IdentifierExpr); ok {
 			path, isPkg := ctx.root.Imports[string(id.Name)]
+			explicitlyImported := isPkg
 			if !isPkg {
 				path = string(id.Name)
 				// 尝试查找后缀匹配的 ImportedRoot
@@ -474,6 +475,9 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 			// 尝试从 ImportedRoots 中直接获取成员 (Go-source 模块)
 			if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
+				if !explicitlyImported {
+					ctx.WithNode(m).AddErrorf("包 %s 已解析但未导入", id.Name)
+				}
 				prop := string(m.Property)
 				// 1. 变量/函数
 				if t, ok := srcRoot.vars[Ident(prop)]; ok {
