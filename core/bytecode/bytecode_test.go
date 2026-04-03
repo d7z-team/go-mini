@@ -140,8 +140,6 @@ func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
 
 	asm := prog.Disassemble()
 	expected := []string{
-		"section .rodata",
-		"const.Version: db \"v1\", 0",
 		"section .bss",
 		"global.pending: resq 1",
 		"section .data",
@@ -153,8 +151,83 @@ func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
 		"global _start",
 		"_start:",
 		"fn.cleanup: ; signature function() Void",
-		"executable-only body (1 prepared tasks)",
+		"0000  RETURN",
 		"fn.main: ; signature function() Void",
+		"; no body",
+	}
+	for _, sym := range expected {
+		if !strings.Contains(asm, sym) {
+			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
+		}
+	}
+}
+
+func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
+	prog := NewProgram()
+	prog.Blueprint = &Blueprint{Package: "demo"}
+	prog.Executable = &runtime.PreparedProgram{
+		Functions: map[ast.Ident]*runtime.PreparedFunction{
+			"main": {
+				Name: "main",
+				FunctionType: ast.FunctionType{
+					Return: "Void",
+				},
+				BodyTasks: []runtime.Task{
+					{
+						Op: runtime.OpSwitchTag,
+						Data: &runtime.SwitchData{
+							Init: []runtime.Task{
+								{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 1}},
+							},
+							Tag: []runtime.Task{
+								{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "v"}},
+							},
+							Cases: []runtime.SwitchCaseData{
+								{
+									Exprs: [][]runtime.Task{
+										{
+											{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 2}},
+										},
+										{
+											{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 3}},
+										},
+									},
+									Body: []runtime.Task{
+										{Op: runtime.OpReturn, Data: 0},
+									},
+								},
+							},
+							DefaultBody: []runtime.Task{
+								{Op: runtime.OpPop},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	asm := prog.Disassemble()
+	expected := []string{
+		"fn.main: ; signature function() Void",
+		"SWITCH_TAG",
+		"init->fn.main.L0000.init",
+		"tag->fn.main.L0001.tag",
+		"case_0_match_0->fn.main.L0002.case_0_match_0",
+		"case_0_match_1->fn.main.L0003.case_0_match_1",
+		"case_0->fn.main.L0004.case_0",
+		"default->fn.main.L0005.default",
+		"fn.main.L0000.init:",
+		"fn.main.L0001.tag:",
+		"fn.main.L0002.case_0_match_0:",
+		"fn.main.L0003.case_0_match_1:",
+		"fn.main.L0004.case_0:",
+		"fn.main.L0005.default:",
+		"0001  PUSH               1",
+		"0003  PUSH               2",
+		"0004  PUSH               3",
+		"RETURN",
+		"POP",
 	}
 	for _, sym := range expected {
 		if !strings.Contains(asm, sym) {

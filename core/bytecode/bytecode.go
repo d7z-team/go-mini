@@ -214,19 +214,6 @@ func writeBlueprintSection(sb *strings.Builder, p *Program) {
 		return
 	}
 
-	if len(p.Blueprint.Constants) > 0 {
-		sb.WriteString("section .rodata\n")
-		keys := make([]string, 0, len(p.Blueprint.Constants))
-		for name := range p.Blueprint.Constants {
-			keys = append(keys, name)
-		}
-		sort.Strings(keys)
-		for _, name := range keys {
-			fmt.Fprintf(sb, "const.%s: db %q, 0\n", sanitizeLabel(name), p.Blueprint.Constants[name])
-		}
-		sb.WriteString("\n")
-	}
-
 	if len(p.Blueprint.Types) > 0 || len(p.Blueprint.Structs) > 0 || len(p.Blueprint.Interfaces) > 0 {
 		sb.WriteString("section .note.go_mini\n")
 		writeBlueprintNotes(sb, p)
@@ -319,7 +306,7 @@ func writeTextSection(sb *strings.Builder, p *Program) {
 		if hasDisplay && len(fn.Instructions) > 0 {
 			writeInstructions(sb, fn.Instructions)
 		} else if exec := execFunctions[name]; exec != nil {
-			fmt.Fprintf(sb, "    ; executable-only body (%d prepared tasks)\n", len(exec.BodyTasks))
+			writePreparedTasks(sb, exec.BodyTasks, "    ", "fn."+sanitizeLabel(name))
 		} else {
 			sb.WriteString("    ; no body\n")
 		}
@@ -356,6 +343,404 @@ func instructionComment(inst Instruction) string {
 		}
 	}
 	return strings.Join(parts, " | ")
+}
+
+type preparedDisasmState struct {
+	nextLabel int
+}
+
+func writePreparedTasks(sb *strings.Builder, tasks []runtime.Task, indent, scope string) {
+	pc := 0
+	state := &preparedDisasmState{}
+	writePreparedTaskBlock(sb, tasks, indent, scope, &pc, state)
+}
+
+func writePreparedTaskBlock(sb *strings.Builder, tasks []runtime.Task, indent, scope string, pc *int, state *preparedDisasmState) {
+	if len(tasks) == 0 {
+		sb.WriteString(indent + "; no body\n")
+		return
+	}
+	for _, task := range tasks {
+		children := preparedTaskChildren(task, scope, state)
+		operand := formatPreparedTaskOperand(task)
+		line := fmt.Sprintf("%s%04d  %-18s %s", indent, *pc, task.Op.String(), operand)
+		comment := preparedTaskComment(task, children)
+		if comment != "" {
+			line = fmt.Sprintf("%-64s ; %s", line, comment)
+		}
+		sb.WriteString(strings.TrimRight(line, " ") + "\n")
+		*pc = *pc + 1
+		for _, child := range children {
+			sb.WriteString(indent + child.label + ":\n")
+			writePreparedTaskBlock(sb, child.tasks, indent+"    ", child.label, pc, state)
+		}
+	}
+}
+
+type preparedTaskChildBlock struct {
+	label string
+	tasks []runtime.Task
+}
+
+func preparedTaskChildren(task runtime.Task, scope string, state *preparedDisasmState) []preparedTaskChildBlock {
+	newLabel := func(suffix string) string {
+		label := fmt.Sprintf("%s.L%04d%s", scope, state.nextLabel, suffix)
+		state.nextLabel++
+		return label
+	}
+	switch data := task.Data.(type) {
+	case *runtime.BranchData:
+		blocks := make([]preparedTaskChildBlock, 0, 2)
+		if len(data.Then) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".then"), tasks: data.Then})
+		}
+		if len(data.Else) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".else"), tasks: data.Else})
+		}
+		return blocks
+	case *runtime.ForData:
+		blocks := make([]preparedTaskChildBlock, 0, 3)
+		if len(data.Cond) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".cond"), tasks: data.Cond})
+		}
+		if len(data.Body) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".body"), tasks: data.Body})
+		}
+		if len(data.Update) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".update"), tasks: data.Update})
+		}
+		return blocks
+	case *runtime.DeferData:
+		if len(data.Tasks) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".defer"), tasks: data.Tasks}}
+	case *runtime.FinallyData:
+		if len(data.Body) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".finally"), tasks: data.Body}}
+	case *runtime.CatchData:
+		if len(data.Body) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".catch"), tasks: data.Body}}
+	case *runtime.RangeData:
+		if len(data.Body) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".range_body"), tasks: data.Body}}
+	case *runtime.SwitchData:
+		blocks := make([]preparedTaskChildBlock, 0, 2+len(data.Cases))
+		if len(data.Init) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".init"), tasks: data.Init})
+		}
+		if len(data.Tag) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".tag"), tasks: data.Tag})
+		}
+		if len(data.AssignLHS) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".assign_lhs"), tasks: data.AssignLHS})
+		}
+		for idx, c := range data.Cases {
+			for exprIdx, exprTasks := range c.Exprs {
+				if len(exprTasks) > 0 {
+					blocks = append(blocks, preparedTaskChildBlock{
+						label: newLabel(fmt.Sprintf(".case_%d_match_%d", idx, exprIdx)),
+						tasks: exprTasks,
+					})
+				}
+			}
+			if len(c.Body) > 0 {
+				blocks = append(blocks, preparedTaskChildBlock{
+					label: newLabel(fmt.Sprintf(".case_%d", idx)),
+					tasks: c.Body,
+				})
+			}
+		}
+		if len(data.DefaultBody) > 0 {
+			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".default"), tasks: data.DefaultBody})
+		}
+		return blocks
+	case *runtime.JumpData:
+		if len(data.Right) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".rhs"), tasks: data.Right}}
+	case *runtime.ClosureData:
+		if len(data.BodyTasks) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".closure_body"), tasks: data.BodyTasks}}
+	case *runtime.DoCallData:
+		if len(data.BodyTasks) == 0 {
+			return nil
+		}
+		return []preparedTaskChildBlock{{label: newLabel(".call_body"), tasks: data.BodyTasks}}
+	default:
+		return nil
+	}
+}
+
+func formatPreparedTaskOperand(task runtime.Task) string {
+	switch data := task.Data.(type) {
+	case nil:
+		return ""
+	case string:
+		return data
+	case int:
+		return fmt.Sprintf("%d", data)
+	case runtime.SymbolRef:
+		return formatSymbolRef(data)
+	case *runtime.LoadVarData:
+		if data == nil {
+			return ""
+		}
+		if data.Sym.Name != "" || data.Sym.Kind != runtime.SymbolUnknown {
+			return formatSymbolRef(data.Sym)
+		}
+		return data.Name
+	case *runtime.LHSData:
+		if data == nil {
+			return ""
+		}
+		return formatLHSData(data)
+	case *runtime.CallData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{data.Name}
+		parts = append(parts, fmt.Sprintf("argc=%d", data.ArgCount))
+		if data.Ellipsis {
+			parts = append(parts, "ellipsis")
+		}
+		if data.Sym.Name != "" || data.Sym.Kind != runtime.SymbolUnknown {
+			parts = append(parts, formatSymbolRef(data.Sym))
+		}
+		return strings.Join(filterEmptyStrings(parts), " ")
+	case *runtime.ImportInitData:
+		if data == nil {
+			return ""
+		}
+		return data.Path
+	case *runtime.IndexData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{}
+		if data.Multi {
+			parts = append(parts, "multi")
+		}
+		if data.ResultType != "" {
+			parts = append(parts, string(data.ResultType))
+		}
+		return strings.Join(parts, " ")
+	case *runtime.SliceData:
+		if data == nil {
+			return ""
+		}
+		return fmt.Sprintf("low=%t high=%t", data.HasLow, data.HasHigh)
+	case *runtime.AssertData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{string(data.TargetType)}
+		if data.Multi {
+			parts = append(parts, "multi")
+		}
+		if data.ResultType != "" {
+			parts = append(parts, "result="+string(data.ResultType))
+		}
+		return strings.Join(parts, " ")
+	case *runtime.CompositeData:
+		if data == nil {
+			return ""
+		}
+		return fmt.Sprintf("%s entries=%d", data.Type, len(data.Entries))
+	case *runtime.Var:
+		return formatRuntimeVarInline(data)
+	case *runtime.DoCallData:
+		if data == nil {
+			return ""
+		}
+		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionType.String(), len(data.Args))
+	case *runtime.DeclareVarData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{data.Name}
+		if data.Kind != "" {
+			parts = append(parts, string(data.Kind))
+		}
+		if data.Sym.Name != "" || data.Sym.Kind != runtime.SymbolUnknown {
+			parts = append(parts, formatSymbolRef(data.Sym))
+		}
+		return strings.Join(parts, " ")
+	case *runtime.ClosureData:
+		if data == nil {
+			return ""
+		}
+		return fmt.Sprintf("%s captures=%d", data.FunctionType.String(), len(data.CaptureRefs))
+	default:
+		return ""
+	}
+}
+
+func preparedTaskComment(task runtime.Task, children []preparedTaskChildBlock) string {
+	parts := make([]string, 0, 3)
+	switch data := task.Data.(type) {
+	case *runtime.BranchData:
+		parts = append(parts, formatChildTargets(children))
+	case *runtime.ForData:
+		parts = append(parts, formatChildTargets(children))
+	case *runtime.DeferData:
+		parts = append(parts, fmt.Sprintf("%s | pop_result=%t", formatChildTargets(children), data.PopResult))
+	case *runtime.FinallyData:
+		parts = append(parts, formatChildTargets(children))
+	case *runtime.CatchData:
+		parts = append(parts, fmt.Sprintf("var=%s | %s", data.VarName, formatChildTargets(children)))
+	case *runtime.RangeData:
+		parts = append(parts, fmt.Sprintf("define=%t key=%s value=%s | %s", data.Define, data.Key, data.Value, formatChildTargets(children)))
+	case *runtime.SwitchData:
+		parts = append(parts, formatChildTargets(children))
+	case *runtime.JumpData:
+		parts = append(parts, fmt.Sprintf("op=%s | %s", data.Operator, formatChildTargets(children)))
+	case *runtime.DoCallData:
+		parts = append(parts, formatChildTargets(children))
+	}
+	if task.Source != nil {
+		if task.Source.ID != "" {
+			parts = append(parts, "node="+task.Source.ID)
+		}
+		if task.Source.File != "" {
+			parts = append(parts, fmt.Sprintf("%s:%d:%d", task.Source.File, task.Source.Line, task.Source.Col))
+		} else if task.Source.Line > 0 {
+			parts = append(parts, fmt.Sprintf("L%d:%d", task.Source.Line, task.Source.Col))
+		}
+	}
+	return strings.Join(filterEmptyStrings(parts), " | ")
+}
+
+func formatChildTargets(children []preparedTaskChildBlock) string {
+	if len(children) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(children))
+	for _, child := range children {
+		role := child.label
+		if idx := strings.LastIndex(role, ".L"); idx >= 0 {
+			role = role[idx+6:]
+		}
+		role = strings.TrimPrefix(role, ".")
+		parts = append(parts, fmt.Sprintf("%s->%s", role, child.label))
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatSymbolRef(sym runtime.SymbolRef) string {
+	kind := "unknown"
+	switch sym.Kind {
+	case runtime.SymbolGlobal:
+		kind = "global"
+	case runtime.SymbolLocal:
+		kind = "local"
+	case runtime.SymbolUpvalue:
+		kind = "upvalue"
+	case runtime.SymbolBuiltin:
+		kind = "builtin"
+	}
+	if sym.Name == "" {
+		return fmt.Sprintf("%s[%d]", kind, sym.Slot)
+	}
+	return fmt.Sprintf("%s[%d]=%s", kind, sym.Slot, sym.Name)
+}
+
+func formatLHSData(data *runtime.LHSData) string {
+	parts := make([]string, 0, 3)
+	switch data.Kind {
+	case runtime.LHSTypeEnv:
+		parts = append(parts, "env")
+	case runtime.LHSTypeIndex:
+		parts = append(parts, "index")
+	case runtime.LHSTypeMember:
+		parts = append(parts, "member")
+	case runtime.LHSTypeStar:
+		parts = append(parts, "deref")
+	default:
+		parts = append(parts, "none")
+	}
+	if data.Name != "" {
+		parts = append(parts, data.Name)
+	}
+	if data.Property != "" {
+		parts = append(parts, "."+data.Property)
+	}
+	if data.Sym.Name != "" || data.Sym.Kind != runtime.SymbolUnknown {
+		parts = append(parts, formatSymbolRef(data.Sym))
+	}
+	return strings.Join(parts, " ")
+}
+
+func filterEmptyStrings(items []string) []string {
+	out := items[:0]
+	for _, item := range items {
+		if item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func formatRuntimeVarInline(v *runtime.Var) string {
+	if v == nil {
+		return "nil"
+	}
+	switch v.VType {
+	case runtime.TypeInt:
+		return fmt.Sprintf("%d", v.I64)
+	case runtime.TypeFloat:
+		return fmt.Sprintf("%g", v.F64)
+	case runtime.TypeString:
+		return fmt.Sprintf("%q", v.Str)
+	case runtime.TypeBool:
+		if v.Bool {
+			return "true"
+		}
+		return "false"
+	case runtime.TypeBytes:
+		return fmt.Sprintf("bytes[%d]", len(v.B))
+	case runtime.TypeHandle:
+		return fmt.Sprintf("handle(%d)", v.Handle)
+	case runtime.TypeArray:
+		if arr, ok := v.Ref.(*runtime.VMArray); ok && arr != nil {
+			return fmt.Sprintf("array(len=%d)", len(arr.Data))
+		}
+		return "array"
+	case runtime.TypeMap:
+		if m, ok := v.Ref.(*runtime.VMMap); ok && m != nil {
+			return fmt.Sprintf("map(len=%d)", len(m.Data))
+		}
+		return "map"
+	case runtime.TypeClosure:
+		return "closure"
+	case runtime.TypeModule:
+		return "module"
+	case runtime.TypeCell:
+		return "cell"
+	case runtime.TypeAny:
+		return "any"
+	case runtime.TypeInterface:
+		return "interface"
+	case runtime.TypeError:
+		if v.Str != "" {
+			return fmt.Sprintf("error(%q)", v.Str)
+		}
+		return "error"
+	default:
+		if v.Type != "" {
+			return string(v.Type)
+		}
+		return "nil"
+	}
 }
 
 func writeBlueprintNotes(sb *strings.Builder, p *Program) {
