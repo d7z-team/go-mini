@@ -138,9 +138,6 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("calc.Calculator.Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
@@ -260,9 +257,6 @@ func RegisterTable(executor interface{ RegisterConstant(string, string) }, regis
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("calc.Table.SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)

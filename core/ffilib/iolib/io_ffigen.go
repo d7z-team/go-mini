@@ -650,9 +650,6 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("io.File.Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)

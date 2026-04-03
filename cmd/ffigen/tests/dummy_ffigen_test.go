@@ -529,9 +529,6 @@ func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("os.Open", bridge, MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
@@ -867,9 +864,6 @@ func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, 
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("native.GetStruct", bridge, NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
@@ -964,9 +958,6 @@ func RegisterPage(executor interface{ RegisterConstant(string, string) }, regist
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("Page.GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)

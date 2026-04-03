@@ -165,9 +165,6 @@ func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, st
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	for _, m := range MockShapeAPI_FFI_Schemas {

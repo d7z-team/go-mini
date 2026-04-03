@@ -259,9 +259,6 @@ func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) },
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("test.GetSameObject", bridge, AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)

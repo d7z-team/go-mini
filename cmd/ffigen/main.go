@@ -336,7 +336,12 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 	if checkPath == "" {
 		checkPath = *pkgName
 	}
-	_, _ = conf.Check(checkPath, fset, allFiles, info)
+	if _, err := conf.Check(checkPath, fset, allFiles, info); err != nil {
+		// 类型检查失败不一定意味着无法生成，但我们需要感知这些错误。
+		// 在 FFI 生成场景中，如果缺少某些外部依赖，conf.Check 会报错，
+		// 只要我们关注的 target 结构是完整的，通常可以继续。
+		fmt.Fprintf(os.Stderr, "ffigen: type check warning in %s: %v\n", checkPath, err)
+	}
 
 	knownImports = make(map[string]string)
 	moduleCache = make(map[string]string)
@@ -616,6 +621,14 @@ func (i *sourceImporter) Import(path string) (*types.Package, error) {
 }
 
 func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
+	// importFromModule 实现了针对模块内未编译源码的“部分加载”。
+	// 它通过解析 AST 提取导出的符号并创建占位符 types.Object。
+	// 
+	// 边界说明：
+	// 1. 结构体 (Struct) 会被简化为没有任何字段的 types.Struct。
+	// 2. 函数 (Func) 会被简化为没有任何参数和返回值的 types.Signature。
+	// 这种实现足以支持基本的 SelectorExpr 类型解析（确认符号存在），
+	// 但不支持字段访问校验、嵌入类型解析或复杂的签名匹配。
 	rel := strings.TrimPrefix(path, modulePath)
 	rel = strings.TrimPrefix(rel, "/")
 	dir := moduleDir
@@ -677,77 +690,6 @@ func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
 		}
 	}
 	return pkg, nil
-}
-
-func sanitizeFilesForTypeCheck(files []*ast.File) []*ast.File {
-	sanitized := make([]*ast.File, 0, len(files))
-	for _, file := range files {
-		if file == nil {
-			continue
-		}
-		clone := &ast.File{
-			Name: ast.NewIdent(file.Name.Name),
-		}
-
-		usedImports := make(map[string]bool)
-		markImports := func(node ast.Node) {
-			ast.Inspect(node, func(n ast.Node) bool {
-				se, ok := n.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				if id, ok := se.X.(*ast.Ident); ok {
-					usedImports[id.Name] = true
-				}
-				return true
-			})
-		}
-
-		for _, decl := range file.Decls {
-			switch d := decl.(type) {
-			case *ast.GenDecl:
-				if d.Tok != token.TYPE && d.Tok != token.CONST && d.Tok != token.VAR {
-					continue
-				}
-				clone.Decls = append(clone.Decls, d)
-				markImports(d)
-			case *ast.FuncDecl:
-				if d.Type == nil {
-					continue
-				}
-				sig := *d
-				sig.Body = nil
-				clone.Decls = append(clone.Decls, &sig)
-				markImports(d.Type)
-				if d.Recv != nil {
-					markImports(d.Recv)
-				}
-			}
-		}
-
-		for _, imp := range file.Imports {
-			alias := ""
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				path := strings.Trim(imp.Path.Value, "\"")
-				parts := strings.Split(path, "/")
-				alias = parts[len(parts)-1]
-			}
-			if usedImports[alias] {
-				clone.Imports = append(clone.Imports, imp)
-			}
-		}
-		if len(clone.Imports) > 0 {
-			specs := make([]ast.Spec, 0, len(clone.Imports))
-			for _, imp := range clone.Imports {
-				specs = append(specs, imp)
-			}
-			clone.Decls = append([]ast.Decl{&ast.GenDecl{Tok: token.IMPORT, Specs: specs}}, clone.Decls...)
-		}
-		sanitized = append(sanitized, clone)
-	}
-	return sanitized
 }
 
 func parserErrorContext(err error, source string) string {
@@ -1712,7 +1654,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
 		fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-		fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
 		fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
 		fmt.Fprintf(&sb, "\t}\n")
 		writeBoundRegistrations("\t")
@@ -1743,7 +1684,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
 		if methodsPrefix != "" || len(referencedStructs) > 0 {
 			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-			fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
 			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
 			fmt.Fprintf(&sb, "\t}\n")
 		}
@@ -1797,7 +1737,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
 		if len(referencedStructs) > 0 {
 			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-			fmt.Fprintf(&sb, "\t\tif checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) { return }\n")
 			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
 			fmt.Fprintf(&sb, "\t}\n")
 		}

@@ -866,9 +866,6 @@ func RegisterTime(executor interface{ RegisterConstant(string, string) }, regist
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("time.Time.Year", bridge, Time_FFI_Schemas[0].MethodID, Time_FFI_Schemas[0].Sig, Time_FFI_Schemas[0].Doc)

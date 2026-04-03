@@ -292,9 +292,6 @@ func RegisterBrowserService(executor interface{ RegisterConstant(string, string)
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("other.Browser.NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
@@ -455,9 +452,6 @@ func RegisterPageService(executor interface{ RegisterConstant(string, string) },
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("other.Page.Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
@@ -593,9 +587,6 @@ func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, str
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("other.CdpSelector.Click", bridge, CdpSelectorService_FFI_Schemas[0].MethodID, CdpSelectorService_FFI_Schemas[0].Sig, CdpSelectorService_FFI_Schemas[0].Doc)

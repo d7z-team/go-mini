@@ -267,9 +267,6 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("a_other.Type.Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
@@ -381,9 +378,6 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 		panic("ffigen: executor does not support schema FFI registration")
 	}
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("b_other.Type.Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
