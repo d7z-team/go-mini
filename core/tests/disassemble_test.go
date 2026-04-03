@@ -44,12 +44,13 @@ func TestDisassemble(t *testing.T) {
 
 	// 基本内容验证
 	expectedSymbols := []string{
-		"section .data:",
-		"section .text:",
-		"fib(",
-		"main:",
-		"global GlobalVar",
-		"BINARY_OP          Le",
+		"section .data",
+		"section .text",
+		"global _start",
+		"fn.fib: ; signature",
+		"_start:",
+		"global.GlobalVar:",
+		"BINARY_OP",
 		"CALL               fib",
 		"RETURN",
 	}

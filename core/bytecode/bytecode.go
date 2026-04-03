@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -191,59 +192,256 @@ func (p *Program) Disassemble() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("; Go-Mini Bytecode Disassembly\n")
-	fmt.Fprintf(&sb, "; Format: %s v%d (%s)\n", p.Format, p.Version, p.OpcodeSet)
-	fmt.Fprintf(&sb, "; Total Globals: %d\n", len(p.Globals))
-	fmt.Fprintf(&sb, "; Total Functions: %d\n\n", len(p.Functions))
-
-	sb.WriteString("section .data:\n")
-	for _, global := range p.Globals {
-		fmt.Fprintf(&sb, "  global %s\n", global.Name)
-		writeInstructions(&sb, "    ", global.Instructions)
+	sb.WriteString("; go-mini bytecode disassembly\n")
+	fmt.Fprintf(&sb, "; format     %s v%d\n", p.Format, p.Version)
+	fmt.Fprintf(&sb, "; opcode_set %s\n", p.OpcodeSet)
+	if p.Blueprint != nil && p.Blueprint.Package != "" {
+		fmt.Fprintf(&sb, "; package    %s\n", p.Blueprint.Package)
 	}
+	fmt.Fprintf(&sb, "; globals    display=%d executable=%d\n", len(p.Globals), len(disassembleExecutableGlobals(p)))
+	fmt.Fprintf(&sb, "; functions  display=%d executable=%d\n", len(p.Functions), len(disassembleExecutableFunctions(p)))
 	sb.WriteString("\n")
 
-	sb.WriteString("section .text:\n")
-	sb.WriteString("main:\n")
-	writeInstructions(&sb, "  ", p.Entry)
-	if len(p.Entry) > 0 {
-		sb.WriteString("\n")
-	}
-
-	for _, fn := range p.Functions {
-		fmt.Fprintf(&sb, "%s%s:\n", fn.Name, fn.Signature)
-		writeInstructions(&sb, "  ", fn.Instructions)
-		sb.WriteString("\n")
-	}
+	writeBlueprintSection(&sb, p)
+	writeGlobalsSections(&sb, p)
+	writeTextSection(&sb, p)
 
 	return sb.String()
 }
 
-func writeInstructions(sb *strings.Builder, indent string, instructions []Instruction) {
-	for _, inst := range instructions {
-		addr := "[                ]"
-		if inst.NodeID != "" {
-			addr = fmt.Sprintf("[%16s]", inst.NodeID)
+func writeBlueprintSection(sb *strings.Builder, p *Program) {
+	if p == nil || p.Blueprint == nil {
+		return
+	}
+
+	if len(p.Blueprint.Constants) > 0 {
+		sb.WriteString("section .rodata\n")
+		keys := make([]string, 0, len(p.Blueprint.Constants))
+		for name := range p.Blueprint.Constants {
+			keys = append(keys, name)
 		}
+		sort.Strings(keys)
+		for _, name := range keys {
+			fmt.Fprintf(sb, "const.%s: db %q, 0\n", sanitizeLabel(name), p.Blueprint.Constants[name])
+		}
+		sb.WriteString("\n")
+	}
 
-		operand := strings.ReplaceAll(inst.Operand, "\n", "\\n")
-		operand = strings.ReplaceAll(operand, "\r", "\\r")
+	if len(p.Blueprint.Types) > 0 || len(p.Blueprint.Structs) > 0 || len(p.Blueprint.Interfaces) > 0 {
+		sb.WriteString("section .note.go_mini\n")
+		writeBlueprintNotes(sb, p)
+		sb.WriteString("\n")
+	}
+}
 
-		comment := inst.Comment
-		if inst.Loc != nil {
-			if comment != "" {
-				comment = fmt.Sprintf("%s at L%d:%d", comment, inst.Loc.Line, inst.Loc.Column)
-			} else {
-				comment = fmt.Sprintf("at L%d:%d", inst.Loc.Line, inst.Loc.Column)
+func writeGlobalsSections(sb *strings.Builder, p *Program) {
+	initGlobals := append([]Global(nil), p.Globals...)
+	sort.Slice(initGlobals, func(i, j int) bool {
+		return initGlobals[i].Name < initGlobals[j].Name
+	})
+
+	execGlobals := disassembleExecutableGlobals(p)
+	uninitialized := make([]string, 0)
+	for name, global := range execGlobals {
+		if global != nil && !global.HasInit {
+			uninitialized = append(uninitialized, name)
+		}
+	}
+	sort.Strings(uninitialized)
+
+	if len(uninitialized) > 0 {
+		sb.WriteString("section .bss\n")
+		for _, name := range uninitialized {
+			fmt.Fprintf(sb, "global.%s: resq 1\n", sanitizeLabel(name))
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("section .data\n")
+	if len(initGlobals) == 0 {
+		sb.WriteString("; no global initializers\n\n")
+		return
+	}
+	for _, global := range initGlobals {
+		meta := ""
+		if exec := execGlobals[global.Name]; exec != nil {
+			meta = fmt.Sprintf(" ; has_init=%t", exec.HasInit)
+		}
+		fmt.Fprintf(sb, "global.%s:%s\n", sanitizeLabel(global.Name), meta)
+		writeInstructions(sb, global.Instructions)
+		sb.WriteString("\n")
+	}
+}
+
+func writeTextSection(sb *strings.Builder, p *Program) {
+	sb.WriteString("section .text\n")
+	sb.WriteString("global _start\n\n")
+	sb.WriteString("_start:\n")
+	if len(p.Entry) == 0 {
+		sb.WriteString("    ; no entry instructions\n")
+	} else {
+		writeInstructions(sb, p.Entry)
+	}
+	sb.WriteString("\n")
+
+	displayFunctions := make(map[string]Function, len(p.Functions))
+	for _, fn := range p.Functions {
+		displayFunctions[fn.Name] = fn
+	}
+	names := make([]string, 0, len(displayFunctions))
+	for name := range displayFunctions {
+		names = append(names, name)
+	}
+	for name := range disassembleExecutableFunctions(p) {
+		if _, ok := displayFunctions[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+
+	execFunctions := disassembleExecutableFunctions(p)
+	for _, name := range names {
+		fn, hasDisplay := displayFunctions[name]
+		signature := ""
+		if hasDisplay {
+			signature = fn.Signature
+		}
+		if signature == "" {
+			if exec := execFunctions[name]; exec != nil {
+				signature = formatExecutableSignature(exec)
 			}
 		}
-
-		line := fmt.Sprintf("%s  %-18s %-22s", addr, inst.Op, operand)
-		if comment != "" {
-			line = fmt.Sprintf("%-65s ; %s", line, comment)
+		if signature != "" {
+			fmt.Fprintf(sb, "fn.%s: ; signature %s\n", sanitizeLabel(name), signature)
+		} else {
+			fmt.Fprintf(sb, "fn.%s:\n", sanitizeLabel(name))
 		}
-		sb.WriteString(indent + line + "\n")
+		if hasDisplay && len(fn.Instructions) > 0 {
+			writeInstructions(sb, fn.Instructions)
+		} else if exec := execFunctions[name]; exec != nil {
+			fmt.Fprintf(sb, "    ; executable-only body (%d prepared tasks)\n", len(exec.BodyTasks))
+		} else {
+			sb.WriteString("    ; no body\n")
+		}
+		sb.WriteString("\n")
 	}
+}
+
+func writeInstructions(sb *strings.Builder, instructions []Instruction) {
+	for pc, inst := range instructions {
+		operand := strings.ReplaceAll(inst.Operand, "\n", "\\n")
+		operand = strings.ReplaceAll(operand, "\r", "\\r")
+		line := fmt.Sprintf("    %04d  %-18s %s", pc, inst.Op, operand)
+		comment := instructionComment(inst)
+		if comment != "" {
+			line = fmt.Sprintf("%-64s ; %s", line, comment)
+		}
+		sb.WriteString(line + "\n")
+	}
+}
+
+func instructionComment(inst Instruction) string {
+	parts := make([]string, 0, 3)
+	if inst.Comment != "" {
+		parts = append(parts, inst.Comment)
+	}
+	if inst.NodeID != "" {
+		parts = append(parts, "node="+inst.NodeID)
+	}
+	if inst.Loc != nil {
+		if inst.Loc.File != "" {
+			parts = append(parts, fmt.Sprintf("%s:%d:%d", inst.Loc.File, inst.Loc.Line, inst.Loc.Column))
+		} else {
+			parts = append(parts, fmt.Sprintf("L%d:%d", inst.Loc.Line, inst.Loc.Column))
+		}
+	}
+	return strings.Join(parts, " | ")
+}
+
+func writeBlueprintNotes(sb *strings.Builder, p *Program) {
+	if p == nil || p.Blueprint == nil {
+		return
+	}
+	typeKeys := make([]string, 0, len(p.Blueprint.Types))
+	for name := range p.Blueprint.Types {
+		typeKeys = append(typeKeys, string(name))
+	}
+	sort.Strings(typeKeys)
+	for _, name := range typeKeys {
+		fmt.Fprintf(sb, "; type %s = %s\n", name, p.Blueprint.Types[ast.Ident(name)])
+	}
+
+	structKeys := make([]string, 0, len(p.Blueprint.Structs))
+	for name := range p.Blueprint.Structs {
+		structKeys = append(structKeys, string(name))
+	}
+	sort.Strings(structKeys)
+	for _, name := range structKeys {
+		spec := p.Blueprint.Structs[ast.Ident(name)]
+		if spec == nil {
+			fmt.Fprintf(sb, "; struct %s\n", name)
+			continue
+		}
+		fields := make([]string, 0, len(spec.FieldNames))
+		for _, fieldName := range spec.FieldNames {
+			fields = append(fields, fmt.Sprintf("%s %s", fieldName, spec.Fields[fieldName]))
+		}
+		fmt.Fprintf(sb, "; struct %s { %s }\n", name, strings.Join(fields, "; "))
+	}
+
+	ifaceKeys := make([]string, 0, len(p.Blueprint.Interfaces))
+	for name := range p.Blueprint.Interfaces {
+		ifaceKeys = append(ifaceKeys, string(name))
+	}
+	sort.Strings(ifaceKeys)
+	for _, name := range ifaceKeys {
+		spec := p.Blueprint.Interfaces[ast.Ident(name)]
+		if spec == nil {
+			fmt.Fprintf(sb, "; interface %s\n", name)
+			continue
+		}
+		fmt.Fprintf(sb, "; interface %s %s\n", name, spec.Type)
+	}
+}
+
+func disassembleExecutableGlobals(p *Program) map[string]*runtime.PreparedGlobal {
+	if p == nil || p.Executable == nil {
+		return nil
+	}
+	out := make(map[string]*runtime.PreparedGlobal, len(p.Executable.Globals))
+	for name, global := range p.Executable.Globals {
+		out[string(name)] = global
+	}
+	return out
+}
+
+func disassembleExecutableFunctions(p *Program) map[string]*runtime.PreparedFunction {
+	if p == nil || p.Executable == nil {
+		return nil
+	}
+	out := make(map[string]*runtime.PreparedFunction, len(p.Executable.Functions))
+	for name, fn := range p.Executable.Functions {
+		out[string(name)] = fn
+	}
+	return out
+}
+
+func formatExecutableSignature(fn *runtime.PreparedFunction) string {
+	if fn == nil {
+		return ""
+	}
+	return fn.FunctionType.String()
+}
+
+func sanitizeLabel(name string) string {
+	replacer := strings.NewReplacer(
+		"/", "_",
+		".", "_",
+		"-", "_",
+		" ", "_",
+		":", "_",
+	)
+	return replacer.Replace(name)
 }
 
 func validateInstructions(instructions []Instruction) error {

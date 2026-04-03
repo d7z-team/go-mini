@@ -100,3 +100,65 @@ func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
 		t.Fatalf("expected function stubs from executable: %#v", rebuilt.Functions)
 	}
 }
+
+func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
+	prog := NewProgram()
+	prog.Blueprint = &Blueprint{
+		Package:   "demo",
+		Constants: map[string]string{"Version": "v1"},
+	}
+	prog.Globals = []Global{
+		{
+			Name: "counter",
+			Instructions: []Instruction{
+				{Op: "PUSH", Operand: "1", NodeID: "lit_1", Loc: &Location{File: "demo.go", Line: 3, Column: 12}, Comment: "literal"},
+			},
+		},
+	}
+	prog.Entry = []Instruction{{Op: "CALL", Operand: "main", Comment: "call main"}}
+	prog.Executable = &runtime.PreparedProgram{
+		Globals: map[ast.Ident]*runtime.PreparedGlobal{
+			"counter": {Name: "counter", HasInit: true},
+			"pending": {Name: "pending", HasInit: false},
+		},
+		Functions: map[ast.Ident]*runtime.PreparedFunction{
+			"main": {
+				Name: "main",
+				FunctionType: ast.FunctionType{
+					Return: "Void",
+				},
+			},
+			"cleanup": {
+				Name: "cleanup",
+				FunctionType: ast.FunctionType{
+					Return: "Void",
+				},
+				BodyTasks: []runtime.Task{{Op: runtime.OpReturn}},
+			},
+		},
+	}
+
+	asm := prog.Disassemble()
+	expected := []string{
+		"section .rodata",
+		"const.Version: db \"v1\", 0",
+		"section .bss",
+		"global.pending: resq 1",
+		"section .data",
+		"global.counter: ; has_init=true",
+		"0000  PUSH",
+		"node=lit_1",
+		"demo.go:3:12",
+		"section .text",
+		"global _start",
+		"_start:",
+		"fn.cleanup: ; signature function() Void",
+		"executable-only body (1 prepared tasks)",
+		"fn.main: ; signature function() Void",
+	}
+	for _, sym := range expected {
+		if !strings.Contains(asm, sym) {
+			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
+		}
+	}
+}

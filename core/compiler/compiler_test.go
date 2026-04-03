@@ -80,11 +80,11 @@ func main() {}
 	asm := artifact.Bytecode.Disassemble()
 	expected := []string{
 		"go-mini-bytecode",
-		"section .data:",
-		"section .text:",
-		"global base",
-		"global result",
-		"add(",
+		"section .data",
+		"section .text",
+		"global.base:",
+		"global.result:",
+		"fn.add: ; signature",
 		"CALL",
 	}
 	for _, sym := range expected {
