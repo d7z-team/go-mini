@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -216,6 +217,32 @@ func main() { counter = counter + 1 }
 	if err := loaded.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
+}
+
+func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi route conflict") {
+			t.Fatalf("expected ffi route conflict panic, got %v", r)
+		}
+	}()
+
+	exec.RegisterFFISchema("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+}
+
+func TestMiniExecutorRejectsConflictingStructSchemaRegistration(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; }"))
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
+			t.Fatalf("expected ffi struct schema conflict panic, got %v", r)
+		}
+	}()
+
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }"))
 }
 
 func TestNewRuntimeByJSONRejectsASTPayload(t *testing.T) {

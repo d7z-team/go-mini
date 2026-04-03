@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -1032,7 +1033,7 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 		returnType = funcSig.Function.Return
 	}
 
-	e.routes[name] = runtime.FFIRoute{
+	next := runtime.FFIRoute{
 		Name:      name,
 		Bridge:    bridge,
 		MethodID:  methodID,
@@ -1042,13 +1043,27 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 		FuncSig:   funcSig,
 		Return:    returnType,
 	}
+	if existing, ok := e.routes[name]; ok {
+		ensureCompatibleRoute(name, existing, next)
+	}
+	e.routes[name] = next
 	if funcSig != nil {
+		if existing, ok := e.funcSchemas[ast.Ident(name)]; ok && !sameRuntimeFuncSig(existing, funcSig) {
+			panic(fmt.Sprintf("ffi schema conflict for %s: existing=%s new=%s", name, existing.Spec, funcSig.Spec))
+		}
 		e.funcSchemas[ast.Ident(name)] = funcSig
 	}
 }
 
 func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) {
 	if spec != nil {
+		if existing, ok := e.structsMeta[ast.Ident(name)]; ok {
+			merged, ok := mergeRuntimeStructSpec(existing, spec)
+			if !ok {
+				panic(fmt.Sprintf("ffi struct schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+			}
+			spec = merged
+		}
 		e.structsMeta[ast.Ident(name)] = spec
 		return
 	}
@@ -1075,6 +1090,118 @@ func (e *MiniExecutor) formatSchemaWithDoc(spec ast.GoMiniType, doc string, pars
 		sig += " // " + strings.ReplaceAll(doc, "\n", " ")
 	}
 	return sig
+}
+
+func routeConflictError(name string, existing, next runtime.FFIRoute) string {
+	return fmt.Sprintf(
+		"ffi route conflict for %s: existing(method=%d sig=%s bridge=%s) new(method=%d sig=%s bridge=%s)",
+		name,
+		existing.MethodID,
+		existing.Signature,
+		bridgeIdentity(existing.Bridge),
+		next.MethodID,
+		next.Signature,
+		bridgeIdentity(next.Bridge),
+	)
+}
+
+func ensureCompatibleRoute(name string, existing, next runtime.FFIRoute) {
+	if existing.Name != next.Name ||
+		existing.MethodID != next.MethodID ||
+		existing.Signature != next.Signature ||
+		existing.Doc != next.Doc ||
+		!sameRuntimeFuncSig(existing.FuncSig, next.FuncSig) ||
+		!sameBridge(existing.Bridge, next.Bridge) {
+		panic(routeConflictError(name, existing, next))
+	}
+}
+
+func sameRuntimeFuncSig(a, b *runtime.RuntimeFuncSig) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return a.Spec == b.Spec
+	}
+}
+
+func sameRuntimeStructSpec(a, b *runtime.RuntimeStructSpec) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name
+	}
+}
+
+func mergeRuntimeStructSpec(existing, next *runtime.RuntimeStructSpec) (*runtime.RuntimeStructSpec, bool) {
+	switch {
+	case existing == nil || next == nil:
+		return next, existing == next
+	case sameRuntimeStructSpec(existing, next):
+		return existing, true
+	case existing.TypeID != next.TypeID || existing.Name != next.Name:
+		return nil, false
+	}
+
+	existingFields := make(map[string]runtime.RuntimeStructField, len(existing.Fields))
+	for _, field := range existing.Fields {
+		existingFields[field.Name] = field
+	}
+	nextFields := make(map[string]runtime.RuntimeStructField, len(next.Fields))
+	for _, field := range next.Fields {
+		nextFields[field.Name] = field
+	}
+
+	for name, field := range existingFields {
+		if other, ok := nextFields[name]; ok {
+			if field.TypeInfo.Raw != other.TypeInfo.Raw {
+				return nil, false
+			}
+			continue
+		}
+		if field.TypeInfo.Kind != runtime.RuntimeTypeFunction {
+			return nil, false
+		}
+	}
+	for name, field := range nextFields {
+		if _, ok := existingFields[name]; ok {
+			continue
+		}
+		if field.TypeInfo.Kind != runtime.RuntimeTypeFunction {
+			return nil, false
+		}
+	}
+
+	if len(next.Fields) >= len(existing.Fields) {
+		return next, true
+	}
+	return existing, true
+}
+
+func sameBridge(a, b ffigo.FFIBridge) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ta := reflect.TypeOf(a)
+	tb := reflect.TypeOf(b)
+	if ta != tb {
+		return false
+	}
+	return true
+}
+
+func bridgeIdentity(bridge ffigo.FFIBridge) string {
+	if bridge == nil {
+		return "<nil>"
+	}
+	v := reflect.ValueOf(bridge)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		return fmt.Sprintf("%T@0x%x", bridge, v.Pointer())
+	default:
+		return fmt.Sprintf("%T:%v", bridge, bridge)
+	}
 }
 
 func cloneRuntimeFuncSig(sig *runtime.RuntimeFuncSig) *runtime.RuntimeFuncSig {

@@ -39,13 +39,13 @@ func TestFFIPrintln(t *testing.T) {
 	bridge := &MockFmtBridge{}
 
 	// 注册 FFI 路由
-	executor.RegisterFFISchema("fmt.Println", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+	executor.RegisterFFISchema("sandbox.Println", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
 	code := `
 	package main
-	import "fmt"
+	import "sandbox"
 	func main() {
-		fmt.Println("Hello from Sandbox!")
+		sandbox.Println("Hello from Sandbox!")
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

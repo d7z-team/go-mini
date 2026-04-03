@@ -11,6 +11,18 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
+
+var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
+
+var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
+
+var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
+
+var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }"))
+
+var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", ast.GoMiniType("struct { Value Int64; }"))
+
 const (
 	MethodID_MockOS_Open  = 1
 	MethodID_MockOS_Name  = 2
@@ -507,12 +519,6 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
-
-var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
-
-var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
-
 func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
 	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -851,8 +857,6 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
-
 func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
 	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -950,10 +954,6 @@ func (b *Page_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", ast.GoMiniType("struct { Value Int64; }"))
-
-var Page_StructSchema = runtime.MustParseRuntimeStructSpec("Page", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }"))
-
 func RegisterPage(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Page_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -971,5 +971,5 @@ func RegisterPage(executor interface{ RegisterConstant(string, string) }, regist
 	}
 	registrar.RegisterFFISchema("Page.GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
 	registerStructSchema("Selector", Selector_FFI_StructSchema)
-	registerStructSchema("Page", Page_StructSchema)
+	registerStructSchema("Page", Page_FFI_StructSchema)
 }

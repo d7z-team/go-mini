@@ -11,6 +11,8 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var ReversePoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("ReversePoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 const (
 	MethodID_ScriptCalculator_Add         = 1
 	MethodID_ScriptCalculator_Format      = 2
@@ -297,8 +299,6 @@ func (b *ScriptCalculator_Bridge) DestroyHandle(handle uint32) error {
 	}
 	return nil
 }
-
-var ReversePoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("ReversePoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
 
 func RegisterScriptCalculatorLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl ScriptCalculator, registry *ffigo.HandleRegistry) {
 	bridge := &ScriptCalculator_Bridge{Impl: impl, Registry: registry}

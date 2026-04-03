@@ -11,6 +11,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }"))
+
+var calc_Table_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", ast.GoMiniType("struct { Values Map<String, String>; SetString function(Ptr<calc.Table>, Int64, Int64, String) Void; GetString function(Ptr<calc.Table>, Int64, Int64) String; }"))
+
 const (
 	MethodID_Calculator_Add      = 1
 	MethodID_Calculator_Multiply = 2
@@ -124,8 +128,6 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Calculator_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; Add function(Ptr<calc.Calculator>, Int64) Int64; Multiply function(Ptr<calc.Calculator>, Int64, Int64) Int64; GetBase function(Ptr<calc.Calculator>) Int64; }"))
-
 func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -144,7 +146,7 @@ func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, 
 	registrar.RegisterFFISchema("calc.Calculator.Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("calc.Calculator.Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("calc.Calculator.GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
-	registerStructSchema("calc.Calculator", Calculator_StructSchema)
+	registerStructSchema("calc.Calculator", calc_Calculator_FFI_StructSchema)
 }
 
 const (
@@ -248,8 +250,6 @@ func (b *Table_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var Table_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", ast.GoMiniType("struct { Values Map<String, String>; SetString function(Ptr<calc.Table>, Int64, Int64, String) Void; GetString function(Ptr<calc.Table>, Int64, Int64) String; }"))
-
 func RegisterTable(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
 	bridge := &Table_Bridge{Impl: nil, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -267,7 +267,7 @@ func RegisterTable(executor interface{ RegisterConstant(string, string) }, regis
 	}
 	registrar.RegisterFFISchema("calc.Table.SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("calc.Table.GetString", bridge, Table_FFI_Schemas[1].MethodID, Table_FFI_Schemas[1].Sig, Table_FFI_Schemas[1].Doc)
-	registerStructSchema("calc.Table", Table_StructSchema)
+	registerStructSchema("calc.Table", calc_Table_FFI_StructSchema)
 }
 
 const (
@@ -347,10 +347,6 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", ast.GoMiniType("struct { Base Int64; }"))
-
-var calc_Table_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", ast.GoMiniType("struct { Values Map<String, String>; }"))
-
 func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
 	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
 	registrar, ok := executor.(interface {
@@ -360,14 +356,6 @@ func RegisterFactory(executor interface{ RegisterConstant(string, string) }, imp
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		if checker, ok := executor.(interface{ HasStructSchema(string) bool }); ok && checker.HasStructSchema(name) {
-			return
-		}
-		registrar.RegisterStructSchema(name, spec)
-	}
 	registrar.RegisterFFISchema("calc.New", bridge, Factory_FFI_Schemas[0].MethodID, Factory_FFI_Schemas[0].Sig, Factory_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("calc.NewTable", bridge, Factory_FFI_Schemas[1].MethodID, Factory_FFI_Schemas[1].Sig, Factory_FFI_Schemas[1].Doc)
-	registerStructSchema("calc.Calculator", calc_Calculator_FFI_StructSchema)
-	registerStructSchema("calc.Table", calc_Table_FFI_StructSchema)
 }

@@ -11,6 +11,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
+
+var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
+
 const (
 	MethodID_AdvancedFFI_GetSameObject = 1
 	MethodID_AdvancedFFI_IsSame        = 2
@@ -244,10 +248,6 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	}
 	return nil
 }
-
-var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
-
-var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
 
 func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
 	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}

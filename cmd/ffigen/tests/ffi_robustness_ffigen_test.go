@@ -11,6 +11,8 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 const (
 	MethodID_MockGeometry_SumX = 1
 )
@@ -107,8 +109,6 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	}
 	return nil
 }
-
-var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
 
 func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
 	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}

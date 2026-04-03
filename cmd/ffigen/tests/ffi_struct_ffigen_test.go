@@ -11,6 +11,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", ast.GoMiniType("struct { A Point; B Point; }"))
+
+var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+
 const (
 	MethodID_MockShapeAPI_GetRect = 1
 	MethodID_MockShapeAPI_Area    = 2
@@ -150,10 +154,6 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	}
 	return nil
 }
-
-var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", ast.GoMiniType("struct { A Point; B Point; }"))
-
-var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
 
 func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
 	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}

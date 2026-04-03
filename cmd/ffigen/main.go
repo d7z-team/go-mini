@@ -29,6 +29,8 @@ var (
 	knownImports map[string]string
 	moduleCache  map[string]string
 	packagePath  string
+	modulePath   string
+	moduleDir    string
 )
 
 type targetMeta struct {
@@ -219,15 +221,20 @@ func runFileMode(args []string) error {
 }
 
 func initPackagePath(dir string) error {
-	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}")
+	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}|{{if .Module}}{{.Module.Path}}|{{.Module.Dir}}{{end}}")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("deriving import path in %s: %w", dir, err)
 	}
-	packagePath = strings.TrimSpace(string(out))
+	parts := strings.Split(strings.TrimSpace(string(out)), "|")
+	packagePath = parts[0]
 	if packagePath == "" || packagePath == "." {
 		return fmt.Errorf("derived import path is empty or invalid")
+	}
+	if len(parts) >= 3 {
+		modulePath = parts[1]
+		moduleDir = parts[2]
 	}
 	return nil
 }
@@ -240,7 +247,7 @@ func parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
 	}
 	var files []*ast.File
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
 		filePath := filepath.Join(dir, entry.Name())
@@ -318,14 +325,18 @@ type packageData struct {
 }
 
 func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData, error) {
-	conf := types.Config{Importer: importer.Default()}
+	conf := types.Config{Importer: newSourceImporter(), IgnoreFuncBodies: true}
 	info := &types.Info{
 		Types: make(map[ast.Expr]types.TypeAndValue),
 		Defs:  make(map[*ast.Ident]types.Object),
 		Uses:  make(map[*ast.Ident]types.Object),
 	}
 	typeInfo = info
-	_, _ = conf.Check(*pkgName, fset, allFiles, info)
+	checkPath := packagePath
+	if checkPath == "" {
+		checkPath = *pkgName
+	}
+	_, _ = conf.Check(checkPath, fset, allFiles, info)
 
 	knownImports = make(map[string]string)
 	moduleCache = make(map[string]string)
@@ -439,11 +450,13 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 	}, nil
 }
 
-func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, data packageData, packageMode bool) error {
-	var schemas *schemaRegistry
-	if packageMode {
-		schemas = newSchemaRegistry()
-	}
+func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, data packageData, packageMode bool) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("ffigen generation failed: %v", r)
+		}
+	}()
+	schemas := newSchemaRegistry()
 
 	var generated []string
 	for _, target := range data.targets {
@@ -570,6 +583,171 @@ func writeFormattedSource(outputPath, source string) error {
 		return fmt.Errorf("formatting generated code: %w", err)
 	}
 	return os.WriteFile(outputPath, finalBuf.Bytes(), 0o644)
+}
+
+type sourceImporter struct {
+	fallback types.Importer
+	cache    map[string]*types.Package
+}
+
+func newSourceImporter() types.Importer {
+	return &sourceImporter{
+		fallback: importer.Default(),
+		cache:    make(map[string]*types.Package),
+	}
+}
+
+func (i *sourceImporter) Import(path string) (*types.Package, error) {
+	if pkg, ok := i.cache[path]; ok {
+		return pkg, nil
+	}
+	if modulePath != "" && moduleDir != "" && (path == modulePath || strings.HasPrefix(path, modulePath+"/")) {
+		pkg, err := i.importFromModule(path)
+		if err == nil {
+			i.cache[path] = pkg
+			return pkg, nil
+		}
+	}
+	pkg, err := i.fallback.Import(path)
+	if err == nil {
+		i.cache[path] = pkg
+	}
+	return pkg, err
+}
+
+func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
+	rel := strings.TrimPrefix(path, modulePath)
+	rel = strings.TrimPrefix(rel, "/")
+	dir := moduleDir
+	if rel != "" {
+		dir = filepath.Join(moduleDir, filepath.FromSlash(rel))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	localFset := token.NewFileSet()
+	files := make([]*ast.File, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		filename := filepath.Join(dir, entry.Name())
+		file, parseErr := parser.ParseFile(localFset, filename, nil, parser.ParseComments)
+		if parseErr != nil || isGeneratedFile(entry.Name(), file) {
+			continue
+		}
+		files = append(files, file)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no source files for import %s", path)
+	}
+	pkgName := files[0].Name.Name
+	pkg := types.NewPackage(path, pkgName)
+	scope := pkg.Scope()
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch s := spec.(type) {
+					case *ast.TypeSpec:
+						if !s.Name.IsExported() || scope.Lookup(s.Name.Name) != nil {
+							continue
+						}
+						obj := types.NewTypeName(s.Pos(), pkg, s.Name.Name, nil)
+						_ = types.NewNamed(obj, types.NewStruct(nil, nil), nil)
+						scope.Insert(obj)
+					case *ast.ValueSpec:
+						for _, name := range s.Names {
+							if !name.IsExported() || scope.Lookup(name.Name) != nil {
+								continue
+							}
+							scope.Insert(types.NewVar(name.Pos(), pkg, name.Name, types.Typ[types.UntypedNil]))
+						}
+					}
+				}
+			case *ast.FuncDecl:
+				if !d.Name.IsExported() || scope.Lookup(d.Name.Name) != nil {
+					continue
+				}
+				sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+				scope.Insert(types.NewFunc(d.Name.Pos(), pkg, d.Name.Name, sig))
+			}
+		}
+	}
+	return pkg, nil
+}
+
+func sanitizeFilesForTypeCheck(files []*ast.File) []*ast.File {
+	sanitized := make([]*ast.File, 0, len(files))
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		clone := &ast.File{
+			Name: ast.NewIdent(file.Name.Name),
+		}
+
+		usedImports := make(map[string]bool)
+		markImports := func(node ast.Node) {
+			ast.Inspect(node, func(n ast.Node) bool {
+				se, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if id, ok := se.X.(*ast.Ident); ok {
+					usedImports[id.Name] = true
+				}
+				return true
+			})
+		}
+
+		for _, decl := range file.Decls {
+			switch d := decl.(type) {
+			case *ast.GenDecl:
+				if d.Tok != token.TYPE && d.Tok != token.CONST && d.Tok != token.VAR {
+					continue
+				}
+				clone.Decls = append(clone.Decls, d)
+				markImports(d)
+			case *ast.FuncDecl:
+				if d.Type == nil {
+					continue
+				}
+				sig := *d
+				sig.Body = nil
+				clone.Decls = append(clone.Decls, &sig)
+				markImports(d.Type)
+				if d.Recv != nil {
+					markImports(d.Recv)
+				}
+			}
+		}
+
+		for _, imp := range file.Imports {
+			alias := ""
+			if imp.Name != nil {
+				alias = imp.Name.Name
+			} else {
+				path := strings.Trim(imp.Path.Value, "\"")
+				parts := strings.Split(path, "/")
+				alias = parts[len(parts)-1]
+			}
+			if usedImports[alias] {
+				clone.Imports = append(clone.Imports, imp)
+			}
+		}
+		if len(clone.Imports) > 0 {
+			specs := make([]ast.Spec, 0, len(clone.Imports))
+			for _, imp := range clone.Imports {
+				specs = append(specs, imp)
+			}
+			clone.Decls = append([]ast.Decl{&ast.GenDecl{Tok: token.IMPORT, Specs: specs}}, clone.Decls...)
+		}
+		sanitized = append(sanitized, clone)
+	}
+	return sanitized
 }
 
 func parserErrorContext(err error, source string) string {
@@ -943,13 +1121,26 @@ func (r *displayTypeResolver) displayName(typeName string) string {
 		return "Any"
 	}
 	if strings.Contains(typeName, ".") {
-		parts := strings.SplitN(typeName, ".", 2)
-		if len(parts) == 2 {
-			if importPath, ok := knownImports[parts[0]]; ok {
-				if moduleName := resolveImportedModule(importPath); moduleName != "" {
-					return moduleName + "." + parts[1]
+		owner, name, ok := splitQualifiedTypeName(typeName)
+		if ok {
+			if knownPath, known := knownImports[owner]; known {
+				moduleName := resolveImportedModule(knownPath)
+				if moduleName == "" {
+					return owner + "." + name
 				}
-				return typeName
+				return moduleName + "." + name
+			}
+			if strings.Contains(owner, "/") {
+				moduleName := resolveImportedModule(owner)
+				if moduleName == "" {
+					for alias, path := range knownImports {
+						if path == owner {
+							return alias + "." + name
+						}
+					}
+					return typeName
+				}
+				return moduleName + "." + name
 			}
 		}
 		if r.moduleName == "" {
@@ -1048,10 +1239,11 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			field := funcType.Params.List[paramIdx]
 			return len(field.Names) > 0 && field.Names[0].Name == "__recv"
 		}
-		receiverType := typeToString(funcType.Params.List[paramIdx].Type)
+		receiverType := displayTypeName(typeToString(funcType.Params.List[paramIdx].Type))
 		receiverType = strings.TrimPrefix(receiverType, "Ptr<")
 		receiverType = strings.TrimSuffix(receiverType, ">")
-		return receiverType == methodsPrefix
+		expectedType := displayTypeName(methodsPrefix)
+		return receiverType == expectedType
 	}
 	writeBoundRegistrations := func(indent string) {
 		for i, method := range iface.Methods.List {
@@ -1733,6 +1925,14 @@ func structSchemaVarName(typeName string) string {
 	return replacer.Replace(typeName) + "_FFI_StructSchema"
 }
 
+func splitQualifiedTypeName(typeName string) (string, string, bool) {
+	idx := strings.LastIndex(typeName, ".")
+	if idx <= 0 || idx == len(typeName)-1 {
+		return "", "", false
+	}
+	return typeName[:idx], typeName[idx+1:], true
+}
+
 func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType, ownedStructs map[string]bool, currentOwned string, packageMode bool) []string {
 	seen := make(map[string]bool)
 	var ordered []string
@@ -1773,7 +1973,7 @@ func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.
 		if idx := strings.LastIndex(localName, "."); idx >= 0 {
 			localName = localName[idx+1:]
 		}
-		if packageMode && ownedStructs != nil && ownedStructs[localName] && localName != currentOwned {
+		if ownedStructs != nil && ownedStructs[localName] && localName != currentOwned {
 			return
 		}
 		if !seen[localName] && structs[localName] != nil {
@@ -2068,6 +2268,9 @@ func isPrimitive(name string) bool {
 func typeToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
+		if obj := lookupTypeObject(t); obj != nil && obj.Pkg() != nil && obj.Pkg().Path() != packagePath {
+			return obj.Pkg().Path() + "." + obj.Name()
+		}
 		return t.Name
 	case *ast.ArrayType:
 		return fmt.Sprintf("Array<%s>", typeToString(t.Elt))
@@ -2076,7 +2279,13 @@ func typeToString(expr ast.Expr) string {
 	case *ast.StarExpr:
 		return fmt.Sprintf("Ptr<%s>", typeToString(t.X))
 	case *ast.SelectorExpr:
+		if obj := lookupTypeObject(t.Sel); obj != nil && obj.Pkg() != nil {
+			return obj.Pkg().Path() + "." + obj.Name()
+		}
 		if x, ok := t.X.(*ast.Ident); ok {
+			if importPath, ok := knownImports[x.Name]; ok {
+				return importPath + "." + t.Sel.Name
+			}
 			return x.Name + "." + t.Sel.Name
 		}
 		return t.Sel.Name
@@ -2090,6 +2299,16 @@ func typeToString(expr ast.Expr) string {
 	default:
 		return "Any"
 	}
+}
+
+func lookupTypeObject(id *ast.Ident) types.Object {
+	if id == nil || typeInfo == nil {
+		return nil
+	}
+	if obj := typeInfo.Uses[id]; obj != nil {
+		return obj
+	}
+	return typeInfo.Defs[id]
 }
 
 func emitReverseRead(sb *strings.Builder, varName, pType, sourceName string) {
@@ -2172,6 +2391,15 @@ func toGoType(pType string) string {
 	case "error":
 		return "error"
 	default:
+		if owner, name, ok := splitQualifiedTypeName(pType); ok && strings.Contains(owner, "/") {
+			for alias, path := range knownImports {
+				if path == owner {
+					return alias + "." + name
+				}
+			}
+			parts := strings.Split(owner, "/")
+			return parts[len(parts)-1] + "." + name
+		}
 		return pType
 	}
 }

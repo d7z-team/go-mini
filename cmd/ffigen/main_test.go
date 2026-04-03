@@ -359,6 +359,119 @@ type Demo interface {
 	}
 }
 
+func TestRunFileModeDeduplicatesSharedStructSchemasAcrossTargets(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "order.go", `package pkgmode
+
+// ffigen:methods Order
+type Order struct {
+	ID string
+}
+
+func (o *Order) Close() {}
+`)
+	writeTestFile(t, workspace, "service.go", `package pkgmode
+
+// ffigen:module order
+type OrderService interface {
+	New(id string) *Order
+}
+`)
+
+	outputPath := filepath.Join(workspace, "ffigen_shared.go")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputPath
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	err := runFileMode([]string{
+		filepath.Join(workspace, "order.go"),
+		filepath.Join(workspace, "service.go"),
+	})
+	if err != nil {
+		t.Fatalf("runFileMode: %v", err)
+	}
+
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if count := strings.Count(code, "var order_Order_FFI_StructSchema = "); count != 1 {
+		t.Fatalf("expected one shared struct schema, got %d\n%s", count, code)
+	}
+	if count := strings.Count(code, `registerStructSchema("order.Order",`); count != 1 {
+		t.Fatalf("expected one shared struct registration, got %d\n%s", count, code)
+	}
+}
+
+func TestRunFileModeFallsBackToImportAliasWhenModuleIsUnresolved(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+import "time"
+
+// ffigen:module demo
+type Demo interface {
+	Load() time.Time
+}
+`)
+
+	outputPath := filepath.Join(workspace, "ffigen_demo.go")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputPath
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+		t.Fatalf("runFileMode: %v", err)
+	}
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, "Load() time.Time") {
+		t.Fatalf("expected unresolved import to fall back to alias form, got:\n%s", code)
+	}
+}
+
+func TestRunFileModeIgnoresSiblingTestFiles(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module demo
+type Demo interface {
+	Ping() string
+}
+`)
+	writeTestFile(t, workspace, "api_test.go", `package pkgmode
+
+import engine "gopkg.d7z.net/go-mini/core"
+
+var _ = engine.NewMiniExecutor
+`)
+
+	outputPath := filepath.Join(workspace, "ffigen_demo.go")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputPath
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+		t.Fatalf("runFileMode should ignore sibling _test.go files, got %v", err)
+	}
+}
+
 func TestDetectGenerationModeRejectsGeneratedFileInput(t *testing.T) {
 	mode, err := detectGenerationMode([]string{"./", "ffigen_ops.go"})
 	if err == nil || !strings.Contains(err.Error(), "generated file") {

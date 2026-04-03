@@ -8,6 +8,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
 
 // CoverageMockOS 实现了复杂的 OS 接口用于测试覆盖率
@@ -54,7 +55,9 @@ func (m *CoverageMockOS) Deep(n Nested) Nested {
 
 func TestFFICoverage(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
+	fmtImpl := &fmtlib.FmtHost{}
+	fmtlib.RegisterFmt(executor, fmtImpl, executor.HandleRegistry())
+	fmtlib.RegisterFmtAliases(executor, fmtImpl, executor.HandleRegistry())
 
 	mock := &CoverageMockOS{}
 	registry := ffigo.NewHandleRegistry()

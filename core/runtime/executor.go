@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -463,6 +464,9 @@ func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if existing, ok := e.routes[name]; ok {
+		ensureCompatibleRuntimeRoute(name, existing, route)
+	}
 	e.routes[name] = route
 }
 
@@ -473,7 +477,117 @@ func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
 		delete(e.metadata.structsByName, name)
 		return
 	}
+	if existing, ok := e.metadata.structsByName[name]; ok {
+		merged, ok := mergeRuntimeStructSchema(existing, spec)
+		if !ok {
+			panic(fmt.Sprintf("ffi struct schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+		}
+		spec = merged
+	}
 	e.metadata.registerStructSchema(name, spec)
+}
+
+func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
+	if existing.Name != next.Name ||
+		existing.MethodID != next.MethodID ||
+		existing.Signature != next.Signature ||
+		existing.Doc != next.Doc ||
+		!sameRuntimeFuncSchema(existing.FuncSig, next.FuncSig) ||
+		!sameRuntimeBridge(existing.Bridge, next.Bridge) {
+		panic(fmt.Sprintf(
+			"ffi route conflict for %s: existing(method=%d sig=%s bridge=%s) new(method=%d sig=%s bridge=%s)",
+			name,
+			existing.MethodID,
+			existing.Signature,
+			runtimeBridgeIdentity(existing.Bridge),
+			next.MethodID,
+			next.Signature,
+			runtimeBridgeIdentity(next.Bridge),
+		))
+	}
+}
+
+func sameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return a.Spec == b.Spec
+	}
+}
+
+func sameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
+	switch {
+	case a == nil || b == nil:
+		return a == b
+	default:
+		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name
+	}
+}
+
+func mergeRuntimeStructSchema(existing, next *RuntimeStructSpec) (*RuntimeStructSpec, bool) {
+	switch {
+	case existing == nil || next == nil:
+		return next, existing == next
+	case sameRuntimeStructSchema(existing, next):
+		return existing, true
+	case existing.TypeID != next.TypeID || existing.Name != next.Name:
+		return nil, false
+	}
+
+	existingFields := make(map[string]RuntimeStructField, len(existing.Fields))
+	for _, field := range existing.Fields {
+		existingFields[field.Name] = field
+	}
+	nextFields := make(map[string]RuntimeStructField, len(next.Fields))
+	for _, field := range next.Fields {
+		nextFields[field.Name] = field
+	}
+
+	for name, field := range existingFields {
+		if other, ok := nextFields[name]; ok {
+			if field.TypeInfo.Raw != other.TypeInfo.Raw {
+				return nil, false
+			}
+			continue
+		}
+		if field.TypeInfo.Kind != RuntimeTypeFunction {
+			return nil, false
+		}
+	}
+	for name, field := range nextFields {
+		if _, ok := existingFields[name]; ok {
+			continue
+		}
+		if field.TypeInfo.Kind != RuntimeTypeFunction {
+			return nil, false
+		}
+	}
+
+	if len(next.Fields) >= len(existing.Fields) {
+		return next, true
+	}
+	return existing, true
+}
+
+func sameRuntimeBridge(a, b any) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return reflect.TypeOf(a) == reflect.TypeOf(b)
+}
+
+func runtimeBridgeIdentity(bridge any) string {
+	if bridge == nil {
+		return "<nil>"
+	}
+	v := reflect.ValueOf(bridge)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		return fmt.Sprintf("%T@0x%x", bridge, v.Pointer())
+	default:
+		return fmt.Sprintf("%T:%v", bridge, bridge)
+	}
 }
 
 func (e *Executor) RegisterConstant(name, val string) {

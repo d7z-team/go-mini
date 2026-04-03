@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -108,4 +110,45 @@ func TestSerializeVarToAnyKeepsOpaqueHandleOpaque(t *testing.T) {
 	if !ok || id != 42 {
 		t.Fatalf("expected opaque handle id, got %#v", decoded)
 	}
+}
+
+func TestRegisterRouteRejectsConflictingDefinitions(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+		routes:   make(map[string]FFIRoute),
+	}
+	exec.RegisterRoute("demo.Call", FFIRoute{
+		Name:      "demo.Call",
+		MethodID:  1,
+		Signature: "function(String) Void",
+		FuncSig:   MustParseRuntimeFuncSig("function(String) Void"),
+	})
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi route conflict") {
+			t.Fatalf("expected ffi route conflict panic, got %v", r)
+		}
+	}()
+
+	exec.RegisterRoute("demo.Call", FFIRoute{
+		Name:      "demo.Call",
+		MethodID:  2,
+		Signature: "function(String) Void",
+		FuncSig:   MustParseRuntimeFuncSig("function(String) Void"),
+	})
+}
+
+func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+	}
+	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }"))
+
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
+			t.Fatalf("expected ffi struct schema conflict panic, got %v", r)
+		}
+	}()
+
+	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; Name String; }"))
 }
