@@ -121,3 +121,50 @@ func main() {
 		}
 	}
 }
+
+func TestTolerantBuildReportsUnknownImport(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceSnippet := `package main
+import "definitely/not-found"
+
+func main() {}
+`
+
+	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	if len(errs) == 0 {
+		t.Fatal("expected unknown import diagnostic")
+	}
+
+	found := false
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "module not found: definitely/not-found") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected unknown import error, got: %+v", errs)
+	}
+}
+
+func TestTolerantBuildAllowsRegisteredFFIImport(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceSnippet := `package main
+import "time"
+
+func main() {
+	time.Sleep(1 * time.Second)
+}
+`
+
+	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "module not found: time") {
+			t.Fatalf("registered FFI import should be accepted, got: %v", err)
+		}
+	}
+}

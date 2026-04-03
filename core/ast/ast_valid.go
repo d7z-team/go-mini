@@ -33,6 +33,7 @@ type ValidRoot struct {
 	Imported      map[string]bool
 	ImportedRoots map[string]*ValidRoot
 	Discovered    map[Ident]string
+	KnownImports  map[string]struct{}
 	importStack   []string
 	MaxTypeDepth  int  // 递归类型检查深度限制
 	Tolerant      bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
@@ -84,6 +85,7 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 			Imported:      make(map[string]bool),
 			ImportedRoots: make(map[string]*ValidRoot),
 			Discovered:    make(map[Ident]string),
+			KnownImports:  make(map[string]struct{}),
 			importStack:   make([]string, 0),
 			MaxTypeDepth:  256,
 			Tolerant:      tolerant,
@@ -111,14 +113,15 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, t := range externalSpecs {
 		v.root.vars[ident] = t
+		sIdent := string(ident)
+		if idx := strings.Index(sIdent, "."); idx != -1 {
+			pkgPath := sIdent[:idx]
+			v.root.registerKnownImportPath(pkgPath)
 
-		// 自动推断包名前缀并注册为 Package 类型，以支持成员访问补全 (符合 GEMINI.md XI)
-		// 宽容模式下只记录为“可发现包”，不要伪装成已导入变量。
-		if v.root.Tolerant {
-			sIdent := string(ident)
-			if idx := strings.Index(sIdent, "."); idx != -1 {
-				pkgName := Ident(sIdent[:idx])
-				v.root.registerDiscoveredPackage(pkgName, string(pkgName))
+			// 自动推断包名前缀用于补全候选；不要伪装成已导入变量。
+			if v.root.Tolerant {
+				pkgName := Ident(pkgPath)
+				v.root.registerDiscoveredPackage(pkgName, pkgPath)
 			}
 		}
 
@@ -171,6 +174,42 @@ func (r *ValidRoot) registerDiscoveredPackage(alias Ident, path string) {
 	if _, exists := r.Discovered[alias]; !exists {
 		r.Discovered[alias] = path
 	}
+}
+
+func (r *ValidRoot) registerKnownImportPath(path string) {
+	if path == "" {
+		return
+	}
+	r.KnownImports[path] = struct{}{}
+	if dotted := strings.ReplaceAll(path, "/", "."); dotted != path {
+		r.KnownImports[dotted] = struct{}{}
+	}
+	if slashed := strings.ReplaceAll(path, ".", "/"); slashed != path {
+		r.KnownImports[slashed] = struct{}{}
+	}
+}
+
+func (r *ValidRoot) HasExternalImportPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	if _, ok := r.KnownImports[path]; ok {
+		return true
+	}
+	dotted := strings.ReplaceAll(path, "/", ".")
+	if _, ok := r.KnownImports[dotted]; ok {
+		return true
+	}
+	prefixes := []string{path + ".", dotted + "."}
+	for name := range r.vars {
+		s := string(name)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(s, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (r *ValidRoot) DiscoverImportedRoot(path string) {
@@ -538,7 +577,10 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	if c.root.ModuleLoader == nil {
-		return nil // 回退到 FFI 行为
+		if c.root.HasExternalImportPath(path) {
+			return nil
+		}
+		return fmt.Errorf("module not found: %s", path)
 	}
 	if c.root.Imported[path] {
 		return nil
@@ -560,8 +602,10 @@ func (c *ValidContext) ImportPackage(path string) error {
 
 	prog, err := c.root.ModuleLoader(path)
 	if err != nil {
-		// 找不到模块时，假设其为 FFI 包
-		return nil
+		if c.root.HasExternalImportPath(path) {
+			return nil
+		}
+		return err
 	}
 
 	externalSpecs := make(map[Ident]GoMiniType, len(c.root.vars))

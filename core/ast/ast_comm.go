@@ -87,6 +87,7 @@ type BaseNode struct {
 	Type   GoMiniType  `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
 	Loc    *Position   `json:"loc,omitempty"`     // 源码位置映射: 仅语句和关键表达式包含
 	IsType bool        `json:"is_type,omitempty"` // 语义标记：标识该节点是否正处于类型上下文（如 case T:）
+	Invalid bool       `json:"invalid,omitempty"` // 语义标记：当前节点的类型推导已被前置错误污染
 	Scope  interface{} `json:"-"`                 // 持久化作用域，供 LSP 查询。使用 interface{} 避免循环依赖（虽然在同包，但为了后续重构解耦）。
 }
 

@@ -65,6 +65,7 @@ func (b *BadExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
 	ctx.AddErrorf("语法错误：无法解析的表达式")
 	b.Type = "Any"
+	b.Invalid = true
 	return nil // 软处理：不中断校验流程
 }
 
@@ -83,6 +84,7 @@ func (b *BadStmt) stmtNode() {}
 func (b *BadStmt) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
 	ctx.AddErrorf("语法错误：无法解析的语句块")
+	b.Invalid = true
 	return nil // 软处理：不中断校验流程
 }
 

@@ -1000,7 +1000,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 
 	typeName := objType.BaseName()
 	// 1. 查找结构体成员
-	if st, ok := ctx.root.structs[Ident(typeName)]; ok {
+	if st, ok := ctx.GetStruct(Ident(typeName)); ok {
 		for f, t := range st.Fields {
 			items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
 		}
@@ -1020,7 +1020,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 	}
 
 	// 2. 查找接口成员
-	if it, ok := ctx.root.interfaces[Ident(typeName)]; ok {
+	if it, ok := ctx.GetInterface(Ident(typeName)); ok {
 		if methods, ok := it.Type.ReadInterfaceMethods(); ok {
 			for m, t := range methods {
 				items = append(items, CompletionItem{Label: m, Kind: "method", Type: t.MiniType()})
@@ -1049,6 +1049,9 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 		if t, ok := ctx.GetVariable(e.Name); ok {
 			return t
 		}
+		if _, known, _ := ctx.root.ResolvePackage(e.Name); known {
+			return "Package"
+		}
 	case *MemberExpr:
 		objType := inferLSPTypeRecursive(ctx, e.Object, depth+1)
 		if objType == "" {
@@ -1056,7 +1059,7 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 		}
 		// 1. 尝试从结构体中查找
 		typeName := objType.BaseName()
-		if st, ok := ctx.root.structs[Ident(typeName)]; ok {
+		if st, ok := ctx.GetStruct(Ident(typeName)); ok {
 			if t, ok := st.Fields[e.Property]; ok {
 				return t
 			}
@@ -1065,6 +1068,12 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 			}
 		}
 		// 2. 尝试从接口中查找
+		if iStmt, ok := ctx.GetInterface(Ident(typeName)); ok {
+			methods, _ := iStmt.Type.ReadInterfaceMethods()
+			if sig, ok := methods[string(e.Property)]; ok {
+				return sig.MiniType()
+			}
+		}
 		if iStmt, ok := ctx.GetInterface(Ident(objType)); ok {
 			methods, _ := iStmt.Type.ReadInterfaceMethods()
 			if sig, ok := methods[string(e.Property)]; ok {

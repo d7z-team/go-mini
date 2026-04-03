@@ -6,6 +6,17 @@ import (
 	"strings"
 )
 
+func invalidReason(node Node, fallback string) string {
+	if node == nil || node.GetBase() == nil || !node.GetBase().Invalid {
+		return fallback
+	}
+	meta := node.GetBase().Meta
+	if meta == "" {
+		meta = "表达式"
+	}
+	return fmt.Sprintf("前置%s存在错误，无法精确推导", meta)
+}
+
 type IdentifierExpr struct {
 	BaseNode
 	Name Ident `json:"name"`
@@ -80,6 +91,12 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 			s.Type = "Any"
 		}
 	} else if xType == "TypeHandle" || xType.IsAny() {
+		if s.X.GetBase().Invalid {
+			err := errors.New(invalidReason(s.X, "前置表达式存在错误，无法精确推导解引用结果"))
+			ctx.AddErrorf("%s", err.Error())
+			s.Invalid = true
+			return err
+		}
 		s.Type = "Any"
 	} else {
 		err := fmt.Errorf("无法解引用非指针类型: %s", xType)
@@ -275,6 +292,12 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
+			if c.Func.GetBase().Invalid {
+				err := errors.New(invalidReason(c.Func, "调用目标存在错误，无法精确推导返回类型"))
+				ctx.AddErrorf("%s", err.Error())
+				c.Invalid = true
+				return err
+			}
 			c.Type = "Any"
 			return nil
 		}
@@ -457,6 +480,12 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 	objType := m.Object.GetBase().Type
 	if objType == "Any" {
+		if m.Object.GetBase().Invalid {
+			err := errors.New(invalidReason(m.Object, "成员访问对象存在错误，无法精确推导成员类型"))
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			m.Invalid = true
+			return err
+		}
 		m.Type = "Any"
 		return nil
 	}
@@ -550,8 +579,10 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			ctx.WithNode(m).AddErrorf("%s", err.Error())
 			return err
 		}
-		m.Type = "Any"
-		return nil
+		err := errors.New("成员访问对象无法解析为包或结构体")
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		m.Invalid = true
+		return err
 	}
 
 	if objType.IsInterface() {
@@ -885,6 +916,12 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	objType := i.Object.GetBase().Type
 
 	if objType.IsAny() {
+		if i.Object.GetBase().Invalid || i.Index.GetBase().Invalid {
+			err := errors.New("索引表达式存在前置错误，无法精确推导结果类型")
+			ctx.AddErrorf("%s", err.Error())
+			i.Invalid = true
+			return err
+		}
 		if i.Multi {
 			i.Type = CreateTupleType("Any", "Bool")
 		} else {
@@ -1016,6 +1053,12 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 	if !xType.IsArray() && xType != "TypeBytes" && !xType.IsAny() {
 		err := fmt.Errorf("类型 %s 不支持切片操作", xType)
 		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	if xType.IsAny() && s.X.GetBase().Invalid {
+		err := errors.New("切片对象存在前置错误，无法精确推导切片类型")
+		ctx.AddErrorf("%s", err.Error())
+		s.Invalid = true
 		return err
 	}
 

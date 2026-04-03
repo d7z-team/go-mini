@@ -537,3 +537,51 @@ func main() {
 		t.Fatalf("expected missing import diagnostic, got logs: %+v", validator.Logs())
 	}
 }
+
+func TestImportedModuleChainedMemberCompletion(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+func NewPoint(x Int64, y Int64) Point { return Point{X: x, Y: y} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
+		t.Fatalf("sub module check failed: %v", err)
+	}
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.NewPoint(1, 2).Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 26)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected chained member completions X/Y, got %+v", completions)
+	}
+}
