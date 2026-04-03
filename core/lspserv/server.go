@@ -37,9 +37,8 @@ func NewLSPServer(e *engine.MiniExecutor) *LSPServer {
 	}
 }
 
-// UpdateSession 更新或创建脚本会话并返回诊断信息
-func (s *LSPServer) UpdateSession(uri, code string) ([]Diagnostic, error) {
-	// 1. 尝试获取包名（简单正则或初步解析）
+// UpdateSession 更新或创建脚本会话并返回诊断信息。
+func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, error) {
 	pkgName := "main"
 	converter := ffigo.NewGoToASTConverter()
 	node, _ := converter.ConvertSourceTolerant(uri, code)
@@ -47,14 +46,12 @@ func (s *LSPServer) UpdateSession(uri, code string) ([]Diagnostic, error) {
 		pkgName = prog.Package
 	}
 
-	// 2. 存储文件会话
 	s.sessions.Store(uri, &fileSession{pkgName: pkgName, code: code})
 
-	// 3. 触发包级重新聚合分析
-	return s.rebuildPackage(pkgName, uri)
+	return s.rebuildPackage(pkgName)
 }
 
-func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, error) {
+func (s *LSPServer) rebuildPackage(pkgName string) (map[string][]Diagnostic, error) {
 	val, _ := s.packages.LoadOrStore(pkgName, &packageState{files: make(map[string]string)})
 	pkg := val.(*packageState)
 	pkg.mu.Lock()
@@ -69,10 +66,9 @@ func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, err
 		return true
 	})
 
-	// 聚合所有文件到单个 ProgramStmt
 	var combinedNode *ast.ProgramStmt
 	converter := ffigo.NewGoToASTConverter()
-	diagnostics := make([]Diagnostic, 0)
+	allDiagnostics := make(map[string][]Diagnostic)
 
 	for uri, code := range pkg.files {
 		node, errs := converter.ConvertSourceTolerant(uri, code)
@@ -81,19 +77,17 @@ func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, err
 		for _, err := range errs {
 			var scanErr scanner.Error
 			if errors.As(err, &scanErr) {
-				if scanErr.Pos.Filename == targetURI {
-					diagnostics = append(diagnostics, Diagnostic{
-						Range: Range{
-							Start: Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column - 1},
-							End:   Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column},
-						},
-						Severity: 1,
-						Source:   "go-mini-syntax",
-						Message:  scanErr.Msg,
-					})
-				}
-			} else if err != nil && uri == targetURI {
-				diagnostics = append(diagnostics, Diagnostic{
+				allDiagnostics[uri] = append(allDiagnostics[uri], Diagnostic{
+					Range: Range{
+						Start: Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column - 1},
+						End:   Position{Line: scanErr.Pos.Line - 1, Character: scanErr.Pos.Column},
+					},
+					Severity: 1,
+					Source:   "go-mini-syntax",
+					Message:  scanErr.Msg,
+				})
+			} else if err != nil {
+				allDiagnostics[uri] = append(allDiagnostics[uri], Diagnostic{
 					Range:    FromInternalPos(&ast.Position{L: 1, C: 1}),
 					Severity: 1,
 					Source:   "go-mini-syntax",
@@ -106,69 +100,56 @@ func (s *LSPServer) rebuildPackage(pkgName, targetURI string) ([]Diagnostic, err
 			if combinedNode == nil {
 				combinedNode = prog
 			} else {
-				// 合并符号（借用我们在 cmd/exec 中定义的逻辑思路）
 				mergeProgramStmts(combinedNode, prog)
 			}
 		}
 	}
 
 	if combinedNode == nil {
-		return diagnostics, nil
+		return allDiagnostics, nil
 	}
 
 	// 运行校验以生成持久化 Scope
 	prog, errs := s.executor.NewMiniProgramByProgramTolerant(combinedNode)
 	pkg.combined = prog
 
-	// 将当前触发文件的诊断信息返回
+	// 收集所有文件的诊断信息
 	for _, err := range errs {
 		if astErr, ok := err.(*ast.MiniAstError); ok {
 			for _, log := range astErr.Logs {
 				loc := log.Node.GetBase().Loc
-				// 严格过滤文件路径，确保错误显示在正确的文件中
-				if loc != nil && loc.F == targetURI {
+				if loc != nil && loc.F != "" {
 					diag := Diagnostic{
 						Range:    FromInternalPos(loc),
 						Severity: 1,
 						Source:   "go-mini",
 						Message:  log.Message,
 					}
-					diagnostics = append(diagnostics, diag)
+					allDiagnostics[loc.F] = append(allDiagnostics[loc.F], diag)
 				}
 			}
 		} else {
-			// 处理其他类型的运行时或执行错误
+			// 处理运行时错误
 			var vme *runtime.VMError
 			if errors.As(err, &vme) {
-				if len(vme.Frames) > 0 && vme.Frames[0].Filename == targetURI {
+				if len(vme.Frames) > 0 {
+					f := vme.Frames[0]
 					diag := Diagnostic{
 						Range: FromInternalPos(&ast.Position{
-							L: vme.Frames[0].Line,
-							C: vme.Frames[0].Column,
+							L: f.Line,
+							C: f.Column,
 						}),
 						Severity: 1,
 						Source:   "go-mini-runtime",
 						Message:  vme.Message,
 					}
-					for _, f := range vme.Frames {
-						diag.RelatedInformation = append(diag.RelatedInformation, DiagnosticRelatedInformation{
-							Location: Location{
-								URI: f.Filename,
-								Range: FromInternalPos(&ast.Position{
-									L: f.Line, C: f.Column,
-									EL: f.Line, EC: f.Column + 1,
-								}),
-							},
-							Message: fmt.Sprintf("at %s()", f.Function),
-						})
-					}
-					diagnostics = append(diagnostics, diag)
+					allDiagnostics[f.Filename] = append(allDiagnostics[f.Filename], diag)
 				}
 			}
 		}
 	}
 
-	return diagnostics, nil
+	return allDiagnostics, nil
 }
 
 func mergeProgramStmts(dest, src *ast.ProgramStmt) {

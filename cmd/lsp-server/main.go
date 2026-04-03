@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/lspserv"
@@ -33,6 +34,14 @@ func main() {
 	server := lspserv.NewLSPServer(executor)
 	reader := bufio.NewReader(os.Stdin)
 
+	var mu sync.Mutex
+	writeMessage := func(msg interface{}) {
+		mu.Lock()
+		defer mu.Unlock()
+		body, _ := json.Marshal(msg)
+		fmt.Printf("Content-Length: %d\r\n\r\n%s", len(body), body)
+	}
+
 	for {
 		msg, err := readMessage(reader)
 		if err != nil {
@@ -43,7 +52,14 @@ func main() {
 			continue
 		}
 
-		handleMessage(server, msg)
+		go func(m *rpcMessage) {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Fprintf(os.Stderr, "LSP Panic recovered: %v\n", r)
+				}
+			}()
+			handleMessage(server, m, writeMessage)
+		}(msg)
 	}
 }
 
@@ -80,12 +96,7 @@ func readMessage(r *bufio.Reader) (*rpcMessage, error) {
 	return &msg, nil
 }
 
-func writeMessage(msg interface{}) {
-	body, _ := json.Marshal(msg)
-	fmt.Printf("Content-Length: %d\r\n\r\n%s", len(body), body)
-}
-
-func handleMessage(server *lspserv.LSPServer, msg *rpcMessage) {
+func handleMessage(server *lspserv.LSPServer, msg *rpcMessage, writeMessage func(interface{})) {
 	switch msg.Method {
 	case "initialize":
 		writeMessage(rpcMessage{
@@ -125,14 +136,16 @@ func handleMessage(server *lspserv.LSPServer, msg *rpcMessage) {
 			code = params.ContentChanges[0].Text
 		}
 
-		diagnostics, _ := server.UpdateSession(uri, code)
+		allDiagnostics, _ := server.UpdateSession(uri, code)
 
-		// 发送异步诊断推送
-		writeMessage(rpcMessage{
-			JSONRPC: "2.0",
-			Method:  "textDocument/publishDiagnostics",
-			Params:  json.RawMessage(fmt.Sprintf(`{"uri":"%s","diagnostics":%s}`, uri, mustMarshal(diagnostics))),
-		})
+		// 为包内所有受影响的文件发布诊断
+		for fURI, diags := range allDiagnostics {
+			writeMessage(rpcMessage{
+				JSONRPC: "2.0",
+				Method:  "textDocument/publishDiagnostics",
+				Params:  json.RawMessage(fmt.Sprintf(`{"uri":"%s","diagnostics":%s}`, fURI, mustMarshal(diags))),
+			})
+		}
 
 	case "textDocument/completion":
 		var params struct {

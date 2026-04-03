@@ -833,10 +833,13 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 			items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
 		}
 		for m, t := range st.Methods {
+			// t 是结构体副本，但 Params 是切片（引用）。
+			// 为了绝对安全，我们克隆一份切片头。
 			sig := t
 			// 剥离接收者以便在补全中显示正确的参数列表
 			if objType != "Package" && objType != TypeModule {
 				if len(sig.Params) > 0 {
+					// 这里的赋值只修改 local sig 的切片头，不会写回 st.Methods
 					sig.Params = sig.Params[1:]
 				}
 			}
