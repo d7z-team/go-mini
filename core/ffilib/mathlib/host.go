@@ -24,7 +24,3 @@ func (h *MathHost) NaN() float64                   { return math.NaN() }
 func (h *MathHost) IsNaN(f float64) bool           { return math.IsNaN(f) }
 func (h *MathHost) Inf(sign int) float64           { return math.Inf(sign) }
 func (h *MathHost) IsInf(f float64, sign int) bool { return math.IsInf(f, sign) }
-
-// Add Pi and E as functions since ffigen usually deals with methods
-func (h *MathHost) Pi() float64 { return math.Pi }
-func (h *MathHost) E() float64  { return math.E }

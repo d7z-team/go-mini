@@ -120,7 +120,7 @@ GOCACHE=/tmp/go-build-cache make test
 - [ ] 非 debugger 主路径未重新引入 AST 依赖
 - [ ] 新能力已在 lowering / compiler / runtime 闭环
 - [ ] 相关 runtime / e2e / 模块测试已补齐
-- [ ] `go test ./...` 与 `make test` 通过
+- [ ] `go generate ./... && go test ./...` 或 `make test` 通过
 - [ ] `TODO.md` 状态已同步
 
 ## 6. 文档协作规则
