@@ -720,17 +720,11 @@ func (e *MiniExecutor) NewMiniProgramByProgramTolerant(program *ast.ProgramStmt)
 	if err != nil {
 		errs = append(errs, err)
 	}
-
-	res, rErr := e.NewRuntimeByCompiled(compiled)
-	if rErr != nil {
-		errs = append(errs, rErr)
-		res = &MiniProgram{
-			Program:  program,
-			Compiled: compiled,
-			executor: &runtime.Executor{},
-		}
-	}
-	return res, errs
+	return &MiniProgram{
+		Program:  program,
+		Compiled: compiled,
+		executor: &runtime.Executor{},
+	}, errs
 }
 
 func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
@@ -755,21 +749,21 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 		return nil, errs, errors.New("failed to compile source")
 	}
 
-	executor, err := e.NewRuntimeByCompiled(compiled)
-	if err != nil {
-		if !tolerant {
-			return nil, nil, err
-		}
-		errs = append(errs, err)
-		// 创建一个仅包含 AST 的半成品 MiniProgram 供 LSP 使用
+	if tolerant {
 		res = &MiniProgram{
 			Program:  compiled.Program,
 			Compiled: compiled,
-			executor: &runtime.Executor{}, // 空执行器
+			executor: &runtime.Executor{},
 		}
-	} else {
-		res = executor
+		res.Source = code
+		return res, errs, nil
 	}
+
+	executor, err := e.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		return nil, nil, err
+	}
+	res = executor
 	if res != nil {
 		res.Source = code
 	}

@@ -28,12 +28,17 @@ func main() {
 	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = prog.Check(semanticCtx)
-	// 预期没有验证错误，因为 os 应该被自动识别为 Package
-	if err != nil {
-		t.Errorf("Expected no validation error for unimported FFI package, got: %v", err)
-		for _, log := range validator.Logs() {
-			t.Logf("Log: %s", log.Message)
+	if err == nil {
+		t.Fatalf("Expected validation error for unimported FFI package, got none")
+	}
+	found := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "包 os 已解析但未导入") {
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("Expected missing import diagnostic, got logs: %+v", validator.Logs())
 	}
 }
 
@@ -108,6 +113,7 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
 	// 注意：converter 已经根据 import "my/math" 建立了 math -> my/math 的映射
 
 	// 在 "math." 之后触发补全 (Line 4, Col 6 是 '.', 尝试 Col 6 或 Col 7)
@@ -272,6 +278,7 @@ func main() {
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("mymath")
 
 	// 在 "mymath." 之后触发补全 (Line 3, Col 8 是 '.')
 	completions := ast.FindCompletionsAt(mainProg, 3, 8)
@@ -316,6 +323,7 @@ func main() {
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("mymath")
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -360,10 +368,7 @@ func main() {
 	// 重新初始化以应用宽容模式下的 Package 注册逻辑 (实际上通常是在 Loader 填充后再创建 Validator，这里手动触发)
 	validator, _ = ast.NewValidator(mainProg, nil, nil, true)
 	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	// 重新运行部分逻辑或手动添加，因为 NewValidator 在创建时就已经遍历了 ImportedRoots（此时还为空）
-	// 在实际 LSP 中，Validator 可能是持久的或在 Loader 填充后创建的。
-	// 让我们模拟 LSP 中常见的：填充 ImportedRoots 之后的情况。
-	validator.Root().Vars()["math"] = "Package"
+	validator.Root().DiscoverImportedRoot("my/math")
 
 	// 在 "math." 之后触发补全 (Line 3, Col 6 是 '.')
 	completions := ast.FindCompletionsAt(mainProg, 3, 6)
@@ -407,8 +412,7 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	// 手动注册 Package 类型，模拟宽容模式下的发现
-	validator.Root().Vars()["mymath"] = "Package"
+	validator.Root().DiscoverImportedRoot("mymath")
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -454,7 +458,7 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	validator.Root().Vars()["mymath"] = "Package"
+	validator.Root().DiscoverImportedRoot("mymath")
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -490,5 +494,46 @@ func main() {
 		if item.Label == "later" {
 			t.Fatalf("future local variable leaked into completion list: %+v", completions)
 		}
+	}
+}
+
+func TestUnimportedFFIPackageCheckReportsDiagnostic(t *testing.T) {
+	code := `package main
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, OpsGO Runtime!")
+	time.Sleep(1 * time.Second)
+	fmt.Println("Done.")
+}`
+	conv := ffigo.NewGoToASTConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"fmt.Println":  "function(...Any) Void",
+		"time.Sleep":   "function(Duration) Void",
+		"time.Second":  "Duration",
+	}
+
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = prog.Check(semanticCtx)
+	if err == nil {
+		t.Fatal("expected missing import validation error, got none")
+	}
+
+	found := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "包 time 已解析但未导入") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing import diagnostic, got logs: %+v", validator.Logs())
 	}
 }

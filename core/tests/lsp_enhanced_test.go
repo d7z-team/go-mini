@@ -97,3 +97,27 @@ func main() {
 		t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expectedMsg)
 	}
 }
+
+func TestTolerantBuildDoesNotReportRuntimeBytecodeNoise(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceSnippet := `package main
+import "fmt"
+
+func main() {
+	fmt.Println("Hello")
+	time.Sleep(1 * time.Second)
+}`
+
+	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	if len(errs) == 0 {
+		t.Fatal("expected semantic diagnostics for missing import")
+	}
+
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "executable bytecode") {
+			t.Fatalf("unexpected runtime noise in tolerant diagnostics: %v", err)
+		}
+	}
+}

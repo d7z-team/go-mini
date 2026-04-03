@@ -441,8 +441,18 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return errors.New("成员访问缺少属性名")
 	}
 
-	if err := m.Object.Check(ctx.WithNode(m.Object)); err != nil {
-		return err
+	discoveredPackage := false
+	if id, ok := m.Object.(*IdentifierExpr); ok {
+		if _, known, imported := ctx.root.ResolvePackage(id.Name); known && !imported {
+			id.Type = "Package"
+			discoveredPackage = true
+		}
+	}
+
+	if !discoveredPackage {
+		if err := m.Object.Check(ctx.WithNode(m.Object)); err != nil {
+			return err
+		}
 	}
 
 	objType := m.Object.GetBase().Type
@@ -460,9 +470,13 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 	if objType == "Package" || objType == TypeModule {
 		if id, ok := m.Object.(*IdentifierExpr); ok {
-			path, isPkg := ctx.root.Imports[string(id.Name)]
-			explicitlyImported := isPkg
-			if !isPkg {
+			path, knownPkg, explicitlyImported := ctx.root.ResolvePackage(id.Name)
+			reportMissingImport := func() {
+				if !explicitlyImported {
+					ctx.WithNode(m).AddErrorf("包 %s 已解析但未导入", id.Name)
+				}
+			}
+			if !knownPkg {
 				path = string(id.Name)
 				// 尝试查找后缀匹配的 ImportedRoot
 				for fullPath := range ctx.root.ImportedRoots {
@@ -475,9 +489,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 			// 尝试从 ImportedRoots 中直接获取成员 (Go-source 模块)
 			if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
-				if !explicitlyImported {
-					ctx.WithNode(m).AddErrorf("包 %s 已解析但未导入", id.Name)
-				}
+				reportMissingImport()
 				prop := string(m.Property)
 				// 1. 变量/函数
 				if t, ok := srcRoot.vars[Ident(prop)]; ok {
@@ -510,21 +522,25 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			for _, fullPath := range targets {
 				// 1. 尝试作为变量/常量查找
 				if t, ok := ctx.GetVariable(fullPath); ok {
+					reportMissingImport()
 					m.Type = t
 					return nil
 				}
 				// 2. 尝试作为函数查找
 				if fn, ok := ctx.GetFunction(fullPath); ok {
+					reportMissingImport()
 					m.Type = fn.MiniType()
 					return nil
 				}
 				// 3. 尝试作为结构体查找
 				if _, ok := ctx.GetStruct(fullPath); ok {
+					reportMissingImport()
 					m.Type = GoMiniType(fullPath)
 					return nil
 				}
 				// 4. 尝试作为接口查找
 				if _, ok := ctx.GetInterface(fullPath); ok {
+					reportMissingImport()
 					m.Type = GoMiniType(fullPath)
 					return nil
 				}
@@ -627,31 +643,23 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 		// 如果 typeName 包含点号，说明是跨包类型，且当前环境中没有加载该包的 AST，
 		// 或者它是一个 FFI 类型。在这种情况下，我们保持 Any 类型。
-		if strings.Contains(typeName, ".") {
-			m.Type = "Any"
-			return nil
-		}
+			if strings.Contains(typeName, ".") {
+				err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
+				ctx.WithNode(m).AddErrorf("%s", err.Error())
+				return err
+			}
 
-		// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
-		if strings.Contains(string(objType), ".") {
-			m.Type = "Any"
-			return nil
-		}
+			// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
+			if strings.Contains(string(objType), ".") {
+				err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
+				ctx.WithNode(m).AddErrorf("%s", err.Error())
+				return err
+			}
 
-		// 如果是宽容模式，我们也允许作为 Any。
-		if ctx.root.Tolerant {
-			m.Type = "Any"
-			return nil
+			err := fmt.Errorf("未定义类型 %s，无法访问成员 %s", objType, m.Property)
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			return err
 		}
-
-		// 否则，说明在当前包中引用了一个未定义的结构体。
-		// 但由于 go-mini 的隔离架构，有些类型可能确实没有 AST (例如从 Loader 返回的 ProgramStmt 可能还没被完全 Check)。
-		// 为了确保 TestModuleComprehensive 等综合测试通过（它们可能手动注入了 Point 类型），
-		// 我们目前仅在明确开启了某些严格模式时才报错。
-		// 目前，我们保持 Any 类型放行。
-		m.Type = "Any"
-		return nil
-	}
 
 	err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 	ctx.WithNode(m).AddErrorf("%s", err.Error())

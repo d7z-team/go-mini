@@ -665,7 +665,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	// 虽然我们不知道后面是否有点号，但如果在当前作用域中 "fmt" 是个 Package，
 	// 且补全请求就在该标识符紧随其后的位置，通常用户就是想要成员补全。
 	if id, ok := node.(*IdentifierExpr); ok {
-		if t, ok := ctx.GetVariable(id.Name); ok && t == "Package" {
+		if _, known, _ := ctx.root.ResolvePackage(id.Name); known {
 			// 只有当光标在标识符之后才触发成员补全
 			// 注意：这里是一个近似判断
 			return getMemberCompletions(ctx, id)
@@ -735,6 +735,14 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 			items = append(items, CompletionItem{Label: sName, Kind: kind, Type: t})
 			seen[sName] = true
 		}
+	}
+	for alias := range ctx.root.Discovered {
+		sName := string(alias)
+		if seen[sName] {
+			continue
+		}
+		items = append(items, CompletionItem{Label: sName, Kind: "package", Type: "Package"})
+		seen[sName] = true
 	}
 
 	// 2.3.5 收集常量
@@ -919,8 +927,8 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 		// 检查是否是包名
 		if id, ok := obj.(*IdentifierExpr); ok {
 			pkgName := string(id.Name)
-			realPath, isPkg := ctx.root.Imports[pkgName]
-			if !isPkg {
+			realPath, knownPkg, _ := ctx.root.ResolvePackage(id.Name)
+			if !knownPkg {
 				realPath = pkgName
 				// 尝试在 ImportedRoots 中查找后缀匹配的真实路径
 				for fullPath := range ctx.root.ImportedRoots {
@@ -1066,7 +1074,7 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 		// 3. 处理包成员
 		if objType == "Package" || objType == TypeModule {
 			if id, ok := e.Object.(*IdentifierExpr); ok {
-				path, ok := ctx.root.Imports[string(id.Name)]
+				path, ok, _ := ctx.root.ResolvePackage(id.Name)
 				if !ok {
 					path = string(id.Name)
 				}

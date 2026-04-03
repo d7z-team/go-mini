@@ -32,9 +32,10 @@ type ValidRoot struct {
 	ModuleLoader  func(path string) (*ProgramStmt, error)
 	Imported      map[string]bool
 	ImportedRoots map[string]*ValidRoot
+	Discovered    map[Ident]string
 	importStack   []string
 	MaxTypeDepth  int  // 递归类型检查深度限制
-	Tolerant      bool // 宽容模式：允许未显式导入的 FFI 包 (用于 LSP)
+	Tolerant      bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
 }
 
 type ValidContext struct {
@@ -82,6 +83,7 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 			vars:          make(map[Ident]GoMiniType),
 			Imported:      make(map[string]bool),
 			ImportedRoots: make(map[string]*ValidRoot),
+			Discovered:    make(map[Ident]string),
 			importStack:   make([]string, 0),
 			MaxTypeDepth:  256,
 			Tolerant:      tolerant,
@@ -111,14 +113,12 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 		v.root.vars[ident] = t
 
 		// 自动推断包名前缀并注册为 Package 类型，以支持成员访问补全 (符合 GEMINI.md XI)
-		// 仅在宽容模式 (LSP) 下启用，以维持 make test 的严格性
+		// 宽容模式下只记录为“可发现包”，不要伪装成已导入变量。
 		if v.root.Tolerant {
 			sIdent := string(ident)
 			if idx := strings.Index(sIdent, "."); idx != -1 {
 				pkgName := Ident(sIdent[:idx])
-				if _, ok := v.root.vars[pkgName]; !ok {
-					v.root.vars[pkgName] = "Package"
-				}
+				v.root.registerDiscoveredPackage(pkgName, string(pkgName))
 			}
 		}
 
@@ -150,20 +150,6 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 		v.root.vars[ident] = fn.FunctionType.MiniType()
 	}
 
-	// 在宽容模式下，也将 ImportedRoots 中的包名注册为 Package，以支持未显式导入时的补全
-	if v.root.Tolerant {
-		for pkgPath := range v.root.ImportedRoots {
-			// 如果路径中包含 /，取最后一部分作为包名建议
-			pkgName := pkgPath
-			if idx := strings.LastIndex(pkgPath, "/"); idx != -1 {
-				pkgName = pkgPath[idx+1:]
-			}
-			if _, ok := v.root.vars[Ident(pkgName)]; !ok {
-				v.root.vars[Ident(pkgName)] = "Package"
-			}
-		}
-	}
-
 	// 注入内建 nil
 	v.root.vars["nil"] = "Any"
 	v.root.vars["true"] = "Bool"
@@ -173,6 +159,38 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 
 func (r *ValidRoot) Vars() map[Ident]GoMiniType {
 	return r.vars
+}
+
+func (r *ValidRoot) registerDiscoveredPackage(alias Ident, path string) {
+	if alias == "" || path == "" {
+		return
+	}
+	if _, imported := r.Imports[string(alias)]; imported {
+		return
+	}
+	if _, exists := r.Discovered[alias]; !exists {
+		r.Discovered[alias] = path
+	}
+}
+
+func (r *ValidRoot) DiscoverImportedRoot(path string) {
+	if path == "" {
+		return
+	}
+	r.registerDiscoveredPackage(Ident(path), path)
+	if idx := strings.LastIndex(path, "/"); idx != -1 && idx+1 < len(path) {
+		r.registerDiscoveredPackage(Ident(path[idx+1:]), path)
+	}
+}
+
+func (r *ValidRoot) ResolvePackage(name Ident) (string, bool, bool) {
+	if path, ok := r.Imports[string(name)]; ok {
+		return path, true, true
+	}
+	if path, ok := r.Discovered[name]; ok {
+		return path, true, false
+	}
+	return "", false, false
 }
 
 func (c *ValidContext) Root() *ValidRoot {
@@ -279,6 +297,19 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		ctx = ctx.parent
 	}
 
+	var resolved *ValidStruct
+	for _, root := range c.root.ImportedRoots {
+		if st, ok := root.structs[ident]; ok {
+			if resolved != nil {
+				return nil, false
+			}
+			resolved = st
+		}
+	}
+	if resolved != nil {
+		return resolved, true
+	}
+
 	// 在隔离架构下，Array/Map 仅支持基本操作，不再动态生成方法集定义
 	// 校验器仅需知道类型存在即可
 	if GoMiniType(ident).IsArray() || GoMiniType(ident).IsMap() {
@@ -309,6 +340,19 @@ func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
 			return miniType, true
 		}
 		ctx = ctx.parent
+	}
+
+	var resolved *InterfaceStmt
+	for _, root := range c.root.ImportedRoots {
+		if it, ok := root.interfaces[ident]; ok {
+			if resolved != nil {
+				return nil, false
+			}
+			resolved = it
+		}
+	}
+	if resolved != nil {
+		return resolved, true
 	}
 	return nil, false
 }
@@ -550,6 +594,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	c.root.ImportedRoots[path] = v.root
+	c.root.DiscoverImportedRoot(path)
 	return nil
 }
 
