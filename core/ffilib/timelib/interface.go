@@ -2,6 +2,7 @@
 package timelib
 
 import (
+	"context"
 	"time"
 )
 
@@ -33,7 +34,7 @@ const (
 type Module interface {
 	Now() *Time
 	Unix(sec, nsec int64) *Time
-	Sleep(ns int64)
+	Sleep(ctx context.Context, ns int64)
 	Since(t *Time) int64
 	Until(t *Time) int64
 	Parse(layout, value string) (*Time, error)

@@ -1,6 +1,7 @@
 package timelib
 
 import (
+	"context"
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -18,8 +19,25 @@ func (h *TimeHost) Unix(sec, nsec int64) *Time {
 	return &Time{T: time.Unix(sec, nsec)}
 }
 
-func (h *TimeHost) Sleep(ns int64) {
-	time.Sleep(time.Duration(ns))
+func (h *TimeHost) Sleep(ctx context.Context, ns int64) {
+	if ns <= 0 {
+		return
+	}
+	if time.Duration(ns) > time.Second {
+		end := ns % int64(time.Second)
+		dest := ns / int64(time.Second)
+		for i := int64(0); i < dest; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			time.Sleep(time.Second)
+		}
+		time.Sleep(time.Duration(end))
+	} else {
+		time.Sleep(time.Duration(ns))
+	}
 }
 
 func (h *TimeHost) Since(t *Time) int64 {

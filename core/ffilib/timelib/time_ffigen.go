@@ -76,13 +76,13 @@ func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 	return v_0
 }
 
-func (__p *ModuleProxy) Sleep(ns int64) {
+func (__p *ModuleProxy) Sleep(ctx context.Context, ns int64) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	buf.WriteVarint(int64(ns))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Module_Sleep, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Module_Sleep, buf.Bytes())
 	_ = err
 	return
 }
@@ -276,7 +276,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			tmp := reqBuf.ReadVarint()
 			ns = int64(tmp)
 		}
-		impl.Sleep(ns)
+		impl.Sleep(ctx, ns)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case MethodID_Module_Since:
