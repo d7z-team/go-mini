@@ -226,7 +226,11 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 
 		// 如果是 FunctionStmt 或 StructStmt，将其移至全局表并从 Main 中移除
 		if fn, ok := optimized.(*FunctionStmt); ok {
-			p.Functions[fn.Name] = fn
+			key := fn.Name
+			if fn.ReceiverType != "" {
+				key = Ident(string(fn.ReceiverType) + "." + string(fn.Name))
+			}
+			p.Functions[key] = fn
 			continue
 		}
 		if st, ok := optimized.(*StructStmt); ok {
@@ -518,7 +522,11 @@ func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
 
 		// 移除定义语句并确保已注册
 		if fn, ok := optimized.(*FunctionStmt); ok {
-			ctx.root.program.Functions[fn.Name] = fn
+			key := fn.Name
+			if fn.ReceiverType != "" {
+				key = Ident(string(fn.ReceiverType) + "." + string(fn.Name))
+			}
+			ctx.root.program.Functions[key] = fn
 			continue
 		}
 		if st, ok := optimized.(*StructStmt); ok {
@@ -1131,9 +1139,10 @@ func (c *CaseClause) Optimize(ctx *OptimizeContext) Node {
 type FunctionStmt struct {
 	BaseNode
 	FunctionType `json:",inline"`
-	Scope        Ident      `json:"scope,omitempty"` // 函数的作用域
-	Name         Ident      `json:"name"`
-	Body         *BlockStmt `json:"body"` // 函数结构体
+	Scope        Ident      `json:"scope,omitempty"`         // 函数的作用域
+	Name         Ident      `json:"name"`                   // 函数名
+	ReceiverType Ident      `json:"receiver_type,omitempty"` // 接收者类型 (如果是方法)
+	Body         *BlockStmt `json:"body"`                   // 函数结构体
 	Doc          string     `json:"doc,omitempty"`
 }
 
@@ -1143,20 +1152,12 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 	fnName := f.Name
 	isMethod := false
 
-	// 检测 __method_ 前缀
-	if strings.HasPrefix(string(f.Name), "__method_") {
-		parts := strings.SplitN(strings.TrimPrefix(string(f.Name), "__method_"), "_", 2)
-		if len(parts) == 2 {
-			typeName := Ident(parts[0])
-			methodName := Ident(parts[1])
-
-			// 查找对应的 Struct
-			st, ok := ctx.root.structs[typeName]
-			if ok {
-				structType = st
-				fnName = methodName
-				isMethod = true
-			}
+	// 首先检查 ReceiverType 字段
+	if f.ReceiverType != "" {
+		st, ok := ctx.root.structs[f.ReceiverType]
+		if ok {
+			structType = st
+			isMethod = true
 		}
 	}
 

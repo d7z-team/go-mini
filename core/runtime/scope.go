@@ -956,6 +956,37 @@ func (ctx *StackContext) loadVar(variable string) (*Var, error) {
 		}
 		s = s.Parent
 	}
+
+	// 检查全局函数定义 (命名函数作为值使用)
+	if ctx.Executor != nil {
+		if exec, ok := ctx.Executor.(*Executor); ok {
+			exec.mu.RLock()
+			defer exec.mu.RUnlock()
+
+			// 1. 尝试查找脚本定义的函数
+			if fn, ok := exec.functions[ast.Ident(variable)]; ok {
+				return &Var{
+					VType: TypeClosure,
+					Ref: &VMClosure{
+						FunctionType: fn.FunctionType,
+						BodyTasks:    cloneTasks(fn.BodyTasks),
+						Context:      ctx,
+					},
+					Type: ast.TypeClosure,
+				}, nil
+			}
+
+			// 2. 尝试查找 FFI 路由
+			if route, ok := exec.routes[variable]; ok {
+				return &Var{
+					VType: TypeAny, // FFI Route 目前统一由 TypeAny 包装
+					Ref:   route,
+					Type:  ast.TypeClosure,
+				}, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("undefined: %s", variable)
 }
 
@@ -986,6 +1017,37 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 		}
 		s = s.Parent
 	}
+
+	// 检查全局函数定义 (命名函数作为值被捕获)
+	if ctx.Executor != nil {
+		if exec, ok := ctx.Executor.(*Executor); ok {
+			exec.mu.RLock()
+			defer exec.mu.RUnlock()
+
+			// 1. 尝试查找脚本定义的函数
+			if fn, ok := exec.functions[ast.Ident(name)]; ok {
+				return &Var{
+					VType: TypeClosure,
+					Ref: &VMClosure{
+						FunctionType: fn.FunctionType,
+						BodyTasks:    cloneTasks(fn.BodyTasks),
+						Context:      ctx,
+					},
+					Type: ast.TypeClosure,
+				}, nil
+			}
+
+			// 2. 尝试查找 FFI 路由
+			if route, ok := exec.routes[name]; ok {
+				return &Var{
+					VType: TypeAny,
+					Ref:   route,
+					Type:  ast.TypeClosure,
+				}, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("undefined capture: %s", name)
 }
 

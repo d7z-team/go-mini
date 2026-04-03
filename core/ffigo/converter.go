@@ -145,7 +145,11 @@ func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (minias
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
 				fn := c.convertFunc(d)
-				program.Functions[fn.Name] = fn
+				key := fn.Name
+				if fn.ReceiverType != "" {
+					key = miniast.Ident(string(fn.ReceiverType) + "." + string(fn.Name))
+				}
+				program.Functions[key] = fn
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {
@@ -267,6 +271,7 @@ func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc str
 func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	fnName := d.Name.Name
 	var params []miniast.FunctionParam
+	var receiverType string
 
 	if d.Recv != nil && len(d.Recv.List) > 0 {
 		recv := d.Recv.List[0]
@@ -274,7 +279,7 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 		baseTypeName := strings.TrimPrefix(typeName, "Ptr<")
 		baseTypeName = strings.TrimPrefix(baseTypeName, "*")
 		baseTypeName = strings.TrimSuffix(baseTypeName, ">")
-		fnName = fmt.Sprintf("__method_%s_%s", baseTypeName, fnName)
+		receiverType = baseTypeName
 		if len(recv.Names) > 0 {
 			params = append(params, miniast.FunctionParam{Name: miniast.Ident(recv.Names[0].Name), Type: miniast.GoMiniType(typeName)})
 		} else {
@@ -290,6 +295,7 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	fn := &miniast.FunctionStmt{
 		BaseNode:     miniast.BaseNode{ID: c.genID(d, "function"), Meta: "function", Loc: c.extractLoc(d)},
 		Name:         miniast.Ident(fnName),
+		ReceiverType: miniast.Ident(receiverType),
 		Body:         &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(d.Body, "block"), Meta: "block", Loc: c.extractLoc(d.Body)}},
 		FunctionType: miniast.FunctionType{Params: params},
 		Doc:          doc,

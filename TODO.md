@@ -170,10 +170,10 @@
 - [x] **补充兼容层退场回归**: 已补 `ffigen_migration_test` 并验证 `go test ./...`，确保 stdlib/业务生成物在 schema-only 下稳定运行。
 
 ## 后续补充项
-- [ ] **补充命名函数值语义**: 支持 `fn := increment`、命名函数作为参数/返回值的一等值语义，并补齐语义、lowering、runtime 与专项测试；当前仅函数字面量/返回函数闭包属于稳定支持范围。
-- [ ] **明确 `ffigen` 的值对象 / 宿主对象生成边界**: 纯数据 struct、DTO、可完整字段编解码的类型应保持值语义 `T`；有方法集、共享身份、宿主资源或句柄生命周期的对象才生成 `Ptr<T>`/opaque handle。需要补齐判定规则、生成器回归与专项样例，避免把复杂类型无原则抬升为 `Ptr<T>`。
-- [ ] **消除 `ffigen` 重复 `_FFI_StructSchema` 生成**: 同一包内多个 target 引用相同 struct/type 时，当前会各自重复生成 `X_FFI_StructSchema` / `X_StructSchema` 并触发 redeclare。需要引入包级 schema 去重与稳定命名策略，避免 `ffigen:module`、`ffigen:methods`、跨 target 共享类型时重复落盘。
-- [ ] **移除基于 `__` 前缀的内部协议判断**: 当前 `converter/query/ast/runtime metadata` 仍有多处通过 `__method_`、`__ffi__` 这类字符串前缀识别内部方法或导出结构。需要改成显式结构化标记/路由分类，避免继续依赖字符串命名约定驱动语义。
+- [x] **补充命名函数值语义**: 支持 `fn := increment`、命名函数作为参数/返回值的一等值语义，并补齐语义、lowering、runtime 与专项测试；当前仅函数字面量/返回函数闭包属于稳定支持范围。
+- [x] **明确 `ffigen` 的值对象 / 宿主对象生成边界**: 纯数据 struct、DTO、可完整字段编解码的类型应保持值语义 `T`；有方法集、共享身份、宿主资源或句柄生命周期的对象才生成 `Ptr<T>`/opaque handle。需要补齐判定规则、生成器回归与专项样例，避免把复杂类型无原则抬升为 `Ptr<T>`。
+- [x] **消除 `ffigen` 重复 `_FFI_StructSchema` 生成**: 同一包内多个 target 引用相同 struct/type 时，当前会各自重复生成 `X_FFI_StructSchema` / `X_StructSchema` 并触发 redeclare。需要引入包级 schema 去重与稳定命名策略，避免 `ffigen:module`、`ffigen:methods`、跨 target 共享类型时重复落盘。
+- [x] **移除基于 `__` 前缀的内部协议判断**: 当前 `converter/query/ast/runtime metadata` 仍有多处通过 `__method_`、`__ffi__` 这类字符串前缀识别内部方法或导出结构。需要改成显式结构化标记/路由分类，避免继续依赖字符串命名约定驱动语义。
 
 ---
 

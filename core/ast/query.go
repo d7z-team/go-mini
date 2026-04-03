@@ -265,8 +265,8 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 		typeName := objType.BaseName()
 
 		// 优先检查是否是方法跳转
-		methodName := fmt.Sprintf("__method_%s_%s", typeName, t.Property)
-		if fn, ok := prog.Functions[Ident(methodName)]; ok {
+		methodKey := typeName + "." + string(t.Property)
+		if fn, ok := prog.Functions[Ident(methodKey)]; ok {
 			return fn
 		}
 

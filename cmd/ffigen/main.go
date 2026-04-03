@@ -1705,7 +1705,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
 		if schemas == nil {
-			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(name), buildStructSchemaLiteral(name, true, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), buildStructSchemaLiteral(name, true, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
@@ -1726,7 +1726,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 		}
-		selfVar := name + "_StructSchema"
+		selfVar := structSchemaVarName(displayTypeName(name))
 		if schemas != nil {
 			selfVar = selfSchemaVar
 		}
@@ -1735,7 +1735,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
 		if methodsPrefix != "" && schemas == nil {
-			fmt.Fprintf(&sb, "var %s_StructSchema = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", name, displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
@@ -1771,7 +1771,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 			}
-			selfVar := name + "_StructSchema"
+			selfVar := structSchemaVarName(displayTypeName(methodsPrefix))
 			if schemas != nil {
 				selfVar = selfSchemaVar
 			}

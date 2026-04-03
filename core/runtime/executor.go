@@ -151,10 +151,6 @@ func methodRouteName(typeName, method string) string {
 	return normalizeMethodReceiverType(typeName) + "." + method
 }
 
-func legacyMethodRouteName(typeName, method string) string {
-	return fmt.Sprintf("__method_%s_%s", normalizeMethodReceiverType(typeName), method)
-}
-
 func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
 	methodName := methodRouteName(typeName, method)
 	if _, ok := e.routes[methodName]; ok {
@@ -162,13 +158,6 @@ func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
 	}
 	if _, ok := e.lookupFunction(methodName); ok {
 		return methodName, true
-	}
-	legacyName := legacyMethodRouteName(typeName, method)
-	if _, ok := e.routes[legacyName]; ok {
-		return legacyName, true
-	}
-	if _, ok := e.lookupFunction(legacyName); ok {
-		return legacyName, true
 	}
 	return "", false
 }
