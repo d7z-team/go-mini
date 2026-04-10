@@ -5,6 +5,7 @@
 - 编译阶段生成稳定 `go-mini-bytecode`
 - 运行时执行 lowered task plan / prepared program
 - FFI 通过 `ffigen` 生成 schema-only 桥接代码
+- 执行入口统一落在 `Artifact` / bytecode，AST 只保留在编译、分析和调试边界
 
 ## 1. 基础执行
 
@@ -25,6 +26,8 @@ if err := program.Execute(context.Background()); err != nil {
     panic(err)
 }
 ```
+
+`NewRuntimeByGoCode` 是便捷入口，内部仍会先 `CompileGoCode(...)`，再从编译产物创建运行时；对外持久化、跨进程传输和正式装载统一推荐使用 bytecode。
 
 如果你需要持久化或跨进程传输，可以直接使用 bytecode：
 
@@ -64,7 +67,7 @@ if err != nil {
 
 `Artifact` 是编译产物，包含：
 
-- `Program`: 重建蓝图用的 AST metadata
+- `Program`: 供 LSP / debugger / rebuild 使用的附加 AST 蓝图
 - `Bytecode`: 稳定 `go-mini-bytecode`
 
 ### 2.2 直接编译为 bytecode.Program
@@ -135,12 +138,27 @@ _ = artifact
 
 ### 2.5 推荐的互转路径
 
-- 源码执行：`NewRuntimeByGoCode`
 - 源码编译：`CompileGoCode`
+- 已有 AST 编译：`CompileProgram`
+- 源码便捷执行：`NewRuntimeByGoCode`
+- 正式装载执行：`NewRuntimeByCompiled` 或 `NewRuntimeByBytecodeJSON`
 - 源码转 bytecode：`CompileGoCodeToBytecode`
 - 程序导出：`MarshalBytecodeJSON`
-- bytecode JSON 装载：`NewRuntimeByBytecodeJSON`
 - bytecode JSON 恢复编译产物：`ArtifactFromBytecodeJSON`
+
+### 2.6 AST 分析入口
+
+如果你需要 tolerant 语义分析、LSP 或调试辅助信息，而不是直接执行 AST：
+
+```go
+program, diags := executor.AnalyzeProgramTolerant(astProgram)
+if len(diags) > 0 {
+    // 处理诊断
+}
+_ = program
+```
+
+`AnalyzeProgramTolerant(...)` 只用于分析边界，不是运行时装载口。执行仍应先编译成 `Artifact` 或 bytecode。
 
 ## 3. CLI
 
@@ -200,7 +218,7 @@ go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go inter
 
 ### 5.2 目录模式与文件模式
 
-`ffigen` 现在分两种正式模式。
+`ffigen` 现在分两种模式。
 
 #### 目录模式
 
