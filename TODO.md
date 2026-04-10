@@ -178,6 +178,10 @@
 - [ ] **补齐 LSP 链式调用推导剩余缺口**: 当前已补 `imported module -> ctor/function return struct -> member completion` 主链，但 `tuple return`、复杂 alias/命名接口、方法链返回接口/结构体后的继续推导仍未统一走完整 resolve 路径，需要专项测试与 `inferLSPTypeRecursive` 收口。
 - [ ] **收敛复合字面量启发式推导精度**: `CompositeExpr` 仍会在信息不足时回退到 `Map<..., Any>` / `Array<Any>`，后续应区分“动态 Any”与“被坏子表达式污染的 Any”，补齐更精确的错误来源诊断。
 - [ ] **清理剩余 `Any` 宽容分支**: `StarExpr`、`IndexExpr`、`SliceExpr` 等仍保留少量合法动态 `Any` 放行路径，需要进一步梳理哪些应保持动态语义，哪些应在前置错误场景下改为精确诊断。
+- [ ] **完成 runtime 热路径 `RuntimeType` 化收口**: 当前 `FFIRoute`、FFI 编解码主链、`StackContext.Executor` 和部分 call/unwind payload 已清理，但 `Var`、`Task`、slot/return 初始化、类型断言与部分 bytecode/task codec 仍持有 `ast.GoMiniType`。这项需要作为一次独立迁移完成：
+  1. 将 `core/runtime/task.go`、`core/runtime/scope.go`、`core/runtime/task_codec.go`、`core/bytecode/*` 中执行热路径使用的 `ast.GoMiniType` 迁移为 `RuntimeType` 或其稳定引用；
+  2. 同步升级 prepared program / bytecode 序列化，确保新类型载体不回退 AST 字符串；
+  3. 最后再收口 `ExecExpr(ast.Expr)` 与 `Executor.program *ast.ProgramStmt`，把 AST 依赖明确压回 debugger/test 边界，而不是继续留在 runtime 通用执行面。
 
 ---
 

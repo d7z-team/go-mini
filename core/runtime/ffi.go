@@ -1,18 +1,12 @@
 package runtime
 
-import (
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
-)
+import "gopkg.d7z.net/go-mini/core/ffigo"
 
 // FFIRoute 存储了外部函数到 Bridge 的映射信息
 type FFIRoute struct {
-	Bridge    ffigo.FFIBridge
-	MethodID  uint32
-	Name      string
-	Returns   string
-	Signature string
-	Doc       string
-	FuncSig   *RuntimeFuncSig
-	Return    ast.GoMiniType
+	Bridge   ffigo.FFIBridge
+	MethodID uint32
+	Name     string
+	Doc      string
+	FuncSig  *RuntimeFuncSig
 }

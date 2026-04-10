@@ -119,10 +119,9 @@ func TestRegisterRouteRejectsConflictingDefinitions(t *testing.T) {
 		routes:   make(map[string]FFIRoute),
 	}
 	exec.RegisterRoute("demo.Call", FFIRoute{
-		Name:      "demo.Call",
-		MethodID:  1,
-		Signature: "function(String) Void",
-		FuncSig:   MustParseRuntimeFuncSig("function(String) Void"),
+		Name:     "demo.Call",
+		MethodID: 1,
+		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
 	})
 
 	defer func() {
@@ -132,10 +131,9 @@ func TestRegisterRouteRejectsConflictingDefinitions(t *testing.T) {
 	}()
 
 	exec.RegisterRoute("demo.Call", FFIRoute{
-		Name:      "demo.Call",
-		MethodID:  2,
-		Signature: "function(String) Void",
-		FuncSig:   MustParseRuntimeFuncSig("function(String) Void"),
+		Name:     "demo.Call",
+		MethodID: 2,
+		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
 	})
 }
 
@@ -194,7 +192,6 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
-		Return:  "TypeBytes",
 	}
 
 	arg, err := session.Load("buf")
@@ -226,7 +223,6 @@ func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
-		Return:  "TypeBytes",
 	}
 
 	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})

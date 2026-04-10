@@ -856,8 +856,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 						Bridge:   ref.Receiver.Bridge,
 						MethodID: 0, // 对于接口调用，通常我们传方法名字符串
 						Name:     ref.Method,
-						Returns:  "Any", // 默认
-						Return:   "Any",
 					}
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
 				}
@@ -880,10 +878,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			Bridge:   receiver.Bridge,
 			MethodID: 0,
 			Name:     name,
-			Returns:  "Any",
-			Return:   "Any",
 		}
-		// If we had the signature, we could set route.Returns here
 		return e.evalFFIAndPush(session, route, args, nil)
 	}
 

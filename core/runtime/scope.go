@@ -463,12 +463,6 @@ func (s *Stack) RunDefers() {
 	s.DeferStack = nil
 }
 
-type ExecutorAPI interface {
-	ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
-	CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-	ToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var
-}
-
 type StackContext struct {
 	// Context is the host-provided context, strictly for FFI use.
 	// VM kernel should check 'status' instead of Context.Err() for performance.
@@ -482,7 +476,7 @@ type StackContext struct {
 	PanicVar     *Var         // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
 	PanicMessage string       // 存储发生 panic 时的文本消息
 	PanicTrace   []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
-	Executor     ExecutorAPI
+	Executor     *Executor
 
 	// 运行时状态 (Session State)
 
@@ -890,8 +884,8 @@ func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind ast.GoMiniType) error
 	}
 	ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
 	var v *Var
-	if exec, ok := ctx.Executor.(*Executor); ok {
-		v = exec.initializeType(ctx, kind, 0)
+	if ctx.Executor != nil {
+		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
@@ -958,31 +952,30 @@ func (ctx *StackContext) loadVar(variable string) (*Var, error) {
 
 	// 检查全局函数定义 (命名函数作为值使用)
 	if ctx.Executor != nil {
-		if exec, ok := ctx.Executor.(*Executor); ok {
-			exec.mu.RLock()
-			defer exec.mu.RUnlock()
+		exec := ctx.Executor
+		exec.mu.RLock()
+		defer exec.mu.RUnlock()
 
-			// 1. 尝试查找脚本定义的函数
-			if fn, ok := exec.functions[ast.Ident(variable)]; ok {
-				return &Var{
-					VType: TypeClosure,
-					Ref: &VMClosure{
-						FunctionType: fn.FunctionType,
-						BodyTasks:    cloneTasks(fn.BodyTasks),
-						Context:      ctx,
-					},
-					Type: ast.TypeClosure,
-				}, nil
-			}
+		// 1. 尝试查找脚本定义的函数
+		if fn, ok := exec.functions[ast.Ident(variable)]; ok {
+			return &Var{
+				VType: TypeClosure,
+				Ref: &VMClosure{
+					FunctionType: fn.FunctionType,
+					BodyTasks:    cloneTasks(fn.BodyTasks),
+					Context:      ctx,
+				},
+				Type: ast.TypeClosure,
+			}, nil
+		}
 
-			// 2. 尝试查找 FFI 路由
-			if route, ok := exec.routes[variable]; ok {
-				return &Var{
-					VType: TypeAny, // FFI Route 目前统一由 TypeAny 包装
-					Ref:   route,
-					Type:  ast.TypeClosure,
-				}, nil
-			}
+		// 2. 尝试查找 FFI 路由
+		if route, ok := exec.routes[variable]; ok {
+			return &Var{
+				VType: TypeAny, // FFI Route 目前统一由 TypeAny 包装
+				Ref:   route,
+				Type:  ast.TypeClosure,
+			}, nil
 		}
 	}
 
@@ -1019,31 +1012,30 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 
 	// 检查全局函数定义 (命名函数作为值被捕获)
 	if ctx.Executor != nil {
-		if exec, ok := ctx.Executor.(*Executor); ok {
-			exec.mu.RLock()
-			defer exec.mu.RUnlock()
+		exec := ctx.Executor
+		exec.mu.RLock()
+		defer exec.mu.RUnlock()
 
-			// 1. 尝试查找脚本定义的函数
-			if fn, ok := exec.functions[ast.Ident(name)]; ok {
-				return &Var{
-					VType: TypeClosure,
-					Ref: &VMClosure{
-						FunctionType: fn.FunctionType,
-						BodyTasks:    cloneTasks(fn.BodyTasks),
-						Context:      ctx,
-					},
-					Type: ast.TypeClosure,
-				}, nil
-			}
+		// 1. 尝试查找脚本定义的函数
+		if fn, ok := exec.functions[ast.Ident(name)]; ok {
+			return &Var{
+				VType: TypeClosure,
+				Ref: &VMClosure{
+					FunctionType: fn.FunctionType,
+					BodyTasks:    cloneTasks(fn.BodyTasks),
+					Context:      ctx,
+				},
+				Type: ast.TypeClosure,
+			}, nil
+		}
 
-			// 2. 尝试查找 FFI 路由
-			if route, ok := exec.routes[name]; ok {
-				return &Var{
-					VType: TypeAny,
-					Ref:   route,
-					Type:  ast.TypeClosure,
-				}, nil
-			}
+		// 2. 尝试查找 FFI 路由
+		if route, ok := exec.routes[name]; ok {
+			return &Var{
+				VType: TypeAny,
+				Ref:   route,
+				Type:  ast.TypeClosure,
+			}, nil
 		}
 	}
 
@@ -1120,8 +1112,8 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	}
 	// 确保变量被正确初始化为零值
 	var v *Var
-	if exec, ok := ctx.Executor.(*Executor); ok {
-		v = exec.initializeType(ctx, kind, 0)
+	if ctx.Executor != nil {
+		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
@@ -1144,8 +1136,8 @@ func (ctx *StackContext) InitReturn(kind ast.GoMiniType) error {
 		return nil
 	}
 	var v *Var
-	if exec, ok := ctx.Executor.(*Executor); ok {
-		v = exec.initializeType(ctx, kind, 0)
+	if ctx.Executor != nil {
+		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}

@@ -479,7 +479,6 @@ func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
 func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
 	if existing.Name != next.Name ||
 		existing.MethodID != next.MethodID ||
-		existing.Signature != next.Signature ||
 		existing.Doc != next.Doc ||
 		!sameRuntimeFuncSchema(existing.FuncSig, next.FuncSig) ||
 		!sameRuntimeBridge(existing.Bridge, next.Bridge) {
@@ -487,13 +486,20 @@ func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
 			"ffi route conflict for %s: existing(method=%d sig=%s bridge=%s) new(method=%d sig=%s bridge=%s)",
 			name,
 			existing.MethodID,
-			existing.Signature,
+			runtimeRouteSignature(existing),
 			runtimeBridgeIdentity(existing.Bridge),
 			next.MethodID,
-			next.Signature,
+			runtimeRouteSignature(next),
 			runtimeBridgeIdentity(next.Bridge),
 		))
 	}
+}
+
+func runtimeRouteSignature(route FFIRoute) string {
+	if route.FuncSig != nil {
+		return string(route.FuncSig.Spec)
+	}
+	return ""
 }
 
 func sameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
@@ -950,7 +956,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			session.TaskStack = append(session.TaskStack, data.Body...)
 			session.TaskStack = append(session.TaskStack, Task{
 				Op:   OpCatchScopeEnter,
-				Data: map[string]interface{}{"catch": data, "panic": session.PanicVar},
+				Data: &CatchScopeData{Catch: data, Panic: session.PanicVar},
 			})
 		} else {
 			return false, errors.New("OpCatchBoundary missing CatchData")
@@ -977,7 +983,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	if task.Op == OpImportDone {
 		// Even on panic, we must restore the parent session
 		data := task.Data.(*ImportData)
-		session.Executor = data.OldExecutor.(ExecutorAPI)
+		session.Executor = data.OldExecutor
 		session.Stack = data.OldStack
 		delete(session.LoadingModules, data.Path)
 		// Return true to indicate we handled this task, but keep UnwindMode as is to continue unwinding in parent
@@ -1031,24 +1037,6 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			return true, nil
 		}
 		return false, nil // Continue unwinding if it's a panic/return
-	}
-
-	if task.Op == OpCatchBoundary {
-		data := task.Data.(map[string]interface{})
-		if session.UnwindMode == UnwindReturn {
-			session.UnwindMode = UnwindNone
-			if err := e.dispatch(session, *task); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-		oldStack := data["oldStack"].(*Stack)
-		session.Stack = oldStack
-		// Restore executor if saved (cross-module calls) during panic unwind
-		if oldExec, ok := data["oldExec"]; ok {
-			session.Executor = oldExec.(ExecutorAPI)
-		}
-		return false, nil
 	}
 
 	return false, nil
@@ -1189,8 +1177,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			v, err = session.Load(name)
 		}
 		if err != nil {
-			exec := session.Executor.(*Executor)
-			if exec.program != nil {
+			exec := session.Executor
+			if exec != nil && exec.program != nil {
 				for _, imp := range exec.program.Imports {
 					alias := imp.Alias
 					if alias == "" {
@@ -1794,14 +1782,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.TaskStack = append(session.TaskStack, rData.Body...)
 		session.TaskStack = append(session.TaskStack, Task{
 			Op:   OpRangeScopeEnter,
-			Data: map[string]interface{}{"rData": rData, "key": key, "val": val},
+			Data: &RangeScopeData{Range: rData, Key: key, Val: val},
 		})
 		return nil
 	case OpRangeScopeEnter:
-		data := task.Data.(map[string]interface{})
-		rData := data["rData"].(*RangeData)
-		key := data["key"].(*Var)
-		val := data["val"].(*Var)
+		data, ok := task.Data.(*RangeScopeData)
+		if !ok || data == nil {
+			return errors.New("OpRangeScopeEnter missing RangeScopeData")
+		}
+		rData := data.Range
+		key := data.Key
+		val := data.Val
 		session.ScopeApply("for_range_body")
 		if rData.Define {
 			if rData.Key != "" && rData.Key != "_" {
@@ -1907,24 +1898,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpCatchScopeEnter:
-		var (
-			varName  string
-			varSym   SymbolRef
-			panicVar *Var
-		)
-		if data, ok := task.Data.(map[string]interface{}); ok {
-			catch, ok := data["catch"].(*CatchData)
-			if ok {
-				varName = catch.VarName
-				varSym = catch.Sym
-				panicVar = data["panic"].(*Var)
-			} else {
-				// Old map data format
-				panicVar = data["panic"].(*Var)
-			}
-		} else {
-			return errors.New("OpCatchScopeEnter missing Data")
+		data, ok := task.Data.(*CatchScopeData)
+		if !ok || data == nil || data.Catch == nil {
+			return errors.New("OpCatchScopeEnter missing CatchScopeData")
 		}
+		varName := data.Catch.VarName
+		varSym := data.Catch.Sym
+		panicVar := data.Panic
 		session.ScopeApply("catch")
 		if varName != "" {
 			if varSym.Kind == SymbolLocal {

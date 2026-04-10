@@ -1015,24 +1015,12 @@ func (e *MiniExecutor) ExportMetadata() string {
 }
 
 func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) {
-	returns := "Void"
-	returnType := ast.GoMiniType("Void")
-	spec := ast.GoMiniType("")
-	if funcSig != nil {
-		spec = funcSig.Spec
-		returns = string(funcSig.Function.Return)
-		returnType = funcSig.Function.Return
-	}
-
 	next := runtime.FFIRoute{
-		Name:      name,
-		Bridge:    bridge,
-		MethodID:  methodID,
-		Returns:   returns,
-		Signature: string(spec),
-		Doc:       doc,
-		FuncSig:   funcSig,
-		Return:    returnType,
+		Name:     name,
+		Bridge:   bridge,
+		MethodID: methodID,
+		Doc:      doc,
+		FuncSig:  funcSig,
 	}
 	if existing, ok := e.routes[name]; ok {
 		ensureCompatibleRoute(name, existing, next)
@@ -1069,7 +1057,11 @@ func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.Runtime
 }
 
 func (e *MiniExecutor) formatRouteSchema(route runtime.FFIRoute) string {
-	return e.formatSchemaWithDoc(ast.GoMiniType(route.Signature), route.Doc, route.FuncSig)
+	spec := ast.GoMiniType("")
+	if route.FuncSig != nil {
+		spec = route.FuncSig.Spec
+	}
+	return e.formatSchemaWithDoc(spec, route.Doc, route.FuncSig)
 }
 
 func (e *MiniExecutor) formatSchemaWithDoc(spec ast.GoMiniType, doc string, parsed *runtime.RuntimeFuncSig) string {
@@ -1088,10 +1080,10 @@ func routeConflictError(name string, existing, next runtime.FFIRoute) string {
 		"ffi route conflict for %s: existing(method=%d sig=%s bridge=%s) new(method=%d sig=%s bridge=%s)",
 		name,
 		existing.MethodID,
-		existing.Signature,
+		runtimeRouteSignature(existing),
 		bridgeIdentity(existing.Bridge),
 		next.MethodID,
-		next.Signature,
+		runtimeRouteSignature(next),
 		bridgeIdentity(next.Bridge),
 	)
 }
@@ -1099,12 +1091,18 @@ func routeConflictError(name string, existing, next runtime.FFIRoute) string {
 func ensureCompatibleRoute(name string, existing, next runtime.FFIRoute) {
 	if existing.Name != next.Name ||
 		existing.MethodID != next.MethodID ||
-		existing.Signature != next.Signature ||
 		existing.Doc != next.Doc ||
 		!sameRuntimeFuncSig(existing.FuncSig, next.FuncSig) ||
 		!sameBridge(existing.Bridge, next.Bridge) {
 		panic(routeConflictError(name, existing, next))
 	}
+}
+
+func runtimeRouteSignature(route runtime.FFIRoute) string {
+	if route.FuncSig != nil {
+		return string(route.FuncSig.Spec)
+	}
+	return ""
 }
 
 func sameRuntimeFuncSig(a, b *runtime.RuntimeFuncSig) bool {

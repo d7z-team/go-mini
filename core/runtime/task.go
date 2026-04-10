@@ -325,10 +325,15 @@ type DoCallData struct {
 type CallBoundaryData struct {
 	Name      string
 	OldStack  *Stack
-	OldExec   ExecutorAPI
+	OldExec   *Executor
 	HasReturn bool
 	ValueBase int
 	LHSBase   int
+}
+
+type CatchScopeData struct {
+	Catch *CatchData
+	Panic *Var
 }
 
 type RangeData struct {
@@ -346,12 +351,18 @@ type RangeData struct {
 
 type ImportData struct {
 	Path          string
-	OldExecutor   interface{}
+	OldExecutor   *Executor
 	OldStack      *Stack
 	OldTaskStack  []Task
 	OldValueStack *ValueStack
 	OldLHSStack   *LHSStack
 	ModSession    *StackContext
+}
+
+type RangeScopeData struct {
+	Range *RangeData
+	Key   *Var
+	Val   *Var
 }
 
 // ValueStack represents a stack of values for expression evaluation

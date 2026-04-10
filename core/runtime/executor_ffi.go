@@ -148,8 +148,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	if funcSig != nil {
 		return e.deserializeRuntimeType(session, reader, funcSig.ReturnType, route.Bridge)
 	}
-	retType, _ := ParseRuntimeType(route.Return)
-	return e.deserializeRuntimeType(session, reader, retType, route.Bridge)
+	return e.deserializeRuntimeType(session, reader, RuntimeType{Kind: RuntimeTypeAny, Raw: "Any"}, route.Bridge)
 }
 
 type ffiCopyBackTarget struct {
@@ -211,35 +210,7 @@ func (e *Executor) applyFFICopyBack(session *StackContext, target ffiCopyBackTar
 }
 
 func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {
-	switch typ.Kind {
-	case RuntimeTypeVoid:
-		return nil
-	case RuntimeTypeAny:
-		e.serializeVarToAny(buf, v)
-		return nil
-	case RuntimeTypePrimitive, RuntimeTypePointer, RuntimeTypeArray, RuntimeTypeMap, RuntimeTypeTuple, RuntimeTypeFunction:
-		return e.serializeVar(buf, v, typ.Raw)
-	case RuntimeTypeInterface:
-		if v == nil || v.VType != TypeInterface || v.Ref == nil {
-			buf.WriteRawInterface(0, nil)
-			return nil
-		}
-		if iface, ok := v.Ref.(*VMInterface); ok {
-			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
-			return nil
-		}
-		buf.WriteRawInterface(0, nil)
-		return nil
-	case RuntimeTypeStruct:
-		return e.serializeStructSchema(buf, v, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields})
-	case RuntimeTypeNamed:
-		if schema, ok := e.resolveStructSchema(typ.Raw); ok {
-			return e.serializeStructSchema(buf, v, schema)
-		}
-		return e.serializeVar(buf, v, typ.Raw)
-	default:
-		return e.serializeVar(buf, v, typ.Raw)
-	}
+	return e.serializeParsedType(buf, v, typ)
 }
 
 func (e *Executor) deserializeRuntimeType(session *StackContext, reader *ffigo.Reader, typ RuntimeType, bridge ffigo.FFIBridge) (*Var, error) {
@@ -288,8 +259,8 @@ func (e *Executor) deserializeStructSchema(session *StackContext, reader *ffigo.
 	return &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}, Type: schema.Spec}, nil
 }
 
-func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniType) error {
-	switch kType {
+func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType) error {
+	switch kType.Raw {
 	case "String":
 		buf.WriteString(key)
 	case "Int64", "Int", "int", "int64":
@@ -311,7 +282,7 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType ast.GoMiniT
 		}
 		buf.WriteFloat64(v)
 	default:
-		return fmt.Errorf("unsupported map key type: %s", kType)
+		return fmt.Errorf("unsupported map key type: %s", kType.Raw)
 	}
 	return nil
 }
@@ -443,7 +414,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		vmMap := v.Ref.(*VMMap)
 		buf.WriteUvarint(uint64(len(vmMap.Data)))
 		for k, val := range vmMap.Data {
-			if err := e.serializeKey(buf, k, typ.Key.Raw); err != nil {
+			if err := e.serializeKey(buf, k, *typ.Key); err != nil {
 				return err
 			}
 			if err := e.serializeParsedType(buf, val, *typ.Value); err != nil {
@@ -489,19 +460,6 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		e.serializeVarToAny(buf, v)
 		return nil
 	}
-}
-
-func (e *Executor) serializeVar(buf *ffigo.Buffer, v *Var, typ ast.GoMiniType) error {
-	typeInfo, err := ParseRuntimeType(typ)
-	if err != nil {
-		if e.isOpaqueHandle(v) {
-			buf.WriteUvarint(uint64(v.Handle))
-			return nil
-		}
-		e.serializeVarToAny(buf, v)
-		return nil
-	}
-	return e.serializeParsedType(buf, v, typeInfo)
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
@@ -843,8 +801,8 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	}
 }
 
-func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (string, error) {
-	switch kType {
+func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (string, error) {
+	switch kType.Raw {
 	case "String":
 		return reader.ReadString(), nil
 	case "Int64", "Int", "int", "int64":
@@ -854,7 +812,7 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType ast.GoMiniType) (s
 	case "Float64", "float64":
 		return strconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64), nil
 	default:
-		return "", fmt.Errorf("unsupported map key type: %s", kType)
+		return "", fmt.Errorf("unsupported map key type: %s", kType.Raw)
 	}
 }
 
@@ -928,7 +886,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		count := int(reader.ReadUvarint())
 		mapData := make(map[string]*Var, count)
 		for i := 0; i < count; i++ {
-			k, err := e.deserializeKey(reader, typ.Key.Raw)
+			k, err := e.deserializeKey(reader, *typ.Key)
 			if err != nil {
 				return nil, err
 			}
@@ -969,20 +927,4 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 	}
 	return res, nil
-}
-
-func (e *Executor) deserializeVar(session *StackContext, reader *ffigo.Reader, typ ast.GoMiniType, bridge ffigo.FFIBridge) (*Var, error) {
-	typ = ast.GoMiniType(strings.TrimSpace(string(typ)))
-	typeInfo, err := ParseRuntimeType(typ)
-	if err != nil {
-		return nil, err
-	}
-	res, err := e.deserializeParsedType(session, reader, typeInfo, bridge)
-	if res != nil {
-		res.Type = typ
-		if session.Stack != nil {
-			res.stack = weak.Make(session.Stack)
-		}
-	}
-	return res, err
 }

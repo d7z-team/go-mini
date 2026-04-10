@@ -20,7 +20,6 @@ func TestEvalFFICopyBackWritesToMemberField(t *testing.T) {
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
-		Return:  "TypeBytes",
 	}
 
 	arg := holder.Ref.(*VMMap).Data["buf"]
@@ -53,7 +52,6 @@ func TestEvalFFICopyBackWritesToArrayIndex(t *testing.T) {
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
-		Return:  "TypeBytes",
 	}
 
 	arg := arr.Ref.(*VMArray).Data[1]
