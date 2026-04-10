@@ -105,6 +105,9 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 	if data.Mode != CallByName || data.Name != "sum" || data.ArgCount != 2 {
 		t.Fatalf("unexpected call task data: %+v", data)
 	}
+	if !data.CaptureArgLHS {
+		t.Fatalf("expected call task to capture arg lhs: %+v", data)
+	}
 }
 
 func TestLowerStmtTasksBuildsDataOnlyBranchPlan(t *testing.T) {

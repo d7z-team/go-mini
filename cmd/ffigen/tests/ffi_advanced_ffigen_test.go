@@ -32,10 +32,10 @@ func NewAdvancedFFIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 }
 
 func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_GetSameObject, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_GetSameObject, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -52,31 +52,31 @@ func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
 }
 
 func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if a == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(a)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(a)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if b == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(b)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(b)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_IsSame, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_IsSame, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -86,16 +86,16 @@ func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 }
 
 func (__p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(m)))
+	wireBuf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteBool(bool(k))
-		buf.WriteString(string(v))
+		wireBuf.WriteBool(bool(k))
+		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -113,13 +113,13 @@ func (__p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 }
 
 func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(e.BaseField))
-	buf.WriteVarint(int64(e.ExtraField))
+	wireBuf.WriteString(string(e.BaseField))
+	wireBuf.WriteVarint(int64(e.ExtraField))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -224,9 +224,9 @@ var AdvancedFFI_FFI_Schemas = []struct {
 	Doc      string
 }{
 	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<test.TestObj>")), "Identity check"},
-	{"IsSame", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool")), ""},
-	{"EchoMap", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<Bool, String>) Map<Float64, Bool>")), "Map keys"},
-	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(test.EmbeddedStruct) test.EmbeddedStruct")), "Embedded structs"},
+	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"EchoMap", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<Bool, String>) Map<Float64, Bool>"), runtime.FFIParamIn), "Map keys"},
+	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(test.EmbeddedStruct) test.EmbeddedStruct"), runtime.FFIParamIn), "Embedded structs"},
 }
 
 type AdvancedFFI_Bridge struct {

@@ -32,12 +32,12 @@ func NewBrowserModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistr
 }
 
 func (__p *BrowserModuleProxy) OpenBrowser(ctx context.Context, url string) (*other.Browser, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(url))
+	wireBuf.WriteString(string(url))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_BrowserModule_OpenBrowser, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_BrowserModule_OpenBrowser, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -113,7 +113,7 @@ var BrowserModule_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"OpenBrowser", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<other.Browser>, Error)")), ""},
+	{"OpenBrowser", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<other.Browser>, Error)"), runtime.FFIParamIn), ""},
 }
 
 type BrowserModule_Bridge struct {
@@ -162,21 +162,21 @@ func NewBrowserServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegist
 }
 
 func (__p *BrowserServiceProxy) NewPage(b *other.Browser) (*other.Page, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if b == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(b)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(b)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_BrowserService_NewPage, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_BrowserService_NewPage, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -259,7 +259,7 @@ var BrowserService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewPage", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error)")), ""},
+	{"NewPage", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error)"), runtime.FFIParamIn), ""},
 }
 
 type BrowserService_Bridge struct {
@@ -312,25 +312,25 @@ func NewPageServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 }
 
 func (__p *PageServiceProxy) Locator(p *other.Page, selectors ...string) (*other.CdpSelector, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if p == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(p)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(p)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
-	buf.WriteUvarint(uint64(len(selectors)))
+	wireBuf.WriteUvarint(uint64(len(selectors)))
 	for _, item := range selectors {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_PageService_Locator, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_PageService_Locator, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -419,7 +419,7 @@ var PageService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Locator", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error)")), ""},
+	{"Locator", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type PageService_Bridge struct {
@@ -472,21 +472,21 @@ func NewCdpSelectorServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRe
 }
 
 func (__p *CdpSelectorServiceProxy) Click(s *other.CdpSelector) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if s == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(s)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(s)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_CdpSelectorService_Click, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_CdpSelectorService_Click, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -554,7 +554,7 @@ var CdpSelectorService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Click", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<other.CdpSelector>) Error")), ""},
+	{"Click", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.CdpSelector>) Error"), runtime.FFIParamIn), ""},
 }
 
 type CdpSelectorService_Bridge struct {

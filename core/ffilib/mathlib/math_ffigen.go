@@ -42,12 +42,12 @@ func NewMathProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Math {
 }
 
 func (__p *MathProxy) Abs(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Abs, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Abs, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -57,12 +57,12 @@ func (__p *MathProxy) Abs(x float64) float64 {
 }
 
 func (__p *MathProxy) Ceil(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Ceil, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Ceil, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -72,12 +72,12 @@ func (__p *MathProxy) Ceil(x float64) float64 {
 }
 
 func (__p *MathProxy) Floor(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Floor, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Floor, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -87,12 +87,12 @@ func (__p *MathProxy) Floor(x float64) float64 {
 }
 
 func (__p *MathProxy) Round(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Round, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Round, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -102,12 +102,12 @@ func (__p *MathProxy) Round(x float64) float64 {
 }
 
 func (__p *MathProxy) Sqrt(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sqrt, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sqrt, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -117,13 +117,13 @@ func (__p *MathProxy) Sqrt(x float64) float64 {
 }
 
 func (__p *MathProxy) Pow(x float64, y float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
-	buf.WriteFloat64(float64(y))
+	wireBuf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Pow, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Pow, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -133,13 +133,13 @@ func (__p *MathProxy) Pow(x float64, y float64) float64 {
 }
 
 func (__p *MathProxy) Min(x float64, y float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
-	buf.WriteFloat64(float64(y))
+	wireBuf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Min, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Min, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -149,13 +149,13 @@ func (__p *MathProxy) Min(x float64, y float64) float64 {
 }
 
 func (__p *MathProxy) Max(x float64, y float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
-	buf.WriteFloat64(float64(y))
+	wireBuf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Max, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Max, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -165,12 +165,12 @@ func (__p *MathProxy) Max(x float64, y float64) float64 {
 }
 
 func (__p *MathProxy) Sin(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sin, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sin, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -180,12 +180,12 @@ func (__p *MathProxy) Sin(x float64) float64 {
 }
 
 func (__p *MathProxy) Cos(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Cos, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Cos, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -195,12 +195,12 @@ func (__p *MathProxy) Cos(x float64) float64 {
 }
 
 func (__p *MathProxy) Tan(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Tan, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Tan, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -210,12 +210,12 @@ func (__p *MathProxy) Tan(x float64) float64 {
 }
 
 func (__p *MathProxy) Exp(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Exp, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Exp, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -225,12 +225,12 @@ func (__p *MathProxy) Exp(x float64) float64 {
 }
 
 func (__p *MathProxy) Log(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -240,12 +240,12 @@ func (__p *MathProxy) Log(x float64) float64 {
 }
 
 func (__p *MathProxy) Log10(x float64) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(x))
+	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log10, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log10, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -255,10 +255,10 @@ func (__p *MathProxy) Log10(x float64) float64 {
 }
 
 func (__p *MathProxy) NaN() float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_NaN, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_NaN, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -268,12 +268,12 @@ func (__p *MathProxy) NaN() float64 {
 }
 
 func (__p *MathProxy) IsNaN(f float64) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(f))
+	wireBuf.WriteFloat64(float64(f))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsNaN, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsNaN, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -283,12 +283,12 @@ func (__p *MathProxy) IsNaN(f float64) bool {
 }
 
 func (__p *MathProxy) Inf(sign int) float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(sign))
+	wireBuf.WriteVarint(int64(sign))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Inf, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Inf, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -298,13 +298,13 @@ func (__p *MathProxy) Inf(sign int) float64 {
 }
 
 func (__p *MathProxy) IsInf(f float64, sign int) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(f))
-	buf.WriteVarint(int64(sign))
+	wireBuf.WriteFloat64(float64(f))
+	wireBuf.WriteVarint(int64(sign))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsInf, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsInf, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -506,24 +506,24 @@ var Math_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Abs", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Ceil", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Floor", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Round", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Sqrt", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Pow", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
-	{"Min", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
-	{"Max", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Float64) Float64")), ""},
-	{"Sin", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Cos", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Tan", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Exp", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Log", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
-	{"Log10", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Float64")), ""},
+	{"Abs", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Ceil", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Floor", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Round", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Sqrt", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Pow", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Min", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Max", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sin", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Cos", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Tan", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Exp", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Log", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
+	{"Log10", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
 	{"NaN", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Float64")), ""},
-	{"IsNaN", 16, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64) Bool")), ""},
-	{"Inf", 17, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Float64")), ""},
-	{"IsInf", 18, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Int64) Bool")), ""},
+	{"IsNaN", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Bool"), runtime.FFIParamIn), ""},
+	{"Inf", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Float64"), runtime.FFIParamIn), ""},
+	{"IsInf", 18, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Int64) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Math_Bridge struct {

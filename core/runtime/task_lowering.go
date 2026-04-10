@@ -746,9 +746,10 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 			return []Task{{Op: OpPush}}, true
 		}
 		data := &CallData{
-			Mode:     CallByValue,
-			ArgCount: len(n.Args),
-			Ellipsis: n.Ellipsis,
+			Mode:          CallByValue,
+			ArgCount:      len(n.Args),
+			Ellipsis:      n.Ellipsis,
+			CaptureArgLHS: true,
 		}
 		switch fn := n.Func.(type) {
 		case *ast.IdentifierExpr:
@@ -766,7 +767,7 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 
 		out := []Task{{Op: OpCall, Data: data}}
 		for i := len(n.Args) - 1; i >= 0; i-- {
-			out = append(out, e.tasksForExprInScope(n.Args[i], scope)...)
+			out = append(out, e.tasksForCallArgInScope(n.Args[i], scope)...)
 		}
 		if member, ok := n.Func.(*ast.MemberExpr); ok {
 			out = append(out, e.tasksForExprInScope(member.Object, scope)...)
@@ -798,6 +799,20 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 	default:
 		return nil, false
 	}
+}
+
+func (e *Executor) tasksForCallArgInScope(expr ast.Expr, scope *loweringScope) []Task {
+	lhsTasks, ok := e.lowerLHSTasks(expr, scope)
+	if !ok {
+		lhsTasks = []Task{{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeNone}}}
+	} else {
+		lhsTasks = e.setSource(lhsTasks, expr)
+	}
+	exprTasks := e.tasksForExprInScope(expr, scope)
+	out := make([]Task, 0, len(lhsTasks)+len(exprTasks))
+	out = append(out, lhsTasks...)
+	out = append(out, exprTasks...)
+	return out
 }
 
 func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]Task, bool) {

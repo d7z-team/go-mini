@@ -28,16 +28,16 @@ func NewMapTestProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Map
 }
 
 func (__p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(m)))
+	wireBuf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteString(string(k))
-		buf.WriteString(string(v))
+		wireBuf.WriteString(string(k))
+		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoMap, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -73,10 +73,10 @@ func (__p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[
 }
 
 func (__p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_GetMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_GetMap, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -115,16 +115,16 @@ func (__p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 }
 
 func (__p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(m)))
+	wireBuf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteString(string(k))
-		buf.WriteVarint(int64(v))
+		wireBuf.WriteString(string(k))
+		wireBuf.WriteVarint(int64(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -155,16 +155,16 @@ func (__p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (in
 }
 
 func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(m)))
+	wireBuf.WriteUvarint(uint64(len(m)))
 	for k, v := range m {
-		buf.WriteVarint(int64(k))
-		buf.WriteString(string(v))
+		wireBuf.WriteVarint(int64(k))
+		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -333,10 +333,10 @@ var MapTest_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EchoMap", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<String, String>) tuple(Map<String, String>, Error)")), ""},
+	{"EchoMap", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<String, String>) tuple(Map<String, String>, Error)"), runtime.FFIParamIn), ""},
 	{"GetMap", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() tuple(Map<String, Int64>, Error)")), ""},
-	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<String, Int64>) tuple(Int64, Error)")), ""},
-	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)")), ""},
+	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<String, Int64>) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
+	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)"), runtime.FFIParamIn), ""},
 }
 
 type MapTest_Bridge struct {

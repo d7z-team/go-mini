@@ -35,12 +35,12 @@ func NewStrconvProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Str
 }
 
 func (__p *StrconvProxy) Atoi(s string) (int, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Atoi, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Atoi, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -71,12 +71,12 @@ func (__p *StrconvProxy) Atoi(s string) (int, error) {
 }
 
 func (__p *StrconvProxy) Itoa(i int) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(i))
+	wireBuf.WriteVarint(int64(i))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Itoa, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Itoa, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -86,12 +86,12 @@ func (__p *StrconvProxy) Itoa(i int) string {
 }
 
 func (__p *StrconvProxy) ParseBool(str string) (bool, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(str))
+	wireBuf.WriteString(string(str))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseBool, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseBool, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -119,13 +119,13 @@ func (__p *StrconvProxy) ParseBool(str string) (bool, error) {
 }
 
 func (__p *StrconvProxy) ParseFloat(s string, bitSize int) (float64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteVarint(int64(bitSize))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseFloat, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseFloat, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -153,14 +153,14 @@ func (__p *StrconvProxy) ParseFloat(s string, bitSize int) (float64, error) {
 }
 
 func (__p *StrconvProxy) ParseInt(s string, base int, bitSize int) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteVarint(int64(base))
-	buf.WriteVarint(int64(bitSize))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteVarint(int64(base))
+	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseInt, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseInt, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -191,12 +191,12 @@ func (__p *StrconvProxy) ParseInt(s string, base int, bitSize int) (int64, error
 }
 
 func (__p *StrconvProxy) FormatBool(b bool) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBool(bool(b))
+	wireBuf.WriteBool(bool(b))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatBool, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatBool, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -206,15 +206,15 @@ func (__p *StrconvProxy) FormatBool(b bool) string {
 }
 
 func (__p *StrconvProxy) FormatFloat(f float64, format uint8, prec int, bitSize int) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteFloat64(float64(f))
-	buf.WriteUvarint(uint64(format))
-	buf.WriteVarint(int64(prec))
-	buf.WriteVarint(int64(bitSize))
+	wireBuf.WriteFloat64(float64(f))
+	wireBuf.WriteUvarint(uint64(format))
+	wireBuf.WriteVarint(int64(prec))
+	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatFloat, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatFloat, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -224,13 +224,13 @@ func (__p *StrconvProxy) FormatFloat(f float64, format uint8, prec int, bitSize 
 }
 
 func (__p *StrconvProxy) FormatInt(i int64, base int) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(i))
-	buf.WriteVarint(int64(base))
+	wireBuf.WriteVarint(int64(i))
+	wireBuf.WriteVarint(int64(base))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatInt, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatInt, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -240,12 +240,12 @@ func (__p *StrconvProxy) FormatInt(i int64, base int) string {
 }
 
 func (__p *StrconvProxy) Quote(s string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Quote, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Quote, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -255,12 +255,12 @@ func (__p *StrconvProxy) Quote(s string) string {
 }
 
 func (__p *StrconvProxy) Unquote(s string) (string, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Unquote, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Unquote, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -485,16 +485,16 @@ var Strconv_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Atoi", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Int64, Error)")), ""},
-	{"Itoa", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) String")), ""},
-	{"ParseBool", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Bool, Error)")), ""},
-	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) tuple(Float64, Error)")), ""},
-	{"ParseInt", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64, Int64) tuple(Int64, Error)")), ""},
-	{"FormatBool", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Bool) String")), ""},
-	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Float64, Int64, Int64, Int64) String")), ""},
-	{"FormatInt", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) String")), ""},
-	{"Quote", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Unquote", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, Error)")), ""},
+	{"Atoi", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
+	{"Itoa", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) String"), runtime.FFIParamIn), ""},
+	{"ParseBool", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Bool, Error)"), runtime.FFIParamIn), ""},
+	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64) tuple(Float64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ParseInt", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"FormatBool", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Bool) String"), runtime.FFIParamIn), ""},
+	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Int64, Int64, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"FormatInt", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Quote", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Unquote", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, Error)"), runtime.FFIParamIn), ""},
 }
 
 type Strconv_Bridge struct {

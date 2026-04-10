@@ -32,12 +32,12 @@ func NewTestCanonicalServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.Handle
 }
 
 func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_other.Type {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewA, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewA, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -54,12 +54,12 @@ func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_
 }
 
 func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other.Type {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(id))
+	wireBuf.WriteVarint(int64(id))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewB, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewB, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -125,8 +125,8 @@ var TestCanonicalService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewA", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Ptr<a_other.Type>")), ""},
-	{"NewB", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<b_other.Type>")), ""},
+	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Ptr<a_other.Type>"), runtime.FFIParamIn), ""},
+	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Ptr<b_other.Type>"), runtime.FFIParamIn), ""},
 }
 
 type TestCanonicalService_Bridge struct {
@@ -176,21 +176,21 @@ func NewATypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 }
 
 func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ATypeService_Hello, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ATypeService_Hello, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -234,7 +234,7 @@ var ATypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<a_other.Type>) String")), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<a_other.Type>) String"), runtime.FFIParamIn), ""},
 }
 
 type ATypeService_Bridge struct {
@@ -287,21 +287,21 @@ func NewBTypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 }
 
 func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_BTypeService_Hello, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_BTypeService_Hello, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -345,7 +345,7 @@ var BTypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<b_other.Type>) String")), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<b_other.Type>) String"), runtime.FFIParamIn), ""},
 }
 
 type BTypeService_Bridge struct {

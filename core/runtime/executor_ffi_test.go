@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -151,4 +152,85 @@ func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
 	}()
 
 	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; Name String; }"))
+}
+
+type copyBackFFIBridge struct {
+	returnValue []byte
+}
+
+func (b copyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
+	reader := ffigo.NewReader(args)
+	input := bytes.ToUpper(reader.ReadBytes())
+	input = append(input, '!')
+
+	buf := ffigo.GetBuffer()
+	buf.WriteUvarint(1)
+	buf.WriteBytes(input)
+	buf.WriteBytes(b.returnValue)
+
+	out := append([]byte(nil), buf.Bytes()...)
+	ffigo.ReleaseBuffer(buf)
+	return out, nil
+}
+
+func (b copyBackFFIBridge) Invoke(ctx context.Context, name string, args []byte) ([]byte, error) {
+	return b.Call(ctx, 0, args)
+}
+
+func (b copyBackFFIBridge) DestroyHandle(uint32) error { return nil }
+
+func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	if err := session.NewVar("buf", "TypeBytes"); err != nil {
+		t.Fatalf("new var failed: %v", err)
+	}
+	initial := NewBytes([]byte("ab"))
+	if err := session.Store("buf", initial); err != nil {
+		t.Fatalf("store failed: %v", err)
+	}
+
+	route := FFIRoute{
+		Name:    "demo.Mutate",
+		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		Return:  "TypeBytes",
+	}
+
+	arg, err := session.Load("buf")
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	res, err := exec.evalFFI(session, route, []*Var{arg}, []LHSValue{&LHSEnv{Name: "buf"}})
+	if err != nil {
+		t.Fatalf("evalFFI failed: %v", err)
+	}
+	if res == nil || res.VType != TypeBytes || string(res.B) != "ret" {
+		t.Fatalf("unexpected ffi return: %#v", res)
+	}
+
+	updated, err := session.Load("buf")
+	if err != nil {
+		t.Fatalf("load updated failed: %v", err)
+	}
+	if updated == nil || updated.VType != TypeBytes || string(updated.B) != "AB!" {
+		t.Fatalf("unexpected copy-back bytes: %#v", updated)
+	}
+}
+
+func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	route := FFIRoute{
+		Name:    "demo.Mutate",
+		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		Return:  "TypeBytes",
+	}
+
+	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
+	if err == nil || !strings.Contains(err.Error(), "assignable left value") {
+		t.Fatalf("expected assignable left value error, got %v", err)
+	}
 }

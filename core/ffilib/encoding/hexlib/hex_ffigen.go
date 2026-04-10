@@ -27,12 +27,12 @@ func NewHexProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Hex {
 }
 
 func (__p *HexProxy) EncodeToString(src []byte) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(src)
+	wireBuf.WriteBytes(src)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_EncodeToString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_EncodeToString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -42,12 +42,12 @@ func (__p *HexProxy) EncodeToString(src []byte) string {
 }
 
 func (__p *HexProxy) DecodeString(s string) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_DecodeString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_DecodeString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,12 +75,12 @@ func (__p *HexProxy) DecodeString(s string) ([]byte, error) {
 }
 
 func (__p *HexProxy) Dump(data []byte) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(data)
+	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_Dump, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Hex_Dump, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -144,9 +144,9 @@ var Hex_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
-	{"DecodeString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
-	{"Dump", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
+	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
+	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
+	{"Dump", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
 }
 
 type Hex_Bridge struct {

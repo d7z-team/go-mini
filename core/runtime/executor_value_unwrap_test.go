@@ -49,7 +49,7 @@ func TestEvalMemberAndBuiltinLenUnwrapAnyContainers(t *testing.T) {
 		t.Fatalf("unexpected member result: %#v", got)
 	}
 
-	if err := exec.invokeCall(session, "len", nil, nil, nil, []*Var{anyMap}); err != nil {
+	if err := exec.invokeCall(session, "len", nil, nil, nil, []*Var{anyMap}, nil); err != nil {
 		t.Fatalf("len call failed: %v", err)
 	}
 	lenRes := session.ValueStack.Pop()

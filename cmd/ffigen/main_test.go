@@ -228,6 +228,48 @@ func (f *Factory) New(base int64) *Factory {
 	}
 }
 
+func TestRunDirectoryModeGeneratesBytesRefCopyBackSupport(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "mutator.go", `package pkgmode
+
+import "gopkg.d7z.net/go-mini/core/ffigo"
+
+// ffigen:module demo
+type Mutator interface {
+	Mutate(buf *ffigo.BytesRef) []byte
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamInOutBytes)`) {
+		t.Fatalf("expected BytesRef schema to emit inout bytes mode, got:\n%s", code)
+	}
+	if !strings.Contains(code, `resBuf.WriteUvarint(uint64(1))`) {
+		t.Fatalf("expected host router to write copy-back envelope, got:\n%s", code)
+	}
+	if !strings.Contains(code, `buf.Value = retBuf.ReadBytes()`) {
+		t.Fatalf("expected proxy to read copy-back into BytesRef, got:\n%s", code)
+	}
+}
+
 func TestRunFileModeDoesNotInjectReceiverForModuleOnlyStruct(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	sourcePath := filepath.Join(workspace, "factory.go")

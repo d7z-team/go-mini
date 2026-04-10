@@ -28,59 +28,59 @@ func NewFmtProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Fmt {
 }
 
 func (__p *FmtProxy) Print(ctx context.Context, args ...any) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(args)))
+	wireBuf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Print, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Print, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *FmtProxy) Println(ctx context.Context, args ...any) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(args)))
+	wireBuf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Println, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Println, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(format))
-	buf.WriteUvarint(uint64(len(args)))
+	wireBuf.WriteString(string(format))
+	wireBuf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Printf, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Printf, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(format))
-	buf.WriteUvarint(uint64(len(args)))
+	wireBuf.WriteString(string(format))
+	wireBuf.WriteUvarint(uint64(len(args)))
 	for _, item := range args {
-		buf.WriteAny(item)
+		wireBuf.WriteAny(item)
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_Fmt_Sprintf, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_Fmt_Sprintf, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -243,10 +243,10 @@ var Fmt_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Print", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...Any) Void")), ""},
-	{"Println", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...Any) Void")), ""},
-	{"Printf", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...Any) Void")), ""},
-	{"Sprintf", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...Any) String")), ""},
+	{"Print", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...Any) Void"), runtime.FFIParamIn), ""},
+	{"Println", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...Any) Void"), runtime.FFIParamIn), ""},
+	{"Printf", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...Any) Void"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sprintf", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...Any) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Fmt_Bridge struct {

@@ -307,11 +307,12 @@ const (
 )
 
 type CallData struct {
-	Mode     CallMode
-	Name     string
-	ArgCount int
-	Ellipsis bool
-	Sym      SymbolRef
+	Mode          CallMode
+	Name          string
+	ArgCount      int
+	Ellipsis      bool
+	Sym           SymbolRef
+	CaptureArgLHS bool
 }
 
 type DoCallData struct {

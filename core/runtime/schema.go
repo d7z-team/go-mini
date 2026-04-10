@@ -44,11 +44,19 @@ type RuntimeType struct {
 	Methods  []RuntimeInterfaceMethod
 }
 
+type FFIParamMode uint8
+
+const (
+	FFIParamIn FFIParamMode = iota
+	FFIParamInOutBytes
+)
+
 // RuntimeFuncSig is the parsed FFI function schema cached at registration time.
 type RuntimeFuncSig struct {
 	Spec       ast.GoMiniType
 	Function   ast.FunctionType
 	ParamTypes []RuntimeType
+	ParamModes []FFIParamMode
 	ReturnType RuntimeType
 }
 
@@ -243,8 +251,46 @@ func ParseRuntimeFuncSig(spec ast.GoMiniType) (*RuntimeFuncSig, error) {
 		Spec:       spec,
 		Function:   *fn,
 		ParamTypes: params,
+		ParamModes: defaultFFIParamModes(len(params)),
 		ReturnType: retType,
 	}, nil
+}
+
+func defaultFFIParamModes(n int) []FFIParamMode {
+	if n == 0 {
+		return nil
+	}
+	modes := make([]FFIParamMode, n)
+	for i := range modes {
+		modes[i] = FFIParamIn
+	}
+	return modes
+}
+
+func cloneFFIParamModes(modes []FFIParamMode) []FFIParamMode {
+	if len(modes) == 0 {
+		return nil
+	}
+	cloned := make([]FFIParamMode, len(modes))
+	copy(cloned, modes)
+	return cloned
+}
+
+func CloneRuntimeFuncSigWithParamModes(sig *RuntimeFuncSig, modes ...FFIParamMode) *RuntimeFuncSig {
+	if sig == nil {
+		return nil
+	}
+	cloned := *sig
+	cloned.ParamTypes = append([]RuntimeType(nil), sig.ParamTypes...)
+	if len(modes) == 0 {
+		cloned.ParamModes = defaultFFIParamModes(len(sig.ParamTypes))
+		return &cloned
+	}
+	if len(modes) != len(sig.ParamTypes) {
+		panic(fmt.Sprintf("ffi param mode count mismatch: have %d want %d", len(modes), len(sig.ParamTypes)))
+	}
+	cloned.ParamModes = cloneFFIParamModes(modes)
+	return &cloned
 }
 
 func ParseRuntimeStructSpec(name string, spec ast.GoMiniType) (*RuntimeStructSpec, error) {
@@ -326,6 +372,10 @@ func MustParseRuntimeFuncSig(spec ast.GoMiniType) *RuntimeFuncSig {
 		panic(err)
 	}
 	return sig
+}
+
+func MustParseRuntimeFuncSigWithModes(spec ast.GoMiniType, modes ...FFIParamMode) *RuntimeFuncSig {
+	return CloneRuntimeFuncSigWithParamModes(MustParseRuntimeFuncSig(spec), modes...)
 }
 
 func MustParseRuntimeStructSpec(name string, spec ast.GoMiniType) *RuntimeStructSpec {

@@ -43,12 +43,12 @@ func NewMockOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Mock
 }
 
 func (__p *MockOSProxy) Open(name string) (*File, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Open, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Open, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -83,21 +83,21 @@ func (__p *MockOSProxy) Open(name string) (*File, error) {
 }
 
 func (__p *MockOSProxy) Name(f *File) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Name, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Name, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -107,21 +107,21 @@ func (__p *MockOSProxy) Name(f *File) string {
 }
 
 func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Stat, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Stat, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -153,22 +153,22 @@ func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 }
 
 func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
-	buf.WriteBytes(b)
+	wireBuf.WriteBytes(b)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Read, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Read, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -199,22 +199,22 @@ func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 }
 
 func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
-	buf.WriteBytes(b)
+	wireBuf.WriteBytes(b)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Write, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Write, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -245,21 +245,21 @@ func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 }
 
 func (__p *MockOSProxy) Close(f *File) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Close, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Close, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -285,14 +285,14 @@ func (__p *MockOSProxy) Close(f *File) error {
 }
 
 func (__p *MockOSProxy) Deep(n Nested) Nested {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(n.Info.Name))
-	buf.WriteVarint(int64(n.Info.Size))
-	buf.WriteVarint(int64(n.Level))
+	wireBuf.WriteString(string(n.Info.Name))
+	wireBuf.WriteVarint(int64(n.Info.Size))
+	wireBuf.WriteVarint(int64(n.Level))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Deep, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Deep, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -490,13 +490,13 @@ var MockOS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<os.File>, Error)")), ""},
-	{"Name", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<os.File>) String")), ""},
-	{"Stat", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<os.File>) tuple(os.FileInfo, Error)")), ""},
-	{"Read", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)")), ""},
-	{"Write", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)")), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<os.File>) Error")), ""},
-	{"Deep", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(os.Nested) os.Nested")), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<os.File>, Error)"), runtime.FFIParamIn), ""},
+	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) String"), runtime.FFIParamIn), ""},
+	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) tuple(os.FileInfo, Error)"), runtime.FFIParamIn), ""},
+	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) Error"), runtime.FFIParamIn), ""},
+	{"Deep", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(os.Nested) os.Nested"), runtime.FFIParamIn), ""},
 }
 
 type MockOS_Bridge struct {
@@ -558,12 +558,12 @@ func NewContextMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry)
 }
 
 func (__p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(key))
+	wireBuf.WriteString(string(key))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_ContextMock_WithContext, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_ContextMock_WithContext, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -573,12 +573,12 @@ func (__p *ContextMockProxy) WithContext(ctx context.Context, key string) string
 }
 
 func (__p *ContextMockProxy) WithoutContext(val string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(val))
+	wireBuf.WriteString(string(val))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -624,8 +624,8 @@ var ContextMock_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"WithContext", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"WithContext", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
 }
 
 type ContextMock_Bridge struct {
@@ -678,10 +678,10 @@ func NewNativeMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) 
 }
 
 func (__p *NativeMockProxy) GetStruct() NativeStruct {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetStruct, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetStruct, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -695,10 +695,10 @@ func (__p *NativeMockProxy) GetStruct() NativeStruct {
 }
 
 func (__p *NativeMockProxy) GetPtr() *NativeStruct {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetPtr, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetPtr, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -715,13 +715,13 @@ func (__p *NativeMockProxy) GetPtr() *NativeStruct {
 }
 
 func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s.Msg))
-	buf.WriteVarint(int64(s.Value))
+	wireBuf.WriteString(string(s.Msg))
+	wireBuf.WriteVarint(int64(s.Value))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -734,21 +734,21 @@ func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 }
 
 func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if s == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(s)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(s)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetPtr, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetPtr, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -830,8 +830,8 @@ var NativeMock_FFI_Schemas = []struct {
 }{
 	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() native.NativeStruct")), ""},
 	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<native.NativeStruct>")), ""},
-	{"SetStruct", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(native.NativeStruct) Int64")), ""},
-	{"SetPtr", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<native.NativeStruct>) Int64")), ""},
+	{"SetStruct", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(native.NativeStruct) Int64"), runtime.FFIParamIn), ""},
+	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<native.NativeStruct>) Int64"), runtime.FFIParamIn), ""},
 }
 
 type NativeMock_Bridge struct {
@@ -925,7 +925,7 @@ var Page_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<Page>, String, ...Bool) Ptr<Selector>")), ""},
+	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<Page>, String, ...Bool) Ptr<Selector>"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Page_Bridge struct {

@@ -27,16 +27,16 @@ func NewMockGeometryProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 }
 
 func (__p *MockGeometryProxy) SumX(points []RobustPoint) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(points)))
+	wireBuf.WriteUvarint(uint64(len(points)))
 	for _, item := range points {
-		buf.WriteVarint(int64(item.X))
-		buf.WriteVarint(int64(item.Y))
+		wireBuf.WriteVarint(int64(item.X))
+		wireBuf.WriteVarint(int64(item.Y))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockGeometry_SumX, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MockGeometry_SumX, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -87,7 +87,7 @@ var MockGeometry_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"SumX", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<RobustPoint>) Int64")), ""},
+	{"SumX", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<RobustPoint>) Int64"), runtime.FFIParamIn), ""},
 }
 
 type MockGeometry_Bridge struct {

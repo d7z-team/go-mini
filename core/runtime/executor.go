@@ -501,7 +501,15 @@ func sameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
 	case a == nil || b == nil:
 		return a == b
 	default:
-		return a.Spec == b.Spec
+		if a.Spec != b.Spec || len(a.ParamModes) != len(b.ParamModes) {
+			return false
+		}
+		for i := range a.ParamModes {
+			if a.ParamModes[i] != b.ParamModes[i] {
+				return false
+			}
+		}
+		return true
 	}
 }
 
@@ -832,7 +840,7 @@ func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName s
 		actualCallable = nil
 	}
 
-	err := e.invokeCall(ctx, name, receiver, nil, actualCallable, args)
+	err := e.invokeCall(ctx, name, receiver, nil, actualCallable, args, nil)
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
@@ -1563,6 +1571,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		for i := argCount - 1; i >= 0; i-- {
 			args[i] = session.ValueStack.Pop()
 		}
+		var argLHS []LHSValue
+		if data.CaptureArgLHS {
+			argLHS = make([]LHSValue, argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				argLHS[i] = session.LHSStack.Pop()
+			}
+		}
 
 		// 处理变长参数展开 f(args...)
 		ellipsis := data.Ellipsis
@@ -1627,12 +1642,22 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			offset = 1
 		}
 		finalArgs := make([]*Var, totalArgs)
+		var finalArgLHS []LHSValue
+		if argLHS != nil {
+			finalArgLHS = make([]LHSValue, totalArgs)
+		}
 		if receiver != nil {
 			finalArgs[0] = receiver
+			if finalArgLHS != nil {
+				finalArgLHS[0] = nil
+			}
 		}
 		copy(finalArgs[offset:], args)
+		if finalArgLHS != nil {
+			copy(finalArgLHS[offset:], argLHS)
+		}
 
-		return e.invokeCall(session, name, receiver, mod, callable, finalArgs)
+		return e.invokeCall(session, name, receiver, mod, callable, finalArgs, finalArgLHS)
 	case OpCallBoundary:
 		data, ok := task.Data.(*CallBoundaryData)
 		if !ok || data == nil {

@@ -28,12 +28,12 @@ func NewBase64Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Base
 }
 
 func (__p *Base64Proxy) EncodeToString(src []byte) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(src)
+	wireBuf.WriteBytes(src)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_EncodeToString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_EncodeToString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -43,12 +43,12 @@ func (__p *Base64Proxy) EncodeToString(src []byte) string {
 }
 
 func (__p *Base64Proxy) DecodeString(s string) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_DecodeString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_DecodeString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -76,12 +76,12 @@ func (__p *Base64Proxy) DecodeString(s string) ([]byte, error) {
 }
 
 func (__p *Base64Proxy) URLEncodeToString(src []byte) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(src)
+	wireBuf.WriteBytes(src)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLEncodeToString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLEncodeToString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -91,12 +91,12 @@ func (__p *Base64Proxy) URLEncodeToString(src []byte) string {
 }
 
 func (__p *Base64Proxy) URLDecodeString(s string) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLDecodeString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLDecodeString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -196,10 +196,10 @@ var Base64_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
-	{"DecodeString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
-	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) String")), ""},
-	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
+	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
+	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
+	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
+	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
 }
 
 type Base64_Bridge struct {

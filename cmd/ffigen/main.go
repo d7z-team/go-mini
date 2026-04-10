@@ -95,6 +95,8 @@ type displayTypeResolver struct {
 	collidingBaseName map[string]bool
 }
 
+const bytesRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.BytesRef"
+
 func main() {
 	flag.Parse()
 	if *pkgName == "" || *outFile == "" {
@@ -325,6 +327,7 @@ type packageData struct {
 }
 
 func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData, error) {
+	preKnownImports := collectImportAliases(allFiles)
 	conf := types.Config{Importer: newSourceImporter(), IgnoreFuncBodies: true}
 	info := &types.Info{
 		Types: make(map[ast.Expr]types.TypeAndValue),
@@ -340,7 +343,9 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 		// 类型检查失败不一定意味着无法生成，但我们需要感知这些错误。
 		// 在 FFI 生成场景中，如果缺少某些外部依赖，conf.Check 会报错，
 		// 只要我们关注的 target 结构是完整的，通常可以继续。
-		fmt.Fprintf(os.Stderr, "ffigen: type check warning in %s: %v\n", checkPath, err)
+		if !isIgnorableTypeCheckError(err, preKnownImports) {
+			fmt.Fprintf(os.Stderr, "ffigen: type check warning in %s: %v\n", checkPath, err)
+		}
 	}
 
 	knownImports = make(map[string]string)
@@ -453,6 +458,58 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 		constants:     globalConsts,
 		ownedStructs:  ownedStructs,
 	}, nil
+}
+
+func collectImportAliases(files []*ast.File) map[string]string {
+	res := make(map[string]string)
+	for _, node := range files {
+		for _, imp := range node.Imports {
+			path := strings.Trim(imp.Path.Value, "\"")
+			alias := ""
+			if imp.Name != nil {
+				alias = imp.Name.Name
+			} else {
+				parts := strings.Split(path, "/")
+				alias = parts[len(parts)-1]
+			}
+			res[alias] = path
+		}
+	}
+	return res
+}
+
+func isIgnorableTypeCheckError(err error, imports map[string]string) bool {
+	if err == nil {
+		return true
+	}
+	var list scanner.ErrorList
+	if errors.As(err, &list) {
+		if len(list) == 0 {
+			return true
+		}
+		for _, item := range list {
+			if !isIgnorableTypeCheckMessage(item.Msg, imports) {
+				return false
+			}
+		}
+		return true
+	}
+	return isIgnorableTypeCheckMessage(err.Error(), imports)
+}
+
+func isIgnorableTypeCheckMessage(msg string, imports map[string]string) bool {
+	msg = strings.TrimSpace(msg)
+	needle := "undefined: "
+	idx := strings.LastIndex(msg, needle)
+	if idx == -1 {
+		return false
+	}
+	alias := strings.TrimSpace(strings.TrimPrefix(msg[idx:], needle))
+	if alias == "" {
+		return false
+	}
+	_, ok := imports[alias]
+	return ok
 }
 
 func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, data packageData, packageMode bool) (err error) {
@@ -623,7 +680,7 @@ func (i *sourceImporter) Import(path string) (*types.Package, error) {
 func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
 	// importFromModule 实现了针对模块内未编译源码的“部分加载”。
 	// 它通过解析 AST 提取导出的符号并创建占位符 types.Object。
-	// 
+	//
 	// 边界说明：
 	// 1. 结构体 (Struct) 会被简化为没有任何字段的 types.Struct。
 	// 2. 函数 (Func) 会被简化为没有任何参数和返回值的 types.Signature。
@@ -1023,6 +1080,9 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 }
 
 func (r *displayTypeResolver) VMType(expr ast.Expr) string {
+	if isBytesRefExpr(expr) {
+		return "TypeBytes"
+	}
 	if bt := resolveToBasicType(expr); bt != "" {
 		switch {
 		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
@@ -1285,6 +1345,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 			methodName := method.Names[0].Name
 			funcType := method.Type.(*ast.FuncType)
+			hasCopyBack := hasInOutBytesParam(funcType)
 
 			hasContext := false
 			contextVarName := "context.Background()"
@@ -1340,8 +1401,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				fmt.Fprintf(&sb, ") ")
 			}
 
-			fmt.Fprintf(&sb, "{\n\tbuf := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(buf)\n\n")
+			const wireBufName = "wireBuf"
+			fmt.Fprintf(&sb, "{\n\t%s := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(%s)\n\n", wireBufName, wireBufName)
 			argIdx = 0
+			copyBackVars := make([]string, 0)
 			if funcType.Params != nil {
 				for j, param := range funcType.Params.List {
 					if j == 0 && hasContext {
@@ -1353,24 +1416,30 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 						argName := fmt.Sprintf("arg%d", argIdx)
 						if _, ok := param.Type.(*ast.Ellipsis); ok {
 							itemType, _ := readArrayItemType(pType)
-							fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", argName)
+							fmt.Fprintf(&sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", wireBufName, argName)
 							fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", argName)
-							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
+							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
 							fmt.Fprintf(&sb, "\t}\n")
 						} else {
-							emitWrite(&sb, argName, pType, param.Type, structs, "buf", false)
+							if isBytesRefTypeString(pType) {
+								copyBackVars = append(copyBackVars, argName)
+							}
+							emitWrite(&sb, argName, pType, param.Type, structs, wireBufName, false)
 						}
 						argIdx++
 					} else {
 						for _, pName := range param.Names {
 							if _, ok := param.Type.(*ast.Ellipsis); ok {
 								itemType, _ := readArrayItemType(pType)
-								fmt.Fprintf(&sb, "\tbuf.WriteUvarint(uint64(len(%s)))\n", pName.Name)
+								fmt.Fprintf(&sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", wireBufName, pName.Name)
 								fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
-								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, "buf", false)
+								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
 								fmt.Fprintf(&sb, "\t}\n")
 							} else {
-								emitWrite(&sb, pName.Name, pType, param.Type, structs, "buf", false)
+								if isBytesRefTypeString(pType) {
+									copyBackVars = append(copyBackVars, pName.Name)
+								}
+								emitWrite(&sb, pName.Name, pType, param.Type, structs, wireBufName, false)
 							}
 							argIdx++
 						}
@@ -1379,11 +1448,11 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 
 			needsRetBuf := funcType.Results != nil && len(funcType.Results.List) > 0
-			if needsRetBuf || hasErr {
-				fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+			if needsRetBuf || hasErr || hasCopyBack {
+				fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, %s.Bytes())\n", contextVarName, name, methodName, wireBufName)
 				fmt.Fprintf(&sb, "\t_ = retData\n")
 			} else {
-				fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, buf.Bytes())\n", contextVarName, name, methodName)
+				fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, %s.Bytes())\n", contextVarName, name, methodName, wireBufName)
 			}
 			fmt.Fprintf(&sb, "\t_ = err\n")
 
@@ -1405,8 +1474,16 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				fmt.Fprintf(&sb, " }\n")
 			}
 
-			if needsRetBuf {
+			if needsRetBuf || hasCopyBack {
 				fmt.Fprintf(&sb, "\tretBuf := ffigo.NewReader(retData)\n")
+			}
+			if hasCopyBack {
+				fmt.Fprintf(&sb, "\tcopyBackCount := int(retBuf.ReadUvarint())\n")
+				fmt.Fprintf(&sb, "\tif copyBackCount != %d { panic(fmt.Sprintf(\"ffigen: %s.%s copy-back mismatch: %%d\", copyBackCount)) }\n", len(copyBackVars), name, methodName)
+				for _, copyBackVar := range copyBackVars {
+					fmt.Fprintf(&sb, "\tif %s == nil { panic(\"ffigen: nil BytesRef passed to %s.%s\") }\n", copyBackVar, name, methodName)
+					fmt.Fprintf(&sb, "\t%s.Value = retBuf.ReadBytes()\n", copyBackVar)
+				}
 			}
 
 			var retStmt []string
@@ -1506,6 +1583,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 		methodName := method.Names[0].Name
 		funcType := method.Type.(*ast.FuncType)
+		hasCopyBack := hasInOutBytesParam(funcType)
 		hasContext := false
 		if funcType.Params != nil && len(funcType.Params.List) > 0 {
 			pType := typeToString(funcType.Params.List[0].Type)
@@ -1516,6 +1594,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 
 		fmt.Fprintf(&sb, "\tcase MethodID_%s_%s:\n", name, methodName)
 		var paramVars []string
+		copyBackVars := make([]string, 0)
 		argIdx := 0
 		if hasContext {
 			paramVars = append(paramVars, "ctx")
@@ -1537,6 +1616,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					argName := fmt.Sprintf("arg%d", argIdx)
 					fmt.Fprintf(&sb, "\t\tvar %s %s\n", argName, goType)
 					emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", true)
+					if isBytesRefTypeString(pType) {
+						copyBackVars = append(copyBackVars, argName)
+					}
 					if isVariadic {
 						paramVars = append(paramVars, argName+"...")
 					} else {
@@ -1547,6 +1629,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					for _, pName := range param.Names {
 						fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
 						emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
+						if isBytesRefTypeString(pType) {
+							copyBackVars = append(copyBackVars, pName.Name)
+						}
 						if isVariadic {
 							paramVars = append(paramVars, pName.Name+"...")
 						} else {
@@ -1593,6 +1678,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			fmt.Fprintf(&sb, "\t\t%s%s(%s)\n", callPrefix, methodName, strings.Join(callParams, ", "))
 		}
 		fmt.Fprintf(&sb, "\t\tresBuf := ffigo.GetBuffer()\n")
+		if hasCopyBack {
+			fmt.Fprintf(&sb, "\t\tresBuf.WriteUvarint(uint64(%d))\n", len(copyBackVars))
+			for _, copyBackVar := range copyBackVars {
+				fmt.Fprintf(&sb, "\t\tif %s == nil { resBuf.WriteBytes(nil) } else { resBuf.WriteBytes(%s.Value) }\n", copyBackVar, copyBackVar)
+			}
+		}
 		if funcType.Results != nil {
 			for i, result := range funcType.Results.List {
 				if typeToString(result.Type) == "error" {
@@ -1620,7 +1711,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			doc = strings.ReplaceAll(doc, "\n", " ")
 			doc = strings.TrimSpace(doc)
 		}
-		fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), doc)
+		modes := funcParamModes(method.Type.(*ast.FuncType))
+		if len(modes) > 0 {
+			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType(\"%s\"), %s), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), strings.Join(modes, ", "), doc)
+		} else {
+			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), doc)
+		}
 	}
 	fmt.Fprintf(&sb, "}\n\n")
 
@@ -1945,6 +2041,10 @@ func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.
 }
 
 func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName string, isHost bool) {
+	if isBytesRefTypeString(pType) {
+		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteBytes(nil)\n\t} else {\n\t\t%s.WriteBytes(%s.Value)\n\t}\n", prefix, bufName, bufName, prefix)
+		return
+	}
 	if strings.HasPrefix(pType, "Ptr<") {
 		fmt.Fprintf(sb, "\t// Ptr<T> crosses the FFI boundary as an opaque handle ID.\n")
 		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteUvarint(0)\n\t} else {\n", prefix, bufName)
@@ -2054,6 +2154,10 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 }
 
 func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName string, isHost bool) {
+	if isBytesRefTypeString(pType) {
+		fmt.Fprintf(sb, "\t%s = &ffigo.BytesRef{Value: %s.ReadBytes()}\n", varName, readerName)
+		return
+	}
 	if strings.HasPrefix(pType, "Ptr<") {
 		fmt.Fprintf(sb, "\t// Ptr<T> is restored from the opaque handle ID written on the FFI wire.\n")
 		if isHost {
@@ -2341,6 +2445,55 @@ func toGoType(pType string) string {
 		}
 		return pType
 	}
+}
+
+func isBytesRefTypeString(typeName string) bool {
+	typeName = strings.TrimSpace(typeName)
+	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+		typeName = strings.TrimSpace(typeName[4 : len(typeName)-1])
+	}
+	return typeName == bytesRefQualifiedType || typeName == "ffigo.BytesRef" || typeName == "BytesRef"
+}
+
+func isBytesRefExpr(expr ast.Expr) bool {
+	if expr == nil {
+		return false
+	}
+	return isBytesRefTypeString(typeToString(expr))
+}
+
+func funcParamModes(funcType *ast.FuncType) []string {
+	var modes []string
+	if funcType == nil || funcType.Params == nil {
+		return nil
+	}
+	for i, p := range funcType.Params.List {
+		pType := typeToString(p.Type)
+		if i == 0 && (pType == "context.Context" || pType == "Context") {
+			continue
+		}
+		mode := "runtime.FFIParamIn"
+		if isBytesRefTypeString(pType) {
+			mode = "runtime.FFIParamInOutBytes"
+		}
+		count := len(p.Names)
+		if count == 0 {
+			count = 1
+		}
+		for j := 0; j < count; j++ {
+			modes = append(modes, mode)
+		}
+	}
+	return modes
+}
+
+func hasInOutBytesParam(funcType *ast.FuncType) bool {
+	for _, mode := range funcParamModes(funcType) {
+		if mode == "runtime.FFIParamInOutBytes" {
+			return true
+		}
+	}
+	return false
 }
 
 func readArrayItemType(pType string) (string, bool) {

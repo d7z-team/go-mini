@@ -30,15 +30,15 @@ func NewSortProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Sort {
 }
 
 func (__p *SortProxy) Ints(x []int64) []int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteVarint(int64(item))
+		wireBuf.WriteVarint(int64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Ints, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Ints, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -55,15 +55,15 @@ func (__p *SortProxy) Ints(x []int64) []int64 {
 }
 
 func (__p *SortProxy) Float64s(x []float64) []float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteFloat64(float64(item))
+		wireBuf.WriteFloat64(float64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64s, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64s, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -77,15 +77,15 @@ func (__p *SortProxy) Float64s(x []float64) []float64 {
 }
 
 func (__p *SortProxy) Strings(x []string) []string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Strings, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Strings, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -99,15 +99,15 @@ func (__p *SortProxy) Strings(x []string) []string {
 }
 
 func (__p *SortProxy) IntsAreSorted(x []int64) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteVarint(int64(item))
+		wireBuf.WriteVarint(int64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_IntsAreSorted, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_IntsAreSorted, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -117,15 +117,15 @@ func (__p *SortProxy) IntsAreSorted(x []int64) bool {
 }
 
 func (__p *SortProxy) Float64sAreSorted(x []float64) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteFloat64(float64(item))
+		wireBuf.WriteFloat64(float64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64sAreSorted, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64sAreSorted, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -135,15 +135,15 @@ func (__p *SortProxy) Float64sAreSorted(x []float64) bool {
 }
 
 func (__p *SortProxy) StringsAreSorted(x []string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(x)))
+	wireBuf.WriteUvarint(uint64(len(x)))
 	for _, item := range x {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_StringsAreSorted, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_StringsAreSorted, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -264,12 +264,12 @@ var Sort_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Ints", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<Int64>) Array<Int64>")), ""},
-	{"Float64s", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<Float64>) Array<Float64>")), ""},
-	{"Strings", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<String>) Array<String>")), ""},
-	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<Int64>) Bool")), ""},
-	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<Float64>) Bool")), ""},
-	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<String>) Bool")), ""},
+	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Int64>) Array<Int64>"), runtime.FFIParamIn), ""},
+	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Float64>) Array<Float64>"), runtime.FFIParamIn), ""},
+	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>) Array<String>"), runtime.FFIParamIn), ""},
+	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Int64>) Bool"), runtime.FFIParamIn), ""},
+	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Float64>) Bool"), runtime.FFIParamIn), ""},
+	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>) Bool"), runtime.FFIParamIn), ""},
 }
 
 type Sort_Bridge struct {

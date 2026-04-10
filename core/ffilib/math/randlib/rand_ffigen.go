@@ -31,10 +31,10 @@ func NewRandProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Rand {
 }
 
 func (__p *RandProxy) Float64() float64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Float64, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Float64, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -44,10 +44,10 @@ func (__p *RandProxy) Float64() float64 {
 }
 
 func (__p *RandProxy) Int() int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -60,12 +60,12 @@ func (__p *RandProxy) Int() int {
 }
 
 func (__p *RandProxy) Intn(n int) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(n))
+	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Intn, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Intn, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -78,10 +78,10 @@ func (__p *RandProxy) Intn(n int) int {
 }
 
 func (__p *RandProxy) Int63() int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int63, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int63, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -94,12 +94,12 @@ func (__p *RandProxy) Int63() int64 {
 }
 
 func (__p *RandProxy) Int63n(n int64) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(n))
+	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int63n, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int63n, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -112,23 +112,23 @@ func (__p *RandProxy) Int63n(n int64) int64 {
 }
 
 func (__p *RandProxy) Seed(seed int64) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(seed))
+	wireBuf.WriteVarint(int64(seed))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Rand_Seed, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Rand_Seed, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *RandProxy) Perm(n int) []int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(n))
+	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Perm, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Perm, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -236,11 +236,11 @@ var Rand_FFI_Schemas = []struct {
 }{
 	{"Float64", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Float64")), ""},
 	{"Int", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
-	{"Intn", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Int64")), ""},
+	{"Intn", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
 	{"Int63", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
-	{"Int63n", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Int64")), ""},
-	{"Seed", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Void")), ""},
-	{"Perm", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Array<Int64>")), ""},
+	{"Int63n", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
+	{"Seed", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Void"), runtime.FFIParamIn), ""},
+	{"Perm", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Array<Int64>"), runtime.FFIParamIn), ""},
 }
 
 type Rand_Bridge struct {

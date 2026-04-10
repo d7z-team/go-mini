@@ -41,13 +41,13 @@ func NewStringsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Str
 }
 
 func (__p *StringsProxy) Contains(s string, substr string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(substr))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(substr))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Contains, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Contains, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -57,13 +57,13 @@ func (__p *StringsProxy) Contains(s string, substr string) bool {
 }
 
 func (__p *StringsProxy) ContainsAny(s string, chars string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(chars))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(chars))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ContainsAny, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ContainsAny, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -73,13 +73,13 @@ func (__p *StringsProxy) ContainsAny(s string, chars string) bool {
 }
 
 func (__p *StringsProxy) Count(s string, substr string) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(substr))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(substr))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Count, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Count, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -92,13 +92,13 @@ func (__p *StringsProxy) Count(s string, substr string) int {
 }
 
 func (__p *StringsProxy) HasPrefix(s string, prefix string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(prefix))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(prefix))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_HasPrefix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_HasPrefix, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -108,13 +108,13 @@ func (__p *StringsProxy) HasPrefix(s string, prefix string) bool {
 }
 
 func (__p *StringsProxy) HasSuffix(s string, suffix string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(suffix))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(suffix))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_HasSuffix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_HasSuffix, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -124,13 +124,13 @@ func (__p *StringsProxy) HasSuffix(s string, suffix string) bool {
 }
 
 func (__p *StringsProxy) Index(s string, substr string) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(substr))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(substr))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Index, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Index, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -143,13 +143,13 @@ func (__p *StringsProxy) Index(s string, substr string) int {
 }
 
 func (__p *StringsProxy) LastIndex(s string, substr string) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(substr))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(substr))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_LastIndex, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_LastIndex, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -162,12 +162,12 @@ func (__p *StringsProxy) LastIndex(s string, substr string) int {
 }
 
 func (__p *StringsProxy) ToLower(s string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ToLower, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ToLower, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -177,12 +177,12 @@ func (__p *StringsProxy) ToLower(s string) string {
 }
 
 func (__p *StringsProxy) ToUpper(s string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ToUpper, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ToUpper, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -192,13 +192,13 @@ func (__p *StringsProxy) ToUpper(s string) string {
 }
 
 func (__p *StringsProxy) Trim(s string, cutset string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(cutset))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(cutset))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Trim, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Trim, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -208,12 +208,12 @@ func (__p *StringsProxy) Trim(s string, cutset string) string {
 }
 
 func (__p *StringsProxy) TrimSpace(s string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimSpace, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimSpace, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -223,13 +223,13 @@ func (__p *StringsProxy) TrimSpace(s string) string {
 }
 
 func (__p *StringsProxy) TrimPrefix(s string, prefix string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(prefix))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(prefix))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimPrefix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimPrefix, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -239,13 +239,13 @@ func (__p *StringsProxy) TrimPrefix(s string, prefix string) string {
 }
 
 func (__p *StringsProxy) TrimSuffix(s string, suffix string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(suffix))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(suffix))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimSuffix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_TrimSuffix, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -255,15 +255,15 @@ func (__p *StringsProxy) TrimSuffix(s string, suffix string) string {
 }
 
 func (__p *StringsProxy) Replace(s string, old string, replacement string, n int) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(old))
-	buf.WriteString(string(replacement))
-	buf.WriteVarint(int64(n))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(old))
+	wireBuf.WriteString(string(replacement))
+	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Replace, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Replace, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -273,14 +273,14 @@ func (__p *StringsProxy) Replace(s string, old string, replacement string, n int
 }
 
 func (__p *StringsProxy) ReplaceAll(s string, old string, replacement string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(old))
-	buf.WriteString(string(replacement))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(old))
+	wireBuf.WriteString(string(replacement))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ReplaceAll, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_ReplaceAll, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -290,13 +290,13 @@ func (__p *StringsProxy) ReplaceAll(s string, old string, replacement string) st
 }
 
 func (__p *StringsProxy) Split(s string, sep string) []string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
-	buf.WriteString(string(sep))
+	wireBuf.WriteString(string(s))
+	wireBuf.WriteString(string(sep))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Split, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Split, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -310,16 +310,16 @@ func (__p *StringsProxy) Split(s string, sep string) []string {
 }
 
 func (__p *StringsProxy) Join(elems []string, sep string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(elems)))
+	wireBuf.WriteUvarint(uint64(len(elems)))
 	for _, item := range elems {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
-	buf.WriteString(string(sep))
+	wireBuf.WriteString(string(sep))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Join, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Strings_Join, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -544,23 +544,23 @@ var Strings_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Contains", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
-	{"ContainsAny", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
-	{"Count", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
-	{"HasPrefix", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
-	{"HasSuffix", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Bool")), ""},
-	{"Index", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
-	{"LastIndex", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Int64")), ""},
-	{"ToLower", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"ToUpper", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Trim", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
-	{"TrimSpace", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"TrimPrefix", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
-	{"TrimSuffix", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) String")), ""},
-	{"Replace", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, String, Int64) String")), ""},
-	{"ReplaceAll", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, String) String")), ""},
-	{"Split", 16, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) Array<String>")), ""},
-	{"Join", 17, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Array<String>, String) String")), ""},
+	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ContainsAny", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Count", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasPrefix", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasSuffix", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Index", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"LastIndex", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ToLower", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"ToUpper", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Trim", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"TrimSpace", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"TrimPrefix", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"TrimSuffix", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Replace", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, String, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReplaceAll", 15, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Split", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Array<String>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Join", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Strings_Bridge struct {

@@ -32,12 +32,12 @@ func NewOrderServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry
 }
 
 func (__p *OrderServiceProxy) New(id string) (*Order, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(id))
+	wireBuf.WriteString(string(id))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_New, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_New, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -72,23 +72,23 @@ func (__p *OrderServiceProxy) New(id string) (*Order, error) {
 }
 
 func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
-	buf.WriteString(string(name))
-	buf.WriteFloat64(float64(price))
+	wireBuf.WriteString(string(name))
+	wireBuf.WriteFloat64(float64(price))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -114,21 +114,21 @@ func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) erro
 }
 
 func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -156,21 +156,21 @@ func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 }
 
 func (__p *OrderServiceProxy) Close(o *Order) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_Close, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_Close, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -314,10 +314,10 @@ var OrderService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<order.Order>, Error)")), "New 创建新订单"},
-	{"AddItem", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>, String, Float64) Error")), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>) tuple(Float64, Error)")), "GetTotal 获取总价"},
-	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<order.Order>) Error")), "Close 关闭订单"},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<order.Order>, Error)"), runtime.FFIParamIn), "New 创建新订单"},
+	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>, String, Float64) Error"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>) tuple(Float64, Error)"), runtime.FFIParamIn), "GetTotal 获取总价"},
+	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>) Error"), runtime.FFIParamIn), "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {

@@ -33,12 +33,12 @@ func NewOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) OS {
 }
 
 func (__p *OSProxy) Open(name string) (*iolib.File, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Open, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Open, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -73,12 +73,12 @@ func (__p *OSProxy) Open(name string) (*iolib.File, error) {
 }
 
 func (__p *OSProxy) Create(name string) (*iolib.File, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Create, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Create, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -113,14 +113,14 @@ func (__p *OSProxy) Create(name string) (*iolib.File, error) {
 }
 
 func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
-	buf.WriteVarint(int64(flag))
-	buf.WriteVarint(int64(perm))
+	wireBuf.WriteString(string(name))
+	wireBuf.WriteVarint(int64(flag))
+	wireBuf.WriteVarint(int64(perm))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_OpenFile, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_OpenFile, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -155,12 +155,12 @@ func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, erro
 }
 
 func (__p *OSProxy) ReadFile(name string) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_ReadFile, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_ReadFile, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -188,13 +188,13 @@ func (__p *OSProxy) ReadFile(name string) ([]byte, error) {
 }
 
 func (__p *OSProxy) WriteFile(name string, data []byte) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
-	buf.WriteBytes(data)
+	wireBuf.WriteString(string(name))
+	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_WriteFile, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_WriteFile, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -220,12 +220,12 @@ func (__p *OSProxy) WriteFile(name string, data []byte) error {
 }
 
 func (__p *OSProxy) Remove(name string) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Remove, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Remove, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -251,12 +251,12 @@ func (__p *OSProxy) Remove(name string) error {
 }
 
 func (__p *OSProxy) Getenv(key string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(key))
+	wireBuf.WriteString(string(key))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Getenv, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Getenv, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -426,13 +426,13 @@ var OS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)")), ""},
-	{"Create", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)")), ""},
-	{"OpenFile", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)")), ""},
-	{"ReadFile", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(TypeBytes, Error)")), ""},
-	{"WriteFile", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, TypeBytes) Error")), ""},
-	{"Remove", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Error")), ""},
-	{"Getenv", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn), ""},
+	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn), ""},
+	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReadFile", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
+	{"WriteFile", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, TypeBytes) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Remove", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Error"), runtime.FFIParamIn), ""},
+	{"Getenv", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
 }
 
 type OS_Bridge struct {

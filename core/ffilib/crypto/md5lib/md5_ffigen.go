@@ -26,12 +26,12 @@ func NewMD5Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MD5 {
 }
 
 func (__p *MD5Proxy) Sum(data []byte) []byte {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(data)
+	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MD5_Sum, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_MD5_Sum, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -68,7 +68,7 @@ var MD5_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Sum", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+	{"Sum", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
 }
 
 type MD5_Bridge struct {

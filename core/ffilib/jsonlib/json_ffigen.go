@@ -26,12 +26,12 @@ func NewJSONProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) JSON {
 }
 
 func (__p *JSONProxy) Marshal(v any) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteAny(v)
+	wireBuf.WriteAny(v)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Marshal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Marshal, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -59,12 +59,12 @@ func (__p *JSONProxy) Marshal(v any) ([]byte, error) {
 }
 
 func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(data)
+	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -168,8 +168,8 @@ var JSON_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Marshal", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)")), ""},
-	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) tuple(Any, Error)")), ""},
+	{"Marshal", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
+	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) tuple(Any, Error)"), runtime.FFIParamIn), ""},
 }
 
 type JSON_Bridge struct {

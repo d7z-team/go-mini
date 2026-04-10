@@ -30,12 +30,12 @@ func NewUTF8Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) UTF8 {
 }
 
 func (__p *UTF8Proxy) DecodeRuneInString(s string) (int64, int) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_DecodeRuneInString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_DecodeRuneInString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -53,12 +53,12 @@ func (__p *UTF8Proxy) DecodeRuneInString(s string) (int64, int) {
 }
 
 func (__p *UTF8Proxy) EncodeRune(r int64) []byte {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(r))
+	wireBuf.WriteVarint(int64(r))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_EncodeRune, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_EncodeRune, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -68,12 +68,12 @@ func (__p *UTF8Proxy) EncodeRune(r int64) []byte {
 }
 
 func (__p *UTF8Proxy) FullRuneInString(s string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_FullRuneInString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_FullRuneInString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -83,12 +83,12 @@ func (__p *UTF8Proxy) FullRuneInString(s string) bool {
 }
 
 func (__p *UTF8Proxy) RuneCountInString(s string) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_RuneCountInString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_RuneCountInString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -101,12 +101,12 @@ func (__p *UTF8Proxy) RuneCountInString(s string) int {
 }
 
 func (__p *UTF8Proxy) RuneLen(r int64) int {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(r))
+	wireBuf.WriteVarint(int64(r))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_RuneLen, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_RuneLen, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -119,12 +119,12 @@ func (__p *UTF8Proxy) RuneLen(r int64) int {
 }
 
 func (__p *UTF8Proxy) ValidString(s string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_ValidString, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_UTF8_ValidString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -213,12 +213,12 @@ var UTF8_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Int64, Int64)")), ""},
-	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) TypeBytes")), ""},
-	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
-	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Int64")), ""},
-	{"RuneLen", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Int64")), ""},
-	{"ValidString", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
+	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Int64)"), runtime.FFIParamIn), ""},
+	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) TypeBytes"), runtime.FFIParamIn), ""},
+	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
+	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Int64"), runtime.FFIParamIn), ""},
+	{"RuneLen", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
+	{"ValidString", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
 }
 
 type UTF8_Bridge struct {

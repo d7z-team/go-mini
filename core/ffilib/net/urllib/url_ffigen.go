@@ -27,12 +27,12 @@ func NewURLProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) URL {
 }
 
 func (__p *URLProxy) QueryEscape(s string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryEscape, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryEscape, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -42,12 +42,12 @@ func (__p *URLProxy) QueryEscape(s string) string {
 }
 
 func (__p *URLProxy) QueryUnescape(s string) (string, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryUnescape, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryUnescape, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,16 +75,16 @@ func (__p *URLProxy) QueryUnescape(s string) (string, error) {
 }
 
 func (__p *URLProxy) JoinPath(base string, elem ...string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(base))
-	buf.WriteUvarint(uint64(len(elem)))
+	wireBuf.WriteString(string(base))
+	wireBuf.WriteUvarint(uint64(len(elem)))
 	for _, item := range elem {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_JoinPath, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_JoinPath, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -154,9 +154,9 @@ var URL_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"QueryEscape", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"QueryUnescape", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, Error)")), ""},
-	{"JoinPath", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...String) String")), ""},
+	{"QueryEscape", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"QueryUnescape", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, Error)"), runtime.FFIParamIn), ""},
+	{"JoinPath", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type URL_Bridge struct {

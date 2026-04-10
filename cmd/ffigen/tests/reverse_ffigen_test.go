@@ -32,13 +32,13 @@ func NewScriptCalculatorProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegi
 }
 
 func (__p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(a))
-	buf.WriteVarint(int64(b))
+	wireBuf.WriteVarint(int64(a))
+	wireBuf.WriteVarint(int64(b))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Add, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Add, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -51,13 +51,13 @@ func (__p *ScriptCalculatorProxy) Add(a int64, b int64) int64 {
 }
 
 func (__p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(prefix))
-	buf.WriteVarint(int64(val))
+	wireBuf.WriteString(string(prefix))
+	wireBuf.WriteVarint(int64(val))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Format, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Format, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -67,13 +67,13 @@ func (__p *ScriptCalculatorProxy) Format(prefix string, val int64) string {
 }
 
 func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(a))
-	buf.WriteVarint(int64(b))
+	wireBuf.WriteVarint(int64(a))
+	wireBuf.WriteVarint(int64(b))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Divide, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Divide, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -104,12 +104,12 @@ func (__p *ScriptCalculatorProxy) Divide(a int64, b int64) (int64, error) {
 }
 
 func (__p *ScriptCalculatorProxy) Log(ctx context.Context, msg string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(msg))
+	wireBuf.WriteString(string(msg))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_ScriptCalculator_Log, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_ScriptCalculator_Log, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -119,16 +119,16 @@ func (__p *ScriptCalculatorProxy) Log(ctx context.Context, msg string) string {
 }
 
 func (__p *ScriptCalculatorProxy) Join(prefix string, values ...string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(prefix))
-	buf.WriteUvarint(uint64(len(values)))
+	wireBuf.WriteString(string(prefix))
+	wireBuf.WriteUvarint(uint64(len(values)))
 	for _, item := range values {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Join, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_Join, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -138,13 +138,13 @@ func (__p *ScriptCalculatorProxy) Join(prefix string, values ...string) string {
 }
 
 func (__p *ScriptCalculatorProxy) AcceptPoint(p ReversePoint) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(p.X))
-	buf.WriteVarint(int64(p.Y))
+	wireBuf.WriteVarint(int64(p.X))
+	wireBuf.WriteVarint(int64(p.Y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_AcceptPoint, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_ScriptCalculator_AcceptPoint, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -272,12 +272,12 @@ var ScriptCalculator_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Add", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) Int64")), ""},
-	{"Format", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, Int64) String")), ""},
-	{"Divide", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) tuple(Int64, Error)")), ""},
-	{"Log", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Join", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, ...String) String")), ""},
-	{"AcceptPoint", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(ReversePoint) Int64")), ""},
+	{"Add", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Format", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Divide", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Log", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Join", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"AcceptPoint", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(ReversePoint) Int64"), runtime.FFIParamIn), ""},
 }
 
 type ScriptCalculator_Bridge struct {

@@ -34,10 +34,10 @@ func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Modu
 }
 
 func (__p *ModuleProxy) Now() *Time {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Now, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Now, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -54,13 +54,13 @@ func (__p *ModuleProxy) Now() *Time {
 }
 
 func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(sec))
-	buf.WriteVarint(int64(nsec))
+	wireBuf.WriteVarint(int64(sec))
+	wireBuf.WriteVarint(int64(nsec))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Unix, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Unix, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -77,32 +77,32 @@ func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 }
 
 func (__p *ModuleProxy) Sleep(ctx context.Context, ns int64) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(ns))
+	wireBuf.WriteVarint(int64(ns))
 
-	_, err := __p.bridge.Call(ctx, MethodID_Module_Sleep, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Module_Sleep, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *ModuleProxy) Since(t *Time) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Since, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Since, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -115,21 +115,21 @@ func (__p *ModuleProxy) Since(t *Time) int64 {
 }
 
 func (__p *ModuleProxy) Until(t *Time) int64 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
 	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
-		buf.WriteUvarint(0)
+		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			buf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
 		} else {
-			buf.WriteUvarint(0)
+			wireBuf.WriteUvarint(0)
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Until, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Until, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -142,13 +142,13 @@ func (__p *ModuleProxy) Until(t *Time) int64 {
 }
 
 func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(layout))
-	buf.WriteString(string(value))
+	wireBuf.WriteString(string(layout))
+	wireBuf.WriteString(string(value))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Parse, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Parse, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -183,12 +183,12 @@ func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
 }
 
 func (__p *ModuleProxy) ParseDuration(s string) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(s))
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_ParseDuration, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_ParseDuration, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -358,12 +358,12 @@ var Module_FFI_Schemas = []struct {
 	Doc      string
 }{
 	{"Now", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<time.Time>")), ""},
-	{"Unix", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, Int64) Ptr<time.Time>")), ""},
-	{"Sleep", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Void")), ""},
-	{"Since", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Until", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Parse", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(Ptr<time.Time>, Error)")), ""},
-	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(Int64, Error)")), ""},
+	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) Ptr<time.Time>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sleep", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Void"), runtime.FFIParamIn), ""},
+	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(Ptr<time.Time>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
 }
 
 type Module_Bridge struct {
@@ -815,25 +815,25 @@ var Time_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Year", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Month", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Day", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Hour", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Minute", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Second", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Unix", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"UnixNano", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Int64")), ""},
-	{"Format", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, String) String")), ""},
-	{"Add", 13, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, Int64) Ptr<time.Time>")), ""},
-	{"Sub", 14, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Int64")), ""},
-	{"IsZero", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) Bool")), ""},
-	{"Before", 16, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool")), ""},
-	{"After", 17, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool")), ""},
-	{"Equal", 18, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool")), ""},
-	{"String", 19, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<time.Time>) String")), ""},
+	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
+	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Int64) Ptr<time.Time>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Bool"), runtime.FFIParamIn), ""},
+	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) String"), runtime.FFIParamIn), ""},
 }
 
 type Time_Bridge struct {

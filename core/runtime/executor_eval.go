@@ -527,7 +527,7 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 	return nil, &VMError{Message: fmt.Sprintf("type %v does not support slice operations", obj.VType), IsPanic: true}
 }
 
-func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
+func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var, argLHS []LHSValue) error {
 	// 0. 特殊类型方法 (Built-in methods on Error)
 	if receiver != nil && receiver.VType == TypeError && name == "Error" {
 		if errObj, ok := receiver.Ref.(*VMError); ok {
@@ -836,7 +836,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		}
 		if c != nil {
 			if route, ok := c.Ref.(FFIRoute); ok {
-				return e.evalFFIAndPush(session, route, args)
+				return e.evalFFIAndPush(session, route, args, argLHS)
 			}
 		}
 
@@ -847,7 +847,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case *VMMethodValue:
 				// Resolve as FFI method
 				if route, ok := e.routes[ref.Method]; ok {
-					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
+					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
 				}
 				// 动态 FFI 路由：如果 Receiver 是一个带 Bridge 的 Handle，直接发起调用
 				if ref.Receiver != nil && ref.Receiver.VType == TypeHandle && ref.Receiver.Bridge != nil {
@@ -859,7 +859,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 						Returns:  "Any", // 默认
 						Return:   "Any",
 					}
-					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...))
+					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
 				}
 			}
 		}
@@ -871,7 +871,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		routeKey = fmt.Sprintf("%s.%s", mod.Name, name)
 	}
 	if route, ok := e.routes[routeKey]; ok {
-		return e.evalFFIAndPush(session, route, args)
+		return e.evalFFIAndPush(session, route, args, argLHS)
 	}
 
 	// 3a. Dynamic FFI Call for Handles (Interfaces)
@@ -884,7 +884,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			Return:   "Any",
 		}
 		// If we had the signature, we could set route.Returns here
-		return e.evalFFIAndPush(session, route, args)
+		return e.evalFFIAndPush(session, route, args, nil)
 	}
 
 	// 3b. Dynamic Method Call for Maps (Interfaces)
@@ -898,7 +898,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if len(args) > 0 && args[0] == receiver {
 				actualArgs = args[1:]
 			}
-			return e.invokeCall(session, "", nil, nil, val, actualArgs)
+			return e.invokeCall(session, "", nil, nil, val, actualArgs, nil)
 		}
 	}
 
@@ -911,7 +911,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if len(args) > 0 && args[0] == receiver {
 				actualArgs = args[1:]
 			}
-			return e.evalFFIAndPush(session, route, actualArgs)
+			return e.evalFFIAndPush(session, route, actualArgs, nil)
 		}
 	}
 
@@ -1042,9 +1042,9 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	return nil
 }
 
-func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var) error {
+func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) error {
 	// Let's use the old evalFFI logic
-	res, err := e.evalFFI(session, route, args)
+	res, err := e.evalFFI(session, route, args, argLHS)
 	if err != nil {
 		return err
 	}

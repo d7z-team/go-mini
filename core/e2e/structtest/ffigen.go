@@ -103,9 +103,9 @@ var Calculator_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Add", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64) Int64")), ""},
-	{"Multiply", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64, Int64) Int64")), ""},
-	{"GetBase", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Calculator>) Int64")), ""},
+	{"Add", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Multiply", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<calc.Calculator>, Int64, Int64) Int64"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"GetBase", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<calc.Calculator>) Int64"), runtime.FFIParamIn), ""},
 }
 
 type Calculator_Bridge struct {
@@ -223,8 +223,8 @@ var Table_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"SetString", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64, String) Void")), ""},
-	{"GetString", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64) String")), ""},
+	{"SetString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64, String) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"GetString", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<calc.Table>, Int64, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Table_Bridge struct {
@@ -317,7 +317,7 @@ var Factory_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Ptr<calc.Calculator>")), ""},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Ptr<calc.Calculator>"), runtime.FFIParamIn), ""},
 	{"NewTable", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<calc.Table>")), ""},
 }
 

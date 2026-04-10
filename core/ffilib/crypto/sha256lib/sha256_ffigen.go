@@ -26,12 +26,12 @@ func NewSHA256Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) SHA2
 }
 
 func (__p *SHA256Proxy) Sum256(data []byte) []byte {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteBytes(data)
+	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_SHA256_Sum256, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_SHA256_Sum256, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -68,7 +68,7 @@ var SHA256_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Sum256", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(TypeBytes) TypeBytes")), ""},
+	{"Sum256", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
 }
 
 type SHA256_Bridge struct {

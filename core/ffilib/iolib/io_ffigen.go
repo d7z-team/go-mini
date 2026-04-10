@@ -30,12 +30,12 @@ func NewIOProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) IO {
 }
 
 func (__p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteAny(r)
+	wireBuf.WriteAny(r)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_ReadAll, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_IO_ReadAll, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -63,13 +63,13 @@ func (__p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 }
 
 func (__p *IOProxy) Copy(ctx context.Context, dst any, src any) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteAny(dst)
-	buf.WriteAny(src)
+	wireBuf.WriteAny(dst)
+	wireBuf.WriteAny(src)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_Copy, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_IO_Copy, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -100,13 +100,13 @@ func (__p *IOProxy) Copy(ctx context.Context, dst any, src any) (int64, error) {
 }
 
 func (__p *IOProxy) WriteString(ctx context.Context, w any, s string) (int64, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteAny(w)
-	buf.WriteString(string(s))
+	wireBuf.WriteAny(w)
+	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_WriteString, buf.Bytes())
+	retData, err := __p.bridge.Call(ctx, MethodID_IO_WriteString, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -295,9 +295,9 @@ var IO_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"ReadAll", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)")), "ReadAll 读取所有数据"},
-	{"Copy", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any, Any) tuple(Int64, Error)")), "Copy 将 src 的数据拷贝到 dst"},
-	{"WriteString", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Any, String) tuple(Int64, Error)")), "WriteString 将字符串写入 w"},
+	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)"), runtime.FFIParamIn), "ReadAll 读取所有数据"},
+	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any, Any) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
+	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
 }
 
 type IO_Bridge struct {
@@ -609,15 +609,15 @@ var File_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Write", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)")), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"WriteAt", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)")), "WriteAt 正常工作：支持偏移量写入"},
-	{"Seek", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)")), ""},
-	{"Close", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) Error")), ""},
-	{"Sync", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) Error")), ""},
-	{"Truncate", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, Int64) Error")), ""},
-	{"WriteString", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)")), ""},
-	{"Name", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>) String")), ""},
-	{"WriteNative", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)")), "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{"WriteAt", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
+	{"Seek", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
+	{"Sync", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
+	{"Truncate", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"WriteString", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Name", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) String"), runtime.FFIParamIn), ""},
+	{"WriteNative", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
 type File_Bridge struct {

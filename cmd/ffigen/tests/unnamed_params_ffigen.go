@@ -26,27 +26,27 @@ func NewLoggerProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Logg
 }
 
 func (__p *LoggerProxy) Log(ctx context.Context, msg string, level string, code int64) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(msg))
-	buf.WriteString(string(level))
-	buf.WriteVarint(int64(code))
+	wireBuf.WriteString(string(msg))
+	wireBuf.WriteString(string(level))
+	wireBuf.WriteVarint(int64(code))
 
-	_, err := __p.bridge.Call(ctx, MethodID_Logger_Log, buf.Bytes())
+	_, err := __p.bridge.Call(ctx, MethodID_Logger_Log, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *LoggerProxy) Internal(arg0 string, arg1 string, arg2 int64) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(arg0))
-	buf.WriteString(string(arg1))
-	buf.WriteVarint(int64(arg2))
+	wireBuf.WriteString(string(arg0))
+	wireBuf.WriteString(string(arg1))
+	wireBuf.WriteVarint(int64(arg2))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Logger_Internal, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Logger_Internal, wireBuf.Bytes())
 	_ = err
 	return
 }
@@ -100,8 +100,8 @@ var Logger_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Log", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, Int64) Void")), ""},
-	{"Internal", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String, Int64) Void")), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
+	{"Log", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Internal", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
 }
 
 type Logger_Bridge struct {
@@ -152,25 +152,25 @@ func NewCallbackProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Ca
 }
 
 func (__p *CallbackProxy) OnEvent(arg0 int64, arg1 string) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(arg0))
-	buf.WriteString(string(arg1))
+	wireBuf.WriteVarint(int64(arg0))
+	wireBuf.WriteString(string(arg1))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Callback_OnEvent, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Callback_OnEvent, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *CallbackProxy) OnRaw(arg0 int64, arg1 []byte) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteVarint(int64(arg0))
-	buf.WriteBytes(arg1)
+	wireBuf.WriteVarint(int64(arg0))
+	wireBuf.WriteBytes(arg1)
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Callback_OnRaw, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_Callback_OnRaw, wireBuf.Bytes())
 	_ = err
 	return
 }
@@ -220,8 +220,8 @@ var Callback_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"OnEvent", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, String) Void")), ""},
-	{"OnRaw", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64, TypeBytes) Void")), "OnRaw uses unnamed parameters in a reverse proxy"},
+	{"OnEvent", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, String) Void"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"OnRaw", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, TypeBytes) Void"), runtime.FFIParamIn, runtime.FFIParamIn), "OnRaw uses unnamed parameters in a reverse proxy"},
 }
 
 type Callback_Bridge struct {

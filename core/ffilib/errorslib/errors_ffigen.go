@@ -25,12 +25,12 @@ func NewErrorsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Erro
 }
 
 func (__p *ErrorsProxy) New(text string) error {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(text))
+	wireBuf.WriteString(string(text))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Errors_New, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Errors_New, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -91,7 +91,7 @@ var Errors_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Error")), ""},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Error"), runtime.FFIParamIn), ""},
 }
 
 type Errors_Bridge struct {

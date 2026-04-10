@@ -36,12 +36,12 @@ func NewFilepathProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Fi
 }
 
 func (__p *FilepathProxy) Base(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Base, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Base, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -51,12 +51,12 @@ func (__p *FilepathProxy) Base(path string) string {
 }
 
 func (__p *FilepathProxy) Clean(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Clean, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Clean, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -66,12 +66,12 @@ func (__p *FilepathProxy) Clean(path string) string {
 }
 
 func (__p *FilepathProxy) Dir(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Dir, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Dir, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -81,12 +81,12 @@ func (__p *FilepathProxy) Dir(path string) string {
 }
 
 func (__p *FilepathProxy) Ext(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Ext, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Ext, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -96,12 +96,12 @@ func (__p *FilepathProxy) Ext(path string) string {
 }
 
 func (__p *FilepathProxy) IsAbs(path string) bool {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_IsAbs, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_IsAbs, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -111,15 +111,15 @@ func (__p *FilepathProxy) IsAbs(path string) bool {
 }
 
 func (__p *FilepathProxy) Join(elem ...string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(len(elem)))
+	wireBuf.WriteUvarint(uint64(len(elem)))
 	for _, item := range elem {
-		buf.WriteString(string(item))
+		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Join, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Join, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -129,13 +129,13 @@ func (__p *FilepathProxy) Join(elem ...string) string {
 }
 
 func (__p *FilepathProxy) Match(pattern string, name string) (bool, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(pattern))
-	buf.WriteString(string(name))
+	wireBuf.WriteString(string(pattern))
+	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Match, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Match, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -163,13 +163,13 @@ func (__p *FilepathProxy) Match(pattern string, name string) (bool, error) {
 }
 
 func (__p *FilepathProxy) Rel(basepath string, targpath string) (string, error) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(basepath))
-	buf.WriteString(string(targpath))
+	wireBuf.WriteString(string(basepath))
+	wireBuf.WriteString(string(targpath))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Rel, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Rel, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	if err != nil {
@@ -197,12 +197,12 @@ func (__p *FilepathProxy) Rel(basepath string, targpath string) (string, error) 
 }
 
 func (__p *FilepathProxy) Split(path string) (string, string) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Split, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Split, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -214,12 +214,12 @@ func (__p *FilepathProxy) Split(path string) (string, string) {
 }
 
 func (__p *FilepathProxy) ToSlash(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_ToSlash, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_ToSlash, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -229,12 +229,12 @@ func (__p *FilepathProxy) ToSlash(path string) string {
 }
 
 func (__p *FilepathProxy) FromSlash(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_FromSlash, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_FromSlash, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -244,12 +244,12 @@ func (__p *FilepathProxy) FromSlash(path string) string {
 }
 
 func (__p *FilepathProxy) VolumeName(path string) string {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteString(string(path))
+	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_VolumeName, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_VolumeName, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -412,18 +412,18 @@ var Filepath_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Base", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Clean", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Dir", 3, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"Ext", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"IsAbs", 5, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) Bool")), ""},
-	{"Join", 6, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(...String) String")), ""},
-	{"Match", 7, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(Bool, Error)")), ""},
-	{"Rel", 8, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String, String) tuple(String, Error)")), ""},
-	{"Split", 9, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) tuple(String, String)")), ""},
-	{"ToSlash", 10, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"FromSlash", 11, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
-	{"VolumeName", 12, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(String) String")), ""},
+	{"Base", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Clean", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Dir", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Ext", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"IsAbs", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
+	{"Join", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...String) String"), runtime.FFIParamIn), ""},
+	{"Match", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(Bool, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Rel", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(String, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Split", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, String)"), runtime.FFIParamIn), ""},
+	{"ToSlash", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"FromSlash", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"VolumeName", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
 }
 
 type Filepath_Bridge struct {

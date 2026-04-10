@@ -26,21 +26,21 @@ func NewStorageAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) 
 }
 
 func (__p *StorageAPIProxy) SetCapacity(capacity uint32) {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	buf.WriteUvarint(uint64(capacity))
+	wireBuf.WriteUvarint(uint64(capacity))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_SetCapacity, buf.Bytes())
+	_, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_SetCapacity, wireBuf.Bytes())
 	_ = err
 	return
 }
 
 func (__p *StorageAPIProxy) GetStatus() int16 {
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_GetStatus, buf.Bytes())
+	retData, err := __p.bridge.Call(context.Background(), MethodID_StorageAPI_GetStatus, wireBuf.Bytes())
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -95,7 +95,7 @@ var StorageAPI_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"SetCapacity", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Void")), ""},
+	{"SetCapacity", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Void"), runtime.FFIParamIn), ""},
 	{"GetStatus", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
 }
 

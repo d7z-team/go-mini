@@ -12,11 +12,19 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (*Var, error) {
+func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) (*Var, error) {
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
 	funcSig := route.FuncSig
+	copyBackIndices, err := ffiCopyBackIndices(funcSig, len(args))
+	if err != nil {
+		return nil, err
+	}
+	copyBackTargets, err := e.resolveFFICopyBackTargets(session, args, argLHS, copyBackIndices)
+	if err != nil {
+		return nil, err
+	}
 
 	// 序列化参数
 	if funcSig != nil && funcSig.Function.Variadic {
@@ -61,7 +69,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 
 	// 发起 FFI 调用
 	var retData []byte
-	var err error
+	err = nil
 
 	// 硬编码拦截内置扩展路由
 	if route.MethodID == 999999999 && route.Name == "errors.Is" {
@@ -118,15 +126,88 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var) (
 
 	// 解析返回值
 	if len(retData) == 0 {
+		if len(copyBackTargets) > 0 {
+			return nil, fmt.Errorf("ffi route %s returned empty payload for inout bytes", route.Name)
+		}
 		return nil, nil
 	}
 
 	reader := ffigo.NewReader(retData)
+	if len(copyBackTargets) > 0 {
+		copyBackCount := int(reader.ReadUvarint())
+		if copyBackCount != len(copyBackTargets) {
+			return nil, fmt.Errorf("ffi route %s returned %d copy-back values, want %d", route.Name, copyBackCount, len(copyBackTargets))
+		}
+		for i, target := range copyBackTargets {
+			nextBytes := reader.ReadBytes()
+			if err := e.applyFFICopyBack(session, target, nextBytes); err != nil {
+				return nil, fmt.Errorf("ffi route %s copy-back[%d]: %w", route.Name, i, err)
+			}
+		}
+	}
 	if funcSig != nil {
 		return e.deserializeRuntimeType(session, reader, funcSig.ReturnType, route.Bridge)
 	}
 	retType, _ := ParseRuntimeType(route.Return)
 	return e.deserializeRuntimeType(session, reader, retType, route.Bridge)
+}
+
+type ffiCopyBackTarget struct {
+	LHS  LHSValue
+	Type ast.GoMiniType
+}
+
+func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
+	if sig == nil || len(sig.ParamModes) == 0 {
+		return nil, nil
+	}
+	indices := make([]int, 0)
+	for i, mode := range sig.ParamModes {
+		if mode != FFIParamInOutBytes {
+			continue
+		}
+		if sig.Function.Variadic && i == len(sig.ParamModes)-1 {
+			return nil, fmt.Errorf("variadic inout bytes is not supported")
+		}
+		if i >= argCount {
+			return nil, fmt.Errorf("missing argument for inout bytes parameter %d", i)
+		}
+		indices = append(indices, i)
+	}
+	return indices, nil
+}
+
+func (e *Executor) resolveFFICopyBackTargets(session *StackContext, args []*Var, argLHS []LHSValue, indices []int) ([]ffiCopyBackTarget, error) {
+	if len(indices) == 0 {
+		return nil, nil
+	}
+	targets := make([]ffiCopyBackTarget, 0, len(indices))
+	for _, idx := range indices {
+		if idx >= len(args) {
+			return nil, fmt.Errorf("missing argument for inout bytes parameter %d", idx)
+		}
+		if idx >= len(argLHS) || argLHS[idx] == nil {
+			return nil, fmt.Errorf("inout bytes argument %d requires an assignable left value", idx)
+		}
+		current, err := e.loadAddress(session, argLHS[idx])
+		if err != nil {
+			return nil, err
+		}
+		current = e.unwrapValue(current)
+		if current == nil || current.VType != TypeBytes {
+			return nil, fmt.Errorf("inout bytes argument %d must be TypeBytes", idx)
+		}
+		targets = append(targets, ffiCopyBackTarget{LHS: argLHS[idx], Type: current.Type})
+	}
+	return targets, nil
+}
+
+func (e *Executor) applyFFICopyBack(session *StackContext, target ffiCopyBackTarget, data []byte) error {
+	next := NewBytes(data)
+	if !target.Type.IsEmpty() {
+		next.Type = target.Type
+	}
+	return e.storeAddress(session, target.LHS, next)
 }
 
 func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {
