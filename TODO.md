@@ -183,10 +183,11 @@
 - [ ] **收敛复合字面量启发式推导精度**: `CompositeExpr` 仍会在信息不足时回退到 `Map<..., Any>` / `Array<Any>`，后续应区分“动态 Any”与“被坏子表达式污染的 Any”，补齐更精确的错误来源诊断。
 - [ ] **清理剩余 `Any` 宽容分支**: `StarExpr`、`IndexExpr`、`SliceExpr` 等仍保留少量合法动态 `Any` 放行路径，需要进一步梳理哪些应保持动态语义，哪些应在前置错误场景下改为精确诊断。
 - [x] **完成 runtime 热路径 `RuntimeType` 化收口**: 已将 `Task` 热路径 payload（`DeclareVar/Composite/Assert/Index/type-switch`）、slot/return 初始化、`VMClosure`/prepared function 预解析签名、`task codec`/prepared program/bytecode 展示链路统一切到 `RuntimeType`/`RuntimeFuncSig`；`Var` 已补 `RuntimeType` 元数据并由执行热路径优先消费，`ExecExpr(ast.Expr)`、`Executor.program *ast.ProgramStmt`、runtime AST module loader、以及 runtime 内部 `ast.GoMiniType` 类型桥接 helper 都已压回或移出执行主链。当前剩余 AST 依赖主要在前端编译/校验入口，以及 LSP/debugger/blueprint 附加蓝图，而不再位于 runtime 通用执行面。
-- [x] **重构共享状态模型，消除 `Eval` 对 `LastSession` 的状态继承依赖**: 已引入绑定 `Executor/Program` 生命周期的 `SharedState`，移除 `lastSession` 与 root `Globals` 过渡存储；`Eval/Execute` 现统一为“共享状态 + 独立 Session”模型，每次执行仅持有调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态。全局变量、模块缓存与 loading 状态访问已统一收口到 `SharedState` 原语/快照接口，闭包与模块上下文也已改为轻量 `LexicalContext`，并通过锁明确顶层共享状态的并发边界：
+- [x] **重构共享状态模型，消除 `Eval` 对 `LastSession` 的状态继承依赖**: 已引入绑定 `Executor/Program` 生命周期的 `SharedState`，移除 `lastSession` 与 root `Globals` 过渡存储；`Eval/Execute` 现统一为“共享状态 + 独立 Session”模型，每次执行仅持有调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态。全局变量、模块缓存与 loading 状态访问已统一收口到 `SharedState` 原语/快照接口，闭包与模块上下文也已改为轻量 `LexicalContext`。当前共享状态并发面已进一步补齐：shared init 改为单状态枚举 + 原子一次性初始化流程，module import 已切到单飞行协调，不再误报循环依赖；`VMMap` / `VMArray` / `VMModule` 已提供 VM 内部受控访问 API，shared global 更新与 global capture 也已收口到 `SharedState.UpdateGlobal(...)` / `CaptureGlobalCell(...)`，避免继续在锁外直接改共享 `*Var`。`SharedStateSnapshot` 与 `Var.DeepCopy()` 现已是 detached 深快照语义，而 `Var.Copy()` 保留为运行时轻拷贝：
   1. 在 runtime 层引入独立的 `SharedState`（至少承载 `Globals`、`ModuleCache`、必要的 global/cell 存储），生命周期绑定 `Executor/Program`，而不是绑定某次 session；
   2. 让 `Eval/Execute` 每次都创建独立 session，只保存调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态，不再通过 `LastSession` 继承共享状态；
-  3. 将全局变量、模块缓存、全局内存指针等访问统一改写到 `SharedState` 上，并为顶层共享状态访问建立清晰的并发边界
+  3. 将全局变量、模块缓存、全局内存指针等访问统一改写到 `SharedState` 上，并为顶层共享状态访问建立清晰的并发边界；
+  4. 当前剩余问题主要是“是否继续提供更强一致性的复合更新语义”，而不是 shared state 缺少门面或快照浅共享
 
 ---
 

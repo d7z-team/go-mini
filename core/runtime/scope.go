@@ -114,12 +114,21 @@ type VMInterface struct {
 	VTable []*Var
 }
 
+type sharedInitState uint8
+
+const (
+	sharedInitUninitialized sharedInitState = iota
+	sharedInitInitializing
+	sharedInitReady
+)
+
 type SharedState struct {
 	mu             sync.RWMutex
+	cond           *sync.Cond
 	globals        map[string]*Var
 	moduleCache    map[string]*Var
 	loadingModules map[string]bool
-	initialized    bool
+	initState      sharedInitState
 }
 
 type SharedStateSnapshot struct {
@@ -141,7 +150,10 @@ func (s *SharedStateSnapshot) LoadGlobal(name string) (*Var, bool) {
 		return nil, false
 	}
 	v, ok := s.globals[name]
-	return v, ok
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.DeepCopy(), true
 }
 
 func (s *SharedStateSnapshot) HasGlobal(name string) bool {
@@ -165,7 +177,10 @@ func (s *SharedStateSnapshot) Module(path string) (*Var, bool) {
 		return nil, false
 	}
 	v, ok := s.moduleCache[path]
-	return v, ok
+	if !ok || v == nil {
+		return nil, ok
+	}
+	return v.DeepCopy(), true
 }
 
 func (s *SharedStateSnapshot) IsModuleLoading(path string) bool {
@@ -181,7 +196,11 @@ func (s *SharedStateSnapshot) Globals() map[string]*Var {
 	}
 	out := make(map[string]*Var, len(s.globals))
 	for k, v := range s.globals {
-		out[k] = v
+		if v != nil {
+			out[k] = v.DeepCopy()
+		} else {
+			out[k] = nil
+		}
 	}
 	return out
 }
@@ -192,7 +211,11 @@ func (s *SharedStateSnapshot) ModuleCache() map[string]*Var {
 	}
 	out := make(map[string]*Var, len(s.moduleCache))
 	for k, v := range s.moduleCache {
-		out[k] = v
+		if v != nil {
+			out[k] = v.DeepCopy()
+		} else {
+			out[k] = nil
+		}
 	}
 	return out
 }
@@ -208,12 +231,147 @@ func (s *SharedStateSnapshot) LoadingModules() map[string]bool {
 	return out
 }
 
+// Copy performs a runtime value copy of the Var shell.
+// Composite/module/closure refs remain shared; use DeepCopy for detached snapshots.
+func (v *Var) Copy() *Var {
+	if v == nil {
+		return nil
+	}
+	res := &Var{
+		TypeInfo: v.TypeInfo,
+		VType:    v.VType,
+		I64:      v.I64,
+		F64:      v.F64,
+		Str:      v.Str,
+		Bool:     v.Bool,
+		Handle:   v.Handle,
+		Bridge:   v.Bridge,
+		Ref:      v.Ref, // 共享内部引用
+	}
+	if v.B != nil {
+		res.B = make([]byte, len(v.B))
+		copy(res.B, v.B)
+	}
+	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
+	if v.VType == TypeHandle && v.Handle != 0 && v.Ref == nil {
+		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
+		h := NewVMHandle(v.Handle, v.Bridge)
+		res.Ref = h
+	}
+	if v.VType == TypeInterface {
+		if inter, ok := v.Ref.(*VMInterface); ok {
+			res.Ref = &VMInterface{
+				Target: inter.Target.Copy(),
+				Spec:   inter.Spec,
+			}
+		}
+	}
+
+	if v.stack.Value() != nil {
+		res.stack = weak.Make(v.stack.Value())
+	}
+	return res
+}
+
+func (v *Var) DeepCopy() *Var {
+	seen := make(map[*Var]*Var)
+	return v.deepCopy(seen)
+}
+
+func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
+	if v == nil {
+		return nil
+	}
+	if cloned, ok := seen[v]; ok {
+		return cloned
+	}
+	res := &Var{
+		TypeInfo: v.TypeInfo,
+		VType:    v.VType,
+		I64:      v.I64,
+		F64:      v.F64,
+		Str:      v.Str,
+		Bool:     v.Bool,
+		Handle:   v.Handle,
+		Bridge:   v.Bridge,
+	}
+	seen[v] = res
+	if v.B != nil {
+		res.B = make([]byte, len(v.B))
+		copy(res.B, v.B)
+	}
+	switch ref := v.Ref.(type) {
+	case *VMArray:
+		items := ref.Snapshot()
+		cloned := make([]*Var, len(items))
+		for i, item := range items {
+			cloned[i] = item.deepCopy(seen)
+		}
+		res.Ref = &VMArray{Data: cloned}
+	case *VMMap:
+		snapshot := ref.Snapshot()
+		cloned := make(map[string]*Var, len(snapshot))
+		for k, item := range snapshot {
+			cloned[k] = item.deepCopy(seen)
+		}
+		res.Ref = &VMMap{Data: cloned}
+	case *VMModule:
+		cloned := make(map[string]*Var, len(ref.Data))
+		for k, item := range ref.Data {
+			cloned[k] = item.deepCopy(seen)
+		}
+		res.Ref = &VMModule{Name: ref.Name, Data: cloned}
+	case *VMInterface:
+		vtable := make([]*Var, len(ref.VTable))
+		for i, item := range ref.VTable {
+			vtable[i] = item.deepCopy(seen)
+		}
+		res.Ref = &VMInterface{
+			Target: ref.Target.deepCopy(seen),
+			Spec:   cloneRuntimeInterfaceSpec(ref.Spec),
+			VTable: vtable,
+		}
+	case *Cell:
+		res.Ref = &Cell{Value: ref.Value.deepCopy(seen)}
+	case *VMError:
+		frames := append([]StackFrame(nil), ref.Frames...)
+		res.Ref = &VMError{
+			Message: ref.Message,
+			Value:   ref.Value.deepCopy(seen),
+			Frames:  frames,
+			IsPanic: ref.IsPanic,
+			Cause:   ref.Cause,
+			Handle:  ref.Handle,
+			Bridge:  ref.Bridge,
+		}
+	case *VMClosure:
+		upvalues := make([]*Var, len(ref.UpvalueSlots))
+		for i, item := range ref.UpvalueSlots {
+			upvalues[i] = item.deepCopy(seen)
+		}
+		res.Ref = &VMClosure{
+			FunctionSig:  cloneRuntimeFuncSig(ref.FunctionSig),
+			BodyTasks:    cloneTasks(ref.BodyTasks),
+			UpvalueSlots: upvalues,
+			UpvalueNames: append([]string(nil), ref.UpvalueNames...),
+			Context:      nil,
+		}
+	case *VMHandle:
+		res.Ref = &VMHandle{ID: ref.ID, Bridge: ref.Bridge}
+	default:
+		res.Ref = ref
+	}
+	return res
+}
+
 func NewSharedState() *SharedState {
-	return &SharedState{
+	state := &SharedState{
 		globals:        make(map[string]*Var),
 		moduleCache:    make(map[string]*Var),
 		loadingModules: make(map[string]bool),
 	}
+	state.cond = sync.NewCond(&state.mu)
+	return state
 }
 
 type LexicalContext struct {
@@ -223,9 +381,45 @@ type LexicalContext struct {
 }
 
 type VMModule struct {
+	mu      sync.RWMutex
 	Name    string
 	Data    map[string]*Var
 	Context *LexicalContext
+}
+
+func (m *VMModule) Load(name string) (*Var, bool) {
+	if m == nil {
+		return nil, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	v, ok := m.Data[name]
+	return v, ok
+}
+
+func (m *VMModule) Store(name string, v *Var) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Data == nil {
+		m.Data = make(map[string]*Var)
+	}
+	m.Data[name] = v
+}
+
+func (m *VMModule) Snapshot() map[string]*Var {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]*Var, len(m.Data))
+	for k, v := range m.Data {
+		out[k] = v
+	}
+	return out
 }
 
 type Cell struct {
@@ -323,11 +517,144 @@ func NewVMHandle(id uint32, bridge ffigo.FFIBridge) *VMHandle {
 }
 
 type VMArray struct {
+	mu   sync.RWMutex
 	Data []*Var
 }
 
+func (a *VMArray) Len() int {
+	if a == nil {
+		return 0
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return len(a.Data)
+}
+
+func (a *VMArray) Cap() int {
+	if a == nil {
+		return 0
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return cap(a.Data)
+}
+
+func (a *VMArray) Load(i int) (*Var, bool) {
+	if a == nil {
+		return nil, false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if i < 0 || i >= len(a.Data) {
+		return nil, false
+	}
+	return a.Data[i], true
+}
+
+func (a *VMArray) Store(i int, v *Var) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if i < 0 || i >= len(a.Data) {
+		return false
+	}
+	a.Data[i] = v
+	return true
+}
+
+func (a *VMArray) Snapshot() []*Var {
+	if a == nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]*Var, len(a.Data))
+	copy(out, a.Data)
+	return out
+}
+
+func (a *VMArray) Slice(low, high int) []*Var {
+	if a == nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	out := make([]*Var, high-low)
+	copy(out, a.Data[low:high])
+	return out
+}
+
 type VMMap struct {
+	mu   sync.RWMutex
 	Data map[string]*Var
+}
+
+func (m *VMMap) Load(key string) (*Var, bool) {
+	if m == nil {
+		return nil, false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	v, ok := m.Data[key]
+	return v, ok
+}
+
+func (m *VMMap) Store(key string, v *Var) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Data == nil {
+		m.Data = make(map[string]*Var)
+	}
+	m.Data[key] = v
+}
+
+func (m *VMMap) Delete(key string) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.Data, key)
+}
+
+func (m *VMMap) Len() int {
+	if m == nil {
+		return 0
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.Data)
+}
+
+func (m *VMMap) Keys() []string {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	keys := make([]string, 0, len(m.Data))
+	for k := range m.Data {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *VMMap) Snapshot() map[string]*Var {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]*Var, len(m.Data))
+	for k, v := range m.Data {
+		out[k] = v
+	}
+	return out
 }
 
 func (v *Var) ToInt() (int64, error) {
@@ -430,11 +757,11 @@ func (v *Var) String() string {
 		return fmt.Sprintf("handle(%d)", v.Handle)
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
-			return fmt.Sprintf("array(%d)", len(arr.Data))
+			return fmt.Sprintf("array(%d)", arr.Len())
 		}
 	case TypeMap:
 		if m, ok := v.Ref.(*VMMap); ok {
-			return fmt.Sprintf("map(%d)", len(m.Data))
+			return fmt.Sprintf("map(%d)", m.Len())
 		}
 	case TypeModule:
 		if m, ok := v.Ref.(*VMModule); ok {
@@ -473,8 +800,9 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 		return v.Handle
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
-			res := make([]interface{}, len(arr.Data))
-			for i, item := range arr.Data {
+			items := arr.Snapshot()
+			res := make([]interface{}, len(items))
+			for i, item := range items {
 				res[i] = item.interfaceWithDepth(depth + 1)
 			}
 			return res
@@ -482,7 +810,7 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 	case TypeMap:
 		if m, ok := v.Ref.(*VMMap); ok {
 			res := make(map[string]interface{})
-			for k, val := range m.Data {
+			for k, val := range m.Snapshot() {
 				res[k] = val.interfaceWithDepth(depth + 1)
 			}
 			return res
@@ -493,46 +821,6 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 		}
 	}
 	return nil
-}
-
-func (v *Var) Copy() *Var {
-	if v == nil {
-		return nil
-	}
-	res := &Var{
-		TypeInfo: v.TypeInfo,
-		VType:    v.VType,
-		I64:      v.I64,
-		F64:      v.F64,
-		Str:      v.Str,
-		Bool:     v.Bool,
-		Handle:   v.Handle,
-		Bridge:   v.Bridge,
-		Ref:      v.Ref, // 共享内部引用
-	}
-	if v.B != nil {
-		res.B = make([]byte, len(v.B))
-		copy(res.B, v.B)
-	}
-	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
-	if v.VType == TypeHandle && v.Handle != 0 && v.Ref == nil {
-		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
-		h := NewVMHandle(v.Handle, v.Bridge)
-		res.Ref = h
-	}
-	if v.VType == TypeInterface {
-		if inter, ok := v.Ref.(*VMInterface); ok {
-			res.Ref = &VMInterface{
-				Target: inter.Target.Copy(),
-				Spec:   inter.Spec,
-			}
-		}
-	}
-
-	if v.stack.Value() != nil {
-		res.stack = weak.Make(v.stack.Value())
-	}
-	return res
 }
 
 func NewVar[S ~string](typ S, vType VarType) *Var {
@@ -629,6 +917,7 @@ type StackContext struct {
 	PanicTrace   []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
 	Executor     *Executor
 	Shared       *SharedState
+	ImportChain  map[string]bool
 
 	// 运行时状态 (Session State)
 
@@ -695,16 +984,39 @@ func (s *SharedState) IsInitialized() bool {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.initialized
+	return s.initState == sharedInitReady
 }
 
-func (s *SharedState) MarkInitialized() {
+func (s *SharedState) BeginInitialization() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for s.initState == sharedInitInitializing {
+		s.cond.Wait()
+	}
+	if s.initState == sharedInitReady {
+		return false
+	}
+	s.initState = sharedInitInitializing
+	return true
+}
+
+func (s *SharedState) FinishInitialization(err error) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.initialized = true
+	if err == nil {
+		s.initState = sharedInitReady
+	} else {
+		s.initState = sharedInitUninitialized
+	}
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 func (s *SharedState) Snapshot() *SharedStateSnapshot {
@@ -715,18 +1027,18 @@ func (s *SharedState) Snapshot() *SharedStateSnapshot {
 	defer s.mu.RUnlock()
 	globals := make(map[string]*Var, len(s.globals))
 	for k, v := range s.globals {
-		globals[k] = v
+		globals[k] = v.DeepCopy()
 	}
 	moduleCache := make(map[string]*Var, len(s.moduleCache))
 	for k, v := range s.moduleCache {
-		moduleCache[k] = v
+		moduleCache[k] = v.DeepCopy()
 	}
 	loadingModules := make(map[string]bool, len(s.loadingModules))
 	for k, v := range s.loadingModules {
 		loadingModules[k] = v
 	}
 	return &SharedStateSnapshot{
-		initialized:    s.initialized,
+		initialized:    s.initState == sharedInitReady,
 		globals:        globals,
 		moduleCache:    moduleCache,
 		loadingModules: loadingModules,
@@ -764,6 +1076,44 @@ func (s *SharedState) StoreGlobal(name string, v *Var) {
 		return
 	}
 	s.globals[name] = v
+}
+
+func (s *SharedState) UpdateGlobal(name string, fn func(current *Var, exists bool) (*Var, error)) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.globals[name]
+	next, err := fn(current, ok)
+	if err != nil {
+		return err
+	}
+	if next == nil {
+		delete(s.globals, name)
+		return nil
+	}
+	s.globals[name] = next
+	return nil
+}
+
+func (s *SharedState) CaptureGlobalCell(name string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.globals[name]
+	if !ok || v == nil {
+		return nil, ok
+	}
+	if v.VType != TypeCell {
+		cellValue := v.Copy()
+		v.VType = TypeCell
+		v.Ref = &Cell{Value: cellValue}
+		v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+	}
+	return v, true
 }
 
 func (s *SharedState) ApplyEnv(env map[string]*Var) {
@@ -804,6 +1154,9 @@ func (s *SharedState) StoreModule(path string, v *Var) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.moduleCache[path] = v
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 func (s *SharedState) DeleteModule(path string) {
@@ -832,9 +1185,48 @@ func (s *SharedState) SetModuleLoading(path string, loading bool) {
 	defer s.mu.Unlock()
 	if loading {
 		s.loadingModules[path] = true
+		if s.cond != nil {
+			s.cond.Broadcast()
+		}
 		return
 	}
 	delete(s.loadingModules, path)
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
+}
+
+func (s *SharedState) BeginModuleLoad(path string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for {
+		if v, ok := s.moduleCache[path]; ok {
+			return v, false
+		}
+		if !s.loadingModules[path] {
+			s.loadingModules[path] = true
+			return nil, true
+		}
+		s.cond.Wait()
+	}
+}
+
+func (s *SharedState) FinishModuleLoad(path string, v *Var) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v != nil {
+		s.moduleCache[path] = v
+	}
+	delete(s.loadingModules, path)
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 func (lc *LexicalContext) Load(name string) (*Var, error) {
@@ -970,6 +1362,24 @@ func lookupFrameSymbolByName(frame *SlotFrame, name string) (SymbolRef, bool) {
 		return SymbolRef{Name: name, Kind: SymbolUpvalue, Slot: slot}, true
 	}
 	return SymbolRef{}, false
+}
+
+func resetVarToAny(v *Var) {
+	if v == nil {
+		return
+	}
+	v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
+}
+
+func wrapVarAsCell(v *Var) *Var {
+	if v == nil || v.VType == TypeCell {
+		return v
+	}
+	cellValue := v.Copy()
+	v.VType = TypeCell
+	v.Ref = &Cell{Value: cellValue}
+	v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+	return v
 }
 
 func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variable string) (*Var, error) {
@@ -1298,13 +1708,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 	}
 
 	if ctx.Shared != nil {
-		if v, ok := ctx.Shared.LoadGlobal(name); ok {
-			if v != nil && v.VType != TypeCell {
-				cellValue := v.Copy()
-				v.VType = TypeCell
-				v.Ref = &Cell{Value: cellValue}
-				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
-			}
+		if v, ok := ctx.Shared.CaptureGlobalCell(name); ok {
 			return v, nil
 		}
 	}
@@ -1367,13 +1771,7 @@ func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
 		}
 	case SymbolGlobal:
 		if ctx.Shared != nil {
-			if v, ok := ctx.Shared.LoadGlobal(sym.Name); ok {
-				if v != nil && v.VType != TypeCell {
-					cellValue := v.Copy()
-					v.VType = TypeCell
-					v.Ref = &Cell{Value: cellValue}
-					v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
-				}
+			if v, ok := ctx.Shared.CaptureGlobalCell(sym.Name); ok {
 				return v, nil
 			}
 		}
@@ -1548,29 +1946,28 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 		}
 	case SymbolGlobal:
 		if ctx.Shared != nil {
-			v, _ := ctx.Shared.LoadGlobal(sym.Name)
-			if v == nil {
-				if expr == nil {
-					ctx.Shared.StoreGlobal(sym.Name, NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny))
-				} else {
-					ctx.Shared.StoreGlobal(sym.Name, expr.Copy())
+			return ctx.Shared.UpdateGlobal(sym.Name, func(current *Var, exists bool) (*Var, error) {
+				if !exists || current == nil {
+					if expr == nil {
+						return NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny), nil
+					}
+					return expr.Copy(), nil
 				}
-				return nil
-			}
-			if v.VType == TypeCell {
-				v = v.Ref.(*Cell).Value
-			}
-			if expr == nil {
-				v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-				return nil
-			}
-			var err error
-			expr, err = ctx.coerceAssignedValue(v, expr)
-			if err != nil {
-				return err
-			}
-			copyVarData(v, expr)
-			return nil
+				target := current
+				if target.VType == TypeCell {
+					target = target.Ref.(*Cell).Value
+				}
+				if expr == nil {
+					resetVarToAny(target)
+					return current, nil
+				}
+				coerced, err := ctx.coerceAssignedValue(target, expr)
+				if err != nil {
+					return nil, err
+				}
+				copyVarData(target, coerced)
+				return current, nil
+			})
 		}
 	}
 	return ctx.Store(sym.Name, expr)

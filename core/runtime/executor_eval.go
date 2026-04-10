@@ -343,10 +343,11 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 	case TypeArray:
 		arr := obj.Ref.(*VMArray)
 		i := int(idx.I64)
-		if i < 0 || i >= len(arr.Data) {
+		val, ok := arr.Load(i)
+		if !ok {
 			return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 		}
-		return arr.Data[i], nil
+		return val, nil
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
 		// Dynamic Key Type Validation
@@ -367,7 +368,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		if err != nil {
 			return nil, err
 		}
-		if val, ok := m.Data[key]; ok {
+		if val, ok := m.Load(key); ok {
 			return val, nil
 		}
 		return e.ToVar(ctx, valType.ZeroVar(), nil), nil
@@ -415,7 +416,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		}
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
-		if val, ok := m.Data[property]; ok {
+		if val, ok := m.Load(property); ok {
 			return val, nil
 		}
 		// Try to look up as a method if it has a type name
@@ -447,7 +448,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 				return val, nil
 			}
 		}
-		if val, ok := mod.Data[property]; ok {
+		if val, ok := mod.Load(property); ok {
 			return val, nil
 		}
 		// Fallback to FFI routes
@@ -459,7 +460,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	case TypeAny:
 		if obj.Ref != nil {
 			if m, ok := obj.Ref.(*VMMap); ok {
-				if val, ok := m.Data[property]; ok {
+				if val, ok := m.Load(property); ok {
 					return val, nil
 				}
 			}
@@ -516,14 +517,14 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 		return NewString(obj.Str[low:high]), nil
 	case TypeArray:
 		arr := obj.Ref.(*VMArray)
-		l := len(arr.Data)
+		l := arr.Len()
 		if high == -1 {
 			high = l
 		}
 		if low < 0 || high < low || high > l {
 			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
-		v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Data[low:high]}}
+		v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Slice(low, high)}}
 		v.SetRuntimeType(obj.RuntimeType())
 		return v, nil
 	}
@@ -619,10 +620,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				session.ValueStack.Push(NewInt(int64(len(obj.B))))
 				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(len(obj.Ref.(*VMArray).Data))))
+				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMArray).Len())))
 				return nil
 			case TypeMap:
-				session.ValueStack.Push(NewInt(int64(len(obj.Ref.(*VMMap).Data))))
+				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMMap).Len())))
 				return nil
 			}
 			return &VMError{Message: fmt.Sprintf("invalid argument for len: %v", obj.VType), IsPanic: true}
@@ -641,7 +642,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				session.ValueStack.Push(NewInt(int64(cap(obj.B))))
 				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(cap(obj.Ref.(*VMArray).Data))))
+				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMArray).Cap())))
 				return nil
 			}
 			return &VMError{Message: fmt.Sprintf("invalid argument for cap: %v", obj.VType), IsPanic: true}
@@ -652,8 +653,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			switch args[0].VType {
 			case TypeArray:
 				arr := args[0].Ref.(*VMArray)
-				newArr := make([]*Var, len(arr.Data), len(arr.Data)+len(args)-1)
-				copy(newArr, arr.Data)
+				items := arr.Snapshot()
+				newArr := make([]*Var, len(items), len(items)+len(args)-1)
+				copy(newArr, items)
 				newArr = append(newArr, args[1:]...)
 				v := &Var{VType: TypeArray, Ref: &VMArray{Data: newArr}}
 				v.SetRuntimeType(args[0].RuntimeType())
@@ -686,7 +688,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				if args[1].VType == TypeInt {
 					key = strconv.FormatInt(args[1].I64, 10)
 				}
-				delete(m.Data, key)
+				m.Delete(key)
 				session.ValueStack.Push(nil) // Void return
 				return nil
 			}
@@ -896,7 +898,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	// 3b. Dynamic Method Call for Maps (Interfaces)
 	if receiver != nil && receiver.VType == TypeMap && name != "" {
 		m := receiver.Ref.(*VMMap)
-		if val, ok := m.Data[name]; ok {
+		if val, ok := m.Load(name); ok {
 			// Found it! It could be a closure stored in the map.
 			// IMPORTANT: If we found the method via a receiver, we should strip the receiver
 			// from args if it was automatically prepended by OpCall.
@@ -923,7 +925,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 
 	// 4. Module Function Call
 	if mod != nil {
-		if fVar, ok := mod.Data[name]; ok && fVar.VType == TypeClosure {
+		if fVar, ok := mod.Load(name); ok && fVar.VType == TypeClosure {
 			if closure, ok := fVar.Ref.(*VMClosure); ok {
 				return e.setupFuncCall(session, name, nil, args, closure)
 			}

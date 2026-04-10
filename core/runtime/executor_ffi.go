@@ -230,7 +230,7 @@ func (e *Executor) serializeStructSchema(buf *ffigo.Buffer, v *Var, schema *Runt
 	}
 	var mData map[string]*Var
 	if v != nil && v.VType == TypeMap {
-		mData = v.Ref.(*VMMap).Data
+		mData = v.Ref.(*VMMap).Snapshot()
 	}
 	for _, field := range schema.Fields {
 		var fVal *Var
@@ -401,8 +401,9 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			return nil
 		}
 		arr := v.Ref.(*VMArray)
-		buf.WriteUvarint(uint64(len(arr.Data)))
-		for _, item := range arr.Data {
+		items := arr.Snapshot()
+		buf.WriteUvarint(uint64(len(items)))
+		for _, item := range items {
 			if err := e.serializeParsedType(buf, item, *typ.Elem); err != nil {
 				return err
 			}
@@ -414,8 +415,9 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			return nil
 		}
 		vmMap := v.Ref.(*VMMap)
-		buf.WriteUvarint(uint64(len(vmMap.Data)))
-		for k, val := range vmMap.Data {
+		snapshot := vmMap.Snapshot()
+		buf.WriteUvarint(uint64(len(snapshot)))
+		for k, val := range snapshot {
 			if err := e.serializeKey(buf, k, *typ.Key); err != nil {
 				return err
 			}
@@ -432,10 +434,11 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			return nil
 		}
 		arr := v.Ref.(*VMArray)
+		items := arr.Snapshot()
 		for i, t := range typ.Params {
 			var arg *Var
-			if i < len(arr.Data) {
-				arg = arr.Data[i]
+			if i < len(items) {
+				arg = items[i]
 			}
 			if err := e.serializeParsedType(buf, arg, t); err != nil {
 				return err
@@ -499,9 +502,10 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		buf.WriteAny(v.Handle)
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
+		items := arr.Snapshot()
 		buf.WriteByte(ffigo.TypeTagArray)
-		buf.WriteUvarint(uint64(len(arr.Data)))
-		for _, item := range arr.Data {
+		buf.WriteUvarint(uint64(len(items)))
+		for _, item := range items {
 			e.serializeVarToAny(buf, item)
 		}
 	case TypeMap:
@@ -511,13 +515,15 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			buf.WriteUvarint(uint64(len(schema.Fields)))
 			for _, field := range schema.Fields {
 				buf.WriteString(field.Name)
-				e.serializeVarToAny(buf, vmMap.Data[field.Name])
+				fieldVal, _ := vmMap.Load(field.Name)
+				e.serializeVarToAny(buf, fieldVal)
 			}
 			return
 		}
 		buf.WriteByte(ffigo.TypeTagMap)
-		buf.WriteUvarint(uint64(len(vmMap.Data)))
-		for k, val := range vmMap.Data {
+		snapshot := vmMap.Snapshot()
+		buf.WriteUvarint(uint64(len(snapshot)))
+		for k, val := range snapshot {
 			buf.WriteString(k)
 			e.serializeVarToAny(buf, val)
 		}

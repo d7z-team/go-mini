@@ -663,6 +663,7 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		Context:      ctx,
 		Executor:     e,
 		Shared:       e.shared,
+		ImportChain:  make(map[string]bool),
 		Stack:        &Stack{MemoryPtr: make(map[string]*Var), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
 		Debugger:     debugger.GetDebugger(ctx),
 		TaskStack:    make([]Task, 0, 128),
@@ -692,13 +693,14 @@ func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[str
 	if e.shared == nil {
 		e.shared = NewSharedState()
 	}
-	if !e.shared.IsInitialized() {
+	if e.shared.BeginInitialization() {
 		session := e.NewSession(ctx, "global")
 		session.StepLimit = e.StepLimit
-		if err := e.initializeSharedGlobals(session); err != nil {
+		err := e.initializeSharedGlobals(session)
+		e.shared.FinishInitialization(err)
+		if err != nil {
 			return err
 		}
-		e.shared.MarkInitialized()
 	}
 	e.shared.ApplyEnv(env)
 	return nil
@@ -803,7 +805,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 	case TypeMap:
 		if m, ok := val.Ref.(*VMMap); ok {
-			if v, ok := m.Data[name]; ok {
+			if v, ok := m.Load(name); ok {
 				return v, true
 			}
 		}
@@ -820,7 +822,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 					return v, true
 				}
 			}
-			if v := mod.Data[name]; v != nil {
+			if v, ok := mod.Load(name); ok && v != nil {
 				return v, true
 			}
 			routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
@@ -1340,7 +1342,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var elements []*Var
 		switch val.VType {
 		case TypeArray:
-			rawElements := val.Ref.(*VMArray).Data
+			rawElements := val.Ref.(*VMArray).Snapshot()
 			// Snapshot to prevent issues with self-assignment like a, b = b, a
 			elements = make([]*Var, len(rawElements))
 			for i, v := range rawElements {
@@ -1458,7 +1460,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					return err
 				}
 				tuple := make([]*Var, 2)
-				if val, ok := m.Data[key]; ok {
+				if val, ok := m.Load(key); ok {
 					tuple[0] = val
 					tuple[1] = NewBool(true)
 				} else {
@@ -1600,9 +1602,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			last := e.unwrapValue(args[len(args)-1])
 			if last != nil && last.VType == TypeArray {
 				arr := last.Ref.(*VMArray)
-				newArgs := make([]*Var, len(args)-1+len(arr.Data))
+				items := arr.Snapshot()
+				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
-				copy(newArgs[len(args)-1:], arr.Data)
+				copy(newArgs[len(args)-1:], items)
 				args = newArgs
 			}
 		}
@@ -1832,13 +1835,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		switch obj.VType {
 		case TypeArray:
-			rData.Length = len(obj.Ref.(*VMArray).Data)
+			rData.Length = obj.Ref.(*VMArray).Len()
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			rData.Keys = make([]string, 0, len(m.Data))
-			for k := range m.Data {
-				rData.Keys = append(rData.Keys, k)
-			}
+			rData.Keys = m.Keys()
 			rData.Length = len(rData.Keys)
 		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary})
@@ -1855,12 +1855,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var key, val *Var
 		if rData.Obj.VType == TypeArray {
 			key = NewInt(int64(rData.Index))
-			val = rData.Obj.Ref.(*VMArray).Data[rData.Index]
+			val, _ = rData.Obj.Ref.(*VMArray).Load(rData.Index)
 		} else {
 			k := rData.Keys[rData.Index]
 			keyType, _, _ := rData.Obj.RuntimeType().GetMapKeyValueTypes()
 			key = e.mapKeyToVar(k, keyType)
-			val = rData.Obj.Ref.(*VMMap).Data[k]
+			val, _ = rData.Obj.Ref.(*VMMap).Load(k)
 		}
 		rData.Index++
 
@@ -2039,25 +2039,25 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return fmt.Errorf("invalid import path: %s", path)
 		}
 
-		if v, ok := session.Shared.Module(path); ok {
+		if session.ImportChain[path] {
+			return fmt.Errorf("circular dependency detected: %s", path)
+		}
+		if v, shouldLoad := session.Shared.BeginModuleLoad(path); !shouldLoad {
 			session.ValueStack.Push(v)
 			return nil
 		}
-
-		if session.Shared.IsModuleLoading(path) {
-			return fmt.Errorf("circular dependency detected: %s", path)
-		}
+		session.ImportChain[path] = true
+		defer delete(session.ImportChain, path)
 
 		if e.ModulePlanLoader != nil {
 			prog, prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
-				session.Shared.SetModuleLoading(path, true)
 				res, err := e.executeImportedProgram(session, path, prog, prepared)
-				session.Shared.SetModuleLoading(path, false)
 				if err != nil {
+					session.Shared.FinishModuleLoad(path, nil)
 					return err
 				}
-				session.Shared.StoreModule(path, res)
+				session.Shared.FinishModuleLoad(path, res)
 				session.ValueStack.Push(res)
 				return nil
 			}
@@ -2077,11 +2077,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				} else {
 					methodName = strings.TrimPrefix(name, prefix2)
 				}
-				ffiMod.Data[methodName] = &Var{
+				ffiMod.Store(methodName, &Var{
 					VType: TypeAny,
 					Str:   name,
 					Ref:   route,
-				}
+				})
 			}
 		}
 
@@ -2094,16 +2094,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				} else {
 					constName = strings.TrimPrefix(name, prefix2)
 				}
-				ffiMod.Data[constName] = e.evalLiteralToVar(val)
+				ffiMod.Store(constName, e.evalLiteralToVar(val))
 			}
 		}
 
 		if found {
 			res := &Var{VType: TypeModule, Ref: ffiMod}
-			session.Shared.StoreModule(path, res)
+			session.Shared.FinishModuleLoad(path, res)
 			session.ValueStack.Push(res)
 			return nil
 		}
+		session.Shared.FinishModuleLoad(path, nil)
 		return fmt.Errorf("failed to load module %s", path)
 
 	case OpImportDone:
@@ -2371,15 +2372,16 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		case TypeArray:
 			arr := obj.Ref.(*VMArray)
 			i := int(idx.I64)
-			if i < 0 || i >= len(arr.Data) {
+			if _, ok := arr.Load(i); !ok {
 				return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
 			}
 			return &resolvedAddress{
 				load: func() (*Var, error) {
-					return e.unwrapAddressVar(arr.Data[i]), nil
+					v, _ := arr.Load(i)
+					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					arr.Data[i] = val
+					arr.Store(i, val)
 					return nil
 				},
 			}, nil
@@ -2391,10 +2393,11 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			}
 			return &resolvedAddress{
 				load: func() (*Var, error) {
-					return e.unwrapAddressVar(m.Data[key]), nil
+					v, _ := m.Load(key)
+					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					m.Data[key] = val
+					m.Store(key, val)
 					return nil
 				},
 			}, nil
@@ -2410,10 +2413,11 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			m := obj.Ref.(*VMMap)
 			return &resolvedAddress{
 				load: func() (*Var, error) {
-					return e.unwrapAddressVar(m.Data[desc.Property]), nil
+					v, _ := m.Load(desc.Property)
+					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					m.Data[desc.Property] = val
+					m.Store(desc.Property, val)
 					return nil
 				},
 			}, nil
@@ -2843,6 +2847,11 @@ func (e *Executor) executeImportedProgram(parent *StackContext, path string, pro
 	modSession.StepCount = parent.StepCount
 	modSession.Debugger = parent.Debugger
 	modSession.Shared = modExecutor.shared
+	modSession.ImportChain = make(map[string]bool, len(parent.ImportChain)+1)
+	for k, v := range parent.ImportChain {
+		modSession.ImportChain[k] = v
+	}
+	modSession.ImportChain[path] = true
 
 	if err := modExecutor.InitializeSession(modSession, nil, false); err != nil {
 		parent.StepCount = modSession.StepCount
