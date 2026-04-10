@@ -1140,9 +1140,9 @@ type FunctionStmt struct {
 	BaseNode
 	FunctionType `json:",inline"`
 	Scope        Ident      `json:"scope,omitempty"`         // 函数的作用域
-	Name         Ident      `json:"name"`                   // 函数名
+	Name         Ident      `json:"name"`                    // 函数名
 	ReceiverType Ident      `json:"receiver_type,omitempty"` // 接收者类型 (如果是方法)
-	Body         *BlockStmt `json:"body"`                   // 函数结构体
+	Body         *BlockStmt `json:"body"`                    // 函数结构体
 	Doc          string     `json:"doc,omitempty"`
 }
 

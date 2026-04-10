@@ -23,8 +23,8 @@ type LSPServer struct {
 }
 
 type fileSession struct {
-	pkgKey  string
-	code    string
+	pkgKey string
+	code   string
 }
 
 type packageState struct {

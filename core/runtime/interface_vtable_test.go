@@ -91,9 +91,9 @@ func TestResolveMethodRouteSupportsDottedMethodKeys(t *testing.T) {
 	})
 
 	exec.routes["demo.Type.Call"] = FFIRoute{
-		Name:    "demo.Type.Call",
+		Name:     "demo.Type.Call",
 		MethodID: 1,
-		FuncSig: MustParseRuntimeFuncSig("function(Ptr<demo.Type>) Void"),
+		FuncSig:  MustParseRuntimeFuncSig("function(Ptr<demo.Type>) Void"),
 	}
 
 	methodName, ok := exec.resolveMethodRoute("Ptr<demo.Type>", "Call")

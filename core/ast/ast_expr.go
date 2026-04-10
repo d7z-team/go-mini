@@ -674,23 +674,23 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 		// 如果 typeName 包含点号，说明是跨包类型，且当前环境中没有加载该包的 AST，
 		// 或者它是一个 FFI 类型。在这种情况下，我们保持 Any 类型。
-			if strings.Contains(typeName, ".") {
-				err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
-				ctx.WithNode(m).AddErrorf("%s", err.Error())
-				return err
-			}
-
-			// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
-			if strings.Contains(string(objType), ".") {
-				err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
-				ctx.WithNode(m).AddErrorf("%s", err.Error())
-				return err
-			}
-
-			err := fmt.Errorf("未定义类型 %s，无法访问成员 %s", objType, m.Property)
+		if strings.Contains(typeName, ".") {
+			err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
 			ctx.WithNode(m).AddErrorf("%s", err.Error())
 			return err
 		}
+
+		// 如果 objType 包含点号，也说明是跨包类型（例如 lib.Point）
+		if strings.Contains(string(objType), ".") {
+			err := fmt.Errorf("未解析的跨包类型 %s，无法访问成员 %s", objType, m.Property)
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			return err
+		}
+
+		err := fmt.Errorf("未定义类型 %s，无法访问成员 %s", objType, m.Property)
+		ctx.WithNode(m).AddErrorf("%s", err.Error())
+		return err
+	}
 
 	err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
 	ctx.WithNode(m).AddErrorf("%s", err.Error())

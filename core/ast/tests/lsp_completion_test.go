@@ -514,9 +514,9 @@ func main() {
 	prog := node.(*ast.ProgramStmt)
 
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"fmt.Println":  "function(...Any) Void",
-		"time.Sleep":   "function(Duration) Void",
-		"time.Second":  "Duration",
+		"fmt.Println": "function(...Any) Void",
+		"time.Sleep":  "function(Duration) Void",
+		"time.Second": "Duration",
 	}
 
 	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
