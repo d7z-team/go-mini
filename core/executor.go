@@ -194,8 +194,11 @@ func (p *MiniProgram) ExecuteWithEnv(ctx context.Context, env map[string]*runtim
 	return p.executor.ExecuteWithEnv(ctx, env)
 }
 
-func (p *MiniProgram) LastSession() *runtime.StackContext {
-	return p.executor.LastSession()
+func (p *MiniProgram) SharedState() *runtime.SharedStateSnapshot {
+	if p == nil || p.executor == nil {
+		return nil
+	}
+	return p.executor.SharedStateSnapshot()
 }
 
 func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
@@ -239,35 +242,8 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 	session := p.executor.NewSession(ctx, "eval")
 	defer p.executor.CleanupSession(session)
 
-	// 继承上次执行的状态（如 import 的模块和全局变量）
-	if last := p.executor.LastSession(); last != nil {
-		// 模块缓存继承
-		if last.ModuleCache != nil {
-			for k, v := range last.ModuleCache {
-				session.ModuleCache[k] = v
-			}
-		}
-		// 全局变量继承：追溯到最顶层作用域
-		root := last.Stack
-		if root != nil {
-			for root.Parent != nil {
-				root = root.Parent
-			}
-			if root.Globals != nil {
-				for k, v := range root.Globals {
-					session.Stack.Globals[k] = v
-				}
-			}
-			if root.MemoryPtr != nil {
-				for k, v := range root.MemoryPtr {
-					session.Stack.MemoryPtr[k] = v
-				}
-			}
-		}
-	} else {
-		if err := p.executor.InitializeSession(session, nil, false); err != nil {
-			return nil, err
-		}
+	if err := p.executor.EnsureSharedStateInitialized(ctx, nil); err != nil {
+		return nil, err
 	}
 
 	// 注入环境

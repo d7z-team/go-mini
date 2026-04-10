@@ -52,14 +52,15 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 		t.Fatalf("unexpected execute error: %v", err)
 	}
 
-	session := runtime.LastSession()
-	if session == nil {
-		t.Fatal("expected last session")
+	shared := runtime.SharedState()
+	if shared == nil {
+		t.Fatal("expected shared state")
 	}
-	if _, ok := session.ModuleCache["broken"]; ok {
-		t.Fatalf("broken module should not be committed into cache: %#v", session.ModuleCache["broken"])
+	if shared.HasModule("broken") {
+		mod, _ := shared.Module("broken")
+		t.Fatalf("broken module should not be committed into cache: %#v", mod)
 	}
-	if session.LoadingModules["broken"] {
+	if shared.IsModuleLoading("broken") {
 		t.Fatal("broken module should not remain in loading set")
 	}
 }
@@ -109,14 +110,15 @@ func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 		t.Fatalf("unexpected execute error: %v", err)
 	}
 
-	session := runtime.LastSession()
-	if session == nil {
-		t.Fatal("expected last session")
+	shared := runtime.SharedState()
+	if shared == nil {
+		t.Fatal("expected shared state")
 	}
-	if _, ok := session.ModuleCache["panicmod"]; ok {
-		t.Fatalf("panicmod should not be committed into cache: %#v", session.ModuleCache["panicmod"])
+	if shared.HasModule("panicmod") {
+		mod, _ := shared.Module("panicmod")
+		t.Fatalf("panicmod should not be committed into cache: %#v", mod)
 	}
-	if session.LoadingModules["panicmod"] {
+	if shared.IsModuleLoading("panicmod") {
 		t.Fatal("panicmod should not remain in loading set")
 	}
 }
@@ -171,20 +173,22 @@ func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 		t.Fatalf("unexpected execute error: %v", err)
 	}
 
-	session := runtime.LastSession()
-	if session == nil {
-		t.Fatal("expected last session")
+	shared := runtime.SharedState()
+	if shared == nil {
+		t.Fatal("expected shared state")
 	}
-	if _, ok := session.ModuleCache["childbroken"]; ok {
-		t.Fatalf("childbroken should not be committed into cache: %#v", session.ModuleCache["childbroken"])
+	if shared.HasModule("childbroken") {
+		mod, _ := shared.Module("childbroken")
+		t.Fatalf("childbroken should not be committed into cache: %#v", mod)
 	}
-	if _, ok := session.ModuleCache["parentbroken"]; ok {
-		t.Fatalf("parentbroken should not be committed into cache: %#v", session.ModuleCache["parentbroken"])
+	if shared.HasModule("parentbroken") {
+		mod, _ := shared.Module("parentbroken")
+		t.Fatalf("parentbroken should not be committed into cache: %#v", mod)
 	}
-	if session.LoadingModules["childbroken"] {
+	if shared.IsModuleLoading("childbroken") {
 		t.Fatal("childbroken should not remain in loading set")
 	}
-	if session.LoadingModules["parentbroken"] {
+	if shared.IsModuleLoading("parentbroken") {
 		t.Fatal("parentbroken should not remain in loading set")
 	}
 }

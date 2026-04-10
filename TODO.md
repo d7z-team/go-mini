@@ -183,6 +183,10 @@
   1. 将 `core/runtime/task.go`、`core/runtime/scope.go`、`core/runtime/task_codec.go`、`core/bytecode/*` 中执行热路径使用的 `ast.GoMiniType` 迁移为 `RuntimeType` 或其稳定引用；
   2. 同步升级 prepared program / bytecode 序列化，确保新类型载体不回退 AST 字符串；
   3. 最后再收口 `ExecExpr(ast.Expr)` 与 `Executor.program *ast.ProgramStmt`，把 AST 依赖明确压回 debugger/test 边界，而不是继续留在 runtime 通用执行面。
+- [x] **重构共享状态模型，消除 `Eval` 对 `LastSession` 的状态继承依赖**: 已引入绑定 `Executor/Program` 生命周期的 `SharedState`，移除 `lastSession` 与 root `Globals` 过渡存储；`Eval/Execute` 现统一为“共享状态 + 独立 Session”模型，每次执行仅持有调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态。全局变量、模块缓存与 loading 状态访问已统一收口到 `SharedState` 原语/快照接口，闭包与模块上下文也已改为轻量 `LexicalContext`，并通过锁明确顶层共享状态的并发边界：
+  1. 在 runtime 层引入独立的 `SharedState`（至少承载 `Globals`、`ModuleCache`、必要的 global/cell 存储），生命周期绑定 `Executor/Program`，而不是绑定某次 session；
+  2. 让 `Eval/Execute` 每次都创建独立 session，只保存调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态，不再通过 `LastSession` 继承共享状态；
+  3. 将全局变量、模块缓存、全局内存指针等访问统一改写到 `SharedState` 上，并为顶层共享状态访问建立清晰的并发边界
 
 ---
 

@@ -326,6 +326,7 @@ type CallBoundaryData struct {
 	Name      string
 	OldStack  *Stack
 	OldExec   *Executor
+	OldShared *SharedState
 	HasReturn bool
 	ValueBase int
 	LHSBase   int

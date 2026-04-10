@@ -75,8 +75,9 @@ func TestGlobalBindingsUseDedicatedGlobalStore(t *testing.T) {
 	if _, exists := session.Stack.MemoryPtr["globalValue"]; exists {
 		t.Fatalf("global should not require MemoryPtr storage: %#v", session.Stack.MemoryPtr["globalValue"])
 	}
-	if session.Stack.Globals["globalValue"] == nil || session.Stack.Globals["globalValue"].I64 != 33 {
-		t.Fatalf("expected dedicated global store entry, got %#v", session.Stack.Globals["globalValue"])
+	globalValue, ok := session.Shared.LoadGlobal("globalValue")
+	if !ok || globalValue == nil || globalValue.I64 != 33 {
+		t.Fatalf("expected dedicated global store entry, got %#v", globalValue)
 	}
 }
 

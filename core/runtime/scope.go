@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"weak"
 
@@ -113,10 +114,118 @@ type VMInterface struct {
 	VTable []*Var
 }
 
+type SharedState struct {
+	mu             sync.RWMutex
+	globals        map[string]*Var
+	moduleCache    map[string]*Var
+	loadingModules map[string]bool
+	initialized    bool
+}
+
+type SharedStateSnapshot struct {
+	initialized    bool
+	globals        map[string]*Var
+	moduleCache    map[string]*Var
+	loadingModules map[string]bool
+}
+
+func (s *SharedStateSnapshot) IsInitialized() bool {
+	if s == nil {
+		return false
+	}
+	return s.initialized
+}
+
+func (s *SharedStateSnapshot) LoadGlobal(name string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	v, ok := s.globals[name]
+	return v, ok
+}
+
+func (s *SharedStateSnapshot) HasGlobal(name string) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s.globals[name]
+	return ok
+}
+
+func (s *SharedStateSnapshot) HasModule(path string) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s.moduleCache[path]
+	return ok
+}
+
+func (s *SharedStateSnapshot) Module(path string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	v, ok := s.moduleCache[path]
+	return v, ok
+}
+
+func (s *SharedStateSnapshot) IsModuleLoading(path string) bool {
+	if s == nil {
+		return false
+	}
+	return s.loadingModules[path]
+}
+
+func (s *SharedStateSnapshot) Globals() map[string]*Var {
+	if s == nil {
+		return nil
+	}
+	out := make(map[string]*Var, len(s.globals))
+	for k, v := range s.globals {
+		out[k] = v
+	}
+	return out
+}
+
+func (s *SharedStateSnapshot) ModuleCache() map[string]*Var {
+	if s == nil {
+		return nil
+	}
+	out := make(map[string]*Var, len(s.moduleCache))
+	for k, v := range s.moduleCache {
+		out[k] = v
+	}
+	return out
+}
+
+func (s *SharedStateSnapshot) LoadingModules() map[string]bool {
+	if s == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(s.loadingModules))
+	for k, v := range s.loadingModules {
+		out[k] = v
+	}
+	return out
+}
+
+func NewSharedState() *SharedState {
+	return &SharedState{
+		globals:        make(map[string]*Var),
+		moduleCache:    make(map[string]*Var),
+		loadingModules: make(map[string]bool),
+	}
+}
+
+type LexicalContext struct {
+	Executor *Executor
+	Shared   *SharedState
+	Stack    *Stack
+}
+
 type VMModule struct {
 	Name    string
 	Data    map[string]*Var
-	Context *StackContext
+	Context *LexicalContext
 }
 
 type Cell struct {
@@ -128,7 +237,7 @@ type VMClosure struct {
 	BodyTasks    []Task
 	UpvalueSlots []*Var
 	UpvalueNames []string
-	Context      *StackContext // 闭包所属的母上下文
+	Context      *LexicalContext // 闭包所属的词法上下文
 }
 
 type VMMethodValue struct {
@@ -440,7 +549,6 @@ type SlotFrame struct {
 type Stack struct {
 	Parent    *Stack
 	MemoryPtr map[string]*Var
-	Globals   map[string]*Var
 	Frame     *SlotFrame
 	FrameBase *SlotFrame
 	FrameSync int
@@ -477,13 +585,12 @@ type StackContext struct {
 	PanicMessage string       // 存储发生 panic 时的文本消息
 	PanicTrace   []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
 	Executor     *Executor
+	Shared       *SharedState
 
 	// 运行时状态 (Session State)
 
-	StepCount      int64
-	StepLimit      int64
-	ModuleCache    map[string]*Var
-	LoadingModules map[string]bool
+	StepCount int64
+	StepLimit int64
 
 	Debugger *debugger.Session
 
@@ -539,6 +646,168 @@ func (ctx *StackContext) Err() error {
 	return nil
 }
 
+func (s *SharedState) IsInitialized() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.initialized
+}
+
+func (s *SharedState) MarkInitialized() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.initialized = true
+}
+
+func (s *SharedState) Snapshot() *SharedStateSnapshot {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	globals := make(map[string]*Var, len(s.globals))
+	for k, v := range s.globals {
+		globals[k] = v
+	}
+	moduleCache := make(map[string]*Var, len(s.moduleCache))
+	for k, v := range s.moduleCache {
+		moduleCache[k] = v
+	}
+	loadingModules := make(map[string]bool, len(s.loadingModules))
+	for k, v := range s.loadingModules {
+		loadingModules[k] = v
+	}
+	return &SharedStateSnapshot{
+		initialized:    s.initialized,
+		globals:        globals,
+		moduleCache:    moduleCache,
+		loadingModules: loadingModules,
+	}
+}
+
+func (s *SharedState) LoadGlobal(name string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.globals[name]
+	return v, ok
+}
+
+func (s *SharedState) HasGlobal(name string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.globals[name]
+	return ok
+}
+
+func (s *SharedState) StoreGlobal(name string, v *Var) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v == nil {
+		s.globals[name] = &Var{Type: "Any", VType: TypeAny}
+		return
+	}
+	s.globals[name] = v
+}
+
+func (s *SharedState) ApplyEnv(env map[string]*Var) {
+	if s == nil || len(env) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, v := range env {
+		s.globals[k] = v.Copy()
+	}
+}
+
+func (s *SharedState) Module(path string) (*Var, bool) {
+	if s == nil {
+		return nil, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.moduleCache[path]
+	return v, ok
+}
+
+func (s *SharedState) HasModule(path string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.moduleCache[path]
+	return ok
+}
+
+func (s *SharedState) StoreModule(path string, v *Var) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.moduleCache[path] = v
+}
+
+func (s *SharedState) DeleteModule(path string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.moduleCache, path)
+}
+
+func (s *SharedState) IsModuleLoading(path string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loadingModules[path]
+}
+
+func (s *SharedState) SetModuleLoading(path string, loading bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if loading {
+		s.loadingModules[path] = true
+		return
+	}
+	delete(s.loadingModules, path)
+}
+
+func (lc *LexicalContext) Load(name string) (*Var, error) {
+	if lc == nil {
+		return nil, errors.New("missing lexical context")
+	}
+	return loadVarFromScope(lc.Executor, lc.Shared, lc.Stack, name)
+}
+
+func (lc *LexicalContext) Store(name string, v *Var) error {
+	if lc == nil {
+		return errors.New("missing lexical context")
+	}
+	return storeVarToScope(lc.Executor, lc.Shared, lc.Stack, name, v)
+}
+
 const (
 	DefaultMaxStackDepth = 50000
 )
@@ -574,11 +843,6 @@ func (s *Stack) DumpVariables() map[string]string {
 				if _, exists := result[curr.Frame.ReturnName]; !exists {
 					result[curr.Frame.ReturnName] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Return).Interface())
 				}
-			}
-		}
-		for name, variable := range curr.Globals {
-			if _, exists := result[name]; !exists {
-				result[name] = fmt.Sprintf("%v", variable.Interface())
 			}
 		}
 		for name, variable := range curr.MemoryPtr {
@@ -665,30 +929,115 @@ func lookupFrameSymbolByName(frame *SlotFrame, name string) (SymbolRef, bool) {
 	return SymbolRef{}, false
 }
 
-func rootStack(s *Stack) *Stack {
-	for s != nil && s.Parent != nil {
+func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variable string) (*Var, error) {
+	if variable == "nil" {
+		return nil, nil
+	}
+	s := stack
+	for s != nil {
+		if v, ok := s.MemoryPtr[variable]; ok {
+			return v, nil
+		}
+		if v := lookupFrameVarByName(s.Frame, variable); v != nil {
+			return v, nil
+		}
 		s = s.Parent
 	}
-	return s
+	if shared != nil {
+		if v, ok := shared.LoadGlobal(variable); ok {
+			return v, nil
+		}
+	}
+	if exec != nil {
+		exec.mu.RLock()
+		defer exec.mu.RUnlock()
+		if fn, ok := exec.functions[ast.Ident(variable)]; ok {
+			return &Var{
+				VType: TypeClosure,
+				Ref: &VMClosure{
+					FunctionType: fn.FunctionType,
+					BodyTasks:    cloneTasks(fn.BodyTasks),
+					Context:      &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
+				},
+				Type: ast.TypeClosure,
+			}, nil
+		}
+		if route, ok := exec.routes[variable]; ok {
+			return &Var{
+				VType: TypeAny,
+				Ref:   route,
+				Type:  ast.TypeClosure,
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("undefined: %s", variable)
 }
 
-func loadRootGlobal(s *Stack, name string) (*Var, bool) {
-	root := rootStack(s)
-	if root == nil || root.Globals == nil {
-		return nil, false
+func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable string, expr *Var) error {
+	if variable == "nil" {
+		return nil
 	}
-	v, ok := root.Globals[name]
-	return v, ok
+	s := stack
+	for s != nil {
+		if sym, ok := lookupFrameSymbolByName(s.Frame, variable); ok {
+			ctx := &StackContext{Executor: exec, Shared: shared, Stack: stack}
+			return ctx.StoreSymbol(sym, expr)
+		}
+		if v, ok := s.MemoryPtr[variable]; ok {
+			if v != nil && v.VType == TypeCell {
+				v = v.Ref.(*Cell).Value
+			}
+			if expr == nil {
+				if v != nil {
+					v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+					return nil
+				}
+				break
+			}
+			if v.Type == "Any" && expr.Type != "Any" {
+				v.Type = expr.Type
+			}
+			if v.Type.IsInterface() && !expr.Type.IsInterface() {
+				wrapped, err := exec.CheckSatisfaction(expr, v.Type)
+				if err != nil {
+					return err
+				}
+				expr = wrapped
+			}
+			copyVarData(v, expr)
+			return nil
+		}
+		s = s.Parent
+	}
+	if shared != nil && shared.HasGlobal(variable) {
+		ctx := &StackContext{Executor: exec, Shared: shared, Stack: stack}
+		return ctx.StoreSymbol(SymbolRef{Name: variable, Kind: SymbolGlobal, Slot: -1}, expr)
+	}
+	if stack != nil && stack.Depth == 1 && stack.Scope == "global" && shared != nil {
+		if expr == nil {
+			shared.StoreGlobal(variable, &Var{Type: "Any", VType: TypeAny})
+		} else {
+			shared.StoreGlobal(variable, expr.Copy())
+		}
+		return nil
+	}
+	if stack == nil {
+		return errors.New("missing lexical stack")
+	}
+	if expr == nil {
+		stack.MemoryPtr[variable] = (&Var{Type: "Any", VType: TypeAny}).Copy()
+		return nil
+	}
+	stack.MemoryPtr[variable] = expr.Copy()
+	return nil
 }
 
 func (ctx *StackContext) ScopeApply(scope string) {
 	newDepth := 1
 	var frame *SlotFrame
-	var globals map[string]*Var
 	if ctx.Stack != nil {
 		newDepth = ctx.Stack.Depth + 1
 		frame = ctx.Stack.Frame
-		globals = ctx.Stack.Globals
 	}
 	if newDepth > DefaultMaxStackDepth {
 		panic(errors.New("stack overflow"))
@@ -696,7 +1045,6 @@ func (ctx *StackContext) ScopeApply(scope string) {
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Var),
-		Globals:   globals,
 		Frame:     frame,
 		FrameBase: frame,
 		Scope:     scope,
@@ -739,11 +1087,9 @@ func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
 
 func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 	newDepth := 1
-	var globals map[string]*Var
 	var parentFrame *SlotFrame
 	if ctx.Stack != nil {
 		newDepth = ctx.Stack.Depth + 1
-		globals = ctx.Stack.Globals
 		parentFrame = ctx.Stack.Frame
 	}
 	if newDepth > DefaultMaxStackDepth {
@@ -757,7 +1103,6 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Var),
-		Globals:   globals,
 		Frame:     clonedFrame,
 		FrameBase: parentFrame,
 		FrameSync: syncLimit,
@@ -813,62 +1158,12 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 			return ctx.StoreSymbol(sym, expr)
 		}
 	}
-	v, err := ctx.loadVar(variable)
-	if err != nil {
-		return ctx.AddVariable(variable, expr)
-	}
-	if v != nil && v.VType == TypeCell {
-		v = v.Ref.(*Cell).Value
-	}
-	if expr == nil {
-		if v != nil {
-			v.VType = TypeAny
-			v.I64 = 0
-			v.F64 = 0
-			v.Str = ""
-			v.B = nil
-			v.Bool = false
-			v.Handle = 0
-			v.Ref = nil
-		} else {
-			return ctx.AddVariable(variable, nil)
-		}
-		return nil
-	}
-
-	if v == nil {
-		return ctx.AddVariable(variable, expr)
-	}
-
-	if v.Type == "Any" && expr.Type != "Any" {
-		v.Type = expr.Type
-	}
-
-	if v.Type.IsInterface() && !expr.Type.IsInterface() {
-		// Perform satisfaction check and wrapping
-		wrapped, err := ctx.Executor.CheckSatisfaction(expr, v.Type)
-		if err != nil {
-			return err
-		}
-		expr = wrapped
-	}
-
-	v.VType = expr.VType
-	v.Type = expr.Type
-	v.I64 = expr.I64
-	v.F64 = expr.F64
-	v.Str = expr.Str
-	v.B = expr.B
-	v.Bool = expr.Bool
-	v.Handle = expr.Handle
-	v.Bridge = expr.Bridge
-	v.Ref = expr.Ref
-	return nil
+	return storeVarToScope(ctx.Executor, ctx.Shared, ctx.Stack, variable, expr)
 }
 
 func (ctx *StackContext) AddVariable(name string, v *Var) error {
-	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
-		ctx.Stack.Globals[name] = v.Copy()
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Shared != nil {
+		ctx.Shared.StoreGlobal(name, v.Copy())
 		return nil
 	}
 	ctx.Stack.MemoryPtr[name] = v.Copy()
@@ -902,7 +1197,7 @@ func (ctx *StackContext) Load(name string) (*Var, error) {
 			return ctx.LoadSymbol(sym)
 		}
 	}
-	v, err := ctx.loadVar(name)
+	v, err := loadVarFromScope(ctx.Executor, ctx.Shared, ctx.Stack, name)
 	if err != nil {
 		return nil, err
 	}
@@ -924,62 +1219,14 @@ func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
 			}
 		}
 	case SymbolGlobal:
-		if v, ok := loadRootGlobal(ctx.Stack, sym.Name); ok {
-			return unwrapCell(v), nil
+		if ctx.Shared != nil {
+			if v, ok := ctx.Shared.LoadGlobal(sym.Name); ok {
+				return unwrapCell(v), nil
+			}
 		}
 	case SymbolBuiltin, SymbolUnknown:
 	}
 	return ctx.Load(sym.Name)
-}
-
-func (ctx *StackContext) loadVar(variable string) (*Var, error) {
-	if variable == "nil" {
-		return nil, nil
-	}
-	s := ctx.Stack
-	for s != nil {
-		if v, ok := s.MemoryPtr[variable]; ok {
-			return v, nil
-		}
-		if v := lookupFrameVarByName(s.Frame, variable); v != nil {
-			return v, nil
-		}
-		if v, ok := s.Globals[variable]; ok {
-			return v, nil
-		}
-		s = s.Parent
-	}
-
-	// 检查全局函数定义 (命名函数作为值使用)
-	if ctx.Executor != nil {
-		exec := ctx.Executor
-		exec.mu.RLock()
-		defer exec.mu.RUnlock()
-
-		// 1. 尝试查找脚本定义的函数
-		if fn, ok := exec.functions[ast.Ident(variable)]; ok {
-			return &Var{
-				VType: TypeClosure,
-				Ref: &VMClosure{
-					FunctionType: fn.FunctionType,
-					BodyTasks:    cloneTasks(fn.BodyTasks),
-					Context:      ctx,
-				},
-				Type: ast.TypeClosure,
-			}, nil
-		}
-
-		// 2. 尝试查找 FFI 路由
-		if route, ok := exec.routes[variable]; ok {
-			return &Var{
-				VType: TypeAny, // FFI Route 目前统一由 TypeAny 包装
-				Ref:   route,
-				Type:  ast.TypeClosure,
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("undefined: %s", variable)
 }
 
 func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
@@ -995,9 +1242,6 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			v = lookupFrameVarByName(s.Frame, name)
 			ok = v != nil
 		}
-		if !ok {
-			v, ok = s.Globals[name]
-		}
 		if ok {
 			if v != nil && v.VType != TypeCell {
 				cellValue := v.Copy()
@@ -1008,6 +1252,18 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			return v, nil
 		}
 		s = s.Parent
+	}
+
+	if ctx.Shared != nil {
+		if v, ok := ctx.Shared.LoadGlobal(name); ok {
+			if v != nil && v.VType != TypeCell {
+				cellValue := v.Copy()
+				v.VType = TypeCell
+				v.Ref = &Cell{Value: cellValue}
+				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+			}
+			return v, nil
+		}
 	}
 
 	// 检查全局函数定义 (命名函数作为值被捕获)
@@ -1023,7 +1279,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 				Ref: &VMClosure{
 					FunctionType: fn.FunctionType,
 					BodyTasks:    cloneTasks(fn.BodyTasks),
-					Context:      ctx,
+					Context:      &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},
 				Type: ast.TypeClosure,
 			}, nil
@@ -1067,14 +1323,16 @@ func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
 			return nil, fmt.Errorf("undefined upvalue capture: %s", sym.Name)
 		}
 	case SymbolGlobal:
-		if v, ok := loadRootGlobal(ctx.Stack, sym.Name); ok {
-			if v != nil && v.VType != TypeCell {
-				cellValue := v.Copy()
-				v.VType = TypeCell
-				v.Ref = &Cell{Value: cellValue}
-				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+		if ctx.Shared != nil {
+			if v, ok := ctx.Shared.LoadGlobal(sym.Name); ok {
+				if v != nil && v.VType != TypeCell {
+					cellValue := v.Copy()
+					v.VType = TypeCell
+					v.Ref = &Cell{Value: cellValue}
+					v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
+				}
+				return v, nil
 			}
-			return v, nil
 		}
 	}
 	return ctx.CaptureVar(sym.Name)
@@ -1105,8 +1363,8 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	if _, ok := ctx.Stack.MemoryPtr[name]; ok {
 		return nil
 	}
-	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
-		if _, ok := ctx.Stack.Globals[name]; ok {
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Shared != nil {
+		if _, ok := ctx.Shared.LoadGlobal(name); ok {
 			return nil
 		}
 	}
@@ -1117,8 +1375,8 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	} else {
 		v = &Var{Type: kind, VType: TypeAny}
 	}
-	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Stack.Globals != nil {
-		ctx.Stack.Globals[name] = v
+	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Shared != nil {
+		ctx.Shared.StoreGlobal(name, v)
 		return nil
 	}
 	ctx.Stack.MemoryPtr[name] = v
@@ -1246,16 +1504,13 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			return nil
 		}
 	case SymbolGlobal:
-		if root := rootStack(ctx.Stack); root != nil {
-			if root.Globals == nil {
-				root.Globals = make(map[string]*Var)
-			}
-			v := root.Globals[sym.Name]
+		if ctx.Shared != nil {
+			v, _ := ctx.Shared.LoadGlobal(sym.Name)
 			if v == nil {
 				if expr == nil {
-					root.Globals[sym.Name] = &Var{Type: "Any", VType: TypeAny}
+					ctx.Shared.StoreGlobal(sym.Name, &Var{Type: "Any", VType: TypeAny})
 				} else {
-					root.Globals[sym.Name] = expr.Copy()
+					ctx.Shared.StoreGlobal(sym.Name, expr.Copy())
 				}
 				return nil
 			}

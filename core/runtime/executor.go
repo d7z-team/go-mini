@@ -34,7 +34,7 @@ type Executor struct {
 
 	interfaceCache map[ast.GoMiniType]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
-	lastSession    *StackContext
+	shared         *SharedState
 }
 
 type RuntimeGlobal struct {
@@ -134,10 +134,11 @@ func (r *runtimeMetadataRegistry) resolveStructSchema(typ ast.GoMiniType) (*Runt
 	return schema, ok
 }
 
-func (e *Executor) LastSession() *StackContext {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.lastSession
+func (e *Executor) SharedStateSnapshot() *SharedStateSnapshot {
+	if e == nil || e.shared == nil {
+		return nil
+	}
+	return e.shared.Snapshot()
 }
 
 func normalizeMethodReceiverType(typeName string) string {
@@ -162,12 +163,6 @@ func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
 	return "", false
 }
 
-func (e *Executor) SetLastSession(session *StackContext) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.lastSession = session
-}
-
 func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram) (*Executor, error) {
 	if program == nil {
 		return nil, errors.New("invalid program")
@@ -188,6 +183,7 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		consts:          make(map[string]string),
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
+		shared:          NewSharedState(),
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
@@ -657,17 +653,16 @@ func (e *Executor) RegisterConstant(name, val string) {
 
 func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 	session := &StackContext{
-		Context:        ctx,
-		Executor:       e,
-		Stack:          &Stack{MemoryPtr: make(map[string]*Var), Globals: make(map[string]*Var), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
-		ModuleCache:    make(map[string]*Var),
-		LoadingModules: make(map[string]bool),
-		Debugger:       debugger.GetDebugger(ctx),
-		TaskStack:      make([]Task, 0, 128),
-		ValueStack:     &ValueStack{},
-		LHSStack:       &LHSStack{},
-		UnwindMode:     UnwindNone,
-		resumeSignal:   make(chan struct{}, 1),
+		Context:      ctx,
+		Executor:     e,
+		Shared:       e.shared,
+		Stack:        &Stack{MemoryPtr: make(map[string]*Var), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
+		Debugger:     debugger.GetDebugger(ctx),
+		TaskStack:    make([]Task, 0, 128),
+		ValueStack:   &ValueStack{},
+		LHSStack:     &LHSStack{},
+		UnwindMode:   UnwindNone,
+		resumeSignal: make(chan struct{}, 1),
 	}
 
 	// Setup Context Bridge (Abort logic)
@@ -684,6 +679,22 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 	}
 
 	return session
+}
+
+func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[string]*Var) error {
+	if e.shared == nil {
+		e.shared = NewSharedState()
+	}
+	if !e.shared.IsInitialized() {
+		session := e.NewSession(ctx, "global")
+		session.StepLimit = e.StepLimit
+		if err := e.initializeSharedGlobals(session); err != nil {
+			return err
+		}
+		e.shared.MarkInitialized()
+	}
+	e.shared.ApplyEnv(env)
+	return nil
 }
 
 func (e *Executor) CleanupSession(session *StackContext) {
@@ -887,10 +898,6 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
 
-	e.mu.Lock()
-	e.lastSession = session
-	e.mu.Unlock()
-
 	defer e.CleanupSession(session)
 
 	return e.InitializeSession(session, env, true)
@@ -900,31 +907,8 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	if session == nil {
 		return errors.New("invalid session")
 	}
-
-	// 注入脚本定义的全局变量
-	for _, name := range e.globalInitOrder {
-		global, ok := e.lookupGlobal(name)
-		if !ok {
-			continue
-		}
-		var val *Var
-		if global.HasInit {
-			v, err := e.runExprPlan(session, global.InitPlan)
-			if err != nil {
-				return fmt.Errorf("failed to initialize global var %s: %w", name, err)
-			}
-			val = v
-		} else {
-			// 如果没有初值，则初始化为零值变量 (Any 类型)
-			val = &Var{VType: TypeAny, Type: "Any"}
-		}
-		// 确保变量已存储到内存中 (直接操作内存字典以避开 AddVariable 的 Copy 逻辑，适合初始化)
-		session.Stack.Globals[string(name)] = val
-	}
-
-	// 注入环境变量 (放到后面，允许覆盖脚本定义的同名全局变量)
-	for k, v := range env {
-		session.Stack.Globals[k] = v.Copy()
+	if err := e.EnsureSharedStateInitialized(session.Context, env); err != nil {
+		return err
 	}
 
 	defer func() {
@@ -956,6 +940,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 				Data: &CallBoundaryData{
 					Name:      "main",
 					OldStack:  session.Stack,
+					OldShared: session.Shared,
 					HasReturn: false,
 					ValueBase: session.ValueStack.Len(),
 					LHSBase:   session.LHSStack.Len(),
@@ -977,6 +962,27 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	}
 
 	return err
+}
+
+func (e *Executor) initializeSharedGlobals(session *StackContext) error {
+	for _, name := range e.globalInitOrder {
+		global, ok := e.lookupGlobal(name)
+		if !ok {
+			continue
+		}
+		var val *Var
+		if global.HasInit {
+			v, err := e.runExprPlan(session, global.InitPlan)
+			if err != nil {
+				return fmt.Errorf("failed to initialize global var %s: %w", name, err)
+			}
+			val = v
+		} else {
+			val = &Var{VType: TypeAny, Type: "Any"}
+		}
+		session.Shared.StoreGlobal(string(name), val)
+	}
+	return nil
 }
 
 // Unwind State Machine
@@ -1041,7 +1047,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		data := task.Data.(*ImportData)
 		session.Executor = data.OldExecutor
 		session.Stack = data.OldStack
-		delete(session.LoadingModules, data.Path)
+		if session.Shared != nil {
+			session.Shared.SetModuleLoading(data.Path, false)
+		}
 		// Return true to indicate we handled this task, but keep UnwindMode as is to continue unwinding in parent
 		return true, nil
 	}
@@ -1064,6 +1072,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			if data.OldExec != nil {
 				session.Executor = data.OldExec
 			}
+			if data.OldShared != nil {
+				session.Shared = data.OldShared
+			}
 			return true, nil
 		}
 
@@ -1071,6 +1082,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		session.Stack = oldStack
 		if data.OldExec != nil {
 			session.Executor = data.OldExec
+		}
+		if data.OldShared != nil {
+			session.Shared = data.OldShared
 		}
 		return false, nil
 	}
@@ -1143,7 +1157,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return session.DeclareSymbol(data.Sym, data.Kind)
 		}
 		if session.Stack.Depth == 1 && session.Stack.Scope == "global" {
-			if _, ok := session.Stack.Globals[data.Name]; ok {
+			if _, ok := session.Shared.LoadGlobal(data.Name); ok {
 				return nil
 			}
 		}
@@ -1242,7 +1256,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 						alias = parts[len(parts)-1]
 					}
 					if alias == name {
-						if mod, ok := session.ModuleCache[imp.Path]; ok {
+						if mod, ok := session.Shared.Module(imp.Path); ok {
 							session.ValueStack.Push(mod)
 							return nil
 						}
@@ -1663,6 +1677,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if data.OldExec != nil {
 			session.Executor = data.OldExec
 		}
+		if data.OldShared != nil {
+			session.Shared = data.OldShared
+		}
 
 		var retVal *Var
 		if hasReturn {
@@ -2008,38 +2025,38 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return fmt.Errorf("invalid import path: %s", path)
 		}
 
-		if v, ok := session.ModuleCache[path]; ok {
+		if v, ok := session.Shared.Module(path); ok {
 			session.ValueStack.Push(v)
 			return nil
 		}
 
-		if session.LoadingModules[path] {
+		if session.Shared.IsModuleLoading(path) {
 			return fmt.Errorf("circular dependency detected: %s", path)
 		}
 
 		if e.ModulePlanLoader != nil {
 			prog, prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
-				session.LoadingModules[path] = true
+				session.Shared.SetModuleLoading(path, true)
 				res, err := e.executeImportedProgram(session, path, prog, prepared)
-				delete(session.LoadingModules, path)
+				session.Shared.SetModuleLoading(path, false)
 				if err != nil {
 					return err
 				}
-				session.ModuleCache[path] = res
+				session.Shared.StoreModule(path, res)
 				session.ValueStack.Push(res)
 				return nil
 			}
 		} else if e.ModuleLoader != nil {
 			prog, err := e.ModuleLoader(path)
 			if err == nil {
-				session.LoadingModules[path] = true
+				session.Shared.SetModuleLoading(path, true)
 				res, err := e.executeImportedProgram(session, path, prog, nil)
-				delete(session.LoadingModules, path)
+				session.Shared.SetModuleLoading(path, false)
 				if err != nil {
 					return err
 				}
-				session.ModuleCache[path] = res
+				session.Shared.StoreModule(path, res)
 				session.ValueStack.Push(res)
 				return nil
 			}
@@ -2082,7 +2099,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		if found {
 			res := &Var{VType: TypeModule, Ref: ffiMod}
-			session.ModuleCache[path] = res
+			session.Shared.StoreModule(path, res)
 			session.ValueStack.Push(res)
 			return nil
 		}
@@ -2100,20 +2117,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpMakeClosure:
 		data := task.Data.(*ClosureData)
 		clCtx := &StackContext{
-			Context:        session.Context,
-			Executor:       session.Executor,
-			Stack:          session.Stack,
-			StepLimit:      session.StepLimit,
-			ModuleCache:    session.ModuleCache,
-			LoadingModules: session.LoadingModules,
-			Debugger:       session.Debugger,
+			Context:   session.Context,
+			Executor:  session.Executor,
+			Shared:    session.Shared,
+			Stack:     session.Stack,
+			StepLimit: session.StepLimit,
+			Debugger:  session.Debugger,
 		}
 		closure := &VMClosure{
 			FunctionType: data.FunctionType,
 			BodyTasks:    data.BodyTasks,
 			UpvalueSlots: make([]*Var, len(data.CaptureRefs)),
 			UpvalueNames: make([]string, len(data.CaptureRefs)),
-			Context:      clCtx,
+			Context:      &LexicalContext{Executor: clCtx.Executor, Shared: clCtx.Shared, Stack: clCtx.Stack},
 		}
 		for i, capture := range data.CaptureRefs {
 			cellVar, err := session.CaptureSymbol(capture)
@@ -2776,7 +2792,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 					BodyTasks:    cloneTasks(fn.BodyTasks),
 					UpvalueSlots: nil,
 					UpvalueNames: nil,
-					Context:      modSession,
+					Context:      &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack},
 				},
 			}
 		}
@@ -2800,7 +2816,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 		Ref: &VMModule{
 			Name:    path,
 			Data:    exports,
-			Context: modSession,
+			Context: &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack},
 		},
 	}
 }
@@ -2825,9 +2841,8 @@ func (e *Executor) executeImportedProgram(parent *StackContext, path string, pro
 	modSession := modExecutor.NewSession(parent.Context, "global")
 	modSession.StepLimit = parent.StepLimit
 	modSession.StepCount = parent.StepCount
-	modSession.ModuleCache = parent.ModuleCache
-	modSession.LoadingModules = parent.LoadingModules
 	modSession.Debugger = parent.Debugger
+	modSession.Shared = modExecutor.shared
 
 	if err := modExecutor.InitializeSession(modSession, nil, false); err != nil {
 		parent.StepCount = modSession.StepCount
@@ -2847,12 +2862,6 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	session.ValueStack = &ValueStack{}
 	session.LHSStack = &LHSStack{}
 	session.UnwindMode = UnwindNone
-	if session.ModuleCache == nil {
-		session.ModuleCache = make(map[string]*Var)
-	}
-	if session.LoadingModules == nil {
-		session.LoadingModules = make(map[string]bool)
-	}
 
 	for i := len(stmts) - 1; i >= 0; i-- {
 		session.TaskStack = append(session.TaskStack, e.tasksForStmt(stmts[i], nil)...)
@@ -2877,12 +2886,6 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	ctx.ValueStack = &ValueStack{}
 	ctx.LHSStack = &LHSStack{}
 	ctx.UnwindMode = UnwindNone
-	if ctx.ModuleCache == nil {
-		ctx.ModuleCache = make(map[string]*Var)
-	}
-	if ctx.LoadingModules == nil {
-		ctx.LoadingModules = make(map[string]bool)
-	}
 
 	err := e.Run(ctx)
 	var res *Var

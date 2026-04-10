@@ -109,13 +109,13 @@ func main() {
 		t.Fatalf("execute failed: %v", err)
 	}
 
-	session := prog.LastSession()
-	if session == nil {
-		t.Fatal("expected last session")
+	shared := prog.SharedState()
+	if shared == nil {
+		t.Fatal("expected shared state")
 	}
-	counter, loadErr := session.Load("counter")
-	if loadErr != nil {
-		t.Fatalf("load counter failed: %v", loadErr)
+	counter, ok := shared.LoadGlobal("counter")
+	if !ok {
+		t.Fatal("load counter failed: missing global")
 	}
 	if counter.I64 != 2 {
 		t.Fatalf("unexpected counter value after bytecode roundtrip: %#v", counter)

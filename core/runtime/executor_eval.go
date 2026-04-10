@@ -945,6 +945,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	}
 	old := session.Stack
 	oldExec := session.Executor
+	oldShared := session.Shared
 	ft := ast.FunctionType{}
 	var bodyTasks []Task
 	if closure != nil {
@@ -970,6 +971,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	if closure != nil && closure.Context != nil {
 		root = closure.Context.Stack
 		session.Executor = closure.Context.Executor
+		session.Shared = closure.Context.Shared
 	}
 
 	newDepth := 1
@@ -979,7 +981,6 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	if newDepth > DefaultMaxStackDepth {
 		panic(errors.New("stack overflow"))
 	}
-
 	newStack := &Stack{
 		Parent:    root,
 		MemoryPtr: make(map[string]*Var),
@@ -1021,6 +1022,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			Name:      name,
 			OldStack:  old,
 			OldExec:   oldExec,
+			OldShared: oldShared,
 			HasReturn: !ft.Return.IsVoid(),
 			ValueBase: session.ValueStack.Len(),
 			LHSBase:   session.LHSStack.Len(),
