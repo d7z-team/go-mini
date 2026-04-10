@@ -37,7 +37,6 @@ type targetMeta struct {
 	moduleName    string
 	methodsPrefix string
 	methodsMarked bool
-	reverse       bool
 	structTarget  bool
 }
 
@@ -413,7 +412,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 					moduleNames[mat.moduleName] = true
 				}
 				if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-					if !packageMode || mat.moduleName != "" || mat.methodsMarked || mat.reverse {
+					if !packageMode || mat.moduleName != "" || mat.methodsMarked {
 						targets = append(targets, ffigenTarget{spec: typeSpec, meta: mat})
 					}
 					continue
@@ -421,7 +420,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 				if _, ok := typeSpec.Type.(*ast.StructType); !ok {
 					continue
 				}
-				if mat.moduleName == "" && !mat.methodsMarked && !mat.reverse {
+				if mat.moduleName == "" && !mat.methodsMarked {
 					continue
 				}
 				methodsPrefix := mat.methodsPrefix
@@ -441,7 +440,6 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 						moduleName:    mat.moduleName,
 						methodsPrefix: methodsPrefix,
 						methodsMarked: mat.methodsMarked,
-						reverse:       mat.reverse,
 						structTarget:  true,
 					}, defaultModule),
 				})
@@ -802,8 +800,6 @@ func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
 		case strings.HasPrefix(text, "ffigen:methods"):
 			meta.methodsMarked = true
 			meta.methodsPrefix = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:methods"))
-		case text == "ffigen:reverse":
-			meta.reverse = true
 		}
 	}
 	return meta
@@ -1163,7 +1159,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	var sb strings.Builder
 	methodsPrefix := meta.methodsPrefix
 	moduleName := meta.moduleName
-	isReverse := meta.reverse
 	isStruct := meta.structTarget
 	isModule := moduleName != ""
 	currentOwned := ""
@@ -1263,7 +1258,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 	}
 
-	if methodsPrefix != "" && !isReverse {
+	if methodsPrefix != "" {
 		for _, method := range iface.Methods.List {
 			if len(method.Names) == 0 {
 				continue
@@ -1847,111 +1842,6 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		fmt.Fprintf(&sb, "}\n")
 	}
 
-	if isReverse && !isStruct {
-		fmt.Fprintf(&sb, "type %s_ReverseProxy struct {\n\tprogram runtime.ExecutorAPI\n\tctx *runtime.StackContext\n\tcallable *runtime.Var\n\tbridge ffigo.FFIBridge\n}\n\n", name)
-		fmt.Fprintf(&sb, "func New%s_ReverseProxy(program runtime.ExecutorAPI, ctx *runtime.StackContext, callable *runtime.Var, bridge ffigo.FFIBridge) *%s_ReverseProxy {\n\treturn &%s_ReverseProxy{program: program, ctx: ctx, callable: callable, bridge: bridge}\n}\n\n", name, name, name)
-		for _, method := range iface.Methods.List {
-			if len(method.Names) == 0 {
-				continue
-			}
-			mName := method.Names[0].Name
-			fType := method.Type.(*ast.FuncType)
-			var pList []string
-			var pNames []string
-			argIdx := 0
-			if fType.Params != nil {
-				for j, p := range fType.Params.List {
-					gType := toGoType(typeToString(p.Type))
-					if j == 0 && (gType == "context.Context" || gType == "Context") {
-						pList = append(pList, "ctx "+gType)
-						argIdx++
-						continue
-					}
-					if len(p.Names) == 0 {
-						argName := fmt.Sprintf("arg%d", argIdx)
-						pList = append(pList, argName+" "+gType)
-						pNames = append(pNames, argName)
-						argIdx++
-					} else {
-						for _, pn := range p.Names {
-							pList = append(pList, pn.Name+" "+gType)
-							pNames = append(pNames, pn.Name)
-							argIdx++
-						}
-					}
-				}
-			}
-			retT := " "
-			if fType.Results != nil {
-				var res []string
-				for _, r := range fType.Results.List {
-					res = append(res, toGoType(typeToString(r.Type)))
-				}
-				if len(res) > 1 {
-					retT = " (" + strings.Join(res, ", ") + ") "
-				} else if len(res) == 1 {
-					retT = " " + res[0] + " "
-				}
-			}
-			fmt.Fprintf(&sb, "func (__p *%s_ReverseProxy) %s(%s)%s{\n", name, mName, strings.Join(pList, ", "), retT)
-			fmt.Fprintf(&sb, "\targs := make([]*runtime.Var, %d)\n", len(pNames))
-			for i, pn := range pNames {
-				fmt.Fprintf(&sb, "\targs[%d] = __p.program.ToVar(__p.ctx, %s, __p.bridge)\n", i, pn)
-			}
-			fmt.Fprintf(&sb, "\tresVar, err := __p.program.InvokeCallable(__p.ctx, __p.callable, \"%s\", args)\n\t_ = resVar\n", mName)
-			if fType.Results != nil {
-				var rStmts []string
-				resultTypes := make([]string, 0, len(fType.Results.List))
-				hasErrorReturn := false
-				errorIndex := -1
-				for i, r := range fType.Results.List {
-					rt := typeToString(r.Type)
-					resultTypes = append(resultTypes, rt)
-					if rt == "error" {
-						hasErrorReturn = true
-						errorIndex = i
-					}
-				}
-				if hasErrorReturn {
-					zeroReturns := make([]string, 0, len(resultTypes))
-					for i, rt := range resultTypes {
-						if i == errorIndex {
-							zeroReturns = append(zeroReturns, "err")
-							continue
-						}
-						zeroReturns = append(zeroReturns, zeroValue(toGoType(rt)))
-					}
-					fmt.Fprintf(&sb, "\tif err != nil { return %s }\n", strings.Join(zeroReturns, ", "))
-				} else {
-					fmt.Fprintf(&sb, "\t_ = err\n")
-				}
-				if len(fType.Results.List) > 1 {
-					fmt.Fprintf(&sb, "\tvar elements []*runtime.Var\n\tif resVar != nil && resVar.VType == runtime.TypeArray { if arr, ok := resVar.Ref.(*runtime.VMArray); ok { elements = arr.Data } }\n")
-					for i, r := range fType.Results.List {
-						rt := typeToString(r.Type)
-						gt := toGoType(rt)
-						vn := fmt.Sprintf("ret%d", i)
-						fmt.Fprintf(&sb, "\tvar %s %s = %s\n\tif %d < len(elements) {", vn, gt, zeroValue(gt), i)
-						emitReverseRead(&sb, vn, rt, fmt.Sprintf("elements[%d]", i))
-						fmt.Fprintf(&sb, "}\n")
-						rStmts = append(rStmts, vn)
-					}
-				} else {
-					rt := typeToString(fType.Results.List[0].Type)
-					gt := toGoType(rt)
-					fmt.Fprintf(&sb, "\tvar ret0 %s = %s\n", gt, zeroValue(gt))
-					emitReverseRead(&sb, "ret0", rt, "resVar")
-					rStmts = append(rStmts, "ret0")
-				}
-				fmt.Fprintf(&sb, "\treturn %s\n", strings.Join(rStmts, ", "))
-			} else {
-				fmt.Fprintf(&sb, "\t_ = err\n")
-				fmt.Fprintf(&sb, "\treturn\n")
-			}
-			fmt.Fprintf(&sb, "}\n\n")
-		}
-	}
-
 	return sb.String()
 }
 
@@ -2352,32 +2242,6 @@ func lookupTypeObject(id *ast.Ident) types.Object {
 		return obj
 	}
 	return typeInfo.Defs[id]
-}
-
-func emitReverseRead(sb *strings.Builder, varName, pType, sourceName string) {
-	goType := toGoType(pType)
-	if pType == "error" {
-		fmt.Fprintf(sb, "\t\tif %s != nil { if raw := %s.Interface(); raw != nil { if ed, ok := raw.(ffigo.ErrorData); ok && (ed.Message != \"\" || ed.Handle != 0) { %s = ed } else if s, ok := raw.(string); ok && s != \"\" { %s = fmt.Errorf(\"%%s\", s) } } }\n", sourceName, sourceName, varName, varName)
-		return
-	}
-	if pType == "Any" || pType == "any" {
-		fmt.Fprintf(sb, "\t\tif %s != nil { %s = %s.Interface() }\n", sourceName, varName, sourceName)
-		return
-	}
-	fmt.Fprintf(sb, "\t\tif %s != nil { if raw := %s.Interface(); raw != nil {\n", sourceName, sourceName)
-	switch pType {
-	case "Int64", "int64":
-		fmt.Fprintf(sb, "\t\t\tswitch v := raw.(type) { case int64: %s = %s(v); case float64: %s = %s(v) }\n", varName, goType, varName, goType)
-	case "String", "string":
-		fmt.Fprintf(sb, "\t\t\tif v, ok := raw.(string); ok { %s = v }\n", varName)
-	case "Bool", "bool":
-		fmt.Fprintf(sb, "\t\t\tif v, ok := raw.(bool); ok { %s = v }\n", varName)
-	case "Float64", "float64":
-		fmt.Fprintf(sb, "\t\t\tif v, ok := raw.(float64); ok { %s = v }\n", varName)
-	default:
-		fmt.Fprintf(sb, "\t\t\tif v, ok := raw.(%s); ok { %s = v }\n", goType, varName)
-	}
-	fmt.Fprintf(sb, "\t\t} }\n")
 }
 
 func toGoType(pType string) string {

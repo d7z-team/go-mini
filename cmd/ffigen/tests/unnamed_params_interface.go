@@ -10,11 +10,3 @@ type Logger interface {
 	// Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)
 	Internal(string, string, int64)
 }
-
-// ffigen:module callback
-// ffigen:reverse
-type Callback interface {
-	OnEvent(int64, string)
-	// OnRaw uses unnamed parameters in a reverse proxy
-	OnRaw(int64, []byte)
-}

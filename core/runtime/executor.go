@@ -817,59 +817,6 @@ func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) boo
 	return actual.Return.IsAssignableTo(expected.Return)
 }
 
-func (e *Executor) InvokeCallable(ctx *StackContext, callable *Var, methodName string, args []*Var) (*Var, error) {
-	if callable == nil {
-		return nil, errors.New("cannot invoke nil callable")
-	}
-
-	// Save old task stack and value stack
-	oldTasks := ctx.TaskStack
-	oldValues := ctx.ValueStack
-	oldLHS := ctx.LHSStack
-	ctx.TaskStack = nil
-	ctx.ValueStack = &ValueStack{}
-	ctx.LHSStack = &LHSStack{}
-
-	// Prepare the call
-	// If methodName is provided, treat callable as receiver
-	var receiver *Var
-	name := methodName
-	actualCallable := callable
-	if methodName != "" {
-		receiver = callable
-		actualCallable = nil
-	}
-
-	err := e.invokeCall(ctx, name, receiver, nil, actualCallable, args, nil)
-	if err != nil {
-		ctx.TaskStack = oldTasks
-		ctx.ValueStack = oldValues
-		ctx.LHSStack = oldLHS
-		return nil, err
-	}
-
-	// Run until the call returns (indicated by OpCallBoundary)
-	err = e.Run(ctx)
-	if err != nil {
-		ctx.TaskStack = oldTasks
-		ctx.ValueStack = oldValues
-		ctx.LHSStack = oldLHS
-		return nil, err
-	}
-
-	// Get result
-	var res *Var
-	if ctx.ValueStack.Len() > 0 {
-		res = ctx.ValueStack.Pop()
-	}
-
-	// Restore old stacks
-	ctx.TaskStack = oldTasks
-	ctx.ValueStack = oldValues
-	ctx.LHSStack = oldLHS
-	return res, nil
-}
-
 func (e *Executor) Execute(ctx context.Context) (err error) {
 	return e.ExecuteWithEnv(ctx, nil)
 }

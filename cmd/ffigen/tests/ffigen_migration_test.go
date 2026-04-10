@@ -49,19 +49,6 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			},
 		},
 		{
-			name: "ReverseProxyCompat",
-			path: "../../../cmd/ffigen/tests/reverse_ffigen_test.go",
-			patterns: []string{
-				"type ScriptCalculator_ReverseProxy struct {",
-				"InvokeCallable(",
-				"func (__p *ScriptCalculator_ReverseProxy) Log(ctx context.Context, msg string) string {",
-				"func (__p *ScriptCalculator_ReverseProxy) Join(prefix string, values []string) string {",
-				"func (__p *ScriptCalculator_ReverseProxy) AcceptPoint(p ReversePoint) int64 {",
-				"if err != nil {",
-				"return 0, err",
-			},
-		},
-		{
 			name: "CrossPackageImportGeneration",
 			path: "../../../cmd/ffigen/tests/importtest/ffigen.go",
 			patterns: []string{

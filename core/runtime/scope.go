@@ -466,7 +466,6 @@ func (s *Stack) RunDefers() {
 type ExecutorAPI interface {
 	ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error)
 	CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error)
-	InvokeCallable(ctx *StackContext, callable *Var, methodName string, args []*Var) (*Var, error)
 	ToVar(ctx *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var
 }
 

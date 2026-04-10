@@ -97,54 +97,6 @@ func TestTypeAssertionFailure(t *testing.T) {
 	}
 }
 
-func TestInvokeCallable(t *testing.T) {
-	// 这个测试验证 InvokeCallable 是否能被宿主用来回调脚本
-	executor := engine.NewMiniExecutor()
-	code := `
-	package main
-	var callback Any
-	func main() {
-		callback = func(msg String) String {
-			return "Echo: " + msg
-		}
-	}
-	`
-	runtimeObj, err := executor.NewRuntimeByGoCode(code)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 1. 运行脚本以设置回调
-	err = runtimeObj.Execute(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 2. 模拟宿主侧获取回调闭包并执行
-	session := runtimeObj.LastSession()
-	cbVar, err := session.Load("callback")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cbVar == nil || cbVar.VType == runtime.TypeAny && cbVar.Ref == nil {
-		t.Fatal("callback variable is nil after script execution")
-	}
-
-	// 构造参数
-	arg := &runtime.Var{VType: runtime.TypeString, Str: "Hello VM"}
-
-	// 3. 执行 InvokeCallable
-	res, err := runtimeObj.InvokeCallable(session, cbVar, "", []*runtime.Var{arg})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if res == nil || res.Str != "Echo: Hello VM" {
-		t.Fatalf("callback result mismatch: %v", res)
-	}
-}
-
 func TestFFIInterfaceReturn(t *testing.T) {
 	// 1. 设置宿主侧环境，模拟返回一个 InterfaceData
 	executor := engine.NewMiniExecutor()

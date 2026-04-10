@@ -244,11 +244,6 @@ type OrderAPI interface {
 type PageMethods interface {
     Click(p *orderlib.Page) error
 }
-
-// ffigen:reverse
-type ScriptHandler interface {
-    OnEvent(name string, data any) error
-}
 ```
 
 ### 5.4 命名规则
@@ -292,46 +287,9 @@ registry := executor.HandleRegistry()
 orderlib.RegisterOrderAPI(executor, impl, registry)
 ```
 
-## 6. Interface 与反向代理
+## 6. Interface
 
-`go-mini` 支持命名接口、匿名接口、接口嵌入、类型断言、type switch，以及 `ffigen:reverse` 生成的反向代理。
-
-```go
-// ffigen:reverse
-type ScriptHandler interface {
-    OnEvent(name string, data any) error
-}
-```
-
-生成后可以把脚本里的实现包装回 Go 接口：
-
-```go
-proxy := NewScriptHandler_ReverseProxy(program, session, callable, bridge)
-err := proxy.OnEvent("login", "user_1")
-```
-
-`ffigen:reverse` 当前有几个需要明确的生成语义：
-
-- `context.Context` 会保留在生成后的 Go 方法签名里，但不会序列化进脚本参数列表；它只用于 `InvokeCallable` / bridge 调用上下文
-- 正向 proxy 的 variadic 仍保持 `...T`；反向 proxy 当前会生成成切片参数 `[]T`
-- 结构体参数和返回值会按 schema 编解码；前提是该类型能被 `ffigen` 收集并生成 schema
-
-例如：
-
-```go
-// ffigen:reverse
-type ScriptCalculator interface {
-    Log(ctx context.Context, msg string) string
-    Join(prefix string, values ...string) string
-}
-```
-
-当前生成结果等价于：
-
-```go
-func (__p *ScriptCalculator_ReverseProxy) Log(ctx context.Context, msg string) string
-func (__p *ScriptCalculator_ReverseProxy) Join(prefix string, values []string) string
-```
+`go-mini` 支持命名接口、匿名接口、接口嵌入、类型断言和 type switch。`ffigen` 当前只生成宿主到 VM 的 schema/proxy/router，不再提供反向代理生成功能。
 
 ## 7. LSP / IDE
 

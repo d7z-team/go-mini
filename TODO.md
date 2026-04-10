@@ -35,8 +35,8 @@
 - [x] **升级 `ffigen` 元数据输出**: 生成代码能够输出可直接注册的 schema 结构，而不是只输出字符串 spec。
 - [x] **保留第一阶段兼容模式**: 允许生成代码继续调用旧版 `RegisterFFI/RegisterStructSpec`，由运行时兼容层接管。
 - [x] **统一指针/句柄语义**: 明确 `Ptr<T>` 在 FFI 边界上表示 handle，不与 VM 内部解引用语义混用。
-- [x] **统一 reverse proxy 契约**: 生成的 `*_ReverseProxy` 与 `ToVar/InvokeCallable` 新表示兼容。
-- [x] **补充 ffigen 迁移样例**: 至少覆盖 stdlib、普通 service、struct-direct、reverse proxy 四类生成模式。
+- [x] **统一 ffigen schema/proxy 契约**: 生成的注册代码、proxy 与 host router 使用统一 schema-only 模型。
+- [x] **补充 ffigen 迁移样例**: 至少覆盖 stdlib、普通 service、struct-direct 与 canonical path 四类生成模式。
 
 ### I. Runtime FFI 编解码脱 AST
 - [x] **移除 `evalFFI` 对 `ast.GoMiniType.ReadCallFunc()` 的运行时依赖**。
@@ -147,8 +147,8 @@
 - [x] **重构测试分层**: 场景型/黑盒型测试已统一下沉到各模块测试目录；`ffilib` 测试归入各实际模块 `tests`，debugger 归入 `core/debugger/tests`，LSP/查询诊断归入 `core/ast/tests` 与 `core/tests`，pipeline/序列化/无 AST 归入 `core/tests` 与 `core/runtime/tests`，`ffigen` 输入/输出回归归入 `cmd/ffigen/tests`，`core/e2e` 主线回归则按 `language/functions/types/modules/ffi/runtime/security` 语义目录直接放置测试文件，不再额外套 `tests` 子层。
 - [x] **建立分层测试门禁**: `Makefile` 已提供 `test-runtime`、`test-ffilib`、`test-ast`、`test-debugger`、`test-core`、`test-ffigen`、`test-script-e2e` 与 `test-layered`；其中 `test-script-e2e` 已直接覆盖 `./core/e2e/...`，避免新增语义分类目录时漏跑。
 - [x] **拆分 ffilib 测试责任**: stdlib/json/time/strings/os/filepath/math/io/image 等回归已迁到 `core/ffilib/*/tests`，并压成最小 smoke/contract test。
-- [x] **拆分 FFI/ffigo 与 VM 原生测试责任**: `ffigen` 输入/输出、reverse proxy、桥接样例与迁移回归已迁到 `cmd/ffigen/tests`；`canonicaltest/structtest/storagelib` 夹具测试已下沉到各自模块目录；`core/e2e` 已不再承担夹具堆放职责，只保留按语义分类组织的脚本执行主线回归；LSP host-FFI 交叉场景归入 `core/tests`。
-- [x] **补充 ffigen 生成产物回归测试**: 已覆盖 stdlib、业务 service、reverse proxy、canonical path 与跨包 import 生成物。
+- [x] **拆分 FFI/ffigo 与 VM 原生测试责任**: `ffigen` 输入/输出、桥接样例与迁移回归已迁到 `cmd/ffigen/tests`；`canonicaltest/structtest/storagelib` 夹具测试已下沉到各自模块目录；`core/e2e` 已不再承担夹具堆放职责，只保留按语义分类组织的脚本执行主线回归；LSP host-FFI 交叉场景归入 `core/tests`。
+- [x] **补充 ffigen 生成产物回归测试**: 已覆盖 stdlib、业务 service、canonical path 与跨包 import 生成物。
 - [x] **补充 import 隔离回归测试**: 已覆盖 panic、circular import、direct partial init 与 transitive partial init，不允许污染 `ModuleCache/LoadingModules`。
 - [x] **补充 slot/upvalue 专项回归测试**: 已补齐 `scope_slots_test.go` 的多层 upvalue 转发共享 cell 回归，以及 `core/e2e/functions` 里的 nested closure mutation / shadowing / loop capture 组合回归。
 - [x] **补充 LHS/deref/Any 回归测试**: 已补 `Any` 包 map/member、`Any+Cell+Ptr` 解引用写回、`Any` 包标量成员访问报错，以及 e2e 的 `Any` 包指针读写回归。
@@ -194,5 +194,5 @@
 3. **零名称查找热路径**: 循环体、函数体、闭包体的局部变量访问不再通过字符串变量名查找内存。
 4. **语义边界清晰**: VM pointer/deref、FFI handle/Ptr、Any/Box 三套语义边界明确且实现分离。
 5. **模块安全隔离**: 跨模块导入失败、panic、循环依赖时，主 session 状态保持一致。
-6. **生成链路稳定**: `ffigen` 生成代码在新旧兼容期内可平滑迁移，reverse proxy 与 canonical path 行为不回退。
+6. **生成链路稳定**: `ffigen` 生成代码在新旧兼容期内可平滑迁移，canonical path 与 schema-only 行为不回退。
 7. **性能飞跃**: `go test ./core/benchmark` 与新增专项 benchmark 显示关键指标有显著提升。
