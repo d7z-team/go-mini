@@ -21,15 +21,15 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 	readSig := ast.FunctionType{Return: "tuple(Int64, Error)"}
 	obj := &Var{
 		VType: TypeMap,
-		Type:  "demo.Reader",
+		TypeInfo: MustParseRuntimeType("demo.Reader"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"Close": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionType: methodSig},
+				Ref:   &VMClosure{FunctionSig: MustRuntimeFuncSigFromFunction(methodSig)},
 			},
 			"Read": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionType: readSig},
+				Ref:   &VMClosure{FunctionSig: MustRuntimeFuncSigFromFunction(readSig)},
 			},
 		}},
 	}
@@ -117,8 +117,8 @@ func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
 
-	res := exec.initializeType(nil, "UserID", 0)
-	if res == nil || res.VType != TypeInt || res.Type != "UserID" || res.I64 != 0 {
+	res := exec.initializeType(nil, MustParseRuntimeType("UserID"), 0)
+	if res == nil || res.VType != TypeInt || res.RawType() != "UserID" || res.I64 != 0 {
 		t.Fatalf("unexpected initialized alias value: %#v", res)
 	}
 }

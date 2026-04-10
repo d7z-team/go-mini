@@ -3,8 +3,6 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 type taskJSON struct {
@@ -15,14 +13,14 @@ type taskJSON struct {
 }
 
 type literalTaskValue struct {
-	Type   ast.GoMiniType `json:"type"`
-	VType  VarType        `json:"vtype"`
-	I64    int64          `json:"i64,omitempty"`
-	F64    float64        `json:"f64,omitempty"`
-	Str    string         `json:"str,omitempty"`
-	B      []byte         `json:"b,omitempty"`
-	Bool   bool           `json:"bool,omitempty"`
-	Handle uint32         `json:"handle,omitempty"`
+	Type   RuntimeType `json:"type"`
+	VType  VarType     `json:"vtype"`
+	I64    int64       `json:"i64,omitempty"`
+	F64    float64     `json:"f64,omitempty"`
+	Str    string      `json:"str,omitempty"`
+	B      []byte      `json:"b,omitempty"`
+	Bool   bool        `json:"bool,omitempty"`
+	Handle uint32      `json:"handle,omitempty"`
 }
 
 func (t Task) MarshalJSON() ([]byte, error) {
@@ -114,7 +112,7 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 			return "", nil, fmt.Errorf("unsupported push payload: %T", data)
 		}
 		literal := literalTaskValue{
-			Type:   v.Type,
+			Type:   v.RuntimeType(),
 			VType:  v.VType,
 			I64:    v.I64,
 			F64:    v.F64,
@@ -201,8 +199,7 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		if err != nil {
 			return nil, err
 		}
-		return &Var{
-			Type:   literal.Type,
+		v := &Var{
 			VType:  literal.VType,
 			I64:    literal.I64,
 			F64:    literal.F64,
@@ -210,7 +207,9 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 			B:      literal.B,
 			Bool:   literal.Bool,
 			Handle: literal.Handle,
-		}, nil
+		}
+		v.SetRuntimeType(literal.Type)
+		return v, nil
 	case OpMakeClosure:
 		return decodeTaskData[*ClosureData](raw)
 	case OpEvalLHS:

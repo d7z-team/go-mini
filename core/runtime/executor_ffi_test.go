@@ -26,7 +26,7 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 
 	v := &Var{
 		VType: TypeMap,
-		Type:  "demo.Point",
+		TypeInfo: MustParseRuntimeType("demo.Point"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"Y": NewInt(20),
 			"X": NewInt(10),
@@ -180,7 +180,7 @@ func (b copyBackFFIBridge) DestroyHandle(uint32) error { return nil }
 func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
-	if err := session.NewVar("buf", "TypeBytes"); err != nil {
+	if err := session.NewVar("buf", MustParseRuntimeType("TypeBytes")); err != nil {
 		t.Fatalf("new var failed: %v", err)
 	}
 	initial := NewBytes([]byte("ab"))

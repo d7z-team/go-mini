@@ -233,7 +233,7 @@ type Cell struct {
 }
 
 type VMClosure struct {
-	FunctionType ast.FunctionType
+	FunctionSig  *RuntimeFuncSig
 	BodyTasks    []Task
 	UpvalueSlots []*Var
 	UpvalueNames []string
@@ -246,7 +246,7 @@ type VMMethodValue struct {
 }
 
 type Var struct {
-	Type   ast.GoMiniType
+	TypeInfo RuntimeType
 	VType  VarType
 	I64    int64
 	F64    float64
@@ -258,6 +258,43 @@ type Var struct {
 	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
 
 	stack weak.Pointer[Stack]
+}
+
+func (v *Var) RuntimeType() RuntimeType {
+	if v == nil {
+		return RuntimeType{}
+	}
+	return v.TypeInfo
+}
+
+func (v *Var) RawType() ast.GoMiniType {
+	if v == nil {
+		return ""
+	}
+	return v.TypeInfo.Raw
+}
+
+func (v *Var) SetRuntimeType(typ RuntimeType) {
+	if v == nil {
+		return
+	}
+	v.TypeInfo = typ
+}
+
+func (v *Var) SetRawType(typ ast.GoMiniType) {
+	if v == nil {
+		return
+	}
+	if typ.IsEmpty() {
+		v.TypeInfo = RuntimeType{}
+		return
+	}
+	parsed, err := ParseRuntimeType(typ)
+	if err == nil {
+		v.TypeInfo = parsed
+		return
+	}
+	v.TypeInfo = RuntimeType{Raw: typ}
 }
 
 // VMHandle wraps a handle ID and its bridge, providing automatic cleanup via finalizer.
@@ -462,7 +499,7 @@ func (v *Var) Copy() *Var {
 		return nil
 	}
 	res := &Var{
-		Type:   v.Type,
+		TypeInfo: v.TypeInfo,
 		VType:  v.VType,
 		I64:    v.I64,
 		F64:    v.F64,
@@ -498,10 +535,15 @@ func (v *Var) Copy() *Var {
 }
 
 func NewVar(typ ast.GoMiniType, vType VarType) *Var {
-	return &Var{
-		Type:  typ,
-		VType: vType,
-	}
+	res := &Var{VType: vType}
+	res.SetRawType(typ)
+	return res
+}
+
+func NewVarWithRuntimeType(typ RuntimeType, vType VarType) *Var {
+	res := &Var{VType: vType}
+	res.SetRuntimeType(typ)
+	return res
 }
 
 // 快速构造工厂方法，统一标量类型
@@ -717,7 +759,7 @@ func (s *SharedState) StoreGlobal(name string, v *Var) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if v == nil {
-		s.globals[name] = &Var{Type: "Any", VType: TypeAny}
+		s.globals[name] = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
 		return
 	}
 	s.globals[name] = v
@@ -955,18 +997,18 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionType: fn.FunctionType,
+					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:    cloneTasks(fn.BodyTasks),
 					Context:      &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
 				},
-				Type: ast.TypeClosure,
+				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
 		if route, ok := exec.routes[variable]; ok {
 			return &Var{
 				VType: TypeAny,
 				Ref:   route,
-				Type:  ast.TypeClosure,
+				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
 	}
@@ -989,16 +1031,16 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 			}
 			if expr == nil {
 				if v != nil {
-					v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+					v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 					return nil
 				}
 				break
 			}
-			if v.Type == "Any" && expr.Type != "Any" {
-				v.Type = expr.Type
+			if v.RuntimeType().IsAny() && !expr.RuntimeType().IsAny() {
+				v.TypeInfo = expr.RuntimeType()
 			}
-			if v.Type.IsInterface() && !expr.Type.IsInterface() {
-				wrapped, err := exec.CheckSatisfaction(expr, v.Type)
+			if v.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
+				wrapped, err := exec.CheckSatisfaction(expr, v.RawType())
 				if err != nil {
 					return err
 				}
@@ -1015,7 +1057,7 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 	}
 	if stack != nil && stack.Depth == 1 && stack.Scope == "global" && shared != nil {
 		if expr == nil {
-			shared.StoreGlobal(variable, &Var{Type: "Any", VType: TypeAny})
+			shared.StoreGlobal(variable, NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny))
 		} else {
 			shared.StoreGlobal(variable, expr.Copy())
 		}
@@ -1025,7 +1067,7 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 		return errors.New("missing lexical stack")
 	}
 	if expr == nil {
-		stack.MemoryPtr[variable] = (&Var{Type: "Any", VType: TypeAny}).Copy()
+		stack.MemoryPtr[variable] = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny).Copy()
 		return nil
 	}
 	stack.MemoryPtr[variable] = expr.Copy()
@@ -1170,7 +1212,7 @@ func (ctx *StackContext) AddVariable(name string, v *Var) error {
 	return nil
 }
 
-func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind ast.GoMiniType) error {
+func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind RuntimeType) error {
 	if sym.Kind != SymbolLocal || ctx.Stack == nil {
 		return ctx.NewVar(sym.Name, kind)
 	}
@@ -1182,7 +1224,7 @@ func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind ast.GoMiniType) error
 	if ctx.Executor != nil {
 		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
-		v = &Var{Type: kind, VType: TypeAny}
+		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
 	ctx.Stack.Frame.Locals[sym.Slot] = v
 	return nil
@@ -1277,11 +1319,11 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionType: fn.FunctionType,
+					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:    cloneTasks(fn.BodyTasks),
 					Context:      &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},
-				Type: ast.TypeClosure,
+				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
 
@@ -1290,7 +1332,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			return &Var{
 				VType: TypeAny,
 				Ref:   route,
-				Type:  ast.TypeClosure,
+				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
 	}
@@ -1354,7 +1396,7 @@ func (ctx *StackContext) SetInterrupt(scopeName, interruptType string) error {
 	return fmt.Errorf("scope %s not found", scopeName)
 }
 
-func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
+func (ctx *StackContext) NewVar(name string, kind RuntimeType) error {
 	if ctx.Stack != nil {
 		if _, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
 			return nil
@@ -1373,7 +1415,7 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	if ctx.Executor != nil {
 		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
-		v = &Var{Type: kind, VType: TypeAny}
+		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
 	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Shared != nil {
 		ctx.Shared.StoreGlobal(name, v)
@@ -1383,7 +1425,7 @@ func (ctx *StackContext) NewVar(name string, kind ast.GoMiniType) error {
 	return nil
 }
 
-func (ctx *StackContext) InitReturn(kind ast.GoMiniType) error {
+func (ctx *StackContext) InitReturn(kind RuntimeType) error {
 	if ctx.Stack == nil {
 		return errors.New("missing stack for return slot")
 	}
@@ -1397,7 +1439,7 @@ func (ctx *StackContext) InitReturn(kind ast.GoMiniType) error {
 	if ctx.Executor != nil {
 		v = ctx.Executor.initializeType(ctx, kind, 0)
 	} else {
-		v = &Var{Type: kind, VType: TypeAny}
+		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
 	ctx.Stack.Frame.Return = v
 	ctx.Stack.Frame.ReturnName = "__return__"
@@ -1420,7 +1462,7 @@ func (ctx *StackContext) StoreReturn(expr *Var) error {
 		v = v.Ref.(*Cell).Value
 	}
 	if expr == nil {
-		v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+		v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 		return nil
 	}
 	copyVarData(v, expr)
@@ -1431,8 +1473,8 @@ func (ctx *StackContext) coerceAssignedValue(target, expr *Var) (*Var, error) {
 	if target == nil || expr == nil {
 		return expr, nil
 	}
-	if target.Type.IsInterface() && !expr.Type.IsInterface() {
-		wrapped, err := ctx.Executor.CheckSatisfaction(expr, target.Type)
+	if target.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
+		wrapped, err := ctx.Executor.CheckSatisfaction(expr, target.RawType())
 		if err != nil {
 			return nil, err
 		}
@@ -1454,7 +1496,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 		v := ctx.Stack.Frame.Locals[sym.Slot]
 		if v == nil {
 			if expr == nil {
-				v = &Var{Type: "Any", VType: TypeAny}
+				v = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
 			} else {
 				v = expr.Copy()
 			}
@@ -1465,7 +1507,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			v = v.Ref.(*Cell).Value
 		}
 		if expr == nil {
-			v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+			v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 			return nil
 		}
 		var err error
@@ -1481,7 +1523,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			v := ctx.Stack.Frame.Upvalues[sym.Slot]
 			if v == nil {
 				if expr == nil {
-					v = &Var{Type: "Any", VType: TypeAny}
+					v = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
 				} else {
 					v = expr.Copy()
 				}
@@ -1492,7 +1534,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 				v = v.Ref.(*Cell).Value
 			}
 			if expr == nil {
-				v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+				v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 				return nil
 			}
 			var err error
@@ -1508,7 +1550,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			v, _ := ctx.Shared.LoadGlobal(sym.Name)
 			if v == nil {
 				if expr == nil {
-					ctx.Shared.StoreGlobal(sym.Name, &Var{Type: "Any", VType: TypeAny})
+					ctx.Shared.StoreGlobal(sym.Name, NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny))
 				} else {
 					ctx.Shared.StoreGlobal(sym.Name, expr.Copy())
 				}
@@ -1518,7 +1560,7 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 				v = v.Ref.(*Cell).Value
 			}
 			if expr == nil {
-				v.Type, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = "Any", TypeAny, 0, 0, "", nil, false, 0, nil, nil
+				v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 				return nil
 			}
 			var err error
@@ -1548,7 +1590,7 @@ func (ctx *StackContext) WithFuncScope(name string, exec func(*Stack, *StackCont
 func copyVarData(dest, src *Var) {
 	// CRITICAL: Type metadata is shared and can be modified by the script.
 	// FFI bridges MUST perform strict VType and content assertions instead of trusting Type.
-	dest.Type = src.Type
+	dest.TypeInfo = src.TypeInfo
 	dest.VType = src.VType
 	dest.I64 = src.I64
 	dest.F64 = src.F64

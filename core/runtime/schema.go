@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -42,6 +43,44 @@ type RuntimeType struct {
 	Variadic bool
 	Fields   []RuntimeStructField
 	Methods  []RuntimeInterfaceMethod
+}
+
+func (t RuntimeType) MarshalJSON() ([]byte, error) {
+	type runtimeTypeAlias RuntimeType
+	if t.Kind == RuntimeTypeInvalid && !t.Raw.IsEmpty() {
+		parsed, err := ParseRuntimeType(t.Raw)
+		if err != nil {
+			return nil, err
+		}
+		t = parsed
+	}
+	return json.Marshal(runtimeTypeAlias(t))
+}
+
+func (t *RuntimeType) UnmarshalJSON(data []byte) error {
+	type runtimeTypeAlias RuntimeType
+	var alias runtimeTypeAlias
+	if err := json.Unmarshal(data, &alias); err == nil {
+		*t = RuntimeType(alias)
+		if t.Kind == RuntimeTypeInvalid && !t.Raw.IsEmpty() {
+			parsed, parseErr := ParseRuntimeType(t.Raw)
+			if parseErr == nil {
+				*t = parsed
+			}
+		}
+		return nil
+	}
+
+	var raw ast.GoMiniType
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	parsed, err := ParseRuntimeType(raw)
+	if err != nil {
+		return err
+	}
+	*t = parsed
+	return nil
 }
 
 type FFIParamMode uint8
@@ -110,6 +149,108 @@ func CanonicalTypeID(name string) string {
 		return CanonicalTypeID(name[4 : len(name)-1])
 	}
 	return name
+}
+
+func MustParseRuntimeType(spec ast.GoMiniType) RuntimeType {
+	parsed, err := ParseRuntimeType(spec)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
+func (t RuntimeType) String() string {
+	return string(t.Raw)
+}
+
+func (t RuntimeType) IsEmpty() bool {
+	return t.Raw.IsEmpty()
+}
+
+func (t RuntimeType) IsVoid() bool {
+	return t.Kind == RuntimeTypeVoid || t.Raw.IsVoid()
+}
+
+func (t RuntimeType) IsAny() bool {
+	return t.Kind == RuntimeTypeAny || t.Raw.IsAny()
+}
+
+func (t RuntimeType) IsInt() bool {
+	return t.Raw.IsInt()
+}
+
+func (t RuntimeType) IsString() bool {
+	return t.Raw.IsString()
+}
+
+func (t RuntimeType) IsBool() bool {
+	return t.Raw.IsBool()
+}
+
+func (t RuntimeType) IsNumeric() bool {
+	return t.Raw.IsNumeric()
+}
+
+func (t RuntimeType) IsPtr() bool {
+	return t.Kind == RuntimeTypePointer || t.Raw.IsPtr()
+}
+
+func (t RuntimeType) IsArray() bool {
+	return t.Kind == RuntimeTypeArray || t.Raw.IsArray()
+}
+
+func (t RuntimeType) IsMap() bool {
+	return t.Kind == RuntimeTypeMap || t.Raw.IsMap()
+}
+
+func (t RuntimeType) IsInterface() bool {
+	return t.Kind == RuntimeTypeInterface || t.Raw.IsInterface()
+}
+
+func (t RuntimeType) Equals(other RuntimeType) bool {
+	return t.Raw.Equals(other.Raw)
+}
+
+func (t RuntimeType) IsAssignableTo(other RuntimeType) bool {
+	return t.Raw.IsAssignableTo(other.Raw)
+}
+
+func (t RuntimeType) ReadArrayItemType() (RuntimeType, bool) {
+	if t.Elem != nil {
+		return *t.Elem, true
+	}
+	elem, ok := t.Raw.ReadArrayItemType()
+	if !ok {
+		return RuntimeType{}, false
+	}
+	elemInfo, err := ParseRuntimeType(elem)
+	if err != nil {
+		return RuntimeType{}, false
+	}
+	return elemInfo, true
+}
+
+func (t RuntimeType) GetMapKeyValueTypes() (RuntimeType, RuntimeType, bool) {
+	if t.Key != nil && t.Value != nil {
+		return *t.Key, *t.Value, true
+	}
+	key, value, ok := t.Raw.GetMapKeyValueTypes()
+	if !ok {
+		return RuntimeType{}, RuntimeType{}, false
+	}
+	keyInfo, err := ParseRuntimeType(key)
+	if err != nil {
+		return RuntimeType{}, RuntimeType{}, false
+	}
+	valueInfo, err := ParseRuntimeType(value)
+	if err != nil {
+		return RuntimeType{}, RuntimeType{}, false
+	}
+	return keyInfo, valueInfo, true
+}
+
+func (t RuntimeType) ZeroVar() interface{} {
+	return t.Raw.ZeroVar()
 }
 
 func ParseRuntimeType(spec ast.GoMiniType) (RuntimeType, error) {
@@ -256,6 +397,28 @@ func ParseRuntimeFuncSig(spec ast.GoMiniType) (*RuntimeFuncSig, error) {
 	}, nil
 }
 
+func RuntimeFuncSigFromFunction(fn ast.FunctionType) (*RuntimeFuncSig, error) {
+	params := make([]RuntimeType, 0, len(fn.Params))
+	for _, p := range fn.Params {
+		paramType, err := ParseRuntimeType(p.Type)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, paramType)
+	}
+	retType, err := ParseRuntimeType(fn.Return)
+	if err != nil {
+		return nil, err
+	}
+	return &RuntimeFuncSig{
+		Spec:       fn.MiniType(),
+		Function:   fn,
+		ParamTypes: params,
+		ParamModes: defaultFFIParamModes(len(params)),
+		ReturnType: retType,
+	}, nil
+}
+
 func defaultFFIParamModes(n int) []FFIParamMode {
 	if n == 0 {
 		return nil
@@ -368,6 +531,14 @@ func (s *RuntimeInterfaceSpec) MethodStringMap() map[string]string {
 
 func MustParseRuntimeFuncSig(spec ast.GoMiniType) *RuntimeFuncSig {
 	sig, err := ParseRuntimeFuncSig(spec)
+	if err != nil {
+		panic(err)
+	}
+	return sig
+}
+
+func MustRuntimeFuncSigFromFunction(fn ast.FunctionType) *RuntimeFuncSig {
+	sig, err := RuntimeFuncSigFromFunction(fn)
 	if err != nil {
 		panic(err)
 	}

@@ -479,7 +479,7 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 	if !data.IsType || !data.HasAssign || len(data.AssignLHS) == 0 {
 		t.Fatalf("unexpected type switch lowering data: %+v", data)
 	}
-	if len(data.Cases) != 1 || len(data.Cases[0].TypeNames) != 1 || data.Cases[0].TypeNames[0] != "Int64" {
+	if len(data.Cases) != 1 || len(data.Cases[0].TypeNames) != 1 || data.Cases[0].TypeNames[0].Raw != "Int64" {
 		t.Fatalf("unexpected type switch cases: %+v", data.Cases)
 	}
 }

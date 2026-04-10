@@ -26,7 +26,7 @@ func TestStackContextLocalSymbolSlots(t *testing.T) {
 	session.ScopeApply("fn")
 
 	sym := SymbolRef{Name: "value", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(sym, "Int64"); err != nil {
+	if err := session.DeclareSymbol(sym, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := session.StoreSymbol(sym, NewInt(41)); err != nil {
@@ -58,7 +58,7 @@ func TestGlobalBindingsUseDedicatedGlobalStore(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
-	if err := session.NewVar("globalValue", "Int64"); err != nil {
+	if err := session.NewVar("globalValue", MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("new global failed: %v", err)
 	}
 	if err := session.Store("globalValue", NewInt(33)); err != nil {
@@ -116,7 +116,7 @@ func TestStackContextUpvalueSlotsShareCapturedCell(t *testing.T) {
 	session.ScopeApply("fn")
 
 	local := SymbolRef{Name: "counter", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+	if err := session.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := session.StoreSymbol(local, NewInt(1)); err != nil {
@@ -176,7 +176,7 @@ func TestCaptureSymbolForUpvalueForwardsSharedCellAcrossNestedClosures(t *testin
 	outer.ScopeApply("outer")
 
 	local := SymbolRef{Name: "counter", Kind: SymbolLocal, Slot: 0}
-	if err := outer.DeclareSymbol(local, "Int64"); err != nil {
+	if err := outer.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := outer.StoreSymbol(local, NewInt(1)); err != nil {
@@ -247,7 +247,7 @@ func TestStackContextReturnSlot(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 	session.ScopeApply("fn")
 
-	if err := session.InitReturn("Int64"); err != nil {
+	if err := session.InitReturn(MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("init return slot failed: %v", err)
 	}
 	if err := session.StoreReturn(NewInt(7)); err != nil {
@@ -287,13 +287,7 @@ func TestSetupFuncCallInitializesParamSlots(t *testing.T) {
 
 	err := exec.setupFuncCall(session, "sum", &DoCallData{
 		Name: "sum",
-		FunctionType: ast.FunctionType{
-			Params: []ast.FunctionParam{
-				{Name: "a", Type: "Int64"},
-				{Name: "b", Type: "Int64"},
-			},
-			Return: "Int64",
-		},
+		FunctionSig: MustParseRuntimeFuncSig("function(Int64, Int64) Int64"),
 	}, []*Var{NewInt(3), NewInt(4)}, nil)
 	if err != nil {
 		t.Fatalf("setup func call failed: %v", err)
@@ -312,7 +306,7 @@ func TestSetupFuncCallInitializesParamSlots(t *testing.T) {
 		t.Fatalf("load return slot failed: %v", err)
 	}
 
-	if a == nil || a.I64 != 3 || b == nil || b.I64 != 4 || ret == nil || ret.Type != "Int64" {
+	if a == nil || a.I64 != 3 || b == nil || b.I64 != 4 || ret == nil || ret.RawType() != "Int64" {
 		t.Fatalf("unexpected function frame state: a=%#v b=%#v ret=%#v", a, b, ret)
 	}
 	if _, exists := session.Stack.MemoryPtr["a"]; exists {
@@ -326,13 +320,13 @@ func TestDumpVariablesIncludesSlotFrameValues(t *testing.T) {
 	session.ScopeApply("fn")
 
 	local := SymbolRef{Name: "value", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+	if err := session.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := session.StoreSymbol(local, NewInt(9)); err != nil {
 		t.Fatalf("store local symbol failed: %v", err)
 	}
-	if err := session.InitReturn("Int64"); err != nil {
+	if err := session.InitReturn(MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("init return slot failed: %v", err)
 	}
 	if err := session.StoreReturn(NewInt(12)); err != nil {
@@ -371,7 +365,7 @@ func TestNameAPIsPreferFrameSymbols(t *testing.T) {
 	session.ScopeApply("fn")
 
 	local := SymbolRef{Name: "value", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+	if err := session.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := session.Store("value", NewInt(21)); err != nil {
@@ -402,17 +396,17 @@ func TestNewVarDoesNotShadowFrameSlot(t *testing.T) {
 	session.ScopeApply("fn")
 
 	local := SymbolRef{Name: "value", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+	if err := session.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
-	if err := session.NewVar("value", "String"); err != nil {
+	if err := session.NewVar("value", MustParseRuntimeType("String")); err != nil {
 		t.Fatalf("new var by name failed: %v", err)
 	}
 	got, err := session.LoadSymbol(local)
 	if err != nil {
 		t.Fatalf("load local slot failed: %v", err)
 	}
-	if got == nil || got.Type != "Int64" {
+	if got == nil || got.RawType() != "Int64" {
 		t.Fatalf("frame slot should remain intact, got %#v", got)
 	}
 	if _, exists := session.Stack.MemoryPtr["value"]; exists {
@@ -440,7 +434,7 @@ func TestOpEvalLHSPushesAddressOntoLHSStack(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 	session.ValueStack.Push(NewInt(1))
-	session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(7)}}, Type: "[]Int64"})
+	session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(7)}}, TypeInfo: MustParseRuntimeType("[]Int64")})
 
 	if err := exec.dispatch(session, Task{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeIndex}}); err != nil {
 		t.Fatalf("eval lhs failed: %v", err)
@@ -466,9 +460,7 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 
 	if err := exec.setupFuncCall(session, "sum", &DoCallData{
 		Name: "sum",
-		FunctionType: ast.FunctionType{
-			Return: "Int64",
-		},
+		FunctionSig: MustParseRuntimeFuncSig("function() Int64"),
 	}, nil, nil); err != nil {
 		t.Fatalf("setup func call failed: %v", err)
 	}
@@ -522,7 +514,7 @@ func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 	session.ScopeApply("fn")
 
 	local := SymbolRef{Name: "n", Kind: SymbolLocal, Slot: 0}
-	if err := session.DeclareSymbol(local, "Int64"); err != nil {
+	if err := session.DeclareSymbol(local, MustParseRuntimeType("Int64")); err != nil {
 		t.Fatalf("declare local symbol failed: %v", err)
 	}
 	if err := exec.assignAddress(session, &LHSEnv{Name: "n", Sym: local}, NewInt(4)); err != nil {
@@ -539,7 +531,7 @@ func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 		t.Fatalf("unexpected local address value: %#v", got)
 	}
 
-	arr := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1), NewInt(2)}}, Type: "[]Int64"}
+	arr := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1), NewInt(2)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
 	index := &LHSIndex{Obj: arr, Index: NewInt(1)}
 	if err := exec.assignAddress(session, index, NewInt(9)); err != nil {
 		t.Fatalf("assign indexed address failed: %v", err)
@@ -562,10 +554,10 @@ func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testi
 
 	innerMap := &Var{
 		VType: TypeMap,
-		Type:  "Map<String,Int64>",
+		TypeInfo: MustParseRuntimeType("Map<String,Int64>"),
 		Ref:   &VMMap{Data: map[string]*Var{"count": NewInt(1)}},
 	}
-	anyMap := &Var{VType: TypeAny, Type: "Any", Ref: innerMap}
+	anyMap := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: innerMap}
 	member := &LHSMember{Obj: anyMap, Property: "count"}
 
 	if err := exec.assignAddress(session, member, NewInt(9)); err != nil {
@@ -579,8 +571,8 @@ func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testi
 		t.Fatalf("unexpected wrapped member value: %#v", got)
 	}
 
-	ptr := &Var{VType: TypeHandle, Handle: 7, Type: "Ptr<Int64>", Ref: NewInt(3)}
-	anyPtr := &Var{VType: TypeAny, Type: "Any", Ref: &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}}
+	ptr := &Var{VType: TypeHandle, Handle: 7, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewInt(3)}
+	anyPtr := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}}
 	deref := &LHSDeref{Target: anyPtr}
 
 	if err := exec.assignAddress(session, deref, NewInt(11)); err != nil {

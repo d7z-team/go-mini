@@ -21,7 +21,7 @@ type PreparedGlobal struct {
 
 type PreparedFunction struct {
 	Name         ast.Ident        `json:"name"`
-	FunctionType ast.FunctionType `json:"function_type"`
+	FunctionSig  *RuntimeFuncSig  `json:"function_sig,omitempty"`
 	BodyTasks    []Task           `json:"body_tasks,omitempty"`
 }
 
@@ -70,7 +70,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		}
 		prepared.Functions[ident] = &PreparedFunction{
 			Name:         ident,
-			FunctionType: fn.FunctionType,
+			FunctionSig:  MustRuntimeFuncSigFromFunction(fn.FunctionType),
 			BodyTasks:    exec.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}
 	}
@@ -108,7 +108,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		}
 		cloned.Functions[name] = &PreparedFunction{
 			Name:         fn.Name,
-			FunctionType: fn.FunctionType,
+			FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 			BodyTasks:    cloneTasks(fn.BodyTasks),
 		}
 	}

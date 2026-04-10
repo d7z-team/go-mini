@@ -313,7 +313,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			Op: OpDeclareVar,
 			Data: &DeclareVarData{
 				Name: string(n.Name),
-				Kind: n.Kind,
+				Kind: MustParseRuntimeType(n.Kind),
 				Sym:  sym,
 			},
 		}}, true
@@ -554,11 +554,11 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			}
 			for _, expr := range clause.List {
 				if n.IsType {
-					var targetType ast.GoMiniType
+					var targetType RuntimeType
 					if id, ok := expr.(*ast.IdentifierExpr); ok {
-						targetType = ast.GoMiniType(id.Name)
+						targetType = MustParseRuntimeType(ast.GoMiniType(id.Name))
 					} else {
-						targetType = expr.GetBase().Type
+						targetType = MustParseRuntimeType(expr.GetBase().Type)
 					}
 					caseData.TypeNames = append(caseData.TypeNames, targetType)
 				} else {
@@ -673,7 +673,7 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		}
 		out := []Task{{Op: OpIndex, Data: &IndexData{
 			Multi:      n.Multi,
-			ResultType: n.GetBase().Type,
+			ResultType: MustParseRuntimeType(n.GetBase().Type),
 		}}}
 		out = append(out, e.tasksForExprInScope(n.Index, scope)...)
 		out = append(out, e.tasksForExprInScope(n.Object, scope)...)
@@ -690,9 +690,9 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 			return []Task{{Op: OpPush}}, true
 		}
 		out := []Task{{Op: OpAssert, Data: &AssertData{
-			TargetType: n.Type,
+			TargetType: MustParseRuntimeType(n.Type),
 			Multi:      n.Multi,
-			ResultType: n.GetBase().Type,
+			ResultType: MustParseRuntimeType(n.GetBase().Type),
 		}}}
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true
@@ -702,7 +702,7 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		}
 		entries := make([]CompositeEntryData, len(n.Values))
 		out := []Task{{Op: OpComposite, Data: &CompositeData{
-			Type:    n.Type,
+			Type:    MustParseRuntimeType(n.Type),
 			Entries: entries,
 		}}}
 		for i := len(n.Values) - 1; i >= 0; i-- {
@@ -791,7 +791,7 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		captures := make([]string, len(n.CaptureNames))
 		copy(captures, n.CaptureNames)
 		return []Task{{Op: OpMakeClosure, Data: &ClosureData{
-			FunctionType: n.FunctionType,
+			FunctionSig:  MustRuntimeFuncSigFromFunction(n.FunctionType),
 			BodyTasks:    e.tasksForStmtInScope(n.Body, nil, fnScope),
 			CaptureNames: captures,
 			CaptureRefs:  append([]SymbolRef(nil), fnScope.fn.order...),

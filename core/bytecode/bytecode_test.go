@@ -76,7 +76,7 @@ func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
 			"counter": {Name: "counter", HasInit: true},
 		},
 		Functions: map[ast.Ident]*runtime.PreparedFunction{
-			"main": {Name: "main"},
+			"main": {Name: "main", FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void")},
 		},
 	}
 
@@ -124,15 +124,11 @@ func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
 		Functions: map[ast.Ident]*runtime.PreparedFunction{
 			"main": {
 				Name: "main",
-				FunctionType: ast.FunctionType{
-					Return: "Void",
-				},
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 			},
 			"cleanup": {
 				Name: "cleanup",
-				FunctionType: ast.FunctionType{
-					Return: "Void",
-				},
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 				BodyTasks: []runtime.Task{{Op: runtime.OpReturn}},
 			},
 		},
@@ -169,15 +165,13 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 		Functions: map[ast.Ident]*runtime.PreparedFunction{
 			"main": {
 				Name: "main",
-				FunctionType: ast.FunctionType{
-					Return: "Void",
-				},
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 				BodyTasks: []runtime.Task{
 					{
 						Op: runtime.OpSwitchTag,
 						Data: &runtime.SwitchData{
 							Init: []runtime.Task{
-								{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 1}},
+								{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 1}},
 							},
 							Tag: []runtime.Task{
 								{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "v"}},
@@ -186,10 +180,10 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 								{
 									Exprs: [][]runtime.Task{
 										{
-											{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 2}},
+											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 2}},
 										},
 										{
-											{Op: runtime.OpPush, Data: &runtime.Var{Type: "Int", VType: runtime.TypeInt, I64: 3}},
+											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 3}},
 										},
 									},
 									Body: []runtime.Task{

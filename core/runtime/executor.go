@@ -46,7 +46,7 @@ type RuntimeGlobal struct {
 
 type RuntimeFunction struct {
 	Name         ast.Ident
-	FunctionType ast.FunctionType
+	FunctionSig  *RuntimeFuncSig
 	BodyTasks    []Task
 }
 
@@ -228,7 +228,7 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 			}
 			result.functions[ident] = &RuntimeFunction{
 				Name:         ident,
-				FunctionType: fn.FunctionType,
+				FunctionSig:  MustRuntimeFuncSigFromFunction(fn.FunctionType),
 			}
 		}
 	}
@@ -259,7 +259,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 			rf = &RuntimeFunction{Name: ident}
 		}
 		if fn != nil {
-			rf.FunctionType = fn.FunctionType
+			rf.FunctionSig = cloneRuntimeFuncSig(fn.FunctionSig)
 			rf.BodyTasks = cloneTasks(fn.BodyTasks)
 		}
 		e.functions[ident] = rf
@@ -721,7 +721,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	}
 
 	// 1. Exact match (handles named types and primitives directly)
-	if val.Type.Equals(interfaceType) {
+	if val.RuntimeType().Raw.Equals(interfaceType) {
 		return val.Copy(), nil
 	}
 
@@ -730,7 +730,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	if inner == nil {
 		inner = val
 	}
-	if inner.Type.Equals(interfaceType) {
+	if inner.RuntimeType().Raw.Equals(interfaceType) {
 		return inner.Copy(), nil
 	}
 
@@ -748,7 +748,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 			actualInterfaceType = spec.Spec
 		} else {
 			// If it wasn't an exact match and isn't an interface, it fails (like Go)
-			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.Type, interfaceType)
+			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceType)
 		}
 	}
 
@@ -769,15 +769,16 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		vtable[method.Index] = callable
 	}
 
-	return &Var{
-		Type:  interfaceType,
+	v := &Var{
 		VType: TypeInterface,
 		Ref: &VMInterface{
 			Target: inner.Copy(),
 			Spec:   spec,
 			VTable: vtable,
 		},
-	}, nil
+	}
+	v.SetRawType(interfaceType)
+	return v, nil
 }
 
 func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
@@ -792,7 +793,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
 		}
 	case TypeHandle:
-		if methodName, ok := e.resolveMethodRoute(string(val.Type), name); ok {
+		if methodName, ok := e.resolveMethodRoute(string(val.RawType()), name); ok {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 		}
 	case TypeMap:
@@ -801,7 +802,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 				return v, true
 			}
 		}
-		tName := string(val.Type)
+		tName := string(val.RawType())
 		if tName != "" && tName != "Any" {
 			if methodName, ok := e.resolveMethodRoute(tName, name); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
@@ -844,7 +845,7 @@ func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) b
 	}
 	if v.VType == TypeClosure {
 		if cl, ok := v.Ref.(*VMClosure); ok {
-			return e.isSignatureCompatible(&cl.FunctionType, expectedSig)
+			return cl.FunctionSig != nil && e.isSignatureCompatible(&cl.FunctionSig.Function, expectedSig)
 		}
 	}
 	if route, ok := v.Ref.(FFIRoute); ok {
@@ -948,7 +949,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 			})
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
 				Name:         string(fn.Name),
-				FunctionType: fn.FunctionType,
+				FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 				BodyTasks:    cloneTasks(fn.BodyTasks),
 			}})
 
@@ -978,7 +979,7 @@ func (e *Executor) initializeSharedGlobals(session *StackContext) error {
 			}
 			val = v
 		} else {
-			val = &Var{VType: TypeAny, Type: "Any"}
+			val = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
 		}
 		session.Shared.StoreGlobal(string(name), val)
 	}
@@ -1130,7 +1131,7 @@ func (e *Executor) varToMapKey(v *Var) (string, error) {
 	return "", fmt.Errorf("unsupported map key type: %v", v.VType)
 }
 
-func (e *Executor) mapKeyToVar(k string, keyType ast.GoMiniType) *Var {
+func (e *Executor) mapKeyToVar(k string, keyType RuntimeType) *Var {
 	if keyType.IsInt() {
 		val, _ := strconv.ParseInt(k, 10, 64)
 		return NewInt(val)
@@ -1458,11 +1459,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					tuple[0] = val
 					tuple[1] = NewBool(true)
 				} else {
-					_, valType, _ := obj.Type.GetMapKeyValueTypes()
+					_, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
 					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
 					tuple[1] = NewBool(false)
 				}
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: data.ResultType})
+				v := &Var{VType: TypeArray, Ref: &VMArray{Data: tuple}}
+				v.SetRuntimeType(data.ResultType)
+				session.ValueStack.Push(v)
 				return nil
 			}
 			return fmt.Errorf("multi-index only supported for maps, got %v", obj.VType)
@@ -1487,7 +1490,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpComposite:
 		var (
-			typ     ast.GoMiniType
+			typ     RuntimeType
 			entries []CompositeEntryData
 		)
 		if data, ok := task.Data.(*CompositeData); ok {
@@ -1508,12 +1511,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				val := e.normalizeTypedValue(session.ValueStack.Pop(), elemType)
 				res[i] = val
 			}
-			session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: res}, Type: typ})
+			v := &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
+			v.SetRuntimeType(typ)
+			session.ValueStack.Push(v)
 			return nil
 		}
 
 		res := make(map[string]*Var)
-		var valType ast.GoMiniType
+		var valType RuntimeType
 		if isMap {
 			_, valType, _ = typ.GetMapKeyValueTypes()
 		}
@@ -1539,7 +1544,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 			res[keyName] = val
 		}
-		session.ValueStack.Push(&Var{VType: TypeMap, Ref: &VMMap{Data: res}, Type: typ})
+		v := &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
+		v.SetRuntimeType(typ)
+		session.ValueStack.Push(v)
 		return nil
 	case OpSlice:
 		var high, low, obj *Var
@@ -1705,9 +1712,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpAssert:
 		val := session.ValueStack.Pop()
 		var (
-			targetType ast.GoMiniType
+			targetType RuntimeType
 			multi      bool
-			resultType ast.GoMiniType
+			resultType RuntimeType
 		)
 		if data, ok := task.Data.(*AssertData); ok {
 			targetType = data.TargetType
@@ -1716,20 +1723,24 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			return errors.New("OpAssert missing AssertData")
 		}
-		res, err := e.CheckSatisfaction(val, targetType)
+		res, err := e.CheckSatisfaction(val, targetType.Raw)
 		if multi {
 			if err != nil {
 				// 返回 (nil, false)
 				tuple := make([]*Var, 2)
 				tuple[0] = nil
 				tuple[1] = NewBool(false)
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
+				v := &Var{VType: TypeArray, Ref: &VMArray{Data: tuple}}
+				v.SetRuntimeType(resultType)
+				session.ValueStack.Push(v)
 			} else {
 				// 返回 (res, true)
 				tuple := make([]*Var, 2)
 				tuple[0] = res
 				tuple[1] = NewBool(true)
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: tuple}, Type: resultType})
+				v := &Var{VType: TypeArray, Ref: &VMArray{Data: tuple}}
+				v.SetRuntimeType(resultType)
+				session.ValueStack.Push(v)
 			}
 			return nil
 		}
@@ -1844,7 +1855,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			val = rData.Obj.Ref.(*VMArray).Data[rData.Index]
 		} else {
 			k := rData.Keys[rData.Index]
-			keyType, _, _ := rData.Obj.Type.GetMapKeyValueTypes()
+			keyType, _, _ := rData.Obj.RuntimeType().GetMapKeyValueTypes()
 			key = e.mapKeyToVar(k, keyType)
 			val = rData.Obj.Ref.(*VMMap).Data[k]
 		}
@@ -1870,7 +1881,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if rData.Define {
 			if rData.Key != "" && rData.Key != "_" {
 				if rData.KeySym.Kind == SymbolLocal {
-					_ = session.DeclareSymbol(rData.KeySym, "Any")
+					_ = session.DeclareSymbol(rData.KeySym, MustParseRuntimeType("Any"))
 					_ = session.StoreSymbol(rData.KeySym, key)
 				} else {
 					_ = session.AddVariable(rData.Key, key)
@@ -1878,7 +1889,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			if rData.Value != "" && rData.Value != "_" && val != nil {
 				if rData.ValSym.Kind == SymbolLocal {
-					_ = session.DeclareSymbol(rData.ValSym, "Any")
+					_ = session.DeclareSymbol(rData.ValSym, MustParseRuntimeType("Any"))
 					_ = session.StoreSymbol(rData.ValSym, val)
 				} else {
 					_ = session.AddVariable(rData.Value, val)
@@ -1981,10 +1992,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ScopeApply("catch")
 		if varName != "" {
 			if varSym.Kind == SymbolLocal {
-				_ = session.DeclareSymbol(varSym, "Any")
+				_ = session.DeclareSymbol(varSym, MustParseRuntimeType("Any"))
 				_ = session.StoreSymbol(varSym, panicVar)
 			} else {
-				_ = session.NewVar(varName, "Any")
+				_ = session.NewVar(varName, MustParseRuntimeType("Any"))
 				_ = session.Store(varName, panicVar)
 			}
 		}
@@ -2125,7 +2136,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			Debugger:  session.Debugger,
 		}
 		closure := &VMClosure{
-			FunctionType: data.FunctionType,
+			FunctionSig:  cloneRuntimeFuncSig(data.FunctionSig),
 			BodyTasks:    data.BodyTasks,
 			UpvalueSlots: make([]*Var, len(data.CaptureRefs)),
 			UpvalueNames: make([]string, len(data.CaptureRefs)),
@@ -2176,19 +2187,20 @@ func (e *Executor) switchCaseTasks(plan *SwitchData, tag *Var, body []Task, scop
 	return out
 }
 
-func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) bool {
+func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 	for _, targetType := range targets {
-		if targetType == "" {
+		if targetType.IsEmpty() {
 			continue
 		}
 		if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
-			if targetType == "nil" || targetType == "Any" || targetType == "interface{}" {
+			raw := targetType.Raw
+			if raw == "nil" || raw == "Any" || raw == "interface{}" {
 				return true
 			}
 			continue
 		}
 
-		switch targetType {
+		switch targetType.Raw {
 		case "Int64", "int", "int64":
 			if tag.VType == TypeInt {
 				return true
@@ -2220,13 +2232,13 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []ast.GoMiniType) boo
 		}
 
 		if targetType.IsInterface() {
-			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw); err == nil {
 				return true
 			}
 			continue
 		}
-		if _, ok := e.resolveInterfaceSpec(targetType); ok {
-			if _, err := e.CheckSatisfaction(tag, targetType); err == nil {
+		if _, ok := e.resolveInterfaceSpec(targetType.Raw); ok {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw); err == nil {
 				return true
 			}
 		}
@@ -2243,15 +2255,25 @@ func (e *Executor) unwrapValue(v *Var) *Var {
 			if inner, ok := v.Ref.(*Var); ok {
 				v = inner
 			} else if m, ok := v.Ref.(*VMMap); ok {
-				return &Var{VType: TypeMap, Ref: m, Type: v.Type}
+				out := &Var{VType: TypeMap, Ref: m}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
 			} else if arr, ok := v.Ref.(*VMArray); ok {
-				return &Var{VType: TypeArray, Ref: arr, Type: v.Type}
+				out := &Var{VType: TypeArray, Ref: arr}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
 			} else if mod, ok := v.Ref.(*VMModule); ok {
-				return &Var{VType: TypeModule, Ref: mod, Type: v.Type}
+				out := &Var{VType: TypeModule, Ref: mod}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
 			} else if inter, ok := v.Ref.(*VMInterface); ok {
-				return &Var{VType: TypeInterface, Ref: inter, Type: v.Type}
+				out := &Var{VType: TypeInterface, Ref: inter}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
 			} else if errObj, ok := v.Ref.(*VMError); ok {
-				return &Var{VType: TypeError, Ref: errObj, Type: v.Type}
+				out := &Var{VType: TypeError, Ref: errObj}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
 			} else {
 				return v
 			}
@@ -2288,13 +2310,14 @@ func (e *Executor) isOpaqueHandle(v *Var) bool {
 	return v.Bridge != nil || v.Handle != 0
 }
 
-func (e *Executor) normalizeTypedValue(v *Var, targetType ast.GoMiniType) *Var {
+func (e *Executor) normalizeTypedValue(v *Var, targetType RuntimeType) *Var {
 	v = e.unwrapValue(v)
 	if v == nil {
 		return nil
 	}
-	if v.Type == "" || v.Type == ast.TypeAny {
-		v.Type = targetType
+	runtimeType := v.RuntimeType()
+	if runtimeType.IsEmpty() || runtimeType.IsAny() {
+		v.SetRuntimeType(targetType)
 	}
 	return v
 }
@@ -2788,7 +2811,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 			exports[string(name)] = &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionType: fn.FunctionType,
+					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:    cloneTasks(fn.BodyTasks),
 					UpvalueSlots: nil,
 					UpvalueNames: nil,

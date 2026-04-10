@@ -166,7 +166,7 @@ func (p *Program) RebuildProgram() (*ast.ProgramStmt, error) {
 			}
 			prog.Functions[name] = &ast.FunctionStmt{
 				BaseNode:     ast.BaseNode{ID: "bytecode_fn_" + string(name)},
-				FunctionType: fn.FunctionType,
+				FunctionType: fn.FunctionSig.Function,
 				Name:         name,
 				Body:         &ast.BlockStmt{Children: []ast.Stmt{}, Inner: true},
 			}
@@ -530,8 +530,8 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data.Multi {
 			parts = append(parts, "multi")
 		}
-		if data.ResultType != "" {
-			parts = append(parts, string(data.ResultType))
+		if !data.ResultType.IsEmpty() {
+			parts = append(parts, data.ResultType.String())
 		}
 		return strings.Join(parts, " ")
 	case *runtime.SliceData:
@@ -543,12 +543,12 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		parts := []string{string(data.TargetType)}
+		parts := []string{data.TargetType.String()}
 		if data.Multi {
 			parts = append(parts, "multi")
 		}
-		if data.ResultType != "" {
-			parts = append(parts, "result="+string(data.ResultType))
+		if !data.ResultType.IsEmpty() {
+			parts = append(parts, "result="+data.ResultType.String())
 		}
 		return strings.Join(parts, " ")
 	case *runtime.CompositeData:
@@ -562,14 +562,14 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionType.String(), len(data.Args))
+		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionSig.Function.String(), len(data.Args))
 	case *runtime.DeclareVarData:
 		if data == nil {
 			return ""
 		}
 		parts := []string{data.Name}
-		if data.Kind != "" {
-			parts = append(parts, string(data.Kind))
+		if !data.Kind.IsEmpty() {
+			parts = append(parts, data.Kind.String())
 		}
 		if data.Sym.Name != "" || data.Sym.Kind != runtime.SymbolUnknown {
 			parts = append(parts, formatSymbolRef(data.Sym))
@@ -579,7 +579,7 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s captures=%d", data.FunctionType.String(), len(data.CaptureRefs))
+		return fmt.Sprintf("%s captures=%d", data.FunctionSig.Function.String(), len(data.CaptureRefs))
 	default:
 		return ""
 	}
@@ -736,8 +736,8 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 		}
 		return "error"
 	default:
-		if v.Type != "" {
-			return string(v.Type)
+		if !v.RuntimeType().IsEmpty() {
+			return v.RuntimeType().String()
 		}
 		return "nil"
 	}
@@ -815,7 +815,7 @@ func formatExecutableSignature(fn *runtime.PreparedFunction) string {
 	if fn == nil {
 		return ""
 	}
-	return fn.FunctionType.String()
+	return fn.FunctionSig.Function.String()
 }
 
 func sanitizeLabel(name string) string {

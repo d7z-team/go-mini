@@ -12,11 +12,11 @@ func TestEvalUnaryDereferenceUnwrapsAnyAndCell(t *testing.T) {
 	ptr := &Var{
 		VType:  TypeHandle,
 		Handle: 1,
-		Type:   "Ptr<Int64>",
+		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
 		Ref:    NewInt(7),
 	}
 	cell := &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}
-	anyWrapped := &Var{VType: TypeAny, Type: "Any", Ref: cell}
+	anyWrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: cell}
 
 	got, err := exec.evalUnaryExprDirect("Dereference", anyWrapped)
 	if err != nil {
@@ -33,13 +33,13 @@ func TestEvalMemberAndBuiltinLenUnwrapAnyContainers(t *testing.T) {
 
 	innerMap := &Var{
 		VType: TypeMap,
-		Type:  "Map<String,Any>",
+		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"name": NewString("mini"),
 			"x":    NewInt(1),
 		}},
 	}
-	anyMap := &Var{VType: TypeAny, Type: "Any", Ref: innerMap}
+	anyMap := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: innerMap}
 
 	got, err := exec.evalMemberExprDirect(session, anyMap, "name")
 	if err != nil {
@@ -62,9 +62,9 @@ func TestOpCallEllipsisUnwrapsAnyArray(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
-	base := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1)}}, Type: "[]Int64"}
-	tailInner := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(2), NewInt(3)}}, Type: "[]Int64"}
-	tail := &Var{VType: TypeAny, Type: "Any", Ref: tailInner}
+	base := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
+	tailInner := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(2), NewInt(3)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
+	tail := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: tailInner}
 
 	session.ValueStack.Push(base)
 	session.ValueStack.Push(tail)
@@ -93,18 +93,18 @@ func TestOpIndexMultiUnwrapsAnyMap(t *testing.T) {
 
 	inner := &Var{
 		VType: TypeMap,
-		Type:  "Map<String,Int64>",
+		TypeInfo: MustParseRuntimeType("Map<String,Int64>"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"k": NewInt(9),
 		}},
 	}
-	wrapped := &Var{VType: TypeAny, Type: "Any", Ref: inner}
+	wrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: inner}
 	session.ValueStack.Push(wrapped)
 	session.ValueStack.Push(NewString("k"))
 
 	if err := exec.dispatch(session, Task{Op: OpIndex, Data: &IndexData{
 		Multi:      true,
-		ResultType: "tuple(Int64, Bool)",
+		ResultType: MustParseRuntimeType("tuple(Int64, Bool)"),
 	}}); err != nil {
 		t.Fatalf("dispatch index failed: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestEvalMemberExprRejectsAnyWrappedScalar(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
-	scalar := &Var{VType: TypeAny, Type: "Any", Ref: NewFloat(1.5)}
+	scalar := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: NewFloat(1.5)}
 	_, err := exec.evalMemberExprDirect(session, scalar, "something")
 	if err == nil {
 		t.Fatal("expected Any-wrapped scalar member access to fail")

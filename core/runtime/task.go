@@ -1,9 +1,5 @@
 package runtime
 
-import (
-	"gopkg.d7z.net/go-mini/core/ast"
-)
-
 type OpCode int
 
 const (
@@ -193,7 +189,7 @@ type Task struct {
 
 type DeclareVarData struct {
 	Name string
-	Kind ast.GoMiniType
+	Kind RuntimeType
 	Sym  SymbolRef
 }
 
@@ -236,7 +232,7 @@ type JumpData struct {
 
 type IndexData struct {
 	Multi      bool
-	ResultType ast.GoMiniType
+	ResultType RuntimeType
 }
 
 type SliceData struct {
@@ -245,9 +241,9 @@ type SliceData struct {
 }
 
 type AssertData struct {
-	TargetType ast.GoMiniType
+	TargetType RuntimeType
 	Multi      bool
-	ResultType ast.GoMiniType
+	ResultType RuntimeType
 }
 
 type ImportInitData struct {
@@ -256,7 +252,7 @@ type ImportInitData struct {
 
 type SwitchCaseData struct {
 	Exprs     [][]Task
-	TypeNames []ast.GoMiniType
+	TypeNames []RuntimeType
 	Body      []Task
 }
 
@@ -294,7 +290,7 @@ type CompositeEntryData struct {
 }
 
 type CompositeData struct {
-	Type    ast.GoMiniType
+	Type    RuntimeType
 	Entries []CompositeEntryData
 }
 
@@ -317,7 +313,7 @@ type CallData struct {
 
 type DoCallData struct {
 	Name         string
-	FunctionType ast.FunctionType
+	FunctionSig  *RuntimeFuncSig
 	BodyTasks    []Task
 	Args         []*Var
 }
@@ -488,7 +484,7 @@ type LHSData struct {
 }
 
 type ClosureData struct {
-	FunctionType ast.FunctionType
+	FunctionSig  *RuntimeFuncSig
 	BodyTasks    []Task
 	CaptureNames []string
 	CaptureRefs  []SymbolRef

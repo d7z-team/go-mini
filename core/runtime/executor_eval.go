@@ -350,7 +350,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 	case TypeMap:
 		m := obj.Ref.(*VMMap)
 		// Dynamic Key Type Validation
-		keyType, valType, _ := obj.Type.GetMapKeyValueTypes()
+		keyType, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
 		if !keyType.IsAny() {
 			if keyType.IsInt() && idx.VType != TypeInt {
 				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Int64, got %v", idx.VType), IsPanic: true}
@@ -384,27 +384,28 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	if obj.VType == TypeInterface {
 		inter := obj.Ref.(*VMInterface)
 		if inter.Spec == nil {
-			return nil, &VMError{Message: fmt.Sprintf("interface contract missing for %s", obj.Type), IsPanic: true}
+			return nil, &VMError{Message: fmt.Sprintf("interface contract missing for %s", obj.RawType()), IsPanic: true}
 		}
 		idx, ok := inter.Spec.MethodIndex[property]
 		if !ok {
-			return nil, &VMError{Message: fmt.Sprintf("method %s not in interface contract %s", property, obj.Type), IsPanic: true}
+			return nil, &VMError{Message: fmt.Sprintf("method %s not in interface contract %s", property, obj.RawType()), IsPanic: true}
 		}
 		if idx < len(inter.VTable) && inter.VTable[idx] != nil {
 			return inter.VTable[idx], nil
 		}
 		sig := inter.Spec.ByName[property]
 		if sig == nil {
-			return nil, &VMError{Message: fmt.Sprintf("method %s missing vtable entry for %s", property, obj.Type), IsPanic: true}
+			return nil, &VMError{Message: fmt.Sprintf("method %s missing vtable entry for %s", property, obj.RawType()), IsPanic: true}
 		}
-		return &Var{
+		v := &Var{
 			VType: TypeClosure,
 			Ref: &VMMethodValue{
 				Receiver: inter.Target,
 				Method:   property,
 			},
-			Type: sig.Spec,
-		}, nil
+		}
+		v.SetRawType(sig.Spec)
+		return v, nil
 	}
 
 	switch obj.VType {
@@ -418,7 +419,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 			return val, nil
 		}
 		// Try to look up as a method if it has a type name
-		tName := string(obj.Type)
+		tName := string(obj.RawType())
 		if tName != "" && tName != "Any" && !strings.HasPrefix(tName, "Map<") {
 			if methodName, ok := e.resolveMethodRoute(tName, property); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
@@ -431,7 +432,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 			return e.evalMemberExprDirect(nil, valVar, property)
 		}
 		// Handle method extraction (implicit binding)
-		tName := string(obj.Type)
+		tName := string(obj.RawType())
 		if tName == "" {
 			tName = obj.VType.String()
 		}
@@ -466,7 +467,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		return nil, nil
 	}
 
-	tName := string(obj.Type)
+	tName := string(obj.RawType())
 	if tName == "" {
 		tName = obj.VType.String()
 	}
@@ -474,7 +475,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 	}
 
-	if string(obj.Type) == "Any" {
+	if obj.RuntimeType().IsAny() {
 		return nil, nil
 	}
 
@@ -522,7 +523,9 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 		if low < 0 || high < low || high > l {
 			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
-		return &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Data[low:high]}, Type: obj.Type}, nil
+		v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Data[low:high]}}
+		v.SetRuntimeType(obj.RuntimeType())
+		return v, nil
 	}
 	return nil, &VMError{Message: fmt.Sprintf("type %v does not support slice operations", obj.VType), IsPanic: true}
 }
@@ -545,14 +548,16 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			}
 			typVar := args[0]
 			typVar = e.unwrapValue(typVar)
-			if typVar == nil || (typVar.VType != TypeString && typVar.Type != "String") {
+			if typVar == nil || (typVar.VType != TypeString && !typVar.RuntimeType().IsString()) {
 				return &VMError{Message: "make first argument must be a type string", IsPanic: true}
 			}
 			tStr := typVar.Str
 			t := ast.GoMiniType(tStr)
 
 			if strings.HasPrefix(tStr, "Map<") {
-				session.ValueStack.Push(&Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}, Type: t})
+				v := &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}}
+				v.SetRawType(t)
+				session.ValueStack.Push(v)
 				return nil
 			} else if strings.HasPrefix(tStr, "Array<") || tStr == "TypeBytes" {
 				length := 0
@@ -579,19 +584,23 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					capacity = int(cInt)
 				}
 				if tStr == "TypeBytes" {
-					session.ValueStack.Push(&Var{VType: TypeBytes, B: make([]byte, length, capacity), Type: t})
+					v := &Var{VType: TypeBytes, B: make([]byte, length, capacity)}
+					v.SetRawType(t)
+					session.ValueStack.Push(v)
 				} else {
 					arr := make([]*Var, length, capacity)
-					innerType, _ := t.ReadArrayItemType()
+					innerType, _ := MustParseRuntimeType(t).ReadArrayItemType()
 					for i := 0; i < length; i++ {
 						arr[i] = e.initializeType(session, innerType, 0)
 					}
-					session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: arr}, Type: t})
+					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr}}
+					v.SetRawType(t)
+					session.ValueStack.Push(v)
 				}
 				return nil
 			}
 			// Fallback
-			res := e.initializeType(session, t, 0)
+			res := e.initializeType(session, MustParseRuntimeType(t), 0)
 			session.ValueStack.Push(res)
 			return nil
 		case "len":
@@ -648,7 +657,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				newArr := make([]*Var, len(arr.Data), len(arr.Data)+len(args)-1)
 				copy(newArr, arr.Data)
 				newArr = append(newArr, args[1:]...)
-				session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: newArr}, Type: args[0].Type})
+				v := &Var{VType: TypeArray, Ref: &VMArray{Data: newArr}}
+				v.SetRuntimeType(args[0].RuntimeType())
+				session.ValueStack.Push(v)
 				return nil
 			case TypeBytes:
 				buf := make([]byte, len(args[0].B))
@@ -659,7 +670,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 						buf = append(buf, byte(val))
 					}
 				}
-				session.ValueStack.Push(&Var{VType: TypeBytes, B: buf, Type: args[0].Type})
+				v := &Var{VType: TypeBytes, B: buf}
+				v.SetRuntimeType(args[0].RuntimeType())
+				session.ValueStack.Push(v)
 				return nil
 			}
 			return &VMError{Message: "append requires array or bytes as first argument", IsPanic: true}
@@ -802,7 +815,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			session.ValueStack.Push(NewBool(false))
 			return nil
 		case "new":
-			if len(args) < 1 || args[0] == nil || (args[0].VType != TypeString && args[0].Type != "String") {
+			if len(args) < 1 || args[0] == nil || (args[0].VType != TypeString && !args[0].RuntimeType().IsString()) {
 				return &VMError{Message: "new requires a type string as argument", IsPanic: true}
 			}
 			tStr := args[0].Str
@@ -810,7 +823,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
 				innerType = tStr[4 : len(tStr)-1]
 			}
-			val := e.initializeType(session, ast.GoMiniType(innerType), 0)
+			val := e.initializeType(session, MustParseRuntimeType(ast.GoMiniType(innerType)), 0)
 
 			// For internal "heap" simulation, we can use a non-zero handle ID.
 			// Since we only need it to be non-nil for the test, and ideally it should
@@ -820,9 +833,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			res := &Var{
 				VType:  TypeHandle,
 				Handle: internalID,
-				Type:   ast.GoMiniType("Ptr<" + innerType + ">"),
 				Ref:    val, // Store the actual value in Ref for potential future dereference
 			}
+			res.SetRawType(ast.GoMiniType("Ptr<" + innerType + ">"))
 			session.ValueStack.Push(res)
 			return nil
 		}
@@ -923,7 +936,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	if fn, ok := e.lookupFunction(name); ok {
 		return e.setupFuncCall(session, name, &DoCallData{
 			Name:         name,
-			FunctionType: fn.FunctionType,
+			FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
 			BodyTasks:    cloneTasks(fn.BodyTasks),
 			Args:         args,
 		}, args, nil)
@@ -946,19 +959,22 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	old := session.Stack
 	oldExec := session.Executor
 	oldShared := session.Shared
-	ft := ast.FunctionType{}
+	var sig *RuntimeFuncSig
 	var bodyTasks []Task
 	if closure != nil {
-		ft = closure.FunctionType
+		sig = cloneRuntimeFuncSig(closure.FunctionSig)
 		bodyTasks = closure.BodyTasks
 	}
 	if fn != nil {
-		if len(ft.Params) == 0 && ft.Return == "" {
-			ft = fn.FunctionType
+		if sig == nil {
+			sig = cloneRuntimeFuncSig(fn.FunctionSig)
 		}
 		if len(bodyTasks) == 0 {
 			bodyTasks = fn.BodyTasks
 		}
+	}
+	if sig == nil {
+		sig = MustParseRuntimeFuncSig("function() Void")
 	}
 
 	// Default lexical scope is global
@@ -998,21 +1014,27 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	}
 
 	// Inject params
-	for i, p := range ft.Params {
+	for i, p := range sig.Function.Params {
 		paramSym := SymbolRef{Name: string(p.Name), Kind: SymbolLocal, Slot: i}
-		_ = session.DeclareSymbol(paramSym, p.Type)
-		if ft.Variadic && i == len(ft.Params)-1 {
+		paramType := sig.ParamTypes[i]
+		if sig != nil && i < len(sig.ParamTypes) {
+			paramType = sig.ParamTypes[i]
+		}
+		_ = session.DeclareSymbol(paramSym, paramType)
+		if sig.Function.Variadic && i == len(sig.Function.Params)-1 {
 			var variadicArgs []*Var
 			if i < len(args) {
 				variadicArgs = args[i:]
 			}
-			_ = session.StoreSymbol(paramSym, &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}, Type: p.Type})
+			arr := &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}}
+			arr.SetRuntimeType(paramType)
+			_ = session.StoreSymbol(paramSym, arr)
 		} else if i < len(args) && args[i] != nil {
 			_ = session.StoreSymbol(paramSym, args[i])
 		}
 	}
-	if !ft.Return.IsVoid() {
-		_ = session.InitReturn(ft.Return)
+	if !sig.ReturnType.IsVoid() {
+		_ = session.InitReturn(sig.ReturnType)
 	}
 
 	// Push CallBoundary
@@ -1023,7 +1045,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			OldStack:  old,
 			OldExec:   oldExec,
 			OldShared: oldShared,
-			HasReturn: !ft.Return.IsVoid(),
+			HasReturn: !sig.ReturnType.IsVoid(),
 			ValueBase: session.ValueStack.Len(),
 			LHSBase:   session.LHSStack.Len(),
 		},
@@ -1050,43 +1072,49 @@ func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []
 	return nil
 }
 
-func (e *Executor) initializeType(ctx *StackContext, t ast.GoMiniType, depth int) *Var {
+func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *Var {
 	if depth > 10 {
-		return &Var{VType: TypeAny, Type: t}
+		return NewVarWithRuntimeType(t, TypeAny)
 	}
 
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
 	shape := t
-	if resolved, ok, err := e.resolveNamedTypeChain(t); err == nil && ok {
-		shape = resolved.Raw
+	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw); err == nil && ok {
+		shape = resolved
 	}
 
 	if shape.IsPtr() {
-		return &Var{VType: TypeHandle, Handle: 0, Type: t}
+		v := &Var{VType: TypeHandle, Handle: 0}
+		v.SetRuntimeType(t)
+		return v
 	}
 
 	if shape.IsInterface() {
-		return &Var{VType: TypeInterface, Type: t, Ref: nil}
+		v := &Var{VType: TypeInterface, Ref: nil}
+		v.SetRuntimeType(t)
+		return v
 	}
 
 	if shape.IsArray() || shape.IsMap() || shape.IsAny() {
-		return &Var{VType: TypeAny, Type: t}
+		return NewVarWithRuntimeType(t, TypeAny)
 	}
 
 	// 基础类型初始化
 	zero := shape.ZeroVar()
 	res := e.ToVar(ctx, zero, nil)
 	if res != nil {
-		res.Type = t // 还原为用户请求的命名类型
+		res.SetRuntimeType(t) // 还原为用户请求的命名类型
 		return res
 	}
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.resolveStructSchema(shape); ok {
+	if sDef, ok := e.resolveStructSchema(shape.Raw); ok {
 		for _, field := range sDef.Fields {
-			mData[field.Name] = e.initializeType(ctx, field.Type, depth+1)
+			mData[field.Name] = e.initializeType(ctx, field.TypeInfo, depth+1)
 		}
 	}
-	return &Var{VType: TypeMap, Ref: &VMMap{Data: mData}, Type: t}
+	v := &Var{VType: TypeMap, Ref: &VMMap{Data: mData}}
+	v.SetRuntimeType(t)
+	return v
 }

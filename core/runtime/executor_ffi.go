@@ -153,7 +153,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 
 type ffiCopyBackTarget struct {
 	LHS  LHSValue
-	Type ast.GoMiniType
+	Type RuntimeType
 }
 
 func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
@@ -196,7 +196,7 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, args []*Var,
 		if current == nil || current.VType != TypeBytes {
 			return nil, fmt.Errorf("inout bytes argument %d must be TypeBytes", idx)
 		}
-		targets = append(targets, ffiCopyBackTarget{LHS: argLHS[idx], Type: current.Type})
+		targets = append(targets, ffiCopyBackTarget{LHS: argLHS[idx], Type: current.RuntimeType()})
 	}
 	return targets, nil
 }
@@ -204,7 +204,7 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, args []*Var,
 func (e *Executor) applyFFICopyBack(session *StackContext, target ffiCopyBackTarget, data []byte) error {
 	next := NewBytes(data)
 	if !target.Type.IsEmpty() {
-		next.Type = target.Type
+		next.SetRuntimeType(target.Type)
 	}
 	return e.storeAddress(session, target.LHS, next)
 }
@@ -216,7 +216,7 @@ func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeTy
 func (e *Executor) deserializeRuntimeType(session *StackContext, reader *ffigo.Reader, typ RuntimeType, bridge ffigo.FFIBridge) (*Var, error) {
 	res, err := e.deserializeParsedType(session, reader, typ, bridge)
 	if res != nil {
-		res.Type = typ.Raw
+		res.SetRuntimeType(typ)
 		if session != nil && session.Stack != nil {
 			res.stack = weak.Make(session.Stack)
 		}
@@ -256,7 +256,9 @@ func (e *Executor) deserializeStructSchema(session *StackContext, reader *ffigo.
 		}
 		resMap[field.Name] = val
 	}
-	return &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}, Type: schema.Spec}, nil
+	v := &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+	v.SetRuntimeType(schema.TypeInfo)
+	return v, nil
 }
 
 func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType) error {
@@ -538,11 +540,8 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 }
 
 func (e *Executor) lookupAnyStructSchema(v *Var) (*RuntimeStructSpec, bool) {
-	if v == nil || v.Type.IsEmpty() || v.Type.IsMap() || v.Type == ast.TypeAny {
-		return nil, false
-	}
-	typeInfo, err := ParseRuntimeType(v.Type)
-	if err != nil {
+	typeInfo := v.RuntimeType()
+	if v == nil || typeInfo.IsEmpty() || typeInfo.IsMap() || typeInfo.IsAny() {
 		return nil, false
 	}
 	if typeInfo.Kind == RuntimeTypeStruct || typeInfo.Kind == RuntimeTypeNamed {
@@ -591,7 +590,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
 		}
-		res = &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h, Type: "TypeHandle"}
+		res = &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
+		res.SetRawType("TypeHandle")
 	case ffigo.InterfaceData:
 		var ifaceStr strings.Builder
 		ifaceStr.WriteString("interface{")
@@ -610,7 +610,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		ifaceStr.WriteString("}")
 		ifaceSpec, _ := ParseRuntimeInterfaceSpec(ast.GoMiniType(ifaceStr.String()))
 
-		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge, Type: "TypeHandle"}
+		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge}
+		target.SetRawType("TypeHandle")
 		if v.Handle != 0 {
 			h := NewVMHandle(v.Handle, bridge)
 			target.Ref = h
@@ -640,8 +641,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			Ref:    errObj,
 			Bridge: bridge,
 			Handle: v.Handle,
-			Type:   "Error",
 		}
+		res.SetRawType("Error")
 	case map[string]interface{}:
 		resMap := make(map[string]*Var)
 		for k, raw := range v {
@@ -662,7 +663,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
 	case *ffigo.VMPointer:
 		inner := e.ToVar(session, v.Value, bridge)
-		res = &Var{VType: TypeHandle, Type: "Ptr<Any>", Ref: inner}
+		res = &Var{VType: TypeHandle, Ref: inner}
+		res.SetRawType("Ptr<Any>")
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
 	}
@@ -682,11 +684,11 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 	}
 	res := &Var{
 		VType:  TypeAny,
-		Type:   ast.TypeAny,
 		Ref:    inner,
 		Bridge: inner.Bridge,
 		Handle: inner.Handle,
 	}
+	res.SetRawType(ast.TypeAny)
 	if session != nil && session.Stack != nil {
 		res.stack = weak.Make(session.Stack)
 	}
@@ -921,7 +923,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		return nil, err
 	}
 	if res != nil {
-		res.Type = typ.Raw
+		res.SetRuntimeType(typ)
 		if session != nil && session.Stack != nil {
 			res.stack = weak.Make(session.Stack)
 		}

@@ -207,7 +207,7 @@ func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
 		typ = expr.GetBase().Type
 	}
 	if typ.IsEmpty() && res != nil {
-		typ = res.Type
+		typ = res.RawType()
 	}
 	if typ.IsVoid() {
 		return []*runtime.Var{}
