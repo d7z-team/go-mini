@@ -50,13 +50,15 @@ type MiniExecutor struct {
 	moduleBytecode map[string]*bytecode.Program
 	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
 	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
+	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }
 
 type ExportedSchemaSnapshot struct {
-	Funcs   map[ast.Ident]*runtime.RuntimeFuncSig
-	Structs map[ast.Ident]*runtime.RuntimeStructSpec
+	Funcs      map[ast.Ident]*runtime.RuntimeFuncSig
+	Structs    map[ast.Ident]*runtime.RuntimeStructSpec
+	Interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec
 }
 
 func (e *MiniExecutor) SetMaxTypeDepth(depth int) {
@@ -196,9 +198,38 @@ func (p *MiniProgram) LastSession() *runtime.StackContext {
 	return p.executor.LastSession()
 }
 
+func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
+	typ := ast.GoMiniType("")
+	if expr != nil {
+		typ = expr.GetBase().Type
+	}
+	if typ.IsEmpty() && res != nil {
+		typ = res.Type
+	}
+	if typ.IsVoid() {
+		return []*runtime.Var{}
+	}
+	if !typ.IsTuple() {
+		if res == nil {
+			return []*runtime.Var{}
+		}
+		return []*runtime.Var{res}
+	}
+	if res == nil || res.VType != runtime.TypeArray {
+		if res == nil {
+			return []*runtime.Var{}
+		}
+		return []*runtime.Var{res}
+	}
+	if arr, ok := res.Ref.(*runtime.VMArray); ok {
+		return arr.Data
+	}
+	return []*runtime.Var{res}
+}
+
 // Eval 在当前程序的语境下执行单个 Go 表达式
 // 这允许你调用程序中定义的函数或访问全局变量
-func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
+func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
 	expr, err := compiler.New(compiler.Config{}).CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
@@ -244,11 +275,15 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 		_ = session.AddVariable(k, p.executor.ToVar(session, v, nil))
 	}
 
-	return p.executor.ExecExpr(session, expr)
+	res, err := p.executor.ExecExpr(session, expr)
+	if err != nil {
+		return nil, err
+	}
+	return unpackEvalResult(expr, res), nil
 }
 
 // MustEval 类似于 Eval，但在出错时会触发 panic
-func (p *MiniProgram) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
+func (p *MiniProgram) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) []*runtime.Var {
 	res, err := p.Eval(ctx, exprStr, env)
 	if err != nil {
 		panic(err)
@@ -312,6 +347,7 @@ func NewMiniExecutor() *MiniExecutor {
 		moduleBytecode: make(map[string]*bytecode.Program),
 		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
 		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
 		MaxTypeDepth:   256,
 	}
 
@@ -408,6 +444,9 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 	for name, spec := range e.structsMeta {
 		executor.RegisterStructSchema(string(name), spec)
 	}
+	for name, spec := range e.interfacesMeta {
+		executor.RegisterInterfaceSchema(string(name), spec)
+	}
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
 	}
@@ -416,11 +455,12 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	schema := e.ExportedSchema()
 	return compiler.New(compiler.Config{
-		ModuleLoader:  e.moduleASTLoader(),
-		FuncSchemas:   schema.Funcs,
-		StructSchemas: schema.Structs,
-		Constants:     e.GetExportedConstants(),
-		MaxTypeDepth:  e.MaxTypeDepth,
+		ModuleLoader:     e.moduleASTLoader(),
+		FuncSchemas:      schema.Funcs,
+		StructSchemas:    schema.Structs,
+		InterfaceSchemas: schema.Interfaces,
+		Constants:        e.GetExportedConstants(),
+		MaxTypeDepth:     e.MaxTypeDepth,
 	})
 }
 
@@ -573,6 +613,12 @@ func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeSt
 	e.registerStructSchemaLocked(name, spec)
 }
 
+func (e *MiniExecutor) RegisterInterfaceSchema(name string, spec *runtime.RuntimeInterfaceSpec) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.registerInterfaceSchemaLocked(name, spec)
+}
+
 // DeclareStructSchema 仅用于在验证阶段声明一个合法的外部结构体 schema。
 func (e *MiniExecutor) DeclareStructSchema(name string, spec *runtime.RuntimeStructSpec) {
 	e.mu.Lock()
@@ -580,19 +626,29 @@ func (e *MiniExecutor) DeclareStructSchema(name string, spec *runtime.RuntimeStr
 	e.registerStructSchemaLocked(name, spec)
 }
 
+func (e *MiniExecutor) DeclareInterfaceSchema(name string, spec *runtime.RuntimeInterfaceSpec) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.registerInterfaceSchemaLocked(name, spec)
+}
+
 func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
 	res := &ExportedSchemaSnapshot{
-		Funcs:   make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
-		Structs: make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
+		Funcs:      make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
+		Structs:    make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
+		Interfaces: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
 	}
 	for k, v := range e.funcSchemas {
 		res.Funcs[k] = cloneRuntimeFuncSig(v)
 	}
 	for k, v := range e.structsMeta {
 		res.Structs[k] = cloneRuntimeStructSpec(v)
+	}
+	for k, v := range e.interfacesMeta {
+		res.Interfaces[k] = cloneRuntimeInterfaceSpec(v)
 	}
 	return res
 }
@@ -776,7 +832,7 @@ func (e *MiniExecutor) injectEnv(session *runtime.StackContext, env map[string]i
 }
 
 // Eval 执行单个 Go 表达式字符串
-func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) (*runtime.Var, error) {
+func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
 	expr, err := e.newCompiler().CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
@@ -793,11 +849,15 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 
 	e.injectEnv(session, env)
 
-	return executor.ExecExpr(session, expr)
+	res, err := executor.ExecExpr(session, expr)
+	if err != nil {
+		return nil, err
+	}
+	return unpackEvalResult(expr, res), nil
 }
 
 // MustEval 类似于 Eval，但在出错时会触发 panic
-func (e *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) *runtime.Var {
+func (e *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[string]interface{}) []*runtime.Var {
 	res, err := e.Eval(ctx, exprStr, env)
 	if err != nil {
 		panic(err)
@@ -816,16 +876,20 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 
 	// 构建临时程序以便验证
 	program := &ast.ProgramStmt{
-		BaseNode:  ast.BaseNode{ID: "snippet", Meta: "boot"},
-		Main:      stmts,
-		Structs:   make(map[ast.Ident]*ast.StructStmt),
-		Constants: make(map[string]string),
+		BaseNode:   ast.BaseNode{ID: "snippet", Meta: "boot"},
+		Main:       stmts,
+		Structs:    make(map[ast.Ident]*ast.StructStmt),
+		Interfaces: make(map[ast.Ident]*ast.InterfaceStmt),
+		Constants:  make(map[string]string),
 	}
 	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
 	e.mu.RLock()
 	for _, s := range e.modules {
 		for name, sDef := range s.Structs {
 			program.Structs[name] = sDef
+		}
+		for name, iDef := range s.Interfaces {
+			program.Interfaces[name] = iDef
 		}
 		for name, cDef := range s.Constants {
 			program.Constants[name] = cDef
@@ -897,10 +961,11 @@ type ExportedMetadata struct {
 }
 
 type ExportedModule struct {
-	Functions map[string]string          `json:"functions"` // 函数名 -> 签名
-	Structs   map[string]*ExportedStruct `json:"structs"`   // 结构体名 -> 结构体信息
-	Constants map[string]string          `json:"constants"` // 模块内常量
-	Doc       string                     `json:"doc,omitempty"`
+	Functions  map[string]string          `json:"functions"`  // 函数名 -> 签名
+	Structs    map[string]*ExportedStruct `json:"structs"`    // 结构体名 -> 结构体信息
+	Interfaces map[string]string          `json:"interfaces"` // 接口名 -> 签名
+	Constants  map[string]string          `json:"constants"`  // 模块内常量
+	Doc        string                     `json:"doc,omitempty"`
 }
 
 type ExportedStruct struct {
@@ -923,9 +988,10 @@ func (e *MiniExecutor) ExportMetadata() string {
 	getModule := func(name string) *ExportedModule {
 		if _, ok := meta.Modules[name]; !ok {
 			meta.Modules[name] = &ExportedModule{
-				Functions: make(map[string]string),
-				Structs:   make(map[string]*ExportedStruct),
-				Constants: make(map[string]string),
+				Functions:  make(map[string]string),
+				Structs:    make(map[string]*ExportedStruct),
+				Interfaces: make(map[string]string),
+				Constants:  make(map[string]string),
 			}
 		}
 		return meta.Modules[name]
@@ -948,6 +1014,15 @@ func (e *MiniExecutor) ExportMetadata() string {
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
 			meta.Builtins[sName] = e.formatSchemaWithDoc(spec.Spec, "", spec)
 		}
+	}
+
+	for name, spec := range e.interfacesMeta {
+		sName := string(name)
+		if !strings.Contains(sName, ".") {
+			continue
+		}
+		parts := strings.SplitN(sName, ".", 2)
+		getModule(parts[0]).Interfaces[parts[1]] = string(spec.Spec)
 	}
 
 	// 2. 处理 FFI Routes 和 Methods
@@ -1002,6 +1077,11 @@ func (e *MiniExecutor) ExportMetadata() string {
 				}
 			}
 		}
+		for ifaceName, ifaceStmt := range prog.Interfaces {
+			if len(ifaceName) > 0 && ifaceName[0] >= 'A' && ifaceName[0] <= 'Z' {
+				mod.Interfaces[string(ifaceName)] = string(ifaceStmt.Type)
+			}
+		}
 		// 导出常量
 		for cName, cVal := range prog.Constants {
 			if len(cName) > 0 && cName[0] >= 'A' && cName[0] <= 'Z' {
@@ -1047,6 +1127,17 @@ func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.Run
 		return
 	}
 	delete(e.structsMeta, ast.Ident(name))
+}
+
+func (e *MiniExecutor) registerInterfaceSchemaLocked(name string, spec *runtime.RuntimeInterfaceSpec) {
+	if spec != nil {
+		if existing, ok := e.interfacesMeta[ast.Ident(name)]; ok && existing.Spec != spec.Spec {
+			panic(fmt.Sprintf("ffi interface schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+		}
+		e.interfacesMeta[ast.Ident(name)] = spec
+		return
+	}
+	delete(e.interfacesMeta, ast.Ident(name))
 }
 
 func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.RuntimeFuncSig) {
@@ -1200,6 +1291,7 @@ func cloneRuntimeFuncSig(sig *runtime.RuntimeFuncSig) *runtime.RuntimeFuncSig {
 	res := *sig
 	res.Function.Params = append([]ast.FunctionParam(nil), sig.Function.Params...)
 	res.ParamTypes = append([]runtime.RuntimeType(nil), sig.ParamTypes...)
+	res.ParamModes = append([]runtime.FFIParamMode(nil), sig.ParamModes...)
 	return &res
 }
 
@@ -1217,6 +1309,35 @@ func cloneRuntimeStructSpec(spec *runtime.RuntimeStructSpec) *runtime.RuntimeStr
 	}
 	for k, v := range spec.ByName {
 		res.ByName[k] = v
+	}
+	return res
+}
+
+func cloneRuntimeInterfaceSpec(spec *runtime.RuntimeInterfaceSpec) *runtime.RuntimeInterfaceSpec {
+	if spec == nil {
+		return nil
+	}
+	res := &runtime.RuntimeInterfaceSpec{
+		TypeID:      spec.TypeID,
+		Spec:        spec.Spec,
+		TypeInfo:    spec.TypeInfo,
+		Methods:     make([]runtime.RuntimeInterfaceMethod, len(spec.Methods)),
+		ByName:      make(map[string]*runtime.RuntimeFuncSig, len(spec.ByName)),
+		MethodIndex: make(map[string]int, len(spec.MethodIndex)),
+	}
+	res.TypeInfo.Methods = append([]runtime.RuntimeInterfaceMethod(nil), spec.TypeInfo.Methods...)
+	for i, method := range spec.Methods {
+		res.Methods[i] = runtime.RuntimeInterfaceMethod{
+			Index: method.Index,
+			Name:  method.Name,
+			Spec:  cloneRuntimeFuncSig(method.Spec),
+		}
+	}
+	for k, v := range spec.ByName {
+		res.ByName[k] = cloneRuntimeFuncSig(v)
+	}
+	for k, v := range spec.MethodIndex {
+		res.MethodIndex[k] = v
 	}
 	return res
 }

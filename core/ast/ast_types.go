@@ -530,14 +530,18 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 
 	s := string(o)
 	if strings.Contains(s, ".") {
+		resolved := o
 		parts := strings.SplitN(s, ".", 2)
 		if v != nil && v.root != nil {
 			if realPkg, ok := v.root.Imports[parts[0]]; ok {
-				return GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+				resolved = GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+			}
+			if actual, ok := v.root.types[Ident(resolved)]; ok && !actual.IsStruct() {
+				return actual.Resolve(v)
 			}
 		}
 		// 如果前缀不在导入表中，可能是 FFI 或动态注入的包名，保留原始形式
-		return o
+		return resolved
 	}
 	if v != nil && v.root != nil {
 		if actual, ok := v.root.types[Ident(o)]; ok {

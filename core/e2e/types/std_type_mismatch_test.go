@@ -31,10 +31,14 @@ func GetRes() string {
 		t.Fatalf("Failed to compile: %v", err)
 	}
 
-	res, err := prog.Eval(context.Background(), "GetRes()", nil)
+	results, err := prog.Eval(context.Background(), "GetRes()", nil)
 	if err != nil {
 		t.Fatalf("Failed to execute: %v", err)
 	}
+	if len(results) != 1 {
+		t.Fatalf("Eval returned %d values, want 1", len(results))
+	}
+	res := results[0]
 
 	if res.Str != "ok" {
 		t.Errorf("Expected 'ok', got '%s'", res.Str)

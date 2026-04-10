@@ -400,6 +400,7 @@ func RegisterRegexp(executor interface{ RegisterConstant(string, string) }, impl
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")

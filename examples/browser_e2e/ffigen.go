@@ -18,6 +18,14 @@ var other_Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Page
 
 var other_CdpSelector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.CdpSelector", ast.GoMiniType("struct { Click function(Ptr<other.CdpSelector>) Error; }"))
 
+var browser_BrowserModule_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{OpenBrowser(String) tuple(Ptr<other.Browser>, Error);}"))
+
+func RegisterBrowserModuleSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("browser.BrowserModule", browser_BrowserModule_FFI_InterfaceSchema)
+}
+
 const (
 	MethodID_BrowserModule_OpenBrowser = 1
 )
@@ -141,11 +149,21 @@ func RegisterBrowserModule(executor interface{ RegisterConstant(string, string) 
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterBrowserModuleSchema(registrar)
 	registrar.RegisterFFISchema("browser.OpenBrowser", bridge, BrowserModule_FFI_Schemas[0].MethodID, BrowserModule_FFI_Schemas[0].Sig, BrowserModule_FFI_Schemas[0].Doc)
+}
+
+var browser_BrowserService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{NewPage(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error);}"))
+
+func RegisterBrowserServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("browser.BrowserService", browser_BrowserService_FFI_InterfaceSchema)
 }
 
 const (
@@ -287,15 +305,25 @@ func RegisterBrowserService(executor interface{ RegisterConstant(string, string)
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterBrowserServiceSchema(registrar)
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("other.Browser.NewPage", bridge, BrowserService_FFI_Schemas[0].MethodID, BrowserService_FFI_Schemas[0].Sig, BrowserService_FFI_Schemas[0].Doc)
 	registerStructSchema("other.Browser", other_Browser_FFI_StructSchema)
+}
+
+var browser_PageService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Locator(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error);}"))
+
+func RegisterPageServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("browser.PageService", browser_PageService_FFI_InterfaceSchema)
 }
 
 const (
@@ -447,15 +475,25 @@ func RegisterPageService(executor interface{ RegisterConstant(string, string) },
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterPageServiceSchema(registrar)
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("other.Page.Locator", bridge, PageService_FFI_Schemas[0].MethodID, PageService_FFI_Schemas[0].Sig, PageService_FFI_Schemas[0].Doc)
 	registerStructSchema("other.Page", other_Page_FFI_StructSchema)
+}
+
+var browser_CdpSelectorService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Click(Ptr<other.CdpSelector>) Error;}"))
+
+func RegisterCdpSelectorServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("browser.CdpSelectorService", browser_CdpSelectorService_FFI_InterfaceSchema)
 }
 
 const (
@@ -582,10 +620,12 @@ func RegisterCdpSelectorService(executor interface{ RegisterConstant(string, str
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterCdpSelectorServiceSchema(registrar)
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}

@@ -78,12 +78,42 @@ func (f *File) Write(b []byte) (int64, error) {
 	return int64(n), err
 }
 
+// Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。
+func (f *File) Read(buf *ffigo.BytesRef) (int64, error) {
+	if f == nil || f.F == nil {
+		return 0, os.ErrInvalid
+	}
+	if buf == nil {
+		return 0, os.ErrInvalid
+	}
+	n, err := f.F.Read(buf.Value)
+	if n >= 0 && n <= len(buf.Value) {
+		buf.Value = buf.Value[:n]
+	}
+	return int64(n), err
+}
+
 // WriteAt 正常工作：支持偏移量写入
 func (f *File) WriteAt(b []byte, off int64) (int64, error) {
 	if f == nil || f.F == nil {
 		return 0, os.ErrInvalid
 	}
 	n, err := f.F.WriteAt(b, off)
+	return int64(n), err
+}
+
+// ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。
+func (f *File) ReadAt(buf *ffigo.BytesRef, off int64) (int64, error) {
+	if f == nil || f.F == nil {
+		return 0, os.ErrInvalid
+	}
+	if buf == nil {
+		return 0, os.ErrInvalid
+	}
+	n, err := f.F.ReadAt(buf.Value, off)
+	if n >= 0 && n <= len(buf.Value) {
+		buf.Value = buf.Value[:n]
+	}
 	return int64(n), err
 }
 
@@ -142,9 +172,12 @@ func (f *File) WriteNative(p []byte) (n int, err error) {
 func RegisterIOAll(executor interface {
 	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	RegisterConstant(string, string)
 }, impl IO, registry *ffigo.HandleRegistry,
 ) {
 	RegisterIO(executor, impl, registry)
+	RegisterReaderSchema(executor)
+	RegisterWriterSchema(executor)
 	RegisterFile(executor, registry)
 }

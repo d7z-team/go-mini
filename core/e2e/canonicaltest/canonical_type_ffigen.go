@@ -17,6 +17,14 @@ var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.
 
 var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", ast.GoMiniType("struct { Hello function(Ptr<b_other.Type>) String; }"))
 
+var test_canonical_TestCanonicalService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{NewA(String) Ptr<a_other.Type>;NewB(Int64) Ptr<b_other.Type>;}"))
+
+func RegisterTestCanonicalServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("test_canonical.TestCanonicalService", test_canonical_TestCanonicalService_FFI_InterfaceSchema)
+}
+
 const (
 	MethodID_TestCanonicalService_NewA = 1
 	MethodID_TestCanonicalService_NewB = 2
@@ -154,12 +162,22 @@ func RegisterTestCanonicalService(executor interface{ RegisterConstant(string, s
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterTestCanonicalServiceSchema(registrar)
 	registrar.RegisterFFISchema("test_canonical.NewA", bridge, TestCanonicalService_FFI_Schemas[0].MethodID, TestCanonicalService_FFI_Schemas[0].Sig, TestCanonicalService_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("test_canonical.NewB", bridge, TestCanonicalService_FFI_Schemas[1].MethodID, TestCanonicalService_FFI_Schemas[1].Sig, TestCanonicalService_FFI_Schemas[1].Doc)
+}
+
+var test_canonical_ATypeService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Hello(Ptr<a_other.Type>) String;}"))
+
+func RegisterATypeServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("test_canonical.ATypeService", test_canonical_ATypeService_FFI_InterfaceSchema)
 }
 
 const (
@@ -262,15 +280,25 @@ func RegisterATypeService(executor interface{ RegisterConstant(string, string) }
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterATypeServiceSchema(registrar)
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("a_other.Type.Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
 	registerStructSchema("a_other.Type", a_other_Type_FFI_StructSchema)
+}
+
+var test_canonical_BTypeService_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Hello(Ptr<b_other.Type>) String;}"))
+
+func RegisterBTypeServiceSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("test_canonical.BTypeService", test_canonical_BTypeService_FFI_InterfaceSchema)
 }
 
 const (
@@ -373,10 +401,12 @@ func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
+	RegisterBTypeServiceSchema(registrar)
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}

@@ -136,6 +136,14 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 				}
 			}
 			v.root.structs[ident] = vStru
+			continue
+		}
+		if t.IsInterface() {
+			v.root.types[ident] = t
+			v.root.interfaces[ident] = &InterfaceStmt{
+				Name: ident,
+				Type: t,
+			}
 		}
 	}
 	// 注入命名接口

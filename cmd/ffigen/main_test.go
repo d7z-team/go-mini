@@ -1,6 +1,8 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
 	"os"
 	"path/filepath"
 	"strings"
@@ -521,6 +523,124 @@ func TestDetectGenerationModeRejectsGeneratedFileInput(t *testing.T) {
 	}
 }
 
+func TestRunDirectoryModeFlattensEmbeddedInterfacesIntoSchema(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module io
+// ffigen:interface
+type Reader interface {
+	Read([]byte) (int64, error)
+}
+
+// ffigen:module io
+// ffigen:interface
+type Writer interface {
+	Write([]byte) (int64, error)
+}
+
+// ffigen:module io
+// ffigen:interface
+type ReadWriter interface {
+	Reader
+	Writer
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
+		t.Fatalf("expected flattened ReadWriter interface schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, "func RegisterReadWriterSchema(") {
+		t.Fatalf("expected schema registration helper for interface target")
+	}
+}
+
+func TestRunDirectoryModeSkipsUnmarkedInterfaces(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+type Reader interface {
+	Read([]byte) (int64, error)
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if strings.Contains(code, "RegisterReaderSchema") || strings.Contains(code, "type ReaderProxy") {
+		t.Fatalf("expected unmarked interface to be skipped, got:\n%s", code)
+	}
+}
+
+func TestRunDirectoryModeRejectsConflictingEmbeddedInterfaceMethods(t *testing.T) {
+	readerA := &ast.InterfaceType{
+		Methods: &ast.FieldList{List: []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("Read")},
+				Type:  mustParseFuncType(t, "func([]byte) (int64, error)"),
+			},
+		}},
+	}
+	readerB := &ast.InterfaceType{
+		Methods: &ast.FieldList{List: []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("Read")},
+				Type:  mustParseFuncType(t, "func(string) (int64, error)"),
+			},
+		}},
+	}
+	broken := &ast.InterfaceType{
+		Methods: &ast.FieldList{List: []*ast.Field{
+			{Type: ast.NewIdent("ReaderA")},
+			{Type: ast.NewIdent("ReaderB")},
+		}},
+	}
+
+	_, err := flattenInterfaceType("Broken", broken, map[string]*ast.InterfaceType{
+		"ReaderA": readerA,
+		"ReaderB": readerB,
+		"Broken":  broken,
+	})
+	if err == nil || !strings.Contains(err.Error(), "method conflict for Read") {
+		t.Fatalf("expected embedded interface conflict, got %v", err)
+	}
+}
+
 func makeModuleTempDir(t *testing.T) string {
 	t.Helper()
 	cwd, err := os.Getwd()
@@ -542,4 +662,17 @@ func writeTestFile(t *testing.T, dir, name, content string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
+}
+
+func mustParseFuncType(t *testing.T, src string) *ast.FuncType {
+	t.Helper()
+	expr, err := parser.ParseExpr(src)
+	if err != nil {
+		t.Fatalf("parse func type %q: %v", src, err)
+	}
+	fn, ok := expr.(*ast.FuncType)
+	if !ok {
+		t.Fatalf("parsed %q as %T", src, expr)
+	}
+	return fn
 }

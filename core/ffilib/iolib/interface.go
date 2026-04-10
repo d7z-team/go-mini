@@ -14,6 +14,18 @@ const (
 )
 
 // ffigen:module io
+// ffigen:interface
+type Reader interface {
+	Read(buf []byte) (int64, error)
+}
+
+// ffigen:module io
+// ffigen:interface
+type Writer interface {
+	Write(buf []byte) (int64, error)
+}
+
+// ffigen:module io
 type IO interface {
 	// ReadAll 读取所有数据
 	ReadAll(ctx context.Context, r any) ([]byte, error)

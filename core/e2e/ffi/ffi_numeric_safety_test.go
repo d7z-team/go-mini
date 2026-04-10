@@ -147,10 +147,14 @@ func TestFFINumericSafety(t *testing.T) {
 				t.Fatalf("Compile error: %v", err)
 			}
 
-			res, err := vm.Eval(context.Background(), "main()", nil)
+			results, err := vm.Eval(context.Background(), "main()", nil)
 			if tt.expectErr == "" {
 				if err != nil {
 					t.Errorf("Unexpected error: %v", err)
+				}
+				var res *runtime.Var
+				if len(results) > 0 {
+					res = results[0]
 				}
 				if res != nil && res.VType == runtime.TypeError {
 					t.Errorf("Unexpected TypeError: %v", res.Ref)

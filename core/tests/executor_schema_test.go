@@ -15,6 +15,7 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
 	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }"))
+	exec.RegisterInterfaceSchema("demo.Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}"))
 
 	schema := exec.ExportedSchema()
 	if schema == nil {
@@ -48,6 +49,9 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	}
 	if got := schema.Structs["demo.Payload"].Spec; got != "struct { Msg String; Count Int64; }" {
 		t.Fatalf("unexpected exported struct spec: %s", got)
+	}
+	if got := schema.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
+		t.Fatalf("unexpected exported interface spec: %s", got)
 	}
 }
 

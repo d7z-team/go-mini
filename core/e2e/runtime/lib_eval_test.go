@@ -36,20 +36,28 @@ func Add(a, b int) int {
 			"x": int64(10),
 			"y": int64(20),
 		}
-		res, err := prog.Eval(context.Background(), "Add(x, y)", env)
+		results, err := prog.Eval(context.Background(), "Add(x, y)", env)
 		if err != nil {
 			t.Fatalf("Eval Add failed: %v", err)
 		}
+		if len(results) != 1 {
+			t.Fatalf("Eval returned %d values, want 1", len(results))
+		}
+		res := results[0]
 		if res.I64 != 30 {
 			t.Errorf("Expected 30, got %d", res.I64)
 		}
 	})
 
 	t.Run("Call Factorial", func(t *testing.T) {
-		res, err := prog.Eval(context.Background(), "Factorial(5)", nil)
+		results, err := prog.Eval(context.Background(), "Factorial(5)", nil)
 		if err != nil {
 			t.Fatalf("Eval Factorial failed: %v", err)
 		}
+		if len(results) != 1 {
+			t.Fatalf("Eval returned %d values, want 1", len(results))
+		}
+		res := results[0]
 		if res.I64 != 120 {
 			t.Errorf("Expected 120, got %d", res.I64)
 		}
@@ -82,10 +90,14 @@ func Hello(name string) string {
 			"lib": lib,
 		}
 
-		res, err := executor.Eval(context.Background(), "lib.Hello(\"Mini\")", env)
+		results, err := executor.Eval(context.Background(), "lib.Hello(\"Mini\")", env)
 		if err != nil {
 			t.Fatalf("Eval with lib failed: %v", err)
 		}
+		if len(results) != 1 {
+			t.Fatalf("Eval returned %d values, want 1", len(results))
+		}
+		res := results[0]
 
 		if res.Str != "Hello, Mini" {
 			t.Errorf("Expected 'Hello, Mini', got %q", res.Str)

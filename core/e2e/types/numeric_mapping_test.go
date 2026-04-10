@@ -26,10 +26,14 @@ func main() int {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
 
-	res, err := vm.Eval(context.Background(), "main()", nil)
+	results, err := vm.Eval(context.Background(), "main()", nil)
 	if err != nil {
 		t.Fatalf("Failed to run main: %v", err)
 	}
+	if len(results) != 1 {
+		t.Fatalf("Eval returned %d values, want 1", len(results))
+	}
+	res := results[0]
 
 	// 1 + 2 + 3 + 4 + 5 + 6 + 7.5 = 28.5 -> cast to int = 28
 	if res.I64 != 28 {

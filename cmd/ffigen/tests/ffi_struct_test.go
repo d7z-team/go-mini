@@ -14,6 +14,7 @@ type Rect struct {
 	A Point
 	B Point
 }
+
 type MockShapeAPI interface {
 	GetRect() Rect
 	Area(r Rect) int64

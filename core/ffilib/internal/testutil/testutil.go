@@ -33,9 +33,12 @@ func Run(tb testing.TB, code string) {
 
 func Eval(tb testing.TB, code, expr string) *runtime.Var {
 	tb.Helper()
-	res, err := Program(tb, code).Eval(context.Background(), expr, nil)
+	results, err := Program(tb, code).Eval(context.Background(), expr, nil)
 	if err != nil {
 		tb.Fatalf("eval %q failed: %v", expr, err)
 	}
-	return res
+	if len(results) != 1 {
+		tb.Fatalf("eval %q returned %d values, want 1", expr, len(results))
+	}
+	return results[0]
 }

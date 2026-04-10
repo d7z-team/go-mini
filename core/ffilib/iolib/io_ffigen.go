@@ -12,7 +12,23 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
+var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); Read function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
+
+var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Read(TypeBytes) tuple(Int64, Error);}"))
+
+func RegisterReaderSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("io.Reader", io_Reader_FFI_InterfaceSchema)
+}
+
+var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Write(TypeBytes) tuple(Int64, Error);}"))
+
+func RegisterWriterSchema(executor interface {
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+}) {
+	executor.RegisterInterfaceSchema("io.Writer", io_Writer_FFI_InterfaceSchema)
+}
 
 const (
 	MethodID_IO_ReadAll     = 1
@@ -325,6 +341,7 @@ func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO,
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
@@ -339,14 +356,16 @@ func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO,
 
 const (
 	MethodID_File_Write       = 1
-	MethodID_File_WriteAt     = 2
-	MethodID_File_Seek        = 3
-	MethodID_File_Close       = 4
-	MethodID_File_Sync        = 5
-	MethodID_File_Truncate    = 6
-	MethodID_File_WriteString = 7
-	MethodID_File_Name        = 8
-	MethodID_File_WriteNative = 9
+	MethodID_File_Read        = 2
+	MethodID_File_WriteAt     = 3
+	MethodID_File_ReadAt      = 4
+	MethodID_File_Seek        = 5
+	MethodID_File_Close       = 6
+	MethodID_File_Sync        = 7
+	MethodID_File_Truncate    = 8
+	MethodID_File_WriteString = 9
+	MethodID_File_Name        = 10
+	MethodID_File_WriteNative = 11
 )
 
 func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
@@ -354,8 +373,12 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		switch methodName {
 		case "Write":
 			methodID = MethodID_File_Write
+		case "Read":
+			methodID = MethodID_File_Read
 		case "WriteAt":
 			methodID = MethodID_File_WriteAt
+		case "ReadAt":
+			methodID = MethodID_File_ReadAt
 		case "Seek":
 			methodID = MethodID_File_Seek
 		case "Close":
@@ -400,6 +423,37 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_File_Read:
+		var __recv *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				__recv = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var buf *ffigo.BytesRef
+		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		r0, err := __recv.Read(buf)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(1))
+		if buf == nil {
+			resBuf.WriteBytes(nil)
+		} else {
+			resBuf.WriteBytes(buf.Value)
+		}
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_File_WriteAt:
 		var __recv *File
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
@@ -419,6 +473,42 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		}
 		r0, err := __recv.WriteAt(b, off)
 		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_File_ReadAt:
+		var __recv *File
+		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetWithAudit(id); err == nil {
+				__recv = obj.(*File)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var buf *ffigo.BytesRef
+		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		var off int64
+		{
+			tmp := reqBuf.ReadVarint()
+			off = int64(tmp)
+		}
+		r0, err := __recv.ReadAt(buf, off)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(1))
+		if buf == nil {
+			resBuf.WriteBytes(nil)
+		} else {
+			resBuf.WriteBytes(buf.Value)
+		}
 		resBuf.WriteVarint(int64(r0))
 		if err != nil {
 			if registry != nil {
@@ -610,14 +700,16 @@ var File_FFI_Schemas = []struct {
 	Doc      string
 }{
 	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"WriteAt", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
-	{"Seek", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
-	{"Sync", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
-	{"Truncate", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"WriteString", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Name", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) String"), runtime.FFIParamIn), ""},
-	{"WriteNative", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
+	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
+	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
+	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) String"), runtime.FFIParamIn), ""},
+	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
 type File_Bridge struct {
@@ -645,6 +737,7 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 	registrar, ok := executor.(interface {
 		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
 		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
 	})
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
@@ -653,13 +746,15 @@ func RegisterFile(executor interface{ RegisterConstant(string, string) }, regist
 		registrar.RegisterStructSchema(name, spec)
 	}
 	registrar.RegisterFFISchema("io.File.Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("io.File.WriteAt", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("io.File.Seek", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("io.File.Close", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("io.File.Sync", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("io.File.Truncate", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("io.File.WriteString", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("io.File.Name", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("io.File.WriteNative", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("io.File.Read", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("io.File.WriteAt", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("io.File.ReadAt", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("io.File.Seek", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("io.File.Close", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("io.File.Sync", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("io.File.Truncate", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("io.File.WriteString", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("io.File.Name", bridge, File_FFI_Schemas[9].MethodID, File_FFI_Schemas[9].Sig, File_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("io.File.WriteNative", bridge, File_FFI_Schemas[10].MethodID, File_FFI_Schemas[10].Sig, File_FFI_Schemas[10].Doc)
 	registerStructSchema("io.File", io_File_FFI_StructSchema)
 }

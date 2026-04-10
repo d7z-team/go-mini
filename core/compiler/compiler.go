@@ -12,11 +12,12 @@ import (
 )
 
 type Config struct {
-	ModuleLoader  func(path string) (*ast.ProgramStmt, error)
-	FuncSchemas   map[ast.Ident]*runtime.RuntimeFuncSig
-	StructSchemas map[ast.Ident]*runtime.RuntimeStructSpec
-	Constants     map[string]string
-	MaxTypeDepth  int
+	ModuleLoader     func(path string) (*ast.ProgramStmt, error)
+	FuncSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
+	StructSchemas    map[ast.Ident]*runtime.RuntimeStructSpec
+	InterfaceSchemas map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	Constants        map[string]string
+	MaxTypeDepth     int
 }
 
 type Compiler struct {
@@ -162,7 +163,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 }
 
 func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
-	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas)
+	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas) + len(c.cfg.InterfaceSchemas)
 	if size == 0 {
 		return nil
 	}
@@ -175,6 +176,12 @@ func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
 		res[k] = v.Spec
 	}
 	for k, v := range c.cfg.StructSchemas {
+		if v == nil {
+			continue
+		}
+		res[k] = v.Spec
+	}
+	for k, v := range c.cfg.InterfaceSchemas {
 		if v == nil {
 			continue
 		}

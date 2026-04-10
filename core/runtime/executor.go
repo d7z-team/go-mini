@@ -330,6 +330,49 @@ func cloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
 	}
 }
 
+func cloneRuntimeInterfaceSpec(spec *RuntimeInterfaceSpec) *RuntimeInterfaceSpec {
+	if spec == nil {
+		return nil
+	}
+	methods := make([]RuntimeInterfaceMethod, len(spec.Methods))
+	byName := make(map[string]*RuntimeFuncSig, len(spec.ByName))
+	methodIndex := make(map[string]int, len(spec.MethodIndex))
+	for i, method := range spec.Methods {
+		methods[i] = RuntimeInterfaceMethod{
+			Index: method.Index,
+			Name:  method.Name,
+			Spec:  cloneRuntimeFuncSig(method.Spec),
+		}
+	}
+	for k, v := range spec.ByName {
+		byName[k] = cloneRuntimeFuncSig(v)
+	}
+	for k, v := range spec.MethodIndex {
+		methodIndex[k] = v
+	}
+	typeInfo := spec.TypeInfo
+	typeInfo.Methods = append([]RuntimeInterfaceMethod(nil), spec.TypeInfo.Methods...)
+	return &RuntimeInterfaceSpec{
+		TypeID:      spec.TypeID,
+		Spec:        spec.Spec,
+		TypeInfo:    typeInfo,
+		Methods:     methods,
+		ByName:      byName,
+		MethodIndex: methodIndex,
+	}
+}
+
+func cloneRuntimeFuncSig(sig *RuntimeFuncSig) *RuntimeFuncSig {
+	if sig == nil {
+		return nil
+	}
+	res := *sig
+	res.Function.Params = append([]ast.FunctionParam(nil), sig.Function.Params...)
+	res.ParamTypes = append([]RuntimeType(nil), sig.ParamTypes...)
+	res.ParamModes = append([]FFIParamMode(nil), sig.ParamModes...)
+	return &res
+}
+
 func (e *Executor) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
 	return e.metadata.resolveNamedType(typ)
 }
@@ -474,6 +517,19 @@ func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
 		spec = merged
 	}
 	e.metadata.registerStructSchema(name, spec)
+}
+
+func (e *Executor) RegisterInterfaceSchema(name string, spec *RuntimeInterfaceSpec) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if spec == nil {
+		e.metadata.registerInterfaceSpec(name, nil)
+		return
+	}
+	if existing, ok := e.metadata.interfacesByName[name]; ok && existing != nil && existing.Spec != spec.Spec {
+		panic(fmt.Sprintf("ffi interface schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+	}
+	e.metadata.registerInterfaceSpec(name, cloneRuntimeInterfaceSpec(spec))
 }
 
 func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
