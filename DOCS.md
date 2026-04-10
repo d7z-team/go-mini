@@ -240,11 +240,24 @@ type OrderAPI interface {
     New(id string) (*Order, error)
 }
 
-// ffigen:methods orderlib.Page
-type PageMethods interface {
-    Click(p *orderlib.Page) error
+// ffigen:methods
+type Page struct {
+    URL String
+}
+
+// ffigen:module io
+// ffigen:interface
+type Reader interface {
+    Read(buf []byte) (int64, error)
 }
 ```
+
+- `ffigen:module <name>`
+  定义 VM 暴露的模块名。
+- `ffigen:methods [prefix]`
+  只用于 `struct`，表示导出该结构体的方法集。
+- `ffigen:interface`
+  只用于命名 `interface`，表示额外导出一个 VM 命名接口 schema。
 
 ### 5.4 命名规则
 
@@ -265,6 +278,34 @@ type Browser interface {
 }
 ```
 
+这类是标准 FFI service interface，会生成完整的：
+
+- proxy
+- host router
+- bridge
+- `RegisterXxx(...)`
+
+如果输入是文件模式，普通命名 `interface` 也会按历史行为生成完整 FFI target。
+
+#### 命名接口 schema 导出
+
+```go
+// ffigen:module io
+// ffigen:interface
+type Reader interface {
+    Read(buf []byte) (int64, error)
+}
+```
+
+这类只生成：
+
+- `RuntimeInterfaceSpec`
+- `RegisterXxxSchema(...)`
+
+不会生成 proxy/router/bridge。当前主要用于把宿主命名接口暴露给 VM 类型系统，例如 `io.Reader`、`io.Writer`。
+
+目录模式下，只有显式标记 `ffigen:interface` 的命名接口才会按 schema-only 方式导出；未标记的普通命名接口会被跳过。
+
 #### 结构体方法集导出
 
 ```go
@@ -275,6 +316,8 @@ type Calculator struct {
 ```
 
 结构体上只写 `ffigen:methods` 时，默认使用结构体名作为方法集前缀。
+
+这类会生成结构体方法路由和对应 struct schema，不属于 `ffigen:interface`。
 
 ### 5.6 注册
 
