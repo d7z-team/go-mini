@@ -11,14 +11,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var storage_StorageAPI_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{SetCapacity(Int64) Void;GetStatus() Int64;}"))
-
-func RegisterStorageAPISchema(executor interface {
-	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-}) {
-	executor.RegisterInterfaceSchema("storage.StorageAPI", storage_StorageAPI_FFI_InterfaceSchema)
-}
-
 const (
 	MethodID_StorageAPI_SetCapacity = 1
 	MethodID_StorageAPI_GetStatus   = 2
@@ -137,7 +129,6 @@ func RegisterStorageAPI(executor interface{ RegisterConstant(string, string) }, 
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	RegisterStorageAPISchema(registrar)
 	registrar.RegisterFFISchema("storage.SetCapacity", bridge, StorageAPI_FFI_Schemas[0].MethodID, StorageAPI_FFI_Schemas[0].Sig, StorageAPI_FFI_Schemas[0].Doc)
 	registrar.RegisterFFISchema("storage.GetStatus", bridge, StorageAPI_FFI_Schemas[1].MethodID, StorageAPI_FFI_Schemas[1].Sig, StorageAPI_FFI_Schemas[1].Doc)
 }
