@@ -22,12 +22,11 @@ type Executor struct {
 	globals         map[ast.Ident]*RuntimeGlobal
 	functions       map[ast.Ident]*RuntimeFunction
 	mainTasks       []Task
-	program         *ast.ProgramStmt
 	globalInitOrder []ast.Ident
+	importAliases   map[string]string
 
 	routes map[string]FFIRoute
 
-	ModuleLoader     func(path string) (*ast.ProgramStmt, error)
 	ModulePlanLoader func(path string) (*ast.ProgramStmt, *PreparedProgram, error)
 
 	StepLimit int64
@@ -45,9 +44,9 @@ type RuntimeGlobal struct {
 }
 
 type RuntimeFunction struct {
-	Name         ast.Ident
-	FunctionSig  *RuntimeFuncSig
-	BodyTasks    []Task
+	Name        ast.Ident
+	FunctionSig *RuntimeFuncSig
+	BodyTasks   []Task
 }
 
 type runtimeMetadataRegistry struct {
@@ -175,8 +174,8 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		globalInitOrder = program.DeclaredGlobalOrder()
 	}
 	result := &Executor{
-		program:         program,
 		globalInitOrder: globalInitOrder,
+		importAliases:   make(map[string]string, len(program.Imports)),
 		metadata:        newRuntimeMetadataRegistry(),
 		globals:         make(map[ast.Ident]*RuntimeGlobal),
 		functions:       make(map[ast.Ident]*RuntimeFunction),
@@ -184,6 +183,14 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
+	}
+	for _, imp := range program.Imports {
+		alias := imp.Alias
+		if alias == "" {
+			parts := strings.Split(imp.Path, "/")
+			alias = parts[len(parts)-1]
+		}
+		result.importAliases[alias] = imp.Path
 	}
 	if program.Structs != nil {
 		for ident, stmt := range program.Structs {
@@ -227,8 +234,8 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 				continue
 			}
 			result.functions[ident] = &RuntimeFunction{
-				Name:         ident,
-				FunctionSig:  MustRuntimeFuncSigFromFunction(fn.FunctionType),
+				Name:        ident,
+				FunctionSig: MustRuntimeFuncSigFromFunction(fn.FunctionType),
 			}
 		}
 	}
@@ -281,7 +288,7 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
 		}
 		field := RuntimeStructField{
 			Name:     string(fieldName),
-			Type:     fieldType,
+			Type:     TypeSpec(fieldType),
 			TypeInfo: typeInfo,
 		}
 		fields = append(fields, field)
@@ -289,14 +296,14 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
 	}
 	typeInfo := RuntimeType{
 		Kind:   RuntimeTypeStruct,
-		Raw:    ast.GoMiniType(stmt.Name),
+		Raw:    TypeSpec(stmt.Name),
 		TypeID: CanonicalTypeID(string(stmt.Name)),
 		Fields: fields,
 	}
 	return &RuntimeStructSpec{
 		Name:     string(stmt.Name),
 		TypeID:   CanonicalTypeID(string(stmt.Name)),
-		Spec:     ast.GoMiniType(stmt.Name),
+		Spec:     TypeSpec(stmt.Name),
 		TypeInfo: typeInfo,
 		Layout:   buildStructLayout(fields),
 		Fields:   fields,
@@ -363,7 +370,7 @@ func cloneRuntimeFuncSig(sig *RuntimeFuncSig) *RuntimeFuncSig {
 		return nil
 	}
 	res := *sig
-	res.Function.Params = append([]ast.FunctionParam(nil), sig.Function.Params...)
+	res.ParamNames = append([]string(nil), sig.ParamNames...)
 	res.ParamTypes = append([]RuntimeType(nil), sig.ParamTypes...)
 	res.ParamModes = append([]FFIParamMode(nil), sig.ParamModes...)
 	return &res
@@ -392,10 +399,10 @@ func (e *Executor) resolveNamedTypeChain(typ ast.GoMiniType) (RuntimeType, bool,
 			}
 			return resolved, true, nil
 		}
-		if next.Raw == current {
+		if next.Raw.Ast() == current {
 			return next, true, nil
 		}
-		current = next.Raw
+		current = next.Raw.Ast()
 	}
 }
 
@@ -711,17 +718,13 @@ func (e *Executor) CleanupSession(session *StackContext) {
 	}
 }
 
-func (e *Executor) ExecExpr(ctx *StackContext, s ast.Expr) (*Var, error) {
-	return e.runExprPlan(ctx, e.tasksForExpr(s))
-}
-
 func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error) {
 	if val == nil {
 		return nil, errors.New("cannot assign nil to interface")
 	}
 
 	// 1. Exact match (handles named types and primitives directly)
-	if val.RuntimeType().Raw.Equals(interfaceType) {
+	if val.RuntimeType().Raw.Equals(TypeSpec(interfaceType)) {
 		return val.Copy(), nil
 	}
 
@@ -730,7 +733,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	if inner == nil {
 		inner = val
 	}
-	if inner.RuntimeType().Raw.Equals(interfaceType) {
+	if inner.RuntimeType().Raw.Equals(TypeSpec(interfaceType)) {
 		return inner.Copy(), nil
 	}
 
@@ -739,13 +742,13 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 		// 3. Resolve named type ONLY if it could be an interface or struct
 		if actual, ok := e.resolveNamedType(interfaceType); ok {
 			if actual.Kind == RuntimeTypeInterface {
-				return e.CheckSatisfaction(val, actual.Raw)
+				return e.CheckSatisfaction(val, actual.Raw.Ast())
 			}
 		}
 
 		// 4. Resolve named interface
 		if spec, ok := e.resolveInterfaceSpec(interfaceType); ok {
-			actualInterfaceType = spec.Spec
+			actualInterfaceType = spec.Spec.Ast()
 		} else {
 			// If it wasn't an exact match and isn't an interface, it fails (like Go)
 			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceType)
@@ -763,7 +766,8 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceType, method.Name)
 		}
 		callable, ok := e.resolveMethodValue(inner, method.Name)
-		if !ok || !e.isCallableCompatible(callable, &method.Spec.Function) {
+		expected := method.Spec.FunctionType()
+		if !ok || !e.isCallableCompatible(callable, &expected) {
 			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, method.Name)
 		}
 		vtable[method.Index] = callable
@@ -845,12 +849,17 @@ func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) b
 	}
 	if v.VType == TypeClosure {
 		if cl, ok := v.Ref.(*VMClosure); ok {
-			return cl.FunctionSig != nil && e.isSignatureCompatible(&cl.FunctionSig.Function, expectedSig)
+			if cl.FunctionSig == nil {
+				return false
+			}
+			actual := cl.FunctionSig.FunctionType()
+			return e.isSignatureCompatible(&actual, expectedSig)
 		}
 	}
 	if route, ok := v.Ref.(FFIRoute); ok {
 		if route.FuncSig != nil {
-			return e.isSignatureCompatible(&route.FuncSig.Function, expectedSig)
+			actual := route.FuncSig.FunctionType()
+			return e.isSignatureCompatible(&actual, expectedSig)
 		}
 	}
 	return true // 默认放行，由运行期进一步处理
@@ -948,9 +957,9 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 				},
 			})
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
-				Name:         string(fn.Name),
-				FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
-				BodyTasks:    cloneTasks(fn.BodyTasks),
+				Name:        string(fn.Name),
+				FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+				BodyTasks:   cloneTasks(fn.BodyTasks),
 			}})
 
 			// Start run loop again for main func
@@ -1249,18 +1258,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		if err != nil {
 			exec := session.Executor
-			if exec != nil && exec.program != nil {
-				for _, imp := range exec.program.Imports {
-					alias := imp.Alias
-					if alias == "" {
-						parts := strings.Split(imp.Path, "/")
-						alias = parts[len(parts)-1]
-					}
-					if alias == name {
-						if mod, ok := session.Shared.Module(imp.Path); ok {
-							session.ValueStack.Push(mod)
-							return nil
-						}
+			if exec != nil {
+				if path, ok := exec.importAliases[name]; ok {
+					if mod, ok := session.Shared.Module(path); ok {
+						session.ValueStack.Push(mod)
+						return nil
 					}
 				}
 			}
@@ -1723,7 +1725,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			return errors.New("OpAssert missing AssertData")
 		}
-		res, err := e.CheckSatisfaction(val, targetType.Raw)
+		res, err := e.CheckSatisfaction(val, targetType.Raw.Ast())
 		if multi {
 			if err != nil {
 				// 返回 (nil, false)
@@ -2058,19 +2060,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.ValueStack.Push(res)
 				return nil
 			}
-		} else if e.ModuleLoader != nil {
-			prog, err := e.ModuleLoader(path)
-			if err == nil {
-				session.Shared.SetModuleLoading(path, true)
-				res, err := e.executeImportedProgram(session, path, prog, nil)
-				session.Shared.SetModuleLoading(path, false)
-				if err != nil {
-					return err
-				}
-				session.Shared.StoreModule(path, res)
-				session.ValueStack.Push(res)
-				return nil
-			}
 		}
 
 		// Fallback to FFI
@@ -2193,7 +2182,7 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 			continue
 		}
 		if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
-			raw := targetType.Raw
+			raw := targetType.Raw.Ast()
 			if raw == "nil" || raw == "Any" || raw == "interface{}" {
 				return true
 			}
@@ -2232,13 +2221,13 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 		}
 
 		if targetType.IsInterface() {
-			if _, err := e.CheckSatisfaction(tag, targetType.Raw); err == nil {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw.Ast()); err == nil {
 				return true
 			}
 			continue
 		}
-		if _, ok := e.resolveInterfaceSpec(targetType.Raw); ok {
-			if _, err := e.CheckSatisfaction(tag, targetType.Raw); err == nil {
+		if _, ok := e.resolveInterfaceSpec(targetType.Raw.Ast()); ok {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw.Ast()); err == nil {
 				return true
 			}
 		}
@@ -2619,76 +2608,68 @@ func (e *Executor) Disassemble() (res string) {
 		}
 	}()
 
-	if e.program == nil {
-		return "; Error: no program loaded\n"
-	}
 	var sb strings.Builder
 	sb.WriteString("; Go-Mini VM Disassembly\n")
-	fmt.Fprintf(&sb, "; Total Variables: %d\n", len(e.program.Variables))
-	fmt.Fprintf(&sb, "; Total Functions: %d\n\n", len(e.program.Functions))
+	fmt.Fprintf(&sb, "; Total Variables: %d\n", len(e.globals))
+	fmt.Fprintf(&sb, "; Total Functions: %d\n\n", len(e.functions))
 
-	// 1. Export Global Initialization
 	sb.WriteString("section .data:\n")
-	for name, expr := range e.program.Variables {
+	globalKeys := make([]string, 0, len(e.globals))
+	for name := range e.globals {
+		globalKeys = append(globalKeys, string(name))
+	}
+	sort.Strings(globalKeys)
+	for _, key := range globalKeys {
+		name := ast.Ident(key)
+		global := e.globals[name]
 		fmt.Fprintf(&sb, "  global %s\n", name)
-		e.disassembleNode(&sb, "    ", expr, true)
+		fmt.Fprintf(&sb, "global.%s:\n", name)
+		if global != nil {
+			e.disassembleTasks(&sb, "  ", global.InitPlan)
+		}
 	}
 	sb.WriteString("\n")
 
-	// 2. Export Main body / Functions
 	sb.WriteString("section .text:\n")
-	if len(e.program.Main) > 0 {
-		sb.WriteString("main:\n")
-		for _, stmt := range e.program.Main {
-			e.disassembleNode(&sb, "  ", stmt, false)
-		}
+	if len(e.mainTasks) > 0 {
+		sb.WriteString("global _start\n")
+		sb.WriteString("_start:\n")
+		e.disassembleTasks(&sb, "  ", e.mainTasks)
 		sb.WriteString("\n")
 	}
 
-	// 3. Export Functions
-	keys := make([]string, 0, len(e.program.Functions))
-	for k := range e.program.Functions {
+	keys := make([]string, 0, len(e.functions))
+	for k := range e.functions {
 		keys = append(keys, string(k))
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		f := e.program.Functions[ast.Ident(k)]
-		// Format signature nicely: (param1, param2) return
-		params := []string{}
-		for i, p := range f.Params {
-			prefix := ""
-			if f.Variadic && i == len(f.Params)-1 {
-				prefix = "..."
-			}
-			params = append(params, prefix+string(p.Type))
+		f := e.functions[ast.Ident(k)]
+		sig := "function()"
+		if f != nil && f.FunctionSig != nil {
+			sig = string(f.FunctionSig.Spec)
 		}
-		sig := fmt.Sprintf("(%s) %s", strings.Join(params, ","), f.Return)
-		fmt.Fprintf(&sb, "%s%s:\n", k, sig)
-		e.disassembleNode(&sb, "  ", f.Body, false)
+		fmt.Fprintf(&sb, "fn.%s: ; signature %s\n", k, sig)
+		e.disassembleTasks(&sb, "  ", f.BodyTasks)
 		sb.WriteString("\n")
 	}
 
 	return sb.String()
 }
 
-func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.Node, isExpr bool) {
+func (e *Executor) disassembleTasks(sb *strings.Builder, indent string, tasks []Task) {
 	defer func() {
 		if r := recover(); r != nil {
-			sb.WriteString(indent + "; Disassembly failed for this node: " + fmt.Sprintf("%v", r) + "\n")
+			sb.WriteString(indent + "; Disassembly failed for this task plan: " + fmt.Sprintf("%v", r) + "\n")
 		}
 	}()
 
-	if node == nil {
+	if len(tasks) == 0 {
 		return
 	}
 
-	var queue []Task
-	if isExpr {
-		queue = e.tasksForExpr(node.(ast.Expr))
-	} else {
-		queue = e.tasksForStmt(node.(ast.Stmt), nil)
-	}
+	queue := cloneTasks(tasks)
 
 	for len(queue) > 0 {
 		task := queue[len(queue)-1]
@@ -2792,10 +2773,6 @@ func (e *Executor) disassembleNode(sb *strings.Builder, indent string, node ast.
 	}
 }
 
-func (e *Executor) GetProgram() *ast.ProgramStmt {
-	return e.program
-}
-
 func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modSession *StackContext) *Var {
 	exports := make(map[string]*Var)
 	for name := range modExec.globals {
@@ -2856,7 +2833,6 @@ func (e *Executor) executeImportedProgram(parent *StackContext, path string, pro
 	if err != nil {
 		return nil, err
 	}
-	modExecutor.ModuleLoader = e.ModuleLoader
 	modExecutor.ModulePlanLoader = e.ModulePlanLoader
 	modExecutor.StepLimit = e.StepLimit
 	modExecutor.routes = e.routes

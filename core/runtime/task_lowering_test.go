@@ -502,7 +502,7 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 	session := exec.NewSession(context.Background(), "test")
 	defer exec.CleanupSession(session)
 
-	value, err := exec.ExecExpr(session, expr)
+	value, err := exec.runExprPlan(session, exec.tasksForExpr(expr))
 	if err != nil {
 		t.Fatalf("exec expr failed: %v", err)
 	}

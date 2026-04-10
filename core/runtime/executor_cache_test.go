@@ -48,8 +48,6 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 	}
 
 	exec := newExecutor(t, prog)
-	exec.program = nil
-
 	session := exec.NewSession(context.Background(), "global")
 	if err := exec.InitializeSession(session, nil, false); err != nil {
 		t.Fatalf("initialize session failed: %v", err)
@@ -63,7 +61,7 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		t.Fatalf("unexpected counter value: %#v", counter)
 	}
 
-	result, err := exec.ExecExpr(session, callExpr)
+	result, err := exec.runExprPlan(session, exec.tasksForExpr(callExpr))
 	if err != nil {
 		t.Fatalf("exec call expr failed: %v", err)
 	}
@@ -71,7 +69,7 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		t.Fatalf("unexpected function result: %#v", result)
 	}
 
-	answer, err := exec.ExecExpr(session, &ast.ConstRefExpr{Name: "Answer"})
+	answer, err := exec.runExprPlan(session, exec.tasksForExpr(&ast.ConstRefExpr{Name: "Answer"}))
 	if err != nil {
 		t.Fatalf("exec const expr failed: %v", err)
 	}

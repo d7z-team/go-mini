@@ -404,7 +404,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 				Method:   property,
 			},
 		}
-		v.SetRawType(sig.Spec)
+		v.SetRawType(sig.Spec.Ast())
 		return v, nil
 	}
 
@@ -935,10 +935,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	// 5. Internal Function Call
 	if fn, ok := e.lookupFunction(name); ok {
 		return e.setupFuncCall(session, name, &DoCallData{
-			Name:         name,
-			FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
-			BodyTasks:    cloneTasks(fn.BodyTasks),
-			Args:         args,
+			Name:        name,
+			FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+			BodyTasks:   cloneTasks(fn.BodyTasks),
+			Args:        args,
 		}, args, nil)
 	}
 
@@ -1014,14 +1014,14 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	}
 
 	// Inject params
-	for i, p := range sig.Function.Params {
-		paramSym := SymbolRef{Name: string(p.Name), Kind: SymbolLocal, Slot: i}
-		paramType := sig.ParamTypes[i]
-		if sig != nil && i < len(sig.ParamTypes) {
-			paramType = sig.ParamTypes[i]
+	for i, paramType := range sig.ParamTypes {
+		paramName := ""
+		if i < len(sig.ParamNames) {
+			paramName = sig.ParamNames[i]
 		}
+		paramSym := SymbolRef{Name: paramName, Kind: SymbolLocal, Slot: i}
 		_ = session.DeclareSymbol(paramSym, paramType)
-		if sig.Function.Variadic && i == len(sig.Function.Params)-1 {
+		if sig.Variadic && i == len(sig.ParamTypes)-1 {
 			var variadicArgs []*Var
 			if i < len(args) {
 				variadicArgs = args[i:]
@@ -1079,7 +1079,7 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
 	shape := t
-	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw); err == nil && ok {
+	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw.Ast()); err == nil && ok {
 		shape = resolved
 	}
 
@@ -1109,7 +1109,7 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.resolveStructSchema(shape.Raw); ok {
+	if sDef, ok := e.resolveStructSchema(shape.Raw.Ast()); ok {
 		for _, field := range sDef.Fields {
 			mData[field.Name] = e.initializeType(ctx, field.TypeInfo, depth+1)
 		}

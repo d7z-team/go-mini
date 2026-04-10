@@ -40,10 +40,10 @@ import (
 type MiniExecutor struct {
 	mu sync.RWMutex
 
-	ModuleLoader func(path string) (*ast.ProgramStmt, error)
-	bridges      map[uint32]ffigo.FFIBridge
-	routes       map[string]runtime.FFIRoute
-	constants    map[string]string
+	astModuleLoader func(path string) (*ast.ProgramStmt, error)
+	bridges         map[uint32]ffigo.FFIBridge
+	routes          map[string]runtime.FFIRoute
+	constants       map[string]string
 
 	registry       *ffigo.HandleRegistry
 	modules        map[string]*ast.ProgramStmt // 预加载的模块蓝图
@@ -103,10 +103,6 @@ func (p *MiniProgram) Compilation() *compiler.Artifact {
 
 func (p *MiniProgram) CheckSatisfaction(val *runtime.Var, interfaceType ast.GoMiniType) (*runtime.Var, error) {
 	return p.executor.CheckSatisfaction(val, interfaceType)
-}
-
-func (p *MiniProgram) ExecExpr(ctx *runtime.StackContext, s ast.Expr) (*runtime.Var, error) {
-	return p.executor.ExecExpr(ctx, s)
 }
 
 // GetParent 获取节点的父节点
@@ -230,6 +226,21 @@ func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
 	return []*runtime.Var{res}
 }
 
+func initEvalReturnSlot(session *runtime.StackContext, expr ast.Expr) error {
+	if session == nil {
+		return errors.New("missing eval session")
+	}
+	typ := ast.GoMiniType("Any")
+	if expr != nil && expr.GetBase() != nil && !expr.GetBase().Type.IsEmpty() {
+		typ = expr.GetBase().Type
+	}
+	typeInfo, err := runtime.ParseRuntimeType(typ)
+	if err != nil {
+		typeInfo = runtime.MustParseRuntimeType("Any")
+	}
+	return session.InitReturn(typeInfo)
+}
+
 // Eval 在当前程序的语境下执行单个 Go 表达式
 // 这允许你调用程序中定义的函数或访问全局变量
 func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
@@ -250,8 +261,16 @@ func (p *MiniProgram) Eval(ctx context.Context, exprStr string, env map[string]i
 	for k, v := range env {
 		_ = session.AddVariable(k, p.executor.ToVar(session, v, nil))
 	}
+	if err := initEvalReturnSlot(session, expr); err != nil {
+		return nil, err
+	}
 
-	res, err := p.executor.ExecExpr(session, expr)
+	if err := p.executor.ExecuteStmts(session, []ast.Stmt{
+		&ast.ReturnStmt{Results: []ast.Expr{expr}},
+	}); err != nil {
+		return nil, err
+	}
+	res, err := session.LoadReturn()
 	if err != nil {
 		return nil, err
 	}
@@ -265,10 +284,6 @@ func (p *MiniProgram) MustEval(ctx context.Context, exprStr string, env map[stri
 		panic(err)
 	}
 	return res
-}
-
-func (p *MiniProgram) GetAst() *ast.ProgramStmt {
-	return p.executor.GetProgram()
 }
 
 func (p *MiniProgram) Disassemble() string {
@@ -377,8 +392,8 @@ func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, er
 		if astNode, ok := e.modules[path]; ok {
 			return astNode, nil
 		}
-		if e.ModuleLoader != nil {
-			return e.ModuleLoader(path)
+		if e.astModuleLoader != nil {
+			return e.astModuleLoader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
@@ -395,11 +410,18 @@ func (e *MiniExecutor) modulePlanLoader() func(path string) (*ast.ProgramStmt, *
 			e.mu.RUnlock()
 			return prog, nil, nil
 		}
-		loader := e.ModuleLoader
+		loader := e.astModuleLoader
 		e.mu.RUnlock()
 		if loader != nil {
 			prog, err := loader(path)
-			return prog, nil, err
+			if err != nil {
+				return nil, nil, err
+			}
+			prepared, prepErr := runtime.PrepareProgram(prog)
+			if prepErr != nil {
+				return nil, nil, prepErr
+			}
+			return prog, prepared, nil
 		}
 		return nil, nil, fmt.Errorf("module not found: %s", path)
 	}
@@ -409,7 +431,6 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
 	if executor == nil {
 		return
 	}
-	executor.ModuleLoader = e.moduleASTLoader()
 	executor.ModulePlanLoader = e.modulePlanLoader()
 
 	e.mu.RLock()
@@ -441,14 +462,16 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 }
 
 func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStmt, error)) {
-	e.ModuleLoader = loader
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.astModuleLoader = loader
 }
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
 func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.modules[path] = prog.GetAst()
+	e.modules[path] = prog.Program
 	if prog != nil && prog.Compiled != nil && prog.Compiled.Bytecode != nil {
 		e.moduleBytecode[path] = prog.Compiled.Bytecode
 	}
@@ -824,8 +847,16 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	defer executor.CleanupSession(session)
 
 	e.injectEnv(session, env)
+	if err := initEvalReturnSlot(session, expr); err != nil {
+		return nil, err
+	}
 
-	res, err := executor.ExecExpr(session, expr)
+	if err := executor.ExecuteStmts(session, []ast.Stmt{
+		&ast.ReturnStmt{Results: []ast.Expr{expr}},
+	}); err != nil {
+		return nil, err
+	}
+	res, err := session.LoadReturn()
 	if err != nil {
 		return nil, err
 	}
@@ -988,7 +1019,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 	for name, spec := range e.funcSchemas {
 		sName := string(name)
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
-			meta.Builtins[sName] = e.formatSchemaWithDoc(spec.Spec, "", spec)
+			meta.Builtins[sName] = e.formatSchemaWithDoc(spec.Spec.Ast(), "", spec)
 		}
 	}
 
@@ -1126,7 +1157,7 @@ func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.Runtime
 func (e *MiniExecutor) formatRouteSchema(route runtime.FFIRoute) string {
 	spec := ast.GoMiniType("")
 	if route.FuncSig != nil {
-		spec = route.FuncSig.Spec
+		spec = route.FuncSig.Spec.Ast()
 	}
 	return e.formatSchemaWithDoc(spec, route.Doc, route.FuncSig)
 }
@@ -1265,7 +1296,7 @@ func cloneRuntimeFuncSig(sig *runtime.RuntimeFuncSig) *runtime.RuntimeFuncSig {
 		return nil
 	}
 	res := *sig
-	res.Function.Params = append([]ast.FunctionParam(nil), sig.Function.Params...)
+	res.ParamNames = append([]string(nil), sig.ParamNames...)
 	res.ParamTypes = append([]runtime.RuntimeType(nil), sig.ParamTypes...)
 	res.ParamModes = append([]runtime.FFIParamMode(nil), sig.ParamModes...)
 	return &res

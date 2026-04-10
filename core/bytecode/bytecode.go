@@ -166,7 +166,7 @@ func (p *Program) RebuildProgram() (*ast.ProgramStmt, error) {
 			}
 			prog.Functions[name] = &ast.FunctionStmt{
 				BaseNode:     ast.BaseNode{ID: "bytecode_fn_" + string(name)},
-				FunctionType: fn.FunctionSig.Function,
+				FunctionType: fn.FunctionSig.FunctionType(),
 				Name:         name,
 				Body:         &ast.BlockStmt{Children: []ast.Stmt{}, Inner: true},
 			}
@@ -562,7 +562,7 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionSig.Function.String(), len(data.Args))
+		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionSig.SignatureString(), len(data.Args))
 	case *runtime.DeclareVarData:
 		if data == nil {
 			return ""
@@ -579,7 +579,7 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s captures=%d", data.FunctionSig.Function.String(), len(data.CaptureRefs))
+		return fmt.Sprintf("%s captures=%d", data.FunctionSig.SignatureString(), len(data.CaptureRefs))
 	default:
 		return ""
 	}
@@ -815,7 +815,7 @@ func formatExecutableSignature(fn *runtime.PreparedFunction) string {
 	if fn == nil {
 		return ""
 	}
-	return fn.FunctionSig.Function.String()
+	return fn.FunctionSig.SignatureString()
 }
 
 func sanitizeLabel(name string) string {

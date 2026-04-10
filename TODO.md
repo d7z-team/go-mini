@@ -1,6 +1,6 @@
 # TODO: Go-Mini 演进路径
 
-更新时间: 2026-04-01
+更新时间: 2026-04-11
 
 ## Phase 1: Runtime 全量脱 AST (已完成)
 **目标**: 编译/执行形态分离，执行主路径不再依赖 `ast.Node` 引用。
@@ -54,8 +54,8 @@
 - [x] **移除 `Executor.structs` 对 `*ast.StructStmt` 的持有**。
 - [x] **移除 `Executor.interfaces` 对 `*ast.InterfaceStmt` 的持有**。
 - [x] **移除 `Executor.types` 对 `ast.GoMiniType` 直接映射的主依赖**。
-- [x] **移除 `Executor.program` 在执行热路径中的类型元数据职责**，仅保留调试/LSP 所需边界。
-- [x] **清理 `ExecExpr` 临时回退逻辑**，避免继续以 AST expr 作为执行期补丁入口。
+- [x] **移除 `Executor.program` 在执行热路径中的类型元数据职责**，执行器已不再持有 `program *ast.ProgramStmt`，导入回退收敛为 runtime `importAliases` 与 prepared module plan。
+- [x] **清理 `ExecExpr` 临时回退逻辑**，公开 `ExecExpr(ast.Expr)`/`GetProgram()` 已删除，engine `Eval` 改为 `ExecuteStmts + ReturnStmt` 私有适配。
 
 ### K. 接口与结构体运行时优化
 - [x] **定义 `StructLayout`**: 字段顺序、偏移、大小、字段索引在 lowering/构建期完成。
@@ -168,6 +168,8 @@
 - [x] **移除 runtime 对旧字符串 spec 的兼容主路径**: `MiniExecutor.RegisterFFI/RegisterStructSpec/AddFuncSpec/AddStructSpec` 与 `compiler.Config.Specs` 已删除；主链只保留 schema 注册与 schema 校验入口。
 - [x] **制定兼容层下线顺序**: 已按“生成器 -> 仓库内 stdlib 生成物 -> 业务/e2e 样例 -> 删除 legacy API”顺序完成收口。
 - [x] **补充兼容层退场回归**: 已补 `ffigen_migration_test` 并验证 `go test ./...`，确保 stdlib/业务生成物在 schema-only 下稳定运行。
+- [x] **移除 runtime AST module loader 兼容链**: `runtime.Executor` 已删除 `ModuleLoader`，模块导入只消费 `ModulePlanLoader`；engine 侧旧 `SetModuleLoader(...)` 仅在前端边界即时 `PrepareProgram` 后再交给 runtime。
+- [x] **收口 engine AST 兼容公开口**: `MiniExecutor.ModuleLoader` 已收为私有 `astModuleLoader`，`MiniProgram.GetAst()` 已删除，调用方统一改为 `MiniProgram.Program`。
 
 ## 后续补充项
 - [x] **补充命名函数值语义**: 支持 `fn := increment`、命名函数作为参数/返回值的一等值语义，并补齐语义、lowering、runtime 与专项测试；当前仅函数字面量/返回函数闭包属于稳定支持范围。
@@ -179,10 +181,7 @@
 - [ ] **补齐 LSP 链式调用推导剩余缺口**: 当前已补 `imported module -> ctor/function return struct -> member completion` 主链，但 `tuple return`、复杂 alias/命名接口、方法链返回接口/结构体后的继续推导仍未统一走完整 resolve 路径，需要专项测试与 `inferLSPTypeRecursive` 收口。
 - [ ] **收敛复合字面量启发式推导精度**: `CompositeExpr` 仍会在信息不足时回退到 `Map<..., Any>` / `Array<Any>`，后续应区分“动态 Any”与“被坏子表达式污染的 Any”，补齐更精确的错误来源诊断。
 - [ ] **清理剩余 `Any` 宽容分支**: `StarExpr`、`IndexExpr`、`SliceExpr` 等仍保留少量合法动态 `Any` 放行路径，需要进一步梳理哪些应保持动态语义，哪些应在前置错误场景下改为精确诊断。
-- [x] **完成 runtime 热路径 `RuntimeType` 化收口**: 已将 `Task` 热路径 payload（`DeclareVar/Composite/Assert/Index/type-switch`）、slot/return 初始化、`VMClosure`/prepared function 预解析签名、`task codec`/prepared program/bytecode 展示链路统一切到 `RuntimeType`/`RuntimeFuncSig`；`Var` 已补 `RuntimeType` 元数据并由执行热路径优先消费，保留 `ast.GoMiniType` 仅作调试/兼容镜像。后续 AST 依赖继续压缩到 debugger/test 边界：
-  1. 将 `core/runtime/task.go`、`core/runtime/scope.go`、`core/runtime/task_codec.go`、`core/bytecode/*` 中执行热路径使用的 `ast.GoMiniType` 迁移为 `RuntimeType` 或其稳定引用；
-  2. 同步升级 prepared program / bytecode 序列化，确保新类型载体不回退 AST 字符串；
-  3. 最后再收口 `ExecExpr(ast.Expr)` 与 `Executor.program *ast.ProgramStmt`，把 AST 依赖明确压回 debugger/test 边界，而不是继续留在 runtime 通用执行面。
+- [x] **完成 runtime 热路径 `RuntimeType` 化收口**: 已将 `Task` 热路径 payload（`DeclareVar/Composite/Assert/Index/type-switch`）、slot/return 初始化、`VMClosure`/prepared function 预解析签名、`task codec`/prepared program/bytecode 展示链路统一切到 `RuntimeType`/`RuntimeFuncSig`；`Var` 已补 `RuntimeType` 元数据并由执行热路径优先消费，`ExecExpr(ast.Expr)`、`Executor.program *ast.ProgramStmt` 与 runtime AST module loader 兼容链也已压回 engine/debugger/test 边界。当前剩余 AST 依赖主要在 schema 文本载体、编译/校验入口和 LSP/debugger 蓝图，而不再位于 runtime 通用执行面。
 - [x] **重构共享状态模型，消除 `Eval` 对 `LastSession` 的状态继承依赖**: 已引入绑定 `Executor/Program` 生命周期的 `SharedState`，移除 `lastSession` 与 root `Globals` 过渡存储；`Eval/Execute` 现统一为“共享状态 + 独立 Session”模型，每次执行仅持有调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态。全局变量、模块缓存与 loading 状态访问已统一收口到 `SharedState` 原语/快照接口，闭包与模块上下文也已改为轻量 `LexicalContext`，并通过锁明确顶层共享状态的并发边界：
   1. 在 runtime 层引入独立的 `SharedState`（至少承载 `Globals`、`ModuleCache`、必要的 global/cell 存储），生命周期绑定 `Executor/Program`，而不是绑定某次 session；
   2. 让 `Eval/Execute` 每次都创建独立 session，只保存调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态，不再通过 `LastSession` 继承共享状态；

@@ -27,7 +27,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	}
 
 	// 序列化参数
-	if funcSig != nil && funcSig.Function.Variadic {
+	if funcSig != nil && funcSig.Variadic {
 		// 1. 序列化常规参数
 		numNormal := len(funcSig.ParamTypes) - 1
 		for i := 0; i < numNormal; i++ {
@@ -57,7 +57,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	} else {
 		// 普通非变长函数序列化
 		for i, arg := range args {
-			argType := RuntimeType{Kind: RuntimeTypeAny, Raw: ast.TypeAny, TypeID: CanonicalTypeID(string(ast.TypeAny))}
+			argType := RuntimeType{Kind: RuntimeTypeAny, Raw: TypeSpec(ast.TypeAny), TypeID: CanonicalTypeID(string(ast.TypeAny))}
 			if funcSig != nil && i < len(funcSig.ParamTypes) {
 				argType = funcSig.ParamTypes[i]
 			}
@@ -165,7 +165,7 @@ func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
 		if mode != FFIParamInOutBytes {
 			continue
 		}
-		if sig.Function.Variadic && i == len(sig.ParamModes)-1 {
+		if sig.Variadic && i == len(sig.ParamModes)-1 {
 			return nil, fmt.Errorf("variadic inout bytes is not supported")
 		}
 		if i >= argCount {
@@ -291,7 +291,7 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType
 
 func (e *Executor) lookupStructSchema(typ RuntimeType) (*RuntimeStructSpec, bool) {
 	if typ.Raw != "" {
-		if schema, ok := e.resolveStructSchema(typ.Raw); ok {
+		if schema, ok := e.resolveStructSchema(typ.Raw.Ast()); ok {
 			return schema, true
 		}
 	}

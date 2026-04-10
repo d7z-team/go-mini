@@ -20,9 +20,9 @@ type PreparedGlobal struct {
 }
 
 type PreparedFunction struct {
-	Name         ast.Ident        `json:"name"`
-	FunctionSig  *RuntimeFuncSig  `json:"function_sig,omitempty"`
-	BodyTasks    []Task           `json:"body_tasks,omitempty"`
+	Name        ast.Ident       `json:"name"`
+	FunctionSig *RuntimeFuncSig `json:"function_sig,omitempty"`
+	BodyTasks   []Task          `json:"body_tasks,omitempty"`
 }
 
 func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
@@ -31,8 +31,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 	}
 
 	exec := &Executor{
-		program: program,
-		consts:  make(map[string]string),
+		consts: make(map[string]string),
 	}
 	for name, val := range program.Constants {
 		exec.consts[name] = val
@@ -69,9 +68,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 			fnScope.declare(string(p.Name))
 		}
 		prepared.Functions[ident] = &PreparedFunction{
-			Name:         ident,
-			FunctionSig:  MustRuntimeFuncSigFromFunction(fn.FunctionType),
-			BodyTasks:    exec.tasksForStmtInScope(fn.Body, nil, fnScope),
+			Name:        ident,
+			FunctionSig: MustRuntimeFuncSigFromFunction(fn.FunctionType),
+			BodyTasks:   exec.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}
 	}
 	prepared.MainTasks = exec.buildStmtPlanWithScope(program.Main, rootScope)
@@ -107,9 +106,9 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 			continue
 		}
 		cloned.Functions[name] = &PreparedFunction{
-			Name:         fn.Name,
-			FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
-			BodyTasks:    cloneTasks(fn.BodyTasks),
+			Name:        fn.Name,
+			FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+			BodyTasks:   cloneTasks(fn.BodyTasks),
 		}
 	}
 

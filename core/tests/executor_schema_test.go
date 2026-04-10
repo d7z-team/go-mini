@@ -26,10 +26,10 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	if funcSig == nil {
 		t.Fatal("expected parsed function schema")
 	}
-	if !funcSig.Function.Variadic {
+	if !funcSig.Variadic {
 		t.Fatal("expected variadic function schema")
 	}
-	if got := string(funcSig.Function.Return); got != "tuple(Void, String)" {
+	if got := string(funcSig.ReturnType.Raw); got != "tuple(Void, String)" {
 		t.Fatalf("unexpected return type: %s", got)
 	}
 
@@ -159,7 +159,7 @@ func main() {
 		t.Fatalf("execute failed: %v", err)
 	}
 
-	rebuilt := prog.GetAst()
+	rebuilt := prog.Program
 	if rebuilt == nil {
 		t.Fatal("expected rebuilt program")
 	}

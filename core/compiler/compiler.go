@@ -173,19 +173,19 @@ func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec
+		res[k] = v.Spec.Ast()
 	}
 	for k, v := range c.cfg.StructSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec
+		res[k] = v.Spec.Ast()
 	}
 	for k, v := range c.cfg.InterfaceSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec
+		res[k] = v.Spec.Ast()
 	}
 	return res
 }

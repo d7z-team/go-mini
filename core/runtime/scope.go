@@ -247,15 +247,15 @@ type VMMethodValue struct {
 
 type Var struct {
 	TypeInfo RuntimeType
-	VType  VarType
-	I64    int64
-	F64    float64
-	Str    string
-	B      []byte
-	Bool   bool
-	Handle uint32
-	Bridge ffigo.FFIBridge
-	Ref    interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
+	VType    VarType
+	I64      int64
+	F64      float64
+	Str      string
+	B        []byte
+	Bool     bool
+	Handle   uint32
+	Bridge   ffigo.FFIBridge
+	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
 
 	stack weak.Pointer[Stack]
 }
@@ -271,7 +271,7 @@ func (v *Var) RawType() ast.GoMiniType {
 	if v == nil {
 		return ""
 	}
-	return v.TypeInfo.Raw
+	return v.TypeInfo.Raw.Ast()
 }
 
 func (v *Var) SetRuntimeType(typ RuntimeType) {
@@ -294,7 +294,7 @@ func (v *Var) SetRawType(typ ast.GoMiniType) {
 		v.TypeInfo = parsed
 		return
 	}
-	v.TypeInfo = RuntimeType{Raw: typ}
+	v.TypeInfo = RuntimeType{Raw: TypeSpec(typ)}
 }
 
 // VMHandle wraps a handle ID and its bridge, providing automatic cleanup via finalizer.
@@ -500,14 +500,14 @@ func (v *Var) Copy() *Var {
 	}
 	res := &Var{
 		TypeInfo: v.TypeInfo,
-		VType:  v.VType,
-		I64:    v.I64,
-		F64:    v.F64,
-		Str:    v.Str,
-		Bool:   v.Bool,
-		Handle: v.Handle,
-		Bridge: v.Bridge,
-		Ref:    v.Ref, // 共享内部引用
+		VType:    v.VType,
+		I64:      v.I64,
+		F64:      v.F64,
+		Str:      v.Str,
+		Bool:     v.Bool,
+		Handle:   v.Handle,
+		Bridge:   v.Bridge,
+		Ref:      v.Ref, // 共享内部引用
 	}
 	if v.B != nil {
 		res.B = make([]byte, len(v.B))
@@ -997,17 +997,17 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
-					BodyTasks:    cloneTasks(fn.BodyTasks),
-					Context:      &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
+					FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+					BodyTasks:   cloneTasks(fn.BodyTasks),
+					Context:     &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
 				},
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
 		if route, ok := exec.routes[variable]; ok {
 			return &Var{
-				VType: TypeAny,
-				Ref:   route,
+				VType:    TypeAny,
+				Ref:      route,
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}
@@ -1319,9 +1319,9 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
-					BodyTasks:    cloneTasks(fn.BodyTasks),
-					Context:      &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
+					FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+					BodyTasks:   cloneTasks(fn.BodyTasks),
+					Context:     &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
@@ -1330,8 +1330,8 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 		// 2. 尝试查找 FFI 路由
 		if route, ok := exec.routes[name]; ok {
 			return &Var{
-				VType: TypeAny,
-				Ref:   route,
+				VType:    TypeAny,
+				Ref:      route,
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
 			}, nil
 		}

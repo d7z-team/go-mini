@@ -10,13 +10,13 @@ func TestParseRuntimeFuncSig(t *testing.T) {
 	if sig == nil {
 		t.Fatal("expected non-nil function signature")
 	}
-	if !sig.Function.Variadic {
+	if !sig.Variadic {
 		t.Fatal("expected variadic signature")
 	}
-	if len(sig.Function.Params) != 2 {
-		t.Fatalf("expected 2 params, got %d", len(sig.Function.Params))
+	if len(sig.ParamTypes) != 2 {
+		t.Fatalf("expected 2 params, got %d", len(sig.ParamTypes))
 	}
-	if got := string(sig.Function.Return); got != "tuple(Void, String)" {
+	if got := string(sig.ReturnType.Raw); got != "tuple(Void, String)" {
 		t.Fatalf("unexpected return type: %s", got)
 	}
 }
