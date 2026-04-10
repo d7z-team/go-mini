@@ -101,7 +101,7 @@ func (p *MiniProgram) Compilation() *compiler.Artifact {
 	return p.Compiled
 }
 
-func (p *MiniProgram) CheckSatisfaction(val *runtime.Var, interfaceType ast.GoMiniType) (*runtime.Var, error) {
+func (p *MiniProgram) CheckSatisfaction(val *runtime.Var, interfaceType string) (*runtime.Var, error) {
 	return p.executor.CheckSatisfaction(val, interfaceType)
 }
 
@@ -198,9 +198,9 @@ func (p *MiniProgram) SharedState() *runtime.SharedStateSnapshot {
 }
 
 func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
-	typ := ast.GoMiniType("")
+	typ := runtime.TypeSpec("")
 	if expr != nil {
-		typ = expr.GetBase().Type
+		typ = runtime.TypeSpec(expr.GetBase().Type)
 	}
 	if typ.IsEmpty() && res != nil {
 		typ = res.RawType()
@@ -652,7 +652,7 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	return res
 }
 
-func (e *MiniExecutor) NewRuntimeByProgram(program *ast.ProgramStmt) (*MiniProgram, error) {
+func (e *MiniExecutor) CompileProgram(program *ast.ProgramStmt) (*compiler.Artifact, error) {
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("ast", "", program, false)
 	if err != nil {
 		var logs []ast.Logs
@@ -661,7 +661,7 @@ func (e *MiniExecutor) NewRuntimeByProgram(program *ast.ProgramStmt) (*MiniProgr
 		}
 		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
 	}
-	return e.NewRuntimeByCompiled(compiled)
+	return compiled, nil
 }
 
 func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniProgram, error) {
@@ -765,7 +765,7 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 	return prog, errs
 }
 
-func (e *MiniExecutor) NewMiniProgramByProgramTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
+func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
 	var errs []error
 	compiled, _, err := e.newCompiler().CompileProgram("ast", "", program, true)
 	if err != nil {

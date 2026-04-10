@@ -6,14 +6,13 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", ast.GoMiniType("struct { A Point; B Point; }"))
+var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", "struct { A Point; B Point; }")
 
-var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", "struct { X Int64; Y Int64; }")
 
 const (
 	MethodID_MockShapeAPI_GetRect = 1
@@ -131,8 +130,8 @@ var MockShapeAPI_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetRect", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Rect")), ""},
-	{"Area", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Rect) Int64"), runtime.FFIParamIn), ""},
+	{"GetRect", 1, runtime.MustParseRuntimeFuncSig("function() Rect"), ""},
+	{"Area", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Rect) Int64", runtime.FFIParamIn), ""},
 }
 
 type MockShapeAPI_Bridge struct {

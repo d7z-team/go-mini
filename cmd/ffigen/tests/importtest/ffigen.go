@@ -4,7 +4,6 @@ package importtest
 import (
 	"context"
 	"fmt"
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"strings"
@@ -93,7 +92,7 @@ var ImportTester_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Sleep", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function(Int64) Error")), ""},
+	{"Sleep", 1, runtime.MustParseRuntimeFuncSig("function(Int64) Error"), ""},
 }
 
 type ImportTester_Bridge struct {

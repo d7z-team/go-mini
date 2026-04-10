@@ -6,14 +6,13 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", ast.GoMiniType("struct { Closed Bool; ID String; Items Array<order.Item>; New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }"))
+var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", "struct { Closed Bool; ID String; Items Array<order.Item>; New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }")
 
-var order_Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", ast.GoMiniType("struct { Name String; Price Float64; }"))
+var order_Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", "struct { Name String; Price Float64; }")
 
 const (
 	MethodID_OrderService_New      = 1
@@ -314,10 +313,10 @@ var OrderService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<order.Order>, Error)"), runtime.FFIParamIn), "New 创建新订单"},
-	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>, String, Float64) Error"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>) tuple(Float64, Error)"), runtime.FFIParamIn), "GetTotal 获取总价"},
-	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<order.Order>) Error"), runtime.FFIParamIn), "Close 关闭订单"},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<order.Order>, Error)", runtime.FFIParamIn), "New 创建新订单"},
+	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), "GetTotal 获取总价"},
+	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>) Error", runtime.FFIParamIn), "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {

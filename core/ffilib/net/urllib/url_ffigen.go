@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -154,9 +153,9 @@ var URL_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"QueryEscape", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"QueryUnescape", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, Error)"), runtime.FFIParamIn), ""},
-	{"JoinPath", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"QueryEscape", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"QueryUnescape", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), ""},
+	{"JoinPath", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type URL_Bridge struct {

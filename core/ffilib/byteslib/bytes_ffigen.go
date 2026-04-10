@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -454,20 +453,20 @@ var Bytes_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Count", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasPrefix", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasSuffix", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Index", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"LastIndex", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ToLower", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
-	{"ToUpper", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
-	{"Trim", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, String) TypeBytes"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"TrimSpace", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
-	{"Split", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes) Array<TypeBytes>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Join", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<TypeBytes>, TypeBytes) TypeBytes"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Repeat", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, Int64) TypeBytes"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAll", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes, TypeBytes, TypeBytes) TypeBytes"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Count", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasPrefix", 3, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasSuffix", 4, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Index", 5, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"LastIndex", 6, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ToLower", 7, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
+	{"ToUpper", 8, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
+	{"Trim", 9, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, String) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"TrimSpace", 10, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
+	{"Split", 11, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Array<TypeBytes>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Join", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Array<TypeBytes>, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Repeat", 13, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, Int64) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReplaceAll", 14, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Bytes_Bridge struct {

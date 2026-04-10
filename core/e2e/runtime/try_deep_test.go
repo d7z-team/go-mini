@@ -102,7 +102,11 @@ func TestTryCatchDeepPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime, err := executor.NewRuntimeByProgram(program)
+	compiled, err := executor.CompileProgram(program)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := executor.NewRuntimeByCompiled(compiled)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,12 +6,11 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", "struct { X Int64; Y Int64; }")
 
 const (
 	MethodID_MockGeometry_SumX = 1
@@ -87,7 +86,7 @@ var MockGeometry_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"SumX", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<RobustPoint>) Int64"), runtime.FFIParamIn), ""},
+	{"SumX", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<RobustPoint>) Int64", runtime.FFIParamIn), ""},
 }
 
 type MockGeometry_Bridge struct {

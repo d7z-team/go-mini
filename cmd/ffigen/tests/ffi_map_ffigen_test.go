@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -333,10 +332,10 @@ var MapTest_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EchoMap", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<String, String>) tuple(Map<String, String>, Error)"), runtime.FFIParamIn), ""},
-	{"GetMap", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() tuple(Map<String, Int64>, Error)")), ""},
-	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<String, Int64>) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
-	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)"), runtime.FFIParamIn), ""},
+	{"EchoMap", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, String>) tuple(Map<String, String>, Error)", runtime.FFIParamIn), ""},
+	{"GetMap", 2, runtime.MustParseRuntimeFuncSig("function() tuple(Map<String, Int64>, Error)"), ""},
+	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, Int64>) tuple(Int64, Error)", runtime.FFIParamIn), ""},
+	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", runtime.FFIParamIn), ""},
 }
 
 type MapTest_Bridge struct {

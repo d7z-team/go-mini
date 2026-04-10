@@ -261,7 +261,7 @@ type Mutator interface {
 		t.Fatalf("read generated output: %v", err)
 	}
 	code := string(content)
-	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamInOutBytes)`) {
+	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamInOutBytes)`) {
 		t.Fatalf("expected BytesRef schema to emit inout bytes mode, got:\n%s", code)
 	}
 	if !strings.Contains(code, `resBuf.WriteUvarint(uint64(1))`) {
@@ -566,7 +566,7 @@ type ReadWriter interface {
 		t.Fatalf("read generated output: %v", err)
 	}
 	code := string(content)
-	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
+	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
 		t.Fatalf("expected flattened ReadWriter interface schema, got:\n%s", code)
 	}
 	if !strings.Contains(code, "func RegisterReadWriterSchema(") {

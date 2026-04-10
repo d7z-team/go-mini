@@ -31,7 +31,7 @@ type Executor struct {
 
 	StepLimit int64
 
-	interfaceCache map[ast.GoMiniType]*RuntimeInterfaceSpec
+	interfaceCache map[TypeSpec]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
 	shared         *SharedState
 }
@@ -109,7 +109,7 @@ func (r *runtimeMetadataRegistry) registerStructSchema(name string, spec *Runtim
 	}
 }
 
-func (r *runtimeMetadataRegistry) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
+func (r *runtimeMetadataRegistry) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
 	if typeInfo, ok := r.namedTypesByName[string(typ)]; ok {
 		return typeInfo, true
 	}
@@ -117,7 +117,7 @@ func (r *runtimeMetadataRegistry) resolveNamedType(typ ast.GoMiniType) (RuntimeT
 	return typeInfo, ok
 }
 
-func (r *runtimeMetadataRegistry) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+func (r *runtimeMetadataRegistry) resolveInterfaceSpec(typ TypeSpec) (*RuntimeInterfaceSpec, bool) {
 	if spec, ok := r.interfacesByName[string(typ)]; ok {
 		return spec, true
 	}
@@ -125,7 +125,7 @@ func (r *runtimeMetadataRegistry) resolveInterfaceSpec(typ ast.GoMiniType) (*Run
 	return spec, ok
 }
 
-func (r *runtimeMetadataRegistry) resolveStructSchema(typ ast.GoMiniType) (*RuntimeStructSpec, bool) {
+func (r *runtimeMetadataRegistry) resolveStructSchema(typ TypeSpec) (*RuntimeStructSpec, bool) {
 	if schema, ok := r.structsByName[string(typ)]; ok {
 		return schema, true
 	}
@@ -181,7 +181,7 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		functions:       make(map[ast.Ident]*RuntimeFunction),
 		consts:          make(map[string]string),
 		routes:          make(map[string]FFIRoute),
-		interfaceCache:  make(map[ast.GoMiniType]*RuntimeInterfaceSpec),
+		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
 	}
 	for _, imp := range program.Imports {
@@ -376,13 +376,13 @@ func cloneRuntimeFuncSig(sig *RuntimeFuncSig) *RuntimeFuncSig {
 	return &res
 }
 
-func (e *Executor) resolveNamedType(typ ast.GoMiniType) (RuntimeType, bool) {
+func (e *Executor) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
 	return e.metadata.resolveNamedType(typ)
 }
 
-func (e *Executor) resolveNamedTypeChain(typ ast.GoMiniType) (RuntimeType, bool, error) {
+func (e *Executor) resolveNamedTypeChain(typ TypeSpec) (RuntimeType, bool, error) {
 	current := typ
-	seen := map[ast.GoMiniType]struct{}{}
+	seen := map[TypeSpec]struct{}{}
 	for {
 		if _, dup := seen[current]; dup {
 			return RuntimeType{}, false, fmt.Errorf("cyclic named type resolution: %s", typ)
@@ -399,21 +399,21 @@ func (e *Executor) resolveNamedTypeChain(typ ast.GoMiniType) (RuntimeType, bool,
 			}
 			return resolved, true, nil
 		}
-		if next.Raw.Ast() == current {
+		if next.Raw == current {
 			return next, true, nil
 		}
-		current = next.Raw.Ast()
+		current = next.Raw
 	}
 }
 
-func (e *Executor) resolveInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+func (e *Executor) resolveInterfaceSpec(typ TypeSpec) (*RuntimeInterfaceSpec, bool) {
 	if typ.IsInterface() {
 		return e.cachedInterfaceSpec(typ)
 	}
 	return e.metadata.resolveInterfaceSpec(typ)
 }
 
-func (e *Executor) cachedInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpec, bool) {
+func (e *Executor) cachedInterfaceSpec(typ TypeSpec) (*RuntimeInterfaceSpec, bool) {
 	e.mu.RLock()
 	spec, ok := e.interfaceCache[typ]
 	e.mu.RUnlock()
@@ -430,7 +430,7 @@ func (e *Executor) cachedInterfaceSpec(typ ast.GoMiniType) (*RuntimeInterfaceSpe
 	return parsedSpec, true
 }
 
-func (e *Executor) resolveStructSchema(typ ast.GoMiniType) (*RuntimeStructSpec, bool) {
+func (e *Executor) resolveStructSchema(typ TypeSpec) (*RuntimeStructSpec, bool) {
 	return e.metadata.resolveStructSchema(typ)
 }
 
@@ -718,13 +718,14 @@ func (e *Executor) CleanupSession(session *StackContext) {
 	}
 }
 
-func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*Var, error) {
+func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, error) {
 	if val == nil {
 		return nil, errors.New("cannot assign nil to interface")
 	}
+	interfaceSpec := TypeSpec(interfaceType)
 
 	// 1. Exact match (handles named types and primitives directly)
-	if val.RuntimeType().Raw.Equals(TypeSpec(interfaceType)) {
+	if val.RuntimeType().Raw.Equals(interfaceSpec) {
 		return val.Copy(), nil
 	}
 
@@ -733,25 +734,25 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	if inner == nil {
 		inner = val
 	}
-	if inner.RuntimeType().Raw.Equals(TypeSpec(interfaceType)) {
+	if inner.RuntimeType().Raw.Equals(interfaceSpec) {
 		return inner.Copy(), nil
 	}
 
-	actualInterfaceType := interfaceType
-	if !interfaceType.IsInterface() {
+	actualInterfaceType := interfaceSpec
+	if !interfaceSpec.IsInterface() {
 		// 3. Resolve named type ONLY if it could be an interface or struct
-		if actual, ok := e.resolveNamedType(interfaceType); ok {
+		if actual, ok := e.resolveNamedType(interfaceSpec); ok {
 			if actual.Kind == RuntimeTypeInterface {
-				return e.CheckSatisfaction(val, actual.Raw.Ast())
+				return e.CheckSatisfaction(val, actual.Raw.String())
 			}
 		}
 
 		// 4. Resolve named interface
-		if spec, ok := e.resolveInterfaceSpec(interfaceType); ok {
-			actualInterfaceType = spec.Spec.Ast()
+		if spec, ok := e.resolveInterfaceSpec(interfaceSpec); ok {
+			actualInterfaceType = spec.Spec
 		} else {
 			// If it wasn't an exact match and isn't an interface, it fails (like Go)
-			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceType)
+			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceSpec)
 		}
 	}
 
@@ -763,12 +764,12 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType ast.GoMiniType) (*V
 	vtable := make([]*Var, len(spec.Methods))
 	for _, method := range spec.Methods {
 		if method.Spec == nil {
-			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceType, method.Name)
+			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceSpec, method.Name)
 		}
 		callable, ok := e.resolveMethodValue(inner, method.Name)
 		expected := method.Spec.FunctionType()
 		if !ok || !e.isCallableCompatible(callable, &expected) {
-			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceType, method.Name)
+			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceSpec, method.Name)
 		}
 		vtable[method.Index] = callable
 	}
@@ -1725,7 +1726,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			return errors.New("OpAssert missing AssertData")
 		}
-		res, err := e.CheckSatisfaction(val, targetType.Raw.Ast())
+		res, err := e.CheckSatisfaction(val, targetType.Raw.String())
 		if multi {
 			if err != nil {
 				// 返回 (nil, false)
@@ -2221,13 +2222,13 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 		}
 
 		if targetType.IsInterface() {
-			if _, err := e.CheckSatisfaction(tag, targetType.Raw.Ast()); err == nil {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw.String()); err == nil {
 				return true
 			}
 			continue
 		}
-		if _, ok := e.resolveInterfaceSpec(targetType.Raw.Ast()); ok {
-			if _, err := e.CheckSatisfaction(tag, targetType.Raw.Ast()); err == nil {
+		if _, ok := e.resolveInterfaceSpec(targetType.Raw); ok {
+			if _, err := e.CheckSatisfaction(tag, targetType.Raw.String()); err == nil {
 				return true
 			}
 		}

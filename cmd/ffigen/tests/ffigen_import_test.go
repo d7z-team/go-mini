@@ -26,7 +26,7 @@ func TestFFIGenCrossPackageImport(t *testing.T) {
 	}
 
 	// 3. 验证是否包含默认导入
-	requiredImports := []string{"context", "gopkg.d7z.net/go-mini/core/ffigo", "gopkg.d7z.net/go-mini/core/ast"}
+	requiredImports := []string{"context", "gopkg.d7z.net/go-mini/core/ffigo", "gopkg.d7z.net/go-mini/core/runtime"}
 	for _, imp := range requiredImports {
 		if !strings.Contains(code, imp) {
 			t.Errorf("Missing required import: %s", imp)

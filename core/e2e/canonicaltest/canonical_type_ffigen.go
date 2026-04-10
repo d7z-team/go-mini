@@ -6,16 +6,15 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	a_other "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other"
 	b_other "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", ast.GoMiniType("struct { Hello function(Ptr<a_other.Type>) String; }"))
+var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", "struct { Hello function(Ptr<a_other.Type>) String; }")
 
-var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", ast.GoMiniType("struct { Hello function(Ptr<b_other.Type>) String; }"))
+var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", "struct { Hello function(Ptr<b_other.Type>) String; }")
 
 const (
 	MethodID_TestCanonicalService_NewA = 1
@@ -125,8 +124,8 @@ var TestCanonicalService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Ptr<a_other.Type>"), runtime.FFIParamIn), ""},
-	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Ptr<b_other.Type>"), runtime.FFIParamIn), ""},
+	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) Ptr<a_other.Type>", runtime.FFIParamIn), ""},
+	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Ptr<b_other.Type>", runtime.FFIParamIn), ""},
 }
 
 type TestCanonicalService_Bridge struct {
@@ -235,7 +234,7 @@ var ATypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<a_other.Type>) String"), runtime.FFIParamIn), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<a_other.Type>) String", runtime.FFIParamIn), ""},
 }
 
 type ATypeService_Bridge struct {
@@ -347,7 +346,7 @@ var BTypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<b_other.Type>) String"), runtime.FFIParamIn), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<b_other.Type>) String", runtime.FFIParamIn), ""},
 }
 
 type BTypeService_Bridge struct {

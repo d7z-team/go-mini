@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -506,24 +505,24 @@ var Math_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Abs", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Ceil", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Floor", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Round", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Sqrt", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Pow", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Min", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Max", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Float64) Float64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sin", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Cos", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Tan", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Exp", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Log", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"Log10", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Float64"), runtime.FFIParamIn), ""},
-	{"NaN", 15, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Float64")), ""},
-	{"IsNaN", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64) Bool"), runtime.FFIParamIn), ""},
-	{"Inf", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Float64"), runtime.FFIParamIn), ""},
-	{"IsInf", 18, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Int64) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Abs", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Ceil", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Floor", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Round", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Sqrt", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Pow", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Min", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Max", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sin", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Cos", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Tan", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Exp", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Log", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"Log10", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
+	{"NaN", 15, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"IsNaN", 16, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Bool", runtime.FFIParamIn), ""},
+	{"Inf", 17, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Float64", runtime.FFIParamIn), ""},
+	{"IsInf", 18, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Math_Bridge struct {

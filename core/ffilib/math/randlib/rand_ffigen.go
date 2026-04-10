@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -234,13 +233,13 @@ var Rand_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Float64", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Float64")), ""},
-	{"Int", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
-	{"Intn", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
-	{"Int63", 4, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Int64")), ""},
-	{"Int63n", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
-	{"Seed", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Void"), runtime.FFIParamIn), ""},
-	{"Perm", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Array<Int64>"), runtime.FFIParamIn), ""},
+	{"Float64", 1, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"Int", 2, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Intn", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"Int63", 4, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Int63n", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"Seed", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
+	{"Perm", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), ""},
 }
 
 type Rand_Bridge struct {

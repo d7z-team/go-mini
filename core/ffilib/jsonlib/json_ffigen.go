@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -168,8 +167,8 @@ var JSON_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Marshal", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
-	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) tuple(Any, Error)"), runtime.FFIParamIn), ""},
+	{"Marshal", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Any) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
+	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Any, Error)", runtime.FFIParamIn), ""},
 }
 
 type JSON_Bridge struct {

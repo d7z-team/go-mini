@@ -267,11 +267,11 @@ func (v *Var) RuntimeType() RuntimeType {
 	return v.TypeInfo
 }
 
-func (v *Var) RawType() ast.GoMiniType {
+func (v *Var) RawType() TypeSpec {
 	if v == nil {
 		return ""
 	}
-	return v.TypeInfo.Raw.Ast()
+	return v.TypeInfo.Raw
 }
 
 func (v *Var) SetRuntimeType(typ RuntimeType) {
@@ -281,20 +281,21 @@ func (v *Var) SetRuntimeType(typ RuntimeType) {
 	v.TypeInfo = typ
 }
 
-func (v *Var) SetRawType(typ ast.GoMiniType) {
+func (v *Var) SetRawType(typ string) {
 	if v == nil {
 		return
 	}
-	if typ.IsEmpty() {
+	typeSpec := TypeSpec(typ)
+	if typeSpec.IsEmpty() {
 		v.TypeInfo = RuntimeType{}
 		return
 	}
-	parsed, err := ParseRuntimeType(typ)
+	parsed, err := ParseRuntimeType(typeSpec)
 	if err == nil {
 		v.TypeInfo = parsed
 		return
 	}
-	v.TypeInfo = RuntimeType{Raw: TypeSpec(typ)}
+	v.TypeInfo = RuntimeType{Raw: typeSpec}
 }
 
 // VMHandle wraps a handle ID and its bridge, providing automatic cleanup via finalizer.
@@ -534,9 +535,9 @@ func (v *Var) Copy() *Var {
 	return res
 }
 
-func NewVar(typ ast.GoMiniType, vType VarType) *Var {
+func NewVar[S ~string](typ S, vType VarType) *Var {
 	res := &Var{VType: vType}
-	res.SetRawType(typ)
+	res.SetRawType(string(typ))
 	return res
 }
 
@@ -1040,7 +1041,7 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 				v.TypeInfo = expr.RuntimeType()
 			}
 			if v.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
-				wrapped, err := exec.CheckSatisfaction(expr, v.RawType())
+				wrapped, err := exec.CheckSatisfaction(expr, string(v.RawType()))
 				if err != nil {
 					return err
 				}
@@ -1474,7 +1475,7 @@ func (ctx *StackContext) coerceAssignedValue(target, expr *Var) (*Var, error) {
 		return expr, nil
 	}
 	if target.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
-		wrapped, err := ctx.Executor.CheckSatisfaction(expr, target.RawType())
+		wrapped, err := ctx.Executor.CheckSatisfaction(expr, string(target.RawType()))
 		if err != nil {
 			return nil, err
 		}

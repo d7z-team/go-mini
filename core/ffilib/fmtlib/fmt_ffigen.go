@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -243,10 +242,10 @@ var Fmt_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Print", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...Any) Void"), runtime.FFIParamIn), ""},
-	{"Println", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...Any) Void"), runtime.FFIParamIn), ""},
-	{"Printf", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...Any) Void"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sprintf", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, ...Any) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Print", 1, runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), ""},
+	{"Println", 2, runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), ""},
+	{"Printf", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sprintf", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Fmt_Bridge struct {

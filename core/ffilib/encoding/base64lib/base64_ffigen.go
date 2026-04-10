@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -196,10 +195,10 @@ var Base64_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
-	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
-	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) String"), runtime.FFIParamIn), ""},
-	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
+	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
+	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
+	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
+	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
 }
 
 type Base64_Bridge struct {

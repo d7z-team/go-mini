@@ -84,13 +84,38 @@ func TestJSONASTComprehensive(t *testing.T) {
 		t.Fatalf("Validation failed: %v", err)
 	}
 
-	testProgram, err := testExecutor.NewRuntimeByProgram(validatedProgram)
+	compiled, err := testExecutor.CompileProgram(validatedProgram)
 	if err != nil {
-		t.Fatalf("NewRuntimeByProgram failed: %v", err)
+		t.Fatalf("CompileProgram failed: %v", err)
+	}
+	testProgram, err := testExecutor.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		t.Fatalf("NewRuntimeByCompiled failed: %v", err)
 	}
 
 	err = testProgram.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
+	}
+}
+
+func TestCompileProgramSupportsValidatedAST(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	artifact, err := testExecutor.CompileProgram(&ast.ProgramStmt{
+		BaseNode:   ast.BaseNode{ID: "test"},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[ast.Ident]ast.Expr{},
+		Types:      map[ast.Ident]ast.GoMiniType{},
+		Structs:    map[ast.Ident]*ast.StructStmt{},
+		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Functions:  map[ast.Ident]*ast.FunctionStmt{},
+		Main:       []ast.Stmt{},
+	})
+	if err != nil {
+		t.Fatalf("CompileProgram failed: %v", err)
+	}
+	if artifact == nil || artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		t.Fatal("expected executable artifact")
 	}
 }

@@ -7,14 +7,13 @@ import (
 	"io"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", ast.GoMiniType("struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); Read function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }"))
+var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", "struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); Read function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }")
 
-var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Read(TypeBytes) tuple(Int64, Error);}"))
+var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")
 
 func RegisterReaderSchema(executor interface {
 	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
@@ -22,7 +21,7 @@ func RegisterReaderSchema(executor interface {
 	executor.RegisterInterfaceSchema("io.Reader", io_Reader_FFI_InterfaceSchema)
 }
 
-var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType("interface{Write(TypeBytes) tuple(Int64, Error);}"))
+var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Write(TypeBytes) tuple(Int64, Error);}")
 
 func RegisterWriterSchema(executor interface {
 	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
@@ -311,9 +310,9 @@ var IO_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any) tuple(TypeBytes, Error)"), runtime.FFIParamIn), "ReadAll 读取所有数据"},
-	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any, Any) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
-	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Any, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
+	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Any) tuple(TypeBytes, Error)", runtime.FFIParamIn), "ReadAll 读取所有数据"},
+	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Any, Any) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
+	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Any, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
 }
 
 type IO_Bridge struct {
@@ -699,17 +698,17 @@ var File_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
-	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
-	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
-	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
-	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) Error"), runtime.FFIParamIn), ""},
-	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, Int64) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, String) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>) String"), runtime.FFIParamIn), ""},
-	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
+	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) Error", runtime.FFIParamIn), ""},
+	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) Error", runtime.FFIParamIn), ""},
+	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) String", runtime.FFIParamIn), ""},
+	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
 type File_Bridge struct {

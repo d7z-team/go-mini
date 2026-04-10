@@ -54,7 +54,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"\"time\"",
 				"Sleep(ctx context.Context, d time.Duration) error",
-				"runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"function(Int64) Error\"))",
+				"runtime.MustParseRuntimeFuncSig(\"function(Int64) Error\")",
 			},
 		},
 	}

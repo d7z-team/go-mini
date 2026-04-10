@@ -7,7 +7,6 @@ import (
 	"os"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -426,13 +425,13 @@ var OS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn), ""},
-	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn), ""},
-	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReadFile", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(TypeBytes, Error)"), runtime.FFIParamIn), ""},
-	{"WriteFile", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, TypeBytes) Error"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Remove", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Error"), runtime.FFIParamIn), ""},
-	{"Getenv", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn), ""},
+	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn), ""},
+	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReadFile", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
+	{"WriteFile", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Remove", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), ""},
+	{"Getenv", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
 }
 
 type OS_Bridge struct {

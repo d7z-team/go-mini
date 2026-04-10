@@ -533,7 +533,7 @@ func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, 
 	var schemaDefs strings.Builder
 	if schemas != nil {
 		for _, decl := range schemas.ordered {
-			fmt.Fprintf(&schemaDefs, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", decl.varName, decl.displayName, decl.specLiteral)
+			fmt.Fprintf(&schemaDefs, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", decl.varName, decl.displayName, decl.specLiteral)
 		}
 	}
 
@@ -545,7 +545,6 @@ func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, 
 		"context": "context",
 		"fmt":     "fmt",
 		"strings": "strings",
-		"ast":     "gopkg.d7z.net/go-mini/core/ast",
 		"ffigo":   "gopkg.d7z.net/go-mini/core/ffigo",
 		"runtime": "gopkg.d7z.net/go-mini/core/runtime",
 	}
@@ -1228,7 +1227,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	interfaceSchemaLiteral := buildInterfaceSchemaLiteral(iface, funcSpec)
 	interfaceSchemaVar := interfaceSchemaVarName(displayTypeName(name))
 	if !isStruct && meta.interfaceMarked {
-		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeInterfaceSpec(ast.GoMiniType(\"%s\"))\n\n", interfaceSchemaVar, interfaceSchemaLiteral)
+		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeInterfaceSpec(\"%s\")\n\n", interfaceSchemaVar, interfaceSchemaLiteral)
 		fmt.Fprintf(&sb, "func Register%sSchema(executor interface{ RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) }) {\n", name)
 		fmt.Fprintf(&sb, "\texecutor.RegisterInterfaceSchema(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
 		fmt.Fprintf(&sb, "}\n\n")
@@ -1731,9 +1730,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 		modes := funcParamModes(method.Type.(*ast.FuncType))
 		if len(modes) > 0 {
-			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType(\"%s\"), %s), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), strings.Join(modes, ", "), doc)
+			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSigWithModes(\"%s\", %s), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), strings.Join(modes, ", "), doc)
 		} else {
-			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(ast.GoMiniType(\"%s\")), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), doc)
+			fmt.Fprintf(&sb, "\t{\"%s\", %d, runtime.MustParseRuntimeFuncSig(\"%s\"), \"%s\"},\n", methodName, i+1, funcSpec(method.Type.(*ast.FuncType)), doc)
 		}
 	}
 	fmt.Fprintf(&sb, "}\n\n")
@@ -1750,7 +1749,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			if isStruct && structName == name {
 				continue
 			}
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n",
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n",
 				structSchemaVarName(displayTypeName(structName)),
 				displayTypeName(structName),
 				buildStructSchemaLiteral(structName, true, false),
@@ -1761,7 +1760,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
 		if schemas == nil {
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), buildStructSchemaLiteral(name, true, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), buildStructSchemaLiteral(name, true, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
@@ -1793,7 +1792,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
 		if methodsPrefix != "" && schemas == nil {
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", ast.GoMiniType(\"%s\"))\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)

@@ -7,7 +7,6 @@ import (
 	"strconv"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -485,16 +484,16 @@ var Strconv_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Atoi", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
-	{"Itoa", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) String"), runtime.FFIParamIn), ""},
-	{"ParseBool", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Bool, Error)"), runtime.FFIParamIn), ""},
-	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64) tuple(Float64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ParseInt", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, Int64, Int64) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FormatBool", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Bool) String"), runtime.FFIParamIn), ""},
-	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Float64, Int64, Int64, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FormatInt", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Quote", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"Unquote", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, Error)"), runtime.FFIParamIn), ""},
+	{"Atoi", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), ""},
+	{"Itoa", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) String", runtime.FFIParamIn), ""},
+	{"ParseBool", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Bool, Error)", runtime.FFIParamIn), ""},
+	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64) tuple(Float64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ParseInt", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"FormatBool", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Bool) String", runtime.FFIParamIn), ""},
+	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"FormatInt", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Quote", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"Unquote", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), ""},
 }
 
 type Strconv_Bridge struct {

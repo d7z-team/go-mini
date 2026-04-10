@@ -6,17 +6,16 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/examples/browser_e2e/other"
 )
 
-var other_Browser_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Browser", ast.GoMiniType("struct { NewPage function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error); }"))
+var other_Browser_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Browser", "struct { NewPage function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error); }")
 
-var other_Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Page", ast.GoMiniType("struct { Locator function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error); }"))
+var other_Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.Page", "struct { Locator function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error); }")
 
-var other_CdpSelector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.CdpSelector", ast.GoMiniType("struct { Click function(Ptr<other.CdpSelector>) Error; }"))
+var other_CdpSelector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("other.CdpSelector", "struct { Click function(Ptr<other.CdpSelector>) Error; }")
 
 const (
 	MethodID_BrowserModule_OpenBrowser = 1
@@ -113,7 +112,7 @@ var BrowserModule_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"OpenBrowser", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<other.Browser>, Error)"), runtime.FFIParamIn), ""},
+	{"OpenBrowser", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<other.Browser>, Error)", runtime.FFIParamIn), ""},
 }
 
 type BrowserModule_Bridge struct {
@@ -260,7 +259,7 @@ var BrowserService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewPage", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error)"), runtime.FFIParamIn), ""},
+	{"NewPage", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<other.Browser>) tuple(Ptr<other.Page>, Error)", runtime.FFIParamIn), ""},
 }
 
 type BrowserService_Bridge struct {
@@ -421,7 +420,7 @@ var PageService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Locator", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Locator", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<other.Page>, ...String) tuple(Ptr<other.CdpSelector>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type PageService_Bridge struct {
@@ -557,7 +556,7 @@ var CdpSelectorService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Click", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<other.CdpSelector>) Error"), runtime.FFIParamIn), ""},
+	{"Click", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<other.CdpSelector>) Error", runtime.FFIParamIn), ""},
 }
 
 type CdpSelectorService_Bridge struct {

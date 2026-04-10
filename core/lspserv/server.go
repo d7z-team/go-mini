@@ -115,7 +115,7 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 	}
 
 	// 运行校验以生成持久化 Scope
-	prog, errs := s.executor.NewMiniProgramByProgramTolerant(combinedNode)
+	prog, errs := s.executor.AnalyzeProgramTolerant(combinedNode)
 	pkg.combined = prog
 
 	// 收集所有文件的诊断信息

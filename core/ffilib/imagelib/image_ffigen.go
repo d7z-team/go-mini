@@ -6,12 +6,11 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", ast.GoMiniType("struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<image.Image>) tuple(Int64, Int64); Width function(Ptr<image.Image>) Int64; Height function(Ptr<image.Image>) Int64; At function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<image.Image>) Void; Clone function(Ptr<image.Image>) Ptr<image.Image>; SubImage function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); Draw function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void; Resize function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error); Crop function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); EncodePNG function(Ptr<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error); }"))
+var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", "struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<image.Image>) tuple(Int64, Int64); Width function(Ptr<image.Image>) Int64; Height function(Ptr<image.Image>) Int64; At function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<image.Image>) Void; Clone function(Ptr<image.Image>) Ptr<image.Image>; SubImage function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); Draw function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void; Resize function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error); Crop function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); EncodePNG function(Ptr<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error); }")
 
 const (
 	MethodID_ImageLib_Decode  = 1
@@ -157,8 +156,8 @@ var ImageLib_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Decode", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) tuple(Ptr<image.Image>, String, Error)"), runtime.FFIParamIn), "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
-	{"NewRGBA", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) Ptr<image.Image>"), runtime.FFIParamIn, runtime.FFIParamIn), "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
+	{"Decode", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Ptr<image.Image>, String, Error)", runtime.FFIParamIn), "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
+	{"NewRGBA", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) Ptr<image.Image>", runtime.FFIParamIn, runtime.FFIParamIn), "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
 }
 
 type ImageLib_Bridge struct {
@@ -674,21 +673,21 @@ var Image_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Bounds", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64)"), runtime.FFIParamIn), "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{"Size", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) tuple(Int64, Int64)"), runtime.FFIParamIn), "Size 返回 width, height"},
-	{"Width", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) Int64"), runtime.FFIParamIn), "Width 返回图像宽度"},
-	{"Height", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) Int64"), runtime.FFIParamIn), "Height 返回图像高度"},
-	{"At", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "At 返回 r, g, b, a (0-255)"},
-	{"Set", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Set 设置指定像素的颜色"},
-	{"Fill", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Fill 用指定颜色填充整个图像"},
-	{"Clear", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) Void"), runtime.FFIParamIn), "Clear 将图像清空为透明"},
-	{"Clone", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) Ptr<image.Image>"), runtime.FFIParamIn), "Clone 复制当前图像"},
-	{"SubImage", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "SubImage 返回图像的子部分 (共享内存)"},
-	{"Draw", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
-	{"Resize", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Resize 缩放图像"},
-	{"Crop", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Crop 裁剪图像"},
-	{"EncodePNG", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>) tuple(TypeBytes, Error)"), runtime.FFIParamIn), "EncodePNG 将图像编码为 PNG 字节数组"},
-	{"EncodeJPEG", 15, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), "EncodeJPEG 将图像编码为 JPEG 字节数组"},
+	{"Bounds", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn), "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
+	{"Size", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(Int64, Int64)", runtime.FFIParamIn), "Size 返回 width, height"},
+	{"Width", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Int64", runtime.FFIParamIn), "Width 返回图像宽度"},
+	{"Height", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Int64", runtime.FFIParamIn), "Height 返回图像高度"},
+	{"At", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "At 返回 r, g, b, a (0-255)"},
+	{"Set", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Set 设置指定像素的颜色"},
+	{"Fill", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Fill 用指定颜色填充整个图像"},
+	{"Clear", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Void", runtime.FFIParamIn), "Clear 将图像清空为透明"},
+	{"Clone", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Ptr<image.Image>", runtime.FFIParamIn), "Clone 复制当前图像"},
+	{"SubImage", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "SubImage 返回图像的子部分 (共享内存)"},
+	{"Draw", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
+	{"Resize", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Resize 缩放图像"},
+	{"Crop", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Crop 裁剪图像"},
+	{"EncodePNG", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(TypeBytes, Error)", runtime.FFIParamIn), "EncodePNG 将图像编码为 PNG 字节数组"},
+	{"EncodeJPEG", 15, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "EncodeJPEG 将图像编码为 JPEG 字节数组"},
 }
 
 type Image_Bridge struct {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -366,13 +365,13 @@ var Regexp_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Match", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, TypeBytes) tuple(Bool, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"MatchString", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(Bool, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"QuoteMeta", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"FindString", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindStringSubmatch", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Array<String>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAllString", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, String) tuple(String, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Split", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, Int64) tuple(Array<String>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Match", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"MatchString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"QuoteMeta", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"FindString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"FindStringSubmatch", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Array<String>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReplaceAllString", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Split", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<String>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Regexp_Bridge struct {

@@ -404,7 +404,7 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 				Method:   property,
 			},
 		}
-		v.SetRawType(sig.Spec.Ast())
+		v.SetRawType(sig.Spec.String())
 		return v, nil
 	}
 
@@ -552,11 +552,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "make first argument must be a type string", IsPanic: true}
 			}
 			tStr := typVar.Str
-			t := ast.GoMiniType(tStr)
-
 			if strings.HasPrefix(tStr, "Map<") {
 				v := &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}}
-				v.SetRawType(t)
+				v.SetRawType(tStr)
 				session.ValueStack.Push(v)
 				return nil
 			} else if strings.HasPrefix(tStr, "Array<") || tStr == "TypeBytes" {
@@ -585,22 +583,22 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				}
 				if tStr == "TypeBytes" {
 					v := &Var{VType: TypeBytes, B: make([]byte, length, capacity)}
-					v.SetRawType(t)
+					v.SetRawType(tStr)
 					session.ValueStack.Push(v)
 				} else {
 					arr := make([]*Var, length, capacity)
-					innerType, _ := MustParseRuntimeType(t).ReadArrayItemType()
+					innerType, _ := MustParseRuntimeType(tStr).ReadArrayItemType()
 					for i := 0; i < length; i++ {
 						arr[i] = e.initializeType(session, innerType, 0)
 					}
 					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr}}
-					v.SetRawType(t)
+					v.SetRawType(tStr)
 					session.ValueStack.Push(v)
 				}
 				return nil
 			}
 			// Fallback
-			res := e.initializeType(session, MustParseRuntimeType(t), 0)
+			res := e.initializeType(session, MustParseRuntimeType(tStr), 0)
 			session.ValueStack.Push(res)
 			return nil
 		case "len":
@@ -823,7 +821,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
 				innerType = tStr[4 : len(tStr)-1]
 			}
-			val := e.initializeType(session, MustParseRuntimeType(ast.GoMiniType(innerType)), 0)
+			val := e.initializeType(session, MustParseRuntimeType(innerType), 0)
 
 			// For internal "heap" simulation, we can use a non-zero handle ID.
 			// Since we only need it to be non-nil for the test, and ideally it should
@@ -835,7 +833,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				Handle: internalID,
 				Ref:    val, // Store the actual value in Ref for potential future dereference
 			}
-			res.SetRawType(ast.GoMiniType("Ptr<" + innerType + ">"))
+			res.SetRawType("Ptr<" + innerType + ">")
 			session.ValueStack.Push(res)
 			return nil
 		}
@@ -1079,7 +1077,7 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
 	shape := t
-	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw.Ast()); err == nil && ok {
+	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw); err == nil && ok {
 		shape = resolved
 	}
 
@@ -1109,7 +1107,7 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
-	if sDef, ok := e.resolveStructSchema(shape.Raw.Ast()); ok {
+	if sDef, ok := e.resolveStructSchema(shape.Raw); ok {
 		for _, field := range sDef.Fields {
 			mData[field.Name] = e.initializeType(ctx, field.TypeInfo, depth+1)
 		}

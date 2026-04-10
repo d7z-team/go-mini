@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -264,12 +263,12 @@ var Sort_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Int64>) Array<Int64>"), runtime.FFIParamIn), ""},
-	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Float64>) Array<Float64>"), runtime.FFIParamIn), ""},
-	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>) Array<String>"), runtime.FFIParamIn), ""},
-	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Int64>) Bool"), runtime.FFIParamIn), ""},
-	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<Float64>) Bool"), runtime.FFIParamIn), ""},
-	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>) Bool"), runtime.FFIParamIn), ""},
+	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Array<Int64>", runtime.FFIParamIn), ""},
+	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Array<Float64>", runtime.FFIParamIn), ""},
+	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Array<String>", runtime.FFIParamIn), ""},
+	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Bool", runtime.FFIParamIn), ""},
+	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Bool", runtime.FFIParamIn), ""},
+	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Bool", runtime.FFIParamIn), ""},
 }
 
 type Sort_Bridge struct {

@@ -6,22 +6,21 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", ast.GoMiniType("struct { Name String; }"))
+var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", "struct { Name String; }")
 
-var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", ast.GoMiniType("struct { Name String; Size Int64; }"))
+var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", "struct { Name String; Size Int64; }")
 
-var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", ast.GoMiniType("struct { Info os.FileInfo; Level Int64; }"))
+var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", "struct { Info os.FileInfo; Level Int64; }")
 
-var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", ast.GoMiniType("struct { Msg String; Value Int64; }"))
+var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", "struct { Msg String; Value Int64; }")
 
-var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", ast.GoMiniType("struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }"))
+var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", "struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }")
 
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", ast.GoMiniType("struct { Value Int64; }"))
+var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", "struct { Value Int64; }")
 
 const (
 	MethodID_MockOS_Open  = 1
@@ -490,13 +489,13 @@ var MockOS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Ptr<os.File>, Error)"), runtime.FFIParamIn), ""},
-	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) String"), runtime.FFIParamIn), ""},
-	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) tuple(os.FileInfo, Error)"), runtime.FFIParamIn), ""},
-	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<os.File>) Error"), runtime.FFIParamIn), ""},
-	{"Deep", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(os.Nested) os.Nested"), runtime.FFIParamIn), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<os.File>, Error)", runtime.FFIParamIn), ""},
+	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) String", runtime.FFIParamIn), ""},
+	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), ""},
+	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) Error", runtime.FFIParamIn), ""},
+	{"Deep", 7, runtime.MustParseRuntimeFuncSigWithModes("function(os.Nested) os.Nested", runtime.FFIParamIn), ""},
 }
 
 type MockOS_Bridge struct {
@@ -625,8 +624,8 @@ var ContextMock_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"WithContext", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"WithContext", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
 }
 
 type ContextMock_Bridge struct {
@@ -830,10 +829,10 @@ var NativeMock_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() native.NativeStruct")), ""},
-	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<native.NativeStruct>")), ""},
-	{"SetStruct", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(native.NativeStruct) Int64"), runtime.FFIParamIn), ""},
-	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<native.NativeStruct>) Int64"), runtime.FFIParamIn), ""},
+	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig("function() native.NativeStruct"), ""},
+	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig("function() Ptr<native.NativeStruct>"), ""},
+	{"SetStruct", 3, runtime.MustParseRuntimeFuncSigWithModes("function(native.NativeStruct) Int64", runtime.FFIParamIn), ""},
+	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<native.NativeStruct>) Int64", runtime.FFIParamIn), ""},
 }
 
 type NativeMock_Bridge struct {
@@ -928,7 +927,7 @@ var Page_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<Page>, String, ...Bool) Ptr<Selector>"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<Page>, String, ...Bool) Ptr<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Page_Bridge struct {

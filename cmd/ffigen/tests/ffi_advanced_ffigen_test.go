@@ -6,14 +6,13 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", ast.GoMiniType("struct { Name String; }"))
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", "struct { Name String; }")
 
-var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", ast.GoMiniType("struct { BaseField String; ExtraField Int64; }"))
+var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", "struct { BaseField String; ExtraField Int64; }")
 
 const (
 	MethodID_AdvancedFFI_GetSameObject = 1
@@ -223,10 +222,10 @@ var AdvancedFFI_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<test.TestObj>")), "Identity check"},
-	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"EchoMap", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Map<Bool, String>) Map<Float64, Bool>"), runtime.FFIParamIn), "Map keys"},
-	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(test.EmbeddedStruct) test.EmbeddedStruct"), runtime.FFIParamIn), "Embedded structs"},
+	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig("function() Ptr<test.TestObj>"), "Identity check"},
+	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"EchoMap", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Map<Bool, String>) Map<Float64, Bool>", runtime.FFIParamIn), "Map keys"},
+	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSigWithModes("function(test.EmbeddedStruct) test.EmbeddedStruct", runtime.FFIParamIn), "Embedded structs"},
 }
 
 type AdvancedFFI_Bridge struct {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -213,12 +212,12 @@ var UTF8_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Int64)"), runtime.FFIParamIn), ""},
-	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) TypeBytes"), runtime.FFIParamIn), ""},
-	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
-	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Int64"), runtime.FFIParamIn), ""},
-	{"RuneLen", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Int64"), runtime.FFIParamIn), ""},
-	{"ValidString", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
+	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Int64)", runtime.FFIParamIn), ""},
+	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) TypeBytes", runtime.FFIParamIn), ""},
+	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
+	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) Int64", runtime.FFIParamIn), ""},
+	{"RuneLen", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"ValidString", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
 }
 
 type UTF8_Bridge struct {

@@ -291,14 +291,14 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType
 
 func (e *Executor) lookupStructSchema(typ RuntimeType) (*RuntimeStructSpec, bool) {
 	if typ.Raw != "" {
-		if schema, ok := e.resolveStructSchema(typ.Raw.Ast()); ok {
+		if schema, ok := e.resolveStructSchema(typ.Raw); ok {
 			return schema, true
 		}
 	}
 	if typ.TypeID == "" {
 		return nil, false
 	}
-	return e.resolveStructSchema(ast.GoMiniType(typ.TypeID))
+	return e.resolveStructSchema(TypeSpec(typ.TypeID))
 }
 
 func (e *Executor) unwrapFFIValue(v *Var) *Var {
@@ -688,7 +688,7 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 		Bridge: inner.Bridge,
 		Handle: inner.Handle,
 	}
-	res.SetRawType(ast.TypeAny)
+	res.SetRawType(string(ast.TypeAny))
 	if session != nil && session.Stack != nil {
 		res.stack = weak.Make(session.Stack)
 	}

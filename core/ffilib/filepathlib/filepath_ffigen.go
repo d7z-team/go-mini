@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -412,18 +411,18 @@ var Filepath_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Base", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"Clean", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"Dir", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"Ext", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"IsAbs", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Bool"), runtime.FFIParamIn), ""},
-	{"Join", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(...String) String"), runtime.FFIParamIn), ""},
-	{"Match", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(Bool, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Rel", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(String, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Split", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(String, String)"), runtime.FFIParamIn), ""},
-	{"ToSlash", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"FromSlash", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"VolumeName", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
+	{"Base", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"Clean", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"Dir", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"Ext", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"IsAbs", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
+	{"Join", 6, runtime.MustParseRuntimeFuncSigWithModes("function(...String) String", runtime.FFIParamIn), ""},
+	{"Match", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Rel", 8, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Split", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, String)", runtime.FFIParamIn), ""},
+	{"ToSlash", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"FromSlash", 11, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"VolumeName", 12, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
 }
 
 type Filepath_Bridge struct {

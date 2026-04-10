@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -21,11 +20,11 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	schema := MustParseRuntimeStructSpec("demo.Point", ast.GoMiniType("struct { X Int64; Y Int64; }"))
+	schema := MustParseRuntimeStructSpec("demo.Point", "struct { X Int64; Y Int64; }")
 	exec.metadata.registerStructSchema(schema.Name, schema)
 
 	v := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("demo.Point"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"Y": NewInt(20),
@@ -82,7 +81,7 @@ func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	schema := MustParseRuntimeStructSpec("demo.Type", ast.GoMiniType("struct { Value Int64; }"))
+	schema := MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }")
 	exec.metadata.registerStructSchema("demo.Type", schema)
 
 	typ, err := ParseRuntimeType("Ptr<demo.Type>")

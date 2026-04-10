@@ -114,7 +114,11 @@ func loadProgram(executor *engine.MiniExecutor, options *execOptions) (*engine.M
 	if err != nil {
 		return nil, err
 	}
-	return executor.NewRuntimeByProgram(rootProgram)
+	compiled, err := executor.CompileProgram(rootProgram)
+	if err != nil {
+		return nil, err
+	}
+	return executor.NewRuntimeByCompiled(compiled)
 }
 
 func loadSourceProgram(files []string) (*ast.ProgramStmt, error) {

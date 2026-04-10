@@ -7,12 +7,11 @@ import (
 	"time"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", ast.GoMiniType("struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }"))
+var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", "struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }")
 
 const (
 	MethodID_Module_Now           = 1
@@ -357,13 +356,13 @@ var Module_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Now", 1, runtime.MustParseRuntimeFuncSig(ast.GoMiniType("function() Ptr<time.Time>")), ""},
-	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64, Int64) Ptr<time.Time>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sleep", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Int64) Void"), runtime.FFIParamIn), ""},
-	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) tuple(Ptr<time.Time>, Error)"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) tuple(Int64, Error)"), runtime.FFIParamIn), ""},
+	{"Now", 1, runtime.MustParseRuntimeFuncSig("function() Ptr<time.Time>"), ""},
+	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) Ptr<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sleep", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
+	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Ptr<time.Time>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), ""},
 }
 
 type Module_Bridge struct {
@@ -816,25 +815,25 @@ var Time_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Int64"), runtime.FFIParamIn), ""},
-	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Int64) Ptr<time.Time>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) Bool"), runtime.FFIParamIn), ""},
-	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>, Ptr<time.Time>) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Ptr<time.Time>) String"), runtime.FFIParamIn), ""},
+	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Int64) Ptr<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Bool", runtime.FFIParamIn), ""},
+	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) String", runtime.FFIParamIn), ""},
 }
 
 type Time_Bridge struct {

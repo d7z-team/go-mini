@@ -7,7 +7,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -68,7 +67,7 @@ var MD5_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Sum", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) TypeBytes"), runtime.FFIParamIn), ""},
+	{"Sum", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
 }
 
 type MD5_Bridge struct {

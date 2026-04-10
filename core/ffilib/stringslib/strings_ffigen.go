@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -544,23 +543,23 @@ var Strings_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ContainsAny", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Count", 3, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasPrefix", 4, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasSuffix", 5, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Bool"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Index", 6, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"LastIndex", 7, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Int64"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ToLower", 8, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"ToUpper", 9, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"Trim", 10, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"TrimSpace", 11, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) String"), runtime.FFIParamIn), ""},
-	{"TrimPrefix", 12, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"TrimSuffix", 13, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Replace", 14, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, String, Int64) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAll", 15, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, String) String"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Split", 16, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String) Array<String>"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Join", 17, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(Array<String>, String) String"), runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ContainsAny", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Count", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasPrefix", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"HasSuffix", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Index", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"LastIndex", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ToLower", 8, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"ToUpper", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"Trim", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"TrimSpace", 11, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
+	{"TrimPrefix", 12, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"TrimSuffix", 13, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Replace", 14, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"ReplaceAll", 15, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Split", 16, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Array<String>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Join", 17, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Strings_Bridge struct {

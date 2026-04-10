@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -91,7 +90,7 @@ var Errors_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String) Error"), runtime.FFIParamIn), ""},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), ""},
 }
 
 type Errors_Bridge struct {

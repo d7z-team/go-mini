@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -100,8 +99,8 @@ var Logger_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Log", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Internal", 2, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(String, String, Int64) Void"), runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
+	{"Log", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Internal", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
 }
 
 type Logger_Bridge struct {

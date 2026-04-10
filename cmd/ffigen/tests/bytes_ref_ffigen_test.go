@@ -6,7 +6,6 @@ import (
 	"fmt"
 )
 import (
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -88,7 +87,7 @@ var BytesRefAPI_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Mutate", 1, runtime.MustParseRuntimeFuncSigWithModes(ast.GoMiniType("function(TypeBytes) Int64"), runtime.FFIParamInOutBytes), ""},
+	{"Mutate", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), ""},
 }
 
 type BytesRefAPI_Bridge struct {
