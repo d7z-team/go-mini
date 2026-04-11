@@ -363,7 +363,7 @@ func sameDiagnosticNode(a, b Node) bool {
 		aBase.Loc.EC == bBase.Loc.EC
 }
 
-func mergeDiagnosticByRange(existing, incoming Node) (replace bool, skip bool) {
+func mergeDiagnosticByRange(existing, incoming Node) (replace, skip bool) {
 	if existing == nil || incoming == nil {
 		return false, false
 	}

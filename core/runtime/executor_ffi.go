@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -163,7 +164,7 @@ func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
 			continue
 		}
 		if sig.Variadic && i == len(sig.ParamModes)-1 {
-			return nil, fmt.Errorf("variadic inout parameters are not supported")
+			return nil, errors.New("variadic inout parameters are not supported")
 		}
 		if i >= argCount {
 			return nil, fmt.Errorf("missing argument for inout parameter %d", i)

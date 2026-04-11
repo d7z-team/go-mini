@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -488,7 +489,7 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 	case string:
 		return data
 	case int:
-		return fmt.Sprintf("%d", data)
+		return strconv.Itoa(data)
 	case runtime.SymbolRef:
 		return formatSymbolRef(data)
 	case *runtime.LoadVarData:
@@ -696,7 +697,7 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 	}
 	switch v.VType {
 	case runtime.TypeInt:
-		return fmt.Sprintf("%d", v.I64)
+		return strconv.FormatInt(v.I64, 10)
 	case runtime.TypeFloat:
 		return fmt.Sprintf("%g", v.F64)
 	case runtime.TypeString:

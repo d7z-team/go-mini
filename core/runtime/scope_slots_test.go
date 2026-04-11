@@ -286,7 +286,7 @@ func TestSetupFuncCallInitializesParamSlots(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 
 	err := exec.setupFuncCall(session, "sum", &DoCallData{
-		Name: "sum",
+		Name:        "sum",
 		FunctionSig: MustParseRuntimeFuncSig("function(Int64, Int64) Int64"),
 	}, []*Var{NewInt(3), NewInt(4)}, nil)
 	if err != nil {
@@ -459,7 +459,7 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 	session.LHSStack.Push(&LHSEnv{Name: "slot"})
 
 	if err := exec.setupFuncCall(session, "sum", &DoCallData{
-		Name: "sum",
+		Name:        "sum",
 		FunctionSig: MustParseRuntimeFuncSig("function() Int64"),
 	}, nil, nil); err != nil {
 		t.Fatalf("setup func call failed: %v", err)
@@ -553,9 +553,9 @@ func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testi
 	session := exec.NewSession(context.Background(), "global")
 
 	innerMap := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("Map<String,Int64>"),
-		Ref:   &VMMap{Data: map[string]*Var{"count": NewInt(1)}},
+		Ref:      &VMMap{Data: map[string]*Var{"count": NewInt(1)}},
 	}
 	anyMap := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: innerMap}
 	member := &LHSMember{Obj: anyMap, Property: "count"}

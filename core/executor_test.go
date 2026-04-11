@@ -25,7 +25,7 @@ func TestUnpackEvalResultTupleValue(t *testing.T) {
 	expr := &ast.CallExprStmt{}
 	expr.BaseNode.Type = "tuple(Int64, String)"
 	res := &runtime.Var{
-		VType: runtime.TypeArray,
+		VType:    runtime.TypeArray,
 		TypeInfo: runtime.MustParseRuntimeType("tuple(Int64, String)"),
 		Ref: &runtime.VMArray{Data: []*runtime.Var{
 			runtime.NewInt(7),

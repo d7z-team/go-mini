@@ -181,14 +181,14 @@ func TestEvalMemberChainOnMapStringAnyStillWorks(t *testing.T) {
 		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
 		Ref: &VMMap{Data: map[string]*Var{
-			"b": &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelB},
+			"b": {VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelB},
 		}},
 	}
 	root := &Var{
 		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
 		Ref: &VMMap{Data: map[string]*Var{
-			"a": &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelA},
+			"a": {VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelA},
 		}},
 	}
 

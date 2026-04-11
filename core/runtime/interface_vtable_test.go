@@ -20,7 +20,7 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 	methodSig := ast.FunctionType{Return: "Error"}
 	readSig := ast.FunctionType{Return: "tuple(Int64, Error)"}
 	obj := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("demo.Reader"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"Close": {

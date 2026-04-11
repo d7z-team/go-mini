@@ -123,13 +123,13 @@ func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
 		},
 		Functions: map[ast.Ident]*runtime.PreparedFunction{
 			"main": {
-				Name: "main",
+				Name:        "main",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 			},
 			"cleanup": {
-				Name: "cleanup",
+				Name:        "cleanup",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
-				BodyTasks: []runtime.Task{{Op: runtime.OpReturn}},
+				BodyTasks:   []runtime.Task{{Op: runtime.OpReturn}},
 			},
 		},
 	}
@@ -164,7 +164,7 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 	prog.Executable = &runtime.PreparedProgram{
 		Functions: map[ast.Ident]*runtime.PreparedFunction{
 			"main": {
-				Name: "main",
+				Name:        "main",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 				BodyTasks: []runtime.Task{
 					{

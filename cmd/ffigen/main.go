@@ -95,8 +95,10 @@ type displayTypeResolver struct {
 	collidingBaseName map[string]bool
 }
 
-const bytesRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.BytesRef"
-const arrayRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.ArrayRef"
+const (
+	bytesRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.BytesRef"
+	arrayRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.ArrayRef"
+)
 
 func main() {
 	flag.Parse()
@@ -134,7 +136,7 @@ func main() {
 
 func detectGenerationMode(args []string) (generationMode, error) {
 	if len(args) == 0 {
-		return modeFiles, fmt.Errorf("no input provided")
+		return modeFiles, errors.New("no input provided")
 	}
 	hasDir := false
 	hasFile := false
@@ -153,11 +155,11 @@ func detectGenerationMode(args []string) (generationMode, error) {
 		}
 	}
 	if hasDir && hasFile {
-		return modeFiles, fmt.Errorf("cannot mix directories and files")
+		return modeFiles, errors.New("cannot mix directories and files")
 	}
 	if hasDir {
 		if len(args) != 1 {
-			return modeFiles, fmt.Errorf("directory mode accepts exactly one directory")
+			return modeFiles, errors.New("directory mode accepts exactly one directory")
 		}
 		return modeDirectory, nil
 	}
@@ -167,7 +169,7 @@ func detectGenerationMode(args []string) (generationMode, error) {
 func runDirectoryMode(dir string) error {
 	info, err := os.Stat(*outFile)
 	if err == nil && !info.IsDir() {
-		return fmt.Errorf("directory mode requires -out to be a directory")
+		return errors.New("directory mode requires -out to be a directory")
 	}
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -197,7 +199,7 @@ func runDirectoryMode(dir string) error {
 		return err
 	}
 	if len(pkgModules) > 1 {
-		return fmt.Errorf("directory mode allows at most one ffigen:module per package")
+		return errors.New("directory mode allows at most one ffigen:module per package")
 	}
 	outputPath := filepath.Join(*outFile, fmt.Sprintf("ffigen_%s.go", *pkgName))
 	return generatePackageOutput(outputPath, files, files, pkgData, true)
@@ -233,7 +235,7 @@ func initPackagePath(dir string) error {
 	parts := strings.Split(strings.TrimSpace(string(out)), "|")
 	packagePath = parts[0]
 	if packagePath == "" || packagePath == "." {
-		return fmt.Errorf("derived import path is empty or invalid")
+		return errors.New("derived import path is empty or invalid")
 	}
 	if len(parts) >= 3 {
 		modulePath = parts[1]
@@ -2131,14 +2133,14 @@ func cloneFieldList(list *ast.FieldList) *ast.FieldList {
 func synthesizeEmbeddedInterfaceMethods(expr ast.Expr) ([]*ast.Field, error) {
 	typ := typeInfo.TypeOf(expr)
 	if typ == nil {
-		return nil, fmt.Errorf("missing type info")
+		return nil, errors.New("missing type info")
 	}
 	if named, ok := typ.(*types.Named); ok {
 		typ = named.Underlying()
 	}
 	iface, ok := typ.Underlying().(*types.Interface)
 	if !ok {
-		return nil, fmt.Errorf("not an interface")
+		return nil, errors.New("not an interface")
 	}
 	iface = iface.Complete()
 	var methods []*ast.Field

@@ -50,6 +50,7 @@ func (s TypeSpec) ReadArrayItemType() (TypeSpec, bool) {
 	elem, ok := s.Ast().ReadArrayItemType()
 	return TypeSpec(elem), ok
 }
+
 func (s TypeSpec) GetMapKeyValueTypes() (TypeSpec, TypeSpec, bool) {
 	key, value, ok := s.Ast().GetMapKeyValueTypes()
 	return TypeSpec(key), TypeSpec(value), ok
