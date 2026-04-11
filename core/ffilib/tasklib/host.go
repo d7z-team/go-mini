@@ -20,34 +20,6 @@ type (
 
 type Host struct{}
 
-func (h *Host) NewTaskGroup() *TaskGroup {
-	return &TaskGroup{}
-}
-
-func (h *Host) AddTask(group *TaskGroup, task *Task) {
-}
-
-func (h *Host) WaitTasks(ctx context.Context, group *TaskGroup) {
-}
-
-func (h *Host) GroupErr(group *TaskGroup) error {
-	return nil
-}
-
-func (h *Host) CancelGroup(group *TaskGroup) {
-}
-
-func (h *Host) Status(task *Task) string {
-	return ""
-}
-
-func (h *Host) Err(task *Task) error {
-	return nil
-}
-
-func (h *Host) Cancel(task *Task) {
-}
-
 func (h *Host) Sleep(ctx context.Context, ms int64) {
 	if ms <= 0 {
 		return
@@ -94,5 +66,13 @@ func RegisterTaskAll(executor interface {
 ) {
 	executor.RegisterStructSchema("task.Task", runtime.MustParseRuntimeStructSpec("task.Task", "struct {}"))
 	executor.RegisterStructSchema("task.TaskGroup", runtime.MustParseRuntimeStructSpec("task.TaskGroup", "struct {}"))
+	executor.RegisterFFISchema("task.NewTaskGroup", nil, 0, runtime.MustParseRuntimeFuncSig("function() Ptr<task.TaskGroup>"), "")
+	executor.RegisterFFISchema("task.AddTask", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.TaskGroup>, Ptr<task.Task>) Void"), "")
+	executor.RegisterFFISchema("task.WaitTasks", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.TaskGroup>) Void"), "")
+	executor.RegisterFFISchema("task.GroupErr", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.TaskGroup>) Error"), "")
+	executor.RegisterFFISchema("task.CancelGroup", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.TaskGroup>) Void"), "")
+	executor.RegisterFFISchema("task.Status", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) String"), "")
+	executor.RegisterFFISchema("task.Err", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) Error"), "")
+	executor.RegisterFFISchema("task.Cancel", nil, 0, runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) Void"), "")
 	RegisterModule(executor, impl, registry)
 }

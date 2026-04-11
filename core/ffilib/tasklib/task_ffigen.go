@@ -10,25 +10,13 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var task_TaskGroup_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("task.TaskGroup", "struct { }")
-
-var task_Task_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("task.Task", "struct { }")
-
 var task_Mutex_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("task.Mutex", "struct { }")
 
 const (
-	MethodID_Module_NewTaskGroup = 1
-	MethodID_Module_AddTask      = 2
-	MethodID_Module_WaitTasks    = 3
-	MethodID_Module_GroupErr     = 4
-	MethodID_Module_CancelGroup  = 5
-	MethodID_Module_Status       = 6
-	MethodID_Module_Err          = 7
-	MethodID_Module_Cancel       = 8
-	MethodID_Module_Sleep        = 9
-	MethodID_Module_NewMutex     = 10
-	MethodID_Module_Lock         = 11
-	MethodID_Module_Unlock       = 12
+	MethodID_Module_Sleep    = 1
+	MethodID_Module_NewMutex = 2
+	MethodID_Module_Lock     = 3
+	MethodID_Module_Unlock   = 4
 )
 
 type ModuleProxy struct {
@@ -38,220 +26,6 @@ type ModuleProxy struct {
 
 func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Module {
 	return &ModuleProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ModuleProxy) NewTaskGroup() *TaskGroup {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_NewTaskGroup, wireBuf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *TaskGroup
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*TaskGroup)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *ModuleProxy) AddTask(group *TaskGroup, task *Task) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if group == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(group)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if task == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(task)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	_, err := __p.bridge.Call(context.Background(), MethodID_Module_AddTask, wireBuf.Bytes())
-	_ = err
-	return
-}
-
-func (__p *ModuleProxy) WaitTasks(ctx context.Context, group *TaskGroup) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if group == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(group)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	_, err := __p.bridge.Call(ctx, MethodID_Module_WaitTasks, wireBuf.Bytes())
-	_ = err
-	return
-}
-
-func (__p *ModuleProxy) GroupErr(group *TaskGroup) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if group == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(group)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_GroupErr, wireBuf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *ModuleProxy) CancelGroup(group *TaskGroup) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if group == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(group)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	_, err := __p.bridge.Call(context.Background(), MethodID_Module_CancelGroup, wireBuf.Bytes())
-	_ = err
-	return
-}
-
-func (__p *ModuleProxy) Status(task *Task) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if task == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(task)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Status, wireBuf.Bytes())
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *ModuleProxy) Err(task *Task) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if task == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(task)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Err, wireBuf.Bytes())
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *ModuleProxy) Cancel(task *Task) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-	if task == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(task)))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	_, err := __p.bridge.Call(context.Background(), MethodID_Module_Cancel, wireBuf.Bytes())
-	_ = err
-	return
 }
 
 func (__p *ModuleProxy) Sleep(ctx context.Context, ms int64) {
@@ -328,22 +102,6 @@ func (__p *ModuleProxy) Unlock(mu *Mutex) {
 func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
-		case "NewTaskGroup":
-			methodID = MethodID_Module_NewTaskGroup
-		case "AddTask":
-			methodID = MethodID_Module_AddTask
-		case "WaitTasks":
-			methodID = MethodID_Module_WaitTasks
-		case "GroupErr":
-			methodID = MethodID_Module_GroupErr
-		case "CancelGroup":
-			methodID = MethodID_Module_CancelGroup
-		case "Status":
-			methodID = MethodID_Module_Status
-		case "Err":
-			methodID = MethodID_Module_Err
-		case "Cancel":
-			methodID = MethodID_Module_Cancel
 		case "Sleep":
 			methodID = MethodID_Module_Sleep
 		case "NewMutex":
@@ -357,135 +115,6 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Module_NewTaskGroup:
-		r0 := impl.NewTaskGroup()
-		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
-		if r0 == nil {
-			resBuf.WriteUvarint(0)
-		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
-		}
-		return resBuf.Bytes(), nil
-	case MethodID_Module_AddTask:
-		var group *TaskGroup
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				group = obj.(*TaskGroup)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "group", err)
-			}
-		}
-		var task *Task
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				task = obj.(*Task)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "task", err)
-			}
-		}
-		impl.AddTask(group, task)
-		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), nil
-	case MethodID_Module_WaitTasks:
-		var group *TaskGroup
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				group = obj.(*TaskGroup)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "group", err)
-			}
-		}
-		impl.WaitTasks(ctx, group)
-		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), nil
-	case MethodID_Module_GroupErr:
-		var group *TaskGroup
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				group = obj.(*TaskGroup)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "group", err)
-			}
-		}
-		err := impl.GroupErr(group)
-		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
-	case MethodID_Module_CancelGroup:
-		var group *TaskGroup
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				group = obj.(*TaskGroup)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "group", err)
-			}
-		}
-		impl.CancelGroup(group)
-		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), nil
-	case MethodID_Module_Status:
-		var task *Task
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				task = obj.(*Task)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "task", err)
-			}
-		}
-		r0 := impl.Status(task)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Module_Err:
-		var task *Task
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				task = obj.(*Task)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "task", err)
-			}
-		}
-		err := impl.Err(task)
-		resBuf := ffigo.GetBuffer()
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
-	case MethodID_Module_Cancel:
-		var task *Task
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				task = obj.(*Task)
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "task", err)
-			}
-		}
-		impl.Cancel(task)
-		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), nil
 	case MethodID_Module_Sleep:
 		var ms int64
 		{
@@ -542,18 +171,10 @@ var Module_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewTaskGroup", 1, runtime.MustParseRuntimeFuncSig("function() Ptr<task.TaskGroup>"), ""},
-	{"AddTask", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.TaskGroup>, Ptr<task.Task>) Void", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"WaitTasks", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.TaskGroup>) Void", runtime.FFIParamIn), ""},
-	{"GroupErr", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.TaskGroup>) Error", runtime.FFIParamIn), ""},
-	{"CancelGroup", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.TaskGroup>) Void", runtime.FFIParamIn), ""},
-	{"Status", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Task>) String", runtime.FFIParamIn), ""},
-	{"Err", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Task>) Error", runtime.FFIParamIn), ""},
-	{"Cancel", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Task>) Void", runtime.FFIParamIn), ""},
-	{"Sleep", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"NewMutex", 10, runtime.MustParseRuntimeFuncSig("function() Ptr<task.Mutex>"), ""},
-	{"Lock", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Mutex>) Void", runtime.FFIParamIn), ""},
-	{"Unlock", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Mutex>) Void", runtime.FFIParamIn), ""},
+	{"Sleep", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
+	{"NewMutex", 2, runtime.MustParseRuntimeFuncSig("function() Ptr<task.Mutex>"), ""},
+	{"Lock", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Mutex>) Void", runtime.FFIParamIn), ""},
+	{"Unlock", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<task.Mutex>) Void", runtime.FFIParamIn), ""},
 }
 
 type Module_Bridge struct {
@@ -589,19 +210,9 @@ func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl
 	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
 		registrar.RegisterStructSchema(name, spec)
 	}
-	registrar.RegisterFFISchema("task.NewTaskGroup", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("task.AddTask", bridge, Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("task.WaitTasks", bridge, Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("task.GroupErr", bridge, Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("task.CancelGroup", bridge, Module_FFI_Schemas[4].MethodID, Module_FFI_Schemas[4].Sig, Module_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("task.Status", bridge, Module_FFI_Schemas[5].MethodID, Module_FFI_Schemas[5].Sig, Module_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("task.Err", bridge, Module_FFI_Schemas[6].MethodID, Module_FFI_Schemas[6].Sig, Module_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("task.Cancel", bridge, Module_FFI_Schemas[7].MethodID, Module_FFI_Schemas[7].Sig, Module_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("task.Sleep", bridge, Module_FFI_Schemas[8].MethodID, Module_FFI_Schemas[8].Sig, Module_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("task.NewMutex", bridge, Module_FFI_Schemas[9].MethodID, Module_FFI_Schemas[9].Sig, Module_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("task.Lock", bridge, Module_FFI_Schemas[10].MethodID, Module_FFI_Schemas[10].Sig, Module_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("task.Unlock", bridge, Module_FFI_Schemas[11].MethodID, Module_FFI_Schemas[11].Sig, Module_FFI_Schemas[11].Doc)
-	registerStructSchema("task.TaskGroup", task_TaskGroup_FFI_StructSchema)
-	registerStructSchema("task.Task", task_Task_FFI_StructSchema)
+	registrar.RegisterFFISchema("task.Sleep", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("task.NewMutex", bridge, Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("task.Lock", bridge, Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("task.Unlock", bridge, Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
 	registerStructSchema("task.Mutex", task_Mutex_FFI_StructSchema)
 }
