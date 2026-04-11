@@ -7,14 +7,31 @@ import (
 )
 
 func invalidReason(node Node, fallback string) string {
-	if node == nil || node.GetBase() == nil || !node.GetBase().Invalid {
+	if node == nil || node.GetBase() == nil || !node.GetBase().IsInvalid() {
 		return fallback
+	}
+	if cause := strings.TrimSpace(node.GetBase().InvalidCause); cause != "" {
+		return cause
 	}
 	meta := node.GetBase().Meta
 	if meta == "" {
 		meta = "表达式"
 	}
 	return fmt.Sprintf("前置%s存在错误，无法精确推导", meta)
+}
+
+func compositeInvalidCause(kind string, index int, child Node) string {
+	ordinal := index + 1
+	suffix := "值"
+	if kind == "key" {
+		suffix = "键"
+	}
+	base := fmt.Sprintf("复合字面量第 %d 个元素的%s存在错误，无法精确推导", ordinal, suffix)
+	childCause := invalidReason(child, "")
+	if childCause == "" || childCause == base {
+		return base
+	}
+	return fmt.Sprintf("%s: %s", base, childCause)
 }
 
 type IdentifierExpr struct {
@@ -90,11 +107,11 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 		} else {
 			s.Type = "Any"
 		}
-	} else if xType == "TypeHandle" || xType.IsAny() {
-		if s.X.GetBase().Invalid {
+	} else if xType.IsAny() {
+		if s.X.GetBase().IsInvalid() {
 			err := errors.New(invalidReason(s.X, "前置表达式存在错误，无法精确推导解引用结果"))
 			ctx.AddErrorf("%s", err.Error())
-			s.Invalid = true
+			s.InvalidCause = err.Error()
 			return err
 		}
 		s.Type = "Any"
@@ -292,10 +309,10 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
-			if c.Func.GetBase().Invalid {
+			if c.Func.GetBase().IsInvalid() {
 				err := errors.New(invalidReason(c.Func, "调用目标存在错误，无法精确推导返回类型"))
 				ctx.AddErrorf("%s", err.Error())
-				c.Invalid = true
+				c.InvalidCause = err.Error()
 				return err
 			}
 			c.Type = "Any"
@@ -480,10 +497,10 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 	objType := m.Object.GetBase().Type
 	if objType == "Any" {
-		if m.Object.GetBase().Invalid {
+		if m.Object.GetBase().IsInvalid() {
 			err := errors.New(invalidReason(m.Object, "成员访问对象存在错误，无法精确推导成员类型"))
 			ctx.WithNode(m).AddErrorf("%s", err.Error())
-			m.Invalid = true
+			m.InvalidCause = err.Error()
 			return err
 		}
 		m.Type = "Any"
@@ -581,7 +598,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		}
 		err := errors.New("成员访问对象无法解析为包或结构体")
 		ctx.WithNode(m).AddErrorf("%s", err.Error())
-		m.Invalid = true
+		m.InvalidCause = err.Error()
 		return err
 	}
 
@@ -611,6 +628,12 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	if objType.IsMap() {
 		_, vType, ok := objType.GetMapKeyValueTypes()
 		if ok {
+			if m.Object.GetBase().IsInvalid() && vType.IsAny() {
+				err := errors.New(invalidReason(m.Object, "成员访问对象存在错误，无法精确推导成员类型"))
+				ctx.WithNode(m).AddErrorf("%s", err.Error())
+				m.InvalidCause = err.Error()
+				return err
+			}
 			m.Type = vType
 			return nil
 		}
@@ -739,6 +762,7 @@ func (c *CompositeExpr) exprNode()          {}
 
 func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(c)
+	invalidCause := ""
 	if c.Kind != "" {
 		c.Kind = Ident(GoMiniType(c.Kind).Resolve(ctx.ValidContext))
 		c.Type = GoMiniType(c.Kind)
@@ -761,11 +785,20 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 			if v.Key != nil {
 				hasKey = true
 				if err := v.Key.Check(ctx); err == nil {
+					if v.Key.GetBase().IsInvalid() {
+						if invalidCause == "" {
+							invalidCause = compositeInvalidCause("key", i, v.Key)
+						}
+					}
 					kt := v.Key.GetBase().Type
 					if i == 0 {
 						commonKeyType = kt
 					} else if !kt.Equals(commonKeyType) {
 						allSameKey = false
+					}
+				} else {
+					if invalidCause == "" {
+						invalidCause = compositeInvalidCause("key", i, v.Key)
 					}
 				}
 			} else {
@@ -774,11 +807,20 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 
 			if v.Value != nil {
 				if err := v.Value.Check(ctx); err == nil {
+					if v.Value.GetBase().IsInvalid() {
+						if invalidCause == "" {
+							invalidCause = compositeInvalidCause("value", i, v.Value)
+						}
+					}
 					vt := v.Value.GetBase().Type
 					if i == 0 {
 						commonValType = vt
 					} else if !vt.Equals(commonValType) {
 						allSameVal = false
+					}
+				} else {
+					if invalidCause == "" {
+						invalidCause = compositeInvalidCause("value", i, v.Value)
 					}
 				}
 			}
@@ -822,7 +864,7 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 		miniStruct, hasStruct = ctx.GetStruct(c.Kind)
 	}
 
-	for _, elem := range c.Values {
+	for idx, elem := range c.Values {
 		if elem.Key != nil {
 			if isMap {
 				if sub, ok := elem.Key.(*CompositeExpr); ok && sub.Kind == "" {
@@ -848,6 +890,11 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 			if err := elem.Key.Check(ctx); err != nil {
 				return err
 			}
+			if elem.Key.GetBase().IsInvalid() {
+				if invalidCause == "" {
+					invalidCause = compositeInvalidCause("key", idx, elem.Key)
+				}
+			}
 		}
 
 	checkValue:
@@ -865,7 +912,14 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 		if err := elem.Value.Check(ctx); err != nil {
 			return err
 		}
+		if elem.Value.GetBase().IsInvalid() {
+			if invalidCause == "" {
+				invalidCause = compositeInvalidCause("value", idx, elem.Value)
+			}
+		}
 	}
+
+	c.InvalidCause = invalidCause
 
 	return nil
 }
@@ -915,13 +969,20 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 
 	objType := i.Object.GetBase().Type
 
+	if i.Object.GetBase().IsInvalid() && objType.IsAny() {
+		err := errors.New(invalidReason(i.Object, "索引对象存在前置错误，无法精确推导索引结果"))
+		ctx.AddErrorf("%s", err.Error())
+		i.InvalidCause = err.Error()
+		return err
+	}
+	if i.Index.GetBase().IsInvalid() && i.Index.GetBase().Type.IsAny() {
+		err := errors.New(invalidReason(i.Index, "索引表达式存在前置错误，无法精确推导索引结果"))
+		ctx.AddErrorf("%s", err.Error())
+		i.InvalidCause = err.Error()
+		return err
+	}
+
 	if objType.IsAny() {
-		if i.Object.GetBase().Invalid || i.Index.GetBase().Invalid {
-			err := errors.New("索引表达式存在前置错误，无法精确推导结果类型")
-			ctx.AddErrorf("%s", err.Error())
-			i.Invalid = true
-			return err
-		}
 		if i.Multi {
 			i.Type = CreateTupleType("Any", "Bool")
 		} else {
@@ -942,13 +1003,19 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
-		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
+		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
 
 		if elemType, ok := objType.ReadArrayItemType(); ok {
+			if i.Object.GetBase().IsInvalid() && elemType.IsAny() {
+				err := errors.New(invalidReason(i.Object, "索引对象存在错误，无法精确推导索引结果"))
+				ctx.AddErrorf("%s", err.Error())
+				i.InvalidCause = err.Error()
+				return err
+			}
 			i.Type = elemType
 		} else {
 			err := fmt.Errorf("无法获取数组元素类型: %s", objType)
@@ -963,7 +1030,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
-		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
+		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 			ctx.AddErrorf("%s", err.Error())
 			return err
@@ -977,7 +1044,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
-		if i.Index.GetBase().Type != "Int64" && !i.Index.GetBase().Type.IsAny() {
+		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("String 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
 			ctx.AddErrorf("%s", err.Error())
 			return err
@@ -992,9 +1059,15 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			ctx.AddErrorf("%s", err.Error())
 			return err
 		}
-		if !i.Index.GetBase().Type.IsAssignableTo(keyType) {
+		if i.Index.GetBase().Type.IsAny() || !i.Index.GetBase().Type.IsAssignableTo(keyType) {
 			err := fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
 			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
+		if i.Object.GetBase().IsInvalid() && valType.IsAny() {
+			err := errors.New(invalidReason(i.Object, "索引对象存在错误，无法精确推导索引结果"))
+			ctx.AddErrorf("%s", err.Error())
+			i.InvalidCause = err.Error()
 			return err
 		}
 
@@ -1050,20 +1123,34 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 	xType := s.X.GetBase().Type
-	if !xType.IsArray() && xType != "TypeBytes" && !xType.IsAny() {
+	if !xType.IsArray() && xType != "TypeBytes" && xType != "String" && !xType.IsAny() {
 		err := fmt.Errorf("类型 %s 不支持切片操作", xType)
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	if xType.IsAny() && s.X.GetBase().Invalid {
+	if xType.IsAny() && s.X.GetBase().IsInvalid() {
 		err := errors.New("切片对象存在前置错误，无法精确推导切片类型")
 		ctx.AddErrorf("%s", err.Error())
-		s.Invalid = true
+		s.InvalidCause = err.Error()
 		return err
+	}
+	if s.X.GetBase().IsInvalid() && xType.IsArray() {
+		if elemType, ok := xType.ReadArrayItemType(); ok && elemType.IsAny() {
+			err := errors.New(invalidReason(s.X, "切片对象存在错误，无法精确推导切片类型"))
+			ctx.AddErrorf("%s", err.Error())
+			s.InvalidCause = err.Error()
+			return err
+		}
 	}
 
 	if s.Low != nil {
 		if err := s.Low.Check(ctx.WithNode(s.Low)); err != nil {
+			return err
+		}
+		if s.Low.GetBase().IsInvalid() && s.Low.GetBase().Type.IsAny() {
+			err := errors.New(invalidReason(s.Low, "slice low 索引存在前置错误，无法精确推导切片范围"))
+			ctx.AddErrorf("%s", err.Error())
+			s.InvalidCause = err.Error()
 			return err
 		}
 		if !s.Low.GetBase().Type.IsNumeric() {
@@ -1074,6 +1161,12 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 	}
 	if s.High != nil {
 		if err := s.High.Check(ctx.WithNode(s.High)); err != nil {
+			return err
+		}
+		if s.High.GetBase().IsInvalid() && s.High.GetBase().Type.IsAny() {
+			err := errors.New(invalidReason(s.High, "slice high 索引存在前置错误，无法精确推导切片范围"))
+			ctx.AddErrorf("%s", err.Error())
+			s.InvalidCause = err.Error()
 			return err
 		}
 		if !s.High.GetBase().Type.IsNumeric() {

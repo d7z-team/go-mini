@@ -10,10 +10,10 @@ func TestEvalUnaryDereferenceUnwrapsAnyAndCell(t *testing.T) {
 	exec := newEmptyExecutor(t)
 
 	ptr := &Var{
-		VType:  TypeHandle,
-		Handle: 1,
+		VType:    TypeHandle,
+		Handle:   1,
 		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
-		Ref:    NewInt(7),
+		Ref:      NewInt(7),
 	}
 	cell := &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}
 	anyWrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: cell}
@@ -32,7 +32,7 @@ func TestEvalMemberAndBuiltinLenUnwrapAnyContainers(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 
 	innerMap := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"name": NewString("mini"),
@@ -92,7 +92,7 @@ func TestOpIndexMultiUnwrapsAnyMap(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 
 	inner := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("Map<String,Int64>"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"k": NewInt(9),
@@ -116,6 +116,100 @@ func TestOpIndexMultiUnwrapsAnyMap(t *testing.T) {
 	items := got.Ref.(*VMArray).Data
 	if len(items) != 2 || items[0].I64 != 9 || !items[1].Bool {
 		t.Fatalf("unexpected multi-index tuple: %#v", items)
+	}
+}
+
+func TestEvalIndexAndSliceUnwrapAnyContainers(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+
+	innerArray := &Var{
+		VType:    TypeArray,
+		TypeInfo: MustParseRuntimeType("Array<Any>"),
+		Ref: &VMArray{Data: []*Var{
+			NewString("zero"),
+			NewString("one"),
+			NewString("two"),
+		}},
+	}
+	anyArray := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: innerArray}
+	anyIndex := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: NewInt(1)}
+
+	got, err := exec.evalIndexExprDirect(session, anyArray, anyIndex)
+	if err != nil {
+		t.Fatalf("single index failed: %v", err)
+	}
+	if got == nil || got.VType != TypeString || got.Str != "one" {
+		t.Fatalf("unexpected single index result: %#v", got)
+	}
+
+	low := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: NewInt(1)}
+	high := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: NewInt(3)}
+	sliced, err := exec.evalSliceExprDirect(session, anyArray, low, high)
+	if err != nil {
+		t.Fatalf("slice failed: %v", err)
+	}
+	if sliced == nil || sliced.VType != TypeArray {
+		t.Fatalf("unexpected slice result: %#v", sliced)
+	}
+	items := sliced.Ref.(*VMArray).Data
+	if len(items) != 2 || items[0].Str != "one" || items[1].Str != "two" {
+		t.Fatalf("unexpected slice items: %#v", items)
+	}
+}
+
+func TestEvalMemberChainOnMapStringAnyStillWorks(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+
+	leaf := &Var{
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
+		Ref: &VMMap{Data: map[string]*Var{
+			"d": NewString("ok"),
+		}},
+	}
+	levelC := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: leaf}
+	levelB := &Var{
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
+		Ref: &VMMap{Data: map[string]*Var{
+			"c": levelC,
+		}},
+	}
+	levelA := &Var{
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
+		Ref: &VMMap{Data: map[string]*Var{
+			"b": &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelB},
+		}},
+	}
+	root := &Var{
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("Map<String,Any>"),
+		Ref: &VMMap{Data: map[string]*Var{
+			"a": &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: levelA},
+		}},
+	}
+
+	a, err := exec.evalMemberExprDirect(session, root, "a")
+	if err != nil {
+		t.Fatalf("member a failed: %v", err)
+	}
+	b, err := exec.evalMemberExprDirect(session, a, "b")
+	if err != nil {
+		t.Fatalf("member b failed: %v", err)
+	}
+	c, err := exec.evalMemberExprDirect(session, b, "c")
+	if err != nil {
+		t.Fatalf("member c failed: %v", err)
+	}
+	d, err := exec.evalMemberExprDirect(session, c, "d")
+	if err != nil {
+		t.Fatalf("member d failed: %v", err)
+	}
+	if d == nil || d.VType != TypeString || d.Str != "ok" {
+		t.Fatalf("unexpected chained member result: %#v", d)
 	}
 }
 

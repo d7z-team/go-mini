@@ -20,6 +20,10 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			arr := []byte("hello world")
 			sub := arr[0:5]
 			if string(sub) != "hello" { panic("slice failed") }
+
+			s := "hello world"
+			subStr := s[0:5]
+			if subStr != "hello" { panic("string slice failed") }
 			
 			arr2 := []any{1, 2, 3, 4, 5}
 			sub2 := arr2[1:3]
@@ -136,11 +140,10 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 	t.Run("Assignment Evaluation Order (LHS before RHS)", func(t *testing.T) {
 		code := `
 		package main
+		var order string
+		func f() int64 { order = order + "L"; return 0 }
+		func g() int64 { order = order + "R"; return 1 }
 		func main() {
-			order := ""
-			f := func() int64 { order = order + "L"; return 0 }
-			g := func() int64 { order = order + "R"; return 1 }
-			
 			arr := make([]int64, 2)
 			// Go 规范：LHS 先求值，RHS 后求值
 			arr[f()] = g()

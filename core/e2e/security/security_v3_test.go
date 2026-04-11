@@ -110,15 +110,14 @@ func TestSecurityV3(t *testing.T) {
 		func main() {
 			m := make(map[string]int64)
 			k := identity(123)
-			_ = m[k] // 编译期应通过 (any 可赋值给 string)，运行时应报错
+			_ = m[k] // 具体 map 的 key 现在要求静态匹配，不再兼容 Any
 		}`
-		prog, err := e.NewRuntimeByGoCode(code)
-		if err != nil {
-			t.Fatalf("Compile failed: %v", err)
+		_, err := e.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Fatal("expected compile-time map key type rejection")
 		}
-		err = prog.Execute(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "invalid map key type") {
-			t.Errorf("Expected runtime map key type error, but got: %v", err)
+		if !strings.Contains(err.Error(), "Map 键类型不匹配") {
+			t.Fatalf("unexpected compile error: %v", err)
 		}
 	})
 

@@ -319,6 +319,9 @@ func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
 }
 
 func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
+	obj = e.unwrapValue(obj)
+	idx = e.unwrapValue(idx)
+
 	if obj == nil || isEmptyVar(obj) {
 		return nil, &VMError{Message: "index access on nil", IsPanic: true}
 	}
@@ -484,6 +487,10 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 }
 
 func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Var) (*Var, error) {
+	obj = e.unwrapValue(obj)
+	lowVar = e.unwrapValue(lowVar)
+	highVar = e.unwrapValue(highVar)
+
 	if obj == nil {
 		return nil, &VMError{Message: "slice on nil object", IsPanic: true}
 	}

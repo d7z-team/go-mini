@@ -82,13 +82,13 @@ type Position struct {
 
 // BaseNode 是所有节点的基类
 type BaseNode struct {
-	ID      string      `json:"id"`                // 确定性 ID: 基于 Loc + Meta 的哈希值
-	Meta    string      `json:"meta"`              // 反序列化开关: if, call, binary...
-	Type    GoMiniType  `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
-	Loc     *Position   `json:"loc,omitempty"`     // 源码位置映射: 仅语句和关键表达式包含
-	IsType  bool        `json:"is_type,omitempty"` // 语义标记：标识该节点是否正处于类型上下文（如 case T:）
-	Invalid bool        `json:"invalid,omitempty"` // 语义标记：当前节点的类型推导已被前置错误污染
-	Scope   interface{} `json:"-"`                 // 持久化作用域，供 LSP 查询。使用 interface{} 避免循环依赖（虽然在同包，但为了后续重构解耦）。
+	ID           string      `json:"id"`                // 确定性 ID: 基于 Loc + Meta 的哈希值
+	Meta         string      `json:"meta"`              // 反序列化开关: if, call, binary...
+	Type         GoMiniType  `json:"type,omitempty"`    // 表达式为任何类型，否则为 Void
+	Loc          *Position   `json:"loc,omitempty"`     // 源码位置映射: 仅语句和关键表达式包含
+	IsType       bool        `json:"is_type,omitempty"` // 语义标记：标识该节点是否正处于类型上下文（如 case T:）
+	InvalidCause string      `json:"invalid_cause,omitempty"`
+	Scope        interface{} `json:"-"` // 持久化作用域，供 LSP 查询。使用 interface{} 避免循环依赖（虽然在同包，但为了后续重构解耦）。
 }
 
 func (b *BaseNode) EnsureID(ctx *ValidContext) {
@@ -106,6 +106,10 @@ func (b *BaseNode) stmtNode() {}
 
 func (b *BaseNode) GetBase() *BaseNode {
 	return b
+}
+
+func (b *BaseNode) IsInvalid() bool {
+	return strings.TrimSpace(b.InvalidCause) != ""
 }
 
 func (b *BaseNode) Check(ctx *SemanticContext) error {
