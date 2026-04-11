@@ -110,6 +110,48 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 	}
 }
 
+func TestLowerStmtTasksBuildsDataOnlyGoPlan(t *testing.T) {
+	exec := newExecutor(t, &ast.ProgramStmt{
+		BaseNode:  ast.BaseNode{ID: "test"},
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+
+	stmts, err := ffigo.NewGoToASTConverter().ConvertStmtsSource(`go work(1, 2)`)
+	if err != nil {
+		t.Fatalf("convert stmts failed: %v", err)
+	}
+	if len(stmts) != 1 {
+		t.Fatalf("unexpected stmt count: %d", len(stmts))
+	}
+
+	tasks, ok := exec.lowerStmtTasks(stmts[0], nil, exec.newRootLoweringScope())
+	if !ok {
+		t.Fatal("expected statement to be lowered")
+	}
+
+	var spawnTask *Task
+	for i := range tasks {
+		if tasks[i].Op == OpSpawn {
+			spawnTask = &tasks[i]
+			break
+		}
+	}
+	if spawnTask == nil {
+		t.Fatalf("expected spawn task in lowered statement: %+v", tasks)
+	}
+	data, ok := spawnTask.Data.(*CallData)
+	if !ok {
+		t.Fatalf("unexpected spawn task data: %T", spawnTask.Data)
+	}
+	if data.Mode != CallByName || data.Name != "work" || data.ArgCount != 2 {
+		t.Fatalf("unexpected spawn task data: %+v", data)
+	}
+}
+
 func TestLowerStmtTasksBuildsDataOnlyBranchPlan(t *testing.T) {
 	exec := newExecutor(t, &ast.ProgramStmt{
 		BaseNode:  ast.BaseNode{ID: "test"},

@@ -30,6 +30,7 @@ const (
 	OpBranchIf
 	OpDoCall
 	OpCall
+	OpSpawn
 	OpReturn
 	OpInterrupt
 	OpComposite
@@ -111,6 +112,8 @@ func (op OpCode) String() string {
 		return "DO_CALL"
 	case OpCall:
 		return "CALL"
+	case OpSpawn:
+		return "SPAWN"
 	case OpReturn:
 		return "RETURN"
 	case OpInterrupt:

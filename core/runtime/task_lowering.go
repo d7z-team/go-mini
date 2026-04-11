@@ -9,6 +9,7 @@ import (
 
 var builtinSymbols = map[string]struct{}{
 	"append":  {},
+	"await":   {},
 	"cap":     {},
 	"close":   {},
 	"complex": {},
@@ -24,6 +25,7 @@ var builtinSymbols = map[string]struct{}{
 	"real":    {},
 	"recover": {},
 	"require": {},
+	"spawn":   {},
 }
 
 type loweringFuncState struct {
@@ -504,6 +506,43 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			Tasks:     e.tasksForExprInScope(call, scope),
 			PopResult: !call.GetBase().Type.IsVoid(),
 		}}}, true
+	case *ast.GoStmt:
+		if n == nil {
+			return nil, true
+		}
+		call, ok := n.Call.(*ast.CallExprStmt)
+		if !ok || call == nil {
+			return nil, false
+		}
+		data := &CallData{
+			Mode:     CallByValue,
+			ArgCount: len(call.Args),
+			Ellipsis: call.Ellipsis,
+		}
+		switch fn := call.Func.(type) {
+		case *ast.IdentifierExpr:
+			data.Mode = CallByName
+			data.Name = string(fn.Name)
+			data.Sym = scope.resolveOrImplicit(data.Name)
+		case *ast.ConstRefExpr:
+			data.Mode = CallByName
+			data.Name = string(fn.Name)
+			data.Sym = scope.resolveOrImplicit(data.Name)
+		case *ast.MemberExpr:
+			data.Mode = CallByMember
+			data.Name = string(fn.Property)
+		}
+
+		out := []Task{{Op: OpSpawn, Data: data}}
+		for i := len(call.Args) - 1; i >= 0; i-- {
+			out = append(out, e.tasksForExprInScope(call.Args[i], scope)...)
+		}
+		if member, ok := call.Func.(*ast.MemberExpr); ok {
+			out = append(out, e.tasksForExprInScope(member.Object, scope)...)
+		} else if data.Mode == CallByValue {
+			out = append(out, e.tasksForExprInScope(call.Func, scope)...)
+		}
+		return out, true
 	case *ast.SwitchStmt:
 		if n == nil {
 			return nil, true

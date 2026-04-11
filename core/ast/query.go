@@ -770,6 +770,8 @@ var miniBuiltins = map[string]string{
 	"panic":   "function(Any) Void",
 	"print":   "function(...Any) Void",
 	"println": "function(...Any) Void",
+	"spawn":   "function(Any, ...Any) Ptr<task.Task>",
+	"await":   "function(Ptr<task.Task>) Any",
 }
 
 // FindCompletionsAt 获取指定位置的代码补全建议

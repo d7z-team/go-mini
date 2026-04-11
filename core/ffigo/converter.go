@@ -639,6 +639,12 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			return &miniast.DeferStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "defer"), Meta: "defer", Loc: c.extractLoc(st)}, Call: cExpr}
 		}
 		return nil
+	case *ast.GoStmt:
+		call := c.convertExpr(st.Call)
+		if cExpr, ok := call.(*miniast.CallExprStmt); ok {
+			return &miniast.GoStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "go"), Meta: "go", Loc: c.extractLoc(st)}, Call: cExpr}
+		}
+		return nil
 	case *ast.BlockStmt:
 		return c.toBlock(st)
 	case *ast.IncDecStmt:

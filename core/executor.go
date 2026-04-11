@@ -32,6 +32,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/tasklib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
 	"gopkg.d7z.net/go-mini/core/ffilib/unicode/utf8lib"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -356,6 +357,8 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("Int64", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
 	res.mustAddFuncSchemaLocked("Float64", runtime.MustParseRuntimeFuncSig("function(Any) Float64"))
 	res.mustAddFuncSchemaLocked("require", runtime.MustParseRuntimeFuncSig("function(String) TypeModule"))
+	res.mustAddFuncSchemaLocked("spawn", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Ptr<task.Task>"))
+	res.mustAddFuncSchemaLocked("await", runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) Any"))
 
 	// Inject non-IO libraries by default
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
@@ -376,6 +379,7 @@ func NewMiniExecutor() *MiniExecutor {
 	md5lib.RegisterMD5(res, &md5lib.MD5Host{}, res.registry)
 	sha256lib.RegisterSHA256(res, &sha256lib.SHA256Host{}, res.registry)
 	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
+	tasklib.RegisterTaskAll(res, &tasklib.Host{}, res.registry)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}
@@ -583,6 +587,9 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 
 	// 4. Inject math
 	mathlib.RegisterMath(e, &mathlib.MathHost{}, e.registry)
+
+	// 5. Inject task sync helpers
+	tasklib.RegisterTaskAll(e, &tasklib.Host{}, e.registry)
 }
 
 func (e *MiniExecutor) GetExportedConstants() map[string]string {

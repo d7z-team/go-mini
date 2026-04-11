@@ -286,3 +286,119 @@ func TestDebugger_AnytimePause(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDebugger_TaskBreakpointHitsChildTask(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceProgram := `
+	package main
+	import "task"
+
+	func worker() Int64 {
+		task.Sleep(20) // Line 6
+		x := 1         // Line 7
+		return x
+	}
+
+	func main() {
+		g := task.NewTaskGroup()
+		t := spawn(worker)
+		task.AddTask(g, t)
+		task.WaitTasks(g)
+	}
+	`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	dbg.AddBreakpoint(6)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testProgram.Execute(ctx)
+	}()
+
+	select {
+	case event := <-dbg.EventChan:
+		if event.Loc.L != 6 {
+			t.Fatalf("expected child task breakpoint at line 6, got %d", event.Loc.L)
+		}
+		dbg.CommandChan <- debugger.CmdContinue
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for child task breakpoint")
+	}
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDebugger_TaskBreakpointHitsMultipleTasks(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceProgram := `
+	package main
+	import "task"
+
+	func worker() Int64 {
+		task.Sleep(20) // Line 6
+		x := 1         // Line 7
+		return x
+	}
+
+	func main() {
+		g := task.NewTaskGroup()
+		t1 := spawn(worker)
+		t2 := spawn(worker)
+		task.AddTask(g, t1)
+		task.AddTask(g, t2)
+		task.WaitTasks(g)
+	}
+	`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	dbg.AddBreakpoint(6)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testProgram.Execute(ctx)
+	}()
+
+	hits := 0
+	for {
+		select {
+		case event := <-dbg.EventChan:
+			if event.Loc.L != 6 {
+				t.Fatalf("expected child task breakpoint at line 6, got %d", event.Loc.L)
+			}
+			hits++
+			dbg.CommandChan <- debugger.CmdContinue
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+			if hits < 2 {
+				t.Fatalf("expected at least 2 child task breakpoint hits, got %d", hits)
+			}
+			return
+		case <-ctx.Done():
+			t.Fatal("timeout waiting for multi-task debugger completion")
+		}
+	}
+}

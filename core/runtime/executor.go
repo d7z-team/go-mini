@@ -34,6 +34,7 @@ type Executor struct {
 	interfaceCache map[TypeSpec]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
 	shared         *SharedState
+	scheduler      *TaskScheduler
 }
 
 type RuntimeGlobal struct {
@@ -183,6 +184,7 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
+		scheduler:       NewTaskScheduler(),
 	}
 	for _, imp := range program.Imports {
 		alias := imp.Alias
@@ -908,12 +910,17 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 }
 
 func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
+	if e.scheduler != nil {
+		e.scheduler.BeginRoot()
+	}
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
-
-	defer e.CleanupSession(session)
-
-	return e.InitializeSession(session, env, true)
+	err = e.InitializeSession(session, env, true)
+	e.CleanupSession(session)
+	if e.scheduler != nil {
+		e.scheduler.ShutdownFromRoot()
+	}
+	return err
 }
 
 func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
@@ -1693,6 +1700,88 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		return e.invokeCall(session, name, receiver, mod, callable, finalArgs, finalArgLHS)
+	case OpSpawn:
+		var name string
+		var receiver *Var
+		var mod *VMModule
+		var callable *Var
+		data := task.Data.(*CallData)
+		argCount := data.ArgCount
+
+		args := make([]*Var, argCount)
+		for i := argCount - 1; i >= 0; i-- {
+			args[i] = session.ValueStack.Pop()
+		}
+
+		if data.Ellipsis && len(args) > 0 {
+			last := e.unwrapValue(args[len(args)-1])
+			if last != nil && last.VType == TypeArray {
+				arr := last.Ref.(*VMArray)
+				items := arr.Snapshot()
+				newArgs := make([]*Var, len(args)-1+len(items))
+				copy(newArgs, args[:len(args)-1])
+				copy(newArgs[len(args)-1:], items)
+				args = newArgs
+			}
+		}
+
+		switch data.Mode {
+		case CallByName:
+			name = data.Name
+		case CallByMember:
+			obj := session.ValueStack.Pop()
+			if obj == nil {
+				return errors.New("calling method on nil object")
+			}
+
+			res, err := e.evalMemberExprDirect(session, obj, data.Name)
+			if err != nil {
+				return err
+			}
+
+			if res != nil && res.VType == TypeClosure {
+				if mv, ok := res.Ref.(*VMMethodValue); ok {
+					receiver = mv.Receiver
+					name = mv.Method
+				} else {
+					callable = res
+				}
+			} else if res != nil && res.VType == TypeModule {
+				mod = res.Ref.(*VMModule)
+				name = data.Name
+			} else if res != nil {
+				callable = res
+			} else {
+				return fmt.Errorf("property %s is not a callable function on %v", data.Name, obj.VType)
+			}
+		case CallByValue:
+			callable = session.ValueStack.Pop()
+		}
+
+		if name != "" && mod == nil && callable == nil {
+			loadTarget := data.Sym
+			if loadTarget.Kind == SymbolUnknown {
+				loadTarget = SymbolRef{Name: name}
+			}
+			if v, err := session.LoadSymbol(loadTarget); err == nil && v != nil {
+				callable = v
+			}
+		}
+
+		totalArgs := len(args)
+		offset := 0
+		if receiver != nil {
+			totalArgs++
+			offset = 1
+		}
+		finalArgs := make([]*Var, totalArgs)
+		if receiver != nil {
+			finalArgs[0] = receiver
+		}
+		copy(finalArgs[offset:], args)
+
+		_, err := e.spawnCall(session, name, receiver, mod, callable, finalArgs)
+		return err
 	case OpCallBoundary:
 		data, ok := task.Data.(*CallBoundaryData)
 		if !ok || data == nil {

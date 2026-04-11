@@ -47,6 +47,26 @@ GOCACHE=/tmp/go-build-cache go test ./core/e2e/...
 GOCACHE=/tmp/go-build-cache go test ./...
 ```
 
+## Task Concurrency
+
+Go-Mini exposes VM-native task primitives plus a `task` module facade:
+
+- `spawn(fn, ...args)` creates a task and returns `Ptr<task.Task>`
+- `await(task)` waits and returns the result, but rethrows task failure/cancel as runtime error
+- `go f()` is Go syntax sugar for fire-and-forget spawn
+- `task.NewTaskGroup()` creates a task-aware group for `Ptr<task.Task>`
+- `task.AddTask/WaitTasks/GroupErr/CancelGroup` manage task collections
+- `task.Status(task)` returns `pending|running|succeeded|failed|canceled`
+- `task.Err(task)` returns `nil` for pending/running/succeeded tasks, and `Error` for failed or canceled tasks
+- `task.Cancel(task)` requests cancellation through task context
+
+Lifecycle rules:
+
+- root `main` returning cancels all unfinished child tasks
+- shutdown cancellation is best-effort and observed only at VM safe points
+- unfinished background tasks are not awaited automatically
+- `go` task failures do not interrupt the parent flow unless explicitly observed via `await` or `task.Err`
+
 ## Docs
 
 - [DOCS.md](./DOCS.md)

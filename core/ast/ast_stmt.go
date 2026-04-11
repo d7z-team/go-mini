@@ -868,6 +868,43 @@ func (d *DeferStmt) Optimize(ctx *OptimizeContext) Node {
 	return d
 }
 
+// GoStmt 表示异步启动任务语句。
+type GoStmt struct {
+	BaseNode
+	Call Expr
+}
+
+func (g *GoStmt) GetBase() *BaseNode { return &g.BaseNode }
+func (g *GoStmt) stmtNode()          {}
+
+func (g *GoStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(g)
+	g.Type = "Void"
+	if g.Call == nil {
+		err := errors.New("go 语句缺少调用表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	call, ok := g.Call.(*CallExprStmt)
+	if !ok {
+		err := errors.New("go 语句只支持调用表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	return call.Check(ctx.WithNode(call))
+}
+
+func (g *GoStmt) Optimize(ctx *OptimizeContext) Node {
+	if g.Call != nil {
+		if opt := g.Call.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				g.Call = val
+			}
+		}
+	}
+	return g
+}
+
 // RangeStmt 表示 range 遍历语句
 type RangeStmt struct {
 	BaseNode

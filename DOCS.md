@@ -196,6 +196,93 @@ p := new(Int64)
 println(*p)
 ```
 
+## 4.1 Task 并发语义
+
+当前并发模型分两层：
+
+- VM 原生原语：`spawn(fn, ...args)`、`await(task)`
+- 模块外观：`task.NewTaskGroup()`、`task.AddTask(...)`、`task.WaitTasks(...)`、`task.GroupErr(...)`、`task.CancelGroup(...)`、`task.Status(task)`、`task.Err(task)`、`task.Cancel(task)`
+
+### 基本用法
+
+```go
+package main
+
+import "task"
+
+func work() Int64 {
+    task.Sleep(10)
+    return 42
+}
+
+func main() {
+    t := spawn(work)
+    println(task.Status(t))
+    println(await(t))
+}
+```
+
+Go 语法糖：
+
+```go
+package main
+
+import "task"
+
+func worker() {
+    task.Sleep(10)
+}
+
+func main() {
+    g := task.NewTaskGroup()
+    t := spawn(worker)
+    task.AddTask(g, t)
+    task.WaitTasks(g)
+    if task.GroupErr(g) != nil {
+        panic(task.GroupErr(g))
+    }
+}
+```
+
+取消与失败语义如下：
+
+- `await(task)` 是抛出式汇合点
+- task 成功时，`await(task)` 返回结果
+- task 失败时，`await(task)` 返回 runtime panic/error
+- task 被取消时，`await(task)` 同样返回 runtime error
+- `task.Err(task)` 是非抛出式观测接口：
+  - `pending/running/succeeded` 返回 `nil`
+  - `failed/canceled` 返回 `Error`
+- `task.Cancel(task)` 通过 task context 发起取消，不是抢占式终止
+- root `main` 结束时，runtime 会取消所有未完成 child task，但不会额外等待它们自然结束
+- 取消只在安全点生效，例如调用边界、FFI 返回后、循环边界；不保证完整执行 child task 的后续 defer/收尾逻辑
+
+因此，如果脚本需要确定子任务完成，必须显式使用 `await(...)` 或 `task.WaitTasks(...)`
+
+### Root 生命周期
+
+root `main` 是整个程序的根 task。
+
+- `main()` 正常返回时，所有未完成 child task 会被取消
+- `main()` panic 返回时，同样会取消所有未完成 child task
+- runtime 不会在退出阶段自动等待后台 task 收尾
+
+这意味着 `go f()` 的默认语义是 fire-and-forget，但不是“main 退出后继续后台存活”。
+
+### 失败观测建议
+
+- 需要单任务结果时，优先用 `await(task)`
+- 需要多任务聚合时，用 `task.NewTaskGroup + AddTask + WaitTasks + GroupErr`
+- 只想轮询状态或非抛出式检查时，用 `task.Status(task)` 和 `task.Err(task)`
+- 对 `go f()` 这种不保留句柄的调用，子任务失败不会打断父流程
+
+### 当前限制
+
+- `spawn/go` 目前只支持命名函数和无 capture 闭包
+- 带 captured upvalue 的闭包不能跨 task 执行
+- 普通 VM map/array/closure capture 不承诺并发写安全
+- 当前没有 `chan/select` 语义
+
 ## 5. FFI 生成器
 
 `ffigen` 负责把 Go 接口或结构体导出为 schema-only FFI 桥接代码。

@@ -370,6 +370,14 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		n := &ast.DeferStmt{BaseNode: baseNode}
 		n.Call, _ = parseExpr(raw.Call)
 		return n, nil
+	case "go":
+		var raw struct {
+			Call json.RawMessage `json:"call"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		n := &ast.GoStmt{BaseNode: baseNode}
+		n.Call, _ = parseExpr(raw.Call)
+		return n, nil
 	case "decl":
 		var raw struct {
 			Name string `json:"name"`

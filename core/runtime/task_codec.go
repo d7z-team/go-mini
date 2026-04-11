@@ -87,6 +87,8 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 		return marshalTaskDataValue("branch", data)
 	case OpCall:
 		return marshalTaskDataValue("call", data)
+	case OpSpawn:
+		return marshalTaskDataValue("call", data)
 	case OpComposite:
 		return marshalTaskDataValue("composite", data)
 	case OpIndex:
@@ -174,6 +176,8 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 	case OpBranchIf:
 		return decodeTaskData[*BranchData](raw)
 	case OpCall:
+		return decodeTaskData[*CallData](raw)
+	case OpSpawn:
 		return decodeTaskData[*CallData](raw)
 	case OpComposite:
 		return decodeTaskData[*CompositeData](raw)

@@ -2,6 +2,24 @@
 
 更新时间: 2026-04-11
 
+## 当前并发模型状态
+
+- [x] `go f()` 已作为 `spawn(...)` 语法糖落地
+- [x] `spawn/await` 已作为 VM 原生 task 原语落地
+- [x] `task.Status/Cancel/Err` 已收口到 `task` 模块外观
+- [x] `task.TaskGroup` 已升级为真正 task-aware 的 group，替代旧 WaitGroup 风格 facade
+- [x] root `main` 结束时未完成 child task 一律取消，不自动等待后台任务
+- [x] 已明确取消/失败语义：`await` 负责失败传播，`task.Err` 负责非抛出式观测
+- [ ] captured upvalue 闭包跨 task 语义仍未放开
+
+### 并发后续设计
+
+- [ ] **明确 captured upvalue 闭包跨 task 语义**: 当前 `spawn/go` 仍禁止带 captured upvalue 的闭包。后续需要在以下方案中二选一并落实到 runtime/文档/测试：
+  - 永久禁止 captured upvalue 闭包跨 task
+  - 将 captured upvalue 改为 task 边界按值快照，而不是共享 cell
+  禁止直接复用当前共享 `Cell/*Var` 语义跨 task，以免把单线程 closure capture 隐式升级为未定义的共享内存并发。
+- [ ] **补齐 debugger 多 task 语义**: 当前 debugger 已共享到 child task，并补了多 task 断点/事件验证；后续仍需决定是否在调试事件里显式暴露 task/session 标识，以及多 task 单步时的事件顺序与宿主交互策略。
+
 ## Phase 1: Runtime 全量脱 AST (已完成)
 **目标**: 编译/执行形态分离，执行主路径不再依赖 `ast.Node` 引用。
 
