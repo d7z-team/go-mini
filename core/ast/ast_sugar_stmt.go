@@ -22,14 +22,16 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	if err := i.Operand.Check(ctx.WithNode(i.Operand)); err != nil {
+	operandCtx := ctx.WithNode(i.Operand)
+	logCount := operandCtx.LogCount()
+	if err := i.Operand.Check(operandCtx); ForwardStructuredError(ctx, i.Operand, logCount, err) {
 		return err
 	}
 	// 验证操作数是否为数值类型
 	oType := i.Operand.GetBase().Type
 	if oType != "Int64" && oType != "Float64" && oType != "Int" {
 		err := errors.New("inc/dec 语句的操作数必须是数值类型")
-		ctx.AddErrorf("%s", err.Error())
+		ctx.AddErrorAt(i.Operand, "%s", err.Error())
 		return err
 	}
 	return nil
@@ -62,7 +64,12 @@ func (e *ExpressionStmt) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	return e.X.Check(ctx.WithNode(e.X))
+	exprCtx := ctx.WithNode(e.X)
+	logCount := exprCtx.LogCount()
+	if err := e.X.Check(exprCtx); ForwardStructuredError(ctx, e.X, logCount, err) {
+		return err
+	}
+	return nil
 }
 
 func (e *ExpressionStmt) Optimize(ctx *OptimizeContext) Node {

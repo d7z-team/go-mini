@@ -295,12 +295,20 @@ func (c *ValidContext) NextID() uint64 {
 }
 
 func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
+	c.addErrorForNode(nil, message, args...)
+}
+
+func (c *ValidContext) AddErrorAt(node Node, message string, args ...interface{}) {
+	c.addErrorForNode(node, message, args...)
+}
+
+func (c *ValidContext) addErrorForNode(node Node, message string, args ...interface{}) {
 	path := make([]string, 0)
 	msg := fmt.Sprintf(message, args...)
 	ctx := c
 	var firstNode Node
 	for ctx != nil && ctx.current != nil {
-		if firstNode == nil {
+		if firstNode == nil && node == nil {
 			firstNode = ctx.current
 		}
 		base := ctx.current.GetBase()
@@ -311,7 +319,85 @@ func (c *ValidContext) AddErrorf(message string, args ...interface{}) {
 		path = append([]string{fmt.Sprintf("%s#%s%s", base.Meta, base.ID, locStr)}, path...)
 		ctx = ctx.parent
 	}
+	if node != nil {
+		firstNode = node
+	}
+	for idx := range c.root.logs {
+		log := c.root.logs[idx]
+		if log.Message != msg {
+			continue
+		}
+		if sameDiagnosticNode(log.Node, firstNode) {
+			return
+		}
+		if replace, skip := mergeDiagnosticByRange(log.Node, firstNode); skip {
+			return
+		} else if replace {
+			c.root.logs[idx].Node = firstNode
+			c.root.logs[idx].Path = path
+			return
+		}
+	}
 	c.root.logs = append(c.root.logs, Logs{Node: firstNode, Path: path, Message: msg})
+}
+
+func sameDiagnosticNode(a, b Node) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	aBase := a.GetBase()
+	bBase := b.GetBase()
+	if aBase == nil || bBase == nil {
+		return aBase == bBase
+	}
+	if aBase.ID != "" && bBase.ID != "" && aBase.ID == bBase.ID {
+		return true
+	}
+	if aBase.Loc == nil || bBase.Loc == nil {
+		return false
+	}
+	return aBase.Loc.F == bBase.Loc.F &&
+		aBase.Loc.L == bBase.Loc.L &&
+		aBase.Loc.C == bBase.Loc.C &&
+		aBase.Loc.EL == bBase.Loc.EL &&
+		aBase.Loc.EC == bBase.Loc.EC
+}
+
+func mergeDiagnosticByRange(existing, incoming Node) (replace bool, skip bool) {
+	if existing == nil || incoming == nil {
+		return false, false
+	}
+	existingBase := existing.GetBase()
+	incomingBase := incoming.GetBase()
+	if existingBase == nil || incomingBase == nil || existingBase.Loc == nil || incomingBase.Loc == nil {
+		return false, false
+	}
+	if existingBase.Loc.F != incomingBase.Loc.F {
+		return false, false
+	}
+	if positionContains(existingBase.Loc, incomingBase.Loc) && !positionContains(incomingBase.Loc, existingBase.Loc) {
+		return true, false
+	}
+	if positionContains(incomingBase.Loc, existingBase.Loc) && !positionContains(existingBase.Loc, incomingBase.Loc) {
+		return false, true
+	}
+	return false, false
+}
+
+func positionContains(outer, inner *Position) bool {
+	if outer == nil || inner == nil {
+		return false
+	}
+	if outer.L > inner.L || outer.EL < inner.EL {
+		return false
+	}
+	if outer.L == inner.L && outer.C > inner.C {
+		return false
+	}
+	if outer.EL == inner.EL && outer.EC < inner.EC {
+		return false
+	}
+	return true
 }
 
 func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
@@ -530,6 +616,30 @@ func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
 
 func (c *ValidContext) Logs() []Logs { return c.root.logs }
 
+func (c *ValidContext) LogCount() int {
+	if c == nil || c.root == nil {
+		return 0
+	}
+	return len(c.root.logs)
+}
+
+func ForwardStructuredError(ctx *SemanticContext, node Node, logCount int, err error) bool {
+	if err == nil {
+		return false
+	}
+	if ctx == nil {
+		return true
+	}
+	if ctx.LogCount() == logCount {
+		if node != nil {
+			ctx.AddErrorAt(node, "%s", err.Error())
+		} else {
+			ctx.AddErrorf("%s", err.Error())
+		}
+	}
+	return true
+}
+
 func (c *ValidContext) AddFuncSpec(name Ident, miniType GoMiniType) error {
 	a, b := miniType.ReadFunc()
 	if !b {
@@ -678,7 +788,8 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 
 	// 3. 校验函数体
 	semBodyCtx := bodyCtx
-	if err := f.Body.Check(semBodyCtx); err != nil {
+	logCount := semBodyCtx.LogCount()
+	if err := f.Body.Check(semBodyCtx); ForwardStructuredError(semBodyCtx, f.Body, logCount, err) {
 		return err
 	}
 
@@ -688,7 +799,10 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 		analyzer := NewReturnAnalyzer(bodyCtx.ValidContext, f.Return)
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
-			return errors.New("匿名函数缺少返回语句")
+			if analyzer.ErrorCount() == 0 {
+				funcCtx.AddErrorAt(f.Body, "匿名函数缺少返回语句")
+			}
+			return errors.New("匿名函数返回路径校验失败")
 		}
 	}
 

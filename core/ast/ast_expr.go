@@ -370,7 +370,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		argType := c.Args[i].GetBase().Type
 		if !argType.IsAssignableTo(sigParams[i]) {
 			err := fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 			return err
 		}
 	}
@@ -391,7 +391,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 			argType := c.Args[i].GetBase().Type
 			if !argType.IsAssignableTo(targetElem) {
 				err := fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
-				ctx.AddErrorf("%s", err.Error())
+				ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 				return err
 			}
 		}
@@ -419,7 +419,7 @@ done:
 				argType := c.Args[0].GetBase().Type
 				if !argType.IsArray() && !argType.IsMap() && argType != "String" && argType != "TypeBytes" && !argType.IsAny() {
 					err := fmt.Errorf("%s: 不支持类型 %s", ident.Name, argType)
-					ctx.AddErrorf("%s", err.Error())
+					ctx.AddErrorAt(c.Args[0], "%s", err.Error())
 					return err
 				}
 			}
@@ -780,6 +780,8 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 		var commonKeyType GoMiniType
 		allSameVal := true
 		allSameKey := true
+		haveReliableVal := false
+		haveReliableKey := false
 
 		for i, v := range c.Values {
 			if v.Key != nil {
@@ -789,12 +791,14 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 						if invalidCause == "" {
 							invalidCause = compositeInvalidCause("key", i, v.Key)
 						}
-					}
-					kt := v.Key.GetBase().Type
-					if i == 0 {
-						commonKeyType = kt
-					} else if !kt.Equals(commonKeyType) {
-						allSameKey = false
+					} else {
+						kt := v.Key.GetBase().Type
+						if !haveReliableKey {
+							commonKeyType = kt
+							haveReliableKey = true
+						} else if !kt.Equals(commonKeyType) {
+							allSameKey = false
+						}
 					}
 				} else {
 					if invalidCause == "" {
@@ -811,12 +815,14 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 						if invalidCause == "" {
 							invalidCause = compositeInvalidCause("value", i, v.Value)
 						}
-					}
-					vt := v.Value.GetBase().Type
-					if i == 0 {
-						commonValType = vt
-					} else if !vt.Equals(commonValType) {
-						allSameVal = false
+					} else {
+						vt := v.Value.GetBase().Type
+						if !haveReliableVal {
+							commonValType = vt
+							haveReliableVal = true
+						} else if !vt.Equals(commonValType) {
+							allSameVal = false
+						}
 					}
 				} else {
 					if invalidCause == "" {
@@ -828,17 +834,17 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 
 		if hasKey {
 			finalKey := GoMiniType("String")
-			if allSameKey && !commonKeyType.IsEmpty() {
+			if allSameKey && haveReliableKey && !commonKeyType.IsEmpty() {
 				finalKey = commonKeyType
 			}
 			finalVal := GoMiniType("Any")
-			if allSameVal && !commonValType.IsEmpty() {
+			if allSameVal && haveReliableVal && !commonValType.IsEmpty() {
 				finalVal = commonValType
 			}
 			c.Type = GoMiniType(fmt.Sprintf("Map<%s, %s>", finalKey, finalVal))
 		} else {
 			finalVal := GoMiniType("Any")
-			if allSameVal && !commonValType.IsEmpty() && len(c.Values) > 0 {
+			if allSameVal && haveReliableVal && !commonValType.IsEmpty() && len(c.Values) > 0 {
 				finalVal = commonValType
 			}
 			c.Type = CreateArrayType(finalVal)
@@ -1005,7 +1011,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 
@@ -1032,7 +1038,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 		i.Type = "Int64"
@@ -1046,7 +1052,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		if i.Index.GetBase().Type != "Int64" {
 			err := fmt.Errorf("String 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 		i.Type = "Int64" // 返回字节值
@@ -1061,7 +1067,7 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		if i.Index.GetBase().Type.IsAny() || !i.Index.GetBase().Type.IsAssignableTo(keyType) {
 			err := fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 		if i.Object.GetBase().IsInvalid() && valType.IsAny() {
@@ -1125,19 +1131,19 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 	xType := s.X.GetBase().Type
 	if !xType.IsArray() && xType != "TypeBytes" && xType != "String" && !xType.IsAny() {
 		err := fmt.Errorf("类型 %s 不支持切片操作", xType)
-		ctx.AddErrorf("%s", err.Error())
+		ctx.AddErrorAt(s.X, "%s", err.Error())
 		return err
 	}
 	if xType.IsAny() && s.X.GetBase().IsInvalid() {
 		err := errors.New("切片对象存在前置错误，无法精确推导切片类型")
-		ctx.AddErrorf("%s", err.Error())
+		ctx.AddErrorAt(s.X, "%s", err.Error())
 		s.InvalidCause = err.Error()
 		return err
 	}
 	if s.X.GetBase().IsInvalid() && xType.IsArray() {
 		if elemType, ok := xType.ReadArrayItemType(); ok && elemType.IsAny() {
 			err := errors.New(invalidReason(s.X, "切片对象存在错误，无法精确推导切片类型"))
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(s.X, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
 		}
@@ -1149,13 +1155,13 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 		}
 		if s.Low.GetBase().IsInvalid() && s.Low.GetBase().Type.IsAny() {
 			err := errors.New(invalidReason(s.Low, "slice low 索引存在前置错误，无法精确推导切片范围"))
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(s.Low, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
 		}
 		if !s.Low.GetBase().Type.IsNumeric() {
 			err := errors.New("slice low 索引必须是数值类型")
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(s.Low, "%s", err.Error())
 			return err
 		}
 	}
@@ -1165,13 +1171,13 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 		}
 		if s.High.GetBase().IsInvalid() && s.High.GetBase().Type.IsAny() {
 			err := errors.New(invalidReason(s.High, "slice high 索引存在前置错误，无法精确推导切片范围"))
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(s.High, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
 		}
 		if !s.High.GetBase().Type.IsNumeric() {
 			err := errors.New("slice high 索引必须是数值类型")
-			ctx.AddErrorf("%s", err.Error())
+			ctx.AddErrorAt(s.High, "%s", err.Error())
 			return err
 		}
 	}

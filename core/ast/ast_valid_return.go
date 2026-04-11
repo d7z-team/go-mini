@@ -13,6 +13,7 @@ type ReturnAnalyzer struct {
 type AnalysisError struct {
 	Path    []string
 	Message string
+	Node    Node
 }
 
 // NewReturnAnalyzer 创建新的返回分析器
@@ -198,6 +199,7 @@ func (a *ReturnAnalyzer) addError(message string, node Node) {
 	a.errors = append(a.errors, AnalysisError{
 		Path:    path,
 		Message: message,
+		Node:    node,
 	})
 }
 
@@ -279,6 +281,14 @@ func (a *ReturnAnalyzer) GetErrors() []AnalysisError {
 // AddReturnPathErrorsToContext 将返回路径错误添加到验证上下文
 func (a *ReturnAnalyzer) AddReturnPathErrorsToContext(v *ValidContext) {
 	for _, err := range a.errors {
+		if err.Node != nil {
+			v.AddErrorAt(err.Node, "%s", err.Message)
+			continue
+		}
 		v.AddErrorf("%s", err.Message)
 	}
+}
+
+func (a *ReturnAnalyzer) ErrorCount() int {
+	return len(a.errors)
 }

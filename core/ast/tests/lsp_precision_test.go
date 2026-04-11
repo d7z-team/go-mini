@@ -604,3 +604,51 @@ func TestConcreteMapIndexRejectsAnyKeyType(t *testing.T) {
 		t.Fatalf("unexpected map index error: %v", err)
 	}
 }
+
+func TestCompositeExprIgnoresInvalidChildrenForArrayInference(t *testing.T) {
+	ctx := newTestSemanticContext(t)
+	expr := &ast.CompositeExpr{
+		BaseNode: ast.BaseNode{Meta: "composite"},
+		Values: []ast.CompositeElement{
+			{Value: &ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "Int64"}, Value: "1"}},
+			{Value: &ast.BadExpr{BaseNode: ast.BaseNode{Meta: "bad_expr"}}},
+		},
+	}
+
+	if err := expr.Check(ctx); err != nil {
+		t.Fatalf("composite check failed: %v", err)
+	}
+	if expr.Type != "Array<Int64>" {
+		t.Fatalf("expected Array<Int64>, got %s", expr.Type)
+	}
+	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "复合字面量第 2 个元素的值存在错误") {
+		t.Fatalf("expected precise invalid cause, got %q", expr.InvalidCause)
+	}
+}
+
+func TestCompositeExprIgnoresInvalidChildrenForMapInference(t *testing.T) {
+	ctx := newTestSemanticContext(t)
+	expr := &ast.CompositeExpr{
+		BaseNode: ast.BaseNode{Meta: "composite"},
+		Values: []ast.CompositeElement{
+			{
+				Key:   &ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "String"}, Value: "a"},
+				Value: &ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "Int64"}, Value: "1"},
+			},
+			{
+				Key:   &ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "String"}, Value: "b"},
+				Value: &ast.BadExpr{BaseNode: ast.BaseNode{Meta: "bad_expr"}},
+			},
+		},
+	}
+
+	if err := expr.Check(ctx); err != nil {
+		t.Fatalf("composite check failed: %v", err)
+	}
+	if expr.Type != "Map<String, Int64>" {
+		t.Fatalf("expected Map<String, Int64>, got %s", expr.Type)
+	}
+	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "复合字面量第 2 个元素的值存在错误") {
+		t.Fatalf("expected precise invalid cause, got %q", expr.InvalidCause)
+	}
+}

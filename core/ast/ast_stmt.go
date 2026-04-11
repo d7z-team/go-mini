@@ -109,11 +109,8 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 
 	// 第三遍：全量语义校验
 	for _, structDef := range p.Structs {
-		logCount := len(ctx.Logs())
-		if err := structDef.Check(ctx); err != nil {
-			if len(ctx.Logs()) == logCount {
-				ctx.AddErrorf("%s", err.Error())
-			}
+		logCount := ctx.LogCount()
+		if err := structDef.Check(ctx); ForwardStructuredError(ctx, structDef, logCount, err) {
 			hasError = true
 		}
 	}
@@ -133,11 +130,8 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 			continue
 		}
 		if stmt != nil {
-			logCount := len(ctx.Logs())
-			if err := stmt.Check(ctx); err != nil {
-				if len(ctx.Logs()) == logCount {
-					ctx.AddErrorf("%s", err.Error())
-				}
+			logCount := ctx.LogCount()
+			if err := stmt.Check(ctx); ForwardStructuredError(ctx, stmt, logCount, err) {
 				hasError = true
 			}
 			ctx.root.Global.Fields[i] = stmt.GetBase().Type
@@ -149,21 +143,15 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, function := range p.Functions {
-		logCount := len(ctx.Logs())
-		if err := function.Check(ctx); err != nil {
-			if len(ctx.Logs()) == logCount {
-				ctx.AddErrorf("%s", err.Error())
-			}
+		logCount := ctx.LogCount()
+		if err := function.Check(ctx); ForwardStructuredError(ctx, function, logCount, err) {
 			hasError = true
 		}
 	}
 
 	for _, node := range p.Main {
-		logCount := len(ctx.Logs())
-		if err := node.Check(ctx); err != nil {
-			if len(ctx.Logs()) == logCount {
-				ctx.AddErrorf("%s", err.Error())
-			}
+		logCount := ctx.LogCount()
+		if err := node.Check(ctx); ForwardStructuredError(ctx, node, logCount, err) {
 			hasError = true
 		}
 	}
@@ -494,11 +482,8 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 
 	var hasError bool
 	for _, child := range b.Children {
-		logCount := len(semCtx.Logs())
-		if err := child.Check(semCtx); err != nil {
-			if len(semCtx.Logs()) == logCount {
-				semCtx.AddErrorf("%s", err.Error())
-			}
+		logCount := semCtx.LogCount()
+		if err := child.Check(semCtx); ForwardStructuredError(semCtx, child, logCount, err) {
 			hasError = true
 		}
 	}
@@ -578,18 +563,18 @@ func (i *IfStmt) Check(ctx *SemanticContext) error {
 		semCtx.AddErrorf("%s", err.Error())
 		hasError = true
 	} else {
-		if err := i.Cond.Check(semCtx); err != nil {
-			semCtx.AddErrorf("IfStmt Cond.Check error: %v", err)
+		logCount := semCtx.LogCount()
+		if err := i.Cond.Check(semCtx); ForwardStructuredError(semCtx, i.Cond, logCount, err) {
 			hasError = true
 		} else {
 			condType := i.Cond.GetBase().Type
 			if condType == "" {
 				err := errors.New("if条件表达式类型无法推导")
-				semCtx.AddErrorf("%s", err.Error())
+				semCtx.AddErrorAt(i.Cond, "%s", err.Error())
 				hasError = true
 			} else if !condType.Equals("Bool") {
 				err := fmt.Errorf("if表达式不是返回Bool类型, 实际为 %s", condType)
-				semCtx.AddErrorf("%s", err.Error())
+				semCtx.AddErrorAt(i.Cond, "%s", err.Error())
 				hasError = true
 			}
 		}
@@ -681,13 +666,14 @@ func (f *ForStmt) Check(ctx *SemanticContext) error {
 	}
 
 	if f.Cond != nil {
-		if err := f.Cond.Check(semCtx); err != nil {
+		logCount := semCtx.LogCount()
+		if err := f.Cond.Check(semCtx); ForwardStructuredError(semCtx, f.Cond, logCount, err) {
 			hasError = true
 		} else {
 			condType := f.Cond.GetBase().Type
 			if condType != "" && !condType.Equals("Bool") {
 				err := fmt.Errorf("for循环条件必须是Bool类型, 实际为 %s", condType)
-				semCtx.AddErrorf("%s", err.Error())
+				semCtx.AddErrorAt(f.Cond, "%s", err.Error())
 				hasError = true
 			}
 		}
@@ -777,7 +763,9 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, result := range r.Results {
-		if err := result.Check(ctx.WithNode(result)); err != nil {
+		resultCtx := ctx.WithNode(result)
+		logCount := resultCtx.LogCount()
+		if err := result.Check(resultCtx); ForwardStructuredError(ctx, result, logCount, err) {
 			hasError = true
 		}
 	}
@@ -820,7 +808,11 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 
 		if !tType.IsAssignableTo(expectedReturn) {
 			err := fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
-			ctx.AddErrorf("%s", err.Error())
+			if len(r.Results) == 1 {
+				ctx.AddErrorAt(r.Results[0], "%s", err.Error())
+			} else {
+				ctx.AddErrorAt(r, "%s", err.Error())
+			}
 			return err
 		}
 	}
@@ -983,20 +975,23 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	var hasError bool
 
 	if s.Init != nil {
-		if err := s.Init.Check(inner); err != nil {
+		logCount := inner.LogCount()
+		if err := s.Init.Check(inner); ForwardStructuredError(inner, s.Init, logCount, err) {
 			hasError = true
 		}
 	}
 
 	if s.Assign != nil {
-		if err := s.Assign.Check(inner); err != nil {
+		logCount := inner.LogCount()
+		if err := s.Assign.Check(inner); ForwardStructuredError(inner, s.Assign, logCount, err) {
 			hasError = true
 		}
 	}
 
 	tagType := GoMiniType("Bool")
 	if s.Tag != nil {
-		if err := s.Tag.Check(inner); err != nil {
+		logCount := inner.LogCount()
+		if err := s.Tag.Check(inner); ForwardStructuredError(inner, s.Tag, logCount, err) {
 			hasError = true
 		} else {
 			tagType = s.Tag.GetBase().Type
@@ -1025,13 +1020,15 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 				}
 				// 标记为类型校验
 				expr.GetBase().IsType = true
-				if err := expr.Check(inner); err != nil {
+				logCount := inner.LogCount()
+				if err := expr.Check(inner); ForwardStructuredError(inner, expr, logCount, err) {
 					hasError = true
 				}
 			}
 			// 校验 Case 的 Body
 			for _, s := range clause.Body {
-				if err := s.Check(inner); err != nil {
+				logCount := inner.LogCount()
+				if err := s.Check(inner); ForwardStructuredError(inner, s, logCount, err) {
 					hasError = true
 				}
 			}
@@ -1112,7 +1109,7 @@ func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) erro
 		} else {
 			if !expr.GetBase().Type.IsAssignableTo(tagType) {
 				err := fmt.Errorf("case 类型不匹配: 期望 %s, 实际 %s", tagType, expr.GetBase().Type)
-				ctx.AddErrorf("%s", err.Error())
+				ctx.AddErrorAt(expr, "%s", err.Error())
 				hasError = true
 			}
 			c.List[i] = expr.Optimize(NewOptimizeContext(ctx.ValidContext)).(Expr)
@@ -1243,7 +1240,8 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 
 	// 4. 校验函数体
 	semBodyCtx := bodyCtx
-	if err := f.Body.Check(semBodyCtx); err != nil {
+	logCount := semBodyCtx.LogCount()
+	if err := f.Body.Check(semBodyCtx); ForwardStructuredError(semBodyCtx, f.Body, logCount, err) {
 		hasError = true
 	}
 
@@ -1253,8 +1251,10 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 		analyzer := NewReturnAnalyzer(funcCtx.ValidContext, retType)
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
-			err := fmt.Errorf("函数 %s 缺少返回语句", f.Name)
-			funcCtx.AddErrorf("%s", err.Error())
+			if analyzer.ErrorCount() == 0 {
+				err := fmt.Errorf("函数 %s 缺少返回语句", f.Name)
+				funcCtx.AddErrorAt(f.Body, "%s", err.Error())
+			}
 			hasError = true
 		}
 	}
@@ -1514,7 +1514,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		if b {
 			if !miniType.IsAssignableTo(vType) {
 				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
-				ctx.AddErrorf("%s", err.Error())
+				ctx.AddErrorAt(a.Value, "%s", err.Error())
 				return err
 			}
 			if vType == "Any" && miniType != "Any" {
@@ -1713,6 +1713,7 @@ type StructStmt struct {
 	Name       Ident                `json:"name"`
 	Fields     map[Ident]GoMiniType `json:"fields"`
 	FieldNames []Ident              `json:"field_names,omitempty"`
+	FieldLocs  map[Ident]*Position  `json:"field_locs,omitempty"`
 	Doc        string               `json:"doc,omitempty"`
 }
 

@@ -105,10 +105,12 @@ func main() {
 
 func TestStructFieldNavigation(t *testing.T) {
 	code := `package main
-type MyStruct struct { X Int64 }
+type MyStruct struct {
+	X Int64
+}
 func main() {
 	s := MyStruct{X: 10}
-	print(s.X) // Target: 5:10
+	print(s.X) // Target: 7:10
 }`
 	conv := ffigo.NewGoToASTConverter()
 	prog, err := conv.ConvertSource("snippet", code)
@@ -123,29 +125,29 @@ func main() {
 
 	// 打印关键节点的类型以调试
 	// s := MyStruct{X: 10}
-	nodeS := ast.FindNodeAt(prog, 4, 2)
+	nodeS := ast.FindNodeAt(prog, 6, 2)
 	if nodeS != nil {
-		t.Logf("Node at 4:2: %s (%T), Type: %s", nodeS.GetBase().Meta, nodeS, nodeS.GetBase().Type)
+		t.Logf("Node at 6:2: %s (%T), Type: %s", nodeS.GetBase().Meta, nodeS, nodeS.GetBase().Type)
 	}
 	// print(s.X)
-	nodeSX := ast.FindNodeAt(prog, 5, 10)
+	nodeSX := ast.FindNodeAt(prog, 7, 10)
 	if nodeSX != nil {
 		if m, ok := nodeSX.(*ast.MemberExpr); ok {
-			t.Logf("MemberExpr at 5:10 Type: %s, Object Type: %s", m.Type, m.Object.GetBase().Type)
+			t.Logf("MemberExpr at 7:10 Type: %s, Object Type: %s", m.Type, m.Object.GetBase().Type)
 		}
 	}
 
 	parentMap := ast.BuildParentMap(prog)
 
-	// 点击 s.X 处的 X (Line 5, Col 10 是 '.' 或 'X'?)
+	// 点击 s.X 处的 X
 	// print(s.X)
 	// 1234567890
-	node := ast.FindNodeAt(prog, 5, 10)
+	node := ast.FindNodeAt(prog, 7, 10)
 	if node == nil {
-		t.Fatal("Node at 5:10 not found")
+		t.Fatal("Node at 7:10 not found")
 	}
 	base := node.GetBase()
-	t.Logf("Node at 5:10: %s (%T) Range: %d:%d - %d:%d", base.Meta, node, base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC)
+	t.Logf("Node at 7:10: %s (%T) Range: %d:%d - %d:%d", base.Meta, node, base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC)
 
 	// 如果命中 MemberExpr，看看它是如何处理的
 	def := ast.FindDefinition(prog, node, parentMap)
@@ -153,9 +155,44 @@ func main() {
 		t.Fatal("Definition of s.X not found")
 	}
 
-	// 预期指向 MyStruct 的定义 (Line 2)
-	if def.GetBase().Loc.L != 2 {
-		t.Errorf("Expected definition at line 2, got line %d", def.GetBase().Loc.L)
+	if def.GetBase().Meta != "field" || def.GetBase().Loc.L != 3 || def.GetBase().Loc.C != 2 {
+		t.Errorf("Expected field definition at 3:2, got %s at %d:%d", def.GetBase().Meta, def.GetBase().Loc.L, def.GetBase().Loc.C)
+	}
+}
+
+func TestStructFieldReferences(t *testing.T) {
+	code := `package main
+type MyStruct struct {
+	X Int64
+}
+func main() {
+	s := MyStruct{X: 10}
+	print(s.X)
+	other := MyStruct{X: 20}
+	print(other.X)
+}`
+	conv := ffigo.NewGoToASTConverter()
+	prog, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validator, _ := ast.NewValidator(prog.(*ast.ProgramStmt), nil, nil, true)
+	_ = prog.Check(ast.NewSemanticContext(validator))
+
+	parentMap := ast.BuildParentMap(prog)
+	node := ast.FindNodeAt(prog, 7, 10)
+	if node == nil {
+		t.Fatal("Node at 7:10 not found")
+	}
+	def := ast.FindDefinition(prog, node, parentMap)
+	if def == nil {
+		t.Fatal("field definition not found")
+	}
+
+	refs := ast.FindAllReferences(prog, def, parentMap)
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 field references including definition, got %d", len(refs))
 	}
 }
 
@@ -227,5 +264,149 @@ func main() {
 	}
 	if def.GetBase().Loc.L != 3 {
 		t.Fatalf("Expected switch init variable definition at line 3, got %d", def.GetBase().Loc.L)
+	}
+}
+
+func TestImportedTupleReturnMemberHover(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+func SplitPoint() (Point, Bool) { return Point{X: 1, Y: 2}, true }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.SplitPoint().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	parentMap := ast.BuildParentMap(mainProg)
+	node := ast.FindNodeAt(mainProg, 4, 25)
+	if node == nil {
+		t.Fatal("Node at 4:25 not found")
+	}
+	info := ast.FindHoverInfo(mainProg, node, parentMap)
+	if info == nil {
+		t.Fatal("hover info is nil")
+	}
+	if info.Type != "Int64" {
+		t.Fatalf("expected Int64 hover type, got %s", info.Type)
+	}
+	if !strings.Contains(info.Signature, "field Y Int64") {
+		t.Fatalf("expected field signature for Y, got %q", info.Signature)
+	}
+}
+
+func TestImportedAliasReturnMemberDefinition(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct {
+	X Int64
+	Y Int64
+}
+type PointAlias = Point
+func MakeAlias() PointAlias { return PointAlias{X: 1, Y: 2} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.MakeAlias().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	parentMap := ast.BuildParentMap(mainProg)
+	node := ast.FindNodeAt(mainProg, 4, 24)
+	if node == nil {
+		t.Fatal("Node at 4:24 not found")
+	}
+	def := ast.FindDefinition(mainProg, node, parentMap)
+	if def == nil {
+		t.Fatal("definition not found")
+	}
+	if def.GetBase().Meta != "field" || def.GetBase().Loc.L != 4 || def.GetBase().Loc.C != 2 {
+		t.Fatalf("expected Point.Y field definition at 4:2, got %s at %d:%d", def.GetBase().Meta, def.GetBase().Loc.L, def.GetBase().Loc.C)
+	}
+}
+
+func TestImportedInterfaceChainMemberDefinition(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct {
+	X Int64
+	Y Int64
+}
+type Builder interface { Next() Point }
+type BuilderImpl struct {}
+func (b BuilderImpl) Next() Point { return Point{X: 1, Y: 2} }
+func Factory() Builder { return BuilderImpl{} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
+		t.Fatalf("sub module check failed: %v", err)
+	}
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.Factory().Next().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	parentMap := ast.BuildParentMap(mainProg)
+	node := ast.FindNodeAt(mainProg, 4, 29)
+	if node == nil {
+		t.Fatal("Node at 4:29 not found")
+	}
+	def := ast.FindDefinition(mainProg, node, parentMap)
+	if def == nil {
+		t.Fatal("definition not found")
+	}
+	if def.GetBase().Meta != "field" || def.GetBase().Loc.L != 4 || def.GetBase().Loc.C != 2 {
+		t.Fatalf("expected Point.Y field definition at 4:2, got %s at %d:%d", def.GetBase().Meta, def.GetBase().Loc.L, def.GetBase().Loc.C)
 	}
 }

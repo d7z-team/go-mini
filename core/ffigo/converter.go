@@ -252,10 +252,11 @@ func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, erro
 
 func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc string) *miniast.StructStmt {
 	res := &miniast.StructStmt{
-		BaseNode: miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
-		Name:     miniast.Ident(name),
-		Fields:   make(map[miniast.Ident]miniast.GoMiniType),
-		Doc:      doc,
+		BaseNode:  miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
+		Name:      miniast.Ident(name),
+		Fields:    make(map[miniast.Ident]miniast.GoMiniType),
+		FieldLocs: make(map[miniast.Ident]*miniast.Position),
+		Doc:       doc,
 	}
 	for _, field := range s.Fields.List {
 		typeName := c.typeToString(field.Type)
@@ -263,6 +264,7 @@ func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc str
 			ident := miniast.Ident(fieldName.Name)
 			res.Fields[ident] = miniast.GoMiniType(typeName)
 			res.FieldNames = append(res.FieldNames, ident)
+			res.FieldLocs[ident] = c.extractLoc(fieldName)
 		}
 	}
 	return res

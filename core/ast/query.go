@@ -225,6 +225,162 @@ func BuildParentMap(root Node) map[Node]Node {
 	return parentMap
 }
 
+func findScopeContext(root, target Node, parentMap map[Node]Node) *ValidContext {
+	if target == nil {
+		return nil
+	}
+	curr := target
+	for curr != nil {
+		if scopeObj := curr.GetBase().Scope; scopeObj != nil {
+			if ctx, ok := scopeObj.(*ValidContext); ok {
+				return ctx
+			}
+		}
+		if parentMap == nil {
+			break
+		}
+		curr = parentMap[curr]
+	}
+	if root != nil && root.GetBase() != nil {
+		if scopeObj := root.GetBase().Scope; scopeObj != nil {
+			if ctx, ok := scopeObj.(*ValidContext); ok {
+				return ctx
+			}
+		}
+	}
+	return nil
+}
+
+func findProgramRoot(ctx *ValidContext) *ProgramStmt {
+	if ctx == nil || ctx.root == nil {
+		return nil
+	}
+	return ctx.root.program
+}
+
+func virtualFieldDefinition(st *StructStmt, field Ident) Node {
+	if st == nil {
+		return nil
+	}
+	fieldType, ok := st.Fields[field]
+	if !ok {
+		return nil
+	}
+	loc := st.GetBase().Loc
+	if st.FieldLocs != nil && st.FieldLocs[field] != nil {
+		loc = st.FieldLocs[field]
+	}
+	return &IdentifierExpr{
+		BaseNode: BaseNode{
+			ID:   fmt.Sprintf("field_%s_%s", st.Name, field),
+			Meta: "field",
+			Type: fieldType,
+			Loc:  loc,
+		},
+		Name: field,
+	}
+}
+
+func definitionKey(node Node) string {
+	if node == nil || node.GetBase() == nil {
+		return ""
+	}
+	base := node.GetBase()
+	if base.Loc == nil {
+		return fmt.Sprintf("%s:%s", base.Meta, base.ID)
+	}
+	return fmt.Sprintf("%s:%s:%d:%d:%d:%d", base.Meta, base.Loc.F, base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC)
+}
+
+func resolveMemberDefinition(ctx *ValidContext, root Node, t *MemberExpr) Node {
+	if ctx == nil || t == nil || t.Object == nil {
+		return nil
+	}
+
+	objType := inferLSPObjectType(ctx, inferLSPType(ctx, t.Object), 0)
+	if objType == "" || objType.IsVoid() || objType.IsAny() {
+		return nil
+	}
+
+	findInProgram := func(prog *ProgramStmt, typeName GoMiniType, property Ident) Node {
+		if prog == nil {
+			return nil
+		}
+		baseName := typeName.BaseName()
+		methodKey := Ident(baseName + "." + string(property))
+		if fn, ok := prog.Functions[methodKey]; ok {
+			return fn
+		}
+		if fn, ok := prog.Functions[property]; ok && (typeName == "Package" || typeName == TypeModule) {
+			return fn
+		}
+		if st, ok := prog.Structs[Ident(baseName)]; ok {
+			if fieldDef := virtualFieldDefinition(st, property); fieldDef != nil {
+				return fieldDef
+			}
+			return st
+		}
+		if it, ok := prog.Interfaces[Ident(baseName)]; ok {
+			return it
+		}
+		if st, ok := prog.Structs[property]; ok && (typeName == "Package" || typeName == TypeModule) {
+			return st
+		}
+		if it, ok := prog.Interfaces[property]; ok && (typeName == "Package" || typeName == TypeModule) {
+			return it
+		}
+		for _, stmt := range prog.Main {
+			if d := findInStmt(stmt, string(property)); d != nil && (typeName == "Package" || typeName == TypeModule) {
+				return d
+			}
+		}
+		return nil
+	}
+
+	if objType == "Package" || objType == TypeModule {
+		if id, ok := t.Object.(*IdentifierExpr); ok {
+			path, known, _ := ctx.root.ResolvePackage(id.Name)
+			if !known {
+				path = string(id.Name)
+			}
+			if subRoot, ok := ctx.root.ImportedRoots[path]; ok {
+				if def := findInProgram(subRoot.program, objType, t.Property); def != nil {
+					return def
+				}
+			}
+			dotted := strings.ReplaceAll(path, "/", ".")
+			for importedPath, subRoot := range ctx.root.ImportedRoots {
+				if importedPath == path || strings.ReplaceAll(importedPath, "/", ".") == dotted || strings.HasSuffix(importedPath, "/"+path) {
+					if def := findInProgram(subRoot.program, objType, t.Property); def != nil {
+						return def
+					}
+				}
+			}
+		}
+	}
+
+	candidates := []GoMiniType{objType}
+	if resolved := resolveLSPType(ctx, objType, 0); resolved != "" && resolved != objType {
+		candidates = append(candidates, resolved)
+	}
+
+	if prog := findProgramRoot(ctx); prog != nil {
+		for _, candidate := range candidates {
+			if def := findInProgram(prog, candidate, t.Property); def != nil {
+				return def
+			}
+		}
+	}
+	for _, subRoot := range ctx.root.ImportedRoots {
+		for _, candidate := range candidates {
+			if def := findInProgram(subRoot.program, candidate, t.Property); def != nil {
+				return def
+			}
+		}
+	}
+	return nil
+}
+
 // 符号定义查找 (Definition Lookup)
 
 // FindDefinition 根据标识符表达式查找其定义的原始位置
@@ -240,41 +396,7 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 	case *ConstRefExpr:
 		ident = &IdentifierExpr{Name: t.Name}
 	case *MemberExpr:
-		// 1. 获取左值对象的推导类型
-		if t.Object == nil {
-			return nil
-		}
-		objType := t.Object.GetBase().Type
-		if objType == "" || objType.IsVoid() || objType.IsAny() {
-			// 尝试找定义
-			objDef := FindDefinition(root, t.Object, parentMap)
-			if objDef != nil {
-				objType = objDef.GetBase().Type
-			}
-		}
-
-		if objType == "" || objType.IsVoid() || objType.IsAny() {
-			return nil
-		}
-
-		// 2. 找到结构体定义或方法定义
-		prog, ok := root.(*ProgramStmt)
-		if !ok {
-			return nil
-		}
-		typeName := objType.BaseName()
-
-		// 优先检查是否是方法跳转
-		methodKey := typeName + "." + string(t.Property)
-		if fn, ok := prog.Functions[Ident(methodKey)]; ok {
-			return fn
-		}
-
-		// 其次跳转到结构体定义
-		if st, ok := prog.Structs[Ident(typeName)]; ok {
-			return st
-		}
-		return nil
+		return resolveMemberDefinition(findScopeContext(root, target, parentMap), root, t)
 	}
 
 	if ident == nil {
@@ -414,11 +536,19 @@ func findInStmt(s Stmt, name string) Node {
 // FindAllReferences 查找所有引用该定义的地方
 func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 	var refs []Node
+	if def == nil {
+		return nil
+	}
+
 	// 确保我们拿到的是真正的定义节点
-	if ident, ok := def.(*IdentifierExpr); ok {
-		d := FindDefinition(root, ident, parentMap)
-		if d != nil {
-			def = d
+	switch d := def.(type) {
+	case *IdentifierExpr:
+		if resolved := FindDefinition(root, d, parentMap); resolved != nil {
+			def = resolved
+		}
+	case *MemberExpr:
+		if resolved := FindDefinition(root, d, parentMap); resolved != nil {
+			def = resolved
 		}
 	}
 
@@ -427,38 +557,40 @@ func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 		return nil
 	}
 
-	visitedIDs := make(map[string]bool)
+	defKey := definitionKey(def)
+	if defKey == "" {
+		return nil
+	}
+
+	seenRefs := make(map[string]bool)
+	appendRef := func(node Node) {
+		key := definitionKey(node)
+		if key == "" || seenRefs[key] {
+			return
+		}
+		seenRefs[key] = true
+		refs = append(refs, node)
+	}
+
+	appendRef(def)
 
 	Walk(funcVisitor(func(node Node) bool {
 		if node == nil {
 			return true
 		}
 
-		base := node.GetBase()
-		if base != nil && base.ID != "" {
-			if visitedIDs[base.ID] {
-				return true
-			}
-			visitedIDs[base.ID] = true
-		}
-
-		// 如果节点本身就是定义节点
-		if node == def {
-			refs = append(refs, node)
-			return true
-		}
-
 		// 检查标识符是否指向该定义
 		if ident, ok := node.(*IdentifierExpr); ok {
 			d := FindDefinition(root, ident, parentMap)
-			if d != nil {
-				dBase := d.GetBase()
-				if dBase != nil && dBase.Loc != nil {
-					// 通过位置判断是否是同一个定义
-					if dBase.Loc.L == defBase.Loc.L && dBase.Loc.C == defBase.Loc.C {
-						refs = append(refs, node)
-					}
-				}
+			if definitionKey(d) == defKey {
+				appendRef(node)
+			}
+		}
+		if member, ok := node.(*MemberExpr); ok {
+			ctx := findScopeContext(root, member, parentMap)
+			d := resolveMemberDefinition(ctx, root, member)
+			if definitionKey(d) == defKey {
+				appendRef(node)
 			}
 		}
 		return true
@@ -477,6 +609,59 @@ type HoverInfo struct {
 func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 	if target == nil {
 		return nil
+	}
+
+	if member, ok := target.(*MemberExpr); ok {
+		ctx := findScopeContext(root, target, parentMap)
+		if ctx == nil {
+			return nil
+		}
+		memberType := inferLSPType(ctx, member)
+		def := resolveMemberDefinition(ctx, root, member)
+		if def == nil {
+			return &HoverInfo{Type: memberType}
+		}
+		switch d := def.(type) {
+		case *FunctionStmt:
+			return &HoverInfo{
+				Type:      memberType,
+				Signature: d.FunctionType.ToCallFunctionType().String(),
+				Doc:       d.Doc,
+			}
+		case *IdentifierExpr:
+			if d.GetBase().Meta == "field" {
+				return &HoverInfo{
+					Type:      memberType,
+					Signature: fmt.Sprintf("field %s %s", d.Name, d.GetBase().Type),
+				}
+			}
+			return &HoverInfo{Type: memberType}
+		case *StructStmt:
+			if fieldType, ok := d.Fields[member.Property]; ok {
+				return &HoverInfo{
+					Type:      fieldType,
+					Signature: fmt.Sprintf("field %s %s", member.Property, fieldType),
+					Doc:       d.Doc,
+				}
+			}
+			return &HoverInfo{
+				Type:      memberType,
+				Signature: fmt.Sprintf("struct %s", d.Name),
+				Doc:       d.Doc,
+			}
+		case *InterfaceStmt:
+			if methods, ok := d.Type.ReadInterfaceMethods(); ok {
+				if sig, ok := methods[string(member.Property)]; ok {
+					return &HoverInfo{
+						Type:      memberType,
+						Signature: string(sig.MiniType()),
+					}
+				}
+			}
+			return &HoverInfo{Type: memberType}
+		default:
+			return &HoverInfo{Type: memberType}
+		}
 	}
 
 	var ident *IdentifierExpr
@@ -919,7 +1104,7 @@ func collectDeclaredNamesInStmt(stmt Stmt, visible map[string]struct{}) {
 
 func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 	items := make([]CompletionItem, 0)
-	objType := inferLSPType(ctx, obj)
+	objType := inferLSPObjectType(ctx, inferLSPType(ctx, obj), 0)
 
 	// 如果推导失败或推导出的为 Any，且是 IdentifierExpr，则尝试作为包名处理，下文会进一步检查
 
@@ -998,35 +1183,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 		}
 	}
 
-	typeName := objType.BaseName()
-	// 1. 查找结构体成员
-	if st, ok := ctx.GetStruct(Ident(typeName)); ok {
-		for f, t := range st.Fields {
-			items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
-		}
-		for m, t := range st.Methods {
-			// t 是结构体副本，但 Params 是切片（引用）。
-			// 为了绝对安全，我们克隆一份切片头。
-			sig := t
-			// 剥离接收者以便在补全中显示正确的参数列表
-			if objType != "Package" && objType != TypeModule {
-				if len(sig.Params) > 0 {
-					// 这里的赋值只修改 local sig 的切片头，不会写回 st.Methods
-					sig.Params = sig.Params[1:]
-				}
-			}
-			items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: sig.MiniType()})
-		}
-	}
-
-	// 2. 查找接口成员
-	if it, ok := ctx.GetInterface(Ident(typeName)); ok {
-		if methods, ok := it.Type.ReadInterfaceMethods(); ok {
-			for m, t := range methods {
-				items = append(items, CompletionItem{Label: m, Kind: "method", Type: t.MiniType()})
-			}
-		}
-	}
+	items = append(items, lspTypeMemberCompletions(ctx, objType)...)
 
 	return items
 }
@@ -1035,13 +1192,133 @@ func inferLSPType(ctx *ValidContext, expr Node) GoMiniType {
 	return inferLSPTypeRecursive(ctx, expr, 0)
 }
 
+func resolveLSPType(ctx *ValidContext, t GoMiniType, depth int) GoMiniType {
+	if t.IsEmpty() || depth > 20 {
+		return t
+	}
+	resolved := t.Resolve(ctx)
+	if resolved != "" && resolved != t {
+		return resolveLSPType(ctx, resolved, depth+1)
+	}
+	if ctx != nil && ctx.root != nil {
+		lookupImported := func(root *ValidRoot, name Ident) (GoMiniType, bool) {
+			if root == nil {
+				return "", false
+			}
+			if actual, ok := root.types[name]; ok {
+				subCtx := &ValidContext{root: root}
+				return actual.Resolve(subCtx), true
+			}
+			return "", false
+		}
+		s := string(t)
+		if strings.Contains(s, ".") {
+			parts := strings.SplitN(s, ".", 2)
+			for path, root := range ctx.root.ImportedRoots {
+				if path == parts[0] || strings.ReplaceAll(path, "/", ".") == parts[0] || strings.HasSuffix(path, "/"+parts[0]) {
+					if actual, ok := lookupImported(root, Ident(parts[1])); ok {
+						return resolveLSPType(ctx, actual, depth+1)
+					}
+				}
+			}
+		}
+		for _, root := range ctx.root.ImportedRoots {
+			if actual, ok := lookupImported(root, Ident(t)); ok {
+				return resolveLSPType(ctx, actual, depth+1)
+			}
+		}
+	}
+	if t.IsTuple() {
+		parts, _ := t.ReadTuple()
+		out := make([]GoMiniType, len(parts))
+		for i, part := range parts {
+			out[i] = resolveLSPType(ctx, part, depth+1)
+		}
+		return CreateTupleType(out...)
+	}
+	if t.IsArray() {
+		elem, _ := t.ReadArrayItemType()
+		return CreateArrayType(resolveLSPType(ctx, elem, depth+1))
+	}
+	if t.IsMap() {
+		k, v, _ := t.GetMapKeyValueTypes()
+		return CreateMapType(resolveLSPType(ctx, k, depth+1), resolveLSPType(ctx, v, depth+1))
+	}
+	if t.IsPtr() {
+		elem, _ := t.GetPtrElementType()
+		return resolveLSPType(ctx, elem, depth+1).ToPtr()
+	}
+	return t
+}
+
+func inferLSPObjectType(ctx *ValidContext, t GoMiniType, depth int) GoMiniType {
+	t = resolveLSPType(ctx, t, depth+1)
+	if t.IsTuple() {
+		if parts, ok := t.ReadTuple(); ok && len(parts) > 0 {
+			return inferLSPObjectType(ctx, parts[0], depth+1)
+		}
+	}
+	return t
+}
+
+func lspTypeMemberCompletions(ctx *ValidContext, objType GoMiniType) []CompletionItem {
+	items := make([]CompletionItem, 0)
+	seen := make(map[string]struct{})
+	candidates := []GoMiniType{objType}
+	if resolved := resolveLSPType(ctx, objType, 0); resolved != "" && resolved != objType {
+		candidates = append(candidates, resolved)
+	}
+
+	for _, candidate := range candidates {
+		typeName := candidate.BaseName()
+		if st, ok := ctx.GetStruct(Ident(typeName)); ok {
+			for f, t := range st.Fields {
+				key := "field:" + string(f)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
+			}
+			for m, t := range st.Methods {
+				key := "method:" + string(m)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				sig := t
+				if candidate != "Package" && candidate != TypeModule && len(sig.Params) > 0 {
+					sig.Params = sig.Params[1:]
+				}
+				items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: sig.MiniType()})
+			}
+		}
+
+		for _, lookup := range []Ident{Ident(typeName), Ident(candidate)} {
+			if it, ok := ctx.GetInterface(lookup); ok {
+				if methods, ok := it.Type.ReadInterfaceMethods(); ok {
+					for m, t := range methods {
+						key := "method:" + m
+						if _, exists := seen[key]; exists {
+							continue
+						}
+						seen[key] = struct{}{}
+						items = append(items, CompletionItem{Label: m, Kind: "method", Type: t.MiniType()})
+					}
+				}
+			}
+		}
+	}
+	return items
+}
+
 func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 	if expr == nil || depth > 20 {
 		return ""
 	}
 	// 如果已经有确定的类型且不是 Any，则直接使用
 	if t := expr.GetBase().Type; t != "" && t != "Any" {
-		return t
+		return resolveLSPType(ctx, t, depth+1)
 	}
 
 	switch e := expr.(type) {
@@ -1053,31 +1330,27 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 			return "Package"
 		}
 	case *MemberExpr:
-		objType := inferLSPTypeRecursive(ctx, e.Object, depth+1)
+		objType := inferLSPObjectType(ctx, inferLSPTypeRecursive(ctx, e.Object, depth+1), depth+1)
 		if objType == "" {
 			return ""
 		}
-		// 1. 尝试从结构体中查找
-		typeName := objType.BaseName()
-		if st, ok := ctx.GetStruct(Ident(typeName)); ok {
-			if t, ok := st.Fields[e.Property]; ok {
-				return t
+		for _, candidate := range []GoMiniType{objType, resolveLSPType(ctx, objType, depth+1)} {
+			typeName := candidate.BaseName()
+			if st, ok := ctx.GetStruct(Ident(typeName)); ok {
+				if t, ok := st.Fields[e.Property]; ok {
+					return resolveLSPType(ctx, t, depth+1)
+				}
+				if m, ok := st.Methods[e.Property]; ok {
+					return resolveLSPType(ctx, m.MiniType(), depth+1)
+				}
 			}
-			if m, ok := st.Methods[e.Property]; ok {
-				return m.MiniType()
-			}
-		}
-		// 2. 尝试从接口中查找
-		if iStmt, ok := ctx.GetInterface(Ident(typeName)); ok {
-			methods, _ := iStmt.Type.ReadInterfaceMethods()
-			if sig, ok := methods[string(e.Property)]; ok {
-				return sig.MiniType()
-			}
-		}
-		if iStmt, ok := ctx.GetInterface(Ident(objType)); ok {
-			methods, _ := iStmt.Type.ReadInterfaceMethods()
-			if sig, ok := methods[string(e.Property)]; ok {
-				return sig.MiniType()
+			for _, lookup := range []Ident{Ident(typeName), Ident(candidate)} {
+				if iStmt, ok := ctx.GetInterface(lookup); ok {
+					methods, _ := iStmt.Type.ReadInterfaceMethods()
+					if sig, ok := methods[string(e.Property)]; ok {
+						return resolveLSPType(ctx, sig.MiniType(), depth+1)
+					}
+				}
 			}
 		}
 		// 3. 处理包成员
@@ -1089,24 +1362,24 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 				}
 				if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
 					if t, ok := srcRoot.vars[e.Property]; ok {
-						return t
+						return resolveLSPType(ctx, t, depth+1)
 					}
 				}
 				// FFI 包成员推导
 				fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
 				if t, ok := ctx.GetVariable(fullPath); ok {
-					return t
+					return resolveLSPType(ctx, t, depth+1)
 				}
 			}
 		}
 	case *CallExprStmt:
-		fnType := inferLSPTypeRecursive(ctx, e.Func, depth+1)
+		fnType := resolveLSPType(ctx, inferLSPTypeRecursive(ctx, e.Func, depth+1), depth+1)
 		if sig, ok := fnType.ReadCallFunc(); ok {
-			return sig.Returns
+			return resolveLSPType(ctx, sig.Returns, depth+1)
 		}
 	case *LiteralExpr:
-		return e.Type
+		return resolveLSPType(ctx, e.Type, depth+1)
 	}
 
-	return expr.GetBase().Type
+	return resolveLSPType(ctx, expr.GetBase().Type, depth+1)
 }

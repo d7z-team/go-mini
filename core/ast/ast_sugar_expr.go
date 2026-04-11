@@ -97,10 +97,19 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 
 func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
-	if err := b.Left.Check(ctx.WithNode(b.Left)); err != nil {
+	if b.Left == nil || b.Right == nil {
+		err := errors.New("二元表达式缺少操作数")
+		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	if err := b.Right.Check(ctx.WithNode(b.Right)); err != nil {
+	leftCtx := ctx.WithNode(b.Left)
+	logCount := leftCtx.LogCount()
+	if err := b.Left.Check(leftCtx); ForwardStructuredError(ctx, b.Left, logCount, err) {
+		return err
+	}
+	rightCtx := ctx.WithNode(b.Right)
+	logCount = rightCtx.LogCount()
+	if err := b.Right.Check(rightCtx); ForwardStructuredError(ctx, b.Right, logCount, err) {
 		return err
 	}
 
@@ -155,6 +164,51 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 	} else {
 		// 在隔离架构下，标量运算结果类型等于左操作数类型（规约后）
 		b.Type = b.Left.GetBase().Type
+	}
+
+	leftType := b.Left.GetBase().Type
+	rightType := b.Right.GetBase().Type
+	isKnown := func(t GoMiniType) bool {
+		return t != "" && !t.IsAny() && t != "Constant"
+	}
+	isBitwiseInt := func(t GoMiniType) bool {
+		return t == "Int64" || t == "Int"
+	}
+
+	switch b.Operator {
+	case "And", "Or":
+		if isKnown(leftType) && leftType != "Bool" {
+			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, leftType)
+			ctx.AddErrorAt(b.Left, "%s", err.Error())
+			return err
+		}
+		if isKnown(rightType) && rightType != "Bool" {
+			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, rightType)
+			ctx.AddErrorAt(b.Right, "%s", err.Error())
+			return err
+		}
+	case "Minus", "Mult", "Div", "Mod":
+		if isKnown(leftType) && !leftType.IsNumeric() {
+			err := fmt.Errorf("%s 运算符预期数值类型, 实际为 %s", b.Operator, leftType)
+			ctx.AddErrorAt(b.Left, "%s", err.Error())
+			return err
+		}
+		if isKnown(rightType) && !rightType.IsNumeric() {
+			err := fmt.Errorf("%s 运算符预期数值类型, 实际为 %s", b.Operator, rightType)
+			ctx.AddErrorAt(b.Right, "%s", err.Error())
+			return err
+		}
+	case "BitAnd", "BitOr", "BitXor", "Lsh", "Rsh":
+		if isKnown(leftType) && !isBitwiseInt(leftType) {
+			err := fmt.Errorf("%s 运算符预期 Int64, 实际为 %s", b.Operator, leftType)
+			ctx.AddErrorAt(b.Left, "%s", err.Error())
+			return err
+		}
+		if isKnown(rightType) && !isBitwiseInt(rightType) {
+			err := fmt.Errorf("%s 运算符预期 Int64, 实际为 %s", b.Operator, rightType)
+			ctx.AddErrorAt(b.Right, "%s", err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -221,7 +275,9 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("一元表达式缺少操作数")
 		return errors.New("一元表达式缺少操作数")
 	}
-	if err := u.Operand.Check(ctx.WithNode(u.Operand)); err != nil {
+	operandCtx := ctx.WithNode(u.Operand)
+	logCount := operandCtx.LogCount()
+	if err := u.Operand.Check(operandCtx); ForwardStructuredError(ctx, u.Operand, logCount, err) {
 		return err
 	}
 
@@ -229,12 +285,16 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 	switch u.Operator {
 	case "Not":
 		if u.Type != "Bool" && u.Type != "Any" && u.Type != "" {
-			ctx.AddErrorf("Not 运算符预期 Bool, 实际为 %s", u.Type)
+			ctx.AddErrorAt(u.Operand, "Not 运算符预期 Bool, 实际为 %s", u.Type)
 		}
 		u.Type = "Bool"
 	case "Sub", "Plus":
 		if u.Type != "Int64" && u.Type != "Float64" && u.Type != "Any" && u.Type != "" {
-			ctx.AddErrorf("%s 运算符预期数值类型, 实际为 %s", u.Operator, u.Type)
+			ctx.AddErrorAt(u.Operand, "%s 运算符预期数值类型, 实际为 %s", u.Operator, u.Type)
+		}
+	case "BitXor":
+		if u.Type != "Int64" && u.Type != "Int" && u.Type != "Any" && u.Type != "" {
+			ctx.AddErrorAt(u.Operand, "BitXor 运算符预期 Int64, 实际为 %s", u.Type)
 		}
 	}
 

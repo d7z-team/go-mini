@@ -585,3 +585,147 @@ func main() {
 		t.Fatalf("expected chained member completions X/Y, got %+v", completions)
 	}
 }
+
+func TestImportedModuleTupleReturnMemberCompletion(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+func SplitPoint() (Point, Bool) { return Point{X: 1, Y: 2}, true }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.SplitPoint().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 25)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected tuple-return completions X/Y, got %+v", completions)
+	}
+}
+
+func TestImportedModuleAliasReturnMemberCompletion(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+type PointAlias = Point
+func MakeAlias() PointAlias { return PointAlias{X: 1, Y: 2} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.MakeAlias().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 24)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected alias-return completions X/Y, got %+v", completions)
+	}
+}
+
+func TestImportedModuleInterfaceChainCompletion(t *testing.T) {
+	conv := ffigo.NewGoToASTConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+type Builder interface { Next() Point }
+type BuilderImpl struct {}
+func (b BuilderImpl) Next() Point { return Point{X: 1, Y: 2} }
+func Factory() Builder { return BuilderImpl{} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
+		t.Fatalf("sub module check failed: %v", err)
+	}
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.Factory().Next().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	validator.Root().DiscoverImportedRoot("my/math")
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 29)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected interface-chain completions X/Y, got %+v", completions)
+	}
+}
