@@ -586,6 +586,23 @@ func (a *VMArray) Slice(low, high int) []*Var {
 	return out
 }
 
+func (a *VMArray) ReplaceSlice(low, high int, items []*Var) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if low < 0 || high < low || high > len(a.Data) {
+		return false
+	}
+	next := make([]*Var, 0, low+len(items)+len(a.Data)-high)
+	next = append(next, a.Data[:low]...)
+	next = append(next, items...)
+	next = append(next, a.Data[high:]...)
+	a.Data = next
+	return true
+}
+
 type VMMap struct {
 	mu   sync.RWMutex
 	Data map[string]*Var

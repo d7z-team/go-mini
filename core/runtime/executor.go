@@ -1430,6 +1430,23 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				obj := e.unwrapAddressVar(session.ValueStack.Pop())
 				session.LHSStack.Push(&LHSDeref{Target: obj})
 				return nil
+			case LHSTypeSlice:
+				var high, low *Var
+				if lhsData.HasHigh {
+					high = e.unwrapAddressVar(session.ValueStack.Pop())
+					if high != nil {
+						high = high.Copy()
+					}
+				}
+				if lhsData.HasLow {
+					low = e.unwrapAddressVar(session.ValueStack.Pop())
+					if low != nil {
+						low = low.Copy()
+					}
+				}
+				obj := e.unwrapAddressVar(session.ValueStack.Pop())
+				session.LHSStack.Push(&LHSSlice{Obj: obj, Low: low, High: high})
+				return nil
 			case LHSTypeNone:
 				session.LHSStack.Push(nil)
 				return nil
@@ -2463,8 +2480,99 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 				return nil
 			},
 		}, nil
+	case *LHSSlice:
+		obj := e.unwrapAddressVar(desc.Obj)
+		if obj == nil {
+			return nil, errors.New("slice access on nil object")
+		}
+		low, high, err := e.resolveSliceBoundsForAddress(obj, desc.Low, desc.High)
+		if err != nil {
+			return nil, err
+		}
+		switch obj.VType {
+		case TypeBytes:
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return NewBytes(obj.B[low:high]), nil
+				},
+				store: func(val *Var) error {
+					if val == nil || val.VType != TypeBytes {
+						return fmt.Errorf("slice copy-back expects TypeBytes, got %v", valueTypeOf(val))
+					}
+					obj.B = spliceByteWindow(obj.B, low, high, val.B)
+					return nil
+				},
+			}, nil
+		case TypeArray:
+			arr := obj.Ref.(*VMArray)
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Slice(low, high)}}
+					v.SetRuntimeType(obj.RuntimeType())
+					return v, nil
+				},
+				store: func(val *Var) error {
+					if val == nil || val.VType != TypeArray {
+						return fmt.Errorf("slice copy-back expects Array, got %v", valueTypeOf(val))
+					}
+					items := val.Ref.(*VMArray).Snapshot()
+					if !arr.ReplaceSlice(low, high, items) {
+						return fmt.Errorf("slice bounds out of range [%d:%d]", low, high)
+					}
+					return nil
+				},
+			}, nil
+		}
+		return nil, fmt.Errorf("type %v does not support slice access", obj.VType)
 	}
 	return nil, &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+}
+
+func (e *Executor) resolveSliceBoundsForAddress(obj, lowVar, highVar *Var) (int, int, error) {
+	low, high := 0, -1
+	if lowVar != nil {
+		if lowVar.VType != TypeInt {
+			return 0, 0, fmt.Errorf("slice low index must be Int64, got %v", lowVar.VType)
+		}
+		low = int(lowVar.I64)
+	}
+	if highVar != nil {
+		if highVar.VType != TypeInt {
+			return 0, 0, fmt.Errorf("slice high index must be Int64, got %v", highVar.VType)
+		}
+		high = int(highVar.I64)
+	}
+	var length int
+	switch obj.VType {
+	case TypeBytes:
+		length = len(obj.B)
+	case TypeArray:
+		length = obj.Ref.(*VMArray).Len()
+	default:
+		return 0, 0, fmt.Errorf("type %v does not support slice access", obj.VType)
+	}
+	if high == -1 {
+		high = length
+	}
+	if low < 0 || high < low || high > length {
+		return 0, 0, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, length), IsPanic: true}
+	}
+	return low, high, nil
+}
+
+func spliceByteWindow(base []byte, low, high int, replacement []byte) []byte {
+	next := make([]byte, 0, low+len(replacement)+len(base)-high)
+	next = append(next, base[:low]...)
+	next = append(next, replacement...)
+	next = append(next, base[high:]...)
+	return next
+}
+
+func valueTypeOf(v *Var) string {
+	if v == nil {
+		return "<nil>"
+	}
+	return v.VType.String()
 }
 
 func (e *Executor) loadAddress(session *StackContext, lhs LHSValue) (*Var, error) {

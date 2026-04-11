@@ -144,3 +144,32 @@ func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFFIBytesCopyBackRejectsSliceWindow(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.RegisterFFISchema(
+		"demo.Mutate",
+		bytesCopyBackBridge{},
+		1,
+		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes),
+		"",
+	)
+
+	code := `
+	package main
+	import "demo"
+
+	func main() {
+		buf := []byte("abcdef")
+		demo.Mutate(buf[1:4])
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = prog.Execute(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "does not support slice/window left values") {
+		t.Fatalf("expected slice/window error, got %v", err)
+	}
+}

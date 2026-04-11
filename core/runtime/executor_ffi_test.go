@@ -176,6 +176,41 @@ func (b copyBackFFIBridge) Invoke(ctx context.Context, name string, args []byte)
 
 func (b copyBackFFIBridge) DestroyHandle(uint32) error { return nil }
 
+type arrayCopyBackFFIBridge struct {
+	returnValue int64
+	replace     []int64
+}
+
+func (b arrayCopyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
+	reader := ffigo.NewReader(args)
+	count := int(reader.ReadUvarint())
+	input := make([]int64, count)
+	for i := range input {
+		input[i] = reader.ReadVarint()
+	}
+
+	resBuf := ffigo.GetBuffer()
+	copyBackBuf := ffigo.GetBuffer()
+	copyBackBuf.WriteUvarint(uint64(len(b.replace)))
+	for _, item := range b.replace {
+		copyBackBuf.WriteVarint(item)
+	}
+	resBuf.WriteUvarint(1)
+	resBuf.WriteBytes(copyBackBuf.Bytes())
+	resBuf.WriteVarint(b.returnValue)
+
+	out := append([]byte(nil), resBuf.Bytes()...)
+	ffigo.ReleaseBuffer(copyBackBuf)
+	ffigo.ReleaseBuffer(resBuf)
+	return out, nil
+}
+
+func (b arrayCopyBackFFIBridge) Invoke(ctx context.Context, name string, args []byte) ([]byte, error) {
+	return b.Call(ctx, 0, args)
+}
+
+func (b arrayCopyBackFFIBridge) DestroyHandle(uint32) error { return nil }
+
 func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")

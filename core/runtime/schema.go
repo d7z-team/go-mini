@@ -118,6 +118,7 @@ type FFIParamMode uint8
 const (
 	FFIParamIn FFIParamMode = iota
 	FFIParamInOutBytes
+	FFIParamInOutArray
 )
 
 type RuntimeFuncParam struct {

@@ -96,6 +96,7 @@ type displayTypeResolver struct {
 }
 
 const bytesRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.BytesRef"
+const arrayRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.ArrayRef"
 
 func main() {
 	flag.Parse()
@@ -1087,6 +1088,9 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	if isBytesRefExpr(expr) {
 		return "TypeBytes"
 	}
+	if elemExpr, ok := arrayRefElemExpr(expr); ok {
+		return fmt.Sprintf("Array<%s>", r.VMType(elemExpr))
+	}
 	if bt := resolveToBasicType(expr); bt != "" {
 		switch {
 		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
@@ -1362,7 +1366,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 			methodName := method.Names[0].Name
 			funcType := method.Type.(*ast.FuncType)
-			hasCopyBack := hasInOutBytesParam(funcType)
+			hasCopyBack := hasCopyBackParam(funcType)
 
 			hasContext := false
 			contextVarName := "context.Background()"
@@ -1421,7 +1425,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			const wireBufName = "wireBuf"
 			fmt.Fprintf(&sb, "{\n\t%s := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(%s)\n\n", wireBufName, wireBufName)
 			argIdx = 0
-			copyBackVars := make([]string, 0)
+			type copyBackParam struct {
+				name   string
+				kind   string
+				vmType string
+			}
+			copyBackVars := make([]copyBackParam, 0)
 			if funcType.Params != nil {
 				for j, param := range funcType.Params.List {
 					if j == 0 && hasContext {
@@ -1438,8 +1447,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
 							fmt.Fprintf(&sb, "\t}\n")
 						} else {
-							if isBytesRefTypeString(pType) {
-								copyBackVars = append(copyBackVars, argName)
+							switch copyBackKind(param.Type) {
+							case "bytes":
+								copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "bytes", vmType: "TypeBytes"})
+							case "array":
+								copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "array", vmType: vmType(param.Type)})
+								fmt.Fprintf(&sb, "\tif %s == nil {\n", argName)
+								fmt.Fprintf(&sb, "\t\t%s.WriteUvarint(0)\n", wireBufName)
+								fmt.Fprintf(&sb, "\t} else {\n")
+								emitWrite(&sb, argName+".Value", vmType(param.Type), param.Type, structs, wireBufName, false)
+								fmt.Fprintf(&sb, "\t}\n")
+								argIdx++
+								continue
 							}
 							emitWrite(&sb, argName, pType, param.Type, structs, wireBufName, false)
 						}
@@ -1453,8 +1472,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
 								fmt.Fprintf(&sb, "\t}\n")
 							} else {
-								if isBytesRefTypeString(pType) {
-									copyBackVars = append(copyBackVars, pName.Name)
+								switch copyBackKind(param.Type) {
+								case "bytes":
+									copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "bytes", vmType: "TypeBytes"})
+								case "array":
+									copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "array", vmType: vmType(param.Type)})
+									fmt.Fprintf(&sb, "\tif %s == nil {\n", pName.Name)
+									fmt.Fprintf(&sb, "\t\t%s.WriteUvarint(0)\n", wireBufName)
+									fmt.Fprintf(&sb, "\t} else {\n")
+									emitWrite(&sb, pName.Name+".Value", vmType(param.Type), param.Type, structs, wireBufName, false)
+									fmt.Fprintf(&sb, "\t}\n")
+									argIdx++
+									continue
 								}
 								emitWrite(&sb, pName.Name, pType, param.Type, structs, wireBufName, false)
 							}
@@ -1498,8 +1527,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				fmt.Fprintf(&sb, "\tcopyBackCount := int(retBuf.ReadUvarint())\n")
 				fmt.Fprintf(&sb, "\tif copyBackCount != %d { panic(fmt.Sprintf(\"ffigen: %s.%s copy-back mismatch: %%d\", copyBackCount)) }\n", len(copyBackVars), name, methodName)
 				for _, copyBackVar := range copyBackVars {
-					fmt.Fprintf(&sb, "\tif %s == nil { panic(\"ffigen: nil BytesRef passed to %s.%s\") }\n", copyBackVar, name, methodName)
-					fmt.Fprintf(&sb, "\t%s.Value = retBuf.ReadBytes()\n", copyBackVar)
+					switch copyBackVar.kind {
+					case "bytes":
+						fmt.Fprintf(&sb, "\tif %s == nil { panic(\"ffigen: nil BytesRef passed to %s.%s\") }\n", copyBackVar.name, name, methodName)
+						fmt.Fprintf(&sb, "\t%s.Value = retBuf.ReadBytes()\n", copyBackVar.name)
+					case "array":
+						fmt.Fprintf(&sb, "\tif %s == nil { panic(\"ffigen: nil ArrayRef passed to %s.%s\") }\n", copyBackVar.name, name, methodName)
+						fmt.Fprintf(&sb, "\tcopyBackBuf_%s := ffigo.NewReader(retBuf.ReadBytes())\n", copyBackVar.name)
+						tmpVar := "copyBack_" + copyBackVar.name
+						fmt.Fprintf(&sb, "\tvar %s %s\n", tmpVar, toGoType(copyBackVar.vmType))
+						emitReadAssign(&sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, false)
+						fmt.Fprintf(&sb, "\t%s.Value = %s\n", copyBackVar.name, tmpVar)
+					}
 				}
 			}
 
@@ -1600,7 +1639,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 		methodName := method.Names[0].Name
 		funcType := method.Type.(*ast.FuncType)
-		hasCopyBack := hasInOutBytesParam(funcType)
+		hasCopyBack := hasCopyBackParam(funcType)
 		hasContext := false
 		if funcType.Params != nil && len(funcType.Params.List) > 0 {
 			pType := typeToString(funcType.Params.List[0].Type)
@@ -1610,8 +1649,14 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		}
 
 		fmt.Fprintf(&sb, "\tcase MethodID_%s_%s:\n", name, methodName)
+		type copyBackParam struct {
+			name   string
+			kind   string
+			vmType string
+			expr   ast.Expr
+		}
 		var paramVars []string
-		copyBackVars := make([]string, 0)
+		copyBackVars := make([]copyBackParam, 0)
 		argIdx := 0
 		if hasContext {
 			paramVars = append(paramVars, "ctx")
@@ -1632,9 +1677,17 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				if len(param.Names) == 0 {
 					argName := fmt.Sprintf("arg%d", argIdx)
 					fmt.Fprintf(&sb, "\t\tvar %s %s\n", argName, goType)
-					emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", true)
-					if isBytesRefTypeString(pType) {
-						copyBackVars = append(copyBackVars, argName)
+					if copyBackKind(param.Type) == "array" {
+						tmpVar := argName + "Value"
+						fmt.Fprintf(&sb, "\t\tvar %s %s\n", tmpVar, toGoType(vmType(param.Type)))
+						emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", true)
+						fmt.Fprintf(&sb, "\t\t%s = &%s{Value: %s}\n", argName, strings.TrimPrefix(goType, "*"), tmpVar)
+						copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "array", vmType: vmType(param.Type), expr: param.Type})
+					} else {
+						emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", true)
+						if copyBackKind(param.Type) == "bytes" {
+							copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "bytes", vmType: "TypeBytes"})
+						}
 					}
 					if isVariadic {
 						paramVars = append(paramVars, argName+"...")
@@ -1645,9 +1698,17 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				} else {
 					for _, pName := range param.Names {
 						fmt.Fprintf(&sb, "\t\tvar %s %s\n", pName.Name, goType)
-						emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
-						if isBytesRefTypeString(pType) {
-							copyBackVars = append(copyBackVars, pName.Name)
+						if copyBackKind(param.Type) == "array" {
+							tmpVar := pName.Name + "Value"
+							fmt.Fprintf(&sb, "\t\tvar %s %s\n", tmpVar, toGoType(vmType(param.Type)))
+							emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", true)
+							fmt.Fprintf(&sb, "\t\t%s = &%s{Value: %s}\n", pName.Name, strings.TrimPrefix(goType, "*"), tmpVar)
+							copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "array", vmType: vmType(param.Type), expr: param.Type})
+						} else {
+							emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
+							if copyBackKind(param.Type) == "bytes" {
+								copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "bytes", vmType: "TypeBytes"})
+							}
 						}
 						if isVariadic {
 							paramVars = append(paramVars, pName.Name+"...")
@@ -1698,7 +1759,17 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		if hasCopyBack {
 			fmt.Fprintf(&sb, "\t\tresBuf.WriteUvarint(uint64(%d))\n", len(copyBackVars))
 			for _, copyBackVar := range copyBackVars {
-				fmt.Fprintf(&sb, "\t\tif %s == nil { resBuf.WriteBytes(nil) } else { resBuf.WriteBytes(%s.Value) }\n", copyBackVar, copyBackVar)
+				switch copyBackVar.kind {
+				case "bytes":
+					fmt.Fprintf(&sb, "\t\tif %s == nil { resBuf.WriteBytes(nil) } else { resBuf.WriteBytes(%s.Value) }\n", copyBackVar.name, copyBackVar.name)
+				case "array":
+					fmt.Fprintf(&sb, "\t\tcopyBackBuf_%s := ffigo.GetBuffer()\n", copyBackVar.name)
+					fmt.Fprintf(&sb, "\t\tif %s != nil {\n", copyBackVar.name)
+					emitWrite(&sb, copyBackVar.name+".Value", copyBackVar.vmType, copyBackVar.expr, structs, "copyBackBuf_"+copyBackVar.name, true)
+					fmt.Fprintf(&sb, "\t\t}\n")
+					fmt.Fprintf(&sb, "\t\tresBuf.WriteBytes(copyBackBuf_%s.Bytes())\n", copyBackVar.name)
+					fmt.Fprintf(&sb, "\t\tffigo.ReleaseBuffer(copyBackBuf_%s)\n", copyBackVar.name)
+				}
 			}
 		}
 		if funcType.Results != nil {
@@ -2327,12 +2398,30 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 	bt := resolveToBasicType(expr)
 	if bt == "" {
 		switch pType {
-		case "int", "int8", "int16", "int32", "int64", "Int", "Int8", "Int16", "Int32", "Int64":
-			bt = pType
-		case "uint", "uint8", "uint16", "uint32", "uint64", "Uint", "Uint8", "Uint16", "Uint32", "Uint64", "byte":
-			bt = pType
-		case "float32", "float64", "Float32", "Float64":
-			bt = pType
+		case "int", "Int":
+			bt = "int"
+		case "int8", "Int8":
+			bt = "int8"
+		case "int16", "Int16":
+			bt = "int16"
+		case "int32", "Int32":
+			bt = "int32"
+		case "int64", "Int64":
+			bt = "int64"
+		case "uint", "Uint":
+			bt = "uint"
+		case "uint8", "Uint8", "byte":
+			bt = "uint8"
+		case "uint16", "Uint16":
+			bt = "uint16"
+		case "uint32", "Uint32":
+			bt = "uint32"
+		case "uint64", "Uint64":
+			bt = "uint64"
+		case "float32", "Float32":
+			bt = "float32"
+		case "float64", "Float64":
+			bt = "float64"
 		case "string", "String":
 			bt = "string"
 		case "bool", "Bool":
@@ -2484,6 +2573,14 @@ func typeToString(expr ast.Expr) string {
 			return x.Name + "." + t.Sel.Name
 		}
 		return t.Sel.Name
+	case *ast.IndexExpr:
+		return fmt.Sprintf("%s<%s>", typeToString(t.X), typeToString(t.Index))
+	case *ast.IndexListExpr:
+		parts := make([]string, 0, len(t.Indices))
+		for _, idx := range t.Indices {
+			parts = append(parts, typeToString(idx))
+		}
+		return fmt.Sprintf("%s<%s>", typeToString(t.X), strings.Join(parts, ", "))
 	case *ast.InterfaceType:
 		if t.Methods == nil || len(t.Methods.List) == 0 {
 			return "Any"
@@ -2523,6 +2620,13 @@ func toGoType(pType string) string {
 		if len(parts) == 2 {
 			return "map[" + toGoType(strings.TrimSpace(parts[0])) + "]" + toGoType(strings.TrimSpace(parts[1]))
 		}
+	}
+	if base, args, ok := splitGenericType(pType); ok {
+		goArgs := make([]string, 0, len(args))
+		for _, arg := range args {
+			goArgs = append(goArgs, toGoType(arg))
+		}
+		return toGoType(base) + "[" + strings.Join(goArgs, ", ") + "]"
 	}
 	switch pType {
 	case "Uint32", "uint32":
@@ -2588,6 +2692,49 @@ func isBytesRefExpr(expr ast.Expr) bool {
 	return isBytesRefTypeString(typeToString(expr))
 }
 
+func isArrayRefTypeString(typeName string) bool {
+	typeName = strings.TrimSpace(typeName)
+	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
+		typeName = strings.TrimSpace(typeName[4 : len(typeName)-1])
+	}
+	if base, _, ok := splitGenericType(typeName); ok {
+		typeName = base
+	}
+	return typeName == arrayRefQualifiedType || typeName == "ffigo.ArrayRef" || typeName == "ArrayRef"
+}
+
+func arrayRefElemExpr(expr ast.Expr) (ast.Expr, bool) {
+	star, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return nil, false
+	}
+	switch t := star.X.(type) {
+	case *ast.IndexExpr:
+		if isArrayRefTypeString(typeToString(t.X)) {
+			return t.Index, true
+		}
+	case *ast.IndexListExpr:
+		if isArrayRefTypeString(typeToString(t.X)) && len(t.Indices) == 1 {
+			return t.Indices[0], true
+		}
+	}
+	return nil, false
+}
+
+func copyBackKind(expr ast.Expr) string {
+	switch {
+	case isBytesRefExpr(expr):
+		return "bytes"
+	case func() bool {
+		_, ok := arrayRefElemExpr(expr)
+		return ok
+	}():
+		return "array"
+	default:
+		return ""
+	}
+}
+
 func funcParamModes(funcType *ast.FuncType) []string {
 	var modes []string
 	if funcType == nil || funcType.Params == nil {
@@ -2599,8 +2746,11 @@ func funcParamModes(funcType *ast.FuncType) []string {
 			continue
 		}
 		mode := "runtime.FFIParamIn"
-		if isBytesRefTypeString(pType) {
+		switch copyBackKind(p.Type) {
+		case "bytes":
 			mode = "runtime.FFIParamInOutBytes"
+		case "array":
+			mode = "runtime.FFIParamInOutArray"
 		}
 		count := len(p.Names)
 		if count == 0 {
@@ -2613,13 +2763,44 @@ func funcParamModes(funcType *ast.FuncType) []string {
 	return modes
 }
 
-func hasInOutBytesParam(funcType *ast.FuncType) bool {
+func hasCopyBackParam(funcType *ast.FuncType) bool {
 	for _, mode := range funcParamModes(funcType) {
-		if mode == "runtime.FFIParamInOutBytes" {
+		if mode == "runtime.FFIParamInOutBytes" || mode == "runtime.FFIParamInOutArray" {
 			return true
 		}
 	}
 	return false
+}
+
+func splitGenericType(typeName string) (string, []string, bool) {
+	start := strings.Index(typeName, "<")
+	end := strings.LastIndex(typeName, ">")
+	if start <= 0 || end <= start {
+		return "", nil, false
+	}
+	base := strings.TrimSpace(typeName[:start])
+	inner := strings.TrimSpace(typeName[start+1 : end])
+	if inner == "" {
+		return base, nil, true
+	}
+	var parts []string
+	depth := 0
+	last := 0
+	for i, r := range inner {
+		switch r {
+		case '<':
+			depth++
+		case '>':
+			depth--
+		case ',':
+			if depth == 0 {
+				parts = append(parts, strings.TrimSpace(inner[last:i]))
+				last = i + 1
+			}
+		}
+	}
+	parts = append(parts, strings.TrimSpace(inner[last:]))
+	return base, parts, true
 }
 
 func readArrayItemType(pType string) (string, bool) {

@@ -17,11 +17,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	defer ffigo.ReleaseBuffer(buf)
 
 	funcSig := route.FuncSig
-	copyBackIndices, err := ffiCopyBackIndices(funcSig, len(args))
-	if err != nil {
-		return nil, err
-	}
-	copyBackTargets, err := e.resolveFFICopyBackTargets(session, args, argLHS, copyBackIndices)
+	copyBackTargets, err := e.resolveFFICopyBackTargets(session, funcSig, args, argLHS)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +123,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	// 解析返回值
 	if len(retData) == 0 {
 		if len(copyBackTargets) > 0 {
-			return nil, fmt.Errorf("ffi route %s returned empty payload for inout bytes", route.Name)
+			return nil, fmt.Errorf("ffi route %s returned empty payload for inout copy-back", route.Name)
 		}
 		return nil, nil
 	}
@@ -139,8 +135,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 			return nil, fmt.Errorf("ffi route %s returned %d copy-back values, want %d", route.Name, copyBackCount, len(copyBackTargets))
 		}
 		for i, target := range copyBackTargets {
-			nextBytes := reader.ReadBytes()
-			if err := e.applyFFICopyBack(session, target, nextBytes); err != nil {
+			if err := e.applyFFICopyBack(session, route.Bridge, target, reader); err != nil {
 				return nil, fmt.Errorf("ffi route %s copy-back[%d]: %w", route.Name, i, err)
 			}
 		}
@@ -152,8 +147,10 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 }
 
 type ffiCopyBackTarget struct {
-	LHS  LHSValue
-	Type RuntimeType
+	LHS      LHSValue
+	Type     RuntimeType
+	WireType RuntimeType
+	Mode     FFIParamMode
 }
 
 func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
@@ -162,51 +159,90 @@ func ffiCopyBackIndices(sig *RuntimeFuncSig, argCount int) ([]int, error) {
 	}
 	indices := make([]int, 0)
 	for i, mode := range sig.ParamModes {
-		if mode != FFIParamInOutBytes {
+		if mode != FFIParamInOutBytes && mode != FFIParamInOutArray {
 			continue
 		}
 		if sig.Variadic && i == len(sig.ParamModes)-1 {
-			return nil, fmt.Errorf("variadic inout bytes is not supported")
+			return nil, fmt.Errorf("variadic inout parameters are not supported")
 		}
 		if i >= argCount {
-			return nil, fmt.Errorf("missing argument for inout bytes parameter %d", i)
+			return nil, fmt.Errorf("missing argument for inout parameter %d", i)
 		}
 		indices = append(indices, i)
 	}
 	return indices, nil
 }
 
-func (e *Executor) resolveFFICopyBackTargets(session *StackContext, args []*Var, argLHS []LHSValue, indices []int) ([]ffiCopyBackTarget, error) {
+func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *RuntimeFuncSig, args []*Var, argLHS []LHSValue) ([]ffiCopyBackTarget, error) {
+	indices, err := ffiCopyBackIndices(sig, len(args))
+	if err != nil {
+		return nil, err
+	}
 	if len(indices) == 0 {
 		return nil, nil
 	}
 	targets := make([]ffiCopyBackTarget, 0, len(indices))
 	for _, idx := range indices {
 		if idx >= len(args) {
-			return nil, fmt.Errorf("missing argument for inout bytes parameter %d", idx)
+			return nil, fmt.Errorf("missing argument for inout parameter %d", idx)
 		}
 		if idx >= len(argLHS) || argLHS[idx] == nil {
-			return nil, fmt.Errorf("inout bytes argument %d requires an assignable left value", idx)
+			return nil, fmt.Errorf("inout argument %d requires an assignable left value", idx)
+		}
+		switch argLHS[idx].(type) {
+		case *LHSSlice:
+			return nil, fmt.Errorf("inout argument %d does not support slice/window left values", idx)
 		}
 		current, err := e.loadAddress(session, argLHS[idx])
 		if err != nil {
 			return nil, err
 		}
 		current = e.unwrapValue(current)
-		if current == nil || current.VType != TypeBytes {
-			return nil, fmt.Errorf("inout bytes argument %d must be TypeBytes", idx)
+		mode := sig.ParamModes[idx]
+		switch mode {
+		case FFIParamInOutBytes:
+			if current == nil || current.VType != TypeBytes {
+				return nil, fmt.Errorf("inout bytes argument %d must be TypeBytes", idx)
+			}
+		case FFIParamInOutArray:
+			if current == nil || current.VType != TypeArray {
+				return nil, fmt.Errorf("inout array argument %d must be Array", idx)
+			}
+		default:
+			return nil, fmt.Errorf("unsupported inout parameter mode %d", mode)
 		}
-		targets = append(targets, ffiCopyBackTarget{LHS: argLHS[idx], Type: current.RuntimeType()})
+		target := ffiCopyBackTarget{
+			LHS:      argLHS[idx],
+			Type:     current.RuntimeType(),
+			WireType: sig.ParamTypes[idx],
+			Mode:     mode,
+		}
+		targets = append(targets, target)
 	}
 	return targets, nil
 }
 
-func (e *Executor) applyFFICopyBack(session *StackContext, target ffiCopyBackTarget, data []byte) error {
-	next := NewBytes(data)
-	if !target.Type.IsEmpty() {
-		next.SetRuntimeType(target.Type)
+func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridge, target ffiCopyBackTarget, reader *ffigo.Reader) error {
+	switch target.Mode {
+	case FFIParamInOutBytes:
+		next := NewBytes(reader.ReadBytes())
+		if !target.Type.IsEmpty() {
+			next.SetRuntimeType(target.Type)
+		}
+		return e.storeAddress(session, target.LHS, next)
+	case FFIParamInOutArray:
+		payload := reader.ReadBytes()
+		next, err := e.deserializeRuntimeType(session, ffigo.NewReader(payload), target.WireType, bridge)
+		if err != nil {
+			return err
+		}
+		if next != nil && !target.Type.IsEmpty() {
+			next.SetRuntimeType(target.Type)
+		}
+		return e.storeAddress(session, target.LHS, next)
+	default:
+		return fmt.Errorf("unsupported inout parameter mode %d", target.Mode)
 	}
-	return e.storeAddress(session, target.LHS, next)
 }
 
 func (e *Executor) serializeRuntimeType(buf *ffigo.Buffer, v *Var, typ RuntimeType) error {

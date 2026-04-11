@@ -312,10 +312,10 @@ type CallData struct {
 }
 
 type DoCallData struct {
-	Name         string
-	FunctionSig  *RuntimeFuncSig
-	BodyTasks    []Task
-	Args         []*Var
+	Name        string
+	FunctionSig *RuntimeFuncSig
+	BodyTasks   []Task
+	Args        []*Var
 }
 
 type CallBoundaryData struct {
@@ -458,6 +458,7 @@ const (
 	LHSTypeIndex
 	LHSTypeMember
 	LHSTypeStar
+	LHSTypeSlice
 	LHSTypeNone
 )
 
@@ -475,12 +476,15 @@ func (*LHSEnv) isLHSValue()    {}
 func (*LHSIndex) isLHSValue()  {}
 func (*LHSMember) isLHSValue() {}
 func (*LHSDeref) isLHSValue()  {}
+func (*LHSSlice) isLHSValue()  {}
 
 type LHSData struct {
 	Kind     LHSType
 	Name     string
 	Property string
 	Sym      SymbolRef
+	HasLow   bool
+	HasHigh  bool
 }
 
 type ClosureData struct {
@@ -507,6 +511,12 @@ type LHSMember struct {
 
 type LHSDeref struct {
 	Target *Var
+}
+
+type LHSSlice struct {
+	Obj  *Var
+	Low  *Var
+	High *Var
 }
 
 // Assignment Data

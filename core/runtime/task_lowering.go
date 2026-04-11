@@ -881,6 +881,28 @@ func (e *Executor) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]Task
 		out := []Task{{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeStar}}}
 		out = append(out, e.tasksForExprInScope(lhs.X, scope)...)
 		return out, true
+	case *ast.SliceExpr:
+		if lhs == nil {
+			return []Task{{
+				Op: OpEvalLHS,
+				Data: &LHSData{
+					Kind: LHSTypeNone,
+				},
+			}}, true
+		}
+		out := []Task{{Op: OpEvalLHS, Data: &LHSData{
+			Kind:    LHSTypeSlice,
+			HasLow:  lhs.Low != nil,
+			HasHigh: lhs.High != nil,
+		}}}
+		if lhs.High != nil {
+			out = append(out, e.tasksForExprInScope(lhs.High, scope)...)
+		}
+		if lhs.Low != nil {
+			out = append(out, e.tasksForExprInScope(lhs.Low, scope)...)
+		}
+		out = append(out, e.tasksForExprInScope(lhs.X, scope)...)
+		return out, true
 	default:
 		return nil, false
 	}

@@ -272,6 +272,54 @@ type Mutator interface {
 	}
 }
 
+func TestRunDirectoryModeGeneratesArrayRefCopyBackSupport(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "mutator.go", `package pkgmode
+
+import "gopkg.d7z.net/go-mini/core/ffigo"
+
+// ffigen:module demo
+type Mutator interface {
+	Rewrite(nums *ffigo.ArrayRef[int64]) int64
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputDir
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runDirectoryMode(workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray)`) {
+		t.Fatalf("expected ArrayRef schema to emit inout array mode, got:\n%s", code)
+	}
+	if !strings.Contains(code, "if nums == nil {\n\t\twireBuf.WriteUvarint(0)\n\t} else {") {
+		t.Fatalf("expected ArrayRef proxy to guard nil before encoding, got:\n%s", code)
+	}
+	if !strings.Contains(code, `resBuf.WriteBytes(copyBackBuf_nums.Bytes())`) {
+		t.Fatalf("expected host router to write array copy-back envelope, got:\n%s", code)
+	}
+	if !strings.Contains(code, `copyBackBuf_nums := ffigo.NewReader(retBuf.ReadBytes())`) {
+		t.Fatalf("expected proxy to read nested array copy-back payload, got:\n%s", code)
+	}
+	if !strings.Contains(code, `copyBack_nums[i_copyBack_nums] = int64(tmp)`) {
+		t.Fatalf("expected ArrayRef primitive elements to decode via varint, got:\n%s", code)
+	}
+}
+
 func TestRunFileModeDoesNotInjectReceiverForModuleOnlyStruct(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	sourcePath := filepath.Join(workspace, "factory.go")
