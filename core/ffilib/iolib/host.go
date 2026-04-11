@@ -176,8 +176,20 @@ func RegisterIOAll(executor interface {
 	RegisterConstant(string, string)
 }, impl IO, registry *ffigo.HandleRegistry,
 ) {
+	RegisterIOSafe(executor, impl, registry)
+	RegisterFile(executor, registry)
+}
+
+// RegisterIOSafe 注册不主动赋予文件句柄能力的 io 能力：
+// 只暴露 io 模块函数、常量和 Reader/Writer schema。
+func RegisterIOSafe(executor interface {
+	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
+	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
+	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+	RegisterConstant(string, string)
+}, impl IO, registry *ffigo.HandleRegistry,
+) {
 	RegisterIO(executor, impl, registry)
 	RegisterReaderSchema(executor)
 	RegisterWriterSchema(executor)
-	RegisterFile(executor, registry)
 }

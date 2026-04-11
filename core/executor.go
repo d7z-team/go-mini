@@ -360,7 +360,8 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("spawn", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Ptr<task.Task>"))
 	res.mustAddFuncSchemaLocked("await", runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) Any"))
 
-	// Inject non-IO libraries by default
+	// Inject default libraries that do not let scripts discover the host
+	// filesystem/environment on their own.
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
 	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, TypeHandle) Bool"), "Check if an error matches a target handle")
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
@@ -379,6 +380,8 @@ func NewMiniExecutor() *MiniExecutor {
 	md5lib.RegisterMD5(res, &md5lib.MD5Host{}, res.registry)
 	sha256lib.RegisterSHA256(res, &sha256lib.SHA256Host{}, res.registry)
 	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
+	iolib.RegisterIOSafe(res, &iolib.IOHost{}, res.registry)
+	imagelib.RegisterImageAll(res, &imagelib.ImageHost{}, res.registry)
 	tasklib.RegisterTaskAll(res, &tasklib.Host{}, res.registry)
 
 	// Inject fmt by default (supports context-based redirection)
@@ -579,17 +582,8 @@ func (e *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject os
 	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
 
-	// 2. Inject io
-	iolib.RegisterIOAll(e, &iolib.IOHost{}, e.registry)
-
-	// 3. Inject image
-	imagelib.RegisterImageAll(e, &imagelib.ImageHost{}, e.registry)
-
-	// 4. Inject math
-	mathlib.RegisterMath(e, &mathlib.MathHost{}, e.registry)
-
-	// 5. Inject task sync helpers
-	tasklib.RegisterTaskAll(e, &tasklib.Host{}, e.registry)
+	// 2. Inject file-backed io handles and methods.
+	iolib.RegisterFile(e, e.registry)
 }
 
 func (e *MiniExecutor) GetExportedConstants() map[string]string {

@@ -83,7 +83,7 @@ func (i *Image) Fill(r, g, b, a int) {
 	if i == nil || i.RGBA == nil {
 		return
 	}
-	draw.Draw(i.RGBA, i.RGBA.Bounds(), &image.Uniform{color.RGBA{
+	draw.Draw(i.RGBA, i.RGBA.Bounds(), &image.Uniform{C: color.RGBA{
 		R: uint8(r),
 		G: uint8(g),
 		B: uint8(b),
@@ -123,12 +123,12 @@ func (i *Image) SubImage(x, y, width, height int) (*Image, error) {
 }
 
 // Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)
-func (i *Image) Draw(ctx context.Context, src *Image, x, y int) {
+func (i *Image) Draw(_ context.Context, src *Image, x, y int) {
 	if i == nil || i.RGBA == nil || src == nil || src.RGBA == nil {
 		return
 	}
 	sr := src.RGBA.Bounds()
-	dr := sr.Add(image.Point{x, y}).Intersect(i.RGBA.Bounds())
+	dr := sr.Add(image.Point{X: x, Y: y}).Intersect(i.RGBA.Bounds())
 	if dr.Empty() {
 		return
 	}
@@ -209,7 +209,7 @@ func (i *Image) EncodeJPEG(quality int) ([]byte, error) {
 
 type ImageHost struct{}
 
-func (h *ImageHost) NewRGBA(ctx context.Context, width, height int) *Image {
+func (h *ImageHost) NewRGBA(_ context.Context, width, height int) *Image {
 	if width <= 0 || height <= 0 {
 		return nil
 	}
@@ -217,7 +217,7 @@ func (h *ImageHost) NewRGBA(ctx context.Context, width, height int) *Image {
 	return &Image{RGBA: img}
 }
 
-func (h *ImageHost) Decode(ctx context.Context, data []byte) (*Image, string, error) {
+func (h *ImageHost) Decode(_ context.Context, data []byte) (*Image, string, error) {
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", err
