@@ -239,3 +239,166 @@ func main() {
 		t.Fatal(err)
 	}
 }
+
+func TestSpawnSnapshotCapturesScalarAndContainerValues(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	code := `
+package main
+
+func main() {
+	x := 1
+	arr := []Int64{7}
+
+	t := spawn(func() Int64 {
+		arr[0] = 99
+		return x + arr[0]
+	})
+
+	x = 100
+	arr[0] = 5
+
+	if await(t) != 100 {
+		panic("snapshot mismatch")
+	}
+	if x != 100 {
+		panic("parent scalar should keep its own value")
+	}
+	if arr[0] != 5 {
+		panic("parent container should not be mutated by child")
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpawnSnapshotChildWriteDoesNotEscapeCapturedState(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	code := `
+package main
+
+func main() {
+	x := 3
+	t := spawn(func() Int64 {
+		x = 11
+		return x
+	})
+	if await(t) != 11 {
+		panic("child should see its own updated snapshot")
+	}
+	if x != 3 {
+		panic("child write should not leak to parent")
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpawnSnapshotAllowsCapturedTaskHandle(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	code := `
+package main
+
+import "task"
+
+func work() Int64 {
+	return 1
+}
+
+func main() {
+	base := spawn(work)
+	t := spawn(func() Int64 {
+		if task.Status(base) == "" {
+			panic("missing status")
+		}
+		return await(base)
+	})
+	if await(t) != 1 {
+		panic("captured task handle should keep identity")
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpawnSnapshotAllowsCapturedHostHandle(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	code := `
+package main
+
+import "task"
+
+func main() {
+	mu := task.NewMutex()
+	t := spawn(func() Int64 {
+		task.Lock(mu)
+		task.Unlock(mu)
+		return 7
+	})
+	if await(t) != 7 {
+		panic("captured host handle should keep identity")
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpawnSnapshotRejectsCapturedVMPointer(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	executor.InjectStandardLibraries()
+
+	code := `
+package main
+
+func main() {
+	p := new(Int64)
+	_ = spawn(func() Int64 {
+		*p = 5
+		return *p
+	})
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err == nil {
+		t.Fatal("expected captured VM pointer snapshot to fail")
+	}
+}

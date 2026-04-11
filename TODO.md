@@ -10,14 +10,11 @@
 - [x] `task.TaskGroup` 已升级为真正 task-aware 的 group，替代旧 WaitGroup 风格 facade
 - [x] root `main` 结束时未完成 child task 一律取消，不自动等待后台任务
 - [x] 已明确取消/失败语义：`await` 负责失败传播，`task.Err` 负责非抛出式观测
-- [ ] captured upvalue 闭包跨 task 语义仍未放开
+- [x] captured upvalue 闭包跨 task 已实现 task-boundary snapshot capture；child 读取 spawn 时刻快照，写入不回写父 task
 
 ### 并发后续设计
 
-- [ ] **明确 captured upvalue 闭包跨 task 语义**: 当前 `spawn/go` 仍禁止带 captured upvalue 的闭包。后续需要在以下方案中二选一并落实到 runtime/文档/测试：
-  - 永久禁止 captured upvalue 闭包跨 task
-  - 将 captured upvalue 改为 task 边界按值快照，而不是共享 cell
-  禁止直接复用当前共享 `Cell/*Var` 语义跨 task，以免把单线程 closure capture 隐式升级为未定义的共享内存并发。
+- [ ] **扩展 snapshot capture 的支持矩阵**: 当前 snapshot capture 已支持标量、array/map、嵌套 closure、captured host handle 与 captured task handle；其中 host/task handle 按身份共享，普通 VM 值按快照复制。仍显式拒绝 VM pointer、module、runtime-backed interface 与递归容器。后续若要继续放开，需要为这些类型补充明确的身份/生命周期语义，而不是退回共享 `Cell/*Var` 并发。
 - [ ] **补齐 debugger 多 task 语义**: 当前 debugger 已共享到 child task，并补了多 task 断点/事件验证；后续仍需决定是否在调试事件里显式暴露 task/session 标识，以及多 task 单步时的事件顺序与宿主交互策略。
 
 ## Phase 1: Runtime 全量脱 AST (已完成)

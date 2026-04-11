@@ -1288,22 +1288,29 @@ func (e *Executor) spawnCall(parent *StackContext, name string, receiver *Var, m
 	}
 
 	if callable != nil {
-		callable = callable.Copy()
-		if unwrapped := e.unwrapValue(callable); unwrapped != nil && unwrapped.VType == TypeClosure {
-			if closureVar, ok := unwrapped.Ref.(*VMClosure); ok && len(closureVar.UpvalueSlots) > 0 {
-				return nil, &VMError{Message: "spawn does not support closures with captured variables", IsPanic: true}
-			}
+		snapshotted, err := e.snapshotTaskInput(callable)
+		if err != nil {
+			return nil, err
 		}
+		callable = snapshotted
 	}
 
 	spawnArgs := make([]*Var, len(args))
 	for i, arg := range args {
 		if arg != nil {
-			spawnArgs[i] = arg.Copy()
+			snapshotted, err := e.snapshotTaskInput(arg)
+			if err != nil {
+				return nil, err
+			}
+			spawnArgs[i] = snapshotted
 		}
 	}
 	if receiver != nil {
-		receiver = receiver.Copy()
+		snapshotted, err := e.snapshotTaskInput(receiver)
+		if err != nil {
+			return nil, err
+		}
+		receiver = snapshotted
 	}
 
 	task, err := e.scheduler.Spawn(parent.Context, func(ctx context.Context) (*Var, error) {
@@ -1337,6 +1344,148 @@ func (e *Executor) spawnCall(parent *StackContext, name string, receiver *Var, m
 		return nil, &VMError{Message: err.Error(), IsPanic: true}
 	}
 	return task, nil
+}
+
+type taskSnapshotState struct {
+	cloned   map[*Var]*Var
+	visiting map[*Var]bool
+}
+
+func newTaskSnapshotState() *taskSnapshotState {
+	return &taskSnapshotState{
+		cloned:   make(map[*Var]*Var),
+		visiting: make(map[*Var]bool),
+	}
+}
+
+func (e *Executor) snapshotTaskInput(v *Var) (*Var, error) {
+	return e.snapshotTaskVar(v, newTaskSnapshotState())
+}
+
+func (e *Executor) snapshotTaskVar(v *Var, state *taskSnapshotState) (*Var, error) {
+	if v == nil {
+		return nil, nil
+	}
+	if cloned, ok := state.cloned[v]; ok {
+		return cloned, nil
+	}
+	if state.visiting[v] {
+		return nil, &VMError{Message: "spawn cannot snapshot recursive values", IsPanic: true}
+	}
+	state.visiting[v] = true
+	defer delete(state.visiting, v)
+
+	out := &Var{
+		TypeInfo: v.TypeInfo,
+		VType:    v.VType,
+		I64:      v.I64,
+		F64:      v.F64,
+		Str:      v.Str,
+		Bool:     v.Bool,
+		Handle:   v.Handle,
+		Bridge:   v.Bridge,
+	}
+	state.cloned[v] = out
+	if v.B != nil {
+		out.B = append([]byte(nil), v.B...)
+	}
+
+	if v.VType == TypeHandle {
+		if _, ok := e.vmPointerTarget(v); ok {
+			return nil, &VMError{Message: "spawn cannot snapshot vm pointers", IsPanic: true}
+		}
+		out.Ref = v.Ref
+		if v.Handle != 0 && v.Ref == nil {
+			out.Ref = NewVMHandle(v.Handle, v.Bridge)
+		}
+		return out, nil
+	}
+
+	switch ref := v.Ref.(type) {
+	case nil:
+		return out, nil
+	case *VMArray:
+		items := ref.Snapshot()
+		cloned := make([]*Var, len(items))
+		for i, item := range items {
+			next, err := e.snapshotTaskVar(item, state)
+			if err != nil {
+				return nil, err
+			}
+			cloned[i] = next
+		}
+		out.Ref = &VMArray{Data: cloned}
+	case *VMMap:
+		snapshot := ref.Snapshot()
+		cloned := make(map[string]*Var, len(snapshot))
+		for k, item := range snapshot {
+			next, err := e.snapshotTaskVar(item, state)
+			if err != nil {
+				return nil, err
+			}
+			cloned[k] = next
+		}
+		out.Ref = &VMMap{Data: cloned}
+	case *Cell:
+		next, err := e.snapshotTaskVar(ref.Value, state)
+		if err != nil {
+			return nil, err
+		}
+		out.Ref = &Cell{Value: next}
+	case *VMClosure:
+		snapshotted, err := e.snapshotTaskClosure(ref, state)
+		if err != nil {
+			return nil, err
+		}
+		out.Ref = snapshotted
+	case *VMError:
+		var panicVal *Var
+		var err error
+		if ref.Value != nil {
+			panicVal, err = e.snapshotTaskVar(ref.Value, state)
+			if err != nil {
+				return nil, err
+			}
+		}
+		out.Ref = &VMError{
+			Message: ref.Message,
+			Value:   panicVal,
+			IsPanic: ref.IsPanic,
+			Cause:   ref.Cause,
+			Handle:  ref.Handle,
+			Bridge:  ref.Bridge,
+		}
+	case *VMModule:
+		return nil, &VMError{Message: "spawn cannot snapshot modules", IsPanic: true}
+	case *VMInterface:
+		return nil, &VMError{Message: "spawn cannot snapshot interfaces with runtime-backed state", IsPanic: true}
+	case *VMHandle:
+		out.Ref = &VMHandle{ID: ref.ID, Bridge: ref.Bridge}
+	default:
+		out.Ref = ref
+	}
+	return out, nil
+}
+
+func (e *Executor) snapshotTaskClosure(closure *VMClosure, state *taskSnapshotState) (*VMClosure, error) {
+	if closure == nil {
+		return nil, nil
+	}
+	cloned := &VMClosure{
+		FunctionSig:  cloneRuntimeFuncSig(closure.FunctionSig),
+		BodyTasks:    cloneTasks(closure.BodyTasks),
+		UpvalueSlots: make([]*Var, len(closure.UpvalueSlots)),
+		UpvalueNames: append([]string(nil), closure.UpvalueNames...),
+		Context:      nil,
+	}
+	for i, slot := range closure.UpvalueSlots {
+		next, err := e.snapshotTaskVar(slot, state)
+		if err != nil {
+			return nil, err
+		}
+		cloned.UpvalueSlots[i] = next
+	}
+	return cloned, nil
 }
 
 func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallData, args []*Var, closure *VMClosure) error {

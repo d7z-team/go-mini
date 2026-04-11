@@ -276,12 +276,47 @@ root `main` 是整个程序的根 task。
 - 只想轮询状态或非抛出式检查时，用 `task.Status(task)` 和 `task.Err(task)`
 - 对 `go f()` 这种不保留句柄的调用，子任务失败不会打断父流程
 
+### 结果共享
+
+- `await(task)` 只保证 child task 已结束，并把该 task 的返回值或失败传回当前 task；它不会把 child 内部对 captured VM 值的写入同步回父 task。
+- 若需要把数据带回父 task，优先把它作为 task 返回值，通过 `await(task)` 显式取回，而不是依赖 closure capture 的副作用。
+- `task.WaitTasks(group)` 只负责等待一组 task 完成，本身不传回每个 task 的结果；组级失败通过 `task.GroupErr(group)` 观测。
+- `captured task handle` 可以跨 task 共享并被 `await/status/err/cancel`，但这里共享的是 task 生命周期与结果，不是普通 VM 容器的共享写状态。
+
+示例：
+
+```go
+package main
+
+func worker(x Int64) Int64 {
+	return x * 2
+}
+
+func main() {
+	t := spawn(worker, 21)
+	result := await(t)
+	if result != 42 {
+		panic("unexpected result")
+	}
+}
+```
+
 ### 当前限制
 
-- `spawn/go` 目前只支持命名函数和无 capture 闭包
-- 带 captured upvalue 的闭包不能跨 task 执行
+- `spawn/go` 对带 captured upvalue 的闭包采用 task-boundary snapshot capture 语义
+- child task 拿到的是 spawn 时刻的 captured 值快照，child 修改不会回写父 task
+- captured host handle 与 task handle 按身份共享，不做深拷贝，child task 仍可调用宿主方法或等待既有任务
+- snapshot capture 当前拒绝：VM pointer、module、runtime-backed interface 与递归容器
 - 普通 VM map/array/closure capture 不承诺并发写安全
 - 当前没有 `chan/select` 语义
+
+### 使用警告
+
+- `spawn/go` 不是 Go 原生 goroutine 共享 capture 语义。普通 VM 值在 task 边界会被快照复制，child task 的写入不会回写父 task。
+- `captured host handle` 与 `captured task handle` 是少数例外，它们按身份共享而不是按值复制。child task 和父 task 看到的是同一个宿主对象或同一个 task 句柄。
+- 这意味着宿主对象的方法若不是并发安全的，VM 不会替你加锁或隔离状态；并发安全责任仍在宿主实现侧。
+- `captured VM pointer` 继续禁止，是为了避免把 VM 内部可变引用直接暴露成跨 task 共享内存；一旦放开，就会打破当前 snapshot 边界并引入未定义并发写语义。
+- 若需要跨 task 协作，优先使用显式参数、`task.TaskGroup`、`task.Cancel`、`await` 或宿主同步对象，而不是依赖 closure capture 的隐式共享效果。
 
 ## 5. FFI 生成器
 

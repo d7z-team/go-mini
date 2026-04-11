@@ -59,6 +59,8 @@ Go-Mini exposes VM-native task primitives plus a `task` module facade:
 - `task.Status(task)` returns `pending|running|succeeded|failed|canceled`
 - `task.Err(task)` returns `nil` for pending/running/succeeded tasks, and `Error` for failed or canceled tasks
 - `task.Cancel(task)` requests cancellation through task context
+- captured closures use task-boundary snapshot semantics: child tasks see a copy of captured VM values, and child writes do not flow back to the parent
+- captured host handles and task handles keep shared identity across task boundaries, so child tasks can still call host methods or await/query existing tasks
 
 Lifecycle rules:
 
@@ -66,6 +68,7 @@ Lifecycle rules:
 - shutdown cancellation is best-effort and observed only at VM safe points
 - unfinished background tasks are not awaited automatically
 - `go` task failures do not interrupt the parent flow unless explicitly observed via `await` or `task.Err`
+- snapshot capture still rejects VM pointers, modules, runtime-backed interfaces, recursive containers, and other task-unsafe runtime objects
 
 ## Docs
 
