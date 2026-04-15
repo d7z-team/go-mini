@@ -3,7 +3,6 @@ package compiler
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
@@ -67,54 +66,50 @@ func New(cfg Config) *Compiler {
 }
 
 func (a *Artifact) MarshalJSON() ([]byte, error) {
-	return a.MarshalBytecodeJSON()
+	return marshalArtifactBytecode(a, "", "")
 }
 
 func (a *Artifact) MarshalIndentJSON(prefix, indent string) ([]byte, error) {
-	return a.MarshalIndentBytecodeJSON(prefix, indent)
+	return marshalArtifactBytecode(a, prefix, indent)
 }
 
 func (a *Artifact) MarshalBytecodeJSON() ([]byte, error) {
-	if a == nil || a.Bytecode == nil {
-		return nil, errors.New("cannot marshal empty bytecode artifact")
-	}
-	return json.Marshal(a.Bytecode)
+	return marshalArtifactBytecode(a, "", "")
 }
 
 func (a *Artifact) MarshalIndentBytecodeJSON(prefix, indent string) ([]byte, error) {
-	if a == nil || a.Bytecode == nil {
-		return nil, errors.New("cannot marshal empty bytecode artifact")
-	}
-	return json.MarshalIndent(a.Bytecode, prefix, indent)
+	return marshalArtifactBytecode(a, prefix, indent)
 }
 
 func (c *Compiler) CompileSource(filename, code string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
-	converter := ffigo.NewGoToASTConverter()
+	return c.compileSources([]SourceFile{{Filename: filename, Code: code}}, code, tolerant)
+}
 
-	var (
-		node ast.Node
-		errs []error
-		err  error
-	)
-	if tolerant {
-		node, errs = converter.ConvertSourceTolerant(filename, code)
-	} else {
-		node, err = converter.ConvertSource(filename, code)
-		if err != nil {
-			return nil, nil, nil, err
-		}
+func (c *Compiler) CompileFiles(files []SourceFile, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
+	return c.compileSources(files, "", tolerant)
+}
+
+func (c *Compiler) CompileDir(dir string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
+	files, err := CompileDirInputs(dir)
+	if err != nil {
+		return nil, nil, nil, err
 	}
+	return c.compileSources(files, "", tolerant)
+}
 
-	if node == nil {
-		return nil, errs, nil, errors.New("failed to parse source")
+func (c *Compiler) compileSources(files []SourceFile, source string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
+	programs, errs, err := ParseSourceFiles(files, tolerant)
+	if err != nil {
+		return nil, errs, nil, err
 	}
-
-	program, ok := node.(*ast.ProgramStmt)
-	if !ok {
-		return nil, errs, nil, fmt.Errorf("unexpected root node type: %T", node)
+	program, err := MergePrograms(programs)
+	if err != nil {
+		return nil, errs, nil, err
 	}
-
-	artifact, sem, compileErr := c.CompileProgram(filename, code, program, tolerant)
+	artifact, sem, compileErr := c.CompileProgram(files[0].Filename, "", program, tolerant)
+	if source != "" {
+		artifact.Source = source
+	}
 	return artifact, errs, sem, compileErr
 }
 
@@ -141,9 +136,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	if err := program.Check(semanticCtx); err != nil {
-		if order, orderErr := program.GlobalInitOrder(); orderErr == nil {
-			artifact.GlobalInitOrder = order
-		}
+		fillArtifactGlobalInitOrder(artifact, program, false)
 		return artifact, semanticCtx, err
 	}
 
@@ -152,12 +145,9 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		artifact.Program = prog
 	}
 
-	order, orderErr := artifact.Program.GlobalInitOrder()
-	if orderErr != nil {
-		artifact.GlobalInitOrder = artifact.Program.DeclaredGlobalOrder()
-		return artifact, semanticCtx, orderErr
+	if err := fillArtifactGlobalInitOrder(artifact, artifact.Program, true); err != nil {
+		return artifact, semanticCtx, err
 	}
-	artifact.GlobalInitOrder = order
 	artifact.Bytecode = buildBytecode(artifact.Program, artifact.GlobalInitOrder)
 	return artifact, semanticCtx, nil
 }
@@ -191,9 +181,38 @@ func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
 }
 
 func (c *Compiler) CompileExprSource(code string) (ast.Expr, error) {
-	return ffigo.NewGoToASTConverter().ConvertExprSource(code)
+	return newConverter().ConvertExprSource(code)
 }
 
 func (c *Compiler) CompileStatementsSource(code string) ([]ast.Stmt, error) {
-	return ffigo.NewGoToASTConverter().ConvertStmtsSource(code)
+	return newConverter().ConvertStmtsSource(code)
+}
+
+func marshalArtifactBytecode(a *Artifact, prefix, indent string) ([]byte, error) {
+	if a == nil || a.Bytecode == nil {
+		return nil, errors.New("cannot marshal empty bytecode artifact")
+	}
+	if indent == "" && prefix == "" {
+		return json.Marshal(a.Bytecode)
+	}
+	return json.MarshalIndent(a.Bytecode, prefix, indent)
+}
+
+func fillArtifactGlobalInitOrder(artifact *Artifact, program *ast.ProgramStmt, allowFallback bool) error {
+	if artifact == nil || program == nil {
+		return errors.New("invalid program")
+	}
+	order, err := program.GlobalInitOrder()
+	if err != nil {
+		if allowFallback {
+			artifact.GlobalInitOrder = program.DeclaredGlobalOrder()
+		}
+		return err
+	}
+	artifact.GlobalInitOrder = order
+	return nil
+}
+
+func newConverter() *ffigo.GoToASTConverter {
+	return ffigo.NewGoToASTConverter()
 }

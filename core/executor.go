@@ -56,6 +56,12 @@ type MiniExecutor struct {
 	MaxTypeDepth int // 递归类型检查深度限制
 }
 
+type SourceFile = compiler.SourceFile
+
+func SourceFileExt() string {
+	return compiler.ScriptFileExt
+}
+
 type ExportedSchemaSnapshot struct {
 	Funcs      map[ast.Ident]*runtime.RuntimeFuncSig
 	Structs    map[ast.Ident]*runtime.RuntimeStructSpec
@@ -665,6 +671,38 @@ func (e *MiniExecutor) CompileProgram(program *ast.ProgramStmt) (*compiler.Artif
 	return compiled, nil
 }
 
+func (e *MiniExecutor) CompileFiles(files []SourceFile) (*compiler.Artifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileFiles(files, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		node := (*ast.ProgramStmt)(nil)
+		if compiled != nil {
+			node = compiled.Program
+		}
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+	}
+	return compiled, nil
+}
+
+func (e *MiniExecutor) CompileDir(dir string) (*compiler.Artifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileDir(dir, false)
+	if err != nil {
+		var logs []ast.Logs
+		if semanticCtx != nil {
+			logs = semanticCtx.Logs()
+		}
+		node := (*ast.ProgramStmt)(nil)
+		if compiled != nil {
+			node = compiled.Program
+		}
+		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+	}
+	return compiled, nil
+}
+
 func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniProgram, error) {
 	if compiled == nil || compiled.Program == nil {
 		return nil, errors.New("invalid compiled program")
@@ -688,6 +726,22 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 		Compiled: compiled,
 		executor: executor,
 	}, nil
+}
+
+func (e *MiniExecutor) NewRuntimeByFiles(files []SourceFile) (*MiniProgram, error) {
+	compiled, err := e.CompileFiles(files)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByCompiled(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByDir(dir string) (*MiniProgram, error) {
+	compiled, err := e.CompileDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByCompiled(compiled)
 }
 
 func (e *MiniExecutor) NewRuntimeByBytecode(program *bytecode.Program) (*MiniProgram, error) {

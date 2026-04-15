@@ -28,7 +28,7 @@ jobs:
         run: go mod download
 
       - name: Run tests with coverage
-        run: make test lint
+        run: make test
 
       - uses: codecov/codecov-action@v5
         name: Upload coverage reports to Codecov

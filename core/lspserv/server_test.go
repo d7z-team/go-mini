@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/compiler"
 )
 
 type stubProgram struct {
@@ -34,7 +35,7 @@ func TestPackageKeyForURIDistinguishesDirectories(t *testing.T) {
 	}
 }
 
-func TestMergeProgramStmtsIncludesImportsAndTypes(t *testing.T) {
+func TestMergeProgramsIncludesImportsAndTypes(t *testing.T) {
 	dest := &ast.ProgramStmt{
 		Imports:    []ast.ImportSpec{{Path: "fmt"}},
 		Types:      map[ast.Ident]ast.GoMiniType{"AliasA": "Int64"},
@@ -54,13 +55,16 @@ func TestMergeProgramStmtsIncludesImportsAndTypes(t *testing.T) {
 		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
 	}
 
-	mergeProgramStmts(dest, src)
-
-	if len(dest.Imports) != 2 {
-		t.Fatalf("expected merged imports, got %+v", dest.Imports)
+	merged, err := compiler.MergePrograms([]*ast.ProgramStmt{dest, src})
+	if err != nil {
+		t.Fatalf("MergePrograms failed: %v", err)
 	}
-	if _, ok := dest.Types["AliasB"]; !ok {
-		t.Fatalf("expected merged types, got %+v", dest.Types)
+
+	if len(merged.Imports) != 2 {
+		t.Fatalf("expected merged imports, got %+v", merged.Imports)
+	}
+	if _, ok := merged.Types["AliasB"]; !ok {
+		t.Fatalf("expected merged types, got %+v", merged.Types)
 	}
 }
 

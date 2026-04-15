@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -193,5 +195,106 @@ func main() {
 	}
 	if artifact.Bytecode.Executable == nil {
 		t.Fatal("expected executable bytecode payload")
+	}
+}
+
+func TestCompileFilesMergesTypesAndDedupesImports(t *testing.T) {
+	c := New(Config{
+		FuncSchemas: map[ast.Ident]*runtime.RuntimeFuncSig{
+			"fmt.Sprintf": runtime.MustParseRuntimeFuncSig("function(String, ...Any) String"),
+		},
+	})
+
+	artifact, _, _, err := c.CompileFiles([]SourceFile{
+		{
+			Filename: "a.go",
+			Code: `package main
+
+import "fmt"
+
+type Alias int
+`,
+		},
+		{
+			Filename: "b.go",
+			Code: `package main
+
+import "fmt"
+
+var msg = fmt.Sprintf("%s", "hi")
+func main() {
+	var _ Alias = 1
+}
+`,
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("compile files failed: %v", err)
+	}
+	if _, ok := artifact.Program.Types["Alias"]; !ok {
+		t.Fatalf("expected merged type alias, got %+v", artifact.Program.Types)
+	}
+	if len(artifact.Program.Imports) != 1 {
+		t.Fatalf("expected deduped imports, got %+v", artifact.Program.Imports)
+	}
+}
+
+func TestCompileFilesRejectsPackageMismatch(t *testing.T) {
+	c := New(Config{})
+	_, _, _, err := c.CompileFiles([]SourceFile{
+		{Filename: "a.go", Code: "package main\n"},
+		{Filename: "b.go", Code: "package other\n"},
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "package mismatch") {
+		t.Fatalf("expected package mismatch error, got %v", err)
+	}
+}
+
+func TestCompileFilesRejectsDuplicateDefinitions(t *testing.T) {
+	c := New(Config{})
+	_, _, _, err := c.CompileFiles([]SourceFile{
+		{Filename: "a.go", Code: "package main\nfunc helper() {}\n"},
+		{Filename: "b.go", Code: "package main\nfunc helper() {}\n"},
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "duplicate function definition") {
+		t.Fatalf("expected duplicate definition error, got %v", err)
+	}
+}
+
+func TestCompileDirLoadsOnlyMGOFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.mgo"), []byte("package main\n\ntype Alias int\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.mgo"), []byte("package main\n\nfunc main() { var _ Alias = 1 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ignored.go"), []byte("package main\n\nfunc ignored() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := New(Config{})
+	artifact, _, _, err := c.CompileDir(dir, false)
+	if err != nil {
+		t.Fatalf("compile dir failed: %v", err)
+	}
+	if _, ok := artifact.Program.Types["Alias"]; !ok {
+		t.Fatalf("expected type from .mgo files, got %+v", artifact.Program.Types)
+	}
+	if _, ok := artifact.Program.Functions["ignored"]; ok {
+		t.Fatalf("did not expect .go file to be loaded in directory mode")
+	}
+}
+
+func TestCompileDirRejectsMissingMGOFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "only.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := New(Config{})
+	_, _, _, err := c.CompileDir(dir, false)
+	if err == nil || !strings.Contains(err.Error(), ScriptFileExt) {
+		t.Fatalf("expected missing .mgo error, got %v", err)
 	}
 }

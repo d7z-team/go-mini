@@ -10,10 +10,10 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestLoadSourceProgramMergesFiles(t *testing.T) {
+func TestLoadProgramMergesFilesViaCompilePipeline(t *testing.T) {
 	tempDir := t.TempDir()
-	fileA := filepath.Join(tempDir, "a.go")
-	fileB := filepath.Join(tempDir, "b.go")
+	fileA := filepath.Join(tempDir, "a.mgo")
+	fileB := filepath.Join(tempDir, "b.mgo")
 
 	if err := os.WriteFile(fileA, []byte("package main\n\nfunc helper() Int64 { return 7 }\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -22,24 +22,25 @@ func TestLoadSourceProgramMergesFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	program, err := loadSourceProgram([]string{fileA, fileB})
+	executor := engine.NewMiniExecutor()
+	program, err := loadProgram(executor, &execOptions{inputs: []string{fileA, fileB}, run: true})
 	if err != nil {
-		t.Fatalf("loadSourceProgram failed: %v", err)
+		t.Fatalf("loadProgram failed: %v", err)
 	}
-	if program.Package != "main" {
-		t.Fatalf("unexpected package: %s", program.Package)
+	if program.Program.Package != "main" {
+		t.Fatalf("unexpected package: %s", program.Program.Package)
 	}
-	if _, ok := program.Functions["helper"]; !ok {
+	if _, ok := program.Program.Functions["helper"]; !ok {
 		t.Fatalf("expected merged helper function")
 	}
-	if _, ok := program.Functions["main"]; !ok {
+	if _, ok := program.Program.Functions["main"]; !ok {
 		t.Fatalf("expected merged main function")
 	}
 }
 
 func TestRunCompilesWritesBytecodeAndExecutes(t *testing.T) {
 	tempDir := t.TempDir()
-	sourceFile := filepath.Join(tempDir, "main.go")
+	sourceFile := filepath.Join(tempDir, "main.mgo")
 	bytecodeFile := filepath.Join(tempDir, "program.json")
 	source := `package main
 func main() {
@@ -60,6 +61,35 @@ func main() {
 	}
 	if !strings.Contains(string(payload), "\"format\": \"go-mini-bytecode\"") {
 		t.Fatalf("expected bytecode header in output")
+	}
+}
+
+func TestLoadProgramFromDirectoryLoadsMGOFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	fileA := filepath.Join(tempDir, "helper.mgo")
+	fileB := filepath.Join(tempDir, "main.mgo")
+	ignored := filepath.Join(tempDir, "ignored.go")
+
+	if err := os.WriteFile(fileA, []byte("package main\n\nfunc helper() Int64 { return 9 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fileB, []byte("package main\n\nfunc main() { if helper() != 9 { panic(\"bad\") } }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ignored, []byte("package main\n\nfunc ignored() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	executor := engine.NewMiniExecutor()
+	program, err := loadProgram(executor, &execOptions{inputs: []string{tempDir}, run: true})
+	if err != nil {
+		t.Fatalf("loadProgram from dir failed: %v", err)
+	}
+	if _, ok := program.Program.Functions["helper"]; !ok {
+		t.Fatalf("expected helper function from .mgo input")
+	}
+	if _, ok := program.Program.Functions["ignored"]; ok {
+		t.Fatalf("did not expect .go file to be loaded in directory mode")
 	}
 }
 

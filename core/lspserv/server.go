@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -115,7 +116,11 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 			if combinedNode == nil {
 				combinedNode = prog
 			} else {
-				mergeProgramStmts(combinedNode, prog)
+				merged, mergeErr := compiler.MergePrograms([]*ast.ProgramStmt{combinedNode, prog})
+				if mergeErr != nil {
+					return allDiagnostics, mergeErr
+				}
+				combinedNode = merged
 			}
 		}
 	}
@@ -165,44 +170,6 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 	}
 
 	return allDiagnostics, nil
-}
-
-func mergeProgramStmts(dest, src *ast.ProgramStmt) {
-	if len(dest.Imports) == 0 {
-		dest.Imports = append(dest.Imports, src.Imports...)
-	} else {
-		seen := make(map[string]struct{}, len(dest.Imports))
-		for _, imp := range dest.Imports {
-			seen[imp.Alias+"|"+imp.Path] = struct{}{}
-		}
-		for _, imp := range src.Imports {
-			key := imp.Alias + "|" + imp.Path
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			dest.Imports = append(dest.Imports, imp)
-		}
-	}
-	for k, v := range src.Functions {
-		dest.Functions[k] = v
-	}
-	for k, v := range src.Structs {
-		dest.Structs[k] = v
-	}
-	for k, v := range src.Variables {
-		dest.Variables[k] = v
-	}
-	for k, v := range src.Constants {
-		dest.Constants[k] = v
-	}
-	for k, v := range src.Types {
-		dest.Types[k] = v
-	}
-	for k, v := range src.Interfaces {
-		dest.Interfaces[k] = v
-	}
-	dest.Main = append(dest.Main, src.Main...)
 }
 
 func packageKeyForURI(uri, pkgName string) string {
