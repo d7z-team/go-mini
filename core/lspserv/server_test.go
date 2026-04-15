@@ -2,6 +2,8 @@ package lspserv
 
 import (
 	"bytes"
+	"go/scanner"
+	"go/token"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,10 +23,11 @@ func (p *stubProgram) GetReferencesAt(line, col int) []ast.Node            { ret
 
 type stubAnalyzer struct {
 	program ProgramView
+	errs    []error
 }
 
 func (s *stubAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt) (ProgramView, []error) {
-	return s.program, nil
+	return s.program, s.errs
 }
 
 func TestPackageKeyForURIDistinguishesDirectories(t *testing.T) {
@@ -59,7 +62,6 @@ func TestMergeProgramsIncludesImportsAndTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergePrograms failed: %v", err)
 	}
-
 	if len(merged.Imports) != 2 {
 		t.Fatalf("expected merged imports, got %+v", merged.Imports)
 	}
@@ -69,20 +71,12 @@ func TestMergeProgramsIncludesImportsAndTypes(t *testing.T) {
 }
 
 func TestLSPServerDoesNotLeakAcrossDirectories(t *testing.T) {
-	executor := &stubAnalyzer{program: &stubProgram{}}
-	server := NewLSPServer(executor)
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 
-	_, _ = server.UpdateSession("file:///workspace/a/main.go", `package main
-var sharedA = 1
-func FromA() {}
-`)
-	_, _ = server.UpdateSession("file:///workspace/b/main.go", `package main
-func main() {
-    
-}
-`)
+	_, _ = server.UpdateSession("file:///workspace/a/main.go", "package main\nvar sharedA = 1\nfunc FromA() {}\n")
+	_, _ = server.UpdateSession("file:///workspace/b/main.go", "package main\nfunc main() {}\n")
 
-	items := server.GetCompletions("file:///workspace/b/main.go", 2, 4)
+	items := server.GetCompletions("file:///workspace/b/main.go", 1, 4)
 	for _, item := range items {
 		if item.Label == "sharedA" || item.Label == "FromA" {
 			t.Fatalf("unexpected cross-directory symbol leak: %+v", items)
@@ -125,28 +119,98 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionClearsPreviousDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{
+		program: &stubProgram{},
+		errs: []error{
+			&ast.MiniAstError{
+				Logs: []ast.Logs{
+					{
+						Message: "first error",
+						Node: &ast.IdentifierExpr{
+							BaseNode: ast.BaseNode{Loc: &ast.Position{F: "file:///workspace/a/main.go", L: 1, C: 1, EL: 1, EC: 2}},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	first, _ := server.UpdateSession("file:///workspace/a/main.go", "package main\n")
+	if len(first["file:///workspace/a/main.go"]) == 0 {
+		t.Fatalf("expected diagnostics on first update, got %+v", first)
+	}
+
+	server.executor = &stubAnalyzer{program: &stubProgram{}}
+	second, _ := server.UpdateSession("file:///workspace/a/main.go", "package main\n")
+	diags, ok := second["file:///workspace/a/main.go"]
+	if !ok {
+		t.Fatalf("expected clearing diagnostics entry, got %+v", second)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("expected diagnostics to clear, got %+v", diags)
+	}
+}
+
 func TestUpdateSessionClearsPreviousSyntaxDiagnostics(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 
-	first, _ := server.UpdateSession("file:///workspace/a/main.mgo", `package main
-func main() {
-    aaaa
-`)
+	first, _ := server.UpdateSession("file:///workspace/a/main.mgo", "package main\nfunc main() {\n    aaaa\n")
 	initial, ok := first["file:///workspace/a/main.mgo"]
 	if !ok || len(initial) == 0 {
 		t.Fatalf("expected syntax diagnostics on first update, got %+v", first)
 	}
 
-	second, _ := server.UpdateSession("file:///workspace/a/main.mgo", `package main
-func main() {
-    aaaa
-}
-`)
+	second, _ := server.UpdateSession("file:///workspace/a/main.mgo", "package main\nfunc main() {\n    aaaa\n}\n")
 	diags, ok := second["file:///workspace/a/main.mgo"]
 	if !ok {
 		t.Fatalf("expected clearing diagnostics entry, got %+v", second)
 	}
 	if len(diags) != 0 {
 		t.Fatalf("expected syntax diagnostics to clear, got %+v", diags)
+	}
+}
+
+func TestUpdateSessionReportsMergeErrorsAsDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+
+	_, _ = server.UpdateSession("file:///workspace/a/main.go", "package main\nfunc helper() {}\n")
+	diags, err := server.UpdateSession("file:///workspace/a/other.go", "package main\nfunc helper() {}\n")
+	if err == nil {
+		t.Fatal("expected merge error")
+	}
+	found := false
+	for _, current := range diags {
+		for _, diag := range current {
+			if strings.Contains(diag.Message, "duplicate function definition") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected diagnostics for merge error, got %+v", diags)
+	}
+}
+
+func TestRangeForScannerErrorClampsEOFToVisibleRange(t *testing.T) {
+	rng := rangeForScannerError("package main\nfunc main() {\n", scanner.Error{
+		Pos: token.Position{Line: 3, Column: 2},
+		Msg: "expected '}', found 'EOF'",
+	})
+	if rng.Start.Line != 1 {
+		t.Fatalf("expected EOF to clamp to last real line, got %+v", rng)
+	}
+	if rng.End.Character <= rng.Start.Character {
+		t.Fatalf("expected visible highlight width, got %+v", rng)
+	}
+}
+
+func TestRangeForScannerErrorUsesTokenWidth(t *testing.T) {
+	rng := rangeForScannerError("package main\nvar x = aaaa\n", scanner.Error{
+		Pos: token.Position{Line: 2, Column: 9},
+		Msg: "expected ';', found aaaa",
+	})
+	if got := rng.End.Character - rng.Start.Character; got != 4 {
+		t.Fatalf("expected token width 4, got %+v", rng)
 	}
 }
