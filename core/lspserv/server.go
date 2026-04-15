@@ -9,15 +9,25 @@ import (
 	"strings"
 	"sync"
 
-	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+type ProgramView interface {
+	GetCompletionsAt(line, col int) []ast.CompletionItem
+	GetHoverAt(line, col int) *ast.HoverInfo
+	GetDefinitionAt(line, col int) ast.Node
+	GetReferencesAt(line, col int) []ast.Node
+}
+
+type Analyzer interface {
+	AnalyzeProgramTolerant(program *ast.ProgramStmt) (ProgramView, []error)
+}
+
 // LSPServer 是嵌入式 LSP 服务核心
 type LSPServer struct {
-	executor *engine.MiniExecutor
+	executor Analyzer
 	sessions sync.Map // map[string]*fileSession (URI -> Session)
 	packages sync.Map // map[string]*packageState (PkgName -> State)
 }
@@ -28,13 +38,13 @@ type fileSession struct {
 }
 
 type packageState struct {
-	combined *engine.MiniProgram
+	combined ProgramView
 	files    map[string]string // URI -> Code
 	mu       sync.Mutex
 }
 
 // NewLSPServer 创建一个新的 LSP 服务实例
-func NewLSPServer(e *engine.MiniExecutor) *LSPServer {
+func NewLSPServer(e Analyzer) *LSPServer {
 	return &LSPServer{
 		executor: e,
 	}
