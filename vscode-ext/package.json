@@ -24,7 +24,7 @@
           "mini"
         ],
         "extensions": [
-          ".mini"
+          ".mgo"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -59,17 +59,17 @@
       },
       {
         "command": "go-mini.runFile",
-        "title": "Go-Mini: Run Current File",
+        "title": "Go-Mini: Run Current Package",
         "icon": "$(play)"
       },
       {
         "command": "go-mini.compileFile",
-        "title": "Go-Mini: Compile Current File to Bytecode",
+        "title": "Go-Mini: Compile Current Package to Bytecode",
         "icon": "$(package)"
       },
       {
         "command": "go-mini.disassembleFile",
-        "title": "Go-Mini: Disassemble Current File",
+        "title": "Go-Mini: Disassemble Current Package",
         "icon": "$(symbol-method)"
       }
     ],
@@ -78,34 +78,34 @@
         {
           "command": "go-mini.runFile",
           "group": "navigation",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         },
         {
           "command": "go-mini.compileFile",
           "group": "navigation@1",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         },
         {
           "command": "go-mini.disassembleFile",
           "group": "navigation@2",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         }
       ],
       "explorer/context": [
         {
           "command": "go-mini.runFile",
           "group": "navigation",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         },
         {
           "command": "go-mini.compileFile",
           "group": "navigation@1",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         },
         {
           "command": "go-mini.disassembleFile",
           "group": "navigation@2",
-          "when": "resourceExtname == .mini"
+          "when": "resourceExtname == .mgo"
         }
       ]
     }

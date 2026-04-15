@@ -39,9 +39,10 @@ type fileSession struct {
 }
 
 type packageState struct {
-	combined ProgramView
-	files    map[string]string // URI -> Code
-	mu       sync.Mutex
+	combined        ProgramView
+	files           map[string]string // URI -> Code
+	lastDiagnostics map[string]struct{}
+	mu              sync.Mutex
 }
 
 // NewLSPServer 创建一个新的 LSP 服务实例
@@ -67,7 +68,10 @@ func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, er
 }
 
 func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, error) {
-	val, _ := s.packages.LoadOrStore(pkgKey, &packageState{files: make(map[string]string)})
+	val, _ := s.packages.LoadOrStore(pkgKey, &packageState{
+		files:           make(map[string]string),
+		lastDiagnostics: make(map[string]struct{}),
+	})
 	pkg := val.(*packageState)
 	pkg.mu.Lock()
 	defer pkg.mu.Unlock()
@@ -118,7 +122,7 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 			} else {
 				merged, mergeErr := compiler.MergePrograms([]*ast.ProgramStmt{combinedNode, prog})
 				if mergeErr != nil {
-					return allDiagnostics, mergeErr
+					return finalizeDiagnostics(pkg, allDiagnostics), mergeErr
 				}
 				combinedNode = merged
 			}
@@ -126,7 +130,7 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 	}
 
 	if combinedNode == nil {
-		return allDiagnostics, nil
+		return finalizeDiagnostics(pkg, allDiagnostics), nil
 	}
 
 	// 运行校验以生成持久化 Scope
@@ -169,7 +173,31 @@ func (s *LSPServer) rebuildPackage(pkgKey string) (map[string][]Diagnostic, erro
 		}
 	}
 
-	return allDiagnostics, nil
+	return finalizeDiagnostics(pkg, allDiagnostics), nil
+}
+
+func finalizeDiagnostics(pkg *packageState, diagnostics map[string][]Diagnostic) map[string][]Diagnostic {
+	if diagnostics == nil {
+		diagnostics = make(map[string][]Diagnostic)
+	}
+	if pkg == nil {
+		return diagnostics
+	}
+
+	for uri := range pkg.lastDiagnostics {
+		if _, ok := diagnostics[uri]; !ok {
+			diagnostics[uri] = []Diagnostic{}
+		}
+	}
+
+	next := make(map[string]struct{})
+	for uri, diags := range diagnostics {
+		if len(diags) > 0 {
+			next[uri] = struct{}{}
+		}
+	}
+	pkg.lastDiagnostics = next
+	return diagnostics
 }
 
 func packageKeyForURI(uri, pkgName string) string {

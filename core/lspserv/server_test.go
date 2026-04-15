@@ -124,3 +124,29 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 		t.Fatalf("expected completion result, got %q", out.String())
 	}
 }
+
+func TestUpdateSessionClearsPreviousSyntaxDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+
+	first, _ := server.UpdateSession("file:///workspace/a/main.mgo", `package main
+func main() {
+    aaaa
+`)
+	initial, ok := first["file:///workspace/a/main.mgo"]
+	if !ok || len(initial) == 0 {
+		t.Fatalf("expected syntax diagnostics on first update, got %+v", first)
+	}
+
+	second, _ := server.UpdateSession("file:///workspace/a/main.mgo", `package main
+func main() {
+    aaaa
+}
+`)
+	diags, ok := second["file:///workspace/a/main.mgo"]
+	if !ok {
+		t.Fatalf("expected clearing diagnostics entry, got %+v", second)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("expected syntax diagnostics to clear, got %+v", diags)
+	}
+}
