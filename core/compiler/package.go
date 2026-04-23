@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,7 +47,7 @@ func CompileDirInputs(dir string) ([]SourceFile, error) {
 
 func ParseSourceFiles(files []SourceFile, tolerant bool) ([]*ast.ProgramStmt, []error, error) {
 	if len(files) == 0 {
-		return nil, nil, fmt.Errorf("missing source files")
+		return nil, nil, errors.New("missing source files")
 	}
 
 	converter := ffigo.NewGoToASTConverter()
@@ -84,17 +85,17 @@ func ParseSourceFiles(files []SourceFile, tolerant bool) ([]*ast.ProgramStmt, []
 
 func MergePrograms(programs []*ast.ProgramStmt) (*ast.ProgramStmt, error) {
 	if len(programs) == 0 {
-		return nil, fmt.Errorf("missing programs")
+		return nil, errors.New("missing programs")
 	}
 
 	root := programs[0]
 	if root == nil {
-		return nil, fmt.Errorf("invalid root program")
+		return nil, errors.New("invalid root program")
 	}
 
 	for _, program := range programs[1:] {
 		if program == nil {
-			return nil, fmt.Errorf("invalid merged program")
+			return nil, errors.New("invalid merged program")
 		}
 		if root.Package != program.Package {
 			return nil, fmt.Errorf("package mismatch: %s vs %s", root.Package, program.Package)

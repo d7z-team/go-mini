@@ -370,7 +370,7 @@ func writePreparedTaskBlock(sb *strings.Builder, tasks []runtime.Task, indent, s
 			line = fmt.Sprintf("%-64s ; %s", line, comment)
 		}
 		sb.WriteString(strings.TrimRight(line, " ") + "\n")
-		*pc = *pc + 1
+		*pc++
 		for _, child := range children {
 			sb.WriteString(indent + child.label + ":\n")
 			writePreparedTaskBlock(sb, child.tasks, indent+"    ", child.label, pc, state)

@@ -484,8 +484,13 @@ func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStm
 func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if prog == nil {
+		delete(e.modules, path)
+		delete(e.moduleBytecode, path)
+		return
+	}
 	e.modules[path] = prog.Program
-	if prog != nil && prog.Compiled != nil && prog.Compiled.Bytecode != nil {
+	if prog.Compiled != nil && prog.Compiled.Bytecode != nil {
 		e.moduleBytecode[path] = prog.Compiled.Bytecode
 	}
 }
@@ -1327,10 +1332,7 @@ func sameBridge(a, b ffigo.FFIBridge) bool {
 	}
 	ta := reflect.TypeOf(a)
 	tb := reflect.TypeOf(b)
-	if ta != tb {
-		return false
-	}
-	return true
+	return ta == tb
 }
 
 func bridgeIdentity(bridge ffigo.FFIBridge) string {

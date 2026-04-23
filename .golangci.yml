@@ -1,4 +1,3 @@
-# fork from gitea https://github.com/go-gitea/gitea/blob/main/.golangci.yml
 version: "2"
 output:
   sort-order:
@@ -32,18 +31,10 @@ linters:
       rules:
         main:
           deny:
-            - pkg: github.com/unknwon/com
-              desc: use gitea's util and replacements
             - pkg: io/ioutil
               desc: use os or io instead
             - pkg: golang.org/x/exp
               desc: it's experimental and unreliable
-            - pkg: code.gitea.io/gitea/modules/git/internal
-              desc: do not use the internal package, use AddXxx function instead
-            - pkg: gopkg.in/ini.v1
-              desc: do not use the ini package, use gitea's config system instead
-            - pkg: gitea.com/go-chi/cache
-              desc: do not use the go-chi cache package, use gitea's cache system
     nolintlint:
       allow-unused: false
       require-explanation: true
@@ -91,7 +82,7 @@ linters:
           arguments:
             - [] # AllowList - do not remove as args for the rule are positional and won't work without lists first
             - [] # DenyList
-            - - skip-package-name-checks: true # supress errors from underscore in migration packages
+            - - skip-package-name-checks: true
     staticcheck:
       checks:
         - all
@@ -117,30 +108,15 @@ linters:
       - linters:
           - dupl
           - errcheck
-          - gocyclo
-          - gosec
           - staticcheck
           - unparam
         path: _test\.go
       - linters:
-          - dupl
-          - errcheck
-          - gocyclo
-          - gosec
-        path: models/migrations/v
-      - linters:
           - forbidigo
         path: cmd
       - linters:
-          - dupl
-        text: (?i)webhook
-      - linters:
           - gocritic
         text: (?i)`ID' should not be capitalized
-      - linters:
-          - deadcode
-          - unused
-        text: (?i)swagger
       - linters:
           - staticcheck
         text: (?i)argument x is overwritten before first use
@@ -150,13 +126,42 @@ linters:
       - linters:
           - gocritic
         text: '(?i)exitAfterDefer:'
+      - linters:
+          - dupl
+          - errcheck
+          - forbidigo
+          - gocritic
+          - govet
+          - ineffassign
+          - mirror
+          - nakedret
+          - nolintlint
+          - perfsprint
+          - revive
+          - staticcheck
+          - testifylint
+          - unconvert
+          - unparam
+          - unused
+          - usestdlibvars
+          - usetesting
+          - wastedassign
+        path: '(^|/)(ffigen(_.*)?|.*_ffigen(_test)?)\.go$'
+      - linters:
+          - unparam
+          - usetesting
+          - wastedassign
+        path: '^cmd/ffigen/'
+      - linters:
+          - revive
+          - unused
+        path: '^core/runtime/(executor|schema|scope|task_lowering)\.go$'
+      - linters:
+          - revive
+        path: '^core/ffilib/(oslib|timelib)/interface\.go$'
     paths:
       - node_modules
       - .venv
-      - public
-      - web_src
-      - third_party$
-      - builtin$
       - examples$
 issues:
   max-issues-per-linter: 0
@@ -173,10 +178,6 @@ formatters:
     paths:
       - node_modules
       - .venv
-      - public
-      - web_src
-      - third_party$
-      - builtin$
       - examples$
 
 run:

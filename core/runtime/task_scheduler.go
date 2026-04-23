@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -155,7 +156,7 @@ func (s *TaskScheduler) BeginRoot() {
 
 func (s *TaskScheduler) Spawn(parent context.Context, run func(context.Context) (*Var, error)) (*VMTask, error) {
 	if s == nil || run == nil {
-		return nil, fmt.Errorf("invalid task spawn")
+		return nil, errors.New("invalid task spawn")
 	}
 	if parent == nil {
 		parent = context.Background()
@@ -164,7 +165,7 @@ func (s *TaskScheduler) Spawn(parent context.Context, run func(context.Context) 
 	s.mu.Lock()
 	if s.shuttingDown {
 		s.mu.Unlock()
-		return nil, fmt.Errorf("cannot spawn task during shutdown")
+		return nil, errors.New("cannot spawn task during shutdown")
 	}
 	s.nextID++
 	id := s.nextID
@@ -223,7 +224,7 @@ func (s *TaskScheduler) Await(ctx context.Context, id uint32) (*Var, error) {
 		if taskErr != nil {
 			return nil, taskErr
 		}
-		return nil, fmt.Errorf("task failed")
+		return nil, errors.New("task failed")
 	default:
 		return nil, fmt.Errorf("task status %s", status.String())
 	}
@@ -260,7 +261,7 @@ func (s *TaskScheduler) Error(id uint32) (TaskStatus, error, error) {
 
 func (s *TaskScheduler) lookup(id uint32) (*VMTask, error) {
 	if s == nil || id == 0 {
-		return nil, fmt.Errorf("invalid task handle")
+		return nil, errors.New("invalid task handle")
 	}
 	s.mu.Lock()
 	task, ok := s.tasks[id]

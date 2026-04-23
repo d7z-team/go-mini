@@ -7,8 +7,7 @@ GOLINT          := $(BIN_DIR)/golangci-lint
 FFIGEN_BIN      := ./bin/ffigen
 LSP_SERVER_BIN  := ./bin/lsp-server
 EXEC_BIN        := ./bin/mini-exec
-TEST_GOCACHE    ?= /tmp/go-build-cache
-GO_TEST         := GOCACHE=$(TEST_GOCACHE) go test
+GO_TEST         := go test
 
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")

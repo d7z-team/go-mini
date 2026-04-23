@@ -136,7 +136,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	if err := program.Check(semanticCtx); err != nil {
-		fillArtifactGlobalInitOrder(artifact, program, false)
+		_ = fillArtifactGlobalInitOrder(artifact, program, false)
 		return artifact, semanticCtx, err
 	}
 

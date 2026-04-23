@@ -292,7 +292,7 @@ func definitionKey(node Node) string {
 	return fmt.Sprintf("%s:%s:%d:%d:%d:%d", base.Meta, base.Loc.F, base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC)
 }
 
-func resolveMemberDefinition(ctx *ValidContext, root Node, t *MemberExpr) Node {
+func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 	if ctx == nil || t == nil || t.Object == nil {
 		return nil
 	}
@@ -396,7 +396,7 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 	case *ConstRefExpr:
 		ident = &IdentifierExpr{Name: t.Name}
 	case *MemberExpr:
-		return resolveMemberDefinition(findScopeContext(root, target, parentMap), root, t)
+		return resolveMemberDefinition(findScopeContext(root, target, parentMap), t)
 	}
 
 	if ident == nil {
@@ -475,19 +475,19 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 			}
 		case *ForStmt:
 			// 检查 For 循环初始化语句中的变量定义 (如 for i := 0; ...)
-			if p.Init != nil {
-				if d := findInStmt(p.Init.(Stmt), name); d != nil {
-					return d
-				}
-			}
-		case *SwitchStmt:
 			if init, ok := p.Init.(Stmt); ok {
 				if d := findInStmt(init, name); d != nil {
 					return d
 				}
 			}
-			if assign, ok := p.Assign.(Stmt); ok {
-				if d := findInStmt(assign, name); d != nil {
+		case *SwitchStmt:
+			if p.Init != nil {
+				if d := findInStmt(p.Init, name); d != nil {
+					return d
+				}
+			}
+			if p.Assign != nil {
+				if d := findInStmt(p.Assign, name); d != nil {
 					return d
 				}
 			}
@@ -588,7 +588,7 @@ func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 		}
 		if member, ok := node.(*MemberExpr); ok {
 			ctx := findScopeContext(root, member, parentMap)
-			d := resolveMemberDefinition(ctx, root, member)
+			d := resolveMemberDefinition(ctx, member)
 			if definitionKey(d) == defKey {
 				appendRef(node)
 			}
@@ -617,7 +617,7 @@ func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 			return nil
 		}
 		memberType := inferLSPType(ctx, member)
-		def := resolveMemberDefinition(ctx, root, member)
+		def := resolveMemberDefinition(ctx, member)
 		if def == nil {
 			return &HoverInfo{Type: memberType}
 		}
@@ -1067,12 +1067,12 @@ func startsBefore(node Node, line, col int) bool {
 
 func collectDeclaredNamesInNode(node Node, visible map[string]struct{}) {
 	switch n := node.(type) {
-	case Stmt:
-		collectDeclaredNamesInStmt(n, visible)
 	case *BlockStmt:
 		for _, child := range n.Children {
 			collectDeclaredNamesInStmt(child, visible)
 		}
+	case Stmt:
+		collectDeclaredNamesInStmt(n, visible)
 	}
 }
 

@@ -523,7 +523,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		buf.WriteAny(v.Bool)
 	case TypeError:
 		if err, ok := v.Ref.(*VMError); ok {
-			buf.WriteByte(ffigo.TypeTagError)
+			_ = buf.WriteByte(ffigo.TypeTagError)
 			buf.WriteRawError(err.Message, err.Handle)
 		} else {
 			buf.WriteAny(nil)
@@ -531,7 +531,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	case TypeHandle:
 		// Internal VM pointers travel as pointer-tagged Any values.
 		if inner, ok := e.vmPointerTarget(v); ok {
-			buf.WriteByte(ffigo.TypeTagPointer)
+			_ = buf.WriteByte(ffigo.TypeTagPointer)
 			e.serializeVarToAny(buf, inner)
 			return
 		}
@@ -540,7 +540,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
 		items := arr.Snapshot()
-		buf.WriteByte(ffigo.TypeTagArray)
+		_ = buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUvarint(uint64(len(items)))
 		for _, item := range items {
 			e.serializeVarToAny(buf, item)
@@ -548,7 +548,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
 		if schema, ok := e.lookupAnyStructSchema(v); ok {
-			buf.WriteByte(ffigo.TypeTagStruct)
+			_ = buf.WriteByte(ffigo.TypeTagStruct)
 			buf.WriteUvarint(uint64(len(schema.Fields)))
 			for _, field := range schema.Fields {
 				buf.WriteString(field.Name)
@@ -557,7 +557,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			}
 			return
 		}
-		buf.WriteByte(ffigo.TypeTagMap)
+		_ = buf.WriteByte(ffigo.TypeTagMap)
 		snapshot := vmMap.Snapshot()
 		buf.WriteUvarint(uint64(len(snapshot)))
 		for k, val := range snapshot {
@@ -566,15 +566,15 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		}
 	case TypeInterface:
 		if v.Ref == nil {
-			buf.WriteByte(ffigo.TypeTagInterface)
+			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
 			return
 		}
 		if iface, ok := v.Ref.(*VMInterface); ok {
-			buf.WriteByte(ffigo.TypeTagInterface)
+			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
 		} else {
-			buf.WriteByte(ffigo.TypeTagInterface)
+			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
 		}
 	default:

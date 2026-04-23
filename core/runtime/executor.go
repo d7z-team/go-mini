@@ -1579,15 +1579,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpSlice:
 		var high, low, obj *Var
-		hasLow := false
-		hasHigh := false
 		data := task.Data.(*SliceData)
-		hasLow = data.HasLow
-		hasHigh = data.HasHigh
-		if hasHigh {
+		if data.HasHigh {
 			high = session.ValueStack.Pop()
 		}
-		if hasLow {
+		if data.HasLow {
 			low = session.ValueStack.Pop()
 		}
 		obj = session.ValueStack.Pop()
@@ -3006,7 +3002,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	}
 	for name, s := range modExec.metadata.structsByName {
 		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			exports[string(name)] = &Var{
+			exports[name] = &Var{
 				VType: TypeAny,
 				Ref:   cloneRuntimeStructSpec(s),
 			}
