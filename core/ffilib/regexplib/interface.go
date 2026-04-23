@@ -9,7 +9,12 @@ type Regexp interface {
 	MatchString(pattern, s string) (bool, error)
 	QuoteMeta(s string) string
 	FindString(pattern, s string) string
+	FindAllString(pattern, s string, n int) ([]string, error)
+	FindStringIndex(pattern, s string) ([]int, error)
+	FindStringSubmatchIndex(pattern, s string) ([]int, error)
 	FindStringSubmatch(pattern, s string) []string
+	FindAllStringSubmatch(pattern, s string, n int) ([][]string, error)
 	ReplaceAllString(pattern, src, repl string) (string, error)
+	ReplaceAllLiteralString(pattern, src, repl string) (string, error)
 	Split(pattern, s string, n int) ([]string, error)
 }

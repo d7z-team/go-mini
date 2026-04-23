@@ -2484,13 +2484,19 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 		}
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
-			fmt.Fprintf(sb, "\tl_%s := int(%s.ReadUvarint())\n\t%s = make(%s, l_%s)\n\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n", varName, readerName, varName, toGoType(pType), varName, varName, varName, varName, varName)
-			emitReadAssign(sb, fmt.Sprintf("%s[i_%s]", varName, varName), itemType, nil, structs, readerName, isHost)
+			suffix := generatedIdentSuffix(varName)
+			lenVar := "l_" + suffix
+			idxVar := "i_" + suffix
+			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s, %s)\n\tfor %s := 0; %s < %s; %s++ {\n", lenVar, readerName, varName, toGoType(pType), lenVar, idxVar, idxVar, lenVar, idxVar)
+			emitReadAssign(sb, fmt.Sprintf("%s[%s]", varName, idxVar), itemType, nil, structs, readerName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if kType, vType, ok := readMapKeyValueTypes(pType); ok {
-			fmt.Fprintf(sb, "\tl_%s := int(%s.ReadUvarint())\n\t%s = make(%s)\n\tfor i_%s := 0; i_%s < l_%s; i_%s++ {\n\t\tvar k %s\n\t\tvar v %s\n", varName, readerName, varName, toGoType(pType), varName, varName, varName, varName, toGoType(kType), toGoType(vType))
+			suffix := generatedIdentSuffix(varName)
+			lenVar := "l_" + suffix
+			idxVar := "i_" + suffix
+			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s)\n\tfor %s := 0; %s < %s; %s++ {\n\t\tvar k %s\n\t\tvar v %s\n", lenVar, readerName, varName, toGoType(pType), idxVar, idxVar, lenVar, idxVar, toGoType(kType), toGoType(vType))
 			emitReadAssign(sb, "k", kType, nil, structs, readerName, isHost)
 			emitReadAssign(sb, "v", vType, nil, structs, readerName, isHost)
 			fmt.Fprintf(sb, "\t\t%s[k] = v\n\t}\n", varName)
@@ -2516,6 +2522,21 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 			}
 		}
 	}
+}
+
+func generatedIdentSuffix(raw string) string {
+	var b strings.Builder
+	for i, r := range raw {
+		if r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || (i > 0 && '0' <= r && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('_')
+	}
+	if b.Len() == 0 {
+		return "_"
+	}
+	return b.String()
 }
 
 func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[string]string) {

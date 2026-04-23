@@ -26,6 +26,22 @@ func (h *RegexpHost) FindString(pattern, s string) string {
 	return re.FindString(s)
 }
 
+func (h *RegexpHost) FindAllString(pattern, s string, n int) ([]string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return re.FindAllString(s, n), nil
+}
+
+func (h *RegexpHost) FindStringIndex(pattern, s string) ([]int, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return re.FindStringIndex(s), nil
+}
+
 func (h *RegexpHost) FindStringSubmatch(pattern, s string) []string {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
@@ -34,12 +50,36 @@ func (h *RegexpHost) FindStringSubmatch(pattern, s string) []string {
 	return re.FindStringSubmatch(s)
 }
 
+func (h *RegexpHost) FindStringSubmatchIndex(pattern, s string) ([]int, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return re.FindStringSubmatchIndex(s), nil
+}
+
+func (h *RegexpHost) FindAllStringSubmatch(pattern, s string, n int) ([][]string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	return re.FindAllStringSubmatch(s, n), nil
+}
+
 func (h *RegexpHost) ReplaceAllString(pattern, src, repl string) (string, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", err
 	}
 	return re.ReplaceAllString(src, repl), nil
+}
+
+func (h *RegexpHost) ReplaceAllLiteralString(pattern, src, repl string) (string, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", err
+	}
+	return re.ReplaceAllLiteralString(src, repl), nil
 }
 
 func (h *RegexpHost) Split(pattern, s string, n int) ([]string, error) {

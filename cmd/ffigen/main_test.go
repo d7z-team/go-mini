@@ -111,6 +111,42 @@ type BrowserModule interface {
 	}
 }
 
+func TestRunFileModeGeneratesNestedSliceCode(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module regexp
+type RegexpModule interface {
+	FindAllStringSubmatch(pattern, s string, n int) ([][]string, error)
+	EchoGroups(groups [][]string) ([][]string, error)
+}
+`)
+
+	outputPath := filepath.Join(workspace, "regexp_ffigen.go")
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = "pkgmode"
+	*outFile = outputPath
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+
+	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+		t.Fatalf("runFileMode: %v", err)
+	}
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if strings.Contains(code, "l_v_0[i_v_0]") || strings.Contains(code, "i_v_0[i_v_0]") {
+		t.Fatalf("generated code still uses indexed expressions as identifiers:\n%s", code)
+	}
+	if !strings.Contains(code, "tuple(Array<Array<String>>, Error)") {
+		t.Fatalf("expected nested array schema, got:\n%s", code)
+	}
+}
+
 func TestRunDirectoryModeUsesInjectedReceiverForStructMethods(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
