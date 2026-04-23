@@ -12,7 +12,7 @@ GO_TEST         := go test
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 
-.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix \
+.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix examples \
 	test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e test-layered
 
 build: build-all
@@ -48,6 +48,13 @@ package-vsix: $(LSP_SERVER_BIN) $(EXEC_BIN)
 	@cd vscode-ext && npm install && NODE_NO_WARNINGS=1 ./node_modules/.bin/vsce package -o ../go-mini.vsix
 	@echo "Successfully packaged to go-mini.vsix"
 
+examples: $(EXEC_BIN)
+	@echo "Running example scripts..."
+	@find examples -type f -name "*.mgo" | sort | while read -r file; do \
+		echo "==> $$file"; \
+		$(EXEC_BIN) -run "$$file" || exit 1; \
+	done
+
 gen:
 	@echo "Generating FFI code with go generate..."
 	@go generate ./...
@@ -59,6 +66,7 @@ clean:
 fmt: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" fmt -c .golangci.yml
+	@find . -name "*.mgo" -not -path "./vendor/*" -not -path "./bin/*" -exec gofmt -w {} +
 	@go mod tidy
 
 lint: gen

@@ -1,0 +1,24 @@
+package main
+
+import "fmt"
+import "time"
+
+func main() {
+	// time.Duration 在 mgo 中可直接做整数式时间单位运算。
+	timeout, err := time.ParseDuration("1h30m")
+	if err != nil {
+		panic(err)
+	}
+	if timeout != time.Hour+30*time.Minute {
+		panic("duration parse failed")
+	}
+
+	// time.Time 的 Add/Sub 语义保持和 Go 标准库一致。
+	start := time.Now()
+	end := start.Add(timeout)
+	if end.Sub(start) != timeout {
+		panic("time arithmetic failed")
+	}
+
+	fmt.Println("timeout minutes:", Int64(timeout/time.Minute))
+}

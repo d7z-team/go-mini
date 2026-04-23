@@ -1,0 +1,30 @@
+package main
+
+import "encoding/json"
+import "fmt"
+
+type User struct {
+	Name string
+	Age  Int64
+}
+
+func main() {
+	// struct 字段可被 encoding/json FFI 按字段名序列化。
+	user := User{Name: "mini", Age: 7}
+	data, err := json.Marshal(user)
+	if err != nil {
+		panic(err)
+	}
+
+	// 当前 json.Unmarshal 返回动态对象，字段可用点号读取。
+	value, err := json.Unmarshal(data)
+	if err != nil {
+		panic(err)
+	}
+
+	if value.Name != "mini" || value.Age != 7 {
+		panic("json roundtrip failed")
+	}
+
+	fmt.Println(string(data))
+}

@@ -1,0 +1,23 @@
+package main
+
+import "fmt"
+import "os"
+import "filepath"
+
+func main() {
+	// os/path/filepath 通过 FFI 映射常用 Go 标准库能力。
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "<empty>"
+	}
+
+	configPath := filepath.Join(home, ".config", "go-mini", "config.json")
+	// filepath.Split 返回目录和文件名两个值。
+	dir, file := filepath.Split(configPath)
+	if file != "config.json" {
+		panic("filepath split failed")
+	}
+
+	fmt.Println("config dir:", dir)
+	fmt.Println("config file:", file)
+}

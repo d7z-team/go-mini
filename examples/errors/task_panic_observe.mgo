@@ -1,0 +1,23 @@
+package main
+
+import "fmt"
+import "task"
+
+func fail() Int64 {
+	// 子 task 中的 panic 会记录到 task 状态里。
+	panic("worker failed")
+}
+
+func main() {
+	t := spawn(fail)
+
+	// 让子 task 有机会执行；实际业务通常使用 await 或 task.WaitTasks。
+	task.Sleep(10)
+
+	// task.Err 可以观察子 task 失败；这里不使用 recover，因为 panic 发生在另一个 task。
+	if task.Err(t) == nil {
+		panic("task error should remain observable")
+	}
+
+	fmt.Println("observed task panic")
+}

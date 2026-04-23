@@ -1,0 +1,33 @@
+package main
+
+import "fmt"
+import "task"
+
+func worker(base Int64) Int64 {
+	return base * 2
+}
+
+func main() {
+	group := task.NewTaskGroup()
+	// spawn 会立即创建异步 task，返回 task handle。
+	t1 := spawn(worker, 10)
+	t2 := spawn(worker, 21)
+
+	// TaskGroup 用来统一等待多个 task，并汇总错误状态。
+	task.AddTask(group, t1)
+	task.AddTask(group, t2)
+	task.WaitTasks(group)
+
+	if err := task.GroupErr(group); err != nil {
+		panic(err)
+	}
+
+	// await 读取 task 的返回值；如果 task 失败，错误会沿当前执行流抛出。
+	a := await(t1)
+	b := await(t2)
+	if a != 20 || b != 42 {
+		panic("unexpected task result")
+	}
+
+	fmt.Println("results:", a, b)
+}
