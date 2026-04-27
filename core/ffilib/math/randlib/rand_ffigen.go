@@ -11,13 +11,21 @@ import (
 )
 
 const (
-	MethodID_Rand_Float64 = 1
-	MethodID_Rand_Int     = 2
-	MethodID_Rand_Intn    = 3
-	MethodID_Rand_Int63   = 4
-	MethodID_Rand_Int63n  = 5
-	MethodID_Rand_Seed    = 6
-	MethodID_Rand_Perm    = 7
+	MethodID_Rand_ExpFloat64  = 1
+	MethodID_Rand_Float32     = 2
+	MethodID_Rand_Float64     = 3
+	MethodID_Rand_Int         = 4
+	MethodID_Rand_Int31       = 5
+	MethodID_Rand_Int31n      = 6
+	MethodID_Rand_Intn        = 7
+	MethodID_Rand_Int63       = 8
+	MethodID_Rand_Int63n      = 9
+	MethodID_Rand_NormFloat64 = 10
+	MethodID_Rand_Read        = 11
+	MethodID_Rand_Seed        = 12
+	MethodID_Rand_Perm        = 13
+	MethodID_Rand_Uint32      = 14
+	MethodID_Rand_Uint64      = 15
 )
 
 type RandProxy struct {
@@ -27,6 +35,32 @@ type RandProxy struct {
 
 func NewRandProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Rand {
 	return &RandProxy{bridge: bridge, registry: registry}
+}
+
+func (__p *RandProxy) ExpFloat64() float64 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_ExpFloat64, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 float64
+	v_0 = float64(retBuf.ReadFloat64())
+	return v_0
+}
+
+func (__p *RandProxy) Float32() float32 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Float32, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 float32
+	v_0 = float32(retBuf.ReadFloat64())
+	return v_0
 }
 
 func (__p *RandProxy) Float64() float64 {
@@ -54,6 +88,46 @@ func (__p *RandProxy) Int() int {
 	{
 		tmp := retBuf.ReadVarint()
 		v_0 = int(tmp)
+	}
+	return v_0
+}
+
+func (__p *RandProxy) Int31() int32 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int31, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int32
+	{
+		tmp := retBuf.ReadVarint()
+		if tmp < -2147483648 || tmp > 2147483647 {
+			panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
+		}
+		v_0 = int32(tmp)
+	}
+	return v_0
+}
+
+func (__p *RandProxy) Int31n(n int32) int32 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	wireBuf.WriteVarint(int64(n))
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Int31n, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 int32
+	{
+		tmp := retBuf.ReadVarint()
+		if tmp < -2147483648 || tmp > 2147483647 {
+			panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
+		}
+		v_0 = int32(tmp)
 	}
 	return v_0
 }
@@ -110,6 +184,67 @@ func (__p *RandProxy) Int63n(n int64) int64 {
 	return v_0
 }
 
+func (__p *RandProxy) NormFloat64() float64 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_NormFloat64, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 float64
+	v_0 = float64(retBuf.ReadFloat64())
+	return v_0
+}
+
+func (__p *RandProxy) Read(p *ffigo.BytesRef) (int, error) {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	if p == nil {
+		wireBuf.WriteBytes(nil)
+	} else {
+		wireBuf.WriteBytes(p.Value)
+	}
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Read, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	if err != nil {
+		return 0, err
+	}
+	retBuf := ffigo.NewReader(retData)
+	copyBackCount := int(retBuf.ReadUvarint())
+	if copyBackCount != 1 {
+		panic(fmt.Sprintf("ffigen: Rand.Read copy-back mismatch: %d", copyBackCount))
+	}
+	if p == nil {
+		panic("ffigen: nil BytesRef passed to Rand.Read")
+	}
+	p.Value = retBuf.ReadBytes()
+	var v_0 int
+	{
+		tmp := retBuf.ReadVarint()
+		v_0 = int(tmp)
+	}
+	var err_1 error
+	if retBuf.Available() > 0 {
+		ed := retBuf.ReadRawError()
+		if ed.Message != "" || ed.Handle != 0 {
+			if ed.Handle != 0 && __p.registry != nil {
+				if obj, ok := __p.registry.Get(ed.Handle); ok {
+					err_1 = obj.(error)
+				} else {
+					err_1 = ed
+				}
+			} else {
+				err_1 = ed
+			}
+		}
+	}
+	return v_0, err_1
+}
+
 func (__p *RandProxy) Seed(seed int64) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
@@ -143,28 +278,92 @@ func (__p *RandProxy) Perm(n int) []int {
 	return v_0
 }
 
+func (__p *RandProxy) Uint32() uint32 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Uint32, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 uint32
+	{
+		tmp := retBuf.ReadVarint()
+		if tmp < 0 || tmp > 4294967295 {
+			panic(fmt.Sprintf("ffi: uint32 overflow: %d", tmp))
+		}
+		v_0 = uint32(tmp)
+	}
+	return v_0
+}
+
+func (__p *RandProxy) Uint64() uint64 {
+	wireBuf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(wireBuf)
+
+	retData, err := __p.bridge.Call(context.Background(), MethodID_Rand_Uint64, wireBuf.Bytes())
+	_ = retData
+	_ = err
+	retBuf := ffigo.NewReader(retData)
+	var v_0 uint64
+	{
+		tmp := retBuf.ReadVarint()
+		if tmp < 0 {
+			panic(fmt.Sprintf("ffi: uint overflow: %d", tmp))
+		}
+		v_0 = uint64(tmp)
+	}
+	return v_0
+}
+
 func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
+		case "ExpFloat64":
+			methodID = MethodID_Rand_ExpFloat64
+		case "Float32":
+			methodID = MethodID_Rand_Float32
 		case "Float64":
 			methodID = MethodID_Rand_Float64
 		case "Int":
 			methodID = MethodID_Rand_Int
+		case "Int31":
+			methodID = MethodID_Rand_Int31
+		case "Int31n":
+			methodID = MethodID_Rand_Int31n
 		case "Intn":
 			methodID = MethodID_Rand_Intn
 		case "Int63":
 			methodID = MethodID_Rand_Int63
 		case "Int63n":
 			methodID = MethodID_Rand_Int63n
+		case "NormFloat64":
+			methodID = MethodID_Rand_NormFloat64
+		case "Read":
+			methodID = MethodID_Rand_Read
 		case "Seed":
 			methodID = MethodID_Rand_Seed
 		case "Perm":
 			methodID = MethodID_Rand_Perm
+		case "Uint32":
+			methodID = MethodID_Rand_Uint32
+		case "Uint64":
+			methodID = MethodID_Rand_Uint64
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
+	case MethodID_Rand_ExpFloat64:
+		r0 := impl.ExpFloat64()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteFloat64(float64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Rand_Float32:
+		r0 := impl.Float32()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteFloat64(float64(r0))
+		return resBuf.Bytes(), nil
 	case MethodID_Rand_Float64:
 		r0 := impl.Float64()
 		resBuf := ffigo.GetBuffer()
@@ -172,6 +371,24 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case MethodID_Rand_Int:
 		r0 := impl.Int()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Rand_Int31:
+		r0 := impl.Int31()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Rand_Int31n:
+		var n int32
+		{
+			tmp := reqBuf.ReadVarint()
+			if tmp < -2147483648 || tmp > 2147483647 {
+				panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
+			}
+			n = int32(tmp)
+		}
+		r0 := impl.Int31n(n)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
@@ -200,6 +417,33 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
+	case MethodID_Rand_NormFloat64:
+		r0 := impl.NormFloat64()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteFloat64(float64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Rand_Read:
+		var p *ffigo.BytesRef
+		p = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		r0, err := impl.Read(p)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(1))
+		if p == nil {
+			resBuf.WriteBytes(nil)
+		} else {
+			resBuf.WriteBytes(p.Value)
+		}
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
 	case MethodID_Rand_Seed:
 		var seed int64
 		{
@@ -222,6 +466,16 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 			resBuf.WriteVarint(int64(item))
 		}
 		return resBuf.Bytes(), nil
+	case MethodID_Rand_Uint32:
+		r0 := impl.Uint32()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Rand_Uint64:
+		r0 := impl.Uint64()
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(r0))
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -233,13 +487,21 @@ var Rand_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Float64", 1, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"Int", 2, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Intn", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"Int63", 4, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Int63n", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"Seed", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"Perm", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), ""},
+	{"ExpFloat64", 1, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"Float32", 2, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"Float64", 3, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"Int", 4, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Int31", 5, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Int31n", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"Intn", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"Int63", 8, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Int63n", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
+	{"NormFloat64", 10, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
+	{"Read", 11, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Int64, Error)", runtime.FFIParamInOutBytes), ""},
+	{"Seed", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
+	{"Perm", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), ""},
+	{"Uint32", 14, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
+	{"Uint64", 15, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
 }
 
 type Rand_Bridge struct {
@@ -272,11 +534,19 @@ func RegisterRand(executor interface{ RegisterConstant(string, string) }, impl R
 	if !ok {
 		panic("ffigen: executor does not support schema FFI registration")
 	}
-	registrar.RegisterFFISchema("math/rand.Float64", bridge, Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("math/rand.Int", bridge, Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("math/rand.Intn", bridge, Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("math/rand.Int63", bridge, Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("math/rand.Int63n", bridge, Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("math/rand.Seed", bridge, Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("math/rand.Perm", bridge, Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("math/rand.ExpFloat64", bridge, Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
+	registrar.RegisterFFISchema("math/rand.Float32", bridge, Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
+	registrar.RegisterFFISchema("math/rand.Float64", bridge, Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
+	registrar.RegisterFFISchema("math/rand.Int", bridge, Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
+	registrar.RegisterFFISchema("math/rand.Int31", bridge, Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
+	registrar.RegisterFFISchema("math/rand.Int31n", bridge, Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
+	registrar.RegisterFFISchema("math/rand.Intn", bridge, Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
+	registrar.RegisterFFISchema("math/rand.Int63", bridge, Rand_FFI_Schemas[7].MethodID, Rand_FFI_Schemas[7].Sig, Rand_FFI_Schemas[7].Doc)
+	registrar.RegisterFFISchema("math/rand.Int63n", bridge, Rand_FFI_Schemas[8].MethodID, Rand_FFI_Schemas[8].Sig, Rand_FFI_Schemas[8].Doc)
+	registrar.RegisterFFISchema("math/rand.NormFloat64", bridge, Rand_FFI_Schemas[9].MethodID, Rand_FFI_Schemas[9].Sig, Rand_FFI_Schemas[9].Doc)
+	registrar.RegisterFFISchema("math/rand.Read", bridge, Rand_FFI_Schemas[10].MethodID, Rand_FFI_Schemas[10].Sig, Rand_FFI_Schemas[10].Doc)
+	registrar.RegisterFFISchema("math/rand.Seed", bridge, Rand_FFI_Schemas[11].MethodID, Rand_FFI_Schemas[11].Sig, Rand_FFI_Schemas[11].Doc)
+	registrar.RegisterFFISchema("math/rand.Perm", bridge, Rand_FFI_Schemas[12].MethodID, Rand_FFI_Schemas[12].Sig, Rand_FFI_Schemas[12].Doc)
+	registrar.RegisterFFISchema("math/rand.Uint32", bridge, Rand_FFI_Schemas[13].MethodID, Rand_FFI_Schemas[13].Sig, Rand_FFI_Schemas[13].Doc)
+	registrar.RegisterFFISchema("math/rand.Uint64", bridge, Rand_FFI_Schemas[14].MethodID, Rand_FFI_Schemas[14].Sig, Rand_FFI_Schemas[14].Doc)
 }
