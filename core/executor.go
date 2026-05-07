@@ -379,7 +379,7 @@ func NewMiniExecutor() *MiniExecutor {
 	byteslib.RegisterBytes(res, &byteslib.BytesHost{}, res.registry)
 	sortlib.RegisterSort(res, &sortlib.SortHost{}, res.registry)
 	regexplib.RegisterRegexp(res, &regexplib.RegexpHost{}, res.registry)
-	randlib.RegisterRand(res, &randlib.RandHost{}, res.registry)
+	randlib.RegisterRand(res, randlib.NewRandHost(), res.registry)
 	utf8lib.RegisterUTF8(res, &utf8lib.UTF8Host{}, res.registry)
 	base64lib.RegisterBase64(res, &base64lib.Base64Host{}, res.registry)
 	hexlib.RegisterHex(res, &hexlib.HexHost{}, res.registry)
