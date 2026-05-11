@@ -19,9 +19,8 @@ type ComplexBridge struct {
 
 func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
 	reader := ffigo.NewReader(args)
-	// 期望接收到零值或复杂嵌套数据
 	switch methodID {
-	case 1: // TestZeroValues(int, string, bool, ptr)
+	case 1:
 		i := reader.ReadVarint()
 		s := reader.ReadString()
 		bl := reader.ReadBool()
@@ -29,8 +28,7 @@ func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 		if i != 0 || s != "" || bl != false || ptr != 0 {
 			b.t.Errorf("Expected zero values, got: %d, %q, %v, %d", i, s, bl, ptr)
 		}
-	case 2: // TestNested(ComplexNested)
-		// 解析嵌套 Map
+	case 2:
 		count := reader.ReadUvarint()
 		if count != 1 {
 			b.t.Errorf("Expected map count 1, got %d", count)
@@ -65,14 +63,11 @@ package main
 import "test"
 
 func main() {
-	// 1. 测试零值传递
 	var i int
 	var s string
 	var b bool
-	// nil 指针在脚本中直接用全局 nil
 	test.Zero(i, s, b, nil)
 
-	// 2. 测试复杂嵌套
 	m := make(map[string][]int)
 	m["key"] = []int{1, 2}
 	test.Nested(m)
@@ -82,8 +77,7 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = prog.Execute(context.Background())
-	if err != nil {
+	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }

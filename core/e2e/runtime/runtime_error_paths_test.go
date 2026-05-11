@@ -25,7 +25,7 @@ func main() {
 	x := m["key"] // should be handled, but what about struct?
 }
 `,
-			wantErr: "", // Map access on nil is actually okay in some languages, check mini behavior
+			wantErr: "",
 		},
 		{
 			name: "Call nil closure",
@@ -57,15 +57,15 @@ func main() {
 				if tt.wantErr != "" && strings.Contains(err.Error(), tt.wantErr) {
 					return
 				}
-				t.Fatalf("Compile failed: %v", err)
+				t.Fatalf("compile failed: %v", err)
 			}
 			err = prog.Execute(context.Background())
 			if err == nil {
-				t.Log("Warning: Execute returned nil error")
+				t.Log("warning: Execute returned nil error")
 				return
 			}
 			if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("Expected error containing %q, got: %v", tt.wantErr, err)
+				t.Errorf("expected error containing %q, got: %v", tt.wantErr, err)
 			}
 		})
 	}

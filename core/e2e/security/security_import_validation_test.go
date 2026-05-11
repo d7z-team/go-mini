@@ -10,13 +10,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-// TestPathTraversalSecurity 路径穿越安全漏洞修复测试
 func TestPathTraversalSecurity(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-
-	// 设置一个简单的 Loader
 	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		return nil, nil // 路径校验应该在此之前发生
+		return nil, nil
 	})
 
 	testCases := []string{
@@ -37,12 +34,9 @@ func TestPathTraversalSecurity(t *testing.T) {
 	}
 }
 
-// TestImportDepthLimit 导入深度限制测试
 func TestImportDepthLimit(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	// 构造一个链式导入 A -> B -> C ...
-	// 我们这里通过模拟 Loader 返回下一个模块来实现
 	depth := 0
 	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		depth++
