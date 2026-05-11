@@ -2127,7 +2127,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpResumeUnwind:
 		mode := task.Data.(UnwindMode)
 		if session.UnwindMode == UnwindNone {
-			if mode == UnwindPanic && session.PanicVar == nil {
+			// Keep panic unwinding alive as long as any panic state remains.
+			// Some runtime panic sites historically populated message/trace
+			// without a concrete panic value, and treating "nil PanicVar" as
+			// "not a panic anymore" can accidentally downgrade the unwind into
+			// a return and swallow the original failure.
+			if mode == UnwindPanic && session.PanicVar == nil && session.PanicMessage == "" && len(session.PanicTrace) == 0 {
 				session.UnwindMode = UnwindReturn
 			} else {
 				session.UnwindMode = mode
@@ -2758,7 +2763,11 @@ func (e *Executor) Run(session *StackContext) error {
 					vme.Frames = frames
 				}
 				if vme.IsPanic {
-					session.PanicVar = vme.Value
+					panicVal := vme.Value
+					if panicVal == nil && vme.Message != "" {
+						panicVal = NewString(vme.Message)
+					}
+					session.PanicVar = panicVal
 					session.PanicMessage = vme.Message
 					session.PanicTrace = vme.Frames
 					session.UnwindMode = UnwindPanic
