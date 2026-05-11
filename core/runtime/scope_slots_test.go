@@ -508,6 +508,74 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 	}
 }
 
+func TestScopeApplyInheritsFunctionDeferOwner(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	session.ScopeApply("fn")
+	fnOwner := session.Stack
+	fnOwner.DeferOwner = fnOwner
+
+	session.ScopeApply("block")
+	if session.Stack.CurrentDeferOwner() != fnOwner {
+		t.Fatal("expected lexical block to inherit function defer owner")
+	}
+
+	session.ScopeApplyLoopBody("for_body")
+	if session.Stack.CurrentDeferOwner() != fnOwner {
+		t.Fatal("expected loop body to inherit function defer owner")
+	}
+}
+
+func TestOpCallBoundaryRunsDefersBeforeRestoringCallerStack(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	outerStack := session.Stack
+
+	if err := exec.setupFuncCall(session, "demo", &DoCallData{
+		Name:        "demo",
+		FunctionSig: MustParseRuntimeFuncSig("function() Void"),
+	}, nil, nil); err != nil {
+		t.Fatalf("setup func call failed: %v", err)
+	}
+
+	calleeStack := session.Stack
+	ran := false
+	calleeStack.AddDefer(func() {
+		ran = true
+		if session.Stack != calleeStack {
+			t.Fatal("defer should run before call boundary restores caller stack")
+		}
+	})
+
+	if err := exec.dispatch(session, Task{Op: OpCallBoundary, Data: &CallBoundaryData{
+		Name:      "demo",
+		OldStack:  outerStack,
+		HasReturn: false,
+	}}); err != nil {
+		t.Fatalf("first call boundary dispatch failed: %v", err)
+	}
+
+	if !ran {
+		t.Fatal("expected call boundary to drain defers first")
+	}
+	if session.Stack != calleeStack {
+		t.Fatal("expected first boundary pass to keep callee stack active")
+	}
+
+	if err := exec.dispatch(session, Task{Op: OpCallBoundary, Data: &CallBoundaryData{
+		Name:          "demo",
+		OldStack:      outerStack,
+		HasReturn:     false,
+		DefersDrained: true,
+	}}); err != nil {
+		t.Fatalf("second call boundary dispatch failed: %v", err)
+	}
+
+	if session.Stack != outerStack {
+		t.Fatal("expected second boundary pass to restore caller stack")
+	}
+}
+
 func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")

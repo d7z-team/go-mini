@@ -904,16 +904,35 @@ type Stack struct {
 	interrupt string
 	Depth     int
 
+	// DeferOwner points at the function activation that owns function-scoped
+	// defers. Lexical child scopes inherit the same owner so defer lifetime is
+	// tied to the surrounding function instead of a transient block/loop scope.
+	DeferOwner *Stack
 	DeferStack []func()
 }
 
+func (s *Stack) CurrentDeferOwner() *Stack {
+	if s == nil {
+		return nil
+	}
+	if s.DeferOwner != nil {
+		return s.DeferOwner
+	}
+	return s
+}
+
 func (s *Stack) AddDefer(fn func()) {
-	s.DeferStack = append(s.DeferStack, fn)
+	owner := s.CurrentDeferOwner()
+	if owner == nil {
+		return
+	}
+	owner.DeferStack = append(owner.DeferStack, fn)
 }
 
 func (s *Stack) RunDefers() {
-	// 逆序执行 defer
-	for i := len(s.DeferStack) - 1; i >= 0; i-- {
+	// Defers append tasks onto TaskStack, so iterate forward here to preserve
+	// source-level LIFO execution once the VM pops those tasks back off.
+	for i := 0; i < len(s.DeferStack); i++ {
 		s.DeferStack[i]()
 	}
 	s.DeferStack = nil
@@ -1519,6 +1538,12 @@ func (ctx *StackContext) ScopeApply(scope string) {
 		FrameBase: frame,
 		Scope:     scope,
 		Depth:     newDepth,
+		DeferOwner: func() *Stack {
+			if ctx.Stack == nil {
+				return nil
+			}
+			return ctx.Stack.CurrentDeferOwner()
+		}(),
 	}
 }
 
@@ -1578,6 +1603,12 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 		FrameSync: syncLimit,
 		Scope:     scope,
 		Depth:     newDepth,
+		DeferOwner: func() *Stack {
+			if ctx.Stack == nil {
+				return nil
+			}
+			return ctx.Stack.CurrentDeferOwner()
+		}(),
 	}
 }
 

@@ -674,6 +674,7 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		UnwindMode:   UnwindNone,
 		resumeSignal: make(chan struct{}, 1),
 	}
+	session.Stack.DeferOwner = session.Stack
 
 	// Setup Context Bridge (Abort logic)
 	if ctx != nil && ctx.Done() != nil {
@@ -974,7 +975,6 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 
 			// Start run loop again for main func
 			err = e.Run(session)
-			session.Stack.RunDefers()
 			if err != nil {
 				return err
 			}
@@ -1005,6 +1005,31 @@ func (e *Executor) initializeSharedGlobals(session *StackContext) error {
 	return nil
 }
 
+func callBoundaryDeferOwner(session *StackContext) *Stack {
+	if session == nil || session.Stack == nil {
+		return nil
+	}
+	return session.Stack.CurrentDeferOwner()
+}
+
+func scheduleCallBoundaryDefers(session *StackContext, task Task, data *CallBoundaryData, resume *UnwindMode) bool {
+	owner := callBoundaryDeferOwner(session)
+	if data == nil || data.DefersDrained || owner == nil || len(owner.DeferStack) == 0 {
+		return false
+	}
+
+	// Keep deferred calls running inside the callee activation. This preserves
+	// both Go-style function-scoped defer lifetime and recover() semantics
+	// before the call boundary restores the caller stack/frame.
+	data.DefersDrained = true
+	session.TaskStack = append(session.TaskStack, task)
+	if resume != nil {
+		session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: *resume})
+	}
+	owner.RunDefers()
+	return true
+}
+
 // Unwind State Machine
 func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error) {
 	if task.Op == OpScopeExit || task.Op == OpForScopeExit || task.Op == OpFinally {
@@ -1016,16 +1041,11 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	}
 
 	if task.Op == OpRunDefers {
-		if len(session.Stack.DeferStack) > 0 {
+		if owner := callBoundaryDeferOwner(session); owner != nil && len(owner.DeferStack) > 0 {
 			prevMode := session.UnwindMode
 			session.UnwindMode = UnwindNone
 			session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: prevMode})
-
-			defers := session.Stack.DeferStack
-			session.Stack.DeferStack = nil
-			for _, fn := range defers {
-				fn()
-			}
+			owner.RunDefers()
 			return true, nil
 		}
 		return false, nil
@@ -1078,6 +1098,14 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		data, ok := task.Data.(*CallBoundaryData)
 		if !ok || data == nil {
 			return false, fmt.Errorf("OpCallBoundary data is not *CallBoundaryData: %T", task.Data)
+		}
+		if session.UnwindMode == UnwindPanic || session.UnwindMode == UnwindReturn {
+			prevMode := session.UnwindMode
+			session.UnwindMode = UnwindNone
+			if scheduleCallBoundaryDefers(session, *task, data, &prevMode) {
+				return true, nil
+			}
+			session.UnwindMode = prevMode
 		}
 		oldStack := data.OldStack
 		hasReturn := data.HasReturn
@@ -1783,6 +1811,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if !ok || data == nil {
 			return fmt.Errorf("OpCallBoundary data is not *CallBoundaryData: %T (%v)", task.Data, task.Data)
 		}
+		if scheduleCallBoundaryDefers(session, task, data, nil) {
+			return nil
+		}
 		oldStack := data.OldStack
 		hasReturn := data.HasReturn
 		valueBase := data.ValueBase
@@ -1858,12 +1889,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpRunDefers:
-		if len(session.Stack.DeferStack) > 0 {
-			defers := session.Stack.DeferStack
-			session.Stack.DeferStack = nil
-			for _, fn := range defers {
-				fn()
-			}
+		if owner := callBoundaryDeferOwner(session); owner != nil && len(owner.DeferStack) > 0 {
+			owner.RunDefers()
 		}
 		return nil
 	case OpScheduleDefer:

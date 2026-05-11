@@ -1537,12 +1537,14 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 		panic(errors.New("stack overflow"))
 	}
 	newStack := &Stack{
-		Parent:    root,
-		MemoryPtr: make(map[string]*Var),
-		Frame:     &SlotFrame{},
-		Scope:     name,
-		Depth:     newDepth,
+		Parent:     root,
+		MemoryPtr:  make(map[string]*Var),
+		Frame:      &SlotFrame{},
+		Scope:      name,
+		Depth:      newDepth,
+		DeferOwner: nil,
 	}
+	newStack.DeferOwner = newStack
 
 	session.Stack = newStack
 
@@ -1589,9 +1591,6 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			LHSBase:   session.LHSStack.Len(),
 		},
 	})
-	// Push Defers execution
-	session.TaskStack = append(session.TaskStack, Task{Op: OpRunDefers})
-
 	// Push body
 	if len(bodyTasks) > 0 {
 		session.TaskStack = append(session.TaskStack, bodyTasks...)
