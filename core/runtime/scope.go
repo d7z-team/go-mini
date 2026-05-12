@@ -1551,14 +1551,8 @@ func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
 	if frame == nil {
 		return &SlotFrame{}
 	}
-	locals := make([]*Var, len(frame.Locals))
-	for i, v := range frame.Locals {
-		if v != nil {
-			locals[i] = v.Copy()
-		}
-	}
 	cloned := &SlotFrame{
-		Locals:       locals,
+		Locals:       append([]*Var(nil), frame.Locals...),
 		LocalNames:   append([]string(nil), frame.LocalNames...),
 		Upvalues:     append([]*Var(nil), frame.Upvalues...),
 		UpvalueNames: append([]string(nil), frame.UpvalueNames...),
