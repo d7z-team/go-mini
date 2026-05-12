@@ -9,6 +9,18 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
 
+func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, code string, want string) {
+	t.Helper()
+
+	_, err := executor.NewRuntimeByGoCode(code)
+	if err == nil {
+		t.Fatalf("expected compile error containing %q", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected compile error containing %q, got %v", want, err)
+	}
+}
+
 type assignmentOutputRecorder struct {
 	sb strings.Builder
 }
@@ -187,5 +199,36 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("assignment order test failed: %v", err)
 		}
+	})
+
+	t.Run("UndeclaredSingleAssignmentFails", func(t *testing.T) {
+		requireCompileErrorContains(t, executor, `
+		package main
+		func main() {
+			x = 1
+		}
+		`, "undefined identifier in assignment: x")
+	})
+
+	t.Run("UndeclaredIncDecFails", func(t *testing.T) {
+		requireCompileErrorContains(t, executor, `
+		package main
+		func main() {
+			counter++
+		}
+		`, "undefined identifier in assignment: counter")
+	})
+
+	t.Run("BlockScopedShortDeclDoesNotLeak", func(t *testing.T) {
+		requireCompileErrorContains(t, executor, `
+		package main
+		func main() {
+			if true {
+				page := 1
+				_ = page
+			}
+			page = 2
+		}
+		`, "undefined identifier in assignment: page")
 	})
 }

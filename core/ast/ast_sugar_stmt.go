@@ -2,6 +2,7 @@ package ast
 
 import (
 	"errors"
+	"fmt"
 )
 
 // IncDecStmt 表示自增自减语句
@@ -21,6 +22,13 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 		err := errors.New("inc/dec 语句缺少操作数")
 		ctx.AddErrorf("%s", err.Error())
 		return err
+	}
+	if ident, ok := i.Operand.(*IdentifierExpr); ok {
+		if _, exists := ctx.GetVariable(ident.Name); !exists {
+			err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
+			ctx.AddErrorAt(i.Operand, "%s", err.Error())
+			return err
+		}
 	}
 	operandCtx := ctx.WithNode(i.Operand)
 	logCount := operandCtx.LogCount()

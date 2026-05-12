@@ -9,6 +9,13 @@ import (
 	"strings"
 )
 
+type AssignKind string
+
+const (
+	AssignSet    AssignKind = "="
+	AssignDefine AssignKind = ":="
+)
+
 // ImportSpec 表示包导入声明
 type ImportSpec struct {
 	Alias string `json:"alias,omitempty"` // 别名，默认为空表示使用包名
@@ -488,7 +495,15 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 	}
 
 	var hasError bool
-	for _, child := range b.Children {
+	for i := 0; i < len(b.Children); i++ {
+		if consumed, failed := b.checkShortDefineGroup(semCtx, i); consumed > 0 {
+			if failed {
+				hasError = true
+			}
+			i += consumed - 1
+			continue
+		}
+		child := b.Children[i]
 		logCount := semCtx.LogCount()
 		if err := child.Check(semCtx); ForwardStructuredError(semCtx, child, logCount, err) {
 			hasError = true
@@ -498,6 +513,68 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 		return errors.New("block validation failed")
 	}
 	return nil
+}
+
+func (b *BlockStmt) checkShortDefineGroup(ctx *SemanticContext, start int) (consumed int, failed bool) {
+	if start < 0 || start >= len(b.Children) {
+		return 0, false
+	}
+	decl, ok := b.Children[start].(*GenDeclStmt)
+	if !ok || decl.DefineGroup == "" {
+		return 0, false
+	}
+
+	group := decl.DefineGroup
+	end := start
+	for end < len(b.Children) {
+		nextDecl, ok := b.Children[end].(*GenDeclStmt)
+		if !ok || nextDecl.DefineGroup != group {
+			break
+		}
+		end++
+	}
+	if end >= len(b.Children) {
+		return 0, false
+	}
+
+	var defineNames []Ident
+	switch stmt := b.Children[end].(type) {
+	case *AssignmentStmt:
+		if stmt.DefineGroup != group || len(stmt.DefineNames) == 0 {
+			return 0, false
+		}
+		defineNames = stmt.DefineNames
+	case *MultiAssignmentStmt:
+		if stmt.DefineGroup != group || len(stmt.DefineNames) == 0 {
+			return 0, false
+		}
+		defineNames = stmt.DefineNames
+	default:
+		return 0, false
+	}
+
+	newCount := 0
+	for _, name := range defineNames {
+		if name == "_" {
+			continue
+		}
+		if !ctx.IsLocalVariable(name) {
+			newCount++
+		}
+	}
+	if newCount == 0 {
+		err := errors.New("no new variables on left side of :=")
+		ctx.AddErrorAt(b.Children[end], "%s", err.Error())
+		failed = true
+	}
+
+	for idx := start; idx <= end; idx++ {
+		logCount := ctx.LogCount()
+		if err := b.Children[idx].Check(ctx); ForwardStructuredError(ctx, b.Children[idx], logCount, err) {
+			failed = true
+		}
+	}
+	return end - start + 1, failed
 }
 
 func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
@@ -1325,14 +1402,22 @@ func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
 // MultiAssignmentStmt 表示多变量解构赋值语句
 type MultiAssignmentStmt struct {
 	BaseNode
-	LHS   []Expr `json:"lhs"`
-	Value Expr   `json:"value"`
+	Kind        AssignKind `json:"kind"`
+	LHS         []Expr     `json:"lhs"`
+	Value       Expr       `json:"value"`
+	DefineNames []Ident    `json:"define_names,omitempty"`
+	DefineGroup string     `json:"define_group,omitempty"`
 }
 
 func (m *MultiAssignmentStmt) GetBase() *BaseNode { return &m.BaseNode }
 func (m *MultiAssignmentStmt) stmtNode()          {}
 
 func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
+	if m.Kind != AssignSet && m.Kind != AssignDefine {
+		err := errors.New("multi assignment missing assignment kind")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
 	m.Type = "Void"
 	if len(m.LHS) == 0 {
 		err := errors.New("multi assignment missing LHS")
@@ -1376,6 +1461,7 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 	}
 
 	var hasError bool
+	newCount := 0
 	for i, lhs := range m.LHS {
 		targetType := elementTypes[i]
 		if lhs == nil {
@@ -1385,12 +1471,21 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 
 		if ident, ok := lhs.(*IdentifierExpr); ok {
 			ident.Name = ident.Name.Resolve(ctx.ValidContext)
+			if ident.Name == "_" {
+				ident.Type = targetType
+				continue
+			}
 			vType, exists := ctx.GetVariable(ident.Name)
 
 			if !exists {
-				if !targetType.IsVoid() {
+				if m.Kind == AssignSet {
+					err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
+				} else if !targetType.IsVoid() {
 					ctx.AddVariable(ident.Name, targetType)
 					ident.Type = targetType
+					newCount++
 				}
 			} else {
 				if !targetType.IsAssignableTo(vType) {
@@ -1415,6 +1510,10 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 				}
 			}
 		}
+	}
+	if m.Kind == AssignDefine && newCount == 0 {
+		ctx.AddErrorf("no new variables on left side of :=")
+		hasError = true
 	}
 
 	if hasError {
@@ -1446,8 +1545,9 @@ func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 // GenDeclStmt 变量声明
 type GenDeclStmt struct {
 	BaseNode
-	Name Ident
-	Kind GoMiniType
+	Name        Ident
+	Kind        GoMiniType
+	DefineGroup string `json:"define_group,omitempty"`
 }
 
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
@@ -1497,8 +1597,11 @@ func (g *GenDeclStmt) Optimize(ctx *OptimizeContext) Node {
 // AssignmentStmt 表示赋值语句
 type AssignmentStmt struct {
 	BaseNode
-	LHS   Expr `json:"lhs"`
-	Value Expr `json:"value"`
+	Kind        AssignKind `json:"kind"`
+	LHS         Expr       `json:"lhs"`
+	Value       Expr       `json:"value"`
+	DefineNames []Ident    `json:"define_names,omitempty"`
+	DefineGroup string     `json:"define_group,omitempty"`
 }
 
 func (a *AssignmentStmt) GetBase() *BaseNode { return &a.BaseNode }
@@ -1507,6 +1610,11 @@ func (a *AssignmentStmt) stmtNode()          {}
 // DeferStmt, RangeStmt, SwitchStmt are defined earlier
 func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(a)
+	if a.Kind != AssignSet && a.Kind != AssignDefine {
+		err := errors.New("assignment missing assignment kind")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
 	a.Type = "Void"
 	if a.LHS == nil {
 		err := errors.New("赋值语句缺少左值")
@@ -1519,9 +1627,16 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 
-	// 特殊处理左值为 IdentifierExpr，因为可能涉及隐式声明
+	// Identifier assignment participates in strict declaration/assignment rules.
 	if ident, ok := a.LHS.(*IdentifierExpr); ok {
 		ident.Name = ident.Name.Resolve(ctx.ValidContext)
+		if ident.Name == "_" {
+			if err := a.Value.Check(ctx); err != nil {
+				return err
+			}
+			ident.Type = a.Value.GetBase().Type
+			return nil
+		}
 
 		vType, b := ctx.GetVariable(ident.Name)
 		if !b && !strings.Contains(string(ident.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
@@ -1570,13 +1685,20 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
-		if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
-			if !strings.Contains(string(ident.Name), ".") {
-				ident.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
+		if a.Kind == AssignDefine {
+			if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
+				if !strings.Contains(string(ident.Name), ".") {
+					ident.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
+				}
 			}
+			ctx.AddVariable(ident.Name, miniType)
+			ident.Type = miniType
+			return nil
 		}
-		ctx.AddVariable(ident.Name, miniType)
-		return nil
+
+		err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
+		ctx.AddErrorAt(a.LHS, "%s", err.Error())
+		return err
 	}
 
 	// 对于其他复杂的 LHS (IndexExpr, MemberExpr)，直接进行类型检查

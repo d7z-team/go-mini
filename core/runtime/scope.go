@@ -1502,23 +1502,10 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 		ctx := &StackContext{Executor: exec, Shared: shared, Stack: stack}
 		return ctx.StoreSymbol(SymbolRef{Name: variable, Kind: SymbolGlobal, Slot: -1}, expr)
 	}
-	if stack != nil && stack.Depth == 1 && stack.Scope == "global" && shared != nil {
-		if expr == nil {
-			shared.StoreGlobal(variable, NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny))
-		} else {
-			shared.StoreGlobal(variable, expr.Copy())
-		}
-		return nil
-	}
 	if stack == nil {
 		return errors.New("missing lexical stack")
 	}
-	if expr == nil {
-		stack.MemoryPtr[variable] = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny).Copy()
-		return nil
-	}
-	stack.MemoryPtr[variable] = expr.Copy()
-	return nil
+	return fmt.Errorf("undefined: %s", variable)
 }
 
 func (ctx *StackContext) ScopeApply(scope string) {

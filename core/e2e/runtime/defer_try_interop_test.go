@@ -91,6 +91,7 @@ func TestTryCatchKeepsFunctionDefer(t *testing.T) {
         "children": [
           {
             "meta": "assignment",
+            "kind": "=",
             "lhs": { "meta": "identifier", "name": "res" },
             "value": {
               "meta": "binary",
@@ -219,6 +220,7 @@ func TestTryFinallyRunsBeforeRecoveringFunctionDefer(t *testing.T) {
         "children": [
           {
             "meta": "assignment",
+            "kind": "=",
             "lhs": { "meta": "identifier", "name": "res" },
             "value": {
               "meta": "binary",

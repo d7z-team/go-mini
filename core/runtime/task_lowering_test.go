@@ -471,7 +471,8 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 	})
 
 	assign := &ast.AssignmentStmt{
-		LHS: &ast.IdentifierExpr{Name: "x"},
+		Kind: ast.AssignSet,
+		LHS:  &ast.IdentifierExpr{Name: "x"},
 	}
 	switchStmt := &ast.SwitchStmt{
 		IsType: true,

@@ -362,6 +362,8 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if st.Tok == token.DEFINE {
 			var children []miniast.Stmt
 			var lhsExprs []miniast.Expr
+			var defineNames []miniast.Ident
+			groupID := c.genID(st, "short_define")
 
 			// 尝试推导右值类型
 			inferredType := string(miniast.TypeAny)
@@ -389,10 +391,12 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 				if ident, ok := lhs.(*ast.Ident); ok {
 					if ident.Name != "_" {
 						children = append(children, &miniast.GenDeclStmt{
-							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
-							Name:     miniast.Ident(ident.Name),
-							Kind:     miniast.GoMiniType(inferredType),
+							BaseNode:    miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
+							Name:        miniast.Ident(ident.Name),
+							Kind:        miniast.GoMiniType(inferredType),
+							DefineGroup: groupID,
 						})
+						defineNames = append(defineNames, miniast.Ident(ident.Name))
 						lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
 							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier", Loc: c.extractLoc(lhs)},
 							Name:     miniast.Ident(ident.Name),
@@ -428,15 +432,21 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 
 			if len(lhsExprs) == 1 {
 				children = append(children, &miniast.AssignmentStmt{
-					BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
-					LHS:      lhsExprs[0],
-					Value:    rhsExpr,
+					BaseNode:    miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
+					Kind:        miniast.AssignSet,
+					LHS:         lhsExprs[0],
+					Value:       rhsExpr,
+					DefineNames: defineNames,
+					DefineGroup: groupID,
 				})
 			} else {
 				children = append(children, &miniast.MultiAssignmentStmt{
-					BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
-					LHS:      lhsExprs,
-					Value:    rhsExpr,
+					BaseNode:    miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
+					Kind:        miniast.AssignSet,
+					LHS:         lhsExprs,
+					Value:       rhsExpr,
+					DefineNames: defineNames,
+					DefineGroup: groupID,
 				})
 			}
 			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: true, Children: children}
@@ -464,13 +474,13 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			}
 
 			if len(st.Lhs) == 1 {
-				return &miniast.AssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)}, LHS: c.convertExpr(st.Lhs[0]), Value: rhsExpr}
+				return &miniast.AssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)}, Kind: miniast.AssignSet, LHS: c.convertExpr(st.Lhs[0]), Value: rhsExpr}
 			}
 			var lhsExprs []miniast.Expr
 			for _, l := range st.Lhs {
 				lhsExprs = append(lhsExprs, c.convertExpr(l))
 			}
-			return &miniast.MultiAssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)}, LHS: lhsExprs, Value: rhsExpr}
+			return &miniast.MultiAssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)}, Kind: miniast.AssignSet, LHS: lhsExprs, Value: rhsExpr}
 		}
 		var op token.Token
 		switch st.Tok {
@@ -489,6 +499,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			lhs := c.convertExpr(st.Lhs[0])
 			return &miniast.AssignmentStmt{
 				BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
+				Kind:     miniast.AssignSet,
 				LHS:      lhs,
 				Value: &miniast.BinaryExpr{
 					BaseNode: miniast.BaseNode{ID: c.genID(st, "binary"), Meta: "binary", Loc: c.extractLoc(st)},
@@ -511,6 +522,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 						if i < len(vSpec.Values) {
 							children = append(children, &miniast.AssignmentStmt{
 								BaseNode: miniast.BaseNode{ID: c.genID(name, "assignment"), Meta: "assignment", Loc: c.extractLoc(name)},
+								Kind:     miniast.AssignSet,
 								LHS:      &miniast.IdentifierExpr{BaseNode: miniast.BaseNode{ID: c.genID(name, "identifier"), Meta: "identifier", Loc: c.extractLoc(name)}, Name: miniast.Ident(name.Name)},
 								Value:    c.convertExpr(vSpec.Values[i]),
 							})

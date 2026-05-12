@@ -25,8 +25,8 @@ func TestAdvancedFFIExecution(t *testing.T) {
 
 		func main() {
 			// 1. 验证句柄去重 (Identity)
-			obj1 = test.GetSameObject()
-			obj2 = test.GetSameObject()
+			obj1 := test.GetSameObject()
+			obj2 := test.GetSameObject()
 			if !test.IsSame(obj1, obj2) {
 				panic("Handle identity failed")
 			}
@@ -36,7 +36,7 @@ func TestAdvancedFFIExecution(t *testing.T) {
 			m[true] = "true"
 			m[false] = "false"
 			
-			resMap = test.EchoMap(m)
+			resMap := test.EchoMap(m)
 			if !resMap[1.5] {
 				panic("Map key/value logic failed")
 			}
@@ -47,7 +47,7 @@ func TestAdvancedFFIExecution(t *testing.T) {
 			e["BaseField"] = "from_vm"
 			e["ExtraField"] = 42
 			
-			resE = test.EchoEmbedded(e)
+			resE := test.EchoEmbedded(e)
 			if resE.BaseField != "from_vm" || resE.ExtraField != 42 {
 			        panic("Embedded struct flattening failed")
 			}		}

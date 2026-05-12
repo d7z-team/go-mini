@@ -503,21 +503,23 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return n, nil
 	case "assignment":
 		var raw struct {
-			LHS json.RawMessage `json:"lhs"`
-			Val json.RawMessage `json:"value"`
+			Kind string          `json:"kind"`
+			LHS  json.RawMessage `json:"lhs"`
+			Val  json.RawMessage `json:"value"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.AssignmentStmt{BaseNode: baseNode}
+		n := &ast.AssignmentStmt{BaseNode: baseNode, Kind: ast.AssignKind(raw.Kind)}
 		n.LHS, _ = parseExpr(raw.LHS)
 		n.Value, _ = parseExpr(raw.Val)
 		return n, nil
 	case "multi_assignment":
 		var raw struct {
-			LHS []json.RawMessage `json:"lhs"`
-			Val json.RawMessage   `json:"value"`
+			Kind string            `json:"kind"`
+			LHS  []json.RawMessage `json:"lhs"`
+			Val  json.RawMessage   `json:"value"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.MultiAssignmentStmt{BaseNode: baseNode}
+		n := &ast.MultiAssignmentStmt{BaseNode: baseNode, Kind: ast.AssignKind(raw.Kind)}
 		for _, l := range raw.LHS {
 			if e, err := parseExpr(l); err == nil {
 				n.LHS = append(n.LHS, e)

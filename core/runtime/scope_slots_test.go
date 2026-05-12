@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -78,6 +79,23 @@ func TestGlobalBindingsUseDedicatedGlobalStore(t *testing.T) {
 	globalValue, ok := session.Shared.LoadGlobal("globalValue")
 	if !ok || globalValue == nil || globalValue.I64 != 33 {
 		t.Fatalf("expected dedicated global store entry, got %#v", globalValue)
+	}
+}
+
+func TestStoreRejectsUndeclaredNameWithoutFallback(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	session.ScopeApply("fn")
+
+	err := session.Store("ghost", NewInt(7))
+	if err == nil {
+		t.Fatal("expected undeclared store to fail")
+	}
+	if !strings.Contains(err.Error(), "undefined: ghost") {
+		t.Fatalf("unexpected undeclared store error: %v", err)
+	}
+	if _, exists := session.Stack.MemoryPtr["ghost"]; exists {
+		t.Fatalf("undeclared store should not populate MemoryPtr: %#v", session.Stack.MemoryPtr["ghost"])
 	}
 }
 

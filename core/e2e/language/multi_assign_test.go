@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -133,6 +134,53 @@ func TestMultiAssignment(t *testing.T) {
 		err = prog.Execute(context.Background())
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclAllowsMixedExistingAndNewNames", func(t *testing.T) {
+		code := `
+		package main
+		func first() (int, string) {
+			return 1, "first"
+		}
+		func second() (int, string) {
+			return 2, "second"
+		}
+		func main() {
+			a, err := first()
+			b, err := second()
+			if a != 1 || b != 2 || err != "second" {
+				panic("mixed short declaration failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclRequiresAtLeastOneNewName", func(t *testing.T) {
+		code := `
+		package main
+		func pair() (int, int) {
+			return 1, 2
+		}
+		func main() {
+			a, b := pair()
+			a, b := pair()
+			_, _ = a, b
+		}
+		`
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Fatal("expected compile error for := without new names")
+		}
+		if !strings.Contains(err.Error(), "no new variables on left side of :=") {
+			t.Fatalf("unexpected compile error: %v", err)
 		}
 	})
 }

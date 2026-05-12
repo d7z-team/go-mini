@@ -56,6 +56,7 @@ func TestTryCatchDeepPanic(t *testing.T) {
           "children": [
             {
               "meta": "assignment",
+              "kind": "=",
               "lhs": { "meta": "identifier", "name": "res" },
               "value": { "meta": "identifier", "name": "e" }
             }

@@ -81,6 +81,7 @@ func registerRangeContinueHandleSchemas(exec *engine.MiniExecutor, bridge *range
 func TestRangeContinueSkipsFFITailAcrossAllLoaders(t *testing.T) {
 	const code = `
 package main
+import "fmt"
 import "mock"
 
 var trace = ""
@@ -117,9 +118,7 @@ func main() {
 			mark("download-after-" + published)
 		}
 	}
-	if trace != "parsed-skip|continue-skip|parsed-hit|tail-hit|download-before-hit|download-after-hit|" {
-		panic(trace)
-	}
+	fmt.Println(trace)
 }
 `
 
@@ -169,8 +168,9 @@ func main() {
 			if err != nil {
 				t.Fatalf("load failed: %v", err)
 			}
-			if err := prog.Execute(context.Background()); err != nil {
-				t.Fatalf("execute failed: %v", err)
+			output := executeWithCapturedOutput(t, prog)
+			if output != "parsed-skip|continue-skip|parsed-hit|tail-hit|download-before-hit|download-after-hit|\n" {
+				t.Fatalf("unexpected output: %q", output)
 			}
 			if len(bridge.downloaded) != 1 || bridge.downloaded[0] != 2 {
 				t.Fatalf("unexpected downloaded handles: %#v", bridge.downloaded)

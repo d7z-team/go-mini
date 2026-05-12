@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -18,6 +19,11 @@ func TestJSONASTComprehensive(t *testing.T) {
   "meta": "boot",
   "variables": {
     "output": { "meta": "literal", "type": "String", "value": "" },
+    "m": {
+        "meta": "composite",
+        "type": "Map<String, Int64>",
+        "values": []
+    },
     "s": {
         "meta": "composite",
         "type": "Array<Int64>",
@@ -25,11 +31,17 @@ func TestJSONASTComprehensive(t *testing.T) {
           { "value": { "meta": "literal", "type": "Int64", "value": "10" } },
           { "value": { "meta": "literal", "type": "Int64", "value": "20" } }
         ]
+    },
+    "slice_val": {
+        "meta": "composite",
+        "type": "Array<Int64>",
+        "values": []
     }
   },
   "main": [
     {
       "meta": "assignment",
+      "kind": "=",
       "lhs": { "meta": "identifier", "name": "m" },
       "value": {
         "meta": "composite",
@@ -51,6 +63,7 @@ func TestJSONASTComprehensive(t *testing.T) {
             "body": [
               {
                 "meta": "assignment",
+                "kind": "=",
                 "lhs": { "meta": "identifier", "name": "output" },
                 "value": { "meta": "literal", "type": "String", "value": "matched" }
               }
@@ -61,6 +74,7 @@ func TestJSONASTComprehensive(t *testing.T) {
     },
     {
       "meta": "assignment",
+      "kind": "=",
       "lhs": { "meta": "identifier", "name": "slice_val" },
       "value": {
         "meta": "slice",
@@ -117,5 +131,50 @@ func TestCompileProgramSupportsValidatedAST(t *testing.T) {
 	}
 	if artifact == nil || artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
 		t.Fatal("expected executable artifact")
+	}
+}
+
+func TestValidatedASTRejectsAssignmentWithoutKind(t *testing.T) {
+	program := &ast.ProgramStmt{
+		BaseNode:   ast.BaseNode{ID: "test"},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[ast.Ident]ast.Expr{},
+		Types:      map[ast.Ident]ast.GoMiniType{},
+		Structs:    map[ast.Ident]*ast.StructStmt{},
+		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Functions: map[ast.Ident]*ast.FunctionStmt{
+			"main": {
+				BaseNode: ast.BaseNode{Meta: "function"},
+				Name:     "main",
+				FunctionType: ast.FunctionType{
+					Return: "Void",
+				},
+				Body: &ast.BlockStmt{
+					BaseNode: ast.BaseNode{Meta: "block"},
+					Children: []ast.Stmt{
+						&ast.GenDeclStmt{
+							BaseNode: ast.BaseNode{Meta: "decl"},
+							Name:     "x",
+							Kind:     "Int64",
+						},
+						&ast.AssignmentStmt{
+							BaseNode: ast.BaseNode{Meta: "assignment"},
+							LHS:      &ast.IdentifierExpr{BaseNode: ast.BaseNode{Meta: "identifier"}, Name: "x"},
+							Value:    &ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "Int64"}, Value: "1"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	validator, _ := ast.NewValidator(program, nil, nil, true)
+	err := program.Check(ast.NewSemanticContext(validator))
+	if err == nil {
+		t.Fatal("expected semantic error for missing assignment kind")
+	}
+	if !strings.Contains(err.Error(), "assignment missing assignment kind") {
+		t.Fatalf("unexpected semantic error: %v", err)
 	}
 }

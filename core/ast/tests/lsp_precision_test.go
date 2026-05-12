@@ -377,6 +377,7 @@ func TestInvalidCompositeMemberReportsPreciseInferenceError(t *testing.T) {
 					Children: []ast.Stmt{
 						&ast.AssignmentStmt{
 							BaseNode: ast.BaseNode{Meta: "assign", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 14}},
+							Kind:     ast.AssignSet,
 							LHS: &ast.IdentifierExpr{
 								BaseNode: ast.BaseNode{Meta: "ident", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 2}},
 								Name:     "x",
@@ -434,6 +435,7 @@ func TestInvalidCompositeIndexReportsPreciseInferenceError(t *testing.T) {
 					Children: []ast.Stmt{
 						&ast.AssignmentStmt{
 							BaseNode: ast.BaseNode{Meta: "assign", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 14}},
+							Kind:     ast.AssignSet,
 							LHS: &ast.IdentifierExpr{
 								BaseNode: ast.BaseNode{Meta: "ident", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 2}},
 								Name:     "x",
@@ -491,6 +493,7 @@ func TestInvalidCompositeSliceReportsPreciseInferenceError(t *testing.T) {
 					Children: []ast.Stmt{
 						&ast.AssignmentStmt{
 							BaseNode: ast.BaseNode{Meta: "assign", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 16}},
+							Kind:     ast.AssignSet,
 							LHS: &ast.IdentifierExpr{
 								BaseNode: ast.BaseNode{Meta: "ident", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 2}},
 								Name:     "x",
