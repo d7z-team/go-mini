@@ -968,6 +968,11 @@ type StackContext struct {
 	LHSStack   *LHSStack
 	UnwindMode UnwindMode
 
+	// continueSkipScope tracks the number of nested OpScopeEnter tasks
+	// that were skipped during UnwindContinue to avoid executing
+	// their orphaned OpScopeExit counterparts.
+	continueSkipScope int
+
 	// resumeSignal is used to unblock the execution loop after a pause.
 	resumeSignal chan struct{}
 }
