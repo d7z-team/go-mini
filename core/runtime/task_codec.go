@@ -68,6 +68,8 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 		return marshalTaskDataValue("finally", data)
 	case OpCatchBoundary:
 		return marshalTaskDataValue("catch", data)
+	case OpForStart:
+		return marshalTaskDataValue("for", data)
 	case OpLoopBoundary:
 		switch data.(type) {
 		case *ForData:
@@ -101,6 +103,8 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 		return marshalTaskDataValue("symbol", data)
 	case OpImportInit:
 		return marshalTaskDataValue("import", data)
+	case OpSwitchStart:
+		return marshalTaskDataValue("switch", data)
 	case OpSwitchTag:
 		return marshalTaskDataValue("switch", data)
 	case OpAssert:
@@ -158,6 +162,8 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return decodeTaskData[*FinallyData](raw)
 	case OpCatchBoundary:
 		return decodeTaskData[*CatchData](raw)
+	case OpForStart:
+		return decodeTaskData[*ForData](raw)
 	case OpLoopBoundary:
 		switch kind {
 		case "for":
@@ -191,6 +197,8 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return decodeTaskData[SymbolRef](raw)
 	case OpImportInit:
 		return decodeTaskData[*ImportInitData](raw)
+	case OpSwitchStart:
+		return decodeTaskData[*SwitchData](raw)
 	case OpSwitchTag:
 		return decodeTaskData[*SwitchData](raw)
 	case OpAssert:

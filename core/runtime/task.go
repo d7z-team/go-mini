@@ -18,6 +18,7 @@ const (
 	OpFinally
 	OpCatchBoundary
 	OpLoopBoundary
+	OpForStart
 	OpLoopContinue
 	OpForCond
 	OpForScopeEnter
@@ -45,6 +46,7 @@ const (
 	OpResumeUnwind
 	OpImportInit
 	OpImportDone
+	OpSwitchStart
 	OpSwitchTag
 	OpSwitchNextCase
 	OpSwitchMatchCase
@@ -88,6 +90,8 @@ func (op OpCode) String() string {
 		return "CATCH_BOUNDARY"
 	case OpLoopBoundary:
 		return "LOOP_BOUNDARY"
+	case OpForStart:
+		return "FOR_START"
 	case OpLoopContinue:
 		return "LOOP_CONTINUE"
 	case OpForCond:
@@ -142,6 +146,8 @@ func (op OpCode) String() string {
 		return "IMPORT_INIT"
 	case OpImportDone:
 		return "IMPORT_DONE"
+	case OpSwitchStart:
+		return "SWITCH_START"
 	case OpSwitchTag:
 		return "SWITCH_TAG"
 	case OpSwitchNextCase:

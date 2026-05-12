@@ -240,13 +240,13 @@ for i := 0; i < 3; i++ {
 
 	var loopTask *Task
 	for i := range tasks {
-		if tasks[i].Op == OpLoopBoundary {
+		if tasks[i].Op == OpForStart {
 			loopTask = &tasks[i]
 			break
 		}
 	}
 	if loopTask == nil {
-		t.Fatal("expected loop boundary task")
+		t.Fatal("expected for start task")
 	}
 
 	data, ok := loopTask.Data.(*ForData)
@@ -437,18 +437,15 @@ default:
 	}
 
 	var (
-		loopTask   *Task
 		switchTask *Task
 	)
 	for i := range tasks {
 		switch tasks[i].Op {
-		case OpLoopBoundary:
-			loopTask = &tasks[i]
-		case OpSwitchTag:
+		case OpSwitchStart:
 			switchTask = &tasks[i]
 		}
 	}
-	if loopTask == nil || switchTask == nil {
+	if switchTask == nil {
 		t.Fatalf("expected lowered switch tasks, got: %+v", tasks)
 	}
 	data, ok := switchTask.Data.(*SwitchData)
@@ -506,13 +503,13 @@ func TestLowerStmtTasksBuildsDataOnlyTypeSwitchPlan(t *testing.T) {
 
 	var switchTask *Task
 	for i := range tasks {
-		if tasks[i].Op == OpSwitchTag {
+		if tasks[i].Op == OpSwitchStart {
 			switchTask = &tasks[i]
 			break
 		}
 	}
 	if switchTask == nil {
-		t.Fatal("expected switch tag task")
+		t.Fatal("expected switch start task")
 	}
 	data, ok := switchTask.Data.(*SwitchData)
 	if !ok {

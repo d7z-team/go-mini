@@ -99,3 +99,238 @@ func main() {
 		t.Fatal(err)
 	}
 }
+
+func TestSwitchBreakStaysInsideInnerLoop(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	code := `
+package main
+
+var trace = ""
+
+func mark(s string) {
+	trace = trace + s
+}
+
+func main() {
+	sum := 0
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 3; j++ {
+			switch j {
+			case 1:
+				mark("b")
+				break
+			}
+			sum = sum + 1
+			mark("x")
+		}
+		mark("o")
+	}
+	if sum != 6 {
+		panic("sum mismatch")
+	}
+	if trace != "xbxxoxbxxo" {
+		panic("trace mismatch: " + trace)
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSwitchContinueTargetsNearestInnerLoop(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	code := `
+package main
+
+var trace = ""
+
+func mark(s string) {
+	trace = trace + s
+}
+
+func main() {
+	sum := 0
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 3; j++ {
+			switch j {
+			case 1:
+				mark("c")
+				continue
+			}
+			sum = sum + 1
+			mark("x")
+		}
+		mark("o")
+	}
+	if sum != 4 {
+		panic("sum mismatch")
+	}
+	if trace != "xcxoxcxo" {
+		panic("trace mismatch: " + trace)
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInnerRangeBreakDoesNotEscapeOuterLoops(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	code := `
+package main
+
+var trace = ""
+
+func mark(s string) {
+	trace = trace + s
+}
+
+func main() {
+	sum := 0
+	for i := 0; i < 2; i++ {
+		for _, v := range []Int64{0, 1, 2} {
+			if v == 1 {
+				mark("b")
+				break
+			}
+			sum = sum + 1
+			mark("x")
+		}
+		mark("o")
+	}
+	if sum != 2 {
+		panic("sum mismatch")
+	}
+	if trace != "xboxbo" {
+		panic("trace mismatch: " + trace)
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInnerRangeContinueDoesNotSkipOuterLoop(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	code := `
+package main
+
+var trace = ""
+
+func mark(s string) {
+	trace = trace + s
+}
+
+func main() {
+	sum := 0
+	for i := 0; i < 2; i++ {
+		for _, v := range []Int64{0, 1, 2} {
+			if v == 1 {
+				mark("c")
+				continue
+			}
+			sum = sum + 1
+			mark("x")
+		}
+		mark("o")
+	}
+	if sum != 4 {
+		panic("sum mismatch")
+	}
+	if trace != "xcxoxcxo" {
+		panic("trace mismatch: " + trace)
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRangeContinueSkipsTailAfterShortDeclsAndNestedBlock(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	code := `
+package main
+
+var trace = ""
+
+func mark(s string) {
+	trace = trace + s + "|"
+}
+
+func pair(v int) (int, int) {
+	return v, 0
+}
+
+func main() {
+	for _, item := range []int{1} {
+		startData, err := pair(10)
+		endData, err := pair(20)
+		fabuDate, err := pair(30)
+		if err != 0 {
+			mark("err")
+		}
+		mark("parsed")
+		if endData < fabuDate {
+			mark("continue")
+			continue
+		}
+		if fabuDate < startData {
+			break
+		}
+		name := "name"
+		mark(name)
+		if true {
+			mark("click-title-before")
+			mark("click-title-after")
+			for true {
+				mark("wait")
+				break
+			}
+			mark("expect-download-before")
+			mark("expect-download-after")
+		}
+		mark("table-setrow")
+	}
+	if trace != "parsed|continue|" {
+		panic("trace mismatch: " + trace)
+	}
+}
+`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

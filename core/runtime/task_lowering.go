@@ -435,7 +435,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		}
 		out := []Task{
 			{Op: OpScopeExit},
-			{Op: OpLoopBoundary, Data: loop},
+			{Op: OpForStart, Data: loop},
 		}
 		out = append(out, initTasks...)
 		out = append(out, Task{Op: OpScopeEnter, Data: "for"})
@@ -626,10 +626,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			plan.Cases = append(plan.Cases, caseData)
 		}
 
-		out := []Task{
-			{Op: OpLoopBoundary, Data: plan},
-			{Op: OpSwitchTag, Data: plan},
-		}
+		out := []Task{{Op: OpSwitchStart, Data: plan}}
 		if n.Tag != nil {
 			out = append(out, plan.Tag...)
 		}

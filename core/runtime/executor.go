@@ -1093,6 +1093,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 
 	if task.Op == OpRangeIter {
 		if session.UnwindMode == UnwindContinue {
+			pruneRangeContinueResidualTasks(session)
 			session.UnwindMode = UnwindNone
 			session.TaskStack = append(session.TaskStack, *task)
 			return true, nil
@@ -1160,6 +1161,9 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 			return true, nil
 		}
 		if session.UnwindMode == UnwindContinue {
+			if task.Data == nil {
+				return false, nil
+			}
 			// Switch does NOT catch continue, it should propagate to the outer loop
 			if _, ok := task.Data.(*SwitchData); ok {
 				return false, nil
@@ -1209,6 +1213,16 @@ func (e *Executor) mapKeyToVar(k string, keyType RuntimeType) *Var {
 		return NewFloat(val)
 	}
 	return NewString(k)
+}
+
+func pruneRangeContinueResidualTasks(session *StackContext) {
+	for i := len(session.TaskStack) - 1; i >= 0; i-- {
+		task := session.TaskStack[i]
+		if task.Op == OpLoopBoundary && task.Data == nil {
+			session.TaskStack = session.TaskStack[:i+1]
+			return
+		}
+	}
 }
 
 func (e *Executor) dispatch(session *StackContext, task Task) error {
@@ -1941,6 +1955,18 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return nil
 		}
 		return errors.New("OpLoopBoundary missing ForData")
+	case OpForStart:
+		data, ok := task.Data.(*ForData)
+		if !ok || data == nil {
+			return errors.New("OpForStart missing ForData")
+		}
+		if len(data.Cond) > 0 {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpForCond, Data: data})
+			session.TaskStack = append(session.TaskStack, data.Cond...)
+			return nil
+		}
+		e.scheduleForBody(session, data)
+		return nil
 	case OpForCond:
 		condVal := session.ValueStack.Pop()
 		b, err := condVal.ToBool()
@@ -2076,6 +2102,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return nil
 		}
 		return errors.New("OpSwitchTag missing SwitchData")
+	case OpSwitchStart:
+		if plan, ok := task.Data.(*SwitchData); ok {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary, Data: plan})
+			session.TaskStack = append(session.TaskStack, Task{Op: OpSwitchTag, Data: plan})
+			return nil
+		}
+		return errors.New("OpSwitchStart missing SwitchData")
 	case OpSwitchNextCase:
 		if state, ok := task.Data.(*SwitchState); ok {
 			if state.Index >= len(state.Plan.Cases) {
