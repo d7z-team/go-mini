@@ -57,6 +57,10 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 			return nil
 		}
 		c.Type = GoMiniType(c.Name)
+		if err := c.Type.ValidateCanonical(); err != nil {
+			ctx.AddErrorf("%s, use canonical Mini type syntax", err.Error())
+			return err
+		}
 		return nil
 	}
 
@@ -194,6 +198,14 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
+	if c.IsType {
+		c.Type = GoMiniType(c.Name)
+		if err := c.Type.ValidateCanonical(); err != nil {
+			ctx.AddErrorf("%s, use canonical Mini type syntax", err.Error())
+			return err
+		}
+		return nil
+	}
 	if vtp, b := ctx.GetVariable(c.Name); b {
 		c.Type = vtp
 		return nil
@@ -211,17 +223,6 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 
 	// 支持类型转换/构造函数语法: T(x) -> __obj__new__T(x)
 	structName := c.Name
-	if _, b := ctx.GetStruct(structName); !b {
-		// 尝试首字母大写转换 (如 int64 -> Int64)
-		s := string(c.Name)
-		if len(s) > 0 {
-			upperName := Ident(strings.ToUpper(s[:1]) + s[1:])
-			if _, b2 := ctx.GetStruct(upperName); b2 {
-				structName = upperName
-			}
-		}
-	}
-
 	if _, b := ctx.GetStruct(structName); b {
 		newName := Ident(fmt.Sprintf("__obj__new__%s", structName))
 		if vtp, b2 := ctx.GetFunction(newName); b2 {
@@ -270,19 +271,32 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		if len(c.Args) > 0 {
 			if lit, ok2 := c.Args[0].(*LiteralExpr); ok2 && lit.Type == "String" {
 				t := GoMiniType(lit.Value).Resolve(ctx.ValidContext)
+				declaredType := func(tt GoMiniType) bool {
+					if tt.IsPrimitive() || tt.IsArray() || tt.IsMap() || tt.IsPtr() || tt.IsInterface() || tt.IsStruct() {
+						return true
+					}
+					if _, ok := ctx.GetType(Ident(tt)); ok {
+						return true
+					}
+					if _, ok := ctx.GetStruct(Ident(tt)); ok {
+						return true
+					}
+					if _, ok := ctx.GetInterface(Ident(tt)); ok {
+						return true
+					}
+					return false
+				}
 				if ident.Name == "make" {
-					if !t.IsStrictValid() {
+					if !t.IsStrictValid() || !declaredType(t) {
 						err := fmt.Errorf("make: 非法类型 %s", lit.Value)
 						ctx.AddErrorf("%s", err.Error())
 						return err
 					}
 				} else { // new
-					if !t.IsStrictValid() {
-						if _, hasStruct := ctx.GetStruct(Ident(t)); !hasStruct {
-							err := fmt.Errorf("new: 非法类型 %s", lit.Value)
-							ctx.AddErrorf("%s", err.Error())
-							return err
-						}
+					if !t.IsStrictValid() || !declaredType(t) {
+						err := fmt.Errorf("new: 非法类型 %s", lit.Value)
+						ctx.AddErrorf("%s", err.Error())
+						return err
 					}
 					t = t.ToPtr()
 				}

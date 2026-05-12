@@ -338,16 +338,18 @@ type CatchScopeData struct {
 }
 
 type RangeData struct {
-	Key    string
-	Value  string
-	KeySym SymbolRef
-	ValSym SymbolRef
-	Define bool
-	Body   []Task
-	Obj    *Var
-	Keys   []string // For map
-	Length int      // For array
-	Index  int
+	Key     string
+	Value   string
+	KeySym  SymbolRef
+	ValSym  SymbolRef
+	KeyType RuntimeType
+	ValType RuntimeType
+	Define  bool
+	Body    []Task
+	Obj     *Var
+	Keys    []string // For map
+	Length  int      // For array
+	Index   int
 }
 
 type ImportData struct {

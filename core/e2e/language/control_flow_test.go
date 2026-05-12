@@ -2,10 +2,31 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
+
+type outputRecorder struct {
+	sb strings.Builder
+}
+
+func (o *outputRecorder) Print(_ context.Context, s string) {
+	o.sb.WriteString(s)
+}
+
+func executeWithCapturedOutput(t *testing.T, prog *engine.MiniProgram) string {
+	t.Helper()
+
+	recorder := &outputRecorder{}
+	ctx := fmtlib.WithOutputter(context.Background(), recorder)
+	if err := prog.Execute(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return recorder.sb.String()
+}
 
 func TestControlFlow(t *testing.T) {
 	executor := engine.NewMiniExecutor()
@@ -21,11 +42,13 @@ func TestControlFlow(t *testing.T) {
 			fmt.Println("main body")
 		}
 		`
-		// 此测试需配合 stdout 捕获或日志检查，此处简化为验证是否执行
-		prog, _ := executor.NewRuntimeByGoCode(code)
-		err := prog.Execute(context.Background())
+		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatal(err)
+		}
+		output := executeWithCapturedOutput(t, prog)
+		if output != "main body\ndefer 2\ndefer 1\n" {
+			t.Fatalf("unexpected defer output order: %q", output)
 		}
 	})
 
@@ -43,10 +66,13 @@ func TestControlFlow(t *testing.T) {
 			fmt.Println("Range array OK")
 		}
 		`
-		prog, _ := executor.NewRuntimeByGoCode(code)
-		err := prog.Execute(context.Background())
+		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatal(err)
+		}
+		output := executeWithCapturedOutput(t, prog)
+		if !strings.Contains(output, "Range array OK\n") {
+			t.Fatalf("expected range-array marker in output, got %q", output)
 		}
 	})
 
@@ -64,10 +90,13 @@ func TestControlFlow(t *testing.T) {
 			fmt.Println("Range map OK")
 		}
 		`
-		prog, _ := executor.NewRuntimeByGoCode(code)
-		err := prog.Execute(context.Background())
+		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatal(err)
+		}
+		output := executeWithCapturedOutput(t, prog)
+		if !strings.Contains(output, "Range map OK\n") {
+			t.Fatalf("expected range-map marker in output, got %q", output)
 		}
 	})
 
@@ -98,10 +127,13 @@ func TestControlFlow(t *testing.T) {
 			}
 		}
 		`
-		prog, _ := executor.NewRuntimeByGoCode(code)
-		err := prog.Execute(context.Background())
+		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatal(err)
+		}
+		output := executeWithCapturedOutput(t, prog)
+		if !strings.Contains(output, "Bool switch OK\n") {
+			t.Fatalf("expected bool-switch marker in output, got %q", output)
 		}
 	})
 }

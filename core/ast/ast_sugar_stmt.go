@@ -29,7 +29,7 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 	}
 	// 验证操作数是否为数值类型
 	oType := i.Operand.GetBase().Type
-	if oType != "Int64" && oType != "Float64" && oType != "Int" {
+	if oType != TypeInt64 && oType != TypeFloat64 {
 		err := errors.New("inc/dec 语句的操作数必须是数值类型")
 		ctx.AddErrorAt(i.Operand, "%s", err.Error())
 		return err

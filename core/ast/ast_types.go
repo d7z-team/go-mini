@@ -9,7 +9,14 @@ import (
 type GoMiniType string
 
 const (
+	TypeInt64   GoMiniType = "Int64"
+	TypeFloat64 GoMiniType = "Float64"
+	TypeString  GoMiniType = "String"
+	TypeBool    GoMiniType = "Bool"
+	TypeBytes   GoMiniType = "TypeBytes"
 	TypeAny     GoMiniType = "Any"
+	TypeError   GoMiniType = "Error"
+	TypeVoid    GoMiniType = "Void"
 	TypeModule  GoMiniType = "TypeModule" // 动态模块对象 (JS/Python 风格)
 	TypeClosure GoMiniType = "TypeClosure"
 )
@@ -37,11 +44,11 @@ func (o GoMiniType) BaseName() string {
 }
 
 func (o GoMiniType) IsVoid() bool {
-	return o == "" || o == "Void" || o == "void"
+	return o == "" || o == TypeVoid
 }
 
 func (o GoMiniType) IsPrimitive() bool {
-	return o.IsAny() || o.IsString() || o.IsNumeric() || o.IsBool() || o == "TypeBytes" || o == "Error"
+	return o.IsAny() || o.IsString() || o.IsNumeric() || o.IsBool() || o == TypeBytes || o == TypeError
 }
 
 func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
@@ -53,18 +60,12 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	return &res, true
 }
 
-func (o GoMiniType) IsAny() bool { return o == TypeAny || o == TypeModule || o == TypeClosure }
-
-func (o GoMiniType) IsString() bool { return o == "String" }
-func (o GoMiniType) IsInt() bool    { return o == "Int64" }
-func (o GoMiniType) IsBool() bool   { return o == "Bool" }
+func (o GoMiniType) IsAny() bool    { return o == TypeAny || o == TypeModule || o == TypeClosure }
+func (o GoMiniType) IsString() bool { return o == TypeString }
+func (o GoMiniType) IsInt() bool    { return o == TypeInt64 }
+func (o GoMiniType) IsBool() bool   { return o == TypeBool }
 func (o GoMiniType) IsNumeric() bool {
-	s := string(o)
-	switch s {
-	case "Int64", "Float64":
-		return true
-	}
-	return false
+	return o == TypeInt64 || o == TypeFloat64
 }
 
 func (o GoMiniType) IsPtr() bool {
@@ -486,7 +487,7 @@ func (o GoMiniType) StructName() (Ident, bool) {
 
 func CreateTupleType(types ...GoMiniType) GoMiniType {
 	if len(types) == 0 {
-		return "Void"
+		return TypeVoid
 	}
 	if len(types) == 1 {
 		return types[0]
@@ -498,13 +499,113 @@ func CreateTupleType(types ...GoMiniType) GoMiniType {
 	return GoMiniType("tuple(" + strings.Join(s, ", ") + ")")
 }
 
+func (o GoMiniType) IsCanonical() bool {
+	switch o {
+	case TypeInt64, TypeFloat64, TypeString, TypeBool, TypeBytes, TypeAny, TypeError, TypeVoid, TypeModule, TypeClosure:
+		return true
+	}
+	if o.IsTuple() {
+		types, ok := o.ReadTuple()
+		if !ok {
+			return false
+		}
+		for _, t := range types {
+			if !t.IsCanonical() {
+				return false
+			}
+		}
+		return true
+	}
+	if o.IsPtr() {
+		elem, ok := o.GetPtrElementType()
+		return ok && elem.IsCanonical()
+	}
+	if o.IsArray() {
+		elem, ok := o.ReadArrayItemType()
+		return ok && elem.IsCanonical()
+	}
+	if o.IsMap() {
+		k, v, ok := o.GetMapKeyValueTypes()
+		return ok && k.IsCanonical() && v.IsCanonical()
+	}
+	if o.IsStruct() {
+		fields, ok := o.ReadStructFields()
+		if !ok {
+			return false
+		}
+		for _, t := range fields {
+			if !t.IsCanonical() {
+				return false
+			}
+		}
+		return true
+	}
+	if o.IsInterface() {
+		methods, ok := o.ReadInterfaceMethods()
+		if !ok {
+			return false
+		}
+		for _, sig := range methods {
+			if sig == nil {
+				return false
+			}
+			if !sig.Return.IsCanonical() {
+				return false
+			}
+			for _, p := range sig.Params {
+				if !p.Type.IsCanonical() {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	if fn, ok := o.ReadFunc(); ok {
+		if !fn.Return.IsCanonical() {
+			return false
+		}
+		for _, p := range fn.Params {
+			if !p.Type.IsCanonical() {
+				return false
+			}
+		}
+		return true
+	}
+	return isCanonicalNamedType(o)
+}
+
+func (o GoMiniType) ValidateCanonical() error {
+	if o.IsCanonical() {
+		return nil
+	}
+	return fmt.Errorf("non-canonical type: %s", o)
+}
+
+func isCanonicalNamedType(o GoMiniType) bool {
+	s := string(o)
+	if s == "" {
+		return false
+	}
+	switch s {
+	case "any", "interface{}", "string", "int", "int64", "float64", "bool", "byte", "error", "void":
+		return false
+	}
+	if strings.ContainsAny(s, "[]*") {
+		return false
+	}
+	if strings.Contains(s, "interface{}") {
+		return false
+	}
+	return true
+}
+
 func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsEmpty() {
 		return o
 	}
 
 	// 1. 处理已有的规范化逻辑
-	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() || o == "TypeBytes" {
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
 		return o
 	}
 	if o.IsArray() {
@@ -552,7 +653,10 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 }
 
 func (o GoMiniType) Valid(v *ValidContext) bool {
-	if o.IsAny() || o == "Void" || o == "Error" || o.IsNumeric() || o.IsString() || o.IsBool() || o == "TypeBytes" {
+	if !o.IsCanonical() {
+		return false
+	}
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
 		return true
 	}
 	if o.IsArray() {
@@ -682,94 +786,25 @@ func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth i
 
 // IsValid 检查类型字符串是否符合规范（基础类型、规范容器格式或带点包路径）
 func (o GoMiniType) IsValid() bool {
-	t := string(o)
-	if t == "" || t == "Void" {
-		return true
-	}
-	switch t {
-	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Int8", "Int16", "Uint16", "Uint32", "Uint", "Error":
-		return true
-	}
-	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {
-		types, ok := o.ReadTuple()
-		if !ok {
-			return false
-		}
-		for _, t := range types {
-			if !t.IsValid() {
-				return false
-			}
-		}
-		return true
-	}
-	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {
-		inner, _ := o.GetPtrElementType()
-		return inner.IsValid()
-	}
-	if strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
-		inner, _ := o.ReadArrayItemType()
-		return inner.IsValid()
-	}
-	if strings.HasPrefix(t, "Map<") && strings.HasSuffix(t, ">") {
-		k, v, ok := o.GetMapKeyValueTypes()
-		return ok && k.IsValid() && v.IsValid()
-	}
-	if o.IsInterface() {
-		return true
-	}
-	// 允许带包路径的标识符 (pkg.Type)
-	if strings.Contains(t, ".") {
-		return true
-	}
-	// 可能是本地结构体，由 SemanticContext 进一步验证
-	return true
+	return o.IsCanonical()
 }
 
 // IsStrictValid 严格检查类型是否为预定义的原语或规范容器格式
 func (o GoMiniType) IsStrictValid() bool {
-	t := string(o)
-	switch t {
-	case "Any", "String", "Int64", "Float64", "Bool", "TypeBytes", "Uint8", "Int32", "Float32", "Int", "Int8", "Int16", "Uint16", "Uint32", "Uint":
-		return true
-	}
-	if strings.HasPrefix(t, "tuple(") && strings.HasSuffix(t, ")") {
-		types, ok := o.ReadTuple()
-		if !ok {
-			return false
-		}
-		for _, t := range types {
-			if !t.IsStrictValid() {
-				return false
-			}
-		}
-		return true
-	}
-	if strings.HasPrefix(t, "Ptr<") && strings.HasSuffix(t, ">") {
-		inner, _ := o.GetPtrElementType()
-		return inner.IsStrictValid()
-	}
-	if strings.HasPrefix(t, "Array<") && strings.HasSuffix(t, ">") {
-		inner, _ := o.ReadArrayItemType()
-		return inner.IsStrictValid()
-	}
-	if strings.HasPrefix(t, "Map<") && strings.HasSuffix(t, ">") {
-		k, v, ok := o.GetMapKeyValueTypes()
-		return ok && k.IsStrictValid() && v.IsStrictValid()
-	}
-	return false
+	return o.IsCanonical()
 }
 
 // ZeroVar 返回该类型的默认零值（以 Var 形式）
 // 注意：该方法返回的是一个简单的值对象，复合类型返回 nil Ref 的 Var
 func (o GoMiniType) ZeroVar() interface{} {
 	t := string(o)
-	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || t == "Any" || t == "TypeBytes" {
+	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || o == TypeAny || o == TypeBytes {
 		return nil
 	}
 	switch t {
-	case "Int64", "Uint32", "Int32", "Int":
+	case "Int64":
 		return int64(0)
-	case "Float64", "Float32":
+	case "Float64":
 		return 0.0
 	case "String":
 		return ""

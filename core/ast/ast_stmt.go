@@ -40,8 +40,8 @@ func (i *InterfaceStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *InterfaceStmt) stmtNode()          {}
 
 func (i *InterfaceStmt) Check(ctx *SemanticContext) error {
-	if !i.Type.IsValid() {
-		return fmt.Errorf("invalid interface type: %s", i.Type)
+	if err := i.Type.ValidateCanonical(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -69,6 +69,13 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	// 预注册所有导入的包别名
 	for alias := range ctx.root.Imports {
 		ctx.root.vars[Ident(alias)] = "Package"
+	}
+
+	for ident, t := range p.Types {
+		if err := t.ValidateCanonical(); err != nil {
+			ctx.AddErrorf("type %s has %s", ident, err.Error())
+			hasError = true
+		}
 	}
 
 	// 第一遍：预注册所有结构体

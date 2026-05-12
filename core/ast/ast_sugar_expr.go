@@ -21,8 +21,8 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 	leftType := left.Type
 	rightType := right.Type
 
-	if (leftType == "Int64" && rightType == "Int64") ||
-		(leftType == "Float64" && rightType == "Float64") {
+	if (leftType == TypeInt64 && rightType == TypeInt64) ||
+		(leftType == TypeFloat64 && rightType == TypeFloat64) {
 		leftVal, errL := strconv.ParseFloat(left.Value, 64)
 		rightVal, errR := strconv.ParseFloat(right.Value, 64)
 		if errL != nil || errR != nil {
@@ -62,12 +62,12 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 				},
 				Value: fmt.Sprintf("%v", result),
 			}
-			if leftType == "Int64" {
+			if leftType == TypeInt64 {
 				ret.Value = strconv.FormatInt(int64(result), 10)
 			}
 			return ret
 		}
-	} else if leftType == "Bool" && rightType == "Bool" {
+	} else if leftType == TypeBool && rightType == TypeBool {
 		leftVal := left.Value == "true"
 		rightVal := right.Value == "true"
 		var result bool
@@ -85,7 +85,7 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 				BaseNode: BaseNode{
 					ID:   id,
 					Meta: "literal",
-					Type: "Bool",
+					Type: TypeBool,
 					Loc:  left.Loc,
 				},
 				Value: strconv.FormatBool(result),
@@ -160,7 +160,7 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 		b.Operator == "Lt" || b.Operator == "Gt" || b.Operator == "Le" || b.Operator == "Ge" ||
 		b.Operator == "&&" || b.Operator == "||" || b.Operator == "==" || b.Operator == "!=" ||
 		b.Operator == "<" || b.Operator == ">" || b.Operator == "<=" || b.Operator == ">=" {
-		b.Type = "Bool"
+		b.Type = TypeBool
 	} else {
 		// 在隔离架构下，标量运算结果类型等于左操作数类型（规约后）
 		b.Type = b.Left.GetBase().Type
@@ -172,17 +172,17 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 		return t != "" && !t.IsAny() && t != "Constant"
 	}
 	isBitwiseInt := func(t GoMiniType) bool {
-		return t == "Int64" || t == "Int"
+		return t == TypeInt64
 	}
 
 	switch b.Operator {
 	case "And", "Or":
-		if isKnown(leftType) && leftType != "Bool" {
+		if isKnown(leftType) && leftType != TypeBool {
 			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
-		if isKnown(rightType) && rightType != "Bool" {
+		if isKnown(rightType) && rightType != TypeBool {
 			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
@@ -284,16 +284,16 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 	u.Type = u.Operand.GetBase().Type
 	switch u.Operator {
 	case "Not":
-		if u.Type != "Bool" && u.Type != "Any" && u.Type != "" {
+		if u.Type != TypeBool && u.Type != TypeAny && u.Type != "" {
 			ctx.AddErrorAt(u.Operand, "Not 运算符预期 Bool, 实际为 %s", u.Type)
 		}
-		u.Type = "Bool"
+		u.Type = TypeBool
 	case "Sub", "Plus":
-		if u.Type != "Int64" && u.Type != "Float64" && u.Type != "Any" && u.Type != "" {
+		if u.Type != TypeInt64 && u.Type != TypeFloat64 && u.Type != TypeAny && u.Type != "" {
 			ctx.AddErrorAt(u.Operand, "%s 运算符预期数值类型, 实际为 %s", u.Operator, u.Type)
 		}
 	case "BitXor":
-		if u.Type != "Int64" && u.Type != "Int" && u.Type != "Any" && u.Type != "" {
+		if u.Type != TypeInt64 && u.Type != TypeAny && u.Type != "" {
 			ctx.AddErrorAt(u.Operand, "BitXor 运算符预期 Int64, 实际为 %s", u.Type)
 		}
 	}

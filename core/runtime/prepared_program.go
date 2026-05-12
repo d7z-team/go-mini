@@ -14,9 +14,10 @@ type PreparedProgram struct {
 }
 
 type PreparedGlobal struct {
-	Name     ast.Ident `json:"name"`
-	HasInit  bool      `json:"has_init"`
-	InitPlan []Task    `json:"init_plan,omitempty"`
+	Name     ast.Ident   `json:"name"`
+	Kind     RuntimeType `json:"kind"`
+	HasInit  bool        `json:"has_init"`
+	InitPlan []Task      `json:"init_plan,omitempty"`
 }
 
 type PreparedFunction struct {
@@ -49,10 +50,21 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 	}
 
 	rootScope := exec.newRootLoweringScope()
+	globalKinds := make(map[ast.Ident]RuntimeType, len(program.Variables))
+	for _, stmt := range program.Main {
+		if decl, ok := stmt.(*ast.GenDeclStmt); ok {
+			globalKinds[decl.Name] = MustParseRuntimeType(decl.Kind)
+		}
+	}
 	for ident, expr := range program.Variables {
 		item := &PreparedGlobal{
 			Name:    ident,
 			HasInit: expr != nil,
+		}
+		if kind, ok := globalKinds[ident]; ok {
+			item.Kind = kind
+		} else if expr != nil {
+			item.Kind = MustParseRuntimeType(expr.GetBase().Type)
 		}
 		if expr != nil {
 			item.InitPlan = exec.tasksForExprInScope(expr, rootScope)
@@ -96,6 +108,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		}
 		cloned.Globals[name] = &PreparedGlobal{
 			Name:     global.Name,
+			Kind:     global.Kind,
 			HasInit:  global.HasInit,
 			InitPlan: cloneTasks(global.InitPlan),
 		}

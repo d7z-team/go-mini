@@ -460,13 +460,30 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 				valueSym = scope.resolveOrImplicit(string(n.Value))
 			}
 		}
+		keyType := MustParseRuntimeType(ast.TypeInt64)
+		valType := MustParseRuntimeType(ast.TypeAny)
+		if n.X != nil {
+			objType := n.X.GetBase().Type
+			if objType.IsMap() {
+				if keyT, valueT, ok := objType.GetMapKeyValueTypes(); ok {
+					keyType = MustParseRuntimeType(keyT)
+					valType = MustParseRuntimeType(valueT)
+				}
+			} else if objType.IsArray() {
+				if elemT, ok := objType.ReadArrayItemType(); ok {
+					valType = MustParseRuntimeType(elemT)
+				}
+			}
+		}
 		rData := &RangeData{
-			Key:    string(n.Key),
-			Value:  string(n.Value),
-			KeySym: keySym,
-			ValSym: valueSym,
-			Define: n.Define,
-			Body:   e.tasksForStmtInScope(n.Body, nil, rangeScope),
+			Key:     string(n.Key),
+			Value:   string(n.Value),
+			KeySym:  keySym,
+			ValSym:  valueSym,
+			KeyType: keyType,
+			ValType: valType,
+			Define:  n.Define,
+			Body:    e.tasksForStmtInScope(n.Body, nil, rangeScope),
 		}
 		out := []Task{{Op: OpRangeInit, Data: rData}}
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
@@ -596,6 +613,8 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 					var targetType RuntimeType
 					if id, ok := expr.(*ast.IdentifierExpr); ok {
 						targetType = MustParseRuntimeType(ast.GoMiniType(id.Name))
+					} else if ref, ok := expr.(*ast.ConstRefExpr); ok {
+						targetType = MustParseRuntimeType(ast.GoMiniType(ref.Name))
 					} else {
 						targetType = MustParseRuntimeType(expr.GetBase().Type)
 					}

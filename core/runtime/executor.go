@@ -39,6 +39,7 @@ type Executor struct {
 
 type RuntimeGlobal struct {
 	Name     ast.Ident
+	Kind     RuntimeType
 	HasInit  bool
 	InitExpr ast.Expr
 	InitPlan []Task
@@ -222,9 +223,20 @@ func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram
 		result.consts[s] = s2
 	}
 	if program.Variables != nil {
+		globalKinds := make(map[ast.Ident]RuntimeType, len(program.Variables))
+		for _, stmt := range program.Main {
+			if decl, ok := stmt.(*ast.GenDeclStmt); ok {
+				globalKinds[decl.Name] = MustParseRuntimeType(decl.Kind)
+			}
+		}
 		for ident, expr := range program.Variables {
+			kind := globalKinds[ident]
+			if kind.IsEmpty() && expr != nil {
+				kind = MustParseRuntimeType(expr.GetBase().Type)
+			}
 			result.globals[ident] = &RuntimeGlobal{
 				Name:     ident,
+				Kind:     kind,
 				HasInit:  expr != nil,
 				InitExpr: expr,
 			}
@@ -257,6 +269,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 			rg = &RuntimeGlobal{Name: ident}
 		}
 		if global != nil {
+			rg.Kind = global.Kind
 			rg.HasInit = global.HasInit
 			rg.InitPlan = cloneTasks(global.InitPlan)
 		}
@@ -998,7 +1011,11 @@ func (e *Executor) initializeSharedGlobals(session *StackContext) error {
 			}
 			val = v
 		} else {
-			val = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
+			kind := global.Kind
+			if kind.IsEmpty() {
+				kind = MustParseRuntimeType("Any")
+			}
+			val = e.initializeType(session, kind, 0)
 		}
 		session.Shared.StoreGlobal(string(name), val)
 	}
@@ -1954,13 +1971,15 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		data := task.Data.(*RangeData)
 		rData := &RangeData{
-			Key:    data.Key,
-			Value:  data.Value,
-			KeySym: data.KeySym,
-			ValSym: data.ValSym,
-			Define: data.Define,
-			Body:   data.Body,
-			Obj:    obj,
+			Key:     data.Key,
+			Value:   data.Value,
+			KeySym:  data.KeySym,
+			ValSym:  data.ValSym,
+			KeyType: data.KeyType,
+			ValType: data.ValType,
+			Define:  data.Define,
+			Body:    data.Body,
+			Obj:     obj,
 		}
 		switch obj.VType {
 		case TypeArray:
@@ -2013,7 +2032,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if rData.Define {
 			if rData.Key != "" && rData.Key != "_" {
 				if rData.KeySym.Kind == SymbolLocal {
-					_ = session.DeclareSymbol(rData.KeySym, MustParseRuntimeType("Any"))
+					_ = session.DeclareSymbol(rData.KeySym, rData.KeyType)
 					_ = session.StoreSymbol(rData.KeySym, key)
 				} else {
 					_ = session.AddVariable(rData.Key, key)
@@ -2021,7 +2040,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			if rData.Value != "" && rData.Value != "_" && val != nil {
 				if rData.ValSym.Kind == SymbolLocal {
-					_ = session.DeclareSymbol(rData.ValSym, MustParseRuntimeType("Any"))
+					_ = session.DeclareSymbol(rData.ValSym, rData.ValType)
 					_ = session.StoreSymbol(rData.ValSym, val)
 				} else {
 					_ = session.AddVariable(rData.Value, val)
@@ -2313,44 +2332,45 @@ func (e *Executor) switchCaseTasks(plan *SwitchData, tag *Var, body []Task, scop
 }
 
 func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
+	tag = e.unwrapValue(tag)
 	for _, targetType := range targets {
 		if targetType.IsEmpty() {
 			continue
 		}
 		if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
 			raw := targetType.Raw.Ast()
-			if raw == "nil" || raw == "Any" || raw == "interface{}" {
+			if raw == "nil" || raw == ast.TypeAny {
 				return true
 			}
 			continue
 		}
 
 		switch targetType.Raw {
-		case "Int64", "int", "int64":
+		case "Int64":
 			if tag.VType == TypeInt {
 				return true
 			}
-		case "Float64", "float64":
+		case "Float64":
 			if tag.VType == TypeFloat {
 				return true
 			}
-		case "String", "string":
+		case "String":
 			if tag.VType == TypeString {
 				return true
 			}
-		case "Bool", "bool":
+		case "Bool":
 			if tag.VType == TypeBool {
 				return true
 			}
-		case "TypeBytes", "bytes":
+		case "TypeBytes":
 			if tag.VType == TypeBytes {
 				return true
 			}
-		case "Any", "interface{}":
+		case "Any":
 			if tag != nil {
 				return true
 			}
-		case "Error", "error":
+		case "Error":
 			if tag.VType == TypeError {
 				return true
 			}

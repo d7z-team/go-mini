@@ -71,6 +71,13 @@
   - `Context`
 - 不要重新引入 AST 函数字段作为执行依赖
 
+### 2.5 类型系统强约束
+
+- Mini AST / lowering / compiler / runtime 只允许 canonical type
+- Go 风格类型只允许存在于 Go 前端输入，必须在 `core/ffigo/converter.go` 中立即规范化
+- 手写 AST / JSON AST 若出现非 canonical type，必须直接编译错误，不做兼容修复
+- 内部禁止新增 `string/int/any/[]T/map[K]V/*T/interface{}` 这类非 canonical 类型文本分支
+
 ## 3. 标准落地顺序
 
 新增语法 / 新节点按这个顺序落地：

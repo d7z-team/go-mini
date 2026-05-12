@@ -162,9 +162,9 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 	}
 
 	// 注入内建 nil
-	v.root.vars["nil"] = "Any"
-	v.root.vars["true"] = "Bool"
-	v.root.vars["false"] = "Bool"
+	v.root.vars["nil"] = TypeAny
+	v.root.vars["true"] = TypeBool
+	v.root.vars["false"] = TypeBool
 	return v, nil
 }
 

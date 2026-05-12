@@ -6,7 +6,16 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
+
+type typemapOutputRecorder struct {
+	sb strings.Builder
+}
+
+func (o *typemapOutputRecorder) Print(_ context.Context, s string) {
+	o.sb.WriteString(s)
+}
 
 func TestTypeMapRobustness(t *testing.T) {
 	executor := engine.NewMiniExecutor()
@@ -110,7 +119,9 @@ func TestTypeMapRobustness(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create runtime: %v", err)
 			}
-			err = prog.Execute(context.Background())
+			recorder := &typemapOutputRecorder{}
+			ctx := fmtlib.WithOutputter(context.Background(), recorder)
+			err = prog.Execute(ctx)
 			if tt.name == "AnyWrappedScalarMemberAccess" {
 				if err == nil {
 					t.Fatal("expected scalar Any member access to fail")
@@ -122,6 +133,16 @@ func TestTypeMapRobustness(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("execution failed: %v", err)
+				return
+			}
+			want := map[string]string{
+				"NestedMapAccess":         "Nested access OK\n",
+				"MissingFieldReturnsNil":  "Missing field OK\n",
+				"ResultMapAccess":         "Result map access OK\n",
+				"MixedAccess":             "Mixed access OK\n",
+			}
+			if marker, ok := want[tt.name]; ok && !strings.Contains(recorder.sb.String(), marker) {
+				t.Fatalf("expected output marker %q, got %q", marker, recorder.sb.String())
 			}
 		})
 	}

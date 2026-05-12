@@ -6,11 +6,30 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
+
+type assignmentOutputRecorder struct {
+	sb strings.Builder
+}
+
+func (o *assignmentOutputRecorder) Print(_ context.Context, s string) {
+	o.sb.WriteString(s)
+}
 
 func TestAdvancedAssignmentAndSlice(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	executor.InjectStandardLibraries()
+
+	printOutput := func(t *testing.T, prog *engine.MiniProgram) string {
+		t.Helper()
+		recorder := &assignmentOutputRecorder{}
+		ctx := fmtlib.WithOutputter(context.Background(), recorder)
+		if err := prog.Execute(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return recorder.sb.String()
+	}
 
 	t.Run("SliceExpr", func(t *testing.T) {
 		code := `
@@ -37,9 +56,9 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		err = prog.Execute(context.Background())
-		if err != nil {
-			t.Fatal(err)
+		output := printOutput(t, prog)
+		if !strings.Contains(output, "SliceExpr OK\n") {
+			t.Fatalf("expected SliceExpr marker in output, got %q", output)
 		}
 	})
 
@@ -61,9 +80,9 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		err = prog.Execute(context.Background())
-		if err != nil {
-			t.Fatal(err)
+		output := printOutput(t, prog)
+		if !strings.Contains(output, "Map assignment OK\n") {
+			t.Fatalf("expected map-assignment marker in output, got %q", output)
 		}
 	})
 
@@ -82,9 +101,9 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		err = prog.Execute(context.Background())
-		if err != nil {
-			t.Fatal(err)
+		output := printOutput(t, prog)
+		if !strings.Contains(output, "Array assignment OK\n") {
+			t.Fatalf("expected array-assignment marker in output, got %q", output)
 		}
 	})
 
@@ -108,11 +127,18 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			t.Logf("Validation correctly blocked or passed: %v", err)
 			return
 		}
-		err = prog.Execute(context.Background())
+		output := func() string {
+			recorder := &assignmentOutputRecorder{}
+			ctx := fmtlib.WithOutputter(context.Background(), recorder)
+			err = prog.Execute(ctx)
+			return recorder.sb.String()
+		}()
 		if err != nil {
 			if !strings.Contains(err.Error(), "unsupported LHS") {
 				t.Fatalf("unexpected error: %v", err)
 			}
+		} else if !strings.Contains(output, "Member assignment OK\n") {
+			t.Fatalf("expected member-assignment marker in output, got %q", output)
 		}
 	})
 

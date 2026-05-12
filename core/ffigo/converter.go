@@ -364,7 +364,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			var lhsExprs []miniast.Expr
 
 			// 尝试推导右值类型
-			inferredType := "Any"
+			inferredType := string(miniast.TypeAny)
 			if len(st.Rhs) == 1 {
 				if comp, ok := st.Rhs[0].(*ast.CompositeLit); ok {
 					fullType := miniast.GoMiniType(c.typeToString(comp.Type))
@@ -681,13 +681,13 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 	case *ast.BadExpr:
 		return &miniast.BadExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "bad_expr"), Meta: "bad_expr", Loc: c.extractLoc(ex)}}
 	case *ast.BasicLit:
-		t := "String"
+		t := string(miniast.TypeString)
 		val := ex.Value
 		switch ex.Kind {
 		case token.INT:
-			t = "Int64"
+			t = string(miniast.TypeInt64)
 		case token.FLOAT:
-			t = "Float64"
+			t = string(miniast.TypeFloat64)
 		case token.STRING:
 			if len(val) >= 2 {
 				if unquoted, err := strconv.Unquote(val); err == nil {
@@ -700,17 +700,14 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 		return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.GoMiniType(t), Loc: c.extractLoc(ex)}, Value: val}
 	case *ast.Ident:
 		if ex.Name == "true" || ex.Name == "false" {
-			return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: "Bool", Loc: c.extractLoc(ex)}, Value: ex.Name}
+			return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.TypeBool, Loc: c.extractLoc(ex)}, Value: ex.Name}
 		}
 		switch ex.Name {
 		case "panic", "make", "append", "delete", "len", "require":
 			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: miniast.Ident(ex.Name)}
-		case "int", "int64":
-			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: "Int64"}
-		case "float64":
-			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: "Float64"}
-		case "string":
-			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: "String"}
+		}
+		if builtin := c.canonicalBuiltinTypeName(ex.Name); builtin != ex.Name {
+			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: miniast.Ident(builtin)}
 		}
 		return &miniast.IdentifierExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "identifier"), Meta: "identifier", Loc: c.extractLoc(ex)}, Name: miniast.Ident(ex.Name)}
 	case *ast.BinaryExpr:
@@ -736,7 +733,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 		}
 		if array, ok := ex.Fun.(*ast.ArrayType); ok {
 			if ident, ok := array.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-				funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: "TypeBytes"}
+				funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: miniast.Ident(miniast.TypeBytes)}
 			}
 		}
 		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok {
@@ -753,7 +750,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 						BaseNode: miniast.BaseNode{
 							ID:   c.genID(ex.Args[0], "literal"),
 							Meta: "literal",
-							Type: "String",
+							Type: miniast.TypeString,
 							Loc:  c.extractLoc(ex.Args[0]),
 						},
 						Value: typeArg,
@@ -908,13 +905,31 @@ func (c *GoToASTConverter) convertArgs(args []ast.Expr) []miniast.Expr {
 	return res
 }
 
+func (c *GoToASTConverter) canonicalBuiltinTypeName(name string) string {
+	switch name {
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32":
+		return string(miniast.TypeInt64)
+	case "float32", "float64":
+		return string(miniast.TypeFloat64)
+	case "string":
+		return string(miniast.TypeString)
+	case "error":
+		return string(miniast.TypeError)
+	case "bool":
+		return string(miniast.TypeBool)
+	case "any", "interface{}":
+		return string(miniast.TypeAny)
+	}
+	return name
+}
+
 func (c *GoToASTConverter) typeToString(e ast.Expr) string {
 	return c.typeToStringWithDepth(e, 0)
 }
 
 func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	if e == nil || depth > 10 {
-		return "Any"
+		return string(miniast.TypeAny)
 	}
 	switch t := e.(type) {
 	case *ast.BasicLit:
@@ -929,22 +944,10 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		return val
 	case *ast.Ident:
 		name := t.Name
-		switch name {
-		case "int", "int8", "int16", "int32", "int64", "uint", "uint16", "uint32":
-			return "Int64"
-		case "float64", "float32":
-			return "Float64"
-		case "string":
-			return "String"
-		case "error":
-			return "Error"
-		case "bool":
-			return "Bool"
-		case "byte", "uint8":
-			return "Uint8"
-		case "any", "interface{}":
-			return "Any"
+		if name == "byte" {
+			return string(miniast.TypeInt64)
 		}
+		name = c.canonicalBuiltinTypeName(name)
 		// 检查是否是当前程序中定义的接口名
 		if iface, ok := c.interfaces[name]; ok {
 			return c.expandInterface(iface, depth+1)
@@ -952,21 +955,24 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		return name
 	case *ast.ArrayType:
 		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-			return "TypeBytes"
+			return string(miniast.TypeBytes)
 		}
-		return "Array<" + c.typeToStringWithDepth(t.Elt, depth+1) + ">"
+		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
 	case *ast.StarExpr:
-		return "Ptr<" + c.typeToStringWithDepth(t.X, depth+1) + ">"
+		return string(miniast.GoMiniType(c.typeToStringWithDepth(t.X, depth+1)).ToPtr())
 	case *ast.MapType:
-		return "Map<" + c.typeToStringWithDepth(t.Key, depth+1) + ", " + c.typeToStringWithDepth(t.Value, depth+1) + ">"
+		return string(miniast.CreateMapType(
+			miniast.GoMiniType(c.typeToStringWithDepth(t.Key, depth+1)),
+			miniast.GoMiniType(c.typeToStringWithDepth(t.Value, depth+1)),
+		))
 	case *ast.SelectorExpr:
 		return c.typeToStringWithDepth(t.X, depth+1) + "." + t.Sel.Name
 	case *ast.Ellipsis:
-		return "Array<" + c.typeToStringWithDepth(t.Elt, depth+1) + ">"
+		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
 	case *ast.InterfaceType:
 		return c.expandInterface(t, depth+1)
 	}
-	return "Any"
+	return string(miniast.TypeAny)
 }
 
 func (c *GoToASTConverter) expandInterface(t *ast.InterfaceType, depth int) string {
@@ -1021,7 +1027,7 @@ func (c *GoToASTConverter) expandInterface(t *ast.InterfaceType, depth int) stri
 		}
 	}
 	if len(methods) == 0 {
-		return "Any"
+		return string(miniast.TypeAny)
 	}
 	return fmt.Sprintf("interface{%s}", strings.Join(methods, ";"))
 }

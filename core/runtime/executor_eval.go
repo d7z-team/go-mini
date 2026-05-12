@@ -1633,7 +1633,13 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 		return v
 	}
 
-	if shape.IsArray() || shape.IsMap() || shape.IsAny() {
+	if shape.IsArray() {
+		v := &Var{VType: TypeArray, Ref: &VMArray{Data: nil}}
+		v.SetRuntimeType(t)
+		return v
+	}
+
+	if shape.IsMap() || shape.IsAny() {
 		return NewVarWithRuntimeType(t, TypeAny)
 	}
 
