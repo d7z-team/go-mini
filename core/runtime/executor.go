@@ -1049,11 +1049,12 @@ func scheduleCallBoundaryDefers(session *StackContext, task Task, data *CallBoun
 
 // Unwind State Machine
 func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error) {
-	// During UnwindContinue, OpScopeEnter tasks that were in the loop body
-	// after 'continue' are being skipped. Their matching OpScopeExit tasks
-	// must also be skipped to avoid corrupting the scope chain and losing
-	// access to variables declared in outer scopes.
-	if session.UnwindMode == UnwindContinue {
+	// During UnwindContinue and UnwindBreak, OpScopeEnter tasks that were
+	// in the loop body after the control-flow instruction are being skipped.
+	// Their matching OpScopeExit tasks must also be skipped to avoid
+	// corrupting the scope chain and losing access to variables declared
+	// in outer scopes.
+	if session.UnwindMode == UnwindContinue || session.UnwindMode == UnwindBreak {
 		switch task.Op {
 		case OpScopeEnter, OpForScopeEnter, OpRangeScopeEnter, OpCatchScopeEnter:
 			session.continueSkipScope++
