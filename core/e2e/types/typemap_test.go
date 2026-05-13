@@ -136,10 +136,10 @@ func TestTypeMapRobustness(t *testing.T) {
 				return
 			}
 			want := map[string]string{
-				"NestedMapAccess":         "Nested access OK\n",
-				"MissingFieldReturnsNil":  "Missing field OK\n",
-				"ResultMapAccess":         "Result map access OK\n",
-				"MixedAccess":             "Mixed access OK\n",
+				"NestedMapAccess":        "Nested access OK\n",
+				"MissingFieldReturnsNil": "Missing field OK\n",
+				"ResultMapAccess":        "Result map access OK\n",
+				"MixedAccess":            "Mixed access OK\n",
 			}
 			if marker, ok := want[tt.name]; ok && !strings.Contains(recorder.sb.String(), marker) {
 				t.Fatalf("expected output marker %q, got %q", marker, recorder.sb.String())

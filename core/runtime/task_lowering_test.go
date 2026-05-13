@@ -436,9 +436,7 @@ default:
 		t.Fatal("expected switch statement to be lowered")
 	}
 
-	var (
-		switchTask *Task
-	)
+	var switchTask *Task
 	for i := range tasks {
 		switch tasks[i].Op {
 		case OpSwitchStart:

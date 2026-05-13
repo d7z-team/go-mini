@@ -9,7 +9,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
 
-func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, code string, want string) {
+func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, code, want string) {
 	t.Helper()
 
 	_, err := executor.NewRuntimeByGoCode(code)

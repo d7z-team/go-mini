@@ -46,14 +46,11 @@ type InterfaceStmt struct {
 func (i *InterfaceStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *InterfaceStmt) stmtNode()          {}
 
-func (i *InterfaceStmt) Check(ctx *SemanticContext) error {
-	if err := i.Type.ValidateCanonical(); err != nil {
-		return err
-	}
-	return nil
+func (i *InterfaceStmt) Check(_ *SemanticContext) error {
+	return i.Type.ValidateCanonical()
 }
 
-func (i *InterfaceStmt) Optimize(ctx *OptimizeContext) Node { return i }
+func (i *InterfaceStmt) Optimize(_ *OptimizeContext) Node { return i }
 
 func (p *ProgramStmt) GetBase() *BaseNode {
 	return &p.BaseNode
