@@ -15,6 +15,7 @@ type testFFIBridge struct{}
 func (testFFIBridge) Call(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
+
 func (testFFIBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
