@@ -180,6 +180,74 @@ type RuntimeInterfaceSpec struct {
 	MethodIndex map[string]int
 }
 
+// CloneRuntimeFuncSig returns a detached copy of runtime function signature metadata.
+func CloneRuntimeFuncSig(sig *RuntimeFuncSig) *RuntimeFuncSig {
+	if sig == nil {
+		return nil
+	}
+	res := *sig
+	res.ParamNames = append([]string(nil), sig.ParamNames...)
+	res.ParamTypes = append([]RuntimeType(nil), sig.ParamTypes...)
+	res.ParamModes = append([]FFIParamMode(nil), sig.ParamModes...)
+	return &res
+}
+
+// CloneRuntimeStructSpec returns a detached copy of runtime struct metadata.
+func CloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
+	if spec == nil {
+		return nil
+	}
+	fields := append([]RuntimeStructField(nil), spec.Fields...)
+	byName := make(map[string]RuntimeStructField, len(spec.ByName))
+	for k, v := range spec.ByName {
+		byName[k] = v
+	}
+	typeInfo := spec.TypeInfo
+	typeInfo.Fields = append([]RuntimeStructField(nil), spec.TypeInfo.Fields...)
+	return &RuntimeStructSpec{
+		Name:     spec.Name,
+		TypeID:   spec.TypeID,
+		Spec:     spec.Spec,
+		TypeInfo: typeInfo,
+		Layout:   spec.Layout,
+		Fields:   fields,
+		ByName:   byName,
+	}
+}
+
+// CloneRuntimeInterfaceSpec returns a detached copy of runtime interface metadata.
+func CloneRuntimeInterfaceSpec(spec *RuntimeInterfaceSpec) *RuntimeInterfaceSpec {
+	if spec == nil {
+		return nil
+	}
+	methods := make([]RuntimeInterfaceMethod, len(spec.Methods))
+	byName := make(map[string]*RuntimeFuncSig, len(spec.ByName))
+	methodIndex := make(map[string]int, len(spec.MethodIndex))
+	for i, method := range spec.Methods {
+		methods[i] = RuntimeInterfaceMethod{
+			Index: method.Index,
+			Name:  method.Name,
+			Spec:  CloneRuntimeFuncSig(method.Spec),
+		}
+	}
+	for k, v := range spec.ByName {
+		byName[k] = CloneRuntimeFuncSig(v)
+	}
+	for k, v := range spec.MethodIndex {
+		methodIndex[k] = v
+	}
+	typeInfo := spec.TypeInfo
+	typeInfo.Methods = append([]RuntimeInterfaceMethod(nil), spec.TypeInfo.Methods...)
+	return &RuntimeInterfaceSpec{
+		TypeID:      spec.TypeID,
+		Spec:        spec.Spec,
+		TypeInfo:    typeInfo,
+		Methods:     methods,
+		ByName:      byName,
+		MethodIndex: methodIndex,
+	}
+}
+
 func CanonicalTypeID(name string) string {
 	name = strings.TrimSpace(name)
 	name = strings.TrimPrefix(name, "*")

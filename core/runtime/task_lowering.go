@@ -92,10 +92,6 @@ func (s *loweringScope) declare(name string) SymbolRef {
 	return sym
 }
 
-func (s *loweringScope) addBinding(sym SymbolRef) {
-	s.bindings[sym.Name] = sym
-}
-
 func (s *loweringScope) resolve(name string) (SymbolRef, bool) {
 	if sym, ok := s.bindings[name]; ok {
 		return sym, true
@@ -216,10 +212,6 @@ func isNilNode(node ast.Node) bool {
 	}
 }
 
-func (e *Executor) TasksForStmt(stmt ast.Stmt) []Task {
-	return e.tasksForStmtInScope(stmt, nil, e.newRootLoweringScope())
-}
-
 func (e *Executor) tasksForStmt(stmt ast.Stmt, data interface{}) []Task {
 	return e.tasksForStmtInScope(stmt, data, e.newRootLoweringScope())
 }
@@ -247,10 +239,6 @@ func (e *Executor) tasksForExprInScope(expr ast.Expr, scope *loweringScope) []Ta
 		return e.setSource(tasks, expr)
 	}
 	panic(fmt.Sprintf("runtime lowering missing for expr %T", expr))
-}
-
-func (e *Executor) tasksForLHS(expr ast.Expr) []Task {
-	return e.tasksForLHSInScope(expr, e.newRootLoweringScope())
 }
 
 func (e *Executor) tasksForLHSInScope(expr ast.Expr, scope *loweringScope) []Task {

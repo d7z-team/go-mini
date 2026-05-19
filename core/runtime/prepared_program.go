@@ -185,7 +185,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		}
 		cloned.Functions[name] = &PreparedFunction{
 			Name:        fn.Name,
-			FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+			FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 			BodyTasks:   cloneTasks(fn.BodyTasks),
 		}
 	}
@@ -240,7 +240,7 @@ func cloneRuntimeStructSpecMap(in map[string]*RuntimeStructSpec) map[string]*Run
 	}
 	out := make(map[string]*RuntimeStructSpec, len(in))
 	for k, v := range in {
-		out[k] = cloneRuntimeStructSpec(v)
+		out[k] = CloneRuntimeStructSpec(v)
 	}
 	return out
 }
@@ -251,7 +251,7 @@ func cloneRuntimeInterfaceSpecMap(in map[string]*RuntimeInterfaceSpec) map[strin
 	}
 	out := make(map[string]*RuntimeInterfaceSpec, len(in))
 	for k, v := range in {
-		out[k] = cloneRuntimeInterfaceSpec(v)
+		out[k] = CloneRuntimeInterfaceSpec(v)
 	}
 	return out
 }

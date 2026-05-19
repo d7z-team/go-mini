@@ -328,7 +328,7 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 		}
 		res.Ref = &VMInterface{
 			Target: ref.Target.deepCopy(seen),
-			Spec:   cloneRuntimeInterfaceSpec(ref.Spec),
+			Spec:   CloneRuntimeInterfaceSpec(ref.Spec),
 			VTable: vtable,
 		}
 	case *Cell:
@@ -350,7 +350,7 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			upvalues[i] = item.deepCopy(seen)
 		}
 		res.Ref = &VMClosure{
-			FunctionSig:  cloneRuntimeFuncSig(ref.FunctionSig),
+			FunctionSig:  CloneRuntimeFuncSig(ref.FunctionSig),
 			BodyTasks:    cloneTasks(ref.BodyTasks),
 			UpvalueSlots: upvalues,
 			UpvalueNames: append([]string(nil), ref.UpvalueNames...),
@@ -1412,17 +1412,6 @@ func resetVarToAny(v *Var) {
 	v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
 }
 
-func wrapVarAsCell(v *Var) *Var {
-	if v == nil || v.VType == TypeCell {
-		return v
-	}
-	cellValue := v.Copy()
-	v.VType = TypeCell
-	v.Ref = &Cell{Value: cellValue}
-	v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
-	return v
-}
-
 func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variable string) (*Var, error) {
 	if variable == "nil" {
 		return nil, nil
@@ -1449,7 +1438,7 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+					FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:   cloneTasks(fn.BodyTasks),
 					Context:     &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
 				},
@@ -1758,7 +1747,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+					FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:   cloneTasks(fn.BodyTasks),
 					Context:     &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},

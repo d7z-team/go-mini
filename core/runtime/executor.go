@@ -197,10 +197,10 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 		e.metadata.registerNamedType(name, typeInfo)
 	}
 	for name, spec := range prepared.StructSchemas {
-		e.metadata.registerStructSchema(name, cloneRuntimeStructSpec(spec))
+		e.metadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
 	}
 	for name, spec := range prepared.InterfaceSchemas {
-		e.metadata.registerInterfaceSpec(name, cloneRuntimeInterfaceSpec(spec))
+		e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
 	}
 	for name, global := range prepared.Globals {
 		rg, ok := e.globals[name]
@@ -220,7 +220,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 			rf = &RuntimeFunction{Name: name}
 		}
 		if fn != nil {
-			rf.FunctionSig = cloneRuntimeFuncSig(fn.FunctionSig)
+			rf.FunctionSig = CloneRuntimeFuncSig(fn.FunctionSig)
 			rf.BodyTasks = cloneTasks(fn.BodyTasks)
 		}
 		e.functions[name] = rf
@@ -263,71 +263,6 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
 		Fields:   fields,
 		ByName:   byName,
 	}
-}
-
-func cloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
-	if spec == nil {
-		return nil
-	}
-	fields := append([]RuntimeStructField(nil), spec.Fields...)
-	byName := make(map[string]RuntimeStructField, len(spec.ByName))
-	for k, v := range spec.ByName {
-		byName[k] = v
-	}
-	typeInfo := spec.TypeInfo
-	typeInfo.Fields = append([]RuntimeStructField(nil), spec.TypeInfo.Fields...)
-	return &RuntimeStructSpec{
-		Name:     spec.Name,
-		TypeID:   spec.TypeID,
-		Spec:     spec.Spec,
-		TypeInfo: typeInfo,
-		Layout:   spec.Layout,
-		Fields:   fields,
-		ByName:   byName,
-	}
-}
-
-func cloneRuntimeInterfaceSpec(spec *RuntimeInterfaceSpec) *RuntimeInterfaceSpec {
-	if spec == nil {
-		return nil
-	}
-	methods := make([]RuntimeInterfaceMethod, len(spec.Methods))
-	byName := make(map[string]*RuntimeFuncSig, len(spec.ByName))
-	methodIndex := make(map[string]int, len(spec.MethodIndex))
-	for i, method := range spec.Methods {
-		methods[i] = RuntimeInterfaceMethod{
-			Index: method.Index,
-			Name:  method.Name,
-			Spec:  cloneRuntimeFuncSig(method.Spec),
-		}
-	}
-	for k, v := range spec.ByName {
-		byName[k] = cloneRuntimeFuncSig(v)
-	}
-	for k, v := range spec.MethodIndex {
-		methodIndex[k] = v
-	}
-	typeInfo := spec.TypeInfo
-	typeInfo.Methods = append([]RuntimeInterfaceMethod(nil), spec.TypeInfo.Methods...)
-	return &RuntimeInterfaceSpec{
-		TypeID:      spec.TypeID,
-		Spec:        spec.Spec,
-		TypeInfo:    typeInfo,
-		Methods:     methods,
-		ByName:      byName,
-		MethodIndex: methodIndex,
-	}
-}
-
-func cloneRuntimeFuncSig(sig *RuntimeFuncSig) *RuntimeFuncSig {
-	if sig == nil {
-		return nil
-	}
-	res := *sig
-	res.ParamNames = append([]string(nil), sig.ParamNames...)
-	res.ParamTypes = append([]RuntimeType(nil), sig.ParamTypes...)
-	res.ParamModes = append([]FFIParamMode(nil), sig.ParamModes...)
-	return &res
 }
 
 func (e *Executor) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
@@ -399,10 +334,6 @@ func cloneTasks(tasks []Task) []Task {
 		return nil
 	}
 	return append([]Task(nil), tasks...)
-}
-
-func (e *Executor) buildStmtPlan(stmts []ast.Stmt) []Task {
-	return e.buildStmtPlanWithScope(stmts, e.newRootLoweringScope())
 }
 
 func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope) []Task {
@@ -486,7 +417,7 @@ func (e *Executor) RegisterInterfaceSchema(name string, spec *RuntimeInterfaceSp
 	if existing, ok := e.metadata.interfacesByName[name]; ok && existing != nil && existing.Spec != spec.Spec {
 		panic(fmt.Sprintf("ffi interface schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
 	}
-	e.metadata.registerInterfaceSpec(name, cloneRuntimeInterfaceSpec(spec))
+	e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
 }
 
 func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
@@ -795,11 +726,6 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 	return nil, false
 }
 
-func (e *Executor) hasMethodWithSignature(val *Var, name string, expectedSig *ast.FunctionType) bool {
-	callable, ok := e.resolveMethodValue(val, name)
-	return ok && e.isCallableCompatible(callable, expectedSig)
-}
-
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
 	v = e.unwrapValue(v)
 	if v == nil {
@@ -921,7 +847,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 			})
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
 				Name:        fn.Name,
-				FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+				FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 				BodyTasks:   cloneTasks(fn.BodyTasks),
 			}})
 
@@ -2276,7 +2202,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			Debugger:  session.Debugger,
 		}
 		closure := &VMClosure{
-			FunctionSig:  cloneRuntimeFuncSig(data.FunctionSig),
+			FunctionSig:  CloneRuntimeFuncSig(data.FunctionSig),
 			BodyTasks:    data.BodyTasks,
 			UpvalueSlots: make([]*Var, len(data.CaptureRefs)),
 			UpvalueNames: make([]string, len(data.CaptureRefs)),
@@ -3037,7 +2963,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 			exports[name] = &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
-					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
+					FunctionSig:  CloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:    cloneTasks(fn.BodyTasks),
 					UpvalueSlots: nil,
 					UpvalueNames: nil,
@@ -3055,7 +2981,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 			exports[name] = &Var{
 				VType: TypeAny,
-				Ref:   cloneRuntimeStructSpec(s),
+				Ref:   CloneRuntimeStructSpec(s),
 			}
 		}
 	}

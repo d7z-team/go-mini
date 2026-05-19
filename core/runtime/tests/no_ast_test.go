@@ -1,43 +1,11 @@
 package runtime_test
 
 import (
-	"context"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
-
-func TestNoASTInRuntime(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
-	sourceProgram := `
-	package main
-	func main() {
-		a := 10
-		b := 20
-		if a < b {
-			sum := 0
-			for i := 0; i < 5; i++ {
-				sum = sum + i
-			}
-		}
-		
-		f := func(x int) int {
-			return x * 2
-		}
-		_ = f(10)
-	}
-	`
-	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = testProgram.Execute(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestRuntimeTaskStack_NoAST(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
@@ -52,18 +20,34 @@ func TestRuntimeTaskStack_NoAST(t *testing.T) {
 		return 0
 	}
 	`
-	testRuntimeExecutor := testExecutor.Executor()
 
 	compiledArtifact, err := testExecutor.CompileGoCode(sourceProgram)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, mainStmt := range compiledArtifact.Program.Main {
-		loweredTasks := testRuntimeExecutor.TasksForStmt(mainStmt)
-		for _, loweredTask := range loweredTasks {
-			assertTaskDataHasNoAST(t, loweredTask)
+	executable := compiledArtifact.Bytecode.Executable
+	if executable == nil {
+		t.Fatal("compiled bytecode missing executable task plan")
+	}
+	for _, global := range executable.Globals {
+		if global == nil {
+			continue
 		}
+		for _, task := range global.InitPlan {
+			assertTaskDataHasNoAST(t, task)
+		}
+	}
+	for _, fn := range executable.Functions {
+		if fn == nil {
+			continue
+		}
+		for _, task := range fn.BodyTasks {
+			assertTaskDataHasNoAST(t, task)
+		}
+	}
+	for _, task := range executable.MainTasks {
+		assertTaskDataHasNoAST(t, task)
 	}
 }
 

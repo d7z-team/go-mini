@@ -107,43 +107,7 @@ func main() {
 }
 `
 
-	loaders := []struct {
-		name string
-		load func(*engine.MiniExecutor) (*engine.MiniProgram, error)
-	}{
-		{
-			name: "source",
-			load: func(exec *engine.MiniExecutor) (*engine.MiniProgram, error) {
-				return exec.NewRuntimeByGoCode(code)
-			},
-		},
-		{
-			name: "compiled",
-			load: func(exec *engine.MiniExecutor) (*engine.MiniProgram, error) {
-				compiled, err := exec.CompileGoCode(code)
-				if err != nil {
-					return nil, err
-				}
-				return exec.NewRuntimeByCompiled(compiled)
-			},
-		},
-		{
-			name: "bytecode_json",
-			load: func(exec *engine.MiniExecutor) (*engine.MiniProgram, error) {
-				compiled, err := exec.CompileGoCode(code)
-				if err != nil {
-					return nil, err
-				}
-				payload, err := compiled.MarshalBytecodeJSON()
-				if err != nil {
-					return nil, err
-				}
-				return exec.NewRuntimeByBytecodeJSON(payload)
-			},
-		},
-	}
-
-	for _, loader := range loaders {
+	for _, loader := range pipelineLoaders(code) {
 		t.Run(loader.name, func(t *testing.T) {
 			exec := engine.NewMiniExecutor()
 			bridge := &nestedRangeOuterLoopBridge{}

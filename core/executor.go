@@ -42,7 +42,6 @@ type MiniExecutor struct {
 	mu sync.RWMutex
 
 	astModuleLoader func(path string) (*ast.ProgramStmt, error)
-	bridges         map[uint32]ffigo.FFIBridge
 	routes          map[string]runtime.FFIRoute
 	constants       map[string]string
 
@@ -337,7 +336,6 @@ func (p *MiniProgram) Bytecode() (*bytecode.Program, error) {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges:          make(map[uint32]ffigo.FFIBridge),
 		routes:           make(map[string]runtime.FFIRoute),
 		constants:        make(map[string]string),
 		registry:         ffigo.NewHandleRegistry(),
@@ -470,6 +468,21 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	})
 }
 
+func newMiniAstError(err error, semanticCtx *ast.SemanticContext, node ast.Node) error {
+	var logs []ast.Logs
+	if semanticCtx != nil {
+		logs = semanticCtx.Logs()
+	}
+	return &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+}
+
+func compiledProgramNode(compiled *compiler.Artifact) *ast.ProgramStmt {
+	if compiled == nil {
+		return nil
+	}
+	return compiled.Program
+}
+
 func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStmt, error)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -556,46 +569,6 @@ func (e *MiniExecutor) RegisterConstant(name, val string) {
 	e.constants[name] = val
 }
 
-func (e *MiniExecutor) RegisterBridge(methodID uint32, bridge ffigo.FFIBridge) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.bridges[methodID] = bridge
-}
-
-type RoutedBridge struct {
-	Router func(ctx context.Context, methodID uint32, args []byte) ([]byte, error)
-}
-
-func (b *RoutedBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return b.Router(ctx, methodID, args)
-}
-
-func (b *RoutedBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("invoke not supported on RoutedBridge")
-}
-
-func (b *RoutedBridge) DestroyHandle(handle uint32) error {
-	return nil // Base wrapper doesn't manage registry
-}
-
-type RoutedHandleBridge struct {
-	Registry *ffigo.HandleRegistry
-	Router   func(ctx context.Context, reg *ffigo.HandleRegistry, methodID uint32, args []byte) ([]byte, error)
-}
-
-func (b *RoutedHandleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return b.Router(ctx, b.Registry, methodID, args)
-}
-
-func (b *RoutedHandleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, errors.New("invoke not supported on RoutedHandleBridge")
-}
-
-func (b *RoutedHandleBridge) DestroyHandle(handle uint32) error {
-	b.Registry.Remove(handle)
-	return nil
-}
-
 func (e *MiniExecutor) InjectStandardLibraries() {
 	// 1. Inject os
 	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
@@ -660,13 +633,13 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 		Interfaces: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
 	}
 	for k, v := range e.funcSchemas {
-		res.Funcs[k] = cloneRuntimeFuncSig(v)
+		res.Funcs[k] = runtime.CloneRuntimeFuncSig(v)
 	}
 	for k, v := range e.structsMeta {
-		res.Structs[k] = cloneRuntimeStructSpec(v)
+		res.Structs[k] = runtime.CloneRuntimeStructSpec(v)
 	}
 	for k, v := range e.interfacesMeta {
-		res.Interfaces[k] = cloneRuntimeInterfaceSpec(v)
+		res.Interfaces[k] = runtime.CloneRuntimeInterfaceSpec(v)
 	}
 	return res
 }
@@ -674,11 +647,7 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 func (e *MiniExecutor) CompileProgram(program *ast.ProgramStmt) (*compiler.Artifact, error) {
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("ast", "", program, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: program}
+		return nil, newMiniAstError(err, semanticCtx, program)
 	}
 	return compiled, nil
 }
@@ -686,15 +655,7 @@ func (e *MiniExecutor) CompileProgram(program *ast.ProgramStmt) (*compiler.Artif
 func (e *MiniExecutor) CompileFiles(files []SourceFile) (*compiler.Artifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileFiles(files, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		node := (*ast.ProgramStmt)(nil)
-		if compiled != nil {
-			node = compiled.Program
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 	}
 	return compiled, nil
 }
@@ -702,15 +663,7 @@ func (e *MiniExecutor) CompileFiles(files []SourceFile) (*compiler.Artifact, err
 func (e *MiniExecutor) CompileDir(dir string) (*compiler.Artifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileDir(dir, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		node := (*ast.ProgramStmt)(nil)
-		if compiled != nil {
-			node = compiled.Program
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 	}
 	return compiled, nil
 }
@@ -780,15 +733,7 @@ func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*MiniProgram, e
 func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileSource("snippet", code, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		node := (*ast.ProgramStmt)(nil)
-		if compiled != nil {
-			node = compiled.Program
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 	}
 	return compiled, nil
 }
@@ -796,15 +741,7 @@ func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {
 func (e *MiniExecutor) CompileGoFile(filename, code string) (*compiler.Artifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileSource(filename, code, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		node := (*ast.ProgramStmt)(nil)
-		if compiled != nil {
-			node = compiled.Program
-		}
-		return nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 	}
 	return compiled, nil
 }
@@ -846,15 +783,7 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 	compiled, errs, semanticCtx, err := e.newCompiler().CompileSource(filename, code, tolerant)
 	if err != nil {
 		if !tolerant {
-			var logs []ast.Logs
-			if semanticCtx != nil {
-				logs = semanticCtx.Logs()
-			}
-			node := (*ast.ProgramStmt)(nil)
-			if compiled != nil {
-				node = compiled.Program
-			}
-			return nil, nil, &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+			return nil, nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 		}
 		errs = append(errs, err)
 	}
@@ -970,11 +899,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("snippet", code, program, false)
 	if err != nil {
-		var logs []ast.Logs
-		if semanticCtx != nil {
-			logs = semanticCtx.Logs()
-		}
-		return &ast.MiniAstError{Err: err, Logs: logs, Node: program}
+		return newMiniAstError(err, semanticCtx, program)
 	}
 
 	executor, err := e.NewRuntimeByCompiled(compiled)
@@ -1380,62 +1305,4 @@ func bridgeIdentity(bridge ffigo.FFIBridge) string {
 	default:
 		return fmt.Sprintf("%T:%v", bridge, bridge)
 	}
-}
-
-func cloneRuntimeFuncSig(sig *runtime.RuntimeFuncSig) *runtime.RuntimeFuncSig {
-	if sig == nil {
-		return nil
-	}
-	res := *sig
-	res.ParamNames = append([]string(nil), sig.ParamNames...)
-	res.ParamTypes = append([]runtime.RuntimeType(nil), sig.ParamTypes...)
-	res.ParamModes = append([]runtime.FFIParamMode(nil), sig.ParamModes...)
-	return &res
-}
-
-func cloneRuntimeStructSpec(spec *runtime.RuntimeStructSpec) *runtime.RuntimeStructSpec {
-	if spec == nil {
-		return nil
-	}
-	res := &runtime.RuntimeStructSpec{
-		Name:     spec.Name,
-		TypeID:   spec.TypeID,
-		Spec:     spec.Spec,
-		TypeInfo: spec.TypeInfo,
-		Fields:   append([]runtime.RuntimeStructField(nil), spec.Fields...),
-		ByName:   make(map[string]runtime.RuntimeStructField, len(spec.ByName)),
-	}
-	for k, v := range spec.ByName {
-		res.ByName[k] = v
-	}
-	return res
-}
-
-func cloneRuntimeInterfaceSpec(spec *runtime.RuntimeInterfaceSpec) *runtime.RuntimeInterfaceSpec {
-	if spec == nil {
-		return nil
-	}
-	res := &runtime.RuntimeInterfaceSpec{
-		TypeID:      spec.TypeID,
-		Spec:        spec.Spec,
-		TypeInfo:    spec.TypeInfo,
-		Methods:     make([]runtime.RuntimeInterfaceMethod, len(spec.Methods)),
-		ByName:      make(map[string]*runtime.RuntimeFuncSig, len(spec.ByName)),
-		MethodIndex: make(map[string]int, len(spec.MethodIndex)),
-	}
-	res.TypeInfo.Methods = append([]runtime.RuntimeInterfaceMethod(nil), spec.TypeInfo.Methods...)
-	for i, method := range spec.Methods {
-		res.Methods[i] = runtime.RuntimeInterfaceMethod{
-			Index: method.Index,
-			Name:  method.Name,
-			Spec:  cloneRuntimeFuncSig(method.Spec),
-		}
-	}
-	for k, v := range spec.ByName {
-		res.ByName[k] = cloneRuntimeFuncSig(v)
-	}
-	for k, v := range spec.MethodIndex {
-		res.MethodIndex[k] = v
-	}
-	return res
 }

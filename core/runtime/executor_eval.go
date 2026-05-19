@@ -1006,7 +1006,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	if fn, ok := e.lookupFunction(name); ok {
 		return e.setupFuncCall(session, name, &DoCallData{
 			Name:        name,
-			FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
+			FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 			BodyTasks:   cloneTasks(fn.BodyTasks),
 			Args:        args,
 		}, args, nil)
@@ -1472,7 +1472,7 @@ func (e *Executor) snapshotTaskClosure(closure *VMClosure, state *taskSnapshotSt
 		return nil, nil
 	}
 	cloned := &VMClosure{
-		FunctionSig:  cloneRuntimeFuncSig(closure.FunctionSig),
+		FunctionSig:  CloneRuntimeFuncSig(closure.FunctionSig),
 		BodyTasks:    cloneTasks(closure.BodyTasks),
 		UpvalueSlots: make([]*Var, len(closure.UpvalueSlots)),
 		UpvalueNames: append([]string(nil), closure.UpvalueNames...),
@@ -1501,12 +1501,12 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	var sig *RuntimeFuncSig
 	var bodyTasks []Task
 	if closure != nil {
-		sig = cloneRuntimeFuncSig(closure.FunctionSig)
+		sig = CloneRuntimeFuncSig(closure.FunctionSig)
 		bodyTasks = closure.BodyTasks
 	}
 	if fn != nil {
 		if sig == nil {
-			sig = cloneRuntimeFuncSig(fn.FunctionSig)
+			sig = CloneRuntimeFuncSig(fn.FunctionSig)
 		}
 		if len(bodyTasks) == 0 {
 			bodyTasks = fn.BodyTasks
