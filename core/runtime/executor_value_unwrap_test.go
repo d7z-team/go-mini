@@ -6,17 +6,16 @@ import (
 	"testing"
 )
 
-func TestEvalUnaryDereferenceUnwrapsAnyAndCell(t *testing.T) {
+func TestEvalUnaryDereferenceUnwrapsAnyPointer(t *testing.T) {
 	exec := newEmptyExecutor(t)
 
 	ptr := &Var{
 		VType:    TypeHandle,
 		Handle:   1,
 		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
-		Ref:      NewInt(7),
+		Ref:      NewSlot(MustParseRuntimeType("Int64"), NewInt(7)),
 	}
-	cell := &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}
-	anyWrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: cell}
+	anyWrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: ptr}
 
 	got, err := exec.evalUnaryExprDirect("Dereference", anyWrapped)
 	if err != nil {

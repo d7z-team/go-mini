@@ -312,14 +312,19 @@ func (e *Executor) serializeStructSchema(buf *ffigo.Buffer, v *Var, schema *Runt
 	if schema == nil {
 		return nil
 	}
-	var mData map[string]*Var
-	if v != nil && v.VType == TypeMap {
-		mData = v.Ref.(*VMMap).Snapshot()
+	var st *VMStruct
+	if v != nil && v.VType == TypeStruct {
+		st, _ = v.Ref.(*VMStruct)
+	}
+	if v != nil && st == nil {
+		return fmt.Errorf("expected struct %s, got %v", schema.TypeInfo.Raw, v.VType)
 	}
 	for _, field := range schema.Fields {
 		var fVal *Var
-		if mData != nil {
-			fVal = mData[field.Name]
+		if st != nil {
+			if slot, ok := st.Field(field.Name); ok && slot != nil {
+				fVal = slot.Value
+			}
 		}
 		if err := e.serializeRuntimeType(buf, fVal, field.TypeInfo); err != nil {
 			return err
@@ -332,15 +337,17 @@ func (e *Executor) deserializeStructSchema(session *StackContext, reader *ffigo.
 	if schema == nil {
 		return nil, nil
 	}
-	resMap := make(map[string]*Var, len(schema.Fields))
-	for _, field := range schema.Fields {
+	fields := make([]*Slot, len(schema.Fields))
+	byName := make(map[string]int, len(schema.Fields))
+	for i, field := range schema.Fields {
 		val, err := e.deserializeRuntimeType(session, reader, field.TypeInfo, bridge)
 		if err != nil {
 			return nil, err
 		}
-		resMap[field.Name] = val
+		fields[i] = NewSlot(field.TypeInfo, val)
+		byName[field.Name] = i
 	}
-	v := &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+	v := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: schema, Fields: fields, ByName: byName}}
 	v.SetRuntimeType(schema.TypeInfo)
 	return v, nil
 }
@@ -350,18 +357,21 @@ func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType
 	case "String":
 		buf.WriteString(key)
 	case "Int64", "Int", "int", "int64":
+		key = strings.TrimPrefix(key, "i:")
 		v, err := strconv.ParseInt(key, 10, 64)
 		if err != nil {
 			return fmt.Errorf("failed to parse map key '%s' as Int64: %w", key, err)
 		}
 		buf.WriteVarint(v)
 	case "Bool", "bool":
+		key = strings.TrimPrefix(key, "b:")
 		v, err := strconv.ParseBool(key)
 		if err != nil {
 			return fmt.Errorf("failed to parse map key '%s' as Bool: %w", key, err)
 		}
 		buf.WriteBool(v)
 	case "Float64", "float64":
+		key = strings.TrimPrefix(key, "f:")
 		v, err := strconv.ParseFloat(key, 64)
 		if err != nil {
 			return fmt.Errorf("failed to parse map key '%s' as Float64: %w", key, err)
@@ -603,22 +613,28 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
-		if schema, ok := e.lookupAnyStructSchema(v); ok {
-			_ = buf.WriteByte(ffigo.TypeTagStruct)
-			buf.WriteUvarint(uint64(len(schema.Fields)))
-			for _, field := range schema.Fields {
-				buf.WriteString(field.Name)
-				fieldVal, _ := vmMap.Load(field.Name)
-				e.serializeVarToAny(buf, fieldVal)
-			}
-			return
-		}
 		_ = buf.WriteByte(ffigo.TypeTagMap)
 		snapshot := vmMap.Snapshot()
 		buf.WriteUvarint(uint64(len(snapshot)))
 		for k, val := range snapshot {
 			buf.WriteString(k)
 			e.serializeVarToAny(buf, val)
+		}
+	case TypeStruct:
+		st := v.Ref.(*VMStruct)
+		_ = buf.WriteByte(ffigo.TypeTagStruct)
+		if st.Spec == nil {
+			buf.WriteUvarint(0)
+			return
+		}
+		buf.WriteUvarint(uint64(len(st.Spec.Fields)))
+		for i, field := range st.Spec.Fields {
+			buf.WriteString(field.Name)
+			var fieldVal *Var
+			if i < len(st.Fields) && st.Fields[i] != nil {
+				fieldVal = st.Fields[i].Value
+			}
+			e.serializeVarToAny(buf, fieldVal)
 		}
 	case TypeInterface:
 		if v.Ref == nil {
@@ -638,23 +654,12 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	}
 }
 
-func (e *Executor) lookupAnyStructSchema(v *Var) (*RuntimeStructSpec, bool) {
-	typeInfo := v.RuntimeType()
-	if v == nil || typeInfo.IsEmpty() || typeInfo.IsMap() || typeInfo.IsAny() {
-		return nil, false
-	}
-	if typeInfo.Kind == RuntimeTypeStruct || typeInfo.Kind == RuntimeTypeNamed {
-		return e.lookupStructSchema(typeInfo)
-	}
-	return nil, false
-}
-
 func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
 	if val == nil {
 		return nil
 	}
 
-	// 1. 规范化处理 (处理数组崩溃、指针穿透、Struct转Map等)
+	// 1. 规范化处理 (处理数组、指针穿透、FFI struct 等)
 	norm, err := e.normalizeValue(val)
 	if err != nil {
 		// 规范化失败时，为了安全起见返回 Any 包装的原始值或 Nil
@@ -755,14 +760,24 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		}
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
 	case *ffigo.VMStruct:
-		resMap := make(map[string]*Var, len(v.Fields))
-		for _, field := range v.Fields {
-			resMap[field.Name] = e.ToVar(session, field.Value, bridge)
+		fields := make([]*Slot, len(v.Fields))
+		byName := make(map[string]int, len(v.Fields))
+		specFields := make([]RuntimeStructField, len(v.Fields))
+		for i, field := range v.Fields {
+			val := e.ToVar(session, field.Value, bridge)
+			fieldType := MustParseRuntimeType("Any")
+			if val != nil && !val.RuntimeType().IsEmpty() {
+				fieldType = val.RuntimeType()
+			}
+			fields[i] = NewSlot(fieldType, val)
+			byName[field.Name] = i
+			specFields[i] = RuntimeStructField{Name: field.Name, TypeInfo: fieldType}
 		}
-		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+		spec := &RuntimeStructSpec{Spec: "struct", TypeInfo: MustParseRuntimeType("Any"), Fields: specFields}
+		res = &Var{VType: TypeStruct, Ref: &VMStruct{Spec: spec, Fields: fields, ByName: byName}}
 	case *ffigo.VMPointer:
 		inner := e.ToVar(session, v.Value, bridge)
-		res = &Var{VType: TypeHandle, Ref: inner}
+		res = &Var{VType: TypeHandle, Ref: NewSlot(MustParseRuntimeType("Any"), inner)}
 		res.SetRawType("Ptr<Any>")
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
@@ -907,11 +922,11 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (stri
 	case "String":
 		return reader.ReadString(), nil
 	case "Int64", "Int", "int", "int64":
-		return strconv.FormatInt(reader.ReadVarint(), 10), nil
+		return "i:" + strconv.FormatInt(reader.ReadVarint(), 10), nil
 	case "Bool", "bool":
-		return strconv.FormatBool(reader.ReadBool()), nil
+		return "b:" + strconv.FormatBool(reader.ReadBool()), nil
 	case "Float64", "float64":
-		return strconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64), nil
+		return "f:" + strconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64), nil
 	default:
 		return "", fmt.Errorf("unsupported map key type: %s", kType.Raw)
 	}

@@ -36,16 +36,16 @@ func TestMethodReceiver(t *testing.T) {
 			panic("GetAge failed")
 		}
 
-		// 2. 测试带参数调用
+		// 2. value receiver follows value semantics: mutation does not affect p
 		p.SetAge(30)
-		if p.GetAge() != 30 {
-			panic("SetAge failed")
+		if p.GetAge() != 20 {
+			panic("SetAge mutated value receiver")
 		}
 
-		// 3. 测试无参修改
+		// 3. value receiver Inc also does not affect p
 		p.Inc()
-		if p.GetAge() != 31 {
-			panic("Inc failed")
+		if p.GetAge() != 20 {
+			panic("Inc mutated value receiver")
 		}
 	}
 	`

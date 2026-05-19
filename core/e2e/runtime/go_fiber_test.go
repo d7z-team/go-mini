@@ -122,6 +122,34 @@ func main() {
 	}
 }
 
+func TestGoFiberStructArgumentUsesValueSemantics(t *testing.T) {
+	prog := newGoProgram(t, `
+package main
+
+import "time"
+
+type Box struct {
+	Value int
+}
+
+func worker(b Box) {
+	b.Value = 2
+}
+
+func main() {
+	b := Box{Value: 1}
+	go worker(b)
+	time.Sleep(1)
+	if b.Value != 1 {
+		panic("go fiber argument mutated caller struct")
+	}
+}
+`)
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGoFiberPanicFailsProgram(t *testing.T) {
 	prog := newGoProgram(t, `
 package main

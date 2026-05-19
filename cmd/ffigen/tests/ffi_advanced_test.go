@@ -18,11 +18,6 @@ func TestAdvancedFFIExecution(t *testing.T) {
 		package main
 		import "test"
 
-		type EmbeddedStruct struct {
-			BaseField string
-			ExtraField int
-		}
-
 		func main() {
 			// 1. 验证句柄去重 (Identity)
 			obj1 := test.GetSameObject()
@@ -42,10 +37,7 @@ func TestAdvancedFFIExecution(t *testing.T) {
 			}
 
 			// 3. 验证嵌入结构体 (Embedded)
-			// 注意：VM 侧通过 Map 模拟结构体
-			e := make(map[string]any)
-			e["BaseField"] = "from_vm"
-			e["ExtraField"] = 42
+			e := test.EmbeddedStruct{BaseField: "from_vm", ExtraField: 42}
 			
 			resE := test.EchoEmbedded(e)
 			if resE.BaseField != "from_vm" || resE.ExtraField != 42 {

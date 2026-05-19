@@ -151,9 +151,9 @@ func TestStackContextUpvalueSlotsShareCapturedCell(t *testing.T) {
 		Executor: exec,
 		Stack: &Stack{
 			Parent:    session.Stack,
-			MemoryPtr: map[string]*Var{"counter": cell},
+			MemoryPtr: map[string]*Slot{"counter": cell},
 			Frame: &SlotFrame{
-				Upvalues:     []*Var{cell},
+				Upvalues:     []*Slot{cell},
 				UpvalueNames: []string{"counter"},
 			},
 			Scope: "closure",
@@ -212,7 +212,7 @@ func TestCaptureSymbolForUpvalueForwardsSharedCellAcrossNestedClosures(t *testin
 		Stack: &Stack{
 			Parent: outer.Stack,
 			Frame: &SlotFrame{
-				Upvalues:     []*Var{cell},
+				Upvalues:     []*Slot{cell},
 				UpvalueNames: []string{"counter"},
 			},
 			Scope: "mid",
@@ -237,7 +237,7 @@ func TestCaptureSymbolForUpvalueForwardsSharedCellAcrossNestedClosures(t *testin
 		Stack: &Stack{
 			Parent: mid.Stack,
 			Frame: &SlotFrame{
-				Upvalues:     []*Var{forwarded},
+				Upvalues:     []*Slot{forwarded},
 				UpvalueNames: []string{"counter"},
 			},
 			Scope: "inner",
@@ -360,11 +360,11 @@ func TestDumpVariablesIncludesSlotFrameValues(t *testing.T) {
 func TestLookupFrameVarByNameUsesSlotIndexes(t *testing.T) {
 	frame := &SlotFrame{}
 	frame.ensureLocalSlot(2, "local")
-	frame.Locals[2] = NewInt(5)
+	frame.Locals[2] = NewSlot(MustParseRuntimeType("Int64"), NewInt(5))
 	frame.ensureUpvalueSlot(1, "captured")
-	frame.Upvalues[1] = NewInt(8)
+	frame.Upvalues[1] = NewSlot(MustParseRuntimeType("Int64"), NewInt(8))
 	frame.ReturnName = "__return__"
-	frame.Return = NewInt(13)
+	frame.Return = NewSlot(MustParseRuntimeType("Int64"), NewInt(13))
 
 	if got := lookupFrameVarByName(frame, "local"); got == nil || got.I64 != 5 {
 		t.Fatalf("unexpected local lookup result: %#v", got)
@@ -374,6 +374,25 @@ func TestLookupFrameVarByNameUsesSlotIndexes(t *testing.T) {
 	}
 	if got := lookupFrameVarByName(frame, "__return__"); got == nil || got.I64 != 13 {
 		t.Fatalf("unexpected return lookup result: %#v", got)
+	}
+}
+
+func TestMapKeysPreservePrimitiveType(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	intKey, err := exec.varToMapKey(NewInt(1))
+	if err != nil {
+		t.Fatalf("int key failed: %v", err)
+	}
+	stringKey, err := exec.varToMapKey(NewString("1"))
+	if err != nil {
+		t.Fatalf("string key failed: %v", err)
+	}
+	boolKey, err := exec.varToMapKey(NewBool(true))
+	if err != nil {
+		t.Fatalf("bool key failed: %v", err)
+	}
+	if intKey == stringKey || boolKey == stringKey || boolKey == intKey {
+		t.Fatalf("map keys should keep primitive type: int=%q string=%q bool=%q", intKey, stringKey, boolKey)
 	}
 }
 
@@ -400,8 +419,8 @@ func TestNameAPIsPreferFrameSymbols(t *testing.T) {
 	if err != nil {
 		t.Fatalf("capture by name failed: %v", err)
 	}
-	if cell == nil || cell.VType != TypeCell {
-		t.Fatalf("expected captured cell, got %#v", cell)
+	if cell == nil || cell.Value == nil || cell.Value.I64 != 21 {
+		t.Fatalf("expected captured slot, got %#v", cell)
 	}
 	if _, exists := session.Stack.MemoryPtr["value"]; exists {
 		t.Fatalf("name APIs should not recreate local MemoryPtr mirror: %#v", session.Stack.MemoryPtr["value"])
@@ -657,8 +676,8 @@ func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testi
 		t.Fatalf("unexpected wrapped member value: %#v", got)
 	}
 
-	ptr := &Var{VType: TypeHandle, Handle: 7, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewInt(3)}
-	anyPtr := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: &Var{VType: TypeCell, Ref: &Cell{Value: ptr}}}
+	ptr := &Var{VType: TypeHandle, Handle: 7, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewSlot(MustParseRuntimeType("Int64"), NewInt(3))}
+	anyPtr := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: ptr}
 	deref := &LHSDeref{Target: anyPtr}
 
 	if err := exec.assignAddress(session, deref, NewInt(11)); err != nil {

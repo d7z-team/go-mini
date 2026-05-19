@@ -196,6 +196,24 @@ p := new(Int64)
 println(*p)
 ```
 
+### 值与引用语义
+
+运行时变量统一存放在 slot 中。slot 持有声明类型，赋值时把右侧值规范化后写入 slot，而不是替换掉变量的类型身份。
+
+值语义：
+
+- primitive、`TypeBytes` 和 VM struct 按值复制。
+- struct composite literal 生成真实 VM struct，不再退化为 map。
+- struct 字段本身也是 typed slot；函数参数、返回值和 value receiver 会复制 struct 的字段 slot。
+
+引用语义：
+
+- array、map、`Ptr<T>`、`HostRef<T>`、closure、module 和 interface 内部目标仍共享底层对象。
+- `Ptr<T>` 指向 VM slot；`*p = v` 会写回目标 slot，并继续执行声明类型校验。
+- 闭包 capture 共享同一个 slot，因此 child fiber 可以修改父作用域捕获变量。
+
+map 与 struct 是不同运行时类型。map key 会保留 primitive key 类型，`Map<Int64, String>{1: "a"}` 与 `Map<String, String>{"1": "a"}` 不会在运行时混淆。
+
 ## 4.1 Go Fiber 调度语义
 
 当前并发模型只有一类 VM 原语：`go f()`。它会创建 VM 内部 fiber，但整个 VM 始终单线程执行；所谓并发只是内部 safe point 或异步 FFI completion 触发的上下文切换。
@@ -223,8 +241,6 @@ func main() {
     }
 }
 ```
-
-`time.Sleep(ns)` 会挂起当前 fiber；宿主 timer 完成后通过 FFI completion 通知 scheduler 恢复：
 
 ```go
 package main
@@ -290,7 +306,6 @@ func main() {
 
 - 没有 `chan/select` 语义
 - 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前 fiber 并在 completion 时恢复
-- `time.Sleep(ns)` 是标准库异步 FFI，不是 VM 内建调度 API
 
 ### 使用警告
 
@@ -439,7 +454,18 @@ type Calculator struct {
 
 这类会生成结构体方法路由和对应 struct schema，不属于 `ffigen:interface`。
 
-### 5.6 注册
+### 5.6 Struct ownership
+
+FFI struct schema 有两类 ownership：
+
+- `VMValue`: 普通值类型 struct。VM 可以创建 zero value、composite literal 和 `new(T)`，FFI wire 使用 struct payload 传递字段。
+- `HostOpaque`: opaque host type。VM 只能持有 `HostRef<T>`，不能创建 `T{}`、`var x T`、`new(T)`，也不能把直接包含 opaque value 的类型作为 VM 值创建。
+
+`HostOpaque` 对象只能来自 FFI 工厂函数或 FFI 返回值。例如 `sync.WaitGroup` 必须通过 `sync.NewWaitGroup()` 获得，不能写 `sync.WaitGroup{}`。
+
+`ffigen` 生成 schema 时会把普通值 struct 标记为 `VMValue`，把通过 `HostRef<T>` 暴露的宿主对象标记为 `HostOpaque`。同一个 Go 类型不能同时作为 VM value struct 和 host opaque reference 暴露。
+
+### 5.7 注册
 
 生成后直接调用 `RegisterXXX`：
 

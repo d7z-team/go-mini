@@ -549,7 +549,7 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		Executor:     e,
 		Shared:       e.shared,
 		ImportChain:  make(map[string]bool),
-		Stack:        &Stack{MemoryPtr: make(map[string]*Var), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
+		Stack:        &Stack{MemoryPtr: make(map[string]*Slot), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
 		Debugger:     debugger.GetDebugger(ctx),
 		TaskStack:    make([]Task, 0, 128),
 		ValueStack:   &ValueStack{},
@@ -611,7 +611,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 
 	// 1. Exact match (handles named types and primitives directly)
 	if val.RuntimeType().Raw.Equals(interfaceSpec) {
-		return val.Copy(), nil
+		return cloneVarForAssign(val), nil
 	}
 
 	// 2. Any penetration
@@ -620,7 +620,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 		inner = val
 	}
 	if inner.RuntimeType().Raw.Equals(interfaceSpec) {
-		return inner.Copy(), nil
+		return cloneVarForAssign(inner), nil
 	}
 
 	actualInterfaceType := interfaceSpec
@@ -662,7 +662,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 	v := &Var{
 		VType: TypeInterface,
 		Ref: &VMInterface{
-			Target: inner.Copy(),
+			Target: cloneVarForAssign(inner),
 			Spec:   spec,
 			VTable: vtable,
 		},
@@ -690,6 +690,12 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		if m, ok := val.Ref.(*VMMap); ok {
 			if v, ok := m.Load(name); ok {
 				return v, true
+			}
+		}
+	case TypeStruct:
+		if st, ok := val.Ref.(*VMStruct); ok {
+			if field, ok := st.Field(name); ok && field != nil {
+				return field.Value, true
 			}
 		}
 		tName := string(val.RawType())
@@ -1093,25 +1099,67 @@ func (e *Executor) varToMapKey(v *Var) (string, error) {
 	case TypeString:
 		return v.Str, nil
 	case TypeInt:
-		return strconv.FormatInt(v.I64, 10), nil
+		return "i:" + strconv.FormatInt(v.I64, 10), nil
 	case TypeBool:
-		return strconv.FormatBool(v.Bool), nil
+		return "b:" + strconv.FormatBool(v.Bool), nil
 	case TypeFloat:
-		return strconv.FormatFloat(v.F64, 'f', -1, 64), nil
+		return "f:" + strconv.FormatFloat(v.F64, 'f', -1, 64), nil
 	}
 	return "", fmt.Errorf("unsupported map key type: %v", v.VType)
 }
 
+func (e *Executor) varToTypedMapKey(v *Var, keyType RuntimeType) (string, error) {
+	if v == nil {
+		return "", errors.New("map key is nil")
+	}
+	switch {
+	case keyType.IsInt():
+		if v.VType == TypeString {
+			if _, err := strconv.ParseInt(v.Str, 10, 64); err != nil {
+				return "", err
+			}
+			return "i:" + v.Str, nil
+		}
+		if v.VType == TypeInt {
+			return "i:" + strconv.FormatInt(v.I64, 10), nil
+		}
+	case keyType.IsBool():
+		if v.VType == TypeString {
+			if _, err := strconv.ParseBool(v.Str); err != nil {
+				return "", err
+			}
+			return "b:" + v.Str, nil
+		}
+		if v.VType == TypeBool {
+			return "b:" + strconv.FormatBool(v.Bool), nil
+		}
+	case keyType.IsNumeric() && !keyType.IsInt():
+		if v.VType == TypeString {
+			if _, err := strconv.ParseFloat(v.Str, 64); err != nil {
+				return "", err
+			}
+			return "f:" + v.Str, nil
+		}
+		if v.VType == TypeFloat {
+			return "f:" + strconv.FormatFloat(v.F64, 'f', -1, 64), nil
+		}
+	}
+	return e.varToMapKey(v)
+}
+
 func (e *Executor) mapKeyToVar(k string, keyType RuntimeType) *Var {
 	if keyType.IsInt() {
+		k = strings.TrimPrefix(k, "i:")
 		val, _ := strconv.ParseInt(k, 10, 64)
 		return NewInt(val)
 	}
 	if keyType.IsBool() {
+		k = strings.TrimPrefix(k, "b:")
 		val, _ := strconv.ParseBool(k)
 		return NewBool(val)
 	}
 	if keyType.IsNumeric() && !keyType.IsInt() {
+		k = strings.TrimPrefix(k, "f:")
 		val, _ := strconv.ParseFloat(k, 64)
 		return NewFloat(val)
 	}
@@ -1316,7 +1364,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			elements = make([]*Var, len(rawElements))
 			for i, v := range rawElements {
 				if v != nil {
-					elements[i] = v.Copy()
+					elements[i] = cloneVarForAssign(v)
 				} else {
 					elements[i] = nil
 				}
@@ -1387,7 +1435,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				idx := e.unwrapAddressVar(session.ValueStack.Pop())
 				obj := e.unwrapAddressVar(session.ValueStack.Pop())
 				if idx != nil {
-					idx = idx.Copy()
+					idx = cloneVarForAssign(idx)
 				}
 				session.LHSStack.Push(&LHSIndex{Obj: obj, Index: idx})
 				return nil
@@ -1404,13 +1452,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				if lhsData.HasHigh {
 					high = e.unwrapAddressVar(session.ValueStack.Pop())
 					if high != nil {
-						high = high.Copy()
+						high = cloneVarForAssign(high)
 					}
 				}
 				if lhsData.HasLow {
 					low = e.unwrapAddressVar(session.ValueStack.Pop())
 					if low != nil {
-						low = low.Copy()
+						low = cloneVarForAssign(low)
 					}
 				}
 				obj := e.unwrapAddressVar(session.ValueStack.Pop())
@@ -1511,28 +1559,80 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return nil
 		}
 
-		res := make(map[string]*Var)
-		var valType RuntimeType
-		if isMap {
-			_, valType, _ = typ.GetMapKeyValueTypes()
+		if !isMap && !typ.IsEmpty() {
+			v, err := e.initializeType(session, typ, 0)
+			if err != nil {
+				return err
+			}
+			if v.VType != TypeStruct {
+				fields := make([]*Slot, len(entries))
+				byName := make(map[string]int, len(entries))
+				specFields := make([]RuntimeStructField, len(entries))
+				for i := len(entries) - 1; i >= 0; i-- {
+					val := session.ValueStack.Pop()
+					fieldName := entries[i].IdentKey
+					if fieldName == "" {
+						fieldName = strconv.Itoa(i)
+					}
+					fieldType := MustParseRuntimeType("Any")
+					if val != nil && !val.RuntimeType().IsEmpty() {
+						fieldType = val.RuntimeType()
+					}
+					fields[i] = NewSlot(fieldType, cloneVarForAssign(val))
+					byName[fieldName] = i
+					specFields[i] = RuntimeStructField{Name: fieldName, TypeInfo: fieldType}
+				}
+				v = &Var{
+					VType:    TypeStruct,
+					TypeInfo: typ,
+					Ref: &VMStruct{
+						Spec:   &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: specFields},
+						Fields: fields,
+						ByName: byName,
+					},
+				}
+				session.ValueStack.Push(v)
+				return nil
+			}
+			st := v.Ref.(*VMStruct)
+			for i := len(entries) - 1; i >= 0; i-- {
+				val := session.ValueStack.Pop()
+				fieldName := entries[i].IdentKey
+				if fieldName == "" && i < len(st.Fields) && st.Spec != nil && i < len(st.Spec.Fields) {
+					fieldName = st.Spec.Fields[i].Name
+				}
+				field, ok := st.Field(fieldName)
+				if !ok {
+					return &VMError{Message: fmt.Sprintf("unknown field %s in %s", fieldName, typ.Raw), IsPanic: true}
+				}
+				if err := session.Assign(field, val); err != nil {
+					return err
+				}
+			}
+			session.ValueStack.Push(v)
+			return nil
 		}
+
+		res := make(map[string]*Var)
+		var keyType RuntimeType
+		var valType RuntimeType
+		keyType, valType, _ = typ.GetMapKeyValueTypes()
 
 		// Values are pushed as [..., K_i, V_i]
 		// So we must pop in reverse order: V_i then K_i
 		for i := len(entries) - 1; i >= 0; i-- {
 			val := session.ValueStack.Pop()
-			if isMap {
-				val = e.normalizeTypedValue(val, valType)
-			}
+			val = e.normalizeTypedValue(val, valType)
 
 			keyName := ""
 			if entries[i].IdentKey != "" {
 				keyName = entries[i].IdentKey
 			} else if entries[i].HasExprKey {
 				keyVal := session.ValueStack.Pop()
-				keyName = keyVal.Str
-				if keyVal.VType == TypeInt {
-					keyName = strconv.FormatInt(keyVal.I64, 10)
+				var err error
+				keyName, err = e.varToTypedMapKey(keyVal, keyType)
+				if err != nil {
+					return err
 				}
 			}
 
@@ -2304,7 +2404,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		closure := &VMClosure{
 			FunctionSig:  CloneRuntimeFuncSig(data.FunctionSig),
 			BodyTasks:    data.BodyTasks,
-			UpvalueSlots: make([]*Var, len(data.CaptureRefs)),
+			UpvalueSlots: make([]*Slot, len(data.CaptureRefs)),
 			UpvalueNames: make([]string, len(data.CaptureRefs)),
 			Context:      &LexicalContext{Executor: clCtx.Executor, Shared: clCtx.Shared, Stack: clCtx.Stack},
 		}
@@ -2416,13 +2516,15 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 func (e *Executor) unwrapValue(v *Var) *Var {
 	for v != nil {
 		switch v.VType {
-		case TypeCell:
-			v = v.Ref.(*Cell).Value
 		case TypeAny:
 			if inner, ok := v.Ref.(*Var); ok {
 				v = inner
 			} else if m, ok := v.Ref.(*VMMap); ok {
 				out := &Var{VType: TypeMap, Ref: m}
+				out.SetRuntimeType(v.RuntimeType())
+				return out
+			} else if st, ok := v.Ref.(*VMStruct); ok {
+				out := &Var{VType: TypeStruct, Ref: st}
 				out.SetRuntimeType(v.RuntimeType())
 				return out
 			} else if arr, ok := v.Ref.(*VMArray); ok {
@@ -2451,19 +2553,27 @@ func (e *Executor) unwrapValue(v *Var) *Var {
 	return nil
 }
 
-func (e *Executor) vmPointerTarget(v *Var) (*Var, bool) {
+func (e *Executor) vmPointerSlot(v *Var) (*Slot, bool) {
 	if v == nil || v.VType != TypeHandle || v.Ref == nil || v.Bridge != nil {
 		return nil, false
 	}
-	target, ok := v.Ref.(*Var)
+	target, ok := v.Ref.(*Slot)
 	if !ok {
 		return nil, false
 	}
 	return target, true
 }
 
+func (e *Executor) vmPointerTarget(v *Var) (*Var, bool) {
+	slot, ok := e.vmPointerSlot(v)
+	if !ok || slot == nil {
+		return nil, false
+	}
+	return slot.Value, true
+}
+
 func (e *Executor) isVMPointer(v *Var) bool {
-	_, ok := e.vmPointerTarget(v)
+	_, ok := e.vmPointerSlot(v)
 	return ok
 }
 
@@ -2594,6 +2704,20 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return nil
 				},
 			}, nil
+		case TypeStruct:
+			st := obj.Ref.(*VMStruct)
+			field, ok := st.Field(desc.Property)
+			if !ok {
+				return nil, fmt.Errorf("unknown field %s", desc.Property)
+			}
+			return &resolvedAddress{
+				load: func() (*Var, error) {
+					return field.Value, nil
+				},
+				store: func(val *Var) error {
+					return session.Assign(field, val)
+				},
+			}, nil
 		case TypeModule:
 			mod := obj.Ref.(*VMModule)
 			if mod.Context == nil {
@@ -2631,9 +2755,8 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 				return e.dereferenceValue(target)
 			},
 			store: func(val *Var) error {
-				ref, _ := e.vmPointerTarget(target)
-				copyVarData(ref, val)
-				return nil
+				slot, _ := e.vmPointerSlot(target)
+				return session.Assign(slot, val)
 			},
 		}, nil
 	case *LHSSlice:
@@ -2759,7 +2882,7 @@ func (e *Executor) updateAddress(session *StackContext, lhs LHSValue, op string)
 	if current == nil {
 		return nil
 	}
-	next := current.Copy()
+	next := cloneVarForAssign(current)
 	if op == "++" {
 		next.I64++
 	} else {

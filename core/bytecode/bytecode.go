@@ -723,12 +723,12 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 		return "closure"
 	case runtime.TypeModule:
 		return "module"
-	case runtime.TypeCell:
-		return "cell"
 	case runtime.TypeAny:
 		return "any"
 	case runtime.TypeInterface:
 		return "interface"
+	case runtime.TypeStruct:
+		return "struct"
 	case runtime.TypeError:
 		if v.Str != "" {
 			return fmt.Sprintf("error(%q)", v.Str)

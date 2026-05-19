@@ -422,9 +422,14 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if val, ok := m.Load(property); ok {
 			return val, nil
 		}
-		// Try to look up as a method if it has a type name
+		return nil, nil
+	case TypeStruct:
+		st := obj.Ref.(*VMStruct)
+		if field, ok := st.Field(property); ok {
+			return field.Value, nil
+		}
 		tName := string(obj.RawType())
-		if tName != "" && tName != "Any" && !strings.HasPrefix(tName, "Map<") {
+		if tName != "" && tName != "Any" {
 			if methodName, ok := e.resolveMethodRoute(tName, property); ok {
 				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
 			}
@@ -700,9 +705,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			obj = e.unwrapValue(obj)
 			if obj.VType == TypeMap {
 				m := obj.Ref.(*VMMap)
-				key := args[1].Str
-				if args[1].VType == TypeInt {
-					key = strconv.FormatInt(args[1].I64, 10)
+				key, err := e.varToMapKey(args[1])
+				if err != nil {
+					return err
 				}
 				m.Delete(key)
 				session.ValueStack.Push(nil) // Void return
@@ -852,7 +857,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			res := &Var{
 				VType:  TypeHandle,
 				Handle: internalID,
-				Ref:    val, // Store the actual value in Ref for potential future dereference
+				Ref:    NewSlot(MustParseRuntimeType(innerType), val),
 			}
 			res.SetRawType("Ptr<" + innerType + ">")
 			session.ValueStack.Push(res)
@@ -1053,7 +1058,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	}
 	newStack := &Stack{
 		Parent:     root,
-		MemoryPtr:  make(map[string]*Var),
+		MemoryPtr:  make(map[string]*Slot),
 		Frame:      &SlotFrame{},
 		Scope:      name,
 		Depth:      newDepth,
@@ -1180,20 +1185,44 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 		return res, nil
 	}
 
-	// 结构体初始化
-	mData := make(map[string]*Var)
-	if sDef, ok := e.resolveStructSchema(shape.Raw); ok {
-		for _, field := range sDef.Fields {
+	if sDef, ok := e.runtimeStructSchemaForType(shape); ok {
+		fields := make([]*Slot, len(sDef.Fields))
+		byName := make(map[string]int, len(sDef.Fields))
+		for i, field := range sDef.Fields {
 			fieldVal, err := e.initializeType(ctx, field.TypeInfo, depth+1)
 			if err != nil {
 				return nil, err
 			}
-			mData[field.Name] = fieldVal
+			fields[i] = NewSlot(field.TypeInfo, fieldVal)
+			byName[field.Name] = i
 		}
+		v := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: sDef, Fields: fields, ByName: byName}}
+		v.SetRuntimeType(t)
+		return v, nil
 	}
-	v := &Var{VType: TypeMap, Ref: &VMMap{Data: mData}}
-	v.SetRuntimeType(t)
-	return v, nil
+
+	return NewVarWithRuntimeType(t, TypeAny), nil
+}
+
+func (e *Executor) runtimeStructSchemaForType(t RuntimeType) (*RuntimeStructSpec, bool) {
+	if sDef, ok := e.resolveStructSchema(t.Raw); ok {
+		return sDef, true
+	}
+	if len(t.Fields) == 0 {
+		return nil, false
+	}
+	fields := make([]RuntimeStructField, len(t.Fields))
+	byName := make(map[string]RuntimeStructField, len(t.Fields))
+	for i, field := range t.Fields {
+		fields[i] = field
+		byName[field.Name] = field
+	}
+	return &RuntimeStructSpec{
+		Spec:     t.Raw,
+		TypeInfo: t,
+		Fields:   fields,
+		ByName:   byName,
+	}, true
 }
 
 func (e *Executor) ensureRuntimeTypeCreatable(t RuntimeType) error {

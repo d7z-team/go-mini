@@ -42,12 +42,12 @@ func (v VarType) String() string {
 		return "Module"
 	case TypeClosure:
 		return "Closure"
-	case TypeCell:
-		return "Cell"
 	case TypeAny:
 		return "Any"
 	case TypeInterface:
 		return "Interface"
+	case TypeStruct:
+		return "Struct"
 	case TypeError:
 		return "Error"
 	}
@@ -105,9 +105,9 @@ const (
 	TypeHostRef // Host resource ID (uint32)
 	TypeModule  // Dynamic module object
 	TypeClosure // Anonymous function with captured environment
-	TypeCell    // Boxed variable for closure capture
 	TypeAny     // Placeholder for unknown/dynamic
 	TypeInterface
+	TypeStruct
 	TypeError
 )
 
@@ -128,7 +128,7 @@ const (
 type SharedState struct {
 	mu             sync.RWMutex
 	cond           *sync.Cond
-	globals        map[string]*Var
+	globals        map[string]*Slot
 	moduleCache    map[string]*Var
 	loadingModules map[string]bool
 	moduleWaiters  map[string][]moduleWaiter
@@ -249,9 +249,7 @@ func (s *SharedStateSnapshot) LoadingModules() map[string]bool {
 	return out
 }
 
-// Copy performs a runtime value copy of the Var shell.
-// Composite/module/closure refs remain shared; use DeepCopy for detached snapshots.
-func (v *Var) Copy() *Var {
+func cloneVarForAssign(v *Var) *Var {
 	if v == nil {
 		return nil
 	}
@@ -261,27 +259,27 @@ func (v *Var) Copy() *Var {
 		I64:      v.I64,
 		F64:      v.F64,
 		Str:      v.Str,
+		B:        v.B,
 		Bool:     v.Bool,
 		Handle:   v.Handle,
 		Bridge:   v.Bridge,
 		Ref:      v.Ref, // 共享内部引用
 	}
-	if v.B != nil {
-		res.B = make([]byte, len(v.B))
-		copy(res.B, v.B)
-	}
-	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
-	if (v.VType == TypeHandle || v.VType == TypeHostRef) && v.Handle != 0 && v.Ref == nil {
-		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
-		h := NewVMHandle(v.Handle, v.Bridge)
-		res.Ref = h
-	}
 	if v.VType == TypeInterface {
 		if inter, ok := v.Ref.(*VMInterface); ok {
-			res.Ref = &VMInterface{
-				Target: inter.Target.Copy(),
-				Spec:   inter.Spec,
+			vtable := make([]*Var, len(inter.VTable))
+			for i, item := range inter.VTable {
+				vtable[i] = cloneVarForAssign(item)
 			}
+			res.Ref = &VMInterface{
+				Target: cloneVarForAssign(inter.Target),
+				Spec:   inter.Spec,
+				VTable: vtable,
+			}
+		}
+	} else if v.VType == TypeStruct {
+		if st, ok := v.Ref.(*VMStruct); ok {
+			res.Ref = st.CloneForAssign()
 		}
 	}
 
@@ -333,6 +331,10 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			cloned[k] = item.deepCopy(seen)
 		}
 		res.Ref = &VMMap{Data: cloned}
+	case *VMStruct:
+		res.Ref = ref.DeepCopy(seen)
+	case *Slot:
+		res.Ref = ref.DeepCopy(seen)
 	case *VMModule:
 		cloned := make(map[string]*Var, len(ref.Data))
 		for k, item := range ref.Data {
@@ -349,8 +351,6 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			Spec:   CloneRuntimeInterfaceSpec(ref.Spec),
 			VTable: vtable,
 		}
-	case *Cell:
-		res.Ref = &Cell{Value: ref.Value.deepCopy(seen)}
 	case *VMError:
 		frames := append([]StackFrame(nil), ref.Frames...)
 		res.Ref = &VMError{
@@ -363,9 +363,9 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			Bridge:  ref.Bridge,
 		}
 	case *VMClosure:
-		upvalues := make([]*Var, len(ref.UpvalueSlots))
+		upvalues := make([]*Slot, len(ref.UpvalueSlots))
 		for i, item := range ref.UpvalueSlots {
-			upvalues[i] = item.deepCopy(seen)
+			upvalues[i] = item.DeepCopy(seen)
 		}
 		res.Ref = &VMClosure{
 			FunctionSig:  CloneRuntimeFuncSig(ref.FunctionSig),
@@ -375,7 +375,7 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			Context:      nil,
 		}
 	case *VMHandle:
-		res.Ref = &VMHandle{ID: ref.ID, Bridge: ref.Bridge}
+		res.Ref = ref
 	default:
 		res.Ref = ref
 	}
@@ -384,7 +384,7 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 
 func NewSharedState() *SharedState {
 	state := &SharedState{
-		globals:        make(map[string]*Var),
+		globals:        make(map[string]*Slot),
 		moduleCache:    make(map[string]*Var),
 		loadingModules: make(map[string]bool),
 		moduleWaiters:  make(map[string][]moduleWaiter),
@@ -441,14 +441,10 @@ func (m *VMModule) Snapshot() map[string]*Var {
 	return out
 }
 
-type Cell struct {
-	Value *Var
-}
-
 type VMClosure struct {
 	FunctionSig  *RuntimeFuncSig
 	BodyTasks    []Task
-	UpvalueSlots []*Var
+	UpvalueSlots []*Slot
 	UpvalueNames []string
 	Context      *LexicalContext // 闭包所属的词法上下文
 }
@@ -468,9 +464,92 @@ type Var struct {
 	Bool     bool
 	Handle   uint32
 	Bridge   ffigo.FFIBridge
-	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMHandle, *VMModule, *VMClosure, *Cell
+	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMStruct, *VMHandle, *Slot, *VMModule, *VMClosure, *VMInterface
 
 	stack weak.Pointer[Stack]
+}
+
+type Slot struct {
+	Decl  RuntimeType
+	Value *Var
+}
+
+func NewSlot(decl RuntimeType, value *Var) *Slot {
+	if decl.IsEmpty() {
+		if value != nil && !value.RuntimeType().IsEmpty() {
+			decl = value.RuntimeType()
+		} else {
+			decl = MustParseRuntimeType("Any")
+		}
+	}
+	return &Slot{Decl: decl, Value: value}
+}
+
+func (s *Slot) Load() *Var {
+	if s == nil {
+		return nil
+	}
+	return s.Value
+}
+
+func (s *Slot) DeepCopy(seen map[*Var]*Var) *Slot {
+	if s == nil {
+		return nil
+	}
+	var v *Var
+	if s.Value != nil {
+		v = s.Value.deepCopy(seen)
+	}
+	return &Slot{Decl: s.Decl, Value: v}
+}
+
+type VMStruct struct {
+	Spec   *RuntimeStructSpec
+	Fields []*Slot
+	ByName map[string]int
+}
+
+func (s *VMStruct) Field(name string) (*Slot, bool) {
+	if s == nil {
+		return nil, false
+	}
+	idx, ok := s.ByName[name]
+	if !ok || idx < 0 || idx >= len(s.Fields) {
+		return nil, false
+	}
+	return s.Fields[idx], true
+}
+
+func (s *VMStruct) CloneForAssign() *VMStruct {
+	if s == nil {
+		return nil
+	}
+	fields := make([]*Slot, len(s.Fields))
+	for i, field := range s.Fields {
+		if field != nil {
+			fields[i] = &Slot{Decl: field.Decl, Value: cloneVarForAssign(field.Value)}
+		}
+	}
+	byName := make(map[string]int, len(s.ByName))
+	for k, v := range s.ByName {
+		byName[k] = v
+	}
+	return &VMStruct{Spec: s.Spec, Fields: fields, ByName: byName}
+}
+
+func (s *VMStruct) DeepCopy(seen map[*Var]*Var) *VMStruct {
+	if s == nil {
+		return nil
+	}
+	fields := make([]*Slot, len(s.Fields))
+	for i, field := range s.Fields {
+		fields[i] = field.DeepCopy(seen)
+	}
+	byName := make(map[string]int, len(s.ByName))
+	for k, v := range s.ByName {
+		byName[k] = v
+	}
+	return &VMStruct{Spec: s.Spec, Fields: fields, ByName: byName}
 }
 
 func (v *Var) RuntimeType() RuntimeType {
@@ -801,6 +880,10 @@ func (v *Var) String() string {
 		if m, ok := v.Ref.(*VMMap); ok {
 			return fmt.Sprintf("map(%d)", m.Len())
 		}
+	case TypeStruct:
+		if st, ok := v.Ref.(*VMStruct); ok {
+			return fmt.Sprintf("struct(%d)", len(st.Fields))
+		}
 	case TypeModule:
 		if m, ok := v.Ref.(*VMModule); ok {
 			return fmt.Sprintf("module(%s)", m.Name)
@@ -852,6 +935,18 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 			res := make(map[string]interface{})
 			for k, val := range m.Snapshot() {
 				res[k] = val.interfaceWithDepth(depth + 1)
+			}
+			return res
+		}
+	case TypeStruct:
+		if st, ok := v.Ref.(*VMStruct); ok {
+			res := make(map[string]interface{}, len(st.Fields))
+			if st.Spec != nil {
+				for i, field := range st.Spec.Fields {
+					if i < len(st.Fields) && st.Fields[i] != nil {
+						res[field.Name] = st.Fields[i].Value.interfaceWithDepth(depth + 1)
+					}
+				}
 			}
 			return res
 		}
@@ -907,19 +1002,19 @@ func NewBytes(v []byte) *Var {
 }
 
 type SlotFrame struct {
-	Locals       []*Var
+	Locals       []*Slot
 	LocalNames   []string
 	LocalIndex   map[string]int
-	Upvalues     []*Var
+	Upvalues     []*Slot
 	UpvalueNames []string
 	UpvalueIndex map[string]int
-	Return       *Var
+	Return       *Slot
 	ReturnName   string
 }
 
 type Stack struct {
 	Parent    *Stack
-	MemoryPtr map[string]*Var
+	MemoryPtr map[string]*Slot
 	Frame     *SlotFrame
 	FrameBase *SlotFrame
 	FrameSync int
@@ -1091,8 +1186,10 @@ func (s *SharedState) Snapshot() *SharedStateSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	globals := make(map[string]*Var, len(s.globals))
-	for k, v := range s.globals {
-		globals[k] = v.DeepCopy()
+	for k, slot := range s.globals {
+		if slot != nil && slot.Value != nil {
+			globals[k] = slot.Value.DeepCopy()
+		}
 	}
 	moduleCache := make(map[string]*Var, len(s.moduleCache))
 	for k, v := range s.moduleCache {
@@ -1117,7 +1214,10 @@ func (s *SharedState) LoadGlobal(name string) (*Var, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.globals[name]
-	return v, ok
+	if v == nil {
+		return nil, ok
+	}
+	return v.Value, ok
 }
 
 func (s *SharedState) HasGlobal(name string) bool {
@@ -1137,13 +1237,13 @@ func (s *SharedState) StoreGlobal(name string, v *Var) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if v == nil {
-		s.globals[name] = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
+		s.globals[name] = NewSlot(MustParseRuntimeType("Any"), NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny))
 		return
 	}
-	s.globals[name] = v
+	s.globals[name] = NewSlot(v.RuntimeType(), v)
 }
 
-func (s *SharedState) UpdateGlobal(name string, fn func(current *Var, exists bool) (*Var, error)) error {
+func (s *SharedState) UpdateGlobal(name string, fn func(current *Slot, exists bool) (*Slot, error)) error {
 	if s == nil {
 		return nil
 	}
@@ -1162,23 +1262,14 @@ func (s *SharedState) UpdateGlobal(name string, fn func(current *Var, exists boo
 	return nil
 }
 
-func (s *SharedState) CaptureGlobalCell(name string) (*Var, bool) {
+func (s *SharedState) CaptureGlobalSlot(name string) (*Slot, bool) {
 	if s == nil {
 		return nil, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, ok := s.globals[name]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	if v.VType != TypeCell {
-		cellValue := v.Copy()
-		v.VType = TypeCell
-		v.Ref = &Cell{Value: cellValue}
-		v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
-	}
-	return v, true
+	return v, ok
 }
 
 func (s *SharedState) ApplyEnv(env map[string]*Var) {
@@ -1188,7 +1279,7 @@ func (s *SharedState) ApplyEnv(env map[string]*Var) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for k, v := range env {
-		s.globals[k] = v.Copy()
+		s.globals[k] = NewSlot(v.RuntimeType(), cloneVarForAssign(v))
 	}
 }
 
@@ -1352,8 +1443,8 @@ func (s *Stack) DumpVariables() map[string]string {
 				if _, exists := result[name]; exists {
 					continue
 				}
-				if i < len(curr.Frame.Locals) && curr.Frame.Locals[i] != nil {
-					result[name] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Locals[i]).Interface())
+				if i < len(curr.Frame.Locals) && curr.Frame.Locals[i] != nil && curr.Frame.Locals[i].Value != nil {
+					result[name] = fmt.Sprintf("%v", curr.Frame.Locals[i].Value.Interface())
 				}
 			}
 			for i, name := range curr.Frame.UpvalueNames {
@@ -1363,19 +1454,19 @@ func (s *Stack) DumpVariables() map[string]string {
 				if _, exists := result[name]; exists {
 					continue
 				}
-				if i < len(curr.Frame.Upvalues) && curr.Frame.Upvalues[i] != nil {
-					result[name] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Upvalues[i]).Interface())
+				if i < len(curr.Frame.Upvalues) && curr.Frame.Upvalues[i] != nil && curr.Frame.Upvalues[i].Value != nil {
+					result[name] = fmt.Sprintf("%v", curr.Frame.Upvalues[i].Value.Interface())
 				}
 			}
-			if curr.Frame.Return != nil && curr.Frame.ReturnName != "" {
+			if curr.Frame.Return != nil && curr.Frame.ReturnName != "" && curr.Frame.Return.Value != nil {
 				if _, exists := result[curr.Frame.ReturnName]; !exists {
-					result[curr.Frame.ReturnName] = fmt.Sprintf("%v", unwrapCell(curr.Frame.Return).Interface())
+					result[curr.Frame.ReturnName] = fmt.Sprintf("%v", curr.Frame.Return.Value.Interface())
 				}
 			}
 		}
-		for name, variable := range curr.MemoryPtr {
-			if _, exists := result[name]; !exists {
-				result[name] = fmt.Sprintf("%v", variable.Interface())
+		for name, slot := range curr.MemoryPtr {
+			if _, exists := result[name]; !exists && slot != nil && slot.Value != nil {
+				result[name] = fmt.Sprintf("%v", slot.Value.Interface())
 			}
 		}
 		curr = curr.Parent
@@ -1421,14 +1512,15 @@ func (f *SlotFrame) ensureUpvalueSlot(slot int, name string) {
 	}
 }
 
-func unwrapCell(v *Var) *Var {
-	if v != nil && v.VType == TypeCell {
-		return v.Ref.(*Cell).Value
+func lookupFrameVarByName(frame *SlotFrame, name string) *Var {
+	slot := lookupFrameSlotByName(frame, name)
+	if slot == nil {
+		return nil
 	}
-	return v
+	return slot.Value
 }
 
-func lookupFrameVarByName(frame *SlotFrame, name string) *Var {
+func lookupFrameSlotByName(frame *SlotFrame, name string) *Slot {
 	if frame == nil || name == "" {
 		return nil
 	}
@@ -1457,21 +1549,17 @@ func lookupFrameSymbolByName(frame *SlotFrame, name string) (SymbolRef, bool) {
 	return SymbolRef{}, false
 }
 
-func resetVarToAny(v *Var) {
-	if v == nil {
-		return
-	}
-	v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-}
-
 func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variable string) (*Var, error) {
 	if variable == "nil" {
 		return nil, nil
 	}
 	s := stack
 	for s != nil {
-		if v, ok := s.MemoryPtr[variable]; ok {
-			return v, nil
+		if slot, ok := s.MemoryPtr[variable]; ok {
+			if slot == nil {
+				return nil, nil
+			}
+			return slot.Value, nil
 		}
 		if v := lookupFrameVarByName(s.Frame, variable); v != nil {
 			return v, nil
@@ -1518,29 +1606,9 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 			ctx := &StackContext{Executor: exec, Shared: shared, Stack: stack}
 			return ctx.StoreSymbol(sym, expr)
 		}
-		if v, ok := s.MemoryPtr[variable]; ok {
-			if v != nil && v.VType == TypeCell {
-				v = v.Ref.(*Cell).Value
-			}
-			if expr == nil {
-				if v != nil {
-					v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-					return nil
-				}
-				break
-			}
-			if v.RuntimeType().IsAny() && !expr.RuntimeType().IsAny() {
-				v.TypeInfo = expr.RuntimeType()
-			}
-			if v.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
-				wrapped, err := exec.CheckSatisfaction(expr, string(v.RawType()))
-				if err != nil {
-					return err
-				}
-				expr = wrapped
-			}
-			copyVarData(v, expr)
-			return nil
+		if slot, ok := s.MemoryPtr[variable]; ok {
+			ctx := &StackContext{Executor: exec, Shared: shared, Stack: s}
+			return ctx.Assign(slot, expr)
 		}
 		s = s.Parent
 	}
@@ -1566,7 +1634,7 @@ func (ctx *StackContext) ScopeApply(scope string) {
 	}
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
-		MemoryPtr: make(map[string]*Var),
+		MemoryPtr: make(map[string]*Slot),
 		Frame:     frame,
 		FrameBase: frame,
 		Scope:     scope,
@@ -1585,9 +1653,9 @@ func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
 		return &SlotFrame{}
 	}
 	cloned := &SlotFrame{
-		Locals:       append([]*Var(nil), frame.Locals...),
+		Locals:       append([]*Slot(nil), frame.Locals...),
 		LocalNames:   append([]string(nil), frame.LocalNames...),
-		Upvalues:     append([]*Var(nil), frame.Upvalues...),
+		Upvalues:     append([]*Slot(nil), frame.Upvalues...),
 		UpvalueNames: append([]string(nil), frame.UpvalueNames...),
 		Return:       frame.Return,
 		ReturnName:   frame.ReturnName,
@@ -1624,7 +1692,7 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 	}
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
-		MemoryPtr: make(map[string]*Var),
+		MemoryPtr: make(map[string]*Slot),
 		Frame:     clonedFrame,
 		FrameBase: parentFrame,
 		FrameSync: syncLimit,
@@ -1657,16 +1725,10 @@ func (ctx *StackContext) SyncLoopScope() {
 		base.ensureLocalSlot(i, "")
 		dst := base.Locals[i]
 		if dst == nil {
-			base.Locals[i] = src.Copy()
+			base.Locals[i] = src
 			continue
 		}
-		if src.VType == TypeCell {
-			src = src.Ref.(*Cell).Value
-		}
-		if dst.VType == TypeCell {
-			dst = dst.Ref.(*Cell).Value
-		}
-		copyVarData(dst, src)
+		_ = ctx.Assign(dst, src.Value)
 	}
 }
 
@@ -1691,10 +1753,10 @@ func (ctx *StackContext) Store(variable string, expr *Var) error {
 
 func (ctx *StackContext) AddVariable(name string, v *Var) error {
 	if ctx.Stack != nil && ctx.Stack.Depth == 1 && ctx.Stack.Scope == "global" && ctx.Shared != nil {
-		ctx.Shared.StoreGlobal(name, v.Copy())
+		ctx.Shared.StoreGlobal(name, cloneVarForAssign(v))
 		return nil
 	}
-	ctx.Stack.MemoryPtr[name] = v.Copy()
+	ctx.Stack.MemoryPtr[name] = NewSlot(v.RuntimeType(), cloneVarForAssign(v))
 	return nil
 }
 
@@ -1716,7 +1778,7 @@ func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind RuntimeType) error {
 	} else {
 		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
-	ctx.Stack.Frame.Locals[sym.Slot] = v
+	ctx.Stack.Frame.Locals[sym.Slot] = NewSlot(kind, v)
 	return nil
 }
 
@@ -1733,7 +1795,7 @@ func (ctx *StackContext) Load(name string) (*Var, error) {
 	if err != nil {
 		return nil, err
 	}
-	return unwrapCell(v), nil
+	return v, nil
 }
 
 func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
@@ -1741,19 +1803,19 @@ func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
 	case SymbolLocal:
 		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 && sym.Slot < len(ctx.Stack.Frame.Locals) {
 			if v := ctx.Stack.Frame.Locals[sym.Slot]; v != nil {
-				return unwrapCell(v), nil
+				return v.Value, nil
 			}
 		}
 	case SymbolUpvalue:
 		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 && sym.Slot < len(ctx.Stack.Frame.Upvalues) {
 			if v := ctx.Stack.Frame.Upvalues[sym.Slot]; v != nil {
-				return unwrapCell(v), nil
+				return v.Value, nil
 			}
 		}
 	case SymbolGlobal:
 		if ctx.Shared != nil {
 			if v, ok := ctx.Shared.LoadGlobal(sym.Name); ok {
-				return unwrapCell(v), nil
+				return v, nil
 			}
 		}
 	case SymbolBuiltin, SymbolUnknown:
@@ -1761,7 +1823,7 @@ func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
 	return ctx.Load(sym.Name)
 }
 
-func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
+func (ctx *StackContext) CaptureVar(name string) (*Slot, error) {
 	if ctx.Stack != nil {
 		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
 			return ctx.CaptureSymbol(sym)
@@ -1771,23 +1833,17 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 	for s != nil {
 		v, ok := s.MemoryPtr[name]
 		if !ok {
-			v = lookupFrameVarByName(s.Frame, name)
+			v = lookupFrameSlotByName(s.Frame, name)
 			ok = v != nil
 		}
 		if ok {
-			if v != nil && v.VType != TypeCell {
-				cellValue := v.Copy()
-				v.VType = TypeCell
-				v.Ref = &Cell{Value: cellValue}
-				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
-			}
 			return v, nil
 		}
 		s = s.Parent
 	}
 
 	if ctx.Shared != nil {
-		if v, ok := ctx.Shared.CaptureGlobalCell(name); ok {
+		if v, ok := ctx.Shared.CaptureGlobalSlot(name); ok {
 			return v, nil
 		}
 	}
@@ -1800,7 +1856,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 
 		// 1. 尝试查找脚本定义的函数
 		if fn, ok := exec.functions[name]; ok {
-			return &Var{
+			return NewSlot(MustParseRuntimeType(ast.TypeClosure), &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
 					FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
@@ -1808,23 +1864,23 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 					Context:     &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
-			}, nil
+			}), nil
 		}
 
 		// 2. 尝试查找 FFI 路由
 		if route, ok := exec.routes[name]; ok {
-			return &Var{
+			return NewSlot(MustParseRuntimeType(ast.TypeClosure), &Var{
 				VType:    TypeAny,
 				Ref:      route,
 				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
-			}, nil
+			}), nil
 		}
 	}
 
 	return nil, fmt.Errorf("undefined capture: %s", name)
 }
 
-func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
+func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Slot, error) {
 	switch sym.Kind {
 	case SymbolLocal:
 		if ctx.Stack != nil && ctx.Stack.Frame != nil && sym.Slot >= 0 {
@@ -1832,12 +1888,6 @@ func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
 			v := ctx.Stack.Frame.Locals[sym.Slot]
 			if v == nil {
 				return nil, fmt.Errorf("undefined local capture: %s", sym.Name)
-			}
-			if v.VType != TypeCell {
-				cellValue := v.Copy()
-				v.VType = TypeCell
-				v.Ref = &Cell{Value: cellValue}
-				v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge = 0, 0, "", nil, false, 0, nil
 			}
 			return v, nil
 		}
@@ -1850,7 +1900,7 @@ func (ctx *StackContext) CaptureSymbol(sym SymbolRef) (*Var, error) {
 		}
 	case SymbolGlobal:
 		if ctx.Shared != nil {
-			if v, ok := ctx.Shared.CaptureGlobalCell(sym.Name); ok {
+			if v, ok := ctx.Shared.CaptureGlobalSlot(sym.Name); ok {
 				return v, nil
 			}
 		}
@@ -1903,7 +1953,7 @@ func (ctx *StackContext) NewVar(name string, kind RuntimeType) error {
 		ctx.Shared.StoreGlobal(name, v)
 		return nil
 	}
-	ctx.Stack.MemoryPtr[name] = v
+	ctx.Stack.MemoryPtr[name] = NewSlot(kind, v)
 	return nil
 }
 
@@ -1927,14 +1977,14 @@ func (ctx *StackContext) InitReturn(kind RuntimeType) error {
 	} else {
 		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
-	ctx.Stack.Frame.Return = v
+	ctx.Stack.Frame.Return = NewSlot(kind, v)
 	ctx.Stack.Frame.ReturnName = "__return__"
 	return nil
 }
 
 func (ctx *StackContext) LoadReturn() (*Var, error) {
 	if ctx.Stack != nil && ctx.Stack.Frame != nil && ctx.Stack.Frame.Return != nil {
-		return unwrapCell(ctx.Stack.Frame.Return), nil
+		return ctx.Stack.Frame.Return.Value, nil
 	}
 	return nil, errors.New("missing return slot")
 }
@@ -1943,30 +1993,89 @@ func (ctx *StackContext) StoreReturn(expr *Var) error {
 	if ctx.Stack == nil || ctx.Stack.Frame == nil || ctx.Stack.Frame.Return == nil {
 		return errors.New("missing return slot")
 	}
-	v := ctx.Stack.Frame.Return
-	if v.VType == TypeCell {
-		v = v.Ref.(*Cell).Value
+	return ctx.Assign(ctx.Stack.Frame.Return, expr)
+}
+
+func (ctx *StackContext) Assign(slot *Slot, expr *Var) error {
+	if slot == nil {
+		return errors.New("missing assignment slot")
 	}
-	if expr == nil {
-		v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-		return nil
+	value, err := ctx.prepareAssignedValue(slot.Decl, expr)
+	if err != nil {
+		return err
 	}
-	copyVarData(v, expr)
+	slot.Value = value
 	return nil
 }
 
-func (ctx *StackContext) coerceAssignedValue(target, expr *Var) (*Var, error) {
-	if target == nil || expr == nil {
-		return expr, nil
-	}
-	if target.RuntimeType().IsInterface() && !expr.RuntimeType().IsInterface() {
-		wrapped, err := ctx.Executor.CheckSatisfaction(expr, string(target.RawType()))
-		if err != nil {
-			return nil, err
+func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*Var, error) {
+	if target.IsEmpty() {
+		if expr != nil && !expr.RuntimeType().IsEmpty() {
+			target = expr.RuntimeType()
+		} else {
+			target = MustParseRuntimeType("Any")
 		}
-		return wrapped, nil
 	}
-	return expr, nil
+	if expr == nil {
+		return nilValueForType(target)
+	}
+	if target.IsAny() {
+		return cloneVarForAssign(expr), nil
+	}
+	if target.IsInterface() {
+		if ctx.Executor == nil {
+			return nil, fmt.Errorf("missing executor for interface assignment to %s", target.Raw)
+		}
+		if expr.RuntimeType().IsInterface() {
+			if expr.RawType().Equals(target.Raw) {
+				return cloneVarForAssign(expr), nil
+			}
+			if inter, ok := expr.Ref.(*VMInterface); ok && inter.Target != nil {
+				return ctx.Executor.CheckSatisfaction(inter.Target, string(target.Raw))
+			}
+		}
+		return ctx.Executor.CheckSatisfaction(expr, string(target.Raw))
+	}
+	value := cloneVarForAssign(expr)
+	if value != nil {
+		value.SetRuntimeType(target)
+	}
+	return value, nil
+}
+
+func nilValueForType(target RuntimeType) (*Var, error) {
+	switch {
+	case target.IsAny():
+		return NewVarWithRuntimeType(target, TypeAny), nil
+	case target.IsInterface():
+		return NewVarWithRuntimeType(target, TypeInterface), nil
+	case target.IsPtr():
+		return NewVarWithRuntimeType(target, TypeHandle), nil
+	case target.IsHostRef():
+		return NewVarWithRuntimeType(target, TypeHostRef), nil
+	case target.IsArray():
+		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: nil}}, nil
+	case target.IsMap():
+		return &Var{TypeInfo: target, VType: TypeMap, Ref: &VMMap{Data: nil}}, nil
+	case target.Raw == "TypeBytes":
+		return &Var{TypeInfo: target, VType: TypeBytes}, nil
+	default:
+		return nil, fmt.Errorf("nil is not assignable to %s", target.Raw)
+	}
+}
+
+func newSlotForExpr(expr *Var) *Slot {
+	if expr == nil {
+		return NewSlot(MustParseRuntimeType("Any"), nil)
+	}
+	return NewSlot(expr.RuntimeType(), nil)
+}
+
+func (ctx *StackContext) storeSlot(slot **Slot, expr *Var) error {
+	if *slot == nil {
+		*slot = newSlotForExpr(expr)
+	}
+	return ctx.Assign(*slot, expr)
 }
 
 func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
@@ -1979,80 +2088,21 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			ctx.Stack.Frame = &SlotFrame{}
 		}
 		ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
-		v := ctx.Stack.Frame.Locals[sym.Slot]
-		if v == nil {
-			if expr == nil {
-				v = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
-			} else {
-				v = expr.Copy()
-			}
-			ctx.Stack.Frame.Locals[sym.Slot] = v
-			return nil
-		}
-		if v.VType == TypeCell {
-			v = v.Ref.(*Cell).Value
-		}
-		if expr == nil {
-			v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-			return nil
-		}
-		var err error
-		expr, err = ctx.coerceAssignedValue(v, expr)
-		if err != nil {
-			return err
-		}
-		copyVarData(v, expr)
-		return nil
+		return ctx.storeSlot(&ctx.Stack.Frame.Locals[sym.Slot], expr)
 	case SymbolUpvalue:
 		if ctx.Stack != nil && ctx.Stack.Frame != nil {
 			ctx.Stack.Frame.ensureUpvalueSlot(sym.Slot, sym.Name)
-			v := ctx.Stack.Frame.Upvalues[sym.Slot]
-			if v == nil {
-				if expr == nil {
-					v = NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny)
-				} else {
-					v = expr.Copy()
-				}
-				ctx.Stack.Frame.Upvalues[sym.Slot] = v
-				return nil
-			}
-			if v.VType == TypeCell {
-				v = v.Ref.(*Cell).Value
-			}
-			if expr == nil {
-				v.TypeInfo, v.VType, v.I64, v.F64, v.Str, v.B, v.Bool, v.Handle, v.Bridge, v.Ref = MustParseRuntimeType("Any"), TypeAny, 0, 0, "", nil, false, 0, nil, nil
-				return nil
-			}
-			var err error
-			expr, err = ctx.coerceAssignedValue(v, expr)
-			if err != nil {
-				return err
-			}
-			copyVarData(v, expr)
-			return nil
+			return ctx.storeSlot(&ctx.Stack.Frame.Upvalues[sym.Slot], expr)
 		}
 	case SymbolGlobal:
 		if ctx.Shared != nil {
-			return ctx.Shared.UpdateGlobal(sym.Name, func(current *Var, exists bool) (*Var, error) {
+			return ctx.Shared.UpdateGlobal(sym.Name, func(current *Slot, exists bool) (*Slot, error) {
 				if !exists || current == nil {
-					if expr == nil {
-						return NewVarWithRuntimeType(MustParseRuntimeType("Any"), TypeAny), nil
-					}
-					return expr.Copy(), nil
+					current = newSlotForExpr(expr)
 				}
-				target := current
-				if target.VType == TypeCell {
-					target = target.Ref.(*Cell).Value
-				}
-				if expr == nil {
-					resetVarToAny(target)
-					return current, nil
-				}
-				coerced, err := ctx.coerceAssignedValue(target, expr)
-				if err != nil {
+				if err := ctx.Assign(current, expr); err != nil {
 					return nil, err
 				}
-				copyVarData(target, coerced)
 				return current, nil
 			})
 		}
@@ -2070,21 +2120,6 @@ func (ctx *StackContext) WithFuncScope(name string, exec func(*Stack, *StackCont
 	ctx.ScopeApply(name)
 	defer func() { ctx.Stack = old }()
 	return exec(old, ctx)
-}
-
-func copyVarData(dest, src *Var) {
-	// CRITICAL: Type metadata is shared and can be modified by the script.
-	// FFI bridges MUST perform strict VType and content assertions instead of trusting Type.
-	dest.TypeInfo = src.TypeInfo
-	dest.VType = src.VType
-	dest.I64 = src.I64
-	dest.F64 = src.F64
-	dest.Str = src.Str
-	dest.B = src.B
-	dest.Bool = src.Bool
-	dest.Handle = src.Handle
-	dest.Bridge = src.Bridge
-	dest.Ref = src.Ref
 }
 
 func (ctx *StackContext) GenerateStackTrace(current *Task) []StackFrame {

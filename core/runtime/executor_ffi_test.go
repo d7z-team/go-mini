@@ -29,12 +29,16 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec.metadata.registerStructSchema(schema.Name, schema)
 
 	v := &Var{
-		VType:    TypeMap,
+		VType:    TypeStruct,
 		TypeInfo: MustParseRuntimeType("demo.Point"),
-		Ref: &VMMap{Data: map[string]*Var{
-			"Y": NewInt(20),
-			"X": NewInt(10),
-		}},
+		Ref: &VMStruct{
+			Spec: schema,
+			Fields: []*Slot{
+				NewSlot(MustParseRuntimeType("Int64"), NewInt(10)),
+				NewSlot(MustParseRuntimeType("Int64"), NewInt(20)),
+			},
+			ByName: map[string]int{"X": 0, "Y": 1},
+		},
 	}
 
 	buf := ffigo.GetBuffer()
@@ -61,8 +65,8 @@ func TestToVarDecodesPointerAndStructAnyValues(t *testing.T) {
 	if ptrVal == nil || ptrVal.VType != TypeHandle {
 		t.Fatalf("expected handle-like pointer, got %#v", ptrVal)
 	}
-	inner, ok := ptrVal.Ref.(*Var)
-	if !ok || inner.VType != TypeInt || inner.I64 != 7 {
+	slot, ok := ptrVal.Ref.(*Slot)
+	if !ok || slot.Value == nil || slot.Value.VType != TypeInt || slot.Value.I64 != 7 {
 		t.Fatalf("unexpected pointer payload: %#v", ptrVal.Ref)
 	}
 	if ptrVal.Bridge != nil {
@@ -73,11 +77,13 @@ func TestToVarDecodesPointerAndStructAnyValues(t *testing.T) {
 		{Name: "Msg", Value: "ok"},
 		{Name: "Count", Value: int64(2)},
 	}}, nil)
-	if structVal == nil || structVal.VType != TypeMap {
-		t.Fatalf("expected map-backed struct, got %#v", structVal)
+	if structVal == nil || structVal.VType != TypeStruct {
+		t.Fatalf("expected VM struct, got %#v", structVal)
 	}
-	data := structVal.Ref.(*VMMap).Data
-	if data["Msg"].Str != "ok" || data["Count"].I64 != 2 {
+	data := structVal.Ref.(*VMStruct)
+	msg, _ := data.Field("Msg")
+	count, _ := data.Field("Count")
+	if msg.Value.Str != "ok" || count.Value.I64 != 2 {
 		t.Fatalf("unexpected decoded struct data: %#v", data)
 	}
 }
