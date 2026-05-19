@@ -38,3 +38,86 @@ func TestShadowingInDefine(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestForInitShortDeclShadowsOuterVariable(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	func main() {
+		i := 100
+		sum := 0
+		for i := 0; i < 4; i++ {
+			sum = sum + i
+		}
+		if sum != 6 {
+			panic("loop sum mismatch")
+		}
+		if i != 100 {
+			panic("outer variable should not be overwritten by for init")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRangeShortDeclShadowsOuterVariable(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	func main() {
+		i := 100
+		sum := 0
+		for i := range []Int64{10, 20, 30} {
+			sum = sum + i
+		}
+		if sum != 3 {
+			panic("range index sum mismatch")
+		}
+		if i != 100 {
+			panic("outer variable should not be overwritten by range short declaration")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRangeAssignUsesExistingVariables(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	func main() {
+		i := -1
+		v := -1
+		for i, v = range []Int64{10, 20, 30} {
+		}
+		if i != 2 {
+			panic("range index assignment failed")
+		}
+		if v != 30 {
+			panic("range value assignment failed")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}

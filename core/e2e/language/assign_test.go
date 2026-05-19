@@ -231,4 +231,27 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		}
 		`, "undefined identifier in assignment: page")
 	})
+
+	t.Run("ForInitShortDeclDoesNotLeak", func(t *testing.T) {
+		requireCompileErrorContains(t, executor, `
+		package main
+		func main() {
+			for i := 0; i < 3; i++ {
+				_ = i
+			}
+			i = 3
+		}
+		`, "undefined identifier in assignment: i")
+	})
+
+	t.Run("RangeAssignRequiresExistingVariables", func(t *testing.T) {
+		requireCompileErrorContains(t, executor, `
+		package main
+		func main() {
+			for i = range []Int64{1, 2, 3} {
+				_ = i
+			}
+		}
+		`, "undefined identifier in assignment: i")
+	})
 }

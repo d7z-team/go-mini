@@ -737,46 +737,46 @@ func (f *ForStmt) GetBase() *BaseNode { return &f.BaseNode }
 func (f *ForStmt) stmtNode()          {}
 
 func (f *ForStmt) Check(ctx *SemanticContext) error {
-	semCtx := ctx.WithNode(f)
+	loopCtx := ctx.Child(f)
 	var hasError bool
 
 	if f.Init != nil {
-		if err := f.Init.Check(semCtx); err != nil {
+		if err := f.Init.Check(loopCtx); err != nil {
 			hasError = true
 		}
 	}
 
 	if f.Cond != nil {
-		logCount := semCtx.LogCount()
-		if err := f.Cond.Check(semCtx); ForwardStructuredError(semCtx, f.Cond, logCount, err) {
+		logCount := loopCtx.LogCount()
+		if err := f.Cond.Check(loopCtx); ForwardStructuredError(loopCtx, f.Cond, logCount, err) {
 			hasError = true
 		} else {
 			condType := f.Cond.GetBase().Type
 			if condType != "" && !condType.Equals("Bool") {
 				err := fmt.Errorf("for循环条件必须是Bool类型, 实际为 %s", condType)
-				semCtx.AddErrorAt(f.Cond, "%s", err.Error())
+				loopCtx.AddErrorAt(f.Cond, "%s", err.Error())
 				hasError = true
 			}
 		}
 	}
 
 	if f.Update != nil {
-		if err := f.Update.Check(semCtx); err != nil {
+		if err := f.Update.Check(loopCtx); err != nil {
 			hasError = true
 		}
 	}
 
 	if f.Body == nil {
 		err := errors.New("for循环缺少主体")
-		semCtx.AddErrorf("%s", err.Error())
+		loopCtx.AddErrorf("%s", err.Error())
 		hasError = true
 	} else {
-		if err := f.Body.Check(semCtx); err != nil {
+		if err := f.Body.Check(loopCtx); err != nil {
 			hasError = true
 		}
 		if _, ok := f.Body.(*BlockStmt); !ok {
 			err := errors.New("循环主体不是 block")
-			semCtx.AddErrorf("%s", err.Error())
+			loopCtx.AddErrorf("%s", err.Error())
 			hasError = true
 		}
 	}
@@ -1002,49 +1002,77 @@ func (r *RangeStmt) stmtNode()          {}
 func (r *RangeStmt) Check(ctx *SemanticContext) error {
 	r.Type = "Void"
 	var hasError bool
+	rangeCtx := ctx.Child(r)
+
 	if r.X == nil {
 		err := errors.New("range 语句缺少对象")
-		ctx.AddErrorf("%s", err.Error())
+		rangeCtx.AddErrorf("%s", err.Error())
 		hasError = true
 	} else {
-		if err := r.X.Check(ctx); err != nil {
+		if err := r.X.Check(rangeCtx); err != nil {
 			hasError = true
 		} else {
 			objType := r.X.GetBase().Type
 			if !objType.IsArray() && !objType.IsMap() && !objType.IsAny() {
 				err := fmt.Errorf("range 语句不支持类型 %s", objType)
-				ctx.AddErrorf("%s", err.Error())
+				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
 			}
 		}
 	}
 
-	// 即使头部报错，也要尝试注册变量并校验 Body
 	objType := GoMiniType("Any")
 	if r.X != nil {
 		objType = r.X.GetBase().Type
 	}
 
-	semCtx := ctx.WithNode(r)
-	inner := semCtx.Child(r.Body)
-	if r.Key != "" {
-		kType := GoMiniType("Int64")
-		if objType.IsMap() {
-			kType, _, _ = objType.GetMapKeyValueTypes()
-		}
-		inner.AddVariable(r.Key, kType)
-	}
-	if r.Value != "" {
-		vType := GoMiniType("Any")
-		if objType.IsArray() {
-			vType, _ = objType.ReadArrayItemType()
-		} else if objType.IsMap() {
-			_, vType, _ = objType.GetMapKeyValueTypes()
-		}
-		inner.AddVariable(r.Value, vType)
+	keyType := GoMiniType("Int64")
+	valueType := GoMiniType("Any")
+	if objType.IsMap() {
+		keyType, valueType, _ = objType.GetMapKeyValueTypes()
+	} else if objType.IsArray() {
+		valueType, _ = objType.ReadArrayItemType()
 	}
 
-	if err := r.Body.Check(inner); err != nil {
+	if r.Key != "" && r.Key != "_" {
+		if r.Define {
+			rangeCtx.AddVariable(r.Key, keyType)
+		} else {
+			existingType, ok := rangeCtx.GetVariable(r.Key)
+			if !ok {
+				err := fmt.Errorf("undefined identifier in assignment: %s", r.Key)
+				rangeCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			} else if !keyType.IsAssignableTo(existingType) {
+				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", keyType, r.Key, existingType)
+				rangeCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
+		}
+	}
+
+	if r.Value != "" && r.Value != "_" {
+		if r.Define {
+			rangeCtx.AddVariable(r.Value, valueType)
+		} else {
+			existingType, ok := rangeCtx.GetVariable(r.Value)
+			if !ok {
+				err := fmt.Errorf("undefined identifier in assignment: %s", r.Value)
+				rangeCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			} else if !valueType.IsAssignableTo(existingType) {
+				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", valueType, r.Value, existingType)
+				rangeCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
+		}
+	}
+
+	if r.Body == nil {
+		err := errors.New("range 语句缺少主体")
+		rangeCtx.AddErrorf("%s", err.Error())
+		hasError = true
+	} else if err := r.Body.Check(rangeCtx); err != nil {
 		hasError = true
 	}
 
@@ -1472,18 +1500,32 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 				ident.Type = targetType
 				continue
 			}
-			vType, exists := ctx.GetVariable(ident.Name)
-
-			if !exists {
-				if m.Kind == AssignSet {
-					err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
-					ctx.AddErrorf("%s", err.Error())
-					hasError = true
-				} else if !targetType.IsVoid() {
+			if m.Kind == AssignDefine {
+				if vType, sameScope := ctx.vars[ident.Name]; sameScope {
+					if !targetType.IsAssignableTo(vType) {
+						err := fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
+						ctx.AddErrorf("%s", err.Error())
+						hasError = true
+					}
+					if vType == "Any" && targetType != "Any" {
+						ctx.UpdateVariable(ident.Name, targetType)
+					}
+					ident.Type = targetType
+					continue
+				}
+				if !targetType.IsVoid() {
 					ctx.AddVariable(ident.Name, targetType)
 					ident.Type = targetType
 					newCount++
 				}
+				continue
+			}
+
+			vType, exists := ctx.GetVariable(ident.Name)
+			if !exists {
+				err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
+				ctx.AddErrorf("%s", err.Error())
+				hasError = true
 			} else {
 				if !targetType.IsAssignableTo(vType) {
 					err := fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
@@ -1635,6 +1677,55 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
+		if a.Kind == AssignDefine {
+			if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" && !strings.Contains(string(ident.Name), ".") {
+				ident.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
+			}
+			if vType, sameScope := ctx.vars[ident.Name]; sameScope {
+				if sub, ok := a.Value.(*CompositeExpr); ok && sub.Kind == "" {
+					sub.BaseNode.Type = vType
+				}
+				if err := a.Value.Check(ctx); err != nil {
+					return err
+				}
+				miniType := a.Value.GetBase().Type
+				if miniType.IsEmpty() {
+					err := errors.New("无法推导类型")
+					ctx.AddErrorf("%s", err.Error())
+					return err
+				}
+				if miniType.IsVoid() {
+					err := fmt.Errorf("类型 (%s) 不支持赋值", miniType)
+					ctx.AddErrorf("%s", err.Error())
+					return err
+				}
+				if !miniType.IsAssignableTo(vType) {
+					err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+					ctx.AddErrorAt(a.Value, "%s", err.Error())
+					return err
+				}
+				ctx.AddErrorf("no new variables on left side of :=")
+				return errors.New("assignment validation failed")
+			}
+			if err := a.Value.Check(ctx); err != nil {
+				return err
+			}
+			miniType := a.Value.GetBase().Type
+			if miniType.IsEmpty() {
+				err := errors.New("无法推导类型")
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			if miniType.IsVoid() {
+				err := fmt.Errorf("类型 (%s) 不支持赋值", miniType)
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			ctx.AddVariable(ident.Name, miniType)
+			ident.Type = miniType
+			return nil
+		}
+
 		vType, b := ctx.GetVariable(ident.Name)
 		if !b && !strings.Contains(string(ident.Name), ".") && ctx.root.Package != "" && ctx.root.Package != "main" {
 			mangled := Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
@@ -1678,17 +1769,6 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			}
 			// Update the identifier's own type so subsequent uses in the AST might benefit,
 			// though typical Check flows rely on GetVariable.
-			ident.Type = miniType
-			return nil
-		}
-
-		if a.Kind == AssignDefine {
-			if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
-				if !strings.Contains(string(ident.Name), ".") {
-					ident.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, ident.Name))
-				}
-			}
-			ctx.AddVariable(ident.Name, miniType)
 			ident.Type = miniType
 			return nil
 		}
