@@ -91,9 +91,6 @@ func (p *Program) Validate() error {
 	if p.OpcodeSet == "" {
 		return errors.New("missing opcode set")
 	}
-	if p.Executable != nil && p.Blueprint == nil {
-		return errors.New("missing blueprint for executable bytecode")
-	}
 	for _, global := range p.Globals {
 		if global.Name == "" {
 			return errors.New("bytecode global missing name")
@@ -159,16 +156,17 @@ func (p *Program) RebuildProgram() (*ast.ProgramStmt, error) {
 	}
 	if p.Executable != nil {
 		for name := range p.Executable.Globals {
-			prog.Variables[name] = nil
+			prog.Variables[ast.Ident(name)] = nil
 		}
 		for name, fn := range p.Executable.Functions {
 			if fn == nil {
 				continue
 			}
-			prog.Functions[name] = &ast.FunctionStmt{
-				BaseNode:     ast.BaseNode{ID: "bytecode_fn_" + string(name)},
+			ident := ast.Ident(name)
+			prog.Functions[ident] = &ast.FunctionStmt{
+				BaseNode:     ast.BaseNode{ID: "bytecode_fn_" + name},
 				FunctionType: fn.FunctionSig.FunctionType(),
-				Name:         name,
+				Name:         ident,
 				Body:         &ast.BlockStmt{Children: []ast.Stmt{}, Inner: true},
 			}
 		}

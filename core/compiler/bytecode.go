@@ -16,7 +16,7 @@ const (
 	pseudoOpLoadConst = "PSEUDO_LOAD_CONST"
 )
 
-func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytecode.Program {
+func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode.Program {
 	if program == nil {
 		return nil
 	}
@@ -31,7 +31,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 	bc.Executable = prepared
 
 	for _, name := range globalInitOrder {
-		expr, ok := program.Variables[name]
+		expr, ok := program.Variables[ast.Ident(name)]
 		if !ok || expr == nil {
 			continue
 		}
@@ -42,7 +42,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []ast.Ident) *bytec
 			bc.Functions = nil
 			return bc
 		}
-		bc.Globals = append(bc.Globals, bytecode.Global{Name: string(name), Instructions: code})
+		bc.Globals = append(bc.Globals, bytecode.Global{Name: name, Instructions: code})
 	}
 
 	entry, ok := builder.compileStatements(program.Main)

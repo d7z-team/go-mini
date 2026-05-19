@@ -13,7 +13,7 @@ func newExecutor(t *testing.T, program *ast.ProgramStmt) *Executor {
 	if err != nil {
 		t.Fatalf("prepare program failed: %v", err)
 	}
-	exec, err := NewExecutorFromPrepared(program, prepared)
+	exec, err := NewExecutorFromPrepared(prepared)
 	if err != nil {
 		t.Fatalf("new executor from prepared failed: %v", err)
 	}

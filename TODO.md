@@ -204,11 +204,7 @@
   2. 让 `Eval/Execute` 每次都创建独立 session，只保存调用栈、值栈、LHS 栈、defer/panic/unwind 等执行态，不再通过 `LastSession` 继承共享状态；
   3. 将全局变量、模块缓存、全局内存指针等访问统一改写到 `SharedState` 上，并为顶层共享状态访问建立清晰的并发边界；
   4. 当前剩余问题主要是“是否继续提供更强一致性的复合更新语义”，而不是 shared state 缺少门面或快照浅共享
-- [ ] **收口模块导入与全局初始化对 program shell / blueprint 的执行依赖**: 当前 `PreparedProgram` 还不是可独立装载的模块执行工件。`NewExecutorFromPrepared(program, prepared)` 仍依赖 `*ast.ProgramStmt` 提供 `Imports -> importAliases`、constants、named types、struct/interface metadata、globals/functions 名字表；`RegisterModule(...)` / `modulePlanLoader(...)` / `executeImportedProgram(...)` 也仍要求同时携带 `prog.Program` 与 `prog.Compiled.Bytecode.Executable`。此外 `bytecode.Program` 目前是 `Blueprint + Executable` 双工件模型，`Executable` 不能脱离 `Blueprint` 通过校验，`RebuildProgram()` 也不会恢复完整 `Imports`。这导致“模块导入 + 顶层全局初始化”仍未真正只靠 prepared/bytecode executable 闭环，和“bytecode / prepared program 作为唯一装载工件”的目标不完全一致。后续需要明确拆分：
-  1. 哪些 metadata 属于执行必需项，必须进入 `PreparedProgram` / executable；
-  2. 哪些 metadata 只属于 debugger / LSP / 展示蓝图，应继续留在 `Blueprint`；
-  3. 如何让 module register/load/import 路径支持“无 AST shell、纯 executable”装载；
-  4. 如何为 import alias 初始化顺序、模块导出面与 global init 依赖补纯 executable 回归测试。
+- [x] **收口模块导入与全局初始化对 program shell / blueprint 的执行依赖**: `PreparedProgram` 现在是执行必需 metadata 的完整装载工件，包含 package、import alias、constants、named types、struct/interface schema、globals/functions/main task plan 与 global init order。`NewExecutorFromPrepared(...)` 已删除 AST 参数，只消费 prepared executable；`runtime.Executor.ModulePlanLoader` / `executeImportedProgram(...)` 也已收敛为 prepared-only。`bytecode.Program.Executable` 不再要求 `Blueprint` 才能通过校验，`ArtifactFromBytecode(...)` 仅在存在 blueprint 时重建 AST shell，纯 executable bytecode 可以直接恢复运行时。engine 侧 `RegisterModule(...)` / `modulePlanLoader(...)` 运行路径缓存 prepared executable，AST module loader 仅作为前端边界输入并在交给 runtime 前即时 `PrepareProgram`。
 
 ---
 

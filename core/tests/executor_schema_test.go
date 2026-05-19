@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -309,6 +310,104 @@ func main() {}
 	}
 	if program.Executable == nil {
 		t.Fatal("expected executable bytecode payload")
+	}
+}
+
+func TestExecutableBytecodeWithoutBlueprintLoadsAndExecutes(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+var Result Int64 = 1
+func main() { Result = Result + 41 }
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	program, err := prog.Bytecode()
+	if err != nil {
+		t.Fatalf("bytecode accessor failed: %v", err)
+	}
+
+	executableOnly := *program
+	executableOnly.Blueprint = nil
+	executableOnly.Globals = nil
+	executableOnly.Entry = nil
+	executableOnly.Functions = nil
+
+	loaded, err := exec.NewRuntimeByBytecode(&executableOnly)
+	if err != nil {
+		t.Fatalf("load executable-only bytecode failed: %v", err)
+	}
+	if loaded.Program != nil {
+		t.Fatal("executable-only bytecode should not rebuild an AST program shell")
+	}
+	if err := loaded.Execute(context.Background()); err != nil {
+		t.Fatalf("execute executable-only bytecode failed: %v", err)
+	}
+	result, ok := loaded.SharedState().LoadGlobal("Result")
+	if !ok || result == nil || result.I64 != 42 {
+		t.Fatalf("unexpected Result global: %#v", result)
+	}
+}
+
+func TestModuleImportUsesPreparedExecutableWithoutModuleBlueprint(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	helperSource := `
+package helper
+func Answer() Int64 { return 40 }
+`
+	helperProg, err := exec.NewRuntimeByGoCode(helperSource)
+	if err != nil {
+		t.Fatalf("compile helper failed: %v", err)
+	}
+	helperBytecode, err := helperProg.Bytecode()
+	if err != nil {
+		t.Fatalf("helper bytecode accessor failed: %v", err)
+	}
+	helperExecutableOnly := *helperBytecode
+	helperExecutableOnly.Blueprint = nil
+	helperExecutableOnly.Globals = nil
+	helperExecutableOnly.Entry = nil
+	helperExecutableOnly.Functions = nil
+
+	helperRuntime, err := exec.NewRuntimeByBytecode(&helperExecutableOnly)
+	if err != nil {
+		t.Fatalf("load executable-only helper failed: %v", err)
+	}
+	if helperRuntime.Program != nil {
+		t.Fatal("helper runtime should not carry a rebuilt AST blueprint")
+	}
+
+	exec.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
+		if path == "helper" {
+			return helperProg.Program, nil
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	})
+	exec.RegisterModule("helper", helperRuntime)
+	metadata := exec.ExportMetadata()
+	if !strings.Contains(metadata, `"helper"`) || !strings.Contains(metadata, `"Answer": "function() Int64"`) {
+		t.Fatalf("expected prepared module metadata, got: %s", metadata)
+	}
+
+	mainProg, err := exec.NewRuntimeByGoCode(`
+package main
+import "helper"
+var Result Int64
+func main() { Result = helper.Answer() + 2 }
+`)
+	if err != nil {
+		t.Fatalf("compile main failed: %v", err)
+	}
+	if err := mainProg.Execute(context.Background()); err != nil {
+		t.Fatalf("execute main failed: %v", err)
+	}
+	result, ok := mainProg.SharedState().LoadGlobal("Result")
+	if !ok || result == nil || result.I64 != 42 {
+		t.Fatalf("unexpected Result global: %#v", result)
+	}
+	if !mainProg.SharedState().HasModule("helper") {
+		t.Fatal("expected helper module loaded from prepared executable")
 	}
 }
 

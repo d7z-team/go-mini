@@ -72,10 +72,10 @@ func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
 		},
 	}
 	prog.Executable = &runtime.PreparedProgram{
-		Globals: map[ast.Ident]*runtime.PreparedGlobal{
+		Globals: map[string]*runtime.PreparedGlobal{
 			"counter": {Name: "counter", HasInit: true},
 		},
-		Functions: map[ast.Ident]*runtime.PreparedFunction{
+		Functions: map[string]*runtime.PreparedFunction{
 			"main": {Name: "main", FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void")},
 		},
 	}
@@ -117,11 +117,11 @@ func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
 	}
 	prog.Entry = []Instruction{{Op: "CALL", Operand: "main", Comment: "call main"}}
 	prog.Executable = &runtime.PreparedProgram{
-		Globals: map[ast.Ident]*runtime.PreparedGlobal{
+		Globals: map[string]*runtime.PreparedGlobal{
 			"counter": {Name: "counter", HasInit: true},
 			"pending": {Name: "pending", HasInit: false},
 		},
-		Functions: map[ast.Ident]*runtime.PreparedFunction{
+		Functions: map[string]*runtime.PreparedFunction{
 			"main": {
 				Name:        "main",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
@@ -162,7 +162,7 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 	prog := NewProgram()
 	prog.Blueprint = &Blueprint{Package: "demo"}
 	prog.Executable = &runtime.PreparedProgram{
-		Functions: map[ast.Ident]*runtime.PreparedFunction{
+		Functions: map[string]*runtime.PreparedFunction{
 			"main": {
 				Name:        "main",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),

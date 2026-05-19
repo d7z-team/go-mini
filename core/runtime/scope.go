@@ -1445,7 +1445,7 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 	if exec != nil {
 		exec.mu.RLock()
 		defer exec.mu.RUnlock()
-		if fn, ok := exec.functions[ast.Ident(variable)]; ok {
+		if fn, ok := exec.functions[variable]; ok {
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
@@ -1754,7 +1754,7 @@ func (ctx *StackContext) CaptureVar(name string) (*Var, error) {
 		defer exec.mu.RUnlock()
 
 		// 1. 尝试查找脚本定义的函数
-		if fn, ok := exec.functions[ast.Ident(name)]; ok {
+		if fn, ok := exec.functions[name]; ok {
 			return &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{

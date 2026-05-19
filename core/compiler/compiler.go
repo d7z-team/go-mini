@@ -27,7 +27,7 @@ type Artifact struct {
 	Filename        string
 	Source          string
 	Program         *ast.ProgramStmt
-	GlobalInitOrder []ast.Ident
+	GlobalInitOrder []string
 	Bytecode        *bytecode.Program
 }
 
@@ -38,17 +38,19 @@ func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
 	if err := program.Validate(); err != nil {
 		return nil, err
 	}
-	rebuilt, err := program.RebuildProgram()
-	if err != nil {
-		return nil, err
-	}
 	artifact := &Artifact{
 		Filename: "bytecode",
-		Program:  rebuilt,
 		Bytecode: program,
 	}
+	if program.Blueprint != nil {
+		rebuilt, err := program.RebuildProgram()
+		if err != nil {
+			return nil, err
+		}
+		artifact.Program = rebuilt
+	}
 	if program.Executable != nil {
-		artifact.GlobalInitOrder = append([]ast.Ident(nil), program.Executable.GlobalInitOrder...)
+		artifact.GlobalInitOrder = append([]string(nil), program.Executable.GlobalInitOrder...)
 	}
 	return artifact, nil
 }
@@ -205,12 +207,23 @@ func fillArtifactGlobalInitOrder(artifact *Artifact, program *ast.ProgramStmt, a
 	order, err := program.GlobalInitOrder()
 	if err != nil {
 		if allowFallback {
-			artifact.GlobalInitOrder = program.DeclaredGlobalOrder()
+			artifact.GlobalInitOrder = identSliceToStrings(program.DeclaredGlobalOrder())
 		}
 		return err
 	}
-	artifact.GlobalInitOrder = order
+	artifact.GlobalInitOrder = identSliceToStrings(order)
 	return nil
+}
+
+func identSliceToStrings(items []ast.Ident) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, len(items))
+	for i, item := range items {
+		out[i] = string(item)
+	}
+	return out
 }
 
 func newConverter() *ffigo.GoToASTConverter {

@@ -46,12 +46,12 @@ type MiniExecutor struct {
 	routes          map[string]runtime.FFIRoute
 	constants       map[string]string
 
-	registry       *ffigo.HandleRegistry
-	modules        map[string]*ast.ProgramStmt // 预加载的模块蓝图
-	moduleBytecode map[string]*bytecode.Program
-	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
-	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
-	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	registry         *ffigo.HandleRegistry
+	moduleBlueprints map[string]*ast.ProgramStmt
+	modules          map[string]*runtime.PreparedProgram
+	funcSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
+	structsMeta      map[ast.Ident]*runtime.RuntimeStructSpec
+	interfacesMeta   map[ast.Ident]*runtime.RuntimeInterfaceSpec
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }
@@ -337,16 +337,16 @@ func (p *MiniProgram) Bytecode() (*bytecode.Program, error) {
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		bridges:        make(map[uint32]ffigo.FFIBridge),
-		routes:         make(map[string]runtime.FFIRoute),
-		constants:      make(map[string]string),
-		registry:       ffigo.NewHandleRegistry(),
-		modules:        make(map[string]*ast.ProgramStmt),
-		moduleBytecode: make(map[string]*bytecode.Program),
-		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
-		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
-		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
-		MaxTypeDepth:   256,
+		bridges:          make(map[uint32]ffigo.FFIBridge),
+		routes:           make(map[string]runtime.FFIRoute),
+		constants:        make(map[string]string),
+		registry:         ffigo.NewHandleRegistry(),
+		moduleBlueprints: make(map[string]*ast.ProgramStmt),
+		modules:          make(map[string]*runtime.PreparedProgram),
+		funcSchemas:      make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		structsMeta:      make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		interfacesMeta:   make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
+		MaxTypeDepth:     256,
 	}
 
 	// 默认注册 panic 签名以便通过验证
@@ -402,7 +402,7 @@ func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, er
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
-		if astNode, ok := e.modules[path]; ok {
+		if astNode, ok := e.moduleBlueprints[path]; ok {
 			return astNode, nil
 		}
 		if e.astModuleLoader != nil {
@@ -412,31 +412,27 @@ func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, er
 	}
 }
 
-func (e *MiniExecutor) modulePlanLoader() func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
-	return func(path string) (*ast.ProgramStmt, *runtime.PreparedProgram, error) {
+func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedProgram, error) {
+	return func(path string) (*runtime.PreparedProgram, error) {
 		e.mu.RLock()
-		if prog, ok := e.modules[path]; ok {
-			if bc, ok := e.moduleBytecode[path]; ok && bc != nil && bc.Executable != nil {
-				e.mu.RUnlock()
-				return prog, bc.Executable, nil
-			}
+		if prepared, ok := e.modules[path]; ok && prepared != nil {
 			e.mu.RUnlock()
-			return prog, nil, nil
+			return prepared, nil
 		}
 		loader := e.astModuleLoader
 		e.mu.RUnlock()
 		if loader != nil {
 			prog, err := loader(path)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			prepared, prepErr := runtime.PrepareProgram(prog)
 			if prepErr != nil {
-				return nil, nil, prepErr
+				return nil, prepErr
 			}
-			return prog, prepared, nil
+			return prepared, nil
 		}
-		return nil, nil, fmt.Errorf("module not found: %s", path)
+		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
 	}
 }
 
@@ -486,12 +482,23 @@ func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 	defer e.mu.Unlock()
 	if prog == nil {
 		delete(e.modules, path)
-		delete(e.moduleBytecode, path)
+		delete(e.moduleBlueprints, path)
 		return
 	}
-	e.modules[path] = prog.Program
-	if prog.Compiled != nil && prog.Compiled.Bytecode != nil {
-		e.moduleBytecode[path] = prog.Compiled.Bytecode
+	delete(e.modules, path)
+	if prog.Program != nil {
+		e.moduleBlueprints[path] = prog.Program
+	} else {
+		delete(e.moduleBlueprints, path)
+	}
+	if prog.Compiled != nil && prog.Compiled.Bytecode != nil && prog.Compiled.Bytecode.Executable != nil {
+		e.modules[path] = prog.Compiled.Bytecode.Executable
+		return
+	}
+	if prog.Program != nil {
+		if prepared, err := runtime.PrepareProgram(prog.Program); err == nil {
+			e.modules[path] = prepared
+		}
 	}
 }
 
@@ -531,7 +538,7 @@ func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
 
 func (e *MiniExecutor) Executor() *runtime.Executor {
 	prepared, _ := runtime.PrepareProgram(&ast.ProgramStmt{})
-	executor, _ := runtime.NewExecutorFromPrepared(&ast.ProgramStmt{}, prepared)
+	executor, _ := runtime.NewExecutorFromPrepared(prepared)
 	e.applyExecutorConfig(executor)
 	return executor
 }
@@ -709,21 +716,18 @@ func (e *MiniExecutor) CompileDir(dir string) (*compiler.Artifact, error) {
 }
 
 func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniProgram, error) {
-	if compiled == nil || compiled.Program == nil {
+	if compiled == nil {
 		return nil, errors.New("invalid compiled program")
 	}
 	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
 		return nil, errors.New("compiled program missing executable bytecode")
 	}
 
-	executor, err := runtime.NewExecutorFromPrepared(compiled.Program, compiled.Bytecode.Executable)
+	executor, err := runtime.NewExecutorFromPrepared(compiled.Bytecode.Executable)
 	if err != nil {
 		return nil, err
 	}
 	e.applyExecutorConfig(executor)
-	if len(compiled.GlobalInitOrder) > 0 {
-		executor.SetGlobalInitOrder(compiled.GlobalInitOrder)
-	}
 
 	return &MiniProgram{
 		Source:   compiled.Source,
@@ -900,7 +904,7 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	// 创建最小化的无状态执行器
 	base := &ast.ProgramStmt{BaseNode: ast.BaseNode{ID: "eval", Meta: "boot"}}
 	prepared, _ := runtime.PrepareProgram(base)
-	executor, _ := runtime.NewExecutorFromPrepared(base, prepared)
+	executor, _ := runtime.NewExecutorFromPrepared(prepared)
 	e.applyExecutorConfig(executor)
 
 	session := executor.NewSession(ctx, "eval")
@@ -951,7 +955,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
 	e.mu.RLock()
-	for _, s := range e.modules {
+	for _, s := range e.moduleBlueprints {
 		for name, sDef := range s.Structs {
 			program.Structs[name] = sDef
 		}
@@ -999,7 +1003,7 @@ func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	// 创建一个最简的执行器环境来执行加载
 	base := &ast.ProgramStmt{BaseNode: ast.BaseNode{ID: "import_loader", Meta: "boot"}}
 	prepared, _ := runtime.PrepareProgram(base)
-	executor, _ := runtime.NewExecutorFromPrepared(base, prepared)
+	executor, _ := runtime.NewExecutorFromPrepared(prepared)
 	e.applyExecutorConfig(executor)
 
 	session := executor.NewSession(ctx, "loader")
@@ -1120,7 +1124,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 	}
 
 	// 3. 处理已加载的 Modules (脚本模块)
-	for modName, prog := range e.modules {
+	for modName, prog := range e.moduleBlueprints {
 		mod := getModule(modName)
 		// 导出函数
 		for fnName, fnStmt := range prog.Functions {
@@ -1153,6 +1157,36 @@ func (e *MiniExecutor) ExportMetadata() string {
 		for cName, cVal := range prog.Constants {
 			if len(cName) > 0 && cName[0] >= 'A' && cName[0] <= 'Z' {
 				mod.Constants[cName] = cVal
+			}
+		}
+	}
+	for modName, prepared := range e.modules {
+		if _, hasBlueprint := e.moduleBlueprints[modName]; hasBlueprint || prepared == nil {
+			continue
+		}
+		mod := getModule(modName)
+		for fnName, fn := range prepared.Functions {
+			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' && fn != nil && fn.FunctionSig != nil {
+				mod.Functions[fnName] = string(fn.FunctionSig.Spec)
+			}
+		}
+		for structName, spec := range prepared.StructSchemas {
+			if len(structName) == 0 || structName[0] < 'A' || structName[0] > 'Z' || spec == nil {
+				continue
+			}
+			st := getStruct(modName, structName)
+			for _, field := range spec.Fields {
+				st.Fields[field.Name] = string(field.Type)
+			}
+		}
+		for ifaceName, spec := range prepared.InterfaceSchemas {
+			if len(ifaceName) > 0 && ifaceName[0] >= 'A' && ifaceName[0] <= 'Z' && spec != nil {
+				mod.Interfaces[ifaceName] = string(spec.Spec)
+			}
+		}
+		for constName, constVal := range prepared.Constants {
+			if len(constName) > 0 && constName[0] >= 'A' && constName[0] <= 'Z' {
+				mod.Constants[constName] = constVal
 			}
 		}
 	}

@@ -19,15 +19,15 @@ import (
 type Executor struct {
 	metadata        *runtimeMetadataRegistry
 	consts          map[string]string
-	globals         map[ast.Ident]*RuntimeGlobal
-	functions       map[ast.Ident]*RuntimeFunction
+	globals         map[string]*RuntimeGlobal
+	functions       map[string]*RuntimeFunction
 	mainTasks       []Task
-	globalInitOrder []ast.Ident
+	globalInitOrder []string
 	importAliases   map[string]string
 
 	routes map[string]FFIRoute
 
-	ModulePlanLoader func(path string) (*ast.ProgramStmt, *PreparedProgram, error)
+	ModulePlanLoader func(path string) (*PreparedProgram, error)
 
 	StepLimit int64
 
@@ -37,16 +37,17 @@ type Executor struct {
 	scheduler      *TaskScheduler
 }
 
+var ErrModuleNotFound = errors.New("module not found")
+
 type RuntimeGlobal struct {
-	Name     ast.Ident
+	Name     string
 	Kind     RuntimeType
 	HasInit  bool
-	InitExpr ast.Expr
 	InitPlan []Task
 }
 
 type RuntimeFunction struct {
-	Name        ast.Ident
+	Name        string
 	FunctionSig *RuntimeFuncSig
 	BodyTasks   []Task
 }
@@ -164,94 +165,21 @@ func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
 	return "", false
 }
 
-func NewExecutorFromPrepared(program *ast.ProgramStmt, prepared *PreparedProgram) (*Executor, error) {
-	if program == nil {
-		return nil, errors.New("invalid program")
-	}
+func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 	if prepared == nil {
 		return nil, errors.New("missing prepared program")
 	}
-	globalInitOrder, err := program.GlobalInitOrder()
-	if err != nil {
-		globalInitOrder = program.DeclaredGlobalOrder()
-	}
 	result := &Executor{
-		globalInitOrder: globalInitOrder,
-		importAliases:   make(map[string]string, len(program.Imports)),
+		globalInitOrder: append([]string(nil), prepared.GlobalInitOrder...),
+		importAliases:   make(map[string]string, len(prepared.ImportAliases)),
 		metadata:        newRuntimeMetadataRegistry(),
-		globals:         make(map[ast.Ident]*RuntimeGlobal),
-		functions:       make(map[ast.Ident]*RuntimeFunction),
+		globals:         make(map[string]*RuntimeGlobal),
+		functions:       make(map[string]*RuntimeFunction),
 		consts:          make(map[string]string),
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
 		scheduler:       NewTaskScheduler(),
-	}
-	for _, imp := range program.Imports {
-		alias := imp.Alias
-		if alias == "" {
-			parts := strings.Split(imp.Path, "/")
-			alias = parts[len(parts)-1]
-		}
-		result.importAliases[alias] = imp.Path
-	}
-	if program.Structs != nil {
-		for ident, stmt := range program.Structs {
-			spec := runtimeStructSpecFromStmt(stmt)
-			if spec != nil {
-				result.metadata.registerStructSchema(string(ident), spec)
-			}
-		}
-	}
-	if program.Interfaces != nil {
-		for ident, stmt := range program.Interfaces {
-			spec, err := ParseRuntimeInterfaceSpec(stmt.Type)
-			if err == nil && spec != nil {
-				result.metadata.registerInterfaceSpec(string(ident), spec)
-			}
-		}
-	}
-	if program.Types != nil {
-		for ident, t := range program.Types {
-			typeInfo, err := ParseRuntimeType(t)
-			if err == nil {
-				result.metadata.registerNamedType(string(ident), typeInfo)
-			}
-		}
-	}
-	for s, s2 := range program.Constants {
-		result.consts[s] = s2
-	}
-	if program.Variables != nil {
-		globalKinds := make(map[ast.Ident]RuntimeType, len(program.Variables))
-		for _, stmt := range program.Main {
-			if decl, ok := stmt.(*ast.GenDeclStmt); ok {
-				globalKinds[decl.Name] = MustParseRuntimeType(decl.Kind)
-			}
-		}
-		for ident, expr := range program.Variables {
-			kind := globalKinds[ident]
-			if kind.IsEmpty() && expr != nil {
-				kind = MustParseRuntimeType(expr.GetBase().Type)
-			}
-			result.globals[ident] = &RuntimeGlobal{
-				Name:     ident,
-				Kind:     kind,
-				HasInit:  expr != nil,
-				InitExpr: expr,
-			}
-		}
-	}
-	if program.Functions != nil {
-		for ident, fn := range program.Functions {
-			if fn == nil {
-				continue
-			}
-			result.functions[ident] = &RuntimeFunction{
-				Name:        ident,
-				FunctionSig: MustRuntimeFuncSigFromFunction(fn.FunctionType),
-			}
-		}
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -262,29 +190,40 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	if prepared == nil {
 		return
 	}
-	e.globalInitOrder = append([]ast.Ident(nil), prepared.GlobalInitOrder...)
-	for ident, global := range prepared.Globals {
-		rg, ok := e.globals[ident]
+	e.globalInitOrder = append([]string(nil), prepared.GlobalInitOrder...)
+	e.importAliases = cloneStringMap(prepared.ImportAliases)
+	e.consts = cloneStringMap(prepared.Constants)
+	for name, typeInfo := range prepared.NamedTypes {
+		e.metadata.registerNamedType(name, typeInfo)
+	}
+	for name, spec := range prepared.StructSchemas {
+		e.metadata.registerStructSchema(name, cloneRuntimeStructSpec(spec))
+	}
+	for name, spec := range prepared.InterfaceSchemas {
+		e.metadata.registerInterfaceSpec(name, cloneRuntimeInterfaceSpec(spec))
+	}
+	for name, global := range prepared.Globals {
+		rg, ok := e.globals[name]
 		if !ok || rg == nil {
-			rg = &RuntimeGlobal{Name: ident}
+			rg = &RuntimeGlobal{Name: name}
 		}
 		if global != nil {
 			rg.Kind = global.Kind
 			rg.HasInit = global.HasInit
 			rg.InitPlan = cloneTasks(global.InitPlan)
 		}
-		e.globals[ident] = rg
+		e.globals[name] = rg
 	}
-	for ident, fn := range prepared.Functions {
-		rf, ok := e.functions[ident]
+	for name, fn := range prepared.Functions {
+		rf, ok := e.functions[name]
 		if !ok || rf == nil {
-			rf = &RuntimeFunction{Name: ident}
+			rf = &RuntimeFunction{Name: name}
 		}
 		if fn != nil {
 			rf.FunctionSig = cloneRuntimeFuncSig(fn.FunctionSig)
 			rf.BodyTasks = cloneTasks(fn.BodyTasks)
 		}
-		e.functions[ident] = rf
+		e.functions[name] = rf
 	}
 	e.mainTasks = cloneTasks(prepared.MainTasks)
 }
@@ -449,10 +388,10 @@ func (e *Executor) resolveStructSchema(typ TypeSpec) (*RuntimeStructSpec, bool) 
 	return e.metadata.resolveStructSchema(typ)
 }
 
-func (e *Executor) SetGlobalInitOrder(order []ast.Ident) {
+func (e *Executor) SetGlobalInitOrder(order []string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.globalInitOrder = append([]ast.Ident(nil), order...)
+	e.globalInitOrder = append([]string(nil), order...)
 }
 
 func cloneTasks(tasks []Task) []Task {
@@ -478,11 +417,11 @@ func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope
 }
 
 func (e *Executor) lookupFunction(name string) (*RuntimeFunction, bool) {
-	fn, ok := e.functions[ast.Ident(name)]
+	fn, ok := e.functions[name]
 	return fn, ok
 }
 
-func (e *Executor) lookupGlobal(name ast.Ident) (*RuntimeGlobal, bool) {
+func (e *Executor) lookupGlobal(name string) (*RuntimeGlobal, bool) {
 	global, ok := e.globals[name]
 	return global, ok
 }
@@ -1017,7 +956,7 @@ func (e *Executor) initializeSharedGlobals(session *StackContext) error {
 			}
 			val = e.initializeType(session, kind, 0)
 		}
-		session.Shared.StoreGlobal(string(name), val)
+		session.Shared.StoreGlobal(name, val)
 	}
 	return nil
 }
@@ -2256,9 +2195,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		defer delete(session.ImportChain, path)
 
 		if e.ModulePlanLoader != nil {
-			prog, prepared, err := e.ModulePlanLoader(path)
+			prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
-				res, err := e.executeImportedProgram(session, path, prog, prepared)
+				res, err := e.executeImportedProgram(session, path, prepared)
 				if err != nil {
 					session.Shared.FinishModuleLoad(path, nil)
 					return err
@@ -2266,6 +2205,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				session.Shared.FinishModuleLoad(path, res)
 				session.ValueStack.Push(res)
 				return nil
+			}
+			if !errors.Is(err, ErrModuleNotFound) {
+				session.Shared.FinishModuleLoad(path, nil)
+				return err
 			}
 		}
 
@@ -2923,14 +2866,13 @@ func (e *Executor) Disassemble() (res string) {
 	sb.WriteString("section .data:\n")
 	globalKeys := make([]string, 0, len(e.globals))
 	for name := range e.globals {
-		globalKeys = append(globalKeys, string(name))
+		globalKeys = append(globalKeys, name)
 	}
 	sort.Strings(globalKeys)
 	for _, key := range globalKeys {
-		name := ast.Ident(key)
-		global := e.globals[name]
-		fmt.Fprintf(&sb, "  global %s\n", name)
-		fmt.Fprintf(&sb, "global.%s:\n", name)
+		global := e.globals[key]
+		fmt.Fprintf(&sb, "  global %s\n", key)
+		fmt.Fprintf(&sb, "global.%s:\n", key)
 		if global != nil {
 			e.disassembleTasks(&sb, "  ", global.InitPlan)
 		}
@@ -2947,12 +2889,12 @@ func (e *Executor) Disassemble() (res string) {
 
 	keys := make([]string, 0, len(e.functions))
 	for k := range e.functions {
-		keys = append(keys, string(k))
+		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		f := e.functions[ast.Ident(k)]
+		f := e.functions[k]
 		sig := "function()"
 		if f != nil && f.FunctionSig != nil {
 			sig = string(f.FunctionSig.Spec)
@@ -3128,15 +3070,8 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	}
 }
 
-func (e *Executor) executeImportedProgram(parent *StackContext, path string, prog *ast.ProgramStmt, prepared *PreparedProgram) (*Var, error) {
-	var err error
-	if prepared == nil {
-		prepared, err = PrepareProgram(prog)
-		if err != nil {
-			return nil, err
-		}
-	}
-	modExecutor, err := NewExecutorFromPrepared(prog, prepared)
+func (e *Executor) executeImportedProgram(parent *StackContext, path string, prepared *PreparedProgram) (*Var, error) {
+	modExecutor, err := NewExecutorFromPrepared(prepared)
 	if err != nil {
 		return nil, err
 	}
