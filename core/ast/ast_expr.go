@@ -105,7 +105,11 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 	xType := s.X.GetBase().Type
-	if xType.IsPtr() {
+	if xType.IsHostRef() {
+		err := fmt.Errorf("无法解引用 opaque host reference: %s", xType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	} else if xType.IsPtr() {
 		if elem, ok := xType.GetPtrElementType(); ok {
 			s.Type = elem
 		} else {
@@ -292,9 +296,19 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 						ctx.AddErrorf("%s", err.Error())
 						return err
 					}
+					if t.IsHostRef() || ctx.ContainsHostOpaqueValue(t) {
+						err := fmt.Errorf("make: opaque host type %s 不能由 VM 创建", t)
+						ctx.AddErrorf("%s", err.Error())
+						return err
+					}
 				} else { // new
 					if !t.IsStrictValid() || !declaredType(t) {
 						err := fmt.Errorf("new: 非法类型 %s", lit.Value)
+						ctx.AddErrorf("%s", err.Error())
+						return err
+					}
+					if t.IsHostRef() || ctx.ContainsHostOpaqueValue(t) {
+						err := fmt.Errorf("new: opaque host type %s 不能由 VM 创建", t)
 						ctx.AddErrorf("%s", err.Error())
 						return err
 					}
@@ -785,6 +799,11 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	if c.Type == "" {
 		// 尝试从 BaseNode 获取（可能由外层 Check 预设）
 		c.Type = c.BaseNode.Type
+	}
+	if c.Type.IsHostRef() || ctx.ContainsHostOpaqueValue(c.Type) {
+		err := fmt.Errorf("opaque host type %s 不能使用复合字面量创建", c.Type)
+		ctx.AddErrorf("%s", err.Error())
+		return err
 	}
 
 	if c.Type == "" || c.Type == "Any" {

@@ -10,9 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", "struct { Closed Bool; ID String; Items Array<order.Item>; New function(String) tuple(Ptr<order.Order>, Error); AddItem function(Ptr<order.Order>, String, Float64) Error; GetTotal function(Ptr<order.Order>) tuple(Float64, Error); Close function(Ptr<order.Order>) Error; }")
-
-var order_Item_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Item", "struct { Name String; Price Float64; }")
+var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", runtime.StructOwnershipHostOpaque, "struct { New function(String) tuple(HostRef<order.Order>, Error); AddItem function(HostRef<order.Order>, String, Float64) Error; GetTotal function(HostRef<order.Order>) tuple(Float64, Error); Close function(HostRef<order.Order>) Error; }")
 
 const (
 	MethodID_OrderService_New      = 1
@@ -48,10 +46,10 @@ func (__p *OrderServiceProxy) New(id string) (*Order, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Order
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "order.Order"); ok {
 				v_0 = obj.(*Order)
 			}
 		}
@@ -78,12 +76,12 @@ func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) erro
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -124,12 +122,12 @@ func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -170,12 +168,12 @@ func (__p *OrderServiceProxy) Close(o *Order) error {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if o == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(o)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -231,11 +229,11 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		id = string(reqBuf.ReadString())
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "order.Order")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -249,9 +247,9 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_AddItem:
 		var o *Order
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
@@ -275,9 +273,9 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_GetTotal:
 		var o *Order
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
@@ -298,9 +296,9 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 		return resBuf.Bytes(), nil
 	case MethodID_OrderService_Close:
 		var o *Order
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
@@ -329,10 +327,10 @@ var OrderService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<order.Order>, Error)", runtime.FFIParamIn), "New 创建新订单"},
-	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), "GetTotal 获取总价"},
-	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<order.Order>) Error", runtime.FFIParamIn), "Close 关闭订单"},
+	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<order.Order>, Error)", runtime.FFIParamIn), "New 创建新订单"},
+	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), "GetTotal 获取总价"},
+	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) Error", runtime.FFIParamIn), "Close 关闭订单"},
 }
 
 type OrderService_Bridge struct {
@@ -378,6 +376,5 @@ func RegisterOrderService(executor interface{ RegisterConstant(string, string) }
 	registrar.RegisterFFISchema("order.Order.AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
 	registrar.RegisterFFISchema("order.Order.GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("order.Order.Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
-	registerStructSchema("order.Item", order_Item_FFI_StructSchema)
 	registerStructSchema("order.Order", order_Order_FFI_StructSchema)
 }

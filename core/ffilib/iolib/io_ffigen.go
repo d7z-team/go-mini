@@ -11,7 +11,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", "struct { F Ptr<os.File>; Write function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); Read function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error); Close function(Ptr<io.File>) Error; Sync function(Ptr<io.File>) Error; Truncate function(Ptr<io.File>, Int64) Error; WriteString function(Ptr<io.File>, String) tuple(Int64, Error); Name function(Ptr<io.File>) String; WriteNative function(Ptr<io.File>, TypeBytes) tuple(Int64, Error); }")
+var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", runtime.StructOwnershipHostOpaque, "struct { Write function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); Read function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error); Close function(HostRef<io.File>) Error; Sync function(HostRef<io.File>) Error; Truncate function(HostRef<io.File>, Int64) Error; WriteString function(HostRef<io.File>, String) tuple(Int64, Error); Name function(HostRef<io.File>) String; WriteNative function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); }")
 
 var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")
 
@@ -417,9 +417,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	switch methodID {
 	case MethodID_File_Write:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -442,9 +442,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Read:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -473,9 +473,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteAt:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -503,9 +503,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_ReadAt:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -539,9 +539,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Seek:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -572,9 +572,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Close:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -594,9 +594,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Sync:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -616,9 +616,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Truncate:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -643,9 +643,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteString:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -668,9 +668,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_Name:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -682,9 +682,9 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_File_WriteNative:
 		var __recv *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -716,17 +716,17 @@ var File_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
-	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
-	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
-	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) Error", runtime.FFIParamIn), ""},
-	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) Error", runtime.FFIParamIn), ""},
-	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>) String", runtime.FFIParamIn), ""},
-	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
+	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), ""},
+	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), ""},
+	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), ""},
+	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
 }
 
 type File_Bridge struct {

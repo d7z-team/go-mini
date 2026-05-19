@@ -1323,10 +1323,18 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 	if !f.FunctionType.Return.Valid(ctx) {
 		return nil, false
 	}
+	if ctx.ContainsHostOpaqueValue(f.FunctionType.Return) {
+		ctx.AddErrorf("函数 %s 返回值不能使用 opaque host type: %s", f.Name, f.FunctionType.Return)
+		return nil, false
+	}
 
 	for i, param := range f.Params {
 		f.Params[i].Type = param.Type.Resolve(ctx)
 		if !f.Params[i].Type.Valid(ctx) {
+			return nil, false
+		}
+		if ctx.ContainsHostOpaqueValue(f.Params[i].Type) {
+			ctx.AddErrorf("函数 %s 参数 %s 不能使用 opaque host type: %s", f.Name, param.Name, f.Params[i].Type)
 			return nil, false
 		}
 	}
@@ -1611,6 +1619,11 @@ func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 	g.Kind = g.Kind.Resolve(ctx.ValidContext)
 	if !g.Kind.Valid(ctx.ValidContext) {
 		err := fmt.Errorf("invalid type: %s", g.Kind)
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	if ctx.ContainsHostOpaqueValue(g.Kind) {
+		err := fmt.Errorf("变量 %s 不能声明为 opaque host value 类型: %s", g.Name, g.Kind)
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
@@ -1977,8 +1990,9 @@ func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
 	}
 
 	ctx.root.structs[s.Name] = &ValidStruct{
-		Fields:  make(map[Ident]GoMiniType),
-		Methods: make(map[Ident]CallFunctionType),
+		Fields:    make(map[Ident]GoMiniType),
+		Methods:   make(map[Ident]CallFunctionType),
+		Ownership: StructOwnershipVMValue,
 	}
 	return true
 }
@@ -2015,6 +2029,11 @@ func (s *StructStmt) Check(ctx *SemanticContext) error {
 		}
 		if !s.Fields[fieldName].Valid(ctx.ValidContext) {
 			err := fmt.Errorf("invalid field type for %s: %s", fieldName, fieldType)
+			ctx.AddErrorf("%s", err.Error())
+			hasError = true
+		}
+		if ctx.ContainsHostOpaqueValue(s.Fields[fieldName]) {
+			err := fmt.Errorf("struct %s 字段 %s 不能使用 opaque host value 类型: %s", s.Name, fieldName, s.Fields[fieldName])
 			ctx.AddErrorf("%s", err.Error())
 			hasError = true
 		}

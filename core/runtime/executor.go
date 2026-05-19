@@ -160,6 +160,10 @@ func (e *Executor) SharedStateSnapshot() *SharedStateSnapshot {
 }
 
 func normalizeMethodReceiverType(typeName string) string {
+	if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
+		typeName = strings.TrimPrefix(typeName, "HostRef<")
+		typeName = strings.TrimSuffix(typeName, ">")
+	}
 	typeName = strings.TrimPrefix(typeName, "Ptr<")
 	typeName = strings.TrimPrefix(typeName, "*")
 	typeName = strings.TrimSuffix(typeName, ">")
@@ -271,13 +275,14 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
 		Fields: fields,
 	}
 	return &RuntimeStructSpec{
-		Name:     string(stmt.Name),
-		TypeID:   CanonicalTypeID(string(stmt.Name)),
-		Spec:     TypeSpec(stmt.Name),
-		TypeInfo: typeInfo,
-		Layout:   buildStructLayout(fields),
-		Fields:   fields,
-		ByName:   byName,
+		Name:      string(stmt.Name),
+		TypeID:    CanonicalTypeID(string(stmt.Name)),
+		Spec:      TypeSpec(stmt.Name),
+		Ownership: StructOwnershipVMValue,
+		TypeInfo:  typeInfo,
+		Layout:    buildStructLayout(fields),
+		Fields:    fields,
+		ByName:    byName,
 	}
 }
 
@@ -498,7 +503,7 @@ func sameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
 	case a == nil || b == nil:
 		return a == b
 	default:
-		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name
+		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name && a.Ownership == b.Ownership
 	}
 }
 
@@ -508,43 +513,8 @@ func mergeRuntimeStructSchema(existing, next *RuntimeStructSpec) (*RuntimeStruct
 		return next, existing == next
 	case sameRuntimeStructSchema(existing, next):
 		return existing, true
-	case existing.TypeID != next.TypeID || existing.Name != next.Name:
-		return nil, false
 	}
-
-	existingFields := make(map[string]RuntimeStructField, len(existing.Fields))
-	for _, field := range existing.Fields {
-		existingFields[field.Name] = field
-	}
-	nextFields := make(map[string]RuntimeStructField, len(next.Fields))
-	for _, field := range next.Fields {
-		nextFields[field.Name] = field
-	}
-
-	for name, field := range existingFields {
-		if other, ok := nextFields[name]; ok {
-			if field.TypeInfo.Raw != other.TypeInfo.Raw {
-				return nil, false
-			}
-			continue
-		}
-		if field.TypeInfo.Kind != RuntimeTypeFunction {
-			return nil, false
-		}
-	}
-	for name, field := range nextFields {
-		if _, ok := existingFields[name]; ok {
-			continue
-		}
-		if field.TypeInfo.Kind != RuntimeTypeFunction {
-			return nil, false
-		}
-	}
-
-	if len(next.Fields) >= len(existing.Fields) {
-		return next, true
-	}
-	return existing, true
+	return nil, false
 }
 
 func sameRuntimeBridge(a, b any) bool {
@@ -712,7 +682,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		if name == "Error" {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
 		}
-	case TypeHandle:
+	case TypeHostRef:
 		if methodName, ok := e.resolveMethodRoute(string(val.RawType()), name); ok {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
 		}
@@ -1520,6 +1490,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			return errors.New("OpComposite missing CompositeData")
 		}
+		if typ.IsHostRef() || e.runtimeTypeContainsHostOpaqueValue(typ, 0) {
+			return &VMError{Message: fmt.Sprintf("opaque host type %s cannot be created by VM", typ.Raw), IsPanic: true}
+		}
 		isArray := typ.IsArray()
 		isMap := typ.IsMap()
 
@@ -2175,7 +2148,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if kind.IsEmpty() {
 			kind = MustParseRuntimeType("Any")
 		}
-		session.Shared.StoreGlobal(data.Name, e.initializeType(session, kind, 0))
+		v, err := e.initializeType(session, kind, 0)
+		if err != nil {
+			return err
+		}
+		session.Shared.StoreGlobal(data.Name, v)
 		return nil
 	case OpStoreGlobalInit:
 		name, ok := task.Data.(string)
@@ -2491,10 +2468,7 @@ func (e *Executor) isVMPointer(v *Var) bool {
 }
 
 func (e *Executor) isOpaqueHandle(v *Var) bool {
-	if v == nil || v.VType != TypeHandle {
-		return false
-	}
-	if e.isVMPointer(v) {
+	if v == nil || v.VType != TypeHostRef {
 		return false
 	}
 	return v.Bridge != nil || v.Handle != 0

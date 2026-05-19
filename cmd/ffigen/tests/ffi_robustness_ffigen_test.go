@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", "struct { X Int64; Y Int64; }")
+var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
 	MethodID_MockGeometry_SumX = 1

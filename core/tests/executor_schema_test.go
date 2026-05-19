@@ -15,7 +15,7 @@ import (
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }"))
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
 	exec.RegisterInterfaceSchema("demo.Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}"))
 
 	schema := exec.ExportedSchema()
@@ -239,7 +239,7 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 
 func TestMiniExecutorRejectsConflictingStructSchemaRegistration(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; }"))
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
 
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
@@ -247,7 +247,7 @@ func TestMiniExecutorRejectsConflictingStructSchemaRegistration(t *testing.T) {
 		}
 	}()
 
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }"))
+	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
 }
 
 func TestNewRuntimeByJSONRejectsASTPayload(t *testing.T) {

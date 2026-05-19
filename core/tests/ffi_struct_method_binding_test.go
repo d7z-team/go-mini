@@ -10,8 +10,8 @@ import (
 
 func TestFFIStructMethodBindingDoesNotStripNonReceiverFirstParam(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.DeclareStructSchema("demo.Table", runtime.MustParseRuntimeStructSpec("demo.Table", "struct { SetString function(Int64, Int64, String) Void; }"))
-	exec.DeclareFuncSchema("demo.NewTable", runtime.MustParseRuntimeFuncSig("function() demo.Table"))
+	exec.DeclareStructSchema("demo.Table", runtime.MustParseRuntimeStructSpec("demo.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<demo.Table>, Int64, Int64, String) Void; }"))
+	exec.DeclareFuncSchema("demo.NewTable", runtime.MustParseRuntimeFuncSig("function() HostRef<demo.Table>"))
 
 	source := `package main
 import "demo"

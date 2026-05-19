@@ -464,20 +464,28 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			return nil
 		}
 		if schema, ok := e.lookupStructSchema(typ); ok {
+			if schema.Ownership == StructOwnershipHostOpaque {
+				return fmt.Errorf("cannot serialize bare host opaque value %s; use HostRef<%s>", typ.Raw, schema.TypeID)
+			}
 			return e.serializeStructSchema(buf, v, schema)
-		}
-		if e.isOpaqueHandle(v) {
-			buf.WriteUvarint(uint64(v.Handle))
-			return nil
 		}
 		e.serializeVarToAny(buf, v)
 		return nil
-	case RuntimeTypePointer:
-		hVal := uint32(0)
-		if e.isOpaqueHandle(v) {
-			hVal, _ = v.ToHandle()
+	case RuntimeTypeHostRef:
+		if v == nil {
+			buf.WriteUvarint(0)
+			return nil
 		}
-		buf.WriteUvarint(uint64(hVal))
+		if !e.isOpaqueHandle(v) {
+			return fmt.Errorf("cannot pass %v as %s: expected opaque host reference", v.VType, typ.Raw)
+		}
+		buf.WriteUvarint(uint64(v.Handle))
+		return nil
+	case RuntimeTypePointer:
+		if _, ok := e.vmPointerTarget(v); !ok && v != nil {
+			return fmt.Errorf("cannot pass %v as VM pointer %s", v.VType, typ.Raw)
+		}
+		e.serializeVarToAny(buf, v)
 		return nil
 	case RuntimeTypeArray:
 		if v == nil || v.VType != TypeArray {
@@ -582,7 +590,8 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			e.serializeVarToAny(buf, inner)
 			return
 		}
-		// Host-visible handles always travel as opaque handle IDs.
+		buf.WriteAny(nil)
+	case TypeHostRef:
 		buf.WriteAny(v.Handle)
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
@@ -680,8 +689,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
 		}
-		res = &Var{VType: TypeHandle, Handle: v, Bridge: bridge, Ref: h}
-		res.SetRawType("TypeHandle")
+		res = &Var{VType: TypeHostRef, Handle: v, Bridge: bridge, Ref: h}
+		res.SetRawType("HostRef<Any>")
 	case ffigo.InterfaceData:
 		var ifaceStr strings.Builder
 		ifaceStr.WriteString("interface{")
@@ -700,8 +709,8 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		ifaceStr.WriteString("}")
 		ifaceSpec, _ := ParseRuntimeInterfaceSpec(ast.GoMiniType(ifaceStr.String()))
 
-		target := &Var{VType: TypeHandle, Handle: v.Handle, Bridge: bridge}
-		target.SetRawType("TypeHandle")
+		target := &Var{VType: TypeHostRef, Handle: v.Handle, Bridge: bridge}
+		target.SetRawType("HostRef<Any>")
 		if v.Handle != 0 {
 			h := NewVMHandle(v.Handle, bridge)
 			target.Ref = h
@@ -946,23 +955,24 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 				break
 			}
 			if schema, ok := e.lookupStructSchema(typ); ok {
+				if schema.Ownership == StructOwnershipHostOpaque {
+					err = fmt.Errorf("cannot deserialize bare host opaque value %s; use HostRef<%s>", typ.Raw, schema.TypeID)
+					break
+				}
 				res, err = e.deserializeStructSchema(session, reader, schema, bridge)
 				break
 			}
-			id := uint32(reader.ReadUvarint())
-			var h *VMHandle
-			if id != 0 {
-				h = NewVMHandle(id, bridge)
-			}
-			res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
+			err = fmt.Errorf("unsupported named FFI return type: %s", typ.Raw)
 		}
-	case RuntimeTypePointer:
+	case RuntimeTypeHostRef:
 		id := uint32(reader.ReadUvarint())
 		var h *VMHandle
 		if id != 0 {
 			h = NewVMHandle(id, bridge)
 		}
-		res = &Var{VType: TypeHandle, Handle: id, Bridge: bridge, Ref: h}
+		res = &Var{VType: TypeHostRef, Handle: id, Bridge: bridge, Ref: h}
+	case RuntimeTypePointer:
+		err = fmt.Errorf("FFI cannot return VM pointer type %s", typ.Raw)
 	case RuntimeTypeArray:
 		count := int(reader.ReadUvarint())
 		arrData := make([]*Var, count)

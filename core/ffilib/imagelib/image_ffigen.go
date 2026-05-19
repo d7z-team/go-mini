@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", "struct { RGBA Ptr<image.RGBA>; Bounds function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(Ptr<image.Image>) tuple(Int64, Int64); Width function(Ptr<image.Image>) Int64; Height function(Ptr<image.Image>) Int64; At function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(Ptr<image.Image>) Void; Clone function(Ptr<image.Image>) Ptr<image.Image>; SubImage function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); Draw function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void; Resize function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error); Crop function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error); EncodePNG function(Ptr<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error); }")
+var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", runtime.StructOwnershipHostOpaque, "struct { Bounds function(HostRef<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(HostRef<image.Image>) tuple(Int64, Int64); Width function(HostRef<image.Image>) Int64; Height function(HostRef<image.Image>) Int64; At function(HostRef<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(HostRef<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(HostRef<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(HostRef<image.Image>) Void; Clone function(HostRef<image.Image>) HostRef<image.Image>; SubImage function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error); Draw function(HostRef<image.Image>, HostRef<image.Image>, Int64, Int64) Void; Resize function(HostRef<image.Image>, Int64, Int64) tuple(HostRef<image.Image>, Error); Crop function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error); EncodePNG function(HostRef<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(HostRef<image.Image>, Int64) tuple(TypeBytes, Error); }")
 
 const (
 	MethodID_ImageLib_Decode  = 1
@@ -44,10 +44,10 @@ func (__p *ImageLibProxy) Decode(ctx context.Context, data []byte) (*Image, stri
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Image
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "image.Image"); ok {
 				v_0 = obj.(*Image)
 			}
 		}
@@ -88,10 +88,10 @@ func (__p *ImageLibProxy) NewRGBA(ctx context.Context, width int, height int) *I
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Image
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "image.Image"); ok {
 				v_0 = obj.(*Image)
 			}
 		}
@@ -116,11 +116,11 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 		data = reqBuf.ReadBytes()
 		r0, r1, err := impl.Decode(ctx, data)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		resBuf.WriteString(string(r1))
 		if err != nil {
@@ -146,11 +146,11 @@ func ImageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 		}
 		r0 := impl.NewRGBA(ctx, width, height)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -164,8 +164,8 @@ var ImageLib_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Decode", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Ptr<image.Image>, String, Error)", runtime.FFIParamIn), "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
-	{"NewRGBA", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) Ptr<image.Image>", runtime.FFIParamIn, runtime.FFIParamIn), "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
+	{"Decode", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(HostRef<image.Image>, String, Error)", runtime.FFIParamIn), "Decode 对应 Go 的 image.Decode(r) (Image, string, error)"},
+	{"NewRGBA", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) HostRef<image.Image>", runtime.FFIParamIn, runtime.FFIParamIn), "NewRGBA 对应 Go 的 image.NewRGBA(rect)"},
 }
 
 type ImageLib_Bridge struct {
@@ -266,9 +266,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	switch methodID {
 	case MethodID_Image_Bounds:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -283,9 +283,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Size:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -298,9 +298,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Width:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -312,9 +312,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Height:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -326,9 +326,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_At:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -353,9 +353,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Set:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -396,9 +396,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Fill:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -429,9 +429,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Clear:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -442,9 +442,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Clone:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -452,18 +452,18 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		r0 := __recv.Clone()
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Image_SubImage:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -491,11 +491,11 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		r0, err := __recv.SubImage(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -509,18 +509,18 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Draw:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var src *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				src = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
@@ -541,9 +541,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Resize:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -561,11 +561,11 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		r0, err := __recv.Resize(width, height)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -579,9 +579,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_Crop:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -609,11 +609,11 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		r0, err := __recv.Crop(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "image.Image")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -627,9 +627,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_EncodePNG:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -650,9 +650,9 @@ func ImageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		return resBuf.Bytes(), nil
 	case MethodID_Image_EncodeJPEG:
 		var __recv *Image
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -687,21 +687,21 @@ var Image_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Bounds", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn), "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{"Size", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(Int64, Int64)", runtime.FFIParamIn), "Size 返回 width, height"},
-	{"Width", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Int64", runtime.FFIParamIn), "Width 返回图像宽度"},
-	{"Height", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Int64", runtime.FFIParamIn), "Height 返回图像高度"},
-	{"At", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "At 返回 r, g, b, a (0-255)"},
-	{"Set", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Set 设置指定像素的颜色"},
-	{"Fill", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Fill 用指定颜色填充整个图像"},
-	{"Clear", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Void", runtime.FFIParamIn), "Clear 将图像清空为透明"},
-	{"Clone", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) Ptr<image.Image>", runtime.FFIParamIn), "Clone 复制当前图像"},
-	{"SubImage", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "SubImage 返回图像的子部分 (共享内存)"},
-	{"Draw", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Ptr<image.Image>, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
-	{"Resize", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Resize 缩放图像"},
-	{"Crop", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64, Int64, Int64, Int64) tuple(Ptr<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Crop 裁剪图像"},
-	{"EncodePNG", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>) tuple(TypeBytes, Error)", runtime.FFIParamIn), "EncodePNG 将图像编码为 PNG 字节数组"},
-	{"EncodeJPEG", 15, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<image.Image>, Int64) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "EncodeJPEG 将图像编码为 JPEG 字节数组"},
+	{"Bounds", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn), "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
+	{"Size", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64)", runtime.FFIParamIn), "Size 返回 width, height"},
+	{"Width", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), "Width 返回图像宽度"},
+	{"Height", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), "Height 返回图像高度"},
+	{"At", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "At 返回 r, g, b, a (0-255)"},
+	{"Set", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Set 设置指定像素的颜色"},
+	{"Fill", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Fill 用指定颜色填充整个图像"},
+	{"Clear", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Void", runtime.FFIParamIn), "Clear 将图像清空为透明"},
+	{"Clone", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) HostRef<image.Image>", runtime.FFIParamIn), "Clone 复制当前图像"},
+	{"SubImage", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "SubImage 返回图像的子部分 (共享内存)"},
+	{"Draw", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, HostRef<image.Image>, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
+	{"Resize", 12, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Resize 缩放图像"},
+	{"Crop", 13, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Crop 裁剪图像"},
+	{"EncodePNG", 14, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(TypeBytes, Error)", runtime.FFIParamIn), "EncodePNG 将图像编码为 PNG 字节数组"},
+	{"EncodeJPEG", 15, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "EncodeJPEG 将图像编码为 JPEG 字节数组"},
 }
 
 type Image_Bridge struct {

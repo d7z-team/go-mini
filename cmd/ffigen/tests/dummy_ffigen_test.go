@@ -10,17 +10,19 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", "struct { Name String; }")
+var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct { }")
 
-var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", "struct { Name String; Size Int64; }")
+var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", runtime.StructOwnershipVMValue, "struct { Name String; Size Int64; }")
 
-var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", "struct { Info os.FileInfo; Level Int64; }")
+var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested", runtime.StructOwnershipVMValue, "struct { Info os.FileInfo; Level Int64; }")
 
-var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", "struct { Msg String; Value Int64; }")
+var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", runtime.StructOwnershipVMValue, "struct { Msg String; Value Int64; }")
 
-var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", "struct { Value Int64; GetByPlaceholder function(Ptr<Page>, String, ...Bool) Ptr<Selector>; }")
+var native_NativeHandle_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeHandle", runtime.StructOwnershipHostOpaque, "struct { }")
 
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", "struct { Value Int64; }")
+var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", runtime.StructOwnershipHostOpaque, "struct { }")
+
+var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", runtime.StructOwnershipHostOpaque, "struct { GetByPlaceholder function(HostRef<Page>, String, ...Bool) HostRef<Selector>; }")
 
 const (
 	MethodID_MockOS_Open  = 1
@@ -59,10 +61,10 @@ func (__p *MockOSProxy) Open(name string) (*File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *File
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "os.File"); ok {
 				v_0 = obj.(*File)
 			}
 		}
@@ -89,12 +91,12 @@ func (__p *MockOSProxy) Name(f *File) string {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -117,12 +119,12 @@ func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -167,12 +169,12 @@ func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -217,12 +219,12 @@ func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -267,12 +269,12 @@ func (__p *MockOSProxy) Close(f *File) error {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if f == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(f)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -363,11 +365,11 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "os.File")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -381,9 +383,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Name:
 		var f *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
@@ -395,9 +397,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Stat:
 		var f *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
@@ -419,9 +421,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Read:
 		var f *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
@@ -444,9 +446,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Write:
 		var f *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
@@ -469,9 +471,9 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_MockOS_Close:
 		var f *File
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
@@ -517,12 +519,12 @@ var MockOS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<os.File>, Error)", runtime.FFIParamIn), ""},
-	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) String", runtime.FFIParamIn), ""},
-	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), ""},
-	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<os.File>) Error", runtime.FFIParamIn), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<os.File>, Error)", runtime.FFIParamIn), ""},
+	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) String", runtime.FFIParamIn), ""},
+	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), ""},
+	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) Error", runtime.FFIParamIn), ""},
 	{"Deep", 7, runtime.MustParseRuntimeFuncSigWithModes("function(os.Nested) os.Nested", runtime.FFIParamIn), ""},
 }
 
@@ -747,7 +749,7 @@ func (__p *NativeMockProxy) GetStruct() NativeStruct {
 	return v_0
 }
 
-func (__p *NativeMockProxy) GetPtr() *NativeStruct {
+func (__p *NativeMockProxy) GetPtr() *NativeHandle {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
@@ -759,12 +761,12 @@ func (__p *NativeMockProxy) GetPtr() *NativeStruct {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 *NativeStruct
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	var v_0 *NativeHandle
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
-				v_0 = obj.(*NativeStruct)
+			if obj, ok := __p.registry.GetTyped(id, "native.NativeHandle"); ok {
+				v_0 = obj.(*NativeHandle)
 			}
 		}
 	}
@@ -794,16 +796,16 @@ func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	return v_0
 }
 
-func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
+func (__p *NativeMockProxy) SetPtr(s *NativeHandle) int64 {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if s == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(s)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(s, "native.NativeHandle")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -850,11 +852,11 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case MethodID_NativeMock_GetPtr:
 		r0 := impl.GetPtr()
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "native.NativeHandle")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_NativeMock_SetStruct:
@@ -869,11 +871,11 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_NativeMock_SetPtr:
-		var s *NativeStruct
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		var s *NativeHandle
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
-				s = obj.(*NativeStruct)
+			if obj, err := registry.GetTypedWithAudit(id, "native.NativeHandle"); err == nil {
+				s = obj.(*NativeHandle)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "s", err)
 			}
@@ -894,9 +896,9 @@ var NativeMock_FFI_Schemas = []struct {
 	Doc      string
 }{
 	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig("function() native.NativeStruct"), ""},
-	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig("function() Ptr<native.NativeStruct>"), ""},
+	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig("function() HostRef<native.NativeHandle>"), ""},
 	{"SetStruct", 3, runtime.MustParseRuntimeFuncSigWithModes("function(native.NativeStruct) Int64", runtime.FFIParamIn), ""},
-	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<native.NativeStruct>) Int64", runtime.FFIParamIn), ""},
+	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<native.NativeHandle>) Int64", runtime.FFIParamIn), ""},
 }
 
 type NativeMock_Bridge struct {
@@ -943,6 +945,7 @@ func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, 
 	registrar.RegisterFFISchema("native.SetStruct", bridge, NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
 	registrar.RegisterFFISchema("native.SetPtr", bridge, NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
 	registerStructSchema("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
+	registerStructSchema("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
 }
 
 const (
@@ -961,9 +964,9 @@ func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 	switch methodID {
 	case MethodID_Page_GetByPlaceholder:
 		var __recv *Page
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "Page"); err == nil {
 				__recv = obj.(*Page)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -979,11 +982,11 @@ func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 		}
 		r0 := __recv.GetByPlaceholder(text, exact...)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "Selector")))
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -997,7 +1000,7 @@ var Page_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<Page>, String, ...Bool) Ptr<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<Page>, String, ...Bool) HostRef<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 }
 
 type Page_Bridge struct {

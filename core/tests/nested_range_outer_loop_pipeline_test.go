@@ -50,9 +50,9 @@ func (b *nestedRangeOuterLoopBridge) DestroyHandle(handle uint32) error {
 
 func registerNestedRangeOuterLoopSchemas(exec *engine.MiniExecutor, bridge *nestedRangeOuterLoopBridge) {
 	exec.RegisterFFISchema("mock.Rows", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function() Array<Ptr<mock.Row>>"), "")
+		runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), "")
 	exec.RegisterFFISchema("mock.Day", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(Ptr<mock.Row>) Int64"), "")
+		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Int64"), "")
 }
 
 func TestNestedOuterLoopRangeContinueKeepsOuterLocalAcrossAllLoaders(t *testing.T) {

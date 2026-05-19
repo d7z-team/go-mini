@@ -36,6 +36,8 @@ func (v VarType) String() string {
 		return "Array"
 	case TypeHandle:
 		return "Handle"
+	case TypeHostRef:
+		return "HostRef"
 	case TypeModule:
 		return "Module"
 	case TypeClosure:
@@ -99,7 +101,8 @@ const (
 	TypeBool
 	TypeMap     // Internal VM Map (string keys only)
 	TypeArray   // Internal VM Array ([]*Var)
-	TypeHandle  // Host resource ID (uint32)
+	TypeHandle  // Internal VM pointer
+	TypeHostRef // Host resource ID (uint32)
 	TypeModule  // Dynamic module object
 	TypeClosure // Anonymous function with captured environment
 	TypeCell    // Boxed variable for closure capture
@@ -268,7 +271,7 @@ func (v *Var) Copy() *Var {
 		copy(res.B, v.B)
 	}
 	// 如果是句柄类型，确保 Ref 始终持有 VMHandle 对象以维持生命周期
-	if v.VType == TypeHandle && v.Handle != 0 && v.Ref == nil {
+	if (v.VType == TypeHandle || v.VType == TypeHostRef) && v.Handle != 0 && v.Ref == nil {
 		// 容错：如果 Ref 丢失但 Handle 还在，重新构造一个受控的 VMHandle
 		h := NewVMHandle(v.Handle, v.Bridge)
 		res.Ref = h
@@ -737,8 +740,8 @@ func (v *Var) ToHandle() (uint32, error) {
 	if v == nil {
 		return 0, errors.New("accessing nil variable")
 	}
-	if v.VType != TypeHandle {
-		return 0, fmt.Errorf("type mismatch: expected TypeHandle, got %v", v.VType)
+	if v.VType != TypeHandle && v.VType != TypeHostRef {
+		return 0, fmt.Errorf("type mismatch: expected handle-compatible value, got %v", v.VType)
 	}
 	return v.Handle, nil
 }
@@ -788,6 +791,8 @@ func (v *Var) String() string {
 		return fmt.Sprintf("bytes(%d)", len(v.B))
 	case TypeHandle:
 		return fmt.Sprintf("handle(%d)", v.Handle)
+	case TypeHostRef:
+		return fmt.Sprintf("hostref(%d)", v.Handle)
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
 			return fmt.Sprintf("array(%d)", arr.Len())
@@ -830,6 +835,8 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 	case TypeBool:
 		return v.Bool
 	case TypeHandle:
+		return v.Handle
+	case TypeHostRef:
 		return v.Handle
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
@@ -1701,7 +1708,11 @@ func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind RuntimeType) error {
 	ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
 	var v *Var
 	if ctx.Executor != nil {
-		v = ctx.Executor.initializeType(ctx, kind, 0)
+		var err error
+		v, err = ctx.Executor.initializeType(ctx, kind, 0)
+		if err != nil {
+			return err
+		}
 	} else {
 		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
@@ -1880,7 +1891,11 @@ func (ctx *StackContext) NewVar(name string, kind RuntimeType) error {
 	// 确保变量被正确初始化为零值
 	var v *Var
 	if ctx.Executor != nil {
-		v = ctx.Executor.initializeType(ctx, kind, 0)
+		var err error
+		v, err = ctx.Executor.initializeType(ctx, kind, 0)
+		if err != nil {
+			return err
+		}
 	} else {
 		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
@@ -1904,7 +1919,11 @@ func (ctx *StackContext) InitReturn(kind RuntimeType) error {
 	}
 	var v *Var
 	if ctx.Executor != nil {
-		v = ctx.Executor.initializeType(ctx, kind, 0)
+		var err error
+		v, err = ctx.Executor.initializeType(ctx, kind, 0)
+		if err != nil {
+			return err
+		}
 	} else {
 		v = NewVarWithRuntimeType(kind, TypeAny)
 	}
@@ -2129,6 +2148,8 @@ func isEmptyVar(v *Var) bool {
 		}
 		return v.Ref == nil
 	case TypeHandle:
+		return v.Handle == 0
+	case TypeHostRef:
 		return v.Handle == 0
 	case TypeAny:
 		return v.Ref == nil

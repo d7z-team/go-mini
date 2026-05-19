@@ -57,6 +57,7 @@ type schemaDecl struct {
 	varName     string
 	displayName string
 	specLiteral string
+	ownership   string
 }
 
 type schemaRegistry struct {
@@ -68,14 +69,18 @@ func newSchemaRegistry() *schemaRegistry {
 	return &schemaRegistry{byVar: make(map[string]int)}
 }
 
-func (r *schemaRegistry) Ensure(displayName, specLiteral string) string {
+func (r *schemaRegistry) Ensure(displayName, ownership, specLiteral string) string {
 	varName := structSchemaVarName(displayName)
 	if idx, ok := r.byVar[varName]; ok {
+		if r.ordered[idx].ownership != ownership {
+			panic(fmt.Sprintf("ffigen: conflicting ownership for %s: %s vs %s", displayName, r.ordered[idx].ownership, ownership))
+		}
 		if existing := r.ordered[idx].specLiteral; existing == "" || (specLiteral != "" && len(specLiteral) > len(existing)) {
 			r.ordered[idx] = schemaDecl{
 				varName:     varName,
 				displayName: displayName,
 				specLiteral: specLiteral,
+				ownership:   ownership,
 			}
 		}
 		return varName
@@ -85,6 +90,7 @@ func (r *schemaRegistry) Ensure(displayName, specLiteral string) string {
 		varName:     varName,
 		displayName: displayName,
 		specLiteral: specLiteral,
+		ownership:   ownership,
 	})
 	return varName
 }
@@ -539,7 +545,7 @@ func generatePackageOutput(outputPath string, allFiles, inputFiles []*ast.File, 
 	var schemaDefs strings.Builder
 	if schemas != nil {
 		for _, decl := range schemas.ordered {
-			fmt.Fprintf(&schemaDefs, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", decl.varName, decl.displayName, decl.specLiteral)
+			fmt.Fprintf(&schemaDefs, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", runtime.%s, \"%s\")\n\n", decl.varName, decl.displayName, decl.ownership, decl.specLiteral)
 		}
 	}
 
@@ -1016,6 +1022,9 @@ func collectNamedTypeRefs(typeName string) []string {
 	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
 		return collectNamedTypeRefs(typeName[4 : len(typeName)-1])
 	}
+	if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
+		return collectNamedTypeRefs(typeName[8 : len(typeName)-1])
+	}
 	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
 		return collectNamedTypeRefs(typeName[6 : len(typeName)-1])
 	}
@@ -1056,6 +1065,9 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 	}
 	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
 		return "Ptr<" + r.NormalizeTypeString(typeName[4:len(typeName)-1]) + ">"
+	}
+	if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
+		return "HostRef<" + r.NormalizeTypeString(typeName[8:len(typeName)-1]) + ">"
 	}
 	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
 		return "Array<" + r.NormalizeTypeString(typeName[6:len(typeName)-1]) + ">"
@@ -1131,7 +1143,7 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	case *ast.MapType:
 		return fmt.Sprintf("Map<%s, %s>", r.VMType(t.Key), r.VMType(t.Value))
 	case *ast.StarExpr:
-		return fmt.Sprintf("Ptr<%s>", r.VMType(t.X))
+		return fmt.Sprintf("HostRef<%s>", r.VMType(t.X))
 	case *ast.Ellipsis:
 		return fmt.Sprintf("Array<%s>", r.VMType(t.Elt))
 	case *ast.InterfaceType:
@@ -1292,8 +1304,9 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			return len(field.Names) > 0 && field.Names[0].Name == "__recv"
 		}
 		receiverType := displayTypeName(typeToString(funcType.Params.List[paramIdx].Type))
-		receiverType = strings.TrimPrefix(receiverType, "Ptr<")
-		receiverType = strings.TrimSuffix(receiverType, ">")
+		if inner, ok := refElementType(receiverType); ok {
+			receiverType = inner
+		}
 		expectedType := displayTypeName(methodsPrefix)
 		return receiverType == expectedType
 	}
@@ -1360,21 +1373,35 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		return fieldsSB.String()
 	}
 
-	referencedStructs := collectReferencedStructs(iface, structs, ownedStructs, currentOwned, packageMode)
+	referencedSet := collectReferencedStructSet(iface, structs, ownedStructs, currentOwned, packageMode)
+	referencedStructs := referencedSet.ordered
 	referencedSchemaVars := make(map[string]string, len(referencedStructs))
+	hostOpaqueSchemaName := ""
+	if methodsPrefix != "" {
+		hostOpaqueSchemaName = methodsPrefix
+		if isStruct {
+			hostOpaqueSchemaName = name
+		}
+		referencedSet.ownership[hostOpaqueSchemaName] = "StructOwnershipHostOpaque"
+	}
 	if schemas != nil {
 		for _, structName := range referencedStructs {
-			referencedSchemaVars[structName] = schemas.Ensure(displayTypeName(structName), buildStructSchemaLiteral(structName, true, false))
+			if hostOpaqueSchemaName != "" && displayTypeName(structName) == displayTypeName(hostOpaqueSchemaName) {
+				continue
+			}
+			ownership := referencedSet.ownership[structName]
+			if ownership == "" {
+				ownership = "StructOwnershipVMValue"
+			}
+			includeFields := ownership != "StructOwnershipHostOpaque"
+			referencedSchemaVars[structName] = schemas.Ensure(displayTypeName(structName), ownership, buildStructSchemaLiteral(structName, includeFields, false))
 		}
 	}
 	selfSchemaVar := ""
 	if schemas != nil && methodsPrefix != "" {
-		includeFields := isStruct || structs[methodsPrefix] != nil
-		schemaName := methodsPrefix
-		if isStruct {
-			schemaName = name
-		}
-		selfSchemaVar = schemas.Ensure(displayTypeName(schemaName), buildStructSchemaLiteral(schemaName, includeFields, true))
+		includeFields := false
+		schemaName := hostOpaqueSchemaName
+		selfSchemaVar = schemas.Ensure(displayTypeName(schemaName), "StructOwnershipHostOpaque", buildStructSchemaLiteral(schemaName, includeFields, true))
 	}
 
 	fmt.Fprintf(&sb, "const (\n")
@@ -1479,7 +1506,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 							itemType, _ := readArrayItemType(pType)
 							fmt.Fprintf(&sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", wireBufName, argName)
 							fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", argName)
-							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
+							emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, moduleName, false)
 							fmt.Fprintf(&sb, "\t}\n")
 						} else {
 							switch copyBackKind(param.Type) {
@@ -1490,12 +1517,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 								fmt.Fprintf(&sb, "\tif %s == nil {\n", argName)
 								fmt.Fprintf(&sb, "\t\t%s.WriteUvarint(0)\n", wireBufName)
 								fmt.Fprintf(&sb, "\t} else {\n")
-								emitWrite(&sb, argName+".Value", vmType(param.Type), param.Type, structs, wireBufName, false)
+								emitWrite(&sb, argName+".Value", vmType(param.Type), param.Type, structs, wireBufName, moduleName, false)
 								fmt.Fprintf(&sb, "\t}\n")
 								argIdx++
 								continue
 							}
-							emitWrite(&sb, argName, pType, param.Type, structs, wireBufName, false)
+							emitWrite(&sb, argName, pType, param.Type, structs, wireBufName, moduleName, false)
 						}
 						argIdx++
 					} else {
@@ -1504,7 +1531,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 								itemType, _ := readArrayItemType(pType)
 								fmt.Fprintf(&sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", wireBufName, pName.Name)
 								fmt.Fprintf(&sb, "\tfor _, item := range %s {\n", pName.Name)
-								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, false)
+								emitWrite(&sb, "item", itemType, param.Type.(*ast.Ellipsis).Elt, structs, wireBufName, moduleName, false)
 								fmt.Fprintf(&sb, "\t}\n")
 							} else {
 								switch copyBackKind(param.Type) {
@@ -1515,12 +1542,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 									fmt.Fprintf(&sb, "\tif %s == nil {\n", pName.Name)
 									fmt.Fprintf(&sb, "\t\t%s.WriteUvarint(0)\n", wireBufName)
 									fmt.Fprintf(&sb, "\t} else {\n")
-									emitWrite(&sb, pName.Name+".Value", vmType(param.Type), param.Type, structs, wireBufName, false)
+									emitWrite(&sb, pName.Name+".Value", vmType(param.Type), param.Type, structs, wireBufName, moduleName, false)
 									fmt.Fprintf(&sb, "\t}\n")
 									argIdx++
 									continue
 								}
-								emitWrite(&sb, pName.Name, pType, param.Type, structs, wireBufName, false)
+								emitWrite(&sb, pName.Name, pType, param.Type, structs, wireBufName, moduleName, false)
 							}
 							argIdx++
 						}
@@ -1573,7 +1600,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 						fmt.Fprintf(&sb, "\tcopyBackBuf_%s := ffigo.NewReader(retBuf.ReadBytes())\n", copyBackVar.name)
 						tmpVar := "copyBack_" + copyBackVar.name
 						fmt.Fprintf(&sb, "\tvar %s %s\n", tmpVar, toGoType(copyBackVar.vmType))
-						emitReadAssign(&sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, false)
+						emitReadAssign(&sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, moduleName, false)
 						fmt.Fprintf(&sb, "\t%s.Value = %s\n", copyBackVar.name, tmpVar)
 					}
 				}
@@ -1597,7 +1624,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					}
 					varName := fmt.Sprintf("v_%d", i)
 					fmt.Fprintf(&sb, "\tvar %s %s\n", varName, toGoType(rType))
-					emitReadAssign(&sb, varName, rType, result.Type, structs, "retBuf", false)
+					emitReadAssign(&sb, varName, rType, result.Type, structs, "retBuf", moduleName, false)
 					retStmt = append(retStmt, varName)
 				}
 			}
@@ -1717,11 +1744,11 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					if copyBackKind(param.Type) == "array" {
 						tmpVar := argName + "Value"
 						fmt.Fprintf(&sb, "\t\tvar %s %s\n", tmpVar, toGoType(vmType(param.Type)))
-						emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", true)
+						emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", moduleName, true)
 						fmt.Fprintf(&sb, "\t\t%s = &%s{Value: %s}\n", argName, strings.TrimPrefix(goType, "*"), tmpVar)
 						copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "array", vmType: vmType(param.Type), expr: param.Type})
 					} else {
-						emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", true)
+						emitReadAssign(&sb, argName, pType, param.Type, structs, "reqBuf", moduleName, true)
 						if copyBackKind(param.Type) == "bytes" {
 							copyBackVars = append(copyBackVars, copyBackParam{name: argName, kind: "bytes", vmType: "TypeBytes"})
 						}
@@ -1738,11 +1765,11 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 						if copyBackKind(param.Type) == "array" {
 							tmpVar := pName.Name + "Value"
 							fmt.Fprintf(&sb, "\t\tvar %s %s\n", tmpVar, toGoType(vmType(param.Type)))
-							emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", true)
+							emitReadAssign(&sb, tmpVar, vmType(param.Type), nil, structs, "reqBuf", moduleName, true)
 							fmt.Fprintf(&sb, "\t\t%s = &%s{Value: %s}\n", pName.Name, strings.TrimPrefix(goType, "*"), tmpVar)
 							copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "array", vmType: vmType(param.Type), expr: param.Type})
 						} else {
-							emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", true)
+							emitReadAssign(&sb, pName.Name, pType, param.Type, structs, "reqBuf", moduleName, true)
 							if copyBackKind(param.Type) == "bytes" {
 								copyBackVars = append(copyBackVars, copyBackParam{name: pName.Name, kind: "bytes", vmType: "TypeBytes"})
 							}
@@ -1796,10 +1823,10 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			goElemType := toGoType(elemType)
 			fmt.Fprintf(&sb, "\t\treturn ffigo.AsyncValue[%s](r0, func(resBuf *ffigo.Buffer, value %s) error {\n", goElemType, goElemType)
 			if tupleItems, tupleOK := tuple2ElemExprs(elemExpr); tupleOK {
-				emitWrite(&sb, "value.V0", vmType(tupleItems[0]), tupleItems[0], structs, "resBuf", true)
-				emitWrite(&sb, "value.V1", vmType(tupleItems[1]), tupleItems[1], structs, "resBuf", true)
+				emitWrite(&sb, "value.V0", vmType(tupleItems[0]), tupleItems[0], structs, "resBuf", moduleName, true)
+				emitWrite(&sb, "value.V1", vmType(tupleItems[1]), tupleItems[1], structs, "resBuf", moduleName, true)
 			} else if vmType(elemExpr) != "Void" {
-				emitWrite(&sb, "value", vmType(elemExpr), elemExpr, structs, "resBuf", true)
+				emitWrite(&sb, "value", vmType(elemExpr), elemExpr, structs, "resBuf", moduleName, true)
 			}
 			fmt.Fprintf(&sb, "\t\t\treturn nil\n\t\t}), nil\n")
 			continue
@@ -1814,7 +1841,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				case "array":
 					fmt.Fprintf(&sb, "\t\tcopyBackBuf_%s := ffigo.GetBuffer()\n", copyBackVar.name)
 					fmt.Fprintf(&sb, "\t\tif %s != nil {\n", copyBackVar.name)
-					emitWrite(&sb, copyBackVar.name+".Value", copyBackVar.vmType, copyBackVar.expr, structs, "copyBackBuf_"+copyBackVar.name, true)
+					emitWrite(&sb, copyBackVar.name+".Value", copyBackVar.vmType, copyBackVar.expr, structs, "copyBackBuf_"+copyBackVar.name, moduleName, true)
 					fmt.Fprintf(&sb, "\t\t}\n")
 					fmt.Fprintf(&sb, "\t\tresBuf.WriteBytes(copyBackBuf_%s.Bytes())\n", copyBackVar.name)
 					fmt.Fprintf(&sb, "\t\tffigo.ReleaseBuffer(copyBackBuf_%s)\n", copyBackVar.name)
@@ -1828,7 +1855,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 					fmt.Fprintf(&sb, "\t\t\tif registry != nil {\n\t\t\t\tresBuf.WriteRawError(err.Error(), registry.Register(err))\n\t\t\t} else {\n\t\t\t\tresBuf.WriteRawError(err.Error(), 0)\n\t\t\t}\n")
 					fmt.Fprintf(&sb, "\t\t} else {\n\t\t\tresBuf.WriteRawError(\"\", 0)\n\t\t}\n")
 				} else {
-					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), result.Type, structs, "resBuf", true)
+					emitWrite(&sb, fmt.Sprintf("r%d", i), typeToString(result.Type), result.Type, structs, "resBuf", moduleName, true)
 				}
 			}
 		}
@@ -1871,10 +1898,16 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			if isStruct && structName == name {
 				continue
 			}
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n",
+			ownership := referencedSet.ownership[structName]
+			if ownership == "" {
+				ownership = "StructOwnershipVMValue"
+			}
+			includeFields := ownership != "StructOwnershipHostOpaque"
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", runtime.%s, \"%s\")\n\n",
 				structSchemaVarName(displayTypeName(structName)),
 				displayTypeName(structName),
-				buildStructSchemaLiteral(structName, true, false),
+				ownership,
+				buildStructSchemaLiteral(structName, includeFields, false),
 			)
 		}
 	}
@@ -1882,7 +1915,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	if isStruct && methodsPrefix != "" {
 		// Method Set registration for STRUCT: NO 'impl' parameter
 		if schemas == nil {
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), buildStructSchemaLiteral(name, true, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", runtime.StructOwnershipHostOpaque, \"%s\")\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), buildStructSchemaLiteral(name, false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
@@ -1914,7 +1947,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	} else if isModule || methodsPrefix != "" {
 		// Module or Interface-based Methods: REQUIRES 'impl'
 		if methodsPrefix != "" && schemas == nil {
-			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", \"%s\")\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
+			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(\"%s\", runtime.StructOwnershipHostOpaque, \"%s\")\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), buildStructSchemaLiteral("", false, true))
 		}
 		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
@@ -2242,36 +2275,49 @@ func splitQualifiedTypeName(typeName string) (string, string, bool) {
 	return typeName[:idx], typeName[idx+1:], true
 }
 
+type referencedStructSet struct {
+	ordered   []string
+	ownership map[string]string
+}
+
 func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.StructType, ownedStructs map[string]bool, currentOwned string, packageMode bool) []string {
+	return collectReferencedStructSet(iface, structs, ownedStructs, currentOwned, packageMode).ordered
+}
+
+func collectReferencedStructSet(iface *ast.InterfaceType, structs map[string]*ast.StructType, ownedStructs map[string]bool, currentOwned string, packageMode bool) referencedStructSet {
+	res := referencedStructSet{ownership: make(map[string]string)}
 	seen := make(map[string]bool)
-	var ordered []string
-	var visitType func(string)
-	visitType = func(typeName string) {
+	var visitType func(string, bool)
+	visitType = func(typeName string, asHostRef bool) {
 		typeName = strings.TrimSpace(typeName)
 		if typeName == "" {
 			return
 		}
 		if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-			visitType(typeName[4 : len(typeName)-1])
+			visitType(typeName[4:len(typeName)-1], true)
+			return
+		}
+		if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
+			visitType(typeName[8:len(typeName)-1], true)
 			return
 		}
 		if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
-			visitType(typeName[6 : len(typeName)-1])
+			visitType(typeName[6:len(typeName)-1], asHostRef)
 			return
 		}
 		if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
 			inner := typeName[4 : len(typeName)-1]
 			parts := strings.SplitN(inner, ",", 2)
 			if len(parts) == 2 {
-				visitType(strings.TrimSpace(parts[0]))
-				visitType(strings.TrimSpace(parts[1]))
+				visitType(strings.TrimSpace(parts[0]), asHostRef)
+				visitType(strings.TrimSpace(parts[1]), asHostRef)
 			}
 			return
 		}
 		if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
 			inner := typeName[6 : len(typeName)-1]
 			for _, part := range strings.Split(inner, ",") {
-				visitType(strings.TrimSpace(part))
+				visitType(strings.TrimSpace(part), asHostRef)
 			}
 			return
 		}
@@ -2285,13 +2331,25 @@ func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.
 		if ownedStructs != nil && ownedStructs[localName] && localName != currentOwned {
 			return
 		}
+		if structs[localName] != nil {
+			ownership := "StructOwnershipVMValue"
+			if asHostRef {
+				ownership = "StructOwnershipHostOpaque"
+			}
+			if existing, ok := res.ownership[localName]; ok && existing != ownership {
+				panic(fmt.Sprintf("ffigen: type %s is used both as VM value and host opaque reference", localName))
+			}
+			res.ownership[localName] = ownership
+		}
 		if !seen[localName] && structs[localName] != nil {
 			seen[localName] = true
-			ordered = append(ordered, localName)
-			fieldMap := make(map[string]string)
-			getFields(structs, localName, fieldMap)
-			for _, fieldType := range fieldMap {
-				visitType(fieldType)
+			res.ordered = append(res.ordered, localName)
+			if !asHostRef {
+				fieldMap := make(map[string]string)
+				getFields(structs, localName, fieldMap)
+				for _, fieldType := range fieldMap {
+					visitType(fieldType, false)
+				}
 			}
 		}
 	}
@@ -2302,30 +2360,31 @@ func collectReferencedStructs(iface *ast.InterfaceType, structs map[string]*ast.
 		funcType := method.Type.(*ast.FuncType)
 		if funcType.Params != nil {
 			for _, param := range funcType.Params.List {
-				visitType(typeToString(param.Type))
+				visitType(typeToString(param.Type), false)
 			}
 		}
 		if funcType.Results != nil {
 			for _, result := range funcType.Results.List {
-				visitType(typeToString(result.Type))
+				visitType(typeToString(result.Type), false)
 			}
 		}
 	}
-	return ordered
+	return res
 }
 
-func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName string, isHost bool) {
+func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName, moduleName string, isHost bool) {
 	if isBytesRefTypeString(pType) {
 		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteBytes(nil)\n\t} else {\n\t\t%s.WriteBytes(%s.Value)\n\t}\n", prefix, bufName, bufName, prefix)
 		return
 	}
-	if strings.HasPrefix(pType, "Ptr<") {
-		fmt.Fprintf(sb, "\t// Ptr<T> crosses the FFI boundary as an opaque handle ID.\n")
+	if isRefTypeString(pType) {
+		typeID := refTypeID(pType, moduleName)
+		fmt.Fprintf(sb, "\t// HostRef<T> crosses the FFI boundary as an opaque handle ID.\n")
 		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteUvarint(0)\n\t} else {\n", prefix, bufName)
 		if isHost {
-			fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.Register(%s)))\n", bufName, prefix)
+			fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.RegisterTyped(%s, \"%s\")))\n", bufName, prefix, typeID)
 		} else {
-			fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteUvarint(uint64(__p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
+			fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteUvarint(uint64(__p.registry.RegisterTyped(%s, \"%s\"))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, typeID, bufName)
 		}
 
 		fmt.Fprintf(sb, "\t}\n")
@@ -2386,14 +2445,14 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n\tfor _, item := range %s {\n", bufName, prefix, prefix)
-			emitWrite(sb, "item", itemType, nil, structs, bufName, isHost)
+			emitWrite(sb, "item", itemType, nil, structs, bufName, moduleName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
 		if kType, vType, ok := readMapKeyValueTypes(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n\tfor k, v := range %s {\n", bufName, prefix, prefix)
-			emitWrite(sb, "k", kType, nil, structs, bufName, isHost)
-			emitWrite(sb, "v", vType, nil, structs, bufName, isHost)
+			emitWrite(sb, "k", kType, nil, structs, bufName, moduleName, isHost)
+			emitWrite(sb, "v", vType, nil, structs, bufName, moduleName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
@@ -2406,7 +2465,7 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 			}
 			sort.Strings(fNames)
 			for _, fn := range fNames {
-				emitWrite(sb, prefix+"."+fn, fMap[fn], nil, structs, bufName, isHost)
+				emitWrite(sb, prefix+"."+fn, fMap[fn], nil, structs, bufName, moduleName, isHost)
 			}
 		} else {
 			fmt.Fprintf(sb, "\t// Treating %s as Handle\n", pType)
@@ -2427,17 +2486,18 @@ func emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs
 	}
 }
 
-func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName string, isHost bool) {
+func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName, moduleName string, isHost bool) {
 	if isBytesRefTypeString(pType) {
 		fmt.Fprintf(sb, "\t%s = &ffigo.BytesRef{Value: %s.ReadBytes()}\n", varName, readerName)
 		return
 	}
-	if strings.HasPrefix(pType, "Ptr<") {
-		fmt.Fprintf(sb, "\t// Ptr<T> is restored from the opaque handle ID written on the FFI wire.\n")
+	if isRefTypeString(pType) {
+		typeID := refTypeID(pType, moduleName)
+		fmt.Fprintf(sb, "\t// HostRef<T> is restored from the opaque handle ID written on the FFI wire.\n")
 		if isHost {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, err := registry.GetWithAudit(id); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, varName, toGoType(pType), varName)
+			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, err := registry.GetTypedWithAudit(id, \"%s\"); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, typeID, varName, toGoType(pType), varName)
 		} else {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, toGoType(pType))
+			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.GetTyped(id, \"%s\"); ok { %s = obj.(%s) } } }\n", readerName, typeID, varName, toGoType(pType))
 		}
 		return
 	}
@@ -2537,7 +2597,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 			lenVar := "l_" + suffix
 			idxVar := "i_" + suffix
 			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s, %s)\n\tfor %s := 0; %s < %s; %s++ {\n", lenVar, readerName, varName, toGoType(pType), lenVar, idxVar, idxVar, lenVar, idxVar)
-			emitReadAssign(sb, fmt.Sprintf("%s[%s]", varName, idxVar), itemType, nil, structs, readerName, isHost)
+			emitReadAssign(sb, fmt.Sprintf("%s[%s]", varName, idxVar), itemType, nil, structs, readerName, moduleName, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
 		}
@@ -2546,8 +2606,8 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 			lenVar := "l_" + suffix
 			idxVar := "i_" + suffix
 			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s)\n\tfor %s := 0; %s < %s; %s++ {\n\t\tvar k %s\n\t\tvar v %s\n", lenVar, readerName, varName, toGoType(pType), idxVar, idxVar, lenVar, idxVar, toGoType(kType), toGoType(vType))
-			emitReadAssign(sb, "k", kType, nil, structs, readerName, isHost)
-			emitReadAssign(sb, "v", vType, nil, structs, readerName, isHost)
+			emitReadAssign(sb, "k", kType, nil, structs, readerName, moduleName, isHost)
+			emitReadAssign(sb, "v", vType, nil, structs, readerName, moduleName, isHost)
 			fmt.Fprintf(sb, "\t\t%s[k] = v\n\t}\n", varName)
 			return
 		}
@@ -2560,7 +2620,7 @@ func emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, s
 			}
 			sort.Strings(fNames)
 			for _, fn := range fNames {
-				emitReadAssign(sb, varName+"."+fn, fMap[fn], nil, structs, readerName, isHost)
+				emitReadAssign(sb, varName+"."+fn, fMap[fn], nil, structs, readerName, moduleName, isHost)
 			}
 		} else {
 			fmt.Fprintf(sb, "\t// Restoring %s from Handle\n", pType)
@@ -2596,8 +2656,8 @@ func getFields(structs map[string]*ast.StructType, strName string, fieldMap map[
 	for _, f := range str.Fields.List {
 		if len(f.Names) == 0 {
 			tN := typeToString(f.Type)
-			if strings.HasPrefix(tN, "Ptr<") {
-				tN = tN[4 : len(tN)-1]
+			if inner, ok := refElementType(tN); ok {
+				tN = inner
 			}
 			getFields(structs, tN, fieldMap)
 		}
@@ -2633,7 +2693,7 @@ func typeToString(expr ast.Expr) string {
 	case *ast.MapType:
 		return fmt.Sprintf("Map<%s, %s>", typeToString(t.Key), typeToString(t.Value))
 	case *ast.StarExpr:
-		return fmt.Sprintf("Ptr<%s>", typeToString(t.X))
+		return fmt.Sprintf("HostRef<%s>", typeToString(t.X))
 	case *ast.SelectorExpr:
 		if obj := lookupTypeObject(t.Sel); obj != nil && obj.Pkg() != nil {
 			return obj.Pkg().Path() + "." + obj.Name()
@@ -2676,8 +2736,8 @@ func lookupTypeObject(id *ast.Ident) types.Object {
 }
 
 func toGoType(pType string) string {
-	if strings.HasPrefix(pType, "Ptr<") {
-		return "*" + toGoType(pType[4:len(pType)-1])
+	if inner, ok := refElementType(pType); ok {
+		return "*" + toGoType(inner)
 	}
 	if strings.HasPrefix(pType, "Array<") {
 		inner := pType[6 : len(pType)-1]
@@ -2753,8 +2813,8 @@ func toGoType(pType string) string {
 
 func isBytesRefTypeString(typeName string) bool {
 	typeName = strings.TrimSpace(typeName)
-	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-		typeName = strings.TrimSpace(typeName[4 : len(typeName)-1])
+	if inner, ok := refElementType(typeName); ok {
+		typeName = inner
 	}
 	return typeName == bytesRefQualifiedType || typeName == "ffigo.BytesRef" || typeName == "BytesRef"
 }
@@ -2768,8 +2828,8 @@ func isBytesRefExpr(expr ast.Expr) bool {
 
 func isArrayRefTypeString(typeName string) bool {
 	typeName = strings.TrimSpace(typeName)
-	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-		typeName = strings.TrimSpace(typeName[4 : len(typeName)-1])
+	if inner, ok := refElementType(typeName); ok {
+		typeName = inner
 	}
 	if base, _, ok := splitGenericType(typeName); ok {
 		typeName = base
@@ -2937,6 +2997,46 @@ func splitGenericType(typeName string) (string, []string, bool) {
 	return base, parts, true
 }
 
+func refElementType(typeName string) (string, bool) {
+	typeName = strings.TrimSpace(typeName)
+	for _, prefix := range []string{"HostRef<", "Ptr<"} {
+		if strings.HasPrefix(typeName, prefix) && strings.HasSuffix(typeName, ">") {
+			return strings.TrimSpace(typeName[len(prefix) : len(typeName)-1]), true
+		}
+	}
+	return "", false
+}
+
+func isRefTypeString(typeName string) bool {
+	_, ok := refElementType(typeName)
+	return ok
+}
+
+func refTypeID(typeName, moduleName string) string {
+	if inner, ok := refElementType(typeName); ok {
+		inner = strings.TrimSpace(inner)
+		if owner, name, ok := splitQualifiedTypeName(inner); ok {
+			if knownPath, known := knownImports[owner]; known {
+				if mod := resolveImportedModule(knownPath); mod != "" {
+					return mod + "." + name
+				}
+				return owner + "." + name
+			}
+			if strings.Contains(owner, "/") {
+				if mod := resolveImportedModule(owner); mod != "" {
+					return mod + "." + name
+				}
+			}
+			return inner
+		}
+		if moduleName != "" {
+			return moduleName + "." + inner
+		}
+		return inner
+	}
+	return ""
+}
+
 func readArrayItemType(pType string) (string, bool) {
 	if strings.HasPrefix(pType, "Array<") && strings.HasSuffix(pType, ">") {
 		return pType[6 : len(pType)-1], true
@@ -2956,7 +3056,7 @@ func readMapKeyValueTypes(pType string) (string, string, bool) {
 }
 
 func zeroValue(t string) string {
-	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "Array<") || t == "Any" || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
+	if isRefTypeString(t) || strings.HasPrefix(t, "Array<") || t == "Any" || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
 		return "nil"
 	}
 	switch t {

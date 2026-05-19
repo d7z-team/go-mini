@@ -32,6 +32,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/synclib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
 	"gopkg.d7z.net/go-mini/core/ffilib/unicode/utf8lib"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -364,7 +365,7 @@ func NewMiniExecutor() *MiniExecutor {
 	// Inject default libraries that do not let scripts discover the host
 	// filesystem/environment on their own.
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
-	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, TypeHandle) Bool"), "Check if an error matches a target handle")
+	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, Any) Bool"), "Check if an error matches a target handle")
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
 	timelib.RegisterTimeAll(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
@@ -376,6 +377,7 @@ func NewMiniExecutor() *MiniExecutor {
 	regexplib.RegisterRegexp(res, &regexplib.RegexpHost{}, res.registry)
 	randlib.RegisterRand(res, randlib.NewRandHost(), res.registry)
 	utf8lib.RegisterUTF8(res, &utf8lib.UTF8Host{}, res.registry)
+	synclib.RegisterSyncAll(res, &synclib.ModuleHost{}, res.registry)
 	base64lib.RegisterBase64(res, &base64lib.Base64Host{}, res.registry)
 	hexlib.RegisterHex(res, &hexlib.HexHost{}, res.registry)
 	md5lib.RegisterMD5(res, &md5lib.MD5Host{}, res.registry)
@@ -1232,7 +1234,7 @@ func sameRuntimeStructSpec(a, b *runtime.RuntimeStructSpec) bool {
 	case a == nil || b == nil:
 		return a == b
 	default:
-		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name
+		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name && a.Ownership == b.Ownership
 	}
 }
 
@@ -1242,43 +1244,8 @@ func mergeRuntimeStructSpec(existing, next *runtime.RuntimeStructSpec) (*runtime
 		return next, existing == next
 	case sameRuntimeStructSpec(existing, next):
 		return existing, true
-	case existing.TypeID != next.TypeID || existing.Name != next.Name:
-		return nil, false
 	}
-
-	existingFields := make(map[string]runtime.RuntimeStructField, len(existing.Fields))
-	for _, field := range existing.Fields {
-		existingFields[field.Name] = field
-	}
-	nextFields := make(map[string]runtime.RuntimeStructField, len(next.Fields))
-	for _, field := range next.Fields {
-		nextFields[field.Name] = field
-	}
-
-	for name, field := range existingFields {
-		if other, ok := nextFields[name]; ok {
-			if field.TypeInfo.Raw != other.TypeInfo.Raw {
-				return nil, false
-			}
-			continue
-		}
-		if field.TypeInfo.Kind != runtime.RuntimeTypeFunction {
-			return nil, false
-		}
-	}
-	for name, field := range nextFields {
-		if _, ok := existingFields[name]; ok {
-			continue
-		}
-		if field.TypeInfo.Kind != runtime.RuntimeTypeFunction {
-			return nil, false
-		}
-	}
-
-	if len(next.Fields) >= len(existing.Fields) {
-		return next, true
-	}
-	return existing, true
+	return nil, false
 }
 
 func sameBridge(a, b ffigo.FFIBridge) bool {

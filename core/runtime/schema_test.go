@@ -22,7 +22,7 @@ func TestParseRuntimeFuncSig(t *testing.T) {
 }
 
 func TestParseRuntimeStructSpec(t *testing.T) {
-	spec, err := ParseRuntimeStructSpec("Example", "struct { Msg String; Value Int64; Child Ptr<demo.Type>; }")
+	spec, err := ParseRuntimeStructSpec("Example", StructOwnershipVMValue, "struct { Msg String; Value Int64; Child Ptr<demo.Type>; }")
 	if err != nil {
 		t.Fatalf("ParseRuntimeStructSpec failed: %v", err)
 	}
@@ -49,6 +49,25 @@ func TestParseRuntimeStructSpec(t *testing.T) {
 	}
 	if spec.Layout.FieldIndex["Value"] != 1 || spec.Layout.FieldOffset["Child"] != 2 {
 		t.Fatalf("unexpected struct layout: %+v", spec.Layout)
+	}
+}
+
+func TestParseHostOpaqueStructSpecSplitsMethods(t *testing.T) {
+	spec, err := ParseRuntimeStructSpec("demo.Handle", StructOwnershipHostOpaque, "struct { Ping function(HostRef<demo.Handle>) Void; }")
+	if err != nil {
+		t.Fatalf("ParseRuntimeStructSpec failed: %v", err)
+	}
+	if spec.Ownership != StructOwnershipHostOpaque {
+		t.Fatalf("unexpected ownership: %s", spec.Ownership)
+	}
+	if len(spec.Fields) != 0 || len(spec.Methods) != 1 {
+		t.Fatalf("expected method-only host opaque schema, got fields=%d methods=%d", len(spec.Fields), len(spec.Methods))
+	}
+	if spec.ByMethod["Ping"] == nil {
+		t.Fatalf("missing Ping method metadata: %+v", spec.ByMethod)
+	}
+	if _, err := ParseRuntimeStructSpec("demo.Bad", StructOwnershipHostOpaque, "struct { Value Int64; }"); err == nil {
+		t.Fatal("expected host opaque data field rejection")
 	}
 }
 
@@ -90,5 +109,15 @@ func TestParseRuntimeTypeAndCanonicalID(t *testing.T) {
 	}
 	if got := CanonicalTypeID("Ptr<gopkg.d7z.net/demo.Type>"); got != "gopkg.d7z.net/demo.Type" {
 		t.Fatalf("unexpected canonical id helper result: %s", got)
+	}
+	hostRef, err := ParseRuntimeType("HostRef<gopkg.d7z.net/demo.Type>")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType HostRef failed: %v", err)
+	}
+	if hostRef.Kind != RuntimeTypeHostRef || hostRef.TypeID != "gopkg.d7z.net/demo.Type" {
+		t.Fatalf("unexpected HostRef type: %+v", hostRef)
+	}
+	if got := CanonicalTypeID("HostRef<gopkg.d7z.net/demo.Type>"); got != "gopkg.d7z.net/demo.Type" {
+		t.Fatalf("unexpected host ref canonical id helper result: %s", got)
 	}
 }

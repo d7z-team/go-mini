@@ -69,13 +69,13 @@ func (b *rangeContinueHandleBridge) DestroyHandle(handle uint32) error {
 
 func registerRangeContinueHandleSchemas(exec *engine.MiniExecutor, bridge *rangeContinueHandleBridge) {
 	exec.RegisterFFISchema("mock.Rows", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function() Array<Ptr<mock.Row>>"), "")
+		runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), "")
 	exec.RegisterFFISchema("mock.Published", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(Ptr<mock.Row>) String"), "")
+		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) String"), "")
 	exec.RegisterFFISchema("mock.Day", bridge, 3,
 		runtime.MustParseRuntimeFuncSig("function(String) Int64"), "")
 	exec.RegisterFFISchema("mock.Download", bridge, 4,
-		runtime.MustParseRuntimeFuncSig("function(Ptr<mock.Row>) Void"), "")
+		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Void"), "")
 }
 
 func TestRangeContinueSkipsFFITailAcrossAllLoaders(t *testing.T) {

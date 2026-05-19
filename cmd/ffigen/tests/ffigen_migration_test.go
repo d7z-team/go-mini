@@ -35,7 +35,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"RegisterStructSchema(",
 				"registrar.RegisterStructSchema(",
-				"Ptr<calc.Calculator>",
+				"HostRef<calc.Calculator>",
 			},
 		},
 		{
@@ -43,7 +43,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../cmd/ffigen/tests/ordertest/order_ffigen.go",
 			patterns: []string{
 				"var OrderService_FFI_Schemas = []struct {",
-				"Ptr<order.Order>",
+				"HostRef<order.Order>",
 				"registrar.RegisterFFISchema(\"order.Order.AddItem\"",
 				"registrar.RegisterFFISchema(",
 			},
@@ -81,7 +81,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 	}
 }
 
-func TestFFIGenPtrIsOpaqueHandleContract(t *testing.T) {
+func TestFFIGenHostRefIsOpaqueHandleContract(t *testing.T) {
 	content, err := os.ReadFile("../../../core/e2e/structtest/ffigen.go")
 	if err != nil {
 		t.Fatalf("read generated struct sample: %v", err)
@@ -89,9 +89,9 @@ func TestFFIGenPtrIsOpaqueHandleContract(t *testing.T) {
 	code := string(content)
 
 	required := []string{
-		"Ptr<T> crosses the FFI boundary as an opaque handle ID.",
-		"Ptr<T> is restored from the opaque handle ID written on the FFI wire.",
-		"registry.Register(",
+		"HostRef<T> crosses the FFI boundary as an opaque handle ID.",
+		"HostRef<T> is restored from the opaque handle ID written on the FFI wire.",
+		"registry.RegisterTyped(",
 		"ReadUvarint()",
 	}
 	for _, pattern := range required {
@@ -101,7 +101,7 @@ func TestFFIGenPtrIsOpaqueHandleContract(t *testing.T) {
 	}
 }
 
-func TestFFIGenStructMethodsVariadicPointerReturn(t *testing.T) {
+func TestFFIGenStructMethodsVariadicHostRefReturn(t *testing.T) {
 	content, err := os.ReadFile("dummy_ffigen_test.go")
 	if err != nil {
 		t.Fatalf("read generated dummy sample: %v", err)
@@ -113,7 +113,7 @@ func TestFFIGenStructMethodsVariadicPointerReturn(t *testing.T) {
 		"r0 := __recv.GetByPlaceholder(text, exact...)",
 		"if r0 == nil {",
 		"resBuf.WriteUvarint(0)",
-		"resBuf.WriteUvarint(uint64(registry.Register(r0)))",
+		"resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, \"Selector\")))",
 		"return resBuf.Bytes(), nil",
 	}
 	for _, pattern := range required {

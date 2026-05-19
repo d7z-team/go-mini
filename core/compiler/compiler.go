@@ -126,7 +126,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		Program:  program,
 	}
 
-	validator, err := ast.NewValidator(program, c.resolvedSpecs(), c.cfg.Constants, tolerant)
+	validator, err := ast.NewValidatorWithExternalTypes(program, c.resolvedTypeSpecs(), c.cfg.Constants, tolerant)
 	if err != nil {
 		return artifact, nil, err
 	}
@@ -154,30 +154,34 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	return artifact, semanticCtx, nil
 }
 
-func (c *Compiler) resolvedSpecs() map[ast.Ident]ast.GoMiniType {
+func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
 	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas) + len(c.cfg.InterfaceSchemas)
 	if size == 0 {
 		return nil
 	}
 
-	res := make(map[ast.Ident]ast.GoMiniType, size)
+	res := make(map[ast.Ident]ast.ExternalTypeSpec, size)
 	for k, v := range c.cfg.FuncSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec.Ast()
+		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ast.StructOwnershipVMValue}
 	}
 	for k, v := range c.cfg.StructSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec.Ast()
+		ownership := ast.StructOwnershipVMValue
+		if v.Ownership == runtime.StructOwnershipHostOpaque {
+			ownership = ast.StructOwnershipHostOpaque
+		}
+		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ownership}
 	}
 	for k, v := range c.cfg.InterfaceSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = v.Spec.Ast()
+		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ast.StructOwnershipVMValue}
 	}
 	return res
 }

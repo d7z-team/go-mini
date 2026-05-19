@@ -29,6 +29,9 @@ func (o GoMiniType) BaseName() string {
 	if strings.HasPrefix(s, "Ptr<") {
 		return GoMiniType(s[4 : len(s)-1]).BaseName()
 	}
+	if strings.HasPrefix(s, "HostRef<") {
+		return GoMiniType(s[8 : len(s)-1]).BaseName()
+	}
 	if strings.HasPrefix(s, "Array<") {
 		return GoMiniType(s[6 : len(s)-1]).BaseName()
 	}
@@ -36,9 +39,6 @@ func (o GoMiniType) BaseName() string {
 		// Just take the value type for base
 		_, v, _ := o.GetMapKeyValueTypes()
 		return v.BaseName()
-	}
-	if strings.HasPrefix(s, "Ptr<") {
-		return GoMiniType(s[4 : len(s)-1]).BaseName()
 	}
 	return s
 }
@@ -71,6 +71,11 @@ func (o GoMiniType) IsNumeric() bool {
 func (o GoMiniType) IsPtr() bool {
 	s := string(o)
 	return strings.HasPrefix(s, "Ptr<") && strings.HasSuffix(s, ">")
+}
+
+func (o GoMiniType) IsHostRef() bool {
+	s := string(o)
+	return strings.HasPrefix(s, "HostRef<") && strings.HasSuffix(s, ">")
 }
 
 func (o GoMiniType) IsArray() bool {
@@ -207,6 +212,18 @@ func (o GoMiniType) GetPtrElementType() (GoMiniType, bool) {
 
 func (o GoMiniType) ToPtr() GoMiniType {
 	return GoMiniType(fmt.Sprintf("Ptr<%s>", o))
+}
+
+func (o GoMiniType) GetHostRefElementType() (GoMiniType, bool) {
+	if !o.IsHostRef() {
+		return "", false
+	}
+	s := string(o)
+	return GoMiniType(s[8 : len(s)-1]), true
+}
+
+func (o GoMiniType) ToHostRef() GoMiniType {
+	return GoMiniType(fmt.Sprintf("HostRef<%s>", o))
 }
 
 func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
@@ -452,6 +469,11 @@ func (o GoMiniType) Equals(other GoMiniType) bool {
 		otherElem, _ := other.GetPtrElementType()
 		return oElem.Equals(otherElem)
 	}
+	if o.IsHostRef() && other.IsHostRef() {
+		oElem, _ := o.GetHostRefElementType()
+		otherElem, _ := other.GetHostRefElementType()
+		return oElem.Equals(otherElem)
+	}
 	if o.IsTuple() && other.IsTuple() {
 		oTypes, _ := o.ReadTuple()
 		otherTypes, _ := other.ReadTuple()
@@ -518,6 +540,10 @@ func (o GoMiniType) IsCanonical() bool {
 	}
 	if o.IsPtr() {
 		elem, ok := o.GetPtrElementType()
+		return ok && elem.IsCanonical()
+	}
+	if o.IsHostRef() {
+		elem, ok := o.GetHostRefElementType()
 		return ok && elem.IsCanonical()
 	}
 	if o.IsArray() {
@@ -618,7 +644,15 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 	if o.IsPtr() {
 		elem, _ := o.GetPtrElementType()
-		return elem.Resolve(v).ToPtr()
+		resolved := elem.Resolve(v)
+		if v != nil && v.IsHostOpaqueNamedType(resolved) {
+			return resolved.ToHostRef()
+		}
+		return resolved.ToPtr()
+	}
+	if o.IsHostRef() {
+		elem, _ := o.GetHostRefElementType()
+		return elem.Resolve(v).ToHostRef()
 	}
 	if o.IsTuple() {
 		types, _ := o.ReadTuple()
@@ -665,6 +699,10 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	}
 	if o.IsPtr() {
 		elem, ok := o.GetPtrElementType()
+		return ok && elem.Resolve(v).Valid(v)
+	}
+	if o.IsHostRef() {
+		elem, ok := o.GetHostRefElementType()
 		return ok && elem.Resolve(v).Valid(v)
 	}
 	if o.IsTuple() {
@@ -748,7 +786,7 @@ func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth i
 	if target.IsNumeric() && o.IsNumeric() {
 		return true // 数值类型互转 (Int64 <-> Float64)
 	}
-	if o.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsInterface() {
+	if o.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsHostRef() && !target.IsInterface() {
 		// 允许 Map 赋值给命名的结构体类型
 		return true
 	}
@@ -767,6 +805,14 @@ func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth i
 		}
 		// 允许非接口类型赋值给接口（由运行时进一步校验鸭子类型）
 		return true
+	}
+	if target.IsPtr() && o.IsHostRef() {
+		targetElem, _ := target.GetPtrElementType()
+		hostElem, _ := o.GetHostRefElementType()
+		return hostElem.Equals(targetElem)
+	}
+	if o.IsHostRef() || target.IsHostRef() {
+		return o.Equals(target)
 	}
 	// 处理指针自动解引用/取地址兼容性
 	if target.IsPtr() && !o.IsPtr() {
@@ -798,7 +844,7 @@ func (o GoMiniType) IsStrictValid() bool {
 // 注意：该方法返回的是一个简单的值对象，复合类型返回 nil Ref 的 Var
 func (o GoMiniType) ZeroVar() interface{} {
 	t := string(o)
-	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || o == TypeAny || o == TypeBytes {
+	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "HostRef<") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || o == TypeAny || o == TypeBytes {
 		return nil
 	}
 	switch t {

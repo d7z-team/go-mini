@@ -41,14 +41,19 @@ type NativeStruct struct {
 	Msg   string
 }
 
+type NativeHandle struct {
+	Value int64
+	Msg   string
+}
+
 // NativeMock 验证原生对象注入
 
 // ffigen:module native
 type NativeMock interface {
 	GetStruct() NativeStruct
-	GetPtr() *NativeStruct
+	GetPtr() *NativeHandle
 	SetStruct(s NativeStruct) int64
-	SetPtr(s *NativeStruct) int64
+	SetPtr(s *NativeHandle) int64
 }
 
 type Selector struct {

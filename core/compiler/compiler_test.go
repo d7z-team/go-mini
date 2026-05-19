@@ -142,7 +142,7 @@ func TestCompileSourceAcceptsParsedSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse func schema failed: %v", err)
 	}
-	structSig, err := runtime.ParseRuntimeStructSpec("demo.Payload", "struct { Msg String; Count Int64; }")
+	structSig, err := runtime.ParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }")
 	if err != nil {
 		t.Fatalf("parse struct schema failed: %v", err)
 	}
@@ -173,6 +173,89 @@ var msg = fmt.Sprintf("%s", "hi")
 	}
 	if artifact == nil || artifact.Program == nil {
 		t.Fatal("expected compiled artifact")
+	}
+}
+
+func TestCompileSourceRejectsVMCreatedHostOpaqueTypes(t *testing.T) {
+	hostSpec := runtime.MustParseRuntimeStructSpec("demo.Handle", runtime.StructOwnershipHostOpaque, "struct { Ping function(HostRef<demo.Handle>) Void; }")
+	c := New(Config{
+		StructSchemas: map[ast.Ident]*runtime.RuntimeStructSpec{
+			"demo.Handle": hostSpec,
+		},
+	})
+
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "var value",
+			src: `package main
+import "demo"
+var h demo.Handle
+`,
+		},
+		{
+			name: "function param value",
+			src: `package main
+import "demo"
+func use(h demo.Handle) {}
+`,
+		},
+		{
+			name: "composite literal",
+			src: `package main
+import "demo"
+func main() { _ = demo.Handle{} }
+`,
+		},
+		{
+			name: "new value",
+			src: `package main
+import "demo"
+func main() { _ = new(demo.Handle) }
+`,
+		},
+		{
+			name: "slice of values",
+			src: `package main
+import "demo"
+func main() { _ = make([]demo.Handle, 1) }
+`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := c.CompileSource("snippet", tc.src, false)
+			if err == nil {
+				t.Fatalf("expected compile error for %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestCompileSourceAllowsHostRefFromFactory(t *testing.T) {
+	hostSpec := runtime.MustParseRuntimeStructSpec("demo.Handle", runtime.StructOwnershipHostOpaque, "struct { Ping function(HostRef<demo.Handle>) Void; }")
+	c := New(Config{
+		FuncSchemas: map[ast.Ident]*runtime.RuntimeFuncSig{
+			"demo.NewHandle": runtime.MustParseRuntimeFuncSig("function() HostRef<demo.Handle>"),
+		},
+		StructSchemas: map[ast.Ident]*runtime.RuntimeStructSpec{
+			"demo.Handle": hostSpec,
+		},
+	})
+
+	_, _, _, err := c.CompileSource("snippet", `package main
+import "demo"
+var h *demo.Handle
+func main() {
+	h = demo.NewHandle()
+	h.Ping()
+}
+`, false)
+	if err != nil {
+		t.Fatalf("expected HostRef factory usage to compile: %v", err)
 	}
 }
 

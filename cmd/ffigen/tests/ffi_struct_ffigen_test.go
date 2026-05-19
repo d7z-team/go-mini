@@ -10,9 +10,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", "struct { A Point; B Point; }")
+var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", runtime.StructOwnershipVMValue, "struct { A Point; B Point; }")
 
-var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", "struct { X Int64; Y Int64; }")
+var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
 	MethodID_MockShapeAPI_GetRect = 1

@@ -221,7 +221,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeModule, TypeClosure:
 				return NewBool(l.Ref == r.Ref), nil
-			case TypeHandle:
+			case TypeHandle, TypeHostRef:
 				return NewBool(l.Handle == r.Handle), nil
 			}
 		}
@@ -232,7 +232,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeModule, TypeClosure:
 				return NewBool(l.Ref != r.Ref), nil
-			case TypeHandle:
+			case TypeHandle, TypeHostRef:
 				return NewBool(l.Handle != r.Handle), nil
 			}
 		}
@@ -435,7 +435,10 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if valVar, ok := e.vmPointerTarget(obj); ok {
 			return e.evalMemberExprDirect(nil, valVar, property)
 		}
-		// Handle method extraction (implicit binding)
+	case TypeHostRef:
+		if obj.Handle == 0 {
+			return nil, &VMError{Message: fmt.Sprintf("nil host reference %s has no member %s", obj.RawType(), property), IsPanic: true}
+		}
 		tName := string(obj.RawType())
 		if tName == "" {
 			tName = obj.VType.String()
@@ -596,7 +599,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					arr := make([]*Var, length, capacity)
 					innerType, _ := MustParseRuntimeType(tStr).ReadArrayItemType()
 					for i := 0; i < length; i++ {
-						arr[i] = e.initializeType(session, innerType, 0)
+						item, err := e.initializeType(session, innerType, 0)
+						if err != nil {
+							return err
+						}
+						arr[i] = item
 					}
 					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr}}
 					v.SetRawType(tStr)
@@ -605,7 +612,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return nil
 			}
 			// Fallback
-			res := e.initializeType(session, MustParseRuntimeType(tStr), 0)
+			res, err := e.initializeType(session, MustParseRuntimeType(tStr), 0)
+			if err != nil {
+				return err
+			}
 			session.ValueStack.Push(res)
 			return nil
 		case "len":
@@ -829,7 +839,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
 				innerType = tStr[4 : len(tStr)-1]
 			}
-			val := e.initializeType(session, MustParseRuntimeType(innerType), 0)
+			val, err := e.initializeType(session, MustParseRuntimeType(innerType), 0)
+			if err != nil {
+				return err
+			}
 
 			// For internal "heap" simulation, we can use a non-zero handle ID.
 			// Since we only need it to be non-nil for the test, and ideally it should
@@ -869,7 +882,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
 				}
 				// 动态 FFI 路由：如果 Receiver 是一个带 Bridge 的 Handle，直接发起调用
-				if ref.Receiver != nil && ref.Receiver.VType == TypeHandle && ref.Receiver.Bridge != nil {
+				if ref.Receiver != nil && ref.Receiver.VType == TypeHostRef && ref.Receiver.Bridge != nil {
 					// 动态接口调用保持 Any 边界，与宿主侧 InterfaceData/Invoke 契约一致。
 					route := FFIRoute{
 						Bridge:   ref.Receiver.Bridge,
@@ -892,7 +905,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	}
 
 	// 3a. Dynamic FFI Call for Handles (Interfaces)
-	if receiver != nil && receiver.VType == TypeHandle && receiver.Bridge != nil && name != "" {
+	if receiver != nil && receiver.VType == TypeHostRef && receiver.Bridge != nil && name != "" {
 		route := FFIRoute{
 			Bridge:   receiver.Bridge,
 			MethodID: 0,
@@ -1112,9 +1125,12 @@ func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []
 	return nil
 }
 
-func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *Var {
+func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (*Var, error) {
 	if depth > 10 {
-		return NewVarWithRuntimeType(t, TypeAny)
+		return NewVarWithRuntimeType(t, TypeAny), nil
+	}
+	if err := e.ensureRuntimeTypeCreatable(t); err != nil {
+		return nil, err
 	}
 
 	// 1. Resolve to the underlying shape for initialization, but keep t as the logical type
@@ -1122,27 +1138,38 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 	if resolved, ok, err := e.resolveNamedTypeChain(t.Raw); err == nil && ok {
 		shape = resolved
 	}
+	if shape.Raw != t.Raw {
+		if err := e.ensureRuntimeTypeCreatable(shape); err != nil {
+			return nil, err
+		}
+	}
+
+	if shape.IsHostRef() {
+		v := &Var{VType: TypeHostRef, Handle: 0}
+		v.SetRuntimeType(t)
+		return v, nil
+	}
 
 	if shape.IsPtr() {
 		v := &Var{VType: TypeHandle, Handle: 0}
 		v.SetRuntimeType(t)
-		return v
+		return v, nil
 	}
 
 	if shape.IsInterface() {
 		v := &Var{VType: TypeInterface, Ref: nil}
 		v.SetRuntimeType(t)
-		return v
+		return v, nil
 	}
 
 	if shape.IsArray() {
 		v := &Var{VType: TypeArray, Ref: &VMArray{Data: nil}}
 		v.SetRuntimeType(t)
-		return v
+		return v, nil
 	}
 
 	if shape.IsMap() || shape.IsAny() {
-		return NewVarWithRuntimeType(t, TypeAny)
+		return NewVarWithRuntimeType(t, TypeAny), nil
 	}
 
 	// 基础类型初始化
@@ -1150,17 +1177,87 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) *
 	res := e.ToVar(ctx, zero, nil)
 	if res != nil {
 		res.SetRuntimeType(t) // 还原为用户请求的命名类型
-		return res
+		return res, nil
 	}
 
 	// 结构体初始化
 	mData := make(map[string]*Var)
 	if sDef, ok := e.resolveStructSchema(shape.Raw); ok {
 		for _, field := range sDef.Fields {
-			mData[field.Name] = e.initializeType(ctx, field.TypeInfo, depth+1)
+			fieldVal, err := e.initializeType(ctx, field.TypeInfo, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			mData[field.Name] = fieldVal
 		}
 	}
 	v := &Var{VType: TypeMap, Ref: &VMMap{Data: mData}}
 	v.SetRuntimeType(t)
-	return v
+	return v, nil
+}
+
+func (e *Executor) ensureRuntimeTypeCreatable(t RuntimeType) error {
+	if e.runtimeTypeContainsHostOpaqueValue(t, 0) {
+		return &VMError{Message: fmt.Sprintf("opaque host type %s cannot be created by VM", t.Raw), IsPanic: true}
+	}
+	return nil
+}
+
+func (e *Executor) runtimeTypeContainsHostOpaqueValue(t RuntimeType, depth int) bool {
+	if depth > 64 || t.IsEmpty() || t.IsAny() || t.IsHostRef() {
+		return false
+	}
+	if t.IsPtr() {
+		if t.Elem != nil && e.runtimeTypeIsHostOpaqueNamed(*t.Elem) {
+			return true
+		}
+		if t.Elem != nil {
+			return e.runtimeTypeContainsHostOpaqueValue(*t.Elem, depth+1)
+		}
+		return false
+	}
+	if t.IsArray() {
+		elem, ok := t.ReadArrayItemType()
+		return ok && e.runtimeTypeContainsHostOpaqueValue(elem, depth+1)
+	}
+	if t.IsMap() {
+		k, v, ok := t.GetMapKeyValueTypes()
+		return ok && (e.runtimeTypeContainsHostOpaqueValue(k, depth+1) || e.runtimeTypeContainsHostOpaqueValue(v, depth+1))
+	}
+	if t.Kind == RuntimeTypeTuple {
+		for _, item := range t.Params {
+			if e.runtimeTypeContainsHostOpaqueValue(item, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	if t.Kind == RuntimeTypeFunction {
+		if t.Return != nil && e.runtimeTypeContainsHostOpaqueValue(*t.Return, depth+1) {
+			return true
+		}
+		for _, param := range t.Params {
+			if e.runtimeTypeContainsHostOpaqueValue(param, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	if t.Kind == RuntimeTypeStruct {
+		for _, field := range t.Fields {
+			if e.runtimeTypeContainsHostOpaqueValue(field.TypeInfo, depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	return e.runtimeTypeIsHostOpaqueNamed(t)
+}
+
+func (e *Executor) runtimeTypeIsHostOpaqueNamed(t RuntimeType) bool {
+	if t.IsHostRef() || t.IsPtr() {
+		return false
+	}
+	schema, ok := e.lookupStructSchema(t)
+	return ok && schema.Ownership == StructOwnershipHostOpaque
 }

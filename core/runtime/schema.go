@@ -18,6 +18,7 @@ const (
 	RuntimeTypePrimitive
 	RuntimeTypeNamed
 	RuntimeTypePointer
+	RuntimeTypeHostRef
 	RuntimeTypeArray
 	RuntimeTypeMap
 	RuntimeTypeTuple
@@ -40,6 +41,7 @@ func (s TypeSpec) IsString() bool                     { return s.Ast().IsString(
 func (s TypeSpec) IsBool() bool                       { return s.Ast().IsBool() }
 func (s TypeSpec) IsNumeric() bool                    { return s.Ast().IsNumeric() }
 func (s TypeSpec) IsPtr() bool                        { return s.Ast().IsPtr() }
+func (s TypeSpec) IsHostRef() bool                    { return s.Ast().IsHostRef() }
 func (s TypeSpec) IsArray() bool                      { return s.Ast().IsArray() }
 func (s TypeSpec) IsMap() bool                        { return s.Ast().IsMap() }
 func (s TypeSpec) IsInterface() bool                  { return s.Ast().IsInterface() }
@@ -145,16 +147,35 @@ type RuntimeStructField struct {
 	TypeInfo RuntimeType
 }
 
+type RuntimeStructOwnership string
+
+const (
+	StructOwnershipVMValue    RuntimeStructOwnership = "VMValue"
+	StructOwnershipHostOpaque RuntimeStructOwnership = "HostOpaque"
+)
+
+func (o RuntimeStructOwnership) Valid() bool {
+	return o == StructOwnershipVMValue || o == StructOwnershipHostOpaque
+}
+
+type RuntimeStructMethod struct {
+	Name string
+	Spec *RuntimeFuncSig
+}
+
 // RuntimeStructSpec is the parsed FFI struct schema cached at registration time.
 type RuntimeStructSpec struct {
-	Name   string
-	TypeID string
-	Spec   TypeSpec
+	Name      string
+	TypeID    string
+	Spec      TypeSpec
+	Ownership RuntimeStructOwnership
 
 	TypeInfo RuntimeType
 	Layout   StructLayout
 	Fields   []RuntimeStructField
 	ByName   map[string]RuntimeStructField
+	Methods  []RuntimeStructMethod
+	ByMethod map[string]*RuntimeFuncSig
 }
 
 type StructLayout struct {
@@ -202,16 +223,30 @@ func CloneRuntimeStructSpec(spec *RuntimeStructSpec) *RuntimeStructSpec {
 	for k, v := range spec.ByName {
 		byName[k] = v
 	}
+	methods := make([]RuntimeStructMethod, len(spec.Methods))
+	byMethod := make(map[string]*RuntimeFuncSig, len(spec.ByMethod))
+	for i, method := range spec.Methods {
+		methods[i] = RuntimeStructMethod{
+			Name: method.Name,
+			Spec: CloneRuntimeFuncSig(method.Spec),
+		}
+	}
+	for k, v := range spec.ByMethod {
+		byMethod[k] = CloneRuntimeFuncSig(v)
+	}
 	typeInfo := spec.TypeInfo
 	typeInfo.Fields = append([]RuntimeStructField(nil), spec.TypeInfo.Fields...)
 	return &RuntimeStructSpec{
-		Name:     spec.Name,
-		TypeID:   spec.TypeID,
-		Spec:     spec.Spec,
-		TypeInfo: typeInfo,
-		Layout:   spec.Layout,
-		Fields:   fields,
-		ByName:   byName,
+		Name:      spec.Name,
+		TypeID:    spec.TypeID,
+		Spec:      spec.Spec,
+		Ownership: spec.Ownership,
+		TypeInfo:  typeInfo,
+		Layout:    spec.Layout,
+		Fields:    fields,
+		ByName:    byName,
+		Methods:   methods,
+		ByMethod:  byMethod,
 	}
 }
 
@@ -253,6 +288,9 @@ func CanonicalTypeID(name string) string {
 	name = strings.TrimPrefix(name, "*")
 	if strings.HasPrefix(name, "Ptr<") && strings.HasSuffix(name, ">") {
 		return CanonicalTypeID(name[4 : len(name)-1])
+	}
+	if strings.HasPrefix(name, "HostRef<") && strings.HasSuffix(name, ">") {
+		return CanonicalTypeID(name[8 : len(name)-1])
 	}
 	return name
 }
@@ -299,6 +337,10 @@ func (t RuntimeType) IsNumeric() bool {
 
 func (t RuntimeType) IsPtr() bool {
 	return t.Kind == RuntimeTypePointer || t.Raw.IsPtr()
+}
+
+func (t RuntimeType) IsHostRef() bool {
+	return t.Kind == RuntimeTypeHostRef || t.Raw.IsHostRef()
 }
 
 func (t RuntimeType) IsArray() bool {
@@ -381,6 +423,22 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypePointer,
+			Raw:    TypeSpec(specType),
+			TypeID: elemType.TypeID,
+			Elem:   &elemType,
+		}, nil
+	}
+	if specType.IsHostRef() {
+		elem, ok := specType.GetHostRefElementType()
+		if !ok {
+			return RuntimeType{}, fmt.Errorf("invalid host reference type: %s", specType)
+		}
+		elemType, err := ParseRuntimeType(elem)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypeHostRef,
 			Raw:    TypeSpec(specType),
 			TypeID: elemType.TypeID,
 			Elem:   &elemType,
@@ -602,7 +660,10 @@ func CloneRuntimeFuncSigWithParamModes(sig *RuntimeFuncSig, modes ...FFIParamMod
 	return &cloned
 }
 
-func ParseRuntimeStructSpec[S ~string](name string, spec S) (*RuntimeStructSpec, error) {
+func ParseRuntimeStructSpec[S ~string](name string, ownership RuntimeStructOwnership, spec S) (*RuntimeStructSpec, error) {
+	if !ownership.Valid() {
+		return nil, fmt.Errorf("invalid struct ownership for %s: %s", name, ownership)
+	}
 	specType := ast.GoMiniType(spec)
 	if specType.IsEmpty() {
 		return nil, nil
@@ -612,22 +673,36 @@ func ParseRuntimeStructSpec[S ~string](name string, spec S) (*RuntimeStructSpec,
 		return nil, fmt.Errorf("invalid struct spec for %s: %w", name, err)
 	}
 
-	fields := make([]RuntimeStructField, len(typeInfo.Fields))
-	byName := make(map[string]RuntimeStructField, len(typeInfo.Fields))
-	copy(fields, typeInfo.Fields)
+	fields, methods, err := splitRuntimeStructMembers(typeInfo.Fields)
+	if err != nil {
+		return nil, fmt.Errorf("invalid struct spec for %s: %w", name, err)
+	}
+	if ownership == StructOwnershipHostOpaque && len(fields) > 0 {
+		return nil, fmt.Errorf("host opaque struct %s must not declare data fields", name)
+	}
+
+	byName := make(map[string]RuntimeStructField, len(fields))
 	for _, field := range fields {
 		byName[field.Name] = field
 	}
+	byMethod := make(map[string]*RuntimeFuncSig, len(methods))
+	for _, method := range methods {
+		byMethod[method.Name] = method.Spec
+	}
 	layout := buildStructLayout(fields)
+	typeInfo.Fields = fields
 
 	return &RuntimeStructSpec{
-		Name:     name,
-		TypeID:   CanonicalTypeID(name),
-		Spec:     TypeSpec(specType),
-		TypeInfo: typeInfo,
-		Layout:   layout,
-		Fields:   fields,
-		ByName:   byName,
+		Name:      name,
+		TypeID:    CanonicalTypeID(name),
+		Spec:      TypeSpec(specType),
+		Ownership: ownership,
+		TypeInfo:  typeInfo,
+		Layout:    layout,
+		Fields:    fields,
+		ByName:    byName,
+		Methods:   methods,
+		ByMethod:  byMethod,
 	}, nil
 }
 
@@ -697,8 +772,8 @@ func MustParseRuntimeFuncSigWithModes[S ~string](spec S, modes ...FFIParamMode) 
 	return CloneRuntimeFuncSigWithParamModes(MustParseRuntimeFuncSig(spec), modes...)
 }
 
-func MustParseRuntimeStructSpec[S ~string](name string, spec S) *RuntimeStructSpec {
-	parsed, err := ParseRuntimeStructSpec(name, spec)
+func MustParseRuntimeStructSpec[S ~string](name string, ownership RuntimeStructOwnership, spec S) *RuntimeStructSpec {
+	parsed, err := ParseRuntimeStructSpec(name, ownership, spec)
 	if err != nil {
 		panic(err)
 	}
@@ -748,6 +823,23 @@ func parseRuntimeStructType(spec TypeSpec) (RuntimeType, error) {
 		TypeID: CanonicalTypeID(spec.String()),
 		Fields: fields,
 	}, nil
+}
+
+func splitRuntimeStructMembers(members []RuntimeStructField) ([]RuntimeStructField, []RuntimeStructMethod, error) {
+	fields := make([]RuntimeStructField, 0, len(members))
+	methods := make([]RuntimeStructMethod, 0)
+	for _, member := range members {
+		if member.TypeInfo.Kind != RuntimeTypeFunction {
+			fields = append(fields, member)
+			continue
+		}
+		sig, err := ParseRuntimeFuncSig(member.Type)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid method %s: %w", member.Name, err)
+		}
+		methods = append(methods, RuntimeStructMethod{Name: member.Name, Spec: sig})
+	}
+	return fields, methods, nil
 }
 
 func buildStructLayout(fields []RuntimeStructField) StructLayout {

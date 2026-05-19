@@ -47,7 +47,27 @@ type ValidContext struct {
 	closureNode *FuncLitExpr // 当前活动的闭包节点
 }
 
+type StructOwnership string
+
+const (
+	StructOwnershipVMValue    StructOwnership = "VMValue"
+	StructOwnershipHostOpaque StructOwnership = "HostOpaque"
+)
+
+type ExternalTypeSpec struct {
+	Type      GoMiniType
+	Ownership StructOwnership
+}
+
 func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
+	externalTypes := make(map[Ident]ExternalTypeSpec, len(externalSpecs))
+	for ident, typ := range externalSpecs {
+		externalTypes[ident] = ExternalTypeSpec{Type: typ, Ownership: StructOwnershipVMValue}
+	}
+	return NewValidatorWithExternalTypes(node, externalTypes, externalConsts, tolerant)
+}
+
+func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]ExternalTypeSpec, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
 	imports := make(map[string]string)
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
@@ -75,8 +95,9 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 			structs:    make(map[Ident]*ValidStruct),
 			interfaces: make(map[Ident]*InterfaceStmt),
 			Global: &ValidStruct{
-				Fields:  make(map[Ident]GoMiniType),
-				Methods: make(map[Ident]CallFunctionType),
+				Fields:    make(map[Ident]GoMiniType),
+				Methods:   make(map[Ident]CallFunctionType),
+				Ownership: StructOwnershipVMValue,
 			},
 			Package:       pkgName,
 			Path:          pkgName, // 默认为包名
@@ -111,7 +132,8 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 	}
 
 	// 注入外部 FFI 符号 (如 os.ReadFile)
-	for ident, t := range externalSpecs {
+	for ident, spec := range externalTypes {
+		t := spec.Type
 		v.root.vars[ident] = t
 		sIdent := string(ident)
 		if idx := strings.Index(sIdent, "."); idx != -1 {
@@ -127,7 +149,15 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 
 		if t.IsStruct() {
 			fields, _ := t.ReadStructFields()
-			vStru := &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
+			ownership := spec.Ownership
+			if ownership == "" {
+				ownership = StructOwnershipVMValue
+			}
+			vStru := &ValidStruct{
+				Fields:    make(map[Ident]GoMiniType),
+				Methods:   make(map[Ident]CallFunctionType),
+				Ownership: ownership,
+			}
 			for fName, fType := range fields {
 				if callFunc, ok := fType.ReadCallFunc(); ok {
 					vStru.Methods[Ident(fName)] = *callFunc
@@ -284,9 +314,14 @@ func (c *ValidContext) WithNode(b Node) *ValidContext {
 }
 
 type ValidStruct struct {
-	Fields  map[Ident]GoMiniType
-	Methods map[Ident]CallFunctionType
-	Defined bool
+	Fields    map[Ident]GoMiniType
+	Methods   map[Ident]CallFunctionType
+	Defined   bool
+	Ownership StructOwnership
+}
+
+func (s *ValidStruct) IsHostOpaque() bool {
+	return s != nil && s.Ownership == StructOwnershipHostOpaque
 }
 
 func (c *ValidContext) NextID() uint64 {
@@ -446,14 +481,90 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 	// 在隔离架构下，Array/Map 仅支持基本操作，不再动态生成方法集定义
 	// 校验器仅需知道类型存在即可
 	if GoMiniType(ident).IsArray() || GoMiniType(ident).IsMap() {
-		return &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}, true
+		return &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType), Ownership: StructOwnershipVMValue}, true
 	}
 
 	if GoMiniType(ident).IsPtr() {
-		elem, _ := GoMiniType(ident).ReadArrayItemType()
+		elem, _ := GoMiniType(ident).GetPtrElementType()
+		return c.GetStruct(Ident(elem))
+	}
+	if GoMiniType(ident).IsHostRef() {
+		elem, _ := GoMiniType(ident).GetHostRefElementType()
 		return c.GetStruct(Ident(elem))
 	}
 	return nil, false
+}
+
+func (c *ValidContext) IsHostOpaqueNamedType(t GoMiniType) bool {
+	if c == nil {
+		return false
+	}
+	resolved := t.Resolve(c)
+	if resolved.IsPtr() {
+		elem, _ := resolved.GetPtrElementType()
+		resolved = elem.Resolve(c)
+	}
+	if resolved.IsHostRef() {
+		elem, _ := resolved.GetHostRefElementType()
+		resolved = elem.Resolve(c)
+	}
+	st, ok := c.GetStruct(Ident(resolved))
+	return ok && st.IsHostOpaque()
+}
+
+func (c *ValidContext) ContainsHostOpaqueValue(t GoMiniType) bool {
+	return c.containsHostOpaqueValue(t.Resolve(c), 0)
+}
+
+func (c *ValidContext) containsHostOpaqueValue(t GoMiniType, depth int) bool {
+	if c == nil || depth > c.root.MaxTypeDepth {
+		return false
+	}
+	if t.IsHostRef() {
+		return false
+	}
+	if t.IsPtr() {
+		elem, _ := t.GetPtrElementType()
+		return c.IsHostOpaqueNamedType(elem) || c.containsHostOpaqueValue(elem.Resolve(c), depth+1)
+	}
+	if t.IsArray() {
+		elem, _ := t.ReadArrayItemType()
+		return c.containsHostOpaqueValue(elem.Resolve(c), depth+1)
+	}
+	if t.IsMap() {
+		k, v, _ := t.GetMapKeyValueTypes()
+		return c.containsHostOpaqueValue(k.Resolve(c), depth+1) || c.containsHostOpaqueValue(v.Resolve(c), depth+1)
+	}
+	if t.IsTuple() {
+		items, _ := t.ReadTuple()
+		for _, item := range items {
+			if c.containsHostOpaqueValue(item.Resolve(c), depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	if fn, ok := t.ReadFunc(); ok {
+		if c.containsHostOpaqueValue(fn.Return.Resolve(c), depth+1) {
+			return true
+		}
+		for _, p := range fn.Params {
+			if c.containsHostOpaqueValue(p.Type.Resolve(c), depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	if t.IsStruct() {
+		fields, _ := t.ReadStructFields()
+		for _, ft := range fields {
+			if c.containsHostOpaqueValue(ft.Resolve(c), depth+1) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.IsHostOpaqueNamedType(t)
 }
 
 func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
@@ -661,7 +772,7 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 	}
 
 	if vStru == nil {
-		vStru = &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType)}
+		vStru = &ValidStruct{Fields: make(map[Ident]GoMiniType), Methods: make(map[Ident]CallFunctionType), Ownership: StructOwnershipVMValue}
 		c.root.structs[name] = vStru
 	}
 

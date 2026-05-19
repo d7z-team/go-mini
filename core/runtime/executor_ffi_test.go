@@ -25,7 +25,7 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	schema := MustParseRuntimeStructSpec("demo.Point", "struct { X Int64; Y Int64; }")
+	schema := MustParseRuntimeStructSpec("demo.Point", StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 	exec.metadata.registerStructSchema(schema.Name, schema)
 
 	v := &Var{
@@ -86,7 +86,7 @@ func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	schema := MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }")
+	schema := MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }")
 	exec.metadata.registerStructSchema("demo.Type", schema)
 
 	typ, err := ParseRuntimeType("Ptr<demo.Type>")
@@ -102,9 +102,9 @@ func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	}
 }
 
-func TestSerializeVarToAnyKeepsOpaqueHandleOpaque(t *testing.T) {
+func TestSerializeVarToAnyKeepsHostRefOpaque(t *testing.T) {
 	exec := &Executor{}
-	v := &Var{VType: TypeHandle, Handle: 42, Bridge: testFFIBridge{}}
+	v := &Var{VType: TypeHostRef, Handle: 42, Bridge: testFFIBridge{}}
 
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
@@ -114,6 +114,40 @@ func TestSerializeVarToAnyKeepsOpaqueHandleOpaque(t *testing.T) {
 	id, ok := decoded.(uint32)
 	if !ok || id != 42 {
 		t.Fatalf("expected opaque handle id, got %#v", decoded)
+	}
+}
+
+func TestSerializeHostRefRejectsVMCreatedValue(t *testing.T) {
+	exec := &Executor{}
+	typ := MustParseRuntimeType("HostRef<demo.Handle>")
+	vmValue := &Var{
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("demo.Handle"),
+		Ref:      &VMMap{Data: map[string]*Var{}},
+	}
+
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	err := exec.serializeParsedType(buf, vmValue, typ)
+	if err == nil || !strings.Contains(err.Error(), "expected opaque host reference") {
+		t.Fatalf("expected HostRef serialization rejection, got %v", err)
+	}
+}
+
+func TestDeserializeHostRefCreatesHostRefValue(t *testing.T) {
+	exec := &Executor{}
+	typ := MustParseRuntimeType("HostRef<demo.Handle>")
+	buf := ffigo.GetBuffer()
+	buf.WriteUvarint(7)
+	reader := ffigo.NewReader(buf.Bytes())
+	ffigo.ReleaseBuffer(buf)
+
+	v, err := exec.deserializeParsedType(nil, reader, typ, testFFIBridge{})
+	if err != nil {
+		t.Fatalf("deserializeParsedType failed: %v", err)
+	}
+	if v == nil || v.VType != TypeHostRef || v.Handle != 7 || v.RawType() != "HostRef<demo.Handle>" {
+		t.Fatalf("unexpected host ref value: %#v", v)
 	}
 }
 
@@ -145,7 +179,7 @@ func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }"))
+	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }"))
 
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
@@ -153,7 +187,7 @@ func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
 		}
 	}()
 
-	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; Name String; }"))
+	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
 }
 
 type copyBackFFIBridge struct {

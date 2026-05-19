@@ -69,7 +69,7 @@ func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
 
-	spec := MustParseRuntimeStructSpec("demo.Type", "struct { Value Int64; }")
+	spec := MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }")
 	exec.RegisterStructSchema("demo.Type", spec)
 
 	resolved, ok := exec.resolveStructSchema("Ptr<demo.Type>")
@@ -93,10 +93,10 @@ func TestResolveMethodRouteSupportsDottedMethodKeys(t *testing.T) {
 	exec.routes["demo.Type.Call"] = FFIRoute{
 		Name:     "demo.Type.Call",
 		MethodID: 1,
-		FuncSig:  MustParseRuntimeFuncSig("function(Ptr<demo.Type>) Void"),
+		FuncSig:  MustParseRuntimeFuncSig("function(HostRef<demo.Type>) Void"),
 	}
 
-	methodName, ok := exec.resolveMethodRoute("Ptr<demo.Type>", "Call")
+	methodName, ok := exec.resolveMethodRoute("HostRef<demo.Type>", "Call")
 	if !ok {
 		t.Fatal("expected dotted method route to resolve")
 	}
@@ -117,7 +117,10 @@ func TestResolveNamedTypeDoesNotLoopOnPrimitiveAlias(t *testing.T) {
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
 
-	res := exec.initializeType(nil, MustParseRuntimeType("UserID"), 0)
+	res, err := exec.initializeType(nil, MustParseRuntimeType("UserID"), 0)
+	if err != nil {
+		t.Fatalf("initializeType failed: %v", err)
+	}
 	if res == nil || res.VType != TypeInt || res.RawType() != "UserID" || res.I64 != 0 {
 		t.Fatalf("unexpected initialized alias value: %#v", res)
 	}

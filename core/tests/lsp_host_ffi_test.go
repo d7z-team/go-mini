@@ -11,12 +11,10 @@ import (
 func TestLSPHostFFICompletion(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
-	// 1. 注册 FFI 结构体
-	// 模拟 os.File
-	testExecutor.DeclareStructSchema("os.File", runtime.MustParseRuntimeStructSpec("os.File", "struct { Read function(TypeBytes) tuple(Int64, Error); Close function() Error; Name String }"))
+	testExecutor.DeclareStructSchema("os.File", runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<os.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<os.File>) Error; }"))
 
 	// 模拟返回该结构体的函数
-	testExecutor.DeclareFuncSchema("os.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(os.File, Error)"))
+	testExecutor.DeclareFuncSchema("os.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(HostRef<os.File>, Error)"))
 
 	sourceSnippet := `package main
 import "os"
@@ -26,7 +24,6 @@ func main() {
     if err == nil {
         f.Read(make([]byte, 1024))
         f.Close()
-        print(f.Name)
     }
 }`
 
@@ -67,16 +64,12 @@ func main() {
 		completionItems := testProgram.GetCompletionsAt(7, 11)
 		foundRead := false
 		foundClose := false
-		foundName := false
 		for _, item := range completionItems {
 			if item.Label == "Read" && item.Kind == "method" {
 				foundRead = true
 			}
 			if item.Label == "Close" && item.Kind == "method" {
 				foundClose = true
-			}
-			if item.Label == "Name" && item.Kind == "field" {
-				foundName = true
 			}
 		}
 		if !foundRead {
@@ -85,11 +78,7 @@ func main() {
 		if !foundClose {
 			t.Error("missing f.Close completion")
 		}
-		if !foundName {
-			t.Error("missing f.Name completion")
-		}
-
-		if !foundRead || !foundClose || !foundName {
+		if !foundRead || !foundClose {
 			for _, item := range completionItems {
 				t.Logf("- %s (%s) Type: %s", item.Label, item.Kind, item.Type)
 			}

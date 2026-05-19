@@ -11,7 +11,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", "struct { T time.Time; Year function(Ptr<time.Time>) Int64; Month function(Ptr<time.Time>) Int64; Day function(Ptr<time.Time>) Int64; Hour function(Ptr<time.Time>) Int64; Minute function(Ptr<time.Time>) Int64; Second function(Ptr<time.Time>) Int64; Nanosecond function(Ptr<time.Time>) Int64; Unix function(Ptr<time.Time>) Int64; UnixMilli function(Ptr<time.Time>) Int64; UnixMicro function(Ptr<time.Time>) Int64; UnixNano function(Ptr<time.Time>) Int64; Format function(Ptr<time.Time>, String) String; Add function(Ptr<time.Time>, Int64) Ptr<time.Time>; Sub function(Ptr<time.Time>, Ptr<time.Time>) Int64; IsZero function(Ptr<time.Time>) Bool; Before function(Ptr<time.Time>, Ptr<time.Time>) Bool; After function(Ptr<time.Time>, Ptr<time.Time>) Bool; Equal function(Ptr<time.Time>, Ptr<time.Time>) Bool; String function(Ptr<time.Time>) String; }")
+var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", runtime.StructOwnershipHostOpaque, "struct { Year function(HostRef<time.Time>) Int64; Month function(HostRef<time.Time>) Int64; Day function(HostRef<time.Time>) Int64; Hour function(HostRef<time.Time>) Int64; Minute function(HostRef<time.Time>) Int64; Second function(HostRef<time.Time>) Int64; Nanosecond function(HostRef<time.Time>) Int64; Unix function(HostRef<time.Time>) Int64; UnixMilli function(HostRef<time.Time>) Int64; UnixMicro function(HostRef<time.Time>) Int64; UnixNano function(HostRef<time.Time>) Int64; Format function(HostRef<time.Time>, String) String; Add function(HostRef<time.Time>, Int64) HostRef<time.Time>; Sub function(HostRef<time.Time>, HostRef<time.Time>) Int64; IsZero function(HostRef<time.Time>) Bool; Before function(HostRef<time.Time>, HostRef<time.Time>) Bool; After function(HostRef<time.Time>, HostRef<time.Time>) Bool; Equal function(HostRef<time.Time>, HostRef<time.Time>) Bool; String function(HostRef<time.Time>) String; }")
 
 const (
 	MethodID_Module_Now           = 1
@@ -45,10 +45,10 @@ func (__p *ModuleProxy) Now() *Time {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Time
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
 				v_0 = obj.(*Time)
 			}
 		}
@@ -72,10 +72,10 @@ func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Time
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
 				v_0 = obj.(*Time)
 			}
 		}
@@ -93,12 +93,12 @@ func (__p *ModuleProxy) Since(t *Time) int64 {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "time.Time")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -124,12 +124,12 @@ func (__p *ModuleProxy) Until(t *Time) int64 {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "time.Time")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -170,10 +170,10 @@ func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *Time
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
 				v_0 = obj.(*Time)
 			}
 		}
@@ -261,11 +261,11 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case MethodID_Module_Now:
 		r0 := impl.Now()
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Module_Unix:
@@ -281,11 +281,11 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		}
 		r0 := impl.Unix(sec, nsec)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Module_Sleep:
@@ -300,9 +300,9 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		}), nil
 	case MethodID_Module_Since:
 		var t *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				t = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
@@ -314,9 +314,9 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case MethodID_Module_Until:
 		var t *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				t = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
@@ -333,11 +333,11 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		value = string(reqBuf.ReadString())
 		r0, err := impl.Parse(layout, value)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -376,12 +376,12 @@ var Module_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Now", 1, runtime.MustParseRuntimeFuncSig("function() Ptr<time.Time>"), ""},
-	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) Ptr<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Now", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<time.Time>"), ""},
+	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"Sleep", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Ptr<time.Time>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(HostRef<time.Time>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), ""},
 }
 
@@ -518,9 +518,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	switch methodID {
 	case MethodID_Time_Year:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -532,9 +532,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Month:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -546,9 +546,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Day:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -560,9 +560,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Hour:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -574,9 +574,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Minute:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -588,9 +588,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Second:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -602,9 +602,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Nanosecond:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -616,9 +616,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Unix:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -630,9 +630,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_UnixMilli:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -644,9 +644,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_UnixMicro:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -658,9 +658,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_UnixNano:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -672,9 +672,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Format:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -688,9 +688,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Add:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -703,27 +703,27 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		r0 := __recv.Add(d)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Sub:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var other *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
@@ -735,9 +735,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_IsZero:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -749,18 +749,18 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Before:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var other *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
@@ -772,18 +772,18 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_After:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var other *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
@@ -795,18 +795,18 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_Equal:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
 		}
 		var other *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
@@ -818,9 +818,9 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		return resBuf.Bytes(), nil
 	case MethodID_Time_String:
 		var __recv *Time
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -841,25 +841,25 @@ var Time_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Int64) Ptr<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) Bool", runtime.FFIParamIn), ""},
-	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>, Ptr<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<time.Time>) String", runtime.FFIParamIn), ""},
+	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
+	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Bool", runtime.FFIParamIn), ""},
+	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) String", runtime.FFIParamIn), ""},
 }
 
 type Time_Bridge struct {

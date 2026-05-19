@@ -49,10 +49,10 @@ func (__p *OSProxy) Open(name string) (*iolib.File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
 				v_0 = obj.(*iolib.File)
 			}
 		}
@@ -93,10 +93,10 @@ func (__p *OSProxy) Create(name string) (*iolib.File, error) {
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
 				v_0 = obj.(*iolib.File)
 			}
 		}
@@ -139,10 +139,10 @@ func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, erro
 	}
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *iolib.File
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
 				v_0 = obj.(*iolib.File)
 			}
 		}
@@ -319,11 +319,11 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "io.File")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -340,11 +340,11 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "io.File")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -371,11 +371,11 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		}
 		r0, err := impl.OpenFile(name, flag, perm)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "io.File")))
 		}
 		if err != nil {
 			if registry != nil {
@@ -453,9 +453,9 @@ var OS_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn), ""},
-	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn), ""},
-	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(Ptr<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), ""},
+	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), ""},
+	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"ReadFile", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
 	{"WriteFile", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"Remove", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), ""},

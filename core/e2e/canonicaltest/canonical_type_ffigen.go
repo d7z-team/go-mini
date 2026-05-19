@@ -12,9 +12,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", "struct { Hello function(Ptr<a_other.Type>) String; }")
+var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", runtime.StructOwnershipHostOpaque, "struct { Hello function(HostRef<a_other.Type>) String; }")
 
-var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", "struct { Hello function(Ptr<b_other.Type>) String; }")
+var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", runtime.StructOwnershipHostOpaque, "struct { Hello function(HostRef<b_other.Type>) String; }")
 
 const (
 	MethodID_TestCanonicalService_NewA = 1
@@ -45,10 +45,10 @@ func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *a_other.Type
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type"); ok {
 				v_0 = obj.(*a_other.Type)
 			}
 		}
@@ -71,10 +71,10 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *b_other.Type
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type"); ok {
 				v_0 = obj.(*b_other.Type)
 			}
 		}
@@ -99,11 +99,11 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 		name = string(reqBuf.ReadString())
 		r0 := impl.NewA(ctx, name)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_TestCanonicalService_NewB:
@@ -114,11 +114,11 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 		}
 		r0 := impl.NewB(ctx, id)
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type")))
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -132,8 +132,8 @@ var TestCanonicalService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) Ptr<a_other.Type>", runtime.FFIParamIn), ""},
-	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Ptr<b_other.Type>", runtime.FFIParamIn), ""},
+	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) HostRef<a_other.Type>", runtime.FFIParamIn), ""},
+	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<b_other.Type>", runtime.FFIParamIn), ""},
 }
 
 type TestCanonicalService_Bridge struct {
@@ -193,12 +193,12 @@ func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -229,9 +229,9 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	switch methodID {
 	case MethodID_ATypeService_Hello:
 		var t *a_other.Type
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type"); err == nil {
 				t = obj.(*a_other.Type)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
@@ -252,7 +252,7 @@ var ATypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<a_other.Type>) String", runtime.FFIParamIn), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<a_other.Type>) String", runtime.FFIParamIn), ""},
 }
 
 type ATypeService_Bridge struct {
@@ -315,12 +315,12 @@ func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if t == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(t)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -351,9 +351,9 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	switch methodID {
 	case MethodID_BTypeService_Hello:
 		var t *b_other.Type
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type"); err == nil {
 				t = obj.(*b_other.Type)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
@@ -374,7 +374,7 @@ var BTypeService_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<b_other.Type>) String", runtime.FFIParamIn), ""},
+	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<b_other.Type>) String", runtime.FFIParamIn), ""},
 }
 
 type BTypeService_Bridge struct {

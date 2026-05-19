@@ -427,7 +427,7 @@ func (t *Table) SetString(row, col int, val string) {}
 		t.Fatalf("read generated output: %v", err)
 	}
 	code := string(content)
-	required := `SetString function(Ptr<Table>, Int64, Int64, String) Void;`
+	required := `SetString function(HostRef<Table>, Int64, Int64, String) Void;`
 	if !strings.Contains(code, required) {
 		t.Fatalf("expected grouped params to be preserved in struct schema, missing %q in:\n%s", required, code)
 	}

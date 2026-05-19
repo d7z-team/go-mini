@@ -80,7 +80,7 @@ func TestMethodEdgeCases(t *testing.T) {
 		package main
 		import "os"
 		func main() {
-			var f Ptr<File> // nil handle
+			var f *os.File // nil host reference
 			f.Close()
 		}
 		`

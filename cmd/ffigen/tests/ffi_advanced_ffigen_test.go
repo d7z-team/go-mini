@@ -10,9 +10,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", "struct { Name String; }")
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", runtime.StructOwnershipHostOpaque, "struct { }")
 
-var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", "struct { BaseField String; ExtraField Int64; }")
+var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", runtime.StructOwnershipVMValue, "struct { BaseField String; ExtraField Int64; }")
 
 const (
 	MethodID_AdvancedFFI_GetSameObject = 1
@@ -43,10 +43,10 @@ func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
 	_ = err
 	retBuf := ffigo.NewReader(retData)
 	var v_0 *TestObj
-	// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 	if id := uint32(retBuf.ReadUvarint()); id != 0 {
 		if __p.registry != nil {
-			if obj, ok := __p.registry.Get(id); ok {
+			if obj, ok := __p.registry.GetTyped(id, "test.TestObj"); ok {
 				v_0 = obj.(*TestObj)
 			}
 		}
@@ -58,22 +58,22 @@ func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if a == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(a)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(a, "test.TestObj")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
 	}
-	// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 	if b == nil {
 		wireBuf.WriteUvarint(0)
 	} else {
 		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.Register(b)))
+			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(b, "test.TestObj")))
 		} else {
 			wireBuf.WriteUvarint(0)
 		}
@@ -166,27 +166,27 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	case MethodID_AdvancedFFI_GetSameObject:
 		r0 := impl.GetSameObject()
 		resBuf := ffigo.GetBuffer()
-		// Ptr<T> crosses the FFI boundary as an opaque handle ID.
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.Register(r0)))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "test.TestObj")))
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_AdvancedFFI_IsSame:
 		var a *TestObj
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "test.TestObj"); err == nil {
 				a = obj.(*TestObj)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "a", err)
 			}
 		}
 		var b *TestObj
-		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
-			if obj, err := registry.GetWithAudit(id); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "test.TestObj"); err == nil {
 				b = obj.(*TestObj)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "b", err)
@@ -238,8 +238,8 @@ var AdvancedFFI_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig("function() Ptr<test.TestObj>"), "Identity check"},
-	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Ptr<test.TestObj>, Ptr<test.TestObj>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<test.TestObj>"), "Identity check"},
+	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<test.TestObj>, HostRef<test.TestObj>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"EchoMap", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Map<Bool, String>) Map<Float64, Bool>", runtime.FFIParamIn), "Map keys"},
 	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSigWithModes("function(test.EmbeddedStruct) test.EmbeddedStruct", runtime.FFIParamIn), "Embedded structs"},
 }

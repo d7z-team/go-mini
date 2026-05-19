@@ -31,7 +31,7 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 	switch req.MethodID {
 	case 1: // 模拟 Screenshot
 		res := &MockResource{ID: 12}
-		id := m.registry.Register(res)
+		id := m.registry.RegisterTyped(res, "mock.Resource")
 
 		buf := ffigo.GetBuffer()
 		defer ffigo.ReleaseBuffer(buf)
@@ -42,8 +42,8 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 		reader := ffigo.NewReader(req.Args)
 		id := uint32(reader.ReadUvarint())
 
-		obj, ok := m.registry.Get(id)
-		if !ok {
+		obj, err := m.registry.GetTypedWithAudit(id, "mock.Resource")
+		if err != nil {
 			return nil, ffigo.ErrorData{Message: fmt.Sprintf("invalid handle ID: %d", id)}
 		}
 		res := obj.(*MockResource)
@@ -76,8 +76,9 @@ func TestHandleGCLifecycleRegression(t *testing.T) {
 	registry := ffigo.NewHandleRegistry()
 	bridge := &lifecycleMockBridge{registry: registry, t: t}
 
-	executor.RegisterFFISchema("Screenshot", bridge, 1, miniruntime.MustParseRuntimeFuncSig("function() TypeHandle"), "")
-	executor.RegisterFFISchema("GetWidth", bridge, 2, miniruntime.MustParseRuntimeFuncSig("function(TypeHandle) Int64"), "")
+	executor.RegisterStructSchema("mock.Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }"))
+	executor.RegisterFFISchema("Screenshot", bridge, 1, miniruntime.MustParseRuntimeFuncSig("function() HostRef<mock.Resource>"), "")
+	executor.RegisterFFISchema("GetWidth", bridge, 2, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Resource>) Int64"), "")
 	executor.RegisterFFISchema("TriggerGC", bridge, 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	code := `

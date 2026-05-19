@@ -15,11 +15,16 @@ type auditEntry struct {
 // HandleRegistry manages the mapping between uint32 IDs and Go object instances.
 type HandleRegistry struct {
 	mu      sync.RWMutex
-	handles map[uint32]interface{}
+	handles map[uint32]handleEntry
 	nextID  uint32
 
 	// 审计追踪：记录最近 100 个被删除的句柄
 	recentDeletions []auditEntry
+}
+
+type handleEntry struct {
+	Object interface{}
+	TypeID string
 }
 
 // ... (ManagedHandle and Release remain unchanged)
@@ -27,7 +32,7 @@ type HandleRegistry struct {
 // NewHandleRegistry creates a new handle registry.
 func NewHandleRegistry() *HandleRegistry {
 	return &HandleRegistry{
-		handles:         make(map[uint32]interface{}),
+		handles:         make(map[uint32]handleEntry),
 		nextID:          1,
 		recentDeletions: make([]auditEntry, 0, 100),
 	}
@@ -35,6 +40,10 @@ func NewHandleRegistry() *HandleRegistry {
 
 // Register adds an object to the registry and returns its unique ID.
 func (r *HandleRegistry) Register(obj interface{}) uint32 {
+	return r.RegisterTyped(obj, "")
+}
+
+func (r *HandleRegistry) RegisterTyped(obj interface{}, typeID string) uint32 {
 	if obj == nil {
 		return 0
 	}
@@ -43,7 +52,7 @@ func (r *HandleRegistry) Register(obj interface{}) uint32 {
 	defer r.mu.Unlock()
 
 	id := atomic.AddUint32(&r.nextID, 1)
-	r.handles[id] = obj
+	r.handles[id] = handleEntry{Object: obj, TypeID: typeID}
 	return id
 }
 
@@ -53,16 +62,35 @@ func (r *HandleRegistry) Get(id uint32) (interface{}, bool) {
 		return nil, false
 	}
 	r.mu.RLock()
-	obj, ok := r.handles[id]
+	entry, ok := r.handles[id]
 	r.mu.RUnlock()
-	return obj, ok
+	if !ok {
+		return nil, false
+	}
+	return entry.Object, true
+}
+
+func (r *HandleRegistry) GetTyped(id uint32, typeID string) (interface{}, bool) {
+	obj, err := r.GetTypedWithAudit(id, typeID)
+	return obj, err == nil
 }
 
 // GetWithAudit 提供更详细的错误原因
 func (r *HandleRegistry) GetWithAudit(id uint32) (interface{}, error) {
-	obj, ok := r.Get(id)
-	if ok {
-		return obj, nil
+	return r.GetTypedWithAudit(id, "")
+}
+
+func (r *HandleRegistry) GetTypedWithAudit(id uint32, typeID string) (interface{}, error) {
+	if id != 0 {
+		r.mu.RLock()
+		entry, ok := r.handles[id]
+		r.mu.RUnlock()
+		if ok {
+			if typeID != "" && typeID != "Any" && entry.TypeID != "" && entry.TypeID != typeID {
+				return nil, fmt.Errorf("handle ID %d has type %s, want %s", id, entry.TypeID, typeID)
+			}
+			return entry.Object, nil
+		}
 	}
 
 	r.mu.RLock()

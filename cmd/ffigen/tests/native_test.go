@@ -16,8 +16,8 @@ func (m *NativeMockImpl) GetStruct() NativeStruct {
 	return NativeStruct{Value: 100, Msg: "copy"}
 }
 
-func (m *NativeMockImpl) GetPtr() *NativeStruct {
-	return &NativeStruct{Value: 200, Msg: "ptr_copy"}
+func (m *NativeMockImpl) GetPtr() *NativeHandle {
+	return &NativeHandle{Value: 200, Msg: "ptr_copy"}
 }
 
 func (m *NativeMockImpl) SetStruct(s NativeStruct) int64 {
@@ -25,7 +25,7 @@ func (m *NativeMockImpl) SetStruct(s NativeStruct) int64 {
 	return s.Value
 }
 
-func (m *NativeMockImpl) SetPtr(s *NativeStruct) int64 {
+func (m *NativeMockImpl) SetPtr(s *NativeHandle) int64 {
 	if s == nil {
 		return -1
 	}
