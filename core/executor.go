@@ -361,8 +361,6 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("Int64", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
 	res.mustAddFuncSchemaLocked("Float64", runtime.MustParseRuntimeFuncSig("function(Any) Float64"))
 	res.mustAddFuncSchemaLocked("require", runtime.MustParseRuntimeFuncSig("function(String) TypeModule"))
-	res.mustAddFuncSchemaLocked("spawn", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Ptr<task.Task>"))
-	res.mustAddFuncSchemaLocked("await", runtime.MustParseRuntimeFuncSig("function(Ptr<task.Task>) Any"))
 
 	// Inject default libraries that do not let scripts discover the host
 	// filesystem/environment on their own.
@@ -386,7 +384,7 @@ func NewMiniExecutor() *MiniExecutor {
 	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
 	iolib.RegisterIOSafe(res, &iolib.IOHost{}, res.registry)
 	imagelib.RegisterImageAll(res, &imagelib.ImageHost{}, res.registry)
-	tasklib.RegisterTaskAll(res, &tasklib.Host{}, res.registry)
+	tasklib.RegisterTaskAll(res)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}

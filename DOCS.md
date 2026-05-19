@@ -196,12 +196,16 @@ p := new(Int64)
 println(*p)
 ```
 
-## 4.1 Task 并发语义
+## 4.1 Go Fiber 调度语义
 
-当前并发模型分两层：
+当前并发模型只有一类原语：`go f()`。它会创建 VM 内部 fiber，但整个 VM 始终单线程执行；所谓并发只是 `task.Yield()` / `task.Sleep(ms)` 等安全点上的上下文切换。
 
-- VM 原生原语：`spawn(fn, ...args)`、`await(task)`
-- 模块外观：`task.NewTaskGroup()`、`task.AddTask(...)`、`task.WaitTasks(...)`、`task.GroupErr(...)`、`task.CancelGroup(...)`、`task.Status(task)`、`task.Err(task)`、`task.Cancel(task)`
+已移除且不保留兼容的旧 API：
+
+- `spawn(...)` / `await(...)`
+- `task.Task` / `task.TaskGroup`
+- `task.Status` / `task.Err` / `task.Cancel`
+- `task.AddTask` / `task.WaitTasks` / `task.GroupErr` / `task.CancelGroup`
 
 ### 基本用法
 
@@ -210,91 +214,77 @@ package main
 
 import "task"
 
-func work() Int64 {
-    task.Sleep(10)
-    return 42
+var result = 0
+
+func work() {
+    result = 42
 }
 
 func main() {
-    t := spawn(work)
-    println(task.Status(t))
-    println(await(t))
+    go work()
+    task.Yield()
+    if result != 42 {
+        panic("worker did not run")
+    }
 }
 ```
 
-Go 语法糖：
+`task.Sleep(ms)` 会挂起当前 fiber，并让 scheduler 执行其它 runnable fiber：
 
 ```go
 package main
 
 import "task"
 
+var done = false
+
 func worker() {
     task.Sleep(10)
+    done = true
 }
 
 func main() {
-    g := task.NewTaskGroup()
-    t := spawn(worker)
-    task.AddTask(g, t)
-    task.WaitTasks(g)
-    if task.GroupErr(g) != nil {
-        panic(task.GroupErr(g))
+    go worker()
+    task.Sleep(20)
+    if !done {
+        panic("worker did not finish")
     }
 }
 ```
 
-取消与失败语义如下：
+失败语义：
 
-- `await(task)` 是抛出式汇合点
-- task 成功时，`await(task)` 返回结果
-- task 失败时，`await(task)` 返回 runtime panic/error
-- task 被取消时，`await(task)` 同样返回 runtime error
-- `task.Err(task)` 是非抛出式观测接口：
-  - `pending/running/succeeded` 返回 `nil`
-  - `failed/canceled` 返回 `Error`
-- `task.Cancel(task)` 通过 task context 发起取消，不是抢占式终止
-- root `main` 结束时，runtime 会取消所有未完成 child task，但不会额外等待它们自然结束
-- 取消只在安全点生效，例如调用边界、FFI 返回后、循环边界；不保证完整执行 child task 的后续 defer/收尾逻辑
-
-因此，如果脚本需要确定子任务完成，必须显式使用 `await(...)` 或 `task.WaitTasks(...)`
+- child fiber 的 panic 会让整个 VM 执行失败，除非在 child fiber 内部 recover
+- `go f()` 没有返回值、没有 handle，也不能 await
+- 需要把结果带回父流程时，使用共享变量、显式 channel 类库（未来能力）或其它同步协议；当前内置只提供 Yield/Sleep 安全点
 
 ### Root 生命周期
 
-root `main` 是整个程序的根 task。
+root `main` 是整个程序的根 fiber。
 
-- `main()` 正常返回时，所有未完成 child task 会被取消
-- `main()` panic 返回时，同样会取消所有未完成 child task
-- runtime 不会在退出阶段自动等待后台 task 收尾
+- `main()` 正常返回时，所有未完成 child fiber 会立即停止
+- `main()` panic 返回时，同样会停止所有未完成 child fiber
+- runtime 不会在退出阶段自动等待后台 fiber 收尾
 
 这意味着 `go f()` 的默认语义是 fire-and-forget，但不是“main 退出后继续后台存活”。
 
-### 失败观测建议
-
-- 需要单任务结果时，优先用 `await(task)`
-- 需要多任务聚合时，用 `task.NewTaskGroup + AddTask + WaitTasks + GroupErr`
-- 只想轮询状态或非抛出式检查时，用 `task.Status(task)` 和 `task.Err(task)`
-- 对 `go f()` 这种不保留句柄的调用，子任务失败不会打断父流程
-
 ### 结果共享
 
-- `await(task)` 只保证 child task 已结束，并把该 task 的返回值或失败传回当前 task；它不会把 child 内部对 captured VM 值的写入同步回父 task。
-- 若需要把数据带回父 task，优先把它作为 task 返回值，通过 `await(task)` 显式取回，而不是依赖 closure capture 的副作用。
-- `task.WaitTasks(group)` 只负责等待一组 task 完成，本身不传回每个 task 的结果；组级失败通过 `task.GroupErr(group)` 观测。
-- `captured task handle` 可以跨 task 共享并被 `await/status/err/cancel`，但这里共享的是 task 生命周期与结果，不是普通 VM 容器的共享写状态。
+因为 VM 永远单线程，`go` fiber 不再做 task-boundary snapshot capture。闭包 capture、VM array/map、VM pointer 和 host handle 都按普通引用语义共享；不会出现并行数据竞争，但仍需要明确调度点，否则 child fiber 可能没有机会运行。
 
 示例：
 
 ```go
 package main
 
-func worker(x Int64) Int64 {
-	return x * 2
-}
+import "task"
 
 func main() {
-	t := spawn(worker, 21)
-	result := await(t)
+	result := 0
+	go func(x Int64) {
+		result = x * 2
+	}(21)
+	task.Yield()
 	if result != 42 {
 		panic("unexpected result")
 	}
@@ -303,20 +293,15 @@ func main() {
 
 ### 当前限制
 
-- `spawn/go` 对带 captured upvalue 的闭包采用 task-boundary snapshot capture 语义
-- child task 拿到的是 spawn 时刻的 captured 值快照，child 修改不会回写父 task
-- captured host handle 与 task handle 按身份共享，不做深拷贝，child task 仍可调用宿主方法或等待既有任务
-- snapshot capture 当前拒绝：VM pointer、module、runtime-backed interface 与递归容器
-- 普通 VM map/array/closure capture 不承诺并发写安全
-- 当前没有 `chan/select` 语义
+- 没有 `chan/select` 语义
+- 没有 task handle、状态查询、取消和结果 await
+- 同步 FFI 调用会阻塞整个 VM；只有 VM 内建的 `task.Sleep` / `task.Yield` 是调度点
 
 ### 使用警告
 
-- `spawn/go` 不是 Go 原生 goroutine 共享 capture 语义。普通 VM 值在 task 边界会被快照复制，child task 的写入不会回写父 task。
-- `captured host handle` 与 `captured task handle` 是少数例外，它们按身份共享而不是按值复制。child task 和父 task 看到的是同一个宿主对象或同一个 task 句柄。
-- 这意味着宿主对象的方法若不是并发安全的，VM 不会替你加锁或隔离状态；并发安全责任仍在宿主实现侧。
-- `captured VM pointer` 继续禁止，是为了避免把 VM 内部可变引用直接暴露成跨 task 共享内存；一旦放开，就会打破当前 snapshot 边界并引入未定义并发写语义。
-- 若需要跨 task 协作，优先使用显式参数、`task.TaskGroup`、`task.Cancel`、`await` 或宿主同步对象，而不是依赖 closure capture 的隐式共享效果。
+- `go f()` 不代表宿主 goroutine，也不提供并行执行。
+- 没有调度点时，root `main` 可能直接返回并停止尚未运行的 child fiber。
+- child fiber 的 panic 默认会失败整个 VM；需要隔离失败时在 child 内部使用 `try/recover`。
 
 ## 5. FFI 生成器
 

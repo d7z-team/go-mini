@@ -44,6 +44,7 @@ package main
 
 import "helper"
 import "encoding/json"
+import "task"
 
 var trace = boot()
 var payload any
@@ -94,12 +95,12 @@ func main() {
 	}
 	risky("panic")
 
-	t := spawn(func(base int) int {
+	go func(base int) {
 		defer mark("child.defer")
-		return helper.Next() + base
-	}, 5)
-	childResult = await(t)
-	mark("spawn")
+		childResult = helper.Next() + base
+	}(5)
+	task.Yield()
+	mark("go")
 
 	raw, err := json.Marshal(map[string]any{
 		"trace": trace,
@@ -118,7 +119,7 @@ func main() {
 }
 `
 
-const fullPipelineExpectedTrace = "main-boot|start|closure|body:safe|defer:safe|recover:boom|defer:panic|child.defer|spawn"
+const fullPipelineExpectedTrace = "main-boot|start|closure|body:safe|defer:safe|recover:boom|defer:panic|child.defer|go"
 
 func TestFullPipelineIntegrity(t *testing.T) {
 	t.Run("source_runtime", func(t *testing.T) {

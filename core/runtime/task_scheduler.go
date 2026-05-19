@@ -3,291 +3,168 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
+	"time"
 )
 
-type TaskStatus uint8
+type VMFiber struct {
+	ID      uint32
+	Session *StackContext
+	wakeAt  time.Time
+}
 
-const (
-	TaskPending TaskStatus = iota
-	TaskRunning
-	TaskSucceeded
-	TaskFailed
-	TaskCanceled
-)
+type FiberScheduler struct {
+	nextID   uint32
+	current  *VMFiber
+	runq     []*VMFiber
+	sleepers []*VMFiber
+	stopped  bool
+}
 
-func (s TaskStatus) String() string {
-	switch s {
-	case TaskPending:
-		return "pending"
-	case TaskRunning:
-		return "running"
-	case TaskSucceeded:
-		return "succeeded"
-	case TaskFailed:
-		return "failed"
-	case TaskCanceled:
-		return "canceled"
-	default:
-		return "unknown"
+func NewFiberScheduler() *FiberScheduler {
+	return &FiberScheduler{}
+}
+
+func (s *FiberScheduler) Reset(root *StackContext) (*VMFiber, error) {
+	if s == nil || root == nil {
+		return nil, errors.New("invalid fiber root")
 	}
+	s.nextID = 1
+	s.current = nil
+	s.sleepers = nil
+	s.stopped = false
+	rootFiber := &VMFiber{ID: s.nextID, Session: root}
+	s.runq = []*VMFiber{rootFiber}
+	return rootFiber, nil
 }
 
-type VMTask struct {
-	ID uint32
-
-	mu     sync.RWMutex
-	status TaskStatus
-	result *Var
-	err    error
-
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-type VMTaskGroup struct {
-	mu       sync.Mutex
-	taskIDs  map[uint32]struct{}
-	firstErr error
-}
-
-func NewVMTaskGroup() *VMTaskGroup {
-	return &VMTaskGroup{
-		taskIDs: make(map[uint32]struct{}),
-	}
-}
-
-func (g *VMTaskGroup) Add(taskID uint32) {
-	if g == nil || taskID == 0 {
-		return
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.taskIDs[taskID] = struct{}{}
-}
-
-func (g *VMTaskGroup) Snapshot() []uint32 {
-	if g == nil {
+func (s *FiberScheduler) Current() *VMFiber {
+	if s == nil {
 		return nil
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	ids := make([]uint32, 0, len(g.taskIDs))
-	for id := range g.taskIDs {
-		ids = append(ids, id)
-	}
-	return ids
+	return s.current
 }
 
-func (g *VMTaskGroup) RememberErr(err error) {
-	if g == nil || err == nil {
-		return
+func (s *FiberScheduler) Go(session *StackContext) (*VMFiber, error) {
+	if s == nil || session == nil {
+		return nil, errors.New("invalid go fiber")
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.firstErr == nil {
-		g.firstErr = err
+	if s.stopped {
+		return nil, errors.New("cannot start go fiber after scheduler stopped")
 	}
+	s.nextID++
+	fiber := &VMFiber{ID: s.nextID, Session: session}
+	s.runq = append(s.runq, fiber)
+	return fiber, nil
 }
 
-func (g *VMTaskGroup) Err() error {
-	if g == nil {
+func (s *FiberScheduler) YieldCurrent() error {
+	if s == nil || s.current == nil {
 		return nil
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.firstErr
+	s.runq = append(s.runq, s.current)
+	s.current = nil
+	return nil
 }
 
-func (t *VMTask) setResult(status TaskStatus, result *Var, err error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.status = status
-	if result != nil {
-		t.result = result.Copy()
-	} else {
-		t.result = nil
+func (s *FiberScheduler) SleepCurrent(d time.Duration) error {
+	if s == nil || s.current == nil {
+		if d > 0 {
+			time.Sleep(d)
+		}
+		return nil
 	}
-	t.err = err
-}
-
-func (t *VMTask) snapshot() (TaskStatus, *Var, error) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	if t.result != nil {
-		return t.status, t.result.Copy(), t.err
+	if d <= 0 {
+		return s.YieldCurrent()
 	}
-	return t.status, nil, t.err
+	s.current.wakeAt = time.Now().Add(d)
+	s.sleepers = append(s.sleepers, s.current)
+	s.current = nil
+	return nil
 }
 
-type TaskScheduler struct {
-	mu           sync.Mutex
-	nextID       uint32
-	tasks        map[uint32]*VMTask
-	shuttingDown bool
-}
-
-func NewTaskScheduler() *TaskScheduler {
-	return &TaskScheduler{
-		tasks: make(map[uint32]*VMTask),
-	}
-}
-
-func (s *TaskScheduler) BeginRoot() {
+func (s *FiberScheduler) FinishCurrent() {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.shuttingDown = false
-	for id, task := range s.tasks {
-		if task == nil {
-			delete(s.tasks, id)
-			continue
-		}
-		select {
-		case <-task.done:
-			delete(s.tasks, id)
-		default:
-		}
-	}
+	s.current = nil
 }
 
-func (s *TaskScheduler) Spawn(parent context.Context, run func(context.Context) (*Var, error)) (*VMTask, error) {
-	if s == nil || run == nil {
-		return nil, errors.New("invalid task spawn")
+func (s *FiberScheduler) Stop() {
+	if s == nil {
+		return
 	}
-	if parent == nil {
-		parent = context.Background()
-	}
-
-	s.mu.Lock()
-	if s.shuttingDown {
-		s.mu.Unlock()
-		return nil, errors.New("cannot spawn task during shutdown")
-	}
-	s.nextID++
-	id := s.nextID
-	ctx, cancel := context.WithCancel(parent)
-	task := &VMTask{
-		ID:     id,
-		status: TaskPending,
-		cancel: cancel,
-		done:   make(chan struct{}),
-	}
-	s.tasks[id] = task
-	s.mu.Unlock()
-
-	go func() {
-		task.setResult(TaskRunning, nil, nil)
-		result, err := run(ctx)
-		status := TaskSucceeded
-		if ctx.Err() != nil {
-			status = TaskCanceled
-			err = ctx.Err()
-			result = nil
-		} else if err != nil {
-			status = TaskFailed
-		}
-		task.setResult(status, result, err)
-		cancel()
-		close(task.done)
-	}()
-
-	return task, nil
+	s.current = nil
+	s.runq = nil
+	s.sleepers = nil
+	s.stopped = true
 }
 
-func (s *TaskScheduler) Await(ctx context.Context, id uint32) (*Var, error) {
-	task, err := s.lookup(id)
-	if err != nil {
-		return nil, err
+func (s *FiberScheduler) Next(ctx context.Context) (*VMFiber, error) {
+	if s == nil || s.stopped {
+		return nil, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	select {
-	case <-task.done:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	status, result, taskErr := task.snapshot()
-	switch status {
-	case TaskSucceeded:
-		return result, nil
-	case TaskCanceled:
-		if taskErr != nil {
-			return nil, taskErr
+	for {
+		now := time.Now()
+		s.wakeReady(now)
+		if len(s.runq) > 0 {
+			fiber := s.runq[0]
+			copy(s.runq, s.runq[1:])
+			s.runq[len(s.runq)-1] = nil
+			s.runq = s.runq[:len(s.runq)-1]
+			s.current = fiber
+			return fiber, nil
 		}
-		return nil, context.Canceled
-	case TaskFailed:
-		if taskErr != nil {
-			return nil, taskErr
+		if len(s.sleepers) == 0 {
+			return nil, nil
 		}
-		return nil, errors.New("task failed")
-	default:
-		return nil, fmt.Errorf("task status %s", status.String())
+		delay := s.nextWakeDelay(now)
+		if delay <= 0 {
+			continue
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		}
 	}
 }
 
-func (s *TaskScheduler) Cancel(id uint32) error {
-	task, err := s.lookup(id)
-	if err != nil {
-		return err
-	}
-	if task.cancel != nil {
-		task.cancel()
-	}
-	return nil
-}
-
-func (s *TaskScheduler) Status(id uint32) (TaskStatus, error) {
-	task, err := s.lookup(id)
-	if err != nil {
-		return TaskCanceled, err
-	}
-	status, _, _ := task.snapshot()
-	return status, nil
-}
-
-func (s *TaskScheduler) Error(id uint32) (TaskStatus, error, error) {
-	task, err := s.lookup(id)
-	if err != nil {
-		return TaskCanceled, nil, err
-	}
-	status, _, taskErr := task.snapshot()
-	return status, taskErr, nil
-}
-
-func (s *TaskScheduler) lookup(id uint32) (*VMTask, error) {
-	if s == nil || id == 0 {
-		return nil, errors.New("invalid task handle")
-	}
-	s.mu.Lock()
-	task, ok := s.tasks[id]
-	s.mu.Unlock()
-	if !ok || task == nil {
-		return nil, fmt.Errorf("task handle %d not found", id)
-	}
-	return task, nil
-}
-
-func (s *TaskScheduler) ShutdownFromRoot() {
-	if s == nil {
+func (s *FiberScheduler) wakeReady(now time.Time) {
+	if len(s.sleepers) == 0 {
 		return
 	}
-
-	s.mu.Lock()
-	s.shuttingDown = true
-	tasks := make([]*VMTask, 0, len(s.tasks))
-	for _, task := range s.tasks {
-		tasks = append(tasks, task)
+	pending := s.sleepers[:0]
+	for _, fiber := range s.sleepers {
+		if fiber == nil {
+			continue
+		}
+		if fiber.wakeAt.IsZero() || !fiber.wakeAt.After(now) {
+			fiber.wakeAt = time.Time{}
+			s.runq = append(s.runq, fiber)
+			continue
+		}
+		pending = append(pending, fiber)
 	}
-	s.mu.Unlock()
+	s.sleepers = pending
+}
 
-	for _, task := range tasks {
-		if task != nil && task.cancel != nil {
-			task.cancel()
+func (s *FiberScheduler) nextWakeDelay(now time.Time) time.Duration {
+	var wake time.Time
+	for _, fiber := range s.sleepers {
+		if fiber == nil || fiber.wakeAt.IsZero() {
+			return 0
+		}
+		if wake.IsZero() || fiber.wakeAt.Before(wake) {
+			wake = fiber.wakeAt
 		}
 	}
+	if wake.IsZero() {
+		return 0
+	}
+	return time.Until(wake)
 }

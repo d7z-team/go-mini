@@ -133,22 +133,22 @@ func TestLowerStmtTasksBuildsDataOnlyGoPlan(t *testing.T) {
 		t.Fatal("expected statement to be lowered")
 	}
 
-	var spawnTask *Task
+	var goTask *Task
 	for i := range tasks {
-		if tasks[i].Op == OpSpawn {
-			spawnTask = &tasks[i]
+		if tasks[i].Op == OpGo {
+			goTask = &tasks[i]
 			break
 		}
 	}
-	if spawnTask == nil {
-		t.Fatalf("expected spawn task in lowered statement: %+v", tasks)
+	if goTask == nil {
+		t.Fatalf("expected go task in lowered statement: %+v", tasks)
 	}
-	data, ok := spawnTask.Data.(*CallData)
+	data, ok := goTask.Data.(*CallData)
 	if !ok {
-		t.Fatalf("unexpected spawn task data: %T", spawnTask.Data)
+		t.Fatalf("unexpected go task data: %T", goTask.Data)
 	}
 	if data.Mode != CallByName || data.Name != "work" || data.ArgCount != 2 {
-		t.Fatalf("unexpected spawn task data: %+v", data)
+		t.Fatalf("unexpected go task data: %+v", data)
 	}
 }
 

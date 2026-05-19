@@ -302,10 +302,8 @@ func TestDebugger_TaskBreakpointHitsChildTask(t *testing.T) {
 	}
 
 	func main() {
-		g := task.NewTaskGroup()
-		t := spawn(worker)
-		task.AddTask(g, t)
-		task.WaitTasks(g)
+		go worker()
+		task.Sleep(50)
 	}
 	`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
@@ -355,12 +353,9 @@ func TestDebugger_TaskBreakpointHitsMultipleTasks(t *testing.T) {
 	}
 
 	func main() {
-		g := task.NewTaskGroup()
-		t1 := spawn(worker)
-		t2 := spawn(worker)
-		task.AddTask(g, t1)
-		task.AddTask(g, t2)
-		task.WaitTasks(g)
+		go worker()
+		go worker()
+		task.Sleep(50)
 	}
 	`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)

@@ -37,6 +37,10 @@
   - `cmd/exec` 使用 bytecode-first CLI
   - JSON 默认只接受 `go-mini-bytecode`
 - 调试器保留前端/LSP 所需的 AST 蓝图，但不依赖 `Task.Node`
+- `go` 是 VM 单线程 fiber 原语
+  - 不保留 `spawn/await`、task handle、TaskGroup、取消/状态 API
+  - 上下文切换只允许通过 VM safe point，例如 `task.Yield()` / `task.Sleep(ms)`
+  - 禁止恢复宿主 goroutine 级 task scheduler
 - `ffigen` 使用精简后的生成模型
   - 只保留 `-pkg` / `-out`
   - `ffigen:module` 是 VM 命名唯一来源
@@ -71,7 +75,13 @@
   - `Context`
 - 不要重新引入 AST 函数字段作为执行依赖
 
-### 2.5 类型系统强约束
+### 2.5 Go fiber 单线程约束
+
+- VM 内部永远按单线程执行模型设计，不得新增 host goroutine 执行 VM task
+- `go f()` 只能编译/执行为 fiber 上下文切换，不得恢复 task handle、await、状态轮询或取消 API
+- `task` 模块只暴露调度 safe point；新增并发能力必须先证明不会破坏单线程 VM 语义
+
+### 2.6 类型系统强约束
 
 - Mini AST / lowering / compiler / runtime 只允许 canonical type
 - Go 风格类型只允许存在于 Go 前端输入，必须在 `core/ffigo/converter.go` 中立即规范化

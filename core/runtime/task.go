@@ -31,7 +31,7 @@ const (
 	OpBranchIf
 	OpDoCall
 	OpCall
-	OpSpawn
+	OpGo
 	OpReturn
 	OpInterrupt
 	OpComposite
@@ -56,6 +56,7 @@ const (
 	OpPush
 	OpMakeClosure
 	OpLineStep
+	OpInvokeDirect
 )
 
 func (op OpCode) String() string {
@@ -116,8 +117,8 @@ func (op OpCode) String() string {
 		return "DO_CALL"
 	case OpCall:
 		return "CALL"
-	case OpSpawn:
-		return "SPAWN"
+	case OpGo:
+		return "GO"
 	case OpReturn:
 		return "RETURN"
 	case OpInterrupt:
@@ -166,6 +167,8 @@ func (op OpCode) String() string {
 		return "MAKE_CLOSURE"
 	case OpLineStep:
 		return "LINE_STEP"
+	case OpInvokeDirect:
+		return "INVOKE_DIRECT"
 	default:
 		return "UNKNOWN"
 	}
@@ -325,6 +328,14 @@ type DoCallData struct {
 	FunctionSig *RuntimeFuncSig
 	BodyTasks   []Task
 	Args        []*Var
+}
+
+type DirectCallData struct {
+	Name     string
+	Receiver *Var
+	Module   *VMModule
+	Callable *Var
+	Args     []*Var
 }
 
 type CallBoundaryData struct {

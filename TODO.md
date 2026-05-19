@@ -2,20 +2,20 @@
 
 更新时间: 2026-04-11
 
-## 当前并发模型状态
+## 当前 go fiber 模型状态
 
-- [x] `go f()` 已作为 `spawn(...)` 语法糖落地
-- [x] `spawn/await` 已作为 VM 原生 task 原语落地
-- [x] `task.Status/Cancel/Err` 已收口到 `task` 模块外观
-- [x] `task.TaskGroup` 已升级为真正 task-aware 的 group，替代旧 WaitGroup 风格 facade
-- [x] root `main` 结束时未完成 child task 一律取消，不自动等待后台任务
-- [x] 已明确取消/失败语义：`await` 负责失败传播，`task.Err` 负责非抛出式观测
-- [x] captured upvalue 闭包跨 task 已实现 task-boundary snapshot capture；child 读取 spawn 时刻快照，写入不回写父 task
+- [x] 已移除旧 task 多线程实现，不保留兼容 API。
+- [x] `go f()` 已改为 VM 内部 fiber 调度原语，不返回 handle/result。
+- [x] VM 执行保持单线程；上下文切换只发生在 VM safe point。
+- [x] `task` 模块只保留 `task.Sleep(ms)` 与 `task.Yield()`。
+- [x] root `main` 结束时未完成 child fiber 一律停止，不自动等待后台 fiber。
+- [x] child fiber panic 默认失败整个 VM，除非在 child 内部 recover。
+- [x] 闭包 capture 回到普通共享引用语义，不再做 task-boundary snapshot。
 
-### 并发后续设计
+### Go fiber 后续设计
 
-- [ ] **扩展 snapshot capture 的支持矩阵**: 当前 snapshot capture 已支持标量、array/map、嵌套 closure、captured host handle 与 captured task handle；其中 host/task handle 按身份共享，普通 VM 值按快照复制。仍显式拒绝 VM pointer、module、runtime-backed interface 与递归容器。后续若要继续放开，需要为这些类型补充明确的身份/生命周期语义，而不是退回共享 `Cell/*Var` 并发。
-- [ ] **补齐 debugger 多 task 语义**: 当前 debugger 已共享到 child task，并补了多 task 断点/事件验证；后续仍需决定是否在调试事件里显式暴露 task/session 标识，以及多 task 单步时的事件顺序与宿主交互策略。
+- [ ] **补齐 debugger fiber 标识**: 当前 debugger 能命中 child fiber 断点；后续仍需决定是否在调试事件里显式暴露 fiber/session 标识，以及多 fiber 单步时的事件顺序与宿主交互策略。
+- [ ] **评估 channel/select 语义**: 若后续需要更强协作模型，应在单线程 scheduler 上设计 channel/select，而不是恢复宿主 goroutine task。
 
 ## Phase 1: Runtime 全量脱 AST (已完成)
 **目标**: 编译/执行形态分离，执行主路径不再依赖 `ast.Node` 引用。

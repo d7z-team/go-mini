@@ -33,9 +33,25 @@ type Executor struct {
 
 	interfaceCache map[TypeSpec]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
+	runMu          sync.Mutex
 	shared         *SharedState
-	scheduler      *TaskScheduler
+	scheduler      *FiberScheduler
 }
+
+type runStop uint8
+
+const (
+	runStopDone runStop = iota
+	runStopYield
+	runStopSleep
+)
+
+const fiberInstructionQuantum = 256
+
+var (
+	errFiberYield = errors.New("fiber yielded")
+	errFiberSleep = errors.New("fiber sleeping")
+)
 
 var ErrModuleNotFound = errors.New("module not found")
 
@@ -179,7 +195,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
-		scheduler:       NewTaskScheduler(),
+		scheduler:       NewFiberScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -559,19 +575,6 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 	}
 	session.Stack.DeferOwner = session.Stack
 
-	// Setup Context Bridge (Abort logic)
-	if ctx != nil && ctx.Done() != nil {
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-ctx.Done():
-				session.Abort()
-			case <-done:
-			}
-		}()
-		session.Stack.AddDefer(func() { close(done) })
-	}
-
 	return session
 }
 
@@ -789,20 +792,31 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 }
 
 func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
-	if e.scheduler != nil {
-		e.scheduler.BeginRoot()
-	}
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
-	err = e.InitializeSession(session, env, true)
-	e.CleanupSession(session)
-	if e.scheduler != nil {
-		e.scheduler.ShutdownFromRoot()
+	defer e.CleanupSession(session)
+	if err := e.prepareSession(session, env, true); err != nil {
+		return err
 	}
-	return err
+	root, err := e.scheduler.Reset(session)
+	if err != nil {
+		return err
+	}
+	defer e.scheduler.Stop()
+	return e.runFibers(ctx, root)
 }
 
 func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
+	if err := e.prepareSession(session, env, invokeMain); err != nil {
+		return err
+	}
+	return e.Run(session)
+}
+
+func (e *Executor) prepareSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
 	if session == nil {
 		return errors.New("invalid session")
 	}
@@ -823,15 +837,6 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 		}
 	}()
 
-	// 压入执行入口任务: Main 块 (包初始化逻辑)
-	session.TaskStack = append(session.TaskStack, cloneTasks(e.mainTasks)...)
-
-	err = e.Run(session)
-	if err != nil {
-		return err
-	}
-
-	// 自动寻找并执行 main() 入口函数
 	if invokeMain {
 		if fn, ok := e.lookupFunction("main"); ok {
 			session.TaskStack = append(session.TaskStack, Task{
@@ -850,16 +855,12 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 				FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 				BodyTasks:   cloneTasks(fn.BodyTasks),
 			}})
-
-			// Start run loop again for main func
-			err = e.Run(session)
-			if err != nil {
-				return err
-			}
 		}
 	}
 
-	return err
+	// Main 块位于栈顶，先于 main() 调用执行。
+	session.TaskStack = append(session.TaskStack, cloneTasks(e.mainTasks)...)
+	return nil
 }
 
 func (e *Executor) initializeSharedGlobals(session *StackContext) error {
@@ -1640,7 +1641,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		return e.invokeCall(session, name, receiver, mod, callable, finalArgs, finalArgLHS)
-	case OpSpawn:
+	case OpGo:
 		var name string
 		var receiver *Var
 		var mod *VMModule
@@ -1720,8 +1721,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		copy(finalArgs[offset:], args)
 
-		_, err := e.spawnCall(session, name, receiver, mod, callable, finalArgs)
+		err := e.goCall(session, name, receiver, mod, callable, finalArgs)
 		return err
+	case OpInvokeDirect:
+		data := task.Data.(*DirectCallData)
+		args := append([]*Var(nil), data.Args...)
+		return e.invokeCall(session, data.Name, data.Receiver, data.Module, data.Callable, args, nil)
 	case OpCallBoundary:
 		data, ok := task.Data.(*CallBoundaryData)
 		if !ok || data == nil {
@@ -2672,14 +2677,58 @@ func (e *Executor) updateAddress(session *StackContext, lhs LHSValue, op string)
 }
 
 func (e *Executor) Run(session *StackContext) error {
+	_, err := e.runSession(session, 0)
+	return err
+}
+
+func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
+	if e.scheduler == nil || root == nil {
+		return errors.New("invalid fiber scheduler")
+	}
+	for {
+		fiber, err := e.scheduler.Next(ctx)
+		if err != nil {
+			return err
+		}
+		if fiber == nil {
+			return nil
+		}
+		stop, err := e.runSession(fiber.Session, fiberInstructionQuantum)
+		if err != nil {
+			if fiber.ID != root.ID {
+				e.CleanupSession(fiber.Session)
+			}
+			return err
+		}
+		switch stop {
+		case runStopDone:
+			if fiber.ID == root.ID {
+				e.scheduler.Stop()
+				return nil
+			}
+			e.CleanupSession(fiber.Session)
+			e.scheduler.FinishCurrent()
+		case runStopYield, runStopSleep:
+			// The scheduler method already parked the current fiber.
+		}
+	}
+}
+
+func (e *Executor) runSession(session *StackContext, budget int) (runStop, error) {
+	executed := 0
 	for len(session.TaskStack) > 0 {
 		// Pause/Resume Logic (Fake Context)
 		if session.IsPaused() {
 			select {
 			case <-session.Done():
-				return session.Err()
+				return runStopDone, session.Err()
 			case <-session.resumeSignal:
 				// Continue execution
+			}
+		}
+		if session.Context != nil {
+			if err := session.Context.Err(); err != nil {
+				return runStopDone, err
 			}
 		}
 
@@ -2689,11 +2738,11 @@ func (e *Executor) Run(session *StackContext) error {
 		session.StepCount++
 		if session.StepLimit > 0 {
 			if session.StepCount > session.StepLimit {
-				return fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
+				return runStopDone, fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
 			}
 		}
 		if session.Aborted() {
-			return session.Err()
+			return runStopDone, session.Err()
 		}
 
 		if task.Op == OpLineStep {
@@ -2719,12 +2768,18 @@ func (e *Executor) Run(session *StackContext) error {
 
 		if session.UnwindMode != UnwindNone {
 			if _, err := e.handleUnwind(session, &task); err != nil {
-				return err
+				return runStopDone, err
 			}
 			continue
 		}
 
 		if err := e.dispatch(session, task); err != nil {
+			if errors.Is(err, errFiberYield) {
+				return runStopYield, nil
+			}
+			if errors.Is(err, errFiberSleep) {
+				return runStopSleep, nil
+			}
 			frames := session.GenerateStackTrace(&task)
 			var vme *VMError
 			if errors.As(err, &vme) {
@@ -2741,16 +2796,26 @@ func (e *Executor) Run(session *StackContext) error {
 					session.PanicTrace = vme.Frames
 					session.UnwindMode = UnwindPanic
 				} else {
-					return vme
+					return runStopDone, vme
 				}
 			} else {
 				// Wrap unexpected errors into VMError
-				return &VMError{
+				return runStopDone, &VMError{
 					Message: err.Error(),
 					Frames:  frames,
 					Cause:   err,
 				}
 			}
+		}
+		executed++
+		if budget > 0 && executed >= budget && len(session.TaskStack) > 0 {
+			if e.scheduler != nil && e.scheduler.Current() != nil {
+				if err := e.scheduler.YieldCurrent(); err != nil {
+					return runStopDone, err
+				}
+				return runStopYield, nil
+			}
+			executed = 0
 		}
 	}
 	if session.UnwindMode == UnwindPanic {
@@ -2767,14 +2832,14 @@ func (e *Executor) Run(session *StackContext) error {
 				message = s
 			}
 		}
-		return &VMError{
+		return runStopDone, &VMError{
 			Message: message,
 			Value:   session.PanicVar,
 			Frames:  frames,
 			IsPanic: true,
 		}
 	}
-	return nil
+	return runStopDone, nil
 }
 
 func (e *Executor) Disassemble() (res string) {
@@ -3039,7 +3104,21 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 		session.TaskStack = append(session.TaskStack, e.tasksForStmt(stmts[i], nil)...)
 	}
 
-	err := e.Run(session)
+	var err error
+	if e.scheduler != nil && e.scheduler.Current() == nil {
+		e.runMu.Lock()
+		root, resetErr := e.scheduler.Reset(session)
+		if resetErr != nil {
+			e.runMu.Unlock()
+			err = resetErr
+		} else {
+			err = e.runFibers(session.Context, root)
+			e.scheduler.Stop()
+			e.runMu.Unlock()
+		}
+	} else {
+		err = e.Run(session)
+	}
 
 	session.TaskStack = oldTasks
 	session.ValueStack = oldValues

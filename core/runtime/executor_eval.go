@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -860,31 +859,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			res.SetRawType("Ptr<" + innerType + ">")
 			session.ValueStack.Push(res)
 			return nil
-		case "spawn":
-			if len(args) == 0 {
-				return &VMError{Message: "spawn requires a callable argument", IsPanic: true}
-			}
-			task, err := e.spawnCall(session, "", nil, nil, args[0], args[1:])
-			if err != nil {
-				return err
-			}
-			handle := &Var{
-				VType:  TypeHandle,
-				Handle: task.ID,
-			}
-			handle.SetRawType("Ptr<task.Task>")
-			session.ValueStack.Push(handle)
-			return nil
-		case "await":
-			if len(args) != 1 || args[0] == nil {
-				return &VMError{Message: "await requires exactly 1 task handle", IsPanic: true}
-			}
-			res, err := e.awaitTaskHandle(session, args[0])
-			if err != nil {
-				return err
-			}
-			session.ValueStack.Push(res)
-			return nil
 		}
 	}
 
@@ -1021,54 +995,15 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 
 func (e *Executor) invokeTaskModuleIntrinsic(session *StackContext, name string, args []*Var) (bool, error) {
 	switch name {
-	case "NewTaskGroup":
-		session.ValueStack.Push(e.newTaskGroupHandle())
-		return true, nil
-	case "AddTask":
-		if err := e.taskGroupAddTaskCall(args); err != nil {
-			return true, err
-		}
+	case "Sleep":
 		session.ValueStack.Push(nil)
-		return true, nil
-	case "WaitTasks":
-		if err := e.taskGroupWaitCall(session, args); err != nil {
+		if err := e.taskSleepCall(args); err != nil {
 			return true, err
 		}
+		return true, nil
+	case "Yield":
 		session.ValueStack.Push(nil)
-		return true, nil
-	case "GroupErr":
-		errVar, err := e.taskGroupErrCall(args)
-		if err != nil {
-			return true, err
-		}
-		session.ValueStack.Push(errVar)
-		return true, nil
-	case "CancelGroup":
-		if err := e.taskGroupCancelCall(args); err != nil {
-			return true, err
-		}
-		session.ValueStack.Push(nil)
-		return true, nil
-	case "Status":
-		status, err := e.taskStatusCall(args)
-		if err != nil {
-			return true, err
-		}
-		session.ValueStack.Push(NewString(status))
-		return true, nil
-	case "Err":
-		errVar, err := e.taskErrCall(args)
-		if err != nil {
-			return true, err
-		}
-		session.ValueStack.Push(errVar)
-		return true, nil
-	case "Cancel":
-		if err := e.taskCancelCall(args); err != nil {
-			return true, err
-		}
-		session.ValueStack.Push(nil)
-		return true, nil
+		return true, e.taskYieldCall()
 	default:
 		return false, nil
 	}
@@ -1076,22 +1011,10 @@ func (e *Executor) invokeTaskModuleIntrinsic(session *StackContext, name string,
 
 func (e *Executor) invokeTaskModuleRoute(session *StackContext, routeName string, args []*Var) (bool, error) {
 	switch routeName {
-	case "task.NewTaskGroup":
-		return e.invokeTaskModuleIntrinsic(session, "NewTaskGroup", args)
-	case "task.AddTask":
-		return e.invokeTaskModuleIntrinsic(session, "AddTask", args)
-	case "task.WaitTasks":
-		return e.invokeTaskModuleIntrinsic(session, "WaitTasks", args)
-	case "task.GroupErr":
-		return e.invokeTaskModuleIntrinsic(session, "GroupErr", args)
-	case "task.CancelGroup":
-		return e.invokeTaskModuleIntrinsic(session, "CancelGroup", args)
-	case "task.Status":
-		return e.invokeTaskModuleIntrinsic(session, "Status", args)
-	case "task.Err":
-		return e.invokeTaskModuleIntrinsic(session, "Err", args)
-	case "task.Cancel":
-		return e.invokeTaskModuleIntrinsic(session, "Cancel", args)
+	case "task.Sleep":
+		return e.invokeTaskModuleIntrinsic(session, "Sleep", args)
+	case "task.Yield":
+		return e.invokeTaskModuleIntrinsic(session, "Yield", args)
 	default:
 		return false, nil
 	}
@@ -1099,393 +1022,81 @@ func (e *Executor) invokeTaskModuleRoute(session *StackContext, routeName string
 
 func isTaskModuleIntrinsic(name string) bool {
 	switch name {
-	case "NewTaskGroup", "AddTask", "WaitTasks", "GroupErr", "CancelGroup", "Status", "Err", "Cancel":
+	case "Sleep", "Yield":
 		return true
 	default:
 		return false
 	}
 }
 
-func (e *Executor) awaitTaskHandle(session *StackContext, handle *Var) (*Var, error) {
-	taskID, err := e.resolveTaskHandle(handle)
-	if err != nil {
-		return nil, err
+func (e *Executor) taskSleepCall(args []*Var) error {
+	if len(args) != 1 || args[0] == nil {
+		return &VMError{Message: "task.Sleep requires exactly 1 millisecond argument", IsPanic: true}
 	}
-	res, err := e.scheduler.Await(session.Context, taskID)
-	if err != nil {
-		return nil, &VMError{Message: err.Error(), IsPanic: true}
+	arg := e.unwrapValue(args[0])
+	if arg == nil {
+		return &VMError{Message: "task.Sleep requires a non-nil millisecond argument", IsPanic: true}
 	}
-	return res, nil
+	ms, err := arg.ToInt()
+	if err != nil {
+		return &VMError{Message: err.Error(), IsPanic: true}
+	}
+	if ms < 0 {
+		ms = 0
+	}
+	if e.scheduler == nil || e.scheduler.Current() == nil {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		return nil
+	}
+	if err := e.scheduler.SleepCurrent(time.Duration(ms) * time.Millisecond); err != nil {
+		return &VMError{Message: err.Error(), IsPanic: true}
+	}
+	return errFiberSleep
 }
 
-func (e *Executor) taskStatusCall(args []*Var) (string, error) {
-	if len(args) != 1 || args[0] == nil {
-		return "", &VMError{Message: "task.Status requires exactly 1 task handle", IsPanic: true}
+func (e *Executor) taskYieldCall() error {
+	if e.scheduler == nil || e.scheduler.Current() == nil {
+		return nil
 	}
-	taskID, err := e.resolveTaskHandle(args[0])
-	if err != nil {
-		return "", err
+	if err := e.scheduler.YieldCurrent(); err != nil {
+		return &VMError{Message: err.Error(), IsPanic: true}
 	}
-	status, err := e.scheduler.Status(taskID)
-	if err != nil {
-		return "", &VMError{Message: err.Error(), IsPanic: true}
-	}
-	return status.String(), nil
+	return errFiberYield
 }
 
-func (e *Executor) taskErrCall(args []*Var) (*Var, error) {
-	if len(args) != 1 || args[0] == nil {
-		return nil, &VMError{Message: "task.Err requires exactly 1 task handle", IsPanic: true}
+func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
+	if e.scheduler == nil {
+		return &VMError{Message: "fiber scheduler is not initialized", IsPanic: true}
 	}
-	taskID, err := e.resolveTaskHandle(args[0])
-	if err != nil {
-		return nil, err
+	if e.scheduler.Current() == nil {
+		return &VMError{Message: "go requires an active VM scheduler", IsPanic: true}
 	}
-	status, taskErr, err := e.scheduler.Error(taskID)
-	if err != nil {
-		return nil, &VMError{Message: err.Error(), IsPanic: true}
+	if parent == nil {
+		return &VMError{Message: "missing parent session for go", IsPanic: true}
 	}
-	if status == TaskPending || status == TaskRunning || taskErr == nil {
-		return nil, nil
+	child := e.NewSession(parent.Context, "go")
+	child.StepLimit = parent.StepLimit
+	child.Shared = parent.Shared
+	child.Debugger = parent.Debugger
+	child.ImportChain = make(map[string]bool, len(parent.ImportChain))
+	for k, v := range parent.ImportChain {
+		child.ImportChain[k] = v
 	}
-	return &Var{
-		VType: TypeError,
-		Ref: &VMError{
-			Message: taskErr.Error(),
-			Cause:   taskErr,
+	child.TaskStack = append(child.TaskStack, Task{
+		Op: OpInvokeDirect,
+		Data: &DirectCallData{
+			Name:     name,
+			Receiver: receiver,
+			Module:   mod,
+			Callable: callable,
+			Args:     append([]*Var(nil), args...),
 		},
-	}, nil
-}
-
-func (e *Executor) taskCancelCall(args []*Var) error {
-	if len(args) != 1 || args[0] == nil {
-		return &VMError{Message: "task.Cancel requires exactly 1 task handle", IsPanic: true}
-	}
-	taskID, err := e.resolveTaskHandle(args[0])
-	if err != nil {
-		return err
-	}
-	if err := e.scheduler.Cancel(taskID); err != nil {
+	})
+	if _, err := e.scheduler.Go(child); err != nil {
+		e.CleanupSession(child)
 		return &VMError{Message: err.Error(), IsPanic: true}
 	}
 	return nil
-}
-
-func (e *Executor) newTaskGroupHandle() *Var {
-	groupVar := &Var{
-		VType: TypeAny,
-		Ref:   NewVMTaskGroup(),
-	}
-	groupVar.SetRawType("task.TaskGroup")
-	handle := &Var{
-		VType: TypeHandle,
-		Ref:   groupVar,
-	}
-	handle.SetRawType("Ptr<task.TaskGroup>")
-	return handle
-}
-
-func (e *Executor) taskGroupAddTaskCall(args []*Var) error {
-	if len(args) != 2 || args[0] == nil || args[1] == nil {
-		return &VMError{Message: "task.AddTask requires group and task handle", IsPanic: true}
-	}
-	group, err := e.resolveTaskGroupHandle(args[0])
-	if err != nil {
-		return err
-	}
-	taskID, err := e.resolveTaskHandle(args[1])
-	if err != nil {
-		return err
-	}
-	group.Add(taskID)
-	return nil
-}
-
-func (e *Executor) taskGroupWaitCall(session *StackContext, args []*Var) error {
-	if len(args) != 1 || args[0] == nil {
-		return &VMError{Message: "task.WaitTasks requires exactly 1 task group", IsPanic: true}
-	}
-	group, err := e.resolveTaskGroupHandle(args[0])
-	if err != nil {
-		return err
-	}
-	for _, taskID := range group.Snapshot() {
-		if _, waitErr := e.scheduler.Await(session.Context, taskID); waitErr != nil {
-			group.RememberErr(waitErr)
-		}
-	}
-	return nil
-}
-
-func (e *Executor) taskGroupErrCall(args []*Var) (*Var, error) {
-	if len(args) != 1 || args[0] == nil {
-		return nil, &VMError{Message: "task.GroupErr requires exactly 1 task group", IsPanic: true}
-	}
-	group, err := e.resolveTaskGroupHandle(args[0])
-	if err != nil {
-		return nil, err
-	}
-	if groupErr := group.Err(); groupErr != nil {
-		return &Var{
-			VType: TypeError,
-			Ref: &VMError{
-				Message: groupErr.Error(),
-				Cause:   groupErr,
-			},
-		}, nil
-	}
-	return nil, nil
-}
-
-func (e *Executor) taskGroupCancelCall(args []*Var) error {
-	if len(args) != 1 || args[0] == nil {
-		return &VMError{Message: "task.CancelGroup requires exactly 1 task group", IsPanic: true}
-	}
-	group, err := e.resolveTaskGroupHandle(args[0])
-	if err != nil {
-		return err
-	}
-	for _, taskID := range group.Snapshot() {
-		if cancelErr := e.scheduler.Cancel(taskID); cancelErr != nil {
-			group.RememberErr(cancelErr)
-		}
-	}
-	return nil
-}
-
-func (e *Executor) resolveTaskGroupHandle(handle *Var) (*VMTaskGroup, error) {
-	if handle == nil {
-		return nil, &VMError{Message: "missing task group handle", IsPanic: true}
-	}
-	groupVar, ok := e.vmPointerTarget(handle)
-	if !ok || groupVar == nil {
-		return nil, &VMError{Message: "invalid task group handle", IsPanic: true}
-	}
-	group, ok := groupVar.Ref.(*VMTaskGroup)
-	if !ok || group == nil {
-		return nil, &VMError{Message: "invalid task group payload", IsPanic: true}
-	}
-	return group, nil
-}
-
-func (e *Executor) resolveTaskHandle(handle *Var) (uint32, error) {
-	if e.scheduler == nil {
-		return 0, &VMError{Message: "task scheduler is not initialized", IsPanic: true}
-	}
-	taskID, err := handle.ToHandle()
-	if err != nil {
-		return 0, &VMError{Message: err.Error(), IsPanic: true}
-	}
-	return taskID, nil
-}
-
-func (e *Executor) spawnCall(parent *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) (*VMTask, error) {
-	if e.scheduler == nil {
-		return nil, &VMError{Message: "task scheduler is not initialized", IsPanic: true}
-	}
-	if parent == nil {
-		return nil, &VMError{Message: "missing parent session for spawn", IsPanic: true}
-	}
-
-	if callable != nil {
-		snapshotted, err := e.snapshotTaskInput(callable)
-		if err != nil {
-			return nil, err
-		}
-		callable = snapshotted
-	}
-
-	spawnArgs := make([]*Var, len(args))
-	for i, arg := range args {
-		if arg != nil {
-			snapshotted, err := e.snapshotTaskInput(arg)
-			if err != nil {
-				return nil, err
-			}
-			spawnArgs[i] = snapshotted
-		}
-	}
-	if receiver != nil {
-		snapshotted, err := e.snapshotTaskInput(receiver)
-		if err != nil {
-			return nil, err
-		}
-		receiver = snapshotted
-	}
-
-	task, err := e.scheduler.Spawn(parent.Context, func(ctx context.Context) (*Var, error) {
-		child := e.NewSession(ctx, "task")
-		child.StepLimit = parent.StepLimit
-		child.Shared = parent.Shared
-		child.ImportChain = make(map[string]bool, len(parent.ImportChain))
-		for k, v := range parent.ImportChain {
-			child.ImportChain[k] = v
-		}
-		defer e.CleanupSession(child)
-
-		if err := e.invokeCall(child, name, receiver, mod, callable, spawnArgs, nil); err != nil {
-			return nil, err
-		}
-		if len(child.TaskStack) == 0 {
-			if child.ValueStack != nil {
-				return child.ValueStack.Peek(), nil
-			}
-			return nil, nil
-		}
-		if err := e.Run(child); err != nil {
-			return nil, err
-		}
-		if child.ValueStack != nil {
-			return child.ValueStack.Peek(), nil
-		}
-		return nil, nil
-	})
-	if err != nil {
-		return nil, &VMError{Message: err.Error(), IsPanic: true}
-	}
-	return task, nil
-}
-
-type taskSnapshotState struct {
-	cloned   map[*Var]*Var
-	visiting map[*Var]bool
-}
-
-func newTaskSnapshotState() *taskSnapshotState {
-	return &taskSnapshotState{
-		cloned:   make(map[*Var]*Var),
-		visiting: make(map[*Var]bool),
-	}
-}
-
-func (e *Executor) snapshotTaskInput(v *Var) (*Var, error) {
-	return e.snapshotTaskVar(v, newTaskSnapshotState())
-}
-
-func (e *Executor) snapshotTaskVar(v *Var, state *taskSnapshotState) (*Var, error) {
-	if v == nil {
-		return nil, nil
-	}
-	if cloned, ok := state.cloned[v]; ok {
-		return cloned, nil
-	}
-	if state.visiting[v] {
-		return nil, &VMError{Message: "spawn cannot snapshot recursive values", IsPanic: true}
-	}
-	state.visiting[v] = true
-	defer delete(state.visiting, v)
-
-	out := &Var{
-		TypeInfo: v.TypeInfo,
-		VType:    v.VType,
-		I64:      v.I64,
-		F64:      v.F64,
-		Str:      v.Str,
-		Bool:     v.Bool,
-		Handle:   v.Handle,
-		Bridge:   v.Bridge,
-	}
-	state.cloned[v] = out
-	if v.B != nil {
-		out.B = append([]byte(nil), v.B...)
-	}
-
-	if v.VType == TypeHandle {
-		if _, ok := e.vmPointerTarget(v); ok {
-			return nil, &VMError{Message: "spawn cannot snapshot vm pointers", IsPanic: true}
-		}
-		out.Ref = v.Ref
-		if v.Handle != 0 && v.Ref == nil {
-			out.Ref = NewVMHandle(v.Handle, v.Bridge)
-		}
-		return out, nil
-	}
-
-	switch ref := v.Ref.(type) {
-	case nil:
-		return out, nil
-	case *VMArray:
-		items := ref.Snapshot()
-		cloned := make([]*Var, len(items))
-		for i, item := range items {
-			next, err := e.snapshotTaskVar(item, state)
-			if err != nil {
-				return nil, err
-			}
-			cloned[i] = next
-		}
-		out.Ref = &VMArray{Data: cloned}
-	case *VMMap:
-		snapshot := ref.Snapshot()
-		cloned := make(map[string]*Var, len(snapshot))
-		for k, item := range snapshot {
-			next, err := e.snapshotTaskVar(item, state)
-			if err != nil {
-				return nil, err
-			}
-			cloned[k] = next
-		}
-		out.Ref = &VMMap{Data: cloned}
-	case *Cell:
-		next, err := e.snapshotTaskVar(ref.Value, state)
-		if err != nil {
-			return nil, err
-		}
-		out.Ref = &Cell{Value: next}
-	case *VMClosure:
-		snapshotted, err := e.snapshotTaskClosure(ref, state)
-		if err != nil {
-			return nil, err
-		}
-		out.Ref = snapshotted
-	case *VMError:
-		var panicVal *Var
-		var err error
-		if ref.Value != nil {
-			panicVal, err = e.snapshotTaskVar(ref.Value, state)
-			if err != nil {
-				return nil, err
-			}
-		}
-		out.Ref = &VMError{
-			Message: ref.Message,
-			Value:   panicVal,
-			IsPanic: ref.IsPanic,
-			Cause:   ref.Cause,
-			Handle:  ref.Handle,
-			Bridge:  ref.Bridge,
-		}
-	case *VMModule:
-		return nil, &VMError{Message: "spawn cannot snapshot modules", IsPanic: true}
-	case *VMInterface:
-		return nil, &VMError{Message: "spawn cannot snapshot interfaces with runtime-backed state", IsPanic: true}
-	case *VMHandle:
-		out.Ref = &VMHandle{ID: ref.ID, Bridge: ref.Bridge}
-	default:
-		out.Ref = ref
-	}
-	return out, nil
-}
-
-func (e *Executor) snapshotTaskClosure(closure *VMClosure, state *taskSnapshotState) (*VMClosure, error) {
-	if closure == nil {
-		return nil, nil
-	}
-	cloned := &VMClosure{
-		FunctionSig:  CloneRuntimeFuncSig(closure.FunctionSig),
-		BodyTasks:    cloneTasks(closure.BodyTasks),
-		UpvalueSlots: make([]*Var, len(closure.UpvalueSlots)),
-		UpvalueNames: append([]string(nil), closure.UpvalueNames...),
-		Context:      nil,
-	}
-	for i, slot := range closure.UpvalueSlots {
-		next, err := e.snapshotTaskVar(slot, state)
-		if err != nil {
-			return nil, err
-		}
-		cloned.UpvalueSlots[i] = next
-	}
-	return cloned, nil
 }
 
 func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallData, args []*Var, closure *VMClosure) error {

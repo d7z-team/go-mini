@@ -49,26 +49,20 @@ GOCACHE=/tmp/go-build-cache go test ./...
 
 ## Task Concurrency
 
-Go-Mini exposes VM-native task primitives plus a `task` module facade:
+Go-Mini uses a single-threaded cooperative fiber model:
 
-- `spawn(fn, ...args)` creates a task and returns `Ptr<task.Task>`
-- `await(task)` waits and returns the result, but rethrows task failure/cancel as runtime error
-- `go f()` is Go syntax sugar for fire-and-forget spawn
-- `task.NewTaskGroup()` creates a task-aware group for `Ptr<task.Task>`
-- `task.AddTask/WaitTasks/GroupErr/CancelGroup` manage task collections
-- `task.Status(task)` returns `pending|running|succeeded|failed|canceled`
-- `task.Err(task)` returns `nil` for pending/running/succeeded tasks, and `Error` for failed or canceled tasks
-- `task.Cancel(task)` requests cancellation through task context
-- captured closures use task-boundary snapshot semantics: child tasks see a copy of captured VM values, and child writes do not flow back to the parent
-- captured host handles and task handles keep shared identity across task boundaries, so child tasks can still call host methods or await/query existing tasks
+- `go f()` schedules a VM fiber; it does not return a handle or result
+- the VM never runs two fibers in parallel; switching only happens at VM safe points
+- `task.Yield()` gives another runnable fiber a chance to run
+- `task.Sleep(ms)` parks the current fiber and lets the scheduler run other fibers
+- captured closures share normal VM state with the parent because there is no parallel execution
 
 Lifecycle rules:
 
-- root `main` returning cancels all unfinished child tasks
-- shutdown cancellation is best-effort and observed only at VM safe points
-- unfinished background tasks are not awaited automatically
-- `go` task failures do not interrupt the parent flow unless explicitly observed via `await` or `task.Err`
-- snapshot capture still rejects VM pointers, modules, runtime-backed interfaces, recursive containers, and other task-unsafe runtime objects
+- root `main` returning stops all unfinished child fibers immediately
+- unfinished background fibers are not awaited automatically
+- a child fiber panic fails the whole VM execution unless recovered inside that fiber
+- removed APIs are intentionally unavailable: `spawn`, `await`, task handles, task groups, task status, and task cancellation
 
 ## Docs
 

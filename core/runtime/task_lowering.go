@@ -9,7 +9,6 @@ import (
 
 var builtinSymbols = map[string]struct{}{
 	"append":  {},
-	"await":   {},
 	"cap":     {},
 	"close":   {},
 	"complex": {},
@@ -25,7 +24,6 @@ var builtinSymbols = map[string]struct{}{
 	"real":    {},
 	"recover": {},
 	"require": {},
-	"spawn":   {},
 }
 
 type loweringFuncState struct {
@@ -538,7 +536,7 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 			data.Name = string(fn.Property)
 		}
 
-		out := []Task{{Op: OpSpawn, Data: data}}
+		out := []Task{{Op: OpGo, Data: data}}
 		for i := len(call.Args) - 1; i >= 0; i-- {
 			out = append(out, e.tasksForExprInScope(call.Args[i], scope)...)
 		}
