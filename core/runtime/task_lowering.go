@@ -48,10 +48,10 @@ func (e *Executor) newRootLoweringScope() *loweringScope {
 		root:     true,
 	}
 	for name := range e.globals {
-		scope.bindings[string(name)] = SymbolRef{Name: string(name), Kind: SymbolGlobal, Slot: -1}
+		scope.bindings[name] = SymbolRef{Name: name, Kind: SymbolGlobal, Slot: -1}
 	}
 	for name := range e.functions {
-		scope.bindings[string(name)] = SymbolRef{Name: string(name), Kind: SymbolGlobal, Slot: -1}
+		scope.bindings[name] = SymbolRef{Name: name, Kind: SymbolGlobal, Slot: -1}
 	}
 	for name := range builtinSymbols {
 		scope.bindings[name] = SymbolRef{Name: name, Kind: SymbolBuiltin, Slot: -1}

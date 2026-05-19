@@ -794,7 +794,7 @@ func disassembleExecutableGlobals(p *Program) map[string]*runtime.PreparedGlobal
 	}
 	out := make(map[string]*runtime.PreparedGlobal, len(p.Executable.Globals))
 	for name, global := range p.Executable.Globals {
-		out[string(name)] = global
+		out[name] = global
 	}
 	return out
 }
@@ -805,7 +805,7 @@ func disassembleExecutableFunctions(p *Program) map[string]*runtime.PreparedFunc
 	}
 	out := make(map[string]*runtime.PreparedFunction, len(p.Executable.Functions))
 	for name, fn := range p.Executable.Functions {
-		out[string(name)] = fn
+		out[name] = fn
 	}
 	return out
 }

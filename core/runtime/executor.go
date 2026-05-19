@@ -920,7 +920,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 				},
 			})
 			session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: &DoCallData{
-				Name:        string(fn.Name),
+				Name:        fn.Name,
 				FunctionSig: cloneRuntimeFuncSig(fn.FunctionSig),
 				BodyTasks:   cloneTasks(fn.BodyTasks),
 			}})
@@ -3026,15 +3026,15 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	exports := make(map[string]*Var)
 	for name := range modExec.globals {
 		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			v, err := modSession.Load(string(name))
+			v, err := modSession.Load(name)
 			if err == nil {
-				exports[string(name)] = v
+				exports[name] = v
 			}
 		}
 	}
 	for name, fn := range modExec.functions {
 		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			exports[string(name)] = &Var{
+			exports[name] = &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
 					FunctionSig:  cloneRuntimeFuncSig(fn.FunctionSig),
