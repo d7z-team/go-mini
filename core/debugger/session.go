@@ -15,14 +15,16 @@ const (
 )
 
 type Event struct {
+	// FiberID identifies which fiber triggered the current all-stop pause.
 	FiberID   uint32
 	Loc       *ast.Position
 	Variables map[string]string
 }
 
 type Session struct {
-	Breakpoints    map[int]bool
-	EventChan      chan *Event
+	Breakpoints map[int]bool
+	EventChan   chan *Event
+	// CommandChan resumes the entire VM after an all-stop pause.
 	CommandChan    chan Command
 	isStepping     bool
 	pauseRequested int32

@@ -68,15 +68,107 @@ type suspendedFiber struct {
 	Cancel func()
 }
 
+const completionDrainBudget = 256
+
+type fiberQueue struct {
+	items []*VMFiber
+	head  int
+}
+
+func (q *fiberQueue) push(fiber *VMFiber) {
+	if fiber == nil {
+		return
+	}
+	q.items = append(q.items, fiber)
+}
+
+func (q *fiberQueue) pop() *VMFiber {
+	if q.head >= len(q.items) {
+		return nil
+	}
+	fiber := q.items[q.head]
+	q.items[q.head] = nil
+	q.head++
+	if q.head == len(q.items) {
+		q.reset()
+		return fiber
+	}
+	if q.head > 64 && q.head*2 >= len(q.items) {
+		copy(q.items, q.items[q.head:])
+		tail := len(q.items) - q.head
+		clear(q.items[tail:])
+		q.items = q.items[:tail]
+		q.head = 0
+	}
+	return fiber
+}
+
+func (q *fiberQueue) len() int {
+	return len(q.items) - q.head
+}
+
+func (q *fiberQueue) reset() {
+	clear(q.items)
+	q.items = nil
+	q.head = 0
+}
+
+func (q *fiberQueue) appendTo(dst []*VMFiber) []*VMFiber {
+	if q.len() == 0 {
+		return dst
+	}
+	return append(dst, q.items[q.head:]...)
+}
+
+type completionQueue struct {
+	items []ffiCompletion
+	head  int
+}
+
+func (q *completionQueue) push(completion ffiCompletion) {
+	q.items = append(q.items, completion)
+}
+
+func (q *completionQueue) pop() (ffiCompletion, bool) {
+	if q.head >= len(q.items) {
+		return ffiCompletion{}, false
+	}
+	completion := q.items[q.head]
+	q.items[q.head] = ffiCompletion{}
+	q.head++
+	if q.head == len(q.items) {
+		q.reset()
+		return completion, true
+	}
+	if q.head > 64 && q.head*2 >= len(q.items) {
+		copy(q.items, q.items[q.head:])
+		tail := len(q.items) - q.head
+		clear(q.items[tail:])
+		q.items = q.items[:tail]
+		q.head = 0
+	}
+	return completion, true
+}
+
+func (q *completionQueue) len() int {
+	return len(q.items) - q.head
+}
+
+func (q *completionQueue) reset() {
+	clear(q.items)
+	q.items = nil
+	q.head = 0
+}
+
 type FiberScheduler struct {
 	mu        sync.Mutex
 	runID     uint64
 	nextID    uint32
 	nextToken uint64
 	current   *VMFiber
-	runq      []*VMFiber
+	runq      fiberQueue
 	pending   map[uint64]*suspendedFiber
-	completed []ffiCompletion
+	completed completionQueue
 	accepted  map[uint64]struct{}
 	wake      chan struct{}
 	stopped   bool
@@ -101,8 +193,9 @@ func (s *FiberScheduler) Reset(root *StackContext, exec *Executor) (*VMFiber, er
 	s.nextID = 1
 	s.nextToken = 0
 	s.current = nil
+	s.runq.reset()
 	s.pending = make(map[uint64]*suspendedFiber)
-	s.completed = nil
+	s.completed.reset()
 	s.accepted = make(map[uint64]struct{})
 	if s.wake == nil {
 		s.wake = make(chan struct{}, 1)
@@ -116,7 +209,7 @@ func (s *FiberScheduler) Reset(root *StackContext, exec *Executor) (*VMFiber, er
 			Kind:     FrameRoot,
 		}},
 	}
-	s.runq = []*VMFiber{rootFiber}
+	s.runq.push(rootFiber)
 	return rootFiber, nil
 }
 
@@ -148,7 +241,7 @@ func (s *FiberScheduler) Go(session *StackContext, exec *Executor) (*VMFiber, er
 			Cleanup:  true,
 		}},
 	}
-	s.runq = append(s.runq, fiber)
+	s.runq.push(fiber)
 	return fiber, nil
 }
 
@@ -173,7 +266,7 @@ func (s *FiberScheduler) EnqueueFiber(fiber *VMFiber) {
 	if s.stopped {
 		return
 	}
-	s.runq = append(s.runq, fiber)
+	s.runq.push(fiber)
 	s.signalLocked()
 }
 
@@ -255,7 +348,7 @@ func (s *FiberScheduler) YieldCurrent() error {
 	if s.current == nil {
 		return nil
 	}
-	s.runq = append(s.runq, s.current)
+	s.runq.push(s.current)
 	s.current = nil
 	s.signalLocked()
 	return nil
@@ -285,11 +378,11 @@ func (s *FiberScheduler) AbortAll() []*VMFiber {
 		return nil
 	}
 	s.mu.Lock()
-	fibers := make([]*VMFiber, 0, 1+len(s.runq)+len(s.pending))
+	fibers := make([]*VMFiber, 0, 1+s.runq.len()+len(s.pending))
 	if s.current != nil {
 		fibers = append(fibers, s.current)
 	}
-	fibers = append(fibers, s.runq...)
+	fibers = s.runq.appendTo(fibers)
 	for _, pending := range s.pending {
 		if pending != nil && pending.Fiber != nil {
 			fibers = append(fibers, pending.Fiber)
@@ -320,7 +413,7 @@ func (s *FiberScheduler) completeWire(token uint64, ret []byte, err error) bool 
 	if _, exists := s.accepted[token]; exists {
 		return false
 	}
-	s.completed = append(s.completed, ffiCompletion{token: token, ret: owned, err: err})
+	s.completed.push(ffiCompletion{token: token, ret: owned, err: err})
 	s.accepted[token] = struct{}{}
 	s.signalLocked()
 	return true
@@ -353,16 +446,19 @@ func (s *FiberScheduler) nextReady() (*VMFiber, bool, <-chan struct{}) {
 		return nil, true, nil
 	}
 	s.drainCompletionsLocked()
-	if len(s.runq) > 0 {
-		fiber := s.runq[0]
-		copy(s.runq, s.runq[1:])
-		s.runq[len(s.runq)-1] = nil
-		s.runq = s.runq[:len(s.runq)-1]
+	if s.runq.len() > 0 {
+		fiber := s.runq.pop()
+		if s.completed.len() > 0 {
+			s.signalLocked()
+		}
 		s.current = fiber
 		return fiber, false, nil
 	}
 	if len(s.pending) == 0 {
 		return nil, true, nil
+	}
+	if s.completed.len() > 0 {
+		s.signalLocked()
 	}
 	if s.wake == nil {
 		s.wake = make(chan struct{}, 1)
@@ -371,12 +467,12 @@ func (s *FiberScheduler) nextReady() (*VMFiber, bool, <-chan struct{}) {
 }
 
 func (s *FiberScheduler) drainCompletionsLocked() {
-	for len(s.completed) > 0 {
-		completions := s.completed
-		s.completed = nil
-		for _, completion := range completions {
-			s.completeLocked(completion)
+	for drained := 0; drained < completionDrainBudget; drained++ {
+		completion, ok := s.completed.pop()
+		if !ok {
+			return
 		}
+		s.completeLocked(completion)
 	}
 }
 
@@ -393,7 +489,7 @@ func (s *FiberScheduler) completeLocked(completion ffiCompletion) {
 		data.Err = completion.err
 	}
 	pending.Frame.Session.TaskStack = append(pending.Frame.Session.TaskStack, pending.Resume)
-	s.runq = append(s.runq, pending.Fiber)
+	s.runq.push(pending.Fiber)
 }
 
 func (s *FiberScheduler) clearLocked() []func() {
@@ -404,9 +500,9 @@ func (s *FiberScheduler) clearLocked() []func() {
 		}
 	}
 	s.current = nil
-	s.runq = nil
+	s.runq.reset()
 	s.pending = make(map[uint64]*suspendedFiber)
-	s.completed = nil
+	s.completed.reset()
 	s.accepted = make(map[uint64]struct{})
 	s.stopped = true
 	s.signalLocked()

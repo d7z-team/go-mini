@@ -2983,6 +2983,8 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 						},
 						Variables: session.Stack.DumpVariables(),
 					}
+					// Debugger pause is currently all-stop: once any fiber triggers a pause,
+					// the single-threaded VM waits here for a global debugger command.
 					cmd := <-session.Debugger.CommandChan
 					if cmd == debugger.CmdStepInto {
 						session.Debugger.SetStepping(true)

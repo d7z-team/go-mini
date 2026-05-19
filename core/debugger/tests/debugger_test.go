@@ -9,6 +9,15 @@ import (
 	"gopkg.d7z.net/go-mini/core/debugger"
 )
 
+func mustLoadInt64Global(t *testing.T, prog *engine.MiniProgram, name string) int64 {
+	t.Helper()
+	value, ok := prog.SharedState().LoadGlobal(name)
+	if !ok || value == nil {
+		t.Fatalf("missing global %s", name)
+	}
+	return value.I64
+}
+
 func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	// 注意行号：第一行是 package main
@@ -409,5 +418,75 @@ func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("timeout waiting for multi-fiber debugger completion")
 		}
+	}
+}
+
+func TestDebugger_FiberBreakpointUsesAllStopPause(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	testExecutor.InjectStandardLibraries()
+
+	sourceProgram := `
+	package main
+	import "time"
+
+	var ticks = 0
+
+	func breaker() {
+		time.Sleep(20000000) // Line 8
+		marker := 1
+		_ = marker
+	}
+
+	func runner() {
+		for i := 0; i < 10; i++ {
+			ticks = ticks + 1
+			time.Sleep(10000000)
+		}
+	}
+
+	func main() {
+		go breaker()
+		go runner()
+		time.Sleep(200000000)
+	}
+	`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	dbg.AddBreakpoint(8)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testProgram.Execute(ctx)
+	}()
+
+	select {
+	case event := <-dbg.EventChan:
+		if event.Loc.L != 8 {
+			t.Fatalf("expected child fiber breakpoint at line 8, got %d", event.Loc.L)
+		}
+		if event.FiberID <= 1 {
+			t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+		}
+		ticksBefore := mustLoadInt64Global(t, testProgram, "ticks")
+		time.Sleep(50 * time.Millisecond)
+		ticksAfter := mustLoadInt64Global(t, testProgram, "ticks")
+		if ticksAfter != ticksBefore {
+			t.Fatalf("expected all-stop pause to freeze other fibers, ticks changed from %d to %d", ticksBefore, ticksAfter)
+		}
+		dbg.CommandChan <- debugger.CmdContinue
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for child fiber breakpoint")
+	}
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

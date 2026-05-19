@@ -27,12 +27,12 @@
 
 ## 剩余工作
 
-### Debugger Fiber 标识
+### Debugger Fiber 标识与暂停策略
 
 - [x] 决定调试事件显式暴露 fiber 标识。
-- [ ] 设计多 fiber 单步、继续、暂停时的事件顺序。
-- [ ] 明确 debugger 与宿主交互时的 fiber 选择策略。
-- [x] 补齐 debugger fiber 标识与多 fiber 调试回归测试。
+- [x] 当前 debugger pause 策略固定为 all-stop；任一 fiber 命中断点或人工暂停时，整个 VM 暂停等待全局 command。
+- [x] 补齐 debugger fiber 标识与 all-stop 多 fiber 调试回归测试。
+- [ ] 如后续需要 non-stop 多 fiber 调试，再单独设计 per-fiber pause 集合、命令路由和事件顺序。
 
 ### Channel / Select 语义评估
 
