@@ -30,7 +30,11 @@ func (__p *SHA256Proxy) Sum256(data []byte) []byte {
 
 	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_SHA256_Sum256, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_SHA256_Sum256, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -39,7 +43,7 @@ func (__p *SHA256Proxy) Sum256(data []byte) []byte {
 	return v_0
 }
 
-func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sum256":
@@ -75,12 +79,18 @@ type SHA256_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *SHA256_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return SHA256HostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *SHA256_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return SHA256HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *SHA256_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return SHA256HostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *SHA256_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return SHA256HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {

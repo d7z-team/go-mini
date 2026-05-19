@@ -46,7 +46,11 @@ func (__p *MathProxy) Abs(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Abs, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Abs, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -61,7 +65,11 @@ func (__p *MathProxy) Ceil(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Ceil, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Ceil, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -76,7 +84,11 @@ func (__p *MathProxy) Floor(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Floor, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Floor, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -91,7 +103,11 @@ func (__p *MathProxy) Round(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Round, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Round, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -106,7 +122,11 @@ func (__p *MathProxy) Sqrt(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sqrt, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Sqrt, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -122,7 +142,11 @@ func (__p *MathProxy) Pow(x float64, y float64) float64 {
 	wireBuf.WriteFloat64(float64(x))
 	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Pow, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Pow, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -138,7 +162,11 @@ func (__p *MathProxy) Min(x float64, y float64) float64 {
 	wireBuf.WriteFloat64(float64(x))
 	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Min, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Min, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -154,7 +182,11 @@ func (__p *MathProxy) Max(x float64, y float64) float64 {
 	wireBuf.WriteFloat64(float64(x))
 	wireBuf.WriteFloat64(float64(y))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Max, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Max, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -169,7 +201,11 @@ func (__p *MathProxy) Sin(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Sin, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Sin, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -184,7 +220,11 @@ func (__p *MathProxy) Cos(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Cos, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Cos, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -199,7 +239,11 @@ func (__p *MathProxy) Tan(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Tan, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Tan, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -214,7 +258,11 @@ func (__p *MathProxy) Exp(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Exp, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Exp, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -229,7 +277,11 @@ func (__p *MathProxy) Log(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Log, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -244,7 +296,11 @@ func (__p *MathProxy) Log10(x float64) float64 {
 
 	wireBuf.WriteFloat64(float64(x))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Log10, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Log10, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -257,7 +313,11 @@ func (__p *MathProxy) NaN() float64 {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_NaN, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_NaN, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -272,7 +332,11 @@ func (__p *MathProxy) IsNaN(f float64) bool {
 
 	wireBuf.WriteFloat64(float64(f))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsNaN, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_IsNaN, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -287,7 +351,11 @@ func (__p *MathProxy) Inf(sign int) float64 {
 
 	wireBuf.WriteVarint(int64(sign))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_Inf, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Inf, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -303,7 +371,11 @@ func (__p *MathProxy) IsInf(f float64, sign int) bool {
 	wireBuf.WriteFloat64(float64(f))
 	wireBuf.WriteVarint(int64(sign))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Math_IsInf, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_IsInf, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -312,7 +384,7 @@ func (__p *MathProxy) IsInf(f float64, sign int) bool {
 	return v_0
 }
 
-func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Abs":
@@ -530,12 +602,18 @@ type Math_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Math_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return MathHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Math_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MathHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Math_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return MathHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Math_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MathHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Math_Bridge) DestroyHandle(handle uint32) error {

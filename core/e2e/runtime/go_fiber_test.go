@@ -23,12 +23,12 @@ func TestGoRootReturnStopsPendingFiber(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
-import "task"
+import "time"
 
 var done = false
 
 func worker() {
-	task.Sleep(200)
+	time.Sleep(200000000)
 	done = true
 }
 
@@ -52,7 +52,7 @@ func TestGoFiberRunsAtYieldPoint(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
-import "task"
+import "time"
 
 var done = false
 
@@ -62,7 +62,7 @@ func worker() {
 
 func main() {
 	go worker()
-	task.Yield()
+	time.Sleep(1)
 	if !done {
 		panic("worker did not run")
 	}
@@ -77,19 +77,19 @@ func TestGoFiberSleepSwitchesContext(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
-import "task"
+import "time"
 
 var step = 0
 
 func worker() {
-	task.Sleep(5)
+	time.Sleep(5000000)
 	step = 2
 }
 
 func main() {
 	go worker()
 	step = 1
-	task.Sleep(15)
+	time.Sleep(15000000)
 	if step != 2 {
 		panic("sleep did not resume worker")
 	}
@@ -104,14 +104,14 @@ func TestGoFiberSharesCapturedState(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
-import "task"
+import "time"
 
 func main() {
 	x := 1
 	go func() {
 		x = 2
 	}()
-	task.Yield()
+	time.Sleep(1)
 	if x != 2 {
 		panic("go fiber did not share captured state")
 	}
@@ -126,7 +126,7 @@ func TestGoFiberPanicFailsProgram(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
-import "task"
+import "time"
 
 func fail() {
 	panic("boom")
@@ -134,42 +134,11 @@ func fail() {
 
 func main() {
 	go fail()
-	task.Yield()
+	time.Sleep(1)
 }
 `)
 	err := prog.Execute(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("expected child fiber panic, got %v", err)
-	}
-}
-
-func TestRemovedTaskAPIsAreNotAvailable(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
-	_, err := executor.NewRuntimeByGoCode(`
-package main
-
-func worker() Int64 { return 1 }
-
-func main() {
-	t := spawn(worker)
-	_ = await(t)
-}
-`)
-	if err == nil {
-		t.Fatal("expected removed spawn/await APIs to fail compilation")
-	}
-
-	_, err = executor.NewRuntimeByGoCode(`
-package main
-
-import "task"
-
-func main() {
-	_ = task.NewTaskGroup()
-}
-`)
-	if err == nil {
-		t.Fatal("expected removed task group API to fail compilation")
 	}
 }

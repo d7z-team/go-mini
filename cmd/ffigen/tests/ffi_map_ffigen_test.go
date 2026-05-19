@@ -36,7 +36,11 @@ func (__p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[
 		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoMap, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_EchoMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,7 +79,11 @@ func (__p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_GetMap, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_GetMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -123,7 +131,11 @@ func (__p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (in
 		wireBuf.WriteVarint(int64(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_ProcessMap, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_ProcessMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -163,7 +175,11 @@ func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (ma
 		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_MapTest_EchoIntMap, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_EchoIntMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -201,7 +217,7 @@ func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (ma
 	return v_0, err_1
 }
 
-func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EchoMap":
@@ -343,12 +359,18 @@ type MapTest_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *MapTest_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return MapTestHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *MapTest_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MapTestHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *MapTest_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return MapTestHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *MapTest_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MapTestHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {

@@ -27,8 +27,8 @@ type lifecycleMockBridge struct {
 	t        *testing.T
 }
 
-func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	switch methodID {
+func (m *lifecycleMockBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	switch req.MethodID {
 	case 1: // 模拟 Screenshot
 		res := &MockResource{ID: 12}
 		id := m.registry.Register(res)
@@ -39,7 +39,7 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []
 		return buf.Bytes(), nil
 
 	case 2: // 模拟 GetWidth
-		reader := ffigo.NewReader(args)
+		reader := ffigo.NewReader(req.Args)
 		id := uint32(reader.ReadUvarint())
 
 		obj, ok := m.registry.Get(id)
@@ -61,7 +61,7 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, methodID uint32, args []
 	return nil, nil
 }
 
-func (m *lifecycleMockBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (m *lifecycleMockBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

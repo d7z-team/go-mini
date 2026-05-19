@@ -36,7 +36,11 @@ func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewA, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_TestCanonicalService_NewA, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -58,7 +62,11 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 
 	wireBuf.WriteVarint(int64(id))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_TestCanonicalService_NewB, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_TestCanonicalService_NewB, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -74,7 +82,7 @@ func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other
 	return v_0
 }
 
-func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "NewA":
@@ -133,12 +141,18 @@ type TestCanonicalService_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *TestCanonicalService_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *TestCanonicalService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *TestCanonicalService_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *TestCanonicalService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
@@ -190,7 +204,11 @@ func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ATypeService_Hello, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ATypeService_Hello, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -199,7 +217,7 @@ func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
 	return v_0
 }
 
-func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
@@ -242,12 +260,18 @@ type ATypeService_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *ATypeService_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *ATypeService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *ATypeService_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *ATypeService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
@@ -302,7 +326,11 @@ func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_BTypeService_Hello, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_BTypeService_Hello, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -311,7 +339,7 @@ func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
 	return v_0
 }
 
-func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
@@ -354,12 +382,18 @@ type BTypeService_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *BTypeService_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *BTypeService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *BTypeService_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *BTypeService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {

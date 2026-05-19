@@ -12,9 +12,13 @@ import (
 
 type testFFIBridge struct{}
 
-func (testFFIBridge) Call(context.Context, uint32, []byte) ([]byte, error)   { return nil, nil }
-func (testFFIBridge) Invoke(context.Context, string, []byte) ([]byte, error) { return nil, nil }
-func (testFFIBridge) DestroyHandle(uint32) error                             { return nil }
+func (testFFIBridge) Call(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, nil
+}
+func (testFFIBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, nil
+}
+func (testFFIBridge) DestroyHandle(uint32) error { return nil }
 
 func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
@@ -155,8 +159,8 @@ type copyBackFFIBridge struct {
 	returnValue []byte
 }
 
-func (b copyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b copyBackFFIBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	input := bytes.ToUpper(reader.ReadBytes())
 	input = append(input, '!')
 
@@ -170,8 +174,8 @@ func (b copyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) ([]byt
 	return out, nil
 }
 
-func (b copyBackFFIBridge) Invoke(ctx context.Context, name string, args []byte) ([]byte, error) {
-	return b.Call(ctx, 0, args)
+func (b copyBackFFIBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
 }
 
 func (b copyBackFFIBridge) DestroyHandle(uint32) error { return nil }
@@ -181,8 +185,8 @@ type arrayCopyBackFFIBridge struct {
 	replace     []int64
 }
 
-func (b arrayCopyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b arrayCopyBackFFIBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	count := int(reader.ReadUvarint())
 	input := make([]int64, count)
 	for i := range input {
@@ -205,8 +209,8 @@ func (b arrayCopyBackFFIBridge) Call(_ context.Context, _ uint32, args []byte) (
 	return out, nil
 }
 
-func (b arrayCopyBackFFIBridge) Invoke(ctx context.Context, name string, args []byte) ([]byte, error) {
-	return b.Call(ctx, 0, args)
+func (b arrayCopyBackFFIBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
 }
 
 func (b arrayCopyBackFFIBridge) DestroyHandle(uint32) error { return nil }

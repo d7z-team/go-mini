@@ -43,7 +43,11 @@ func (__p *BytesProxy) Contains(b []byte, sub []byte) bool {
 	wireBuf.WriteBytes(b)
 	wireBuf.WriteBytes(sub)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Contains, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Contains, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -59,7 +63,11 @@ func (__p *BytesProxy) Count(s []byte, sep []byte) int {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(sep)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Count, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Count, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -78,7 +86,11 @@ func (__p *BytesProxy) HasPrefix(s []byte, prefix []byte) bool {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(prefix)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_HasPrefix, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_HasPrefix, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -94,7 +106,11 @@ func (__p *BytesProxy) HasSuffix(s []byte, suffix []byte) bool {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(suffix)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_HasSuffix, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_HasSuffix, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -110,7 +126,11 @@ func (__p *BytesProxy) Index(s []byte, sep []byte) int {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(sep)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Index, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Index, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -129,7 +149,11 @@ func (__p *BytesProxy) LastIndex(s []byte, sep []byte) int {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(sep)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_LastIndex, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_LastIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -147,7 +171,11 @@ func (__p *BytesProxy) ToLower(s []byte) []byte {
 
 	wireBuf.WriteBytes(s)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_ToLower, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ToLower, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -162,7 +190,11 @@ func (__p *BytesProxy) ToUpper(s []byte) []byte {
 
 	wireBuf.WriteBytes(s)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_ToUpper, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ToUpper, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -178,7 +210,11 @@ func (__p *BytesProxy) Trim(s []byte, cutset string) []byte {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteString(string(cutset))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Trim, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Trim, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -193,7 +229,11 @@ func (__p *BytesProxy) TrimSpace(s []byte) []byte {
 
 	wireBuf.WriteBytes(s)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_TrimSpace, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_TrimSpace, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -209,7 +249,11 @@ func (__p *BytesProxy) Split(s []byte, sep []byte) [][]byte {
 	wireBuf.WriteBytes(s)
 	wireBuf.WriteBytes(sep)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Split, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -232,7 +276,11 @@ func (__p *BytesProxy) Join(s [][]byte, sep []byte) []byte {
 	}
 	wireBuf.WriteBytes(sep)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Join, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Join, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -248,7 +296,11 @@ func (__p *BytesProxy) Repeat(b []byte, count int) []byte {
 	wireBuf.WriteBytes(b)
 	wireBuf.WriteVarint(int64(count))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_Repeat, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Repeat, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -265,7 +317,11 @@ func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, replacement []byte) []by
 	wireBuf.WriteBytes(old)
 	wireBuf.WriteBytes(replacement)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Bytes_ReplaceAll, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ReplaceAll, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -274,7 +330,7 @@ func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, replacement []byte) []by
 	return v_0
 }
 
-func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Contains":
@@ -474,12 +530,18 @@ type Bytes_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Bytes_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return BytesHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Bytes_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BytesHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Bytes_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return BytesHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Bytes_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BytesHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Bytes_Bridge) DestroyHandle(handle uint32) error {

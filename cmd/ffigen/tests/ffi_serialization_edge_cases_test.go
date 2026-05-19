@@ -17,9 +17,9 @@ type ComplexBridge struct {
 	t *testing.T
 }
 
-func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
-	switch methodID {
+func (b *ComplexBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
+	switch req.MethodID {
 	case 1:
 		i := reader.ReadVarint()
 		s := reader.ReadString()
@@ -45,7 +45,7 @@ func (b *ComplexBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	return nil, nil
 }
 
-func (b *ComplexBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *ComplexBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

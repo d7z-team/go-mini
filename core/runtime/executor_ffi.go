@@ -64,10 +64,6 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		}
 	}
 
-	// 发起 FFI 调用
-	var retData []byte
-	err = nil
-
 	// 硬编码拦截内置扩展路由
 	if route.MethodID == 999999999 && route.Name == "errors.Is" {
 		if len(args) == 2 {
@@ -84,6 +80,9 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		}
 	}
 
+	ownedArgs := append([]byte(nil), buf.Bytes()...)
+	var ret ffigo.FFIReturn
+	err = nil
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -91,37 +90,85 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 				err = &VMError{Value: NewString(msg), Message: msg, IsPanic: true}
 			}
 		}()
+		if route.Bridge == nil {
+			err = fmt.Errorf("ffi route %s has no bridge", route.Name)
+			return
+		}
+		req := &ffigo.FFICallRequest{
+			MethodID: route.MethodID,
+			Method:   route.Name,
+			Args:     ownedArgs,
+		}
 		if route.MethodID == 0 {
-			retData, err = route.Bridge.Invoke(session.Context, route.Name, buf.Bytes())
+			ret, err = route.Bridge.Invoke(session.Context, req)
 		} else {
-			retData, err = route.Bridge.Call(session.Context, route.MethodID, buf.Bytes())
+			ret, err = route.Bridge.Call(session.Context, req)
 		}
 		runtime.KeepAlive(args) // 关键：确保参数在调用期间不被回收
 	}()
 
 	if err != nil {
-		if vme, ok := err.(*VMError); ok {
-			vme.IsPanic = true
-			return nil, vme
-		}
-
-		// 获取 VM 调用栈
-		frames := session.GenerateStackTrace(nil)
-		var stackStr strings.Builder
-		for i, f := range frames {
-			fmt.Fprintf(&stackStr, "\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column)
-		}
-
-		// 将宿主 Error 包装为带栈信息的 Panic
-		return nil, &VMError{
-			Message: fmt.Sprintf("%v\n\nVM Stack Trace:%s", err.Error(), stackStr.String()),
-			Value:   NewString(err.Error()),
-			IsPanic: true,
-			Cause:   err,
-		}
+		return nil, e.wrapFFIError(session, err)
 	}
 
-	// 解析返回值
+	switch v := ret.(type) {
+	case nil:
+		return e.finishFFI(session, route, copyBackTargets, nil, nil)
+	case []byte:
+		return e.finishFFI(session, route, copyBackTargets, v, nil)
+	case ffigo.AsyncCall:
+		if e.scheduler == nil || e.scheduler.Current() == nil {
+			return nil, fmt.Errorf("ffi route %s suspended without active VM scheduler", route.Name)
+		}
+		resumeData := &ResumeFFIData{
+			Route:           route,
+			CopyBackTargets: copyBackTargets,
+		}
+		token, sink, err := e.scheduler.PrepareFFI(Task{Op: OpResumeFFI, Data: resumeData})
+		if err != nil {
+			return nil, err
+		}
+		cancel, err := v.StartWire(session.Context, sink)
+		if err != nil {
+			e.scheduler.AbortFFI(token)
+			return nil, e.wrapFFIError(session, err)
+		}
+		if err := e.scheduler.CommitFFI(token, cancel); err != nil {
+			if cancel != nil {
+				cancel()
+			}
+			e.scheduler.AbortFFI(token)
+			return nil, err
+		}
+		return nil, errFiberSuspend
+	default:
+		return nil, fmt.Errorf("ffi route %s returned unsupported payload %T", route.Name, ret)
+	}
+}
+
+func (e *Executor) wrapFFIError(session *StackContext, err error) error {
+	if vme, ok := err.(*VMError); ok {
+		vme.IsPanic = true
+		return vme
+	}
+	frames := session.GenerateStackTrace(nil)
+	var stackStr strings.Builder
+	for i, f := range frames {
+		fmt.Fprintf(&stackStr, "\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column)
+	}
+	return &VMError{
+		Message: fmt.Sprintf("%v\n\nVM Stack Trace:%s", err.Error(), stackStr.String()),
+		Value:   NewString(err.Error()),
+		IsPanic: true,
+		Cause:   err,
+	}
+}
+
+func (e *Executor) finishFFI(session *StackContext, route FFIRoute, copyBackTargets []ffiCopyBackTarget, retData []byte, callErr error) (*Var, error) {
+	if callErr != nil {
+		return nil, e.wrapFFIError(session, callErr)
+	}
+	funcSig := route.FuncSig
 	if len(retData) == 0 {
 		if len(copyBackTargets) > 0 {
 			return nil, fmt.Errorf("ffi route %s returned empty payload for inout copy-back", route.Name)

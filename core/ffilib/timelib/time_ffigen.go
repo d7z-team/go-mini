@@ -36,7 +36,11 @@ func (__p *ModuleProxy) Now() *Time {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Now, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Now, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -59,7 +63,11 @@ func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 	wireBuf.WriteVarint(int64(sec))
 	wireBuf.WriteVarint(int64(nsec))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Unix, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Unix, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -75,15 +83,10 @@ func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
 	return v_0
 }
 
-func (__p *ModuleProxy) Sleep(ctx context.Context, ns int64) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(ns))
-
-	_, err := __p.bridge.Call(ctx, MethodID_Module_Sleep, wireBuf.Bytes())
-	_ = err
-	return
+func (__p *ModuleProxy) Sleep(ns int64) ffigo.Async[ffigo.Void] {
+	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+		return nil, fmt.Errorf("ffigen: proxy async call Module.Sleep is not supported")
+	})
 }
 
 func (__p *ModuleProxy) Since(t *Time) int64 {
@@ -101,7 +104,11 @@ func (__p *ModuleProxy) Since(t *Time) int64 {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Since, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Since, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -128,7 +135,11 @@ func (__p *ModuleProxy) Until(t *Time) int64 {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Until, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Until, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -147,7 +158,11 @@ func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
 	wireBuf.WriteString(string(layout))
 	wireBuf.WriteString(string(value))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_Parse, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Parse, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -187,7 +202,11 @@ func (__p *ModuleProxy) ParseDuration(s string) (int64, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Module_ParseDuration, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_ParseDuration, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -217,7 +236,7 @@ func (__p *ModuleProxy) ParseDuration(s string) (int64, error) {
 	return v_0, err_1
 }
 
-func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Now":
@@ -275,9 +294,10 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			tmp := reqBuf.ReadVarint()
 			ns = int64(tmp)
 		}
-		impl.Sleep(ctx, ns)
-		resBuf := ffigo.GetBuffer()
-		return resBuf.Bytes(), nil
+		r0 := impl.Sleep(ns)
+		return ffigo.AsyncValue[ffigo.Void](r0, func(resBuf *ffigo.Buffer, value ffigo.Void) error {
+			return nil
+		}), nil
 	case MethodID_Module_Since:
 		var t *Time
 		// Ptr<T> is restored from the opaque handle ID written on the FFI wire.
@@ -370,12 +390,18 @@ type Module_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Module_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Module_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Module_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Module_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Module_Bridge) DestroyHandle(handle uint32) error {
@@ -444,7 +470,7 @@ const (
 	MethodID_Time_String     = 19
 )
 
-func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Year":
@@ -841,12 +867,18 @@ type Time_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Time_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return TimeHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Time_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TimeHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Time_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return TimeHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Time_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TimeHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Time_Bridge) DestroyHandle(handle uint32) error {

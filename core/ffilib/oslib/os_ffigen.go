@@ -37,7 +37,11 @@ func (__p *OSProxy) Open(name string) (*iolib.File, error) {
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Open, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Open, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -77,7 +81,11 @@ func (__p *OSProxy) Create(name string) (*iolib.File, error) {
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Create, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Create, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -119,7 +127,11 @@ func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, erro
 	wireBuf.WriteVarint(int64(flag))
 	wireBuf.WriteVarint(int64(perm))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_OpenFile, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_OpenFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -159,7 +171,11 @@ func (__p *OSProxy) ReadFile(name string) ([]byte, error) {
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_ReadFile, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_ReadFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -193,7 +209,11 @@ func (__p *OSProxy) WriteFile(name string, data []byte) error {
 	wireBuf.WriteString(string(name))
 	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_WriteFile, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_WriteFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -224,7 +244,11 @@ func (__p *OSProxy) Remove(name string) error {
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Remove, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Remove, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -255,7 +279,11 @@ func (__p *OSProxy) Getenv(key string) string {
 
 	wireBuf.WriteString(string(key))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OS_Getenv, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Getenv, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -264,7 +292,7 @@ func (__p *OSProxy) Getenv(key string) string {
 	return v_0
 }
 
-func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Open":
@@ -439,12 +467,18 @@ type OS_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *OS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return OSHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *OS_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return OSHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *OS_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return OSHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *OS_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return OSHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *OS_Bridge) DestroyHandle(handle uint32) error {

@@ -32,7 +32,11 @@ func (__p *Base64Proxy) EncodeToString(src []byte) string {
 
 	wireBuf.WriteBytes(src)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_EncodeToString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_EncodeToString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -47,7 +51,11 @@ func (__p *Base64Proxy) DecodeString(s string) ([]byte, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_DecodeString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_DecodeString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -80,7 +88,11 @@ func (__p *Base64Proxy) URLEncodeToString(src []byte) string {
 
 	wireBuf.WriteBytes(src)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLEncodeToString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_URLEncodeToString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -95,7 +107,11 @@ func (__p *Base64Proxy) URLDecodeString(s string) ([]byte, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Base64_URLDecodeString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_URLDecodeString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -122,7 +138,7 @@ func (__p *Base64Proxy) URLDecodeString(s string) ([]byte, error) {
 	return v_0, err_1
 }
 
-func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EncodeToString":
@@ -206,12 +222,18 @@ type Base64_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Base64_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return Base64HostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Base64_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return Base64HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Base64_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return Base64HostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Base64_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return Base64HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Base64_Bridge) DestroyHandle(handle uint32) error {

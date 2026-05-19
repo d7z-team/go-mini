@@ -31,7 +31,11 @@ func (__p *URLProxy) QueryEscape(s string) string {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryEscape, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_QueryEscape, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -46,7 +50,11 @@ func (__p *URLProxy) QueryUnescape(s string) (string, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_QueryUnescape, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_QueryUnescape, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -83,7 +91,11 @@ func (__p *URLProxy) JoinPath(base string, elem ...string) string {
 		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_URL_JoinPath, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_JoinPath, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -92,7 +104,7 @@ func (__p *URLProxy) JoinPath(base string, elem ...string) string {
 	return v_0
 }
 
-func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "QueryEscape":
@@ -163,12 +175,18 @@ type URL_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *URL_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return URLHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *URL_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return URLHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *URL_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return URLHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *URL_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return URLHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *URL_Bridge) DestroyHandle(handle uint32) error {

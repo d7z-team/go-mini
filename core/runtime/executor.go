@@ -43,14 +43,14 @@ type runStop uint8
 const (
 	runStopDone runStop = iota
 	runStopYield
-	runStopSleep
+	runStopSuspend
 )
 
 const fiberInstructionQuantum = 256
 
 var (
-	errFiberYield = errors.New("fiber yielded")
-	errFiberSleep = errors.New("fiber sleeping")
+	errFiberYield   = errors.New("fiber yielded")
+	errFiberSuspend = errors.New("fiber suspended")
 )
 
 var ErrModuleNotFound = errors.New("module not found")
@@ -382,7 +382,21 @@ func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
 	ctx.ValueStack = &ValueStack{}
 	ctx.LHSStack = &LHSStack{}
 
-	err := e.Run(ctx)
+	var err error
+	if e.scheduler != nil && e.scheduler.Current() == nil {
+		e.runMu.Lock()
+		root, resetErr := e.scheduler.Reset(ctx, e)
+		if resetErr != nil {
+			e.runMu.Unlock()
+			err = resetErr
+		} else {
+			err = e.runFibers(ctx.Context, root)
+			e.scheduler.Stop()
+			e.runMu.Unlock()
+		}
+	} else {
+		err = e.Run(ctx)
+	}
 	if err != nil {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
@@ -579,20 +593,30 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 }
 
 func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[string]*Var) error {
-	if e.shared == nil {
-		e.shared = NewSharedState()
+	if e.scheduler == nil {
+		e.scheduler = NewFiberScheduler()
 	}
-	if e.shared.BeginInitialization() {
-		session := e.NewSession(ctx, "global")
-		session.StepLimit = e.StepLimit
-		err := e.initializeSharedGlobals(session)
-		e.shared.FinishInitialization(err)
-		if err != nil {
-			return err
-		}
+	if e.scheduler.Current() != nil {
+		return errors.New("shared state initialization cannot start inside an active fiber")
 	}
-	e.shared.ApplyEnv(env)
-	return nil
+	session := e.NewSession(ctx, "global")
+	session.StepLimit = e.StepLimit
+	if err := e.scheduleSharedInitialization(session, env); err != nil {
+		return err
+	}
+	if len(session.TaskStack) == 0 {
+		return nil
+	}
+	e.runMu.Lock()
+	root, err := e.scheduler.Reset(session, e)
+	if err != nil {
+		e.runMu.Unlock()
+		return err
+	}
+	err = e.runFibers(ctx, root)
+	e.scheduler.Stop()
+	e.runMu.Unlock()
+	return err
 }
 
 func (e *Executor) CleanupSession(session *StackContext) {
@@ -801,7 +825,7 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 	if err := e.prepareSession(session, env, true); err != nil {
 		return err
 	}
-	root, err := e.scheduler.Reset(session)
+	root, err := e.scheduler.Reset(session, e)
 	if err != nil {
 		return err
 	}
@@ -813,6 +837,18 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	if err := e.prepareSession(session, env, invokeMain); err != nil {
 		return err
 	}
+	if e.scheduler != nil && e.scheduler.Current() == nil {
+		e.runMu.Lock()
+		root, resetErr := e.scheduler.Reset(session, e)
+		if resetErr != nil {
+			e.runMu.Unlock()
+			return resetErr
+		}
+		err = e.runFibers(session.Context, root)
+		e.scheduler.Stop()
+		e.runMu.Unlock()
+		return err
+	}
 	return e.Run(session)
 }
 
@@ -820,10 +856,6 @@ func (e *Executor) prepareSession(session *StackContext, env map[string]*Var, in
 	if session == nil {
 		return errors.New("invalid session")
 	}
-	if err := e.EnsureSharedStateInitialized(session.Context, env); err != nil {
-		return err
-	}
-
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Executor panic", "error", r, "stack", string(debug.Stack()))
@@ -860,32 +892,47 @@ func (e *Executor) prepareSession(session *StackContext, env map[string]*Var, in
 
 	// Main 块位于栈顶，先于 main() 调用执行。
 	session.TaskStack = append(session.TaskStack, cloneTasks(e.mainTasks)...)
+	return e.scheduleSharedInitialization(session, env)
+}
+
+func (e *Executor) scheduleSharedInitialization(session *StackContext, env map[string]*Var) error {
+	if e.shared == nil {
+		e.shared = NewSharedState()
+	}
+	session.Shared = e.shared
+	if !e.shared.BeginInitialization() {
+		e.shared.ApplyEnv(env)
+		return nil
+	}
+	session.OwnsSharedInit = true
+	session.TaskStack = append(session.TaskStack, Task{Op: OpFinishSharedInit, Data: &FinishSharedInitData{Env: env}})
+	for i := len(e.globalInitOrder) - 1; i >= 0; i-- {
+		name := e.globalInitOrder[i]
+		global, ok := e.lookupGlobal(name)
+		if !ok || global == nil {
+			continue
+		}
+		session.TaskStack = append(session.TaskStack, Task{
+			Op: OpInitGlobal,
+			Data: &InitGlobalData{
+				Name:    name,
+				Kind:    global.Kind,
+				HasInit: global.HasInit,
+				Plan:    cloneTasks(global.InitPlan),
+			},
+		})
+	}
 	return nil
 }
 
-func (e *Executor) initializeSharedGlobals(session *StackContext) error {
-	for _, name := range e.globalInitOrder {
-		global, ok := e.lookupGlobal(name)
-		if !ok {
-			continue
-		}
-		var val *Var
-		if global.HasInit {
-			v, err := e.runExprPlan(session, global.InitPlan)
-			if err != nil {
-				return fmt.Errorf("failed to initialize global var %s: %w", name, err)
-			}
-			val = v
-		} else {
-			kind := global.Kind
-			if kind.IsEmpty() {
-				kind = MustParseRuntimeType("Any")
-			}
-			val = e.initializeType(session, kind, 0)
-		}
-		session.Shared.StoreGlobal(name, val)
+func finishSessionSharedInitialization(session *StackContext, err error) {
+	if session == nil || !session.OwnsSharedInit {
+		return
 	}
-	return nil
+	session.OwnsSharedInit = false
+	if session.Shared != nil {
+		session.Shared.FinishInitialization(err)
+	}
 }
 
 func callBoundaryDeferOwner(session *StackContext) *Stack {
@@ -1727,6 +1774,27 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		data := task.Data.(*DirectCallData)
 		args := append([]*Var(nil), data.Args...)
 		return e.invokeCall(session, data.Name, data.Receiver, data.Module, data.Callable, args, nil)
+	case OpResumeFFI:
+		data, ok := task.Data.(*ResumeFFIData)
+		if !ok || data == nil {
+			return errors.New("OpResumeFFI missing ResumeFFIData")
+		}
+		res, err := e.finishFFI(session, data.Route, data.CopyBackTargets, data.Ret, data.Err)
+		if err != nil {
+			return err
+		}
+		session.ValueStack.Push(res)
+		return nil
+	case OpResumeModule:
+		data, ok := task.Data.(*ResumeModuleData)
+		if !ok || data == nil {
+			return errors.New("OpResumeModule missing ResumeModuleData")
+		}
+		if data.Err != nil {
+			return data.Err
+		}
+		session.ValueStack.Push(data.Value)
+		return nil
 	case OpCallBoundary:
 		data, ok := task.Data.(*CallBoundaryData)
 		if !ok || data == nil {
@@ -2093,6 +2161,36 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		name := task.Data.(string)
 		val := session.ValueStack.Pop()
 		return session.AddVariable(name, val)
+	case OpInitGlobal:
+		data, ok := task.Data.(*InitGlobalData)
+		if !ok || data == nil {
+			return errors.New("OpInitGlobal missing InitGlobalData")
+		}
+		if data.HasInit {
+			session.TaskStack = append(session.TaskStack, Task{Op: OpStoreGlobalInit, Data: data.Name})
+			session.TaskStack = append(session.TaskStack, cloneTasks(data.Plan)...)
+			return nil
+		}
+		kind := data.Kind
+		if kind.IsEmpty() {
+			kind = MustParseRuntimeType("Any")
+		}
+		session.Shared.StoreGlobal(data.Name, e.initializeType(session, kind, 0))
+		return nil
+	case OpStoreGlobalInit:
+		name, ok := task.Data.(string)
+		if !ok || name == "" {
+			return errors.New("OpStoreGlobalInit missing global name")
+		}
+		session.Shared.StoreGlobal(name, session.ValueStack.Pop())
+		return nil
+	case OpFinishSharedInit:
+		data, _ := task.Data.(*FinishSharedInitData)
+		finishSessionSharedInitialization(session, nil)
+		if data != nil {
+			session.Shared.ApplyEnv(data.Env)
+		}
+		return nil
 	case OpResumeUnwind:
 		mode := task.Data.(UnwindMode)
 		if session.UnwindMode == UnwindNone {
@@ -2118,9 +2216,26 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if session.ImportChain[path] {
 			return fmt.Errorf("circular dependency detected: %s", path)
 		}
-		if v, shouldLoad := session.Shared.BeginModuleLoad(path); !shouldLoad {
+		if v, loadState := session.Shared.BeginModuleLoad(path); loadState == ModuleLoadReady {
 			session.ValueStack.Push(v)
 			return nil
+		} else if loadState == ModuleLoadWait {
+			if e.scheduler == nil || e.scheduler.Current() == nil {
+				return fmt.Errorf("module %s is already loading and cannot be parked without an active scheduler", path)
+			}
+			fiber, frame, err := e.scheduler.ParkCurrent()
+			if err != nil {
+				return err
+			}
+			session.Shared.AddModuleWaiter(path, moduleWaiter{
+				Fiber: fiber,
+				Frame: frame,
+				Resume: Task{
+					Op:   OpResumeModule,
+					Data: &ResumeModuleData{Path: path},
+				},
+			})
+			return errFiberSuspend
 		}
 		session.ImportChain[path] = true
 		defer delete(session.ImportChain, path)
@@ -2128,17 +2243,17 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if e.ModulePlanLoader != nil {
 			prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
-				res, err := e.executeImportedProgram(session, path, prepared)
-				if err != nil {
-					session.Shared.FinishModuleLoad(path, nil)
+				err := e.startImportedProgram(session, path, prepared)
+				if err != nil && !errors.Is(err, errFiberYield) {
+					waiters := session.Shared.FinishModuleLoad(path, nil)
+					e.scheduleModuleWaiters(waiters, nil, err)
 					return err
 				}
-				session.Shared.FinishModuleLoad(path, res)
-				session.ValueStack.Push(res)
-				return nil
+				return err
 			}
 			if !errors.Is(err, ErrModuleNotFound) {
-				session.Shared.FinishModuleLoad(path, nil)
+				waiters := session.Shared.FinishModuleLoad(path, nil)
+				e.scheduleModuleWaiters(waiters, nil, err)
 				return err
 			}
 		}
@@ -2180,12 +2295,15 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		if found {
 			res := &Var{VType: TypeModule, Ref: ffiMod}
-			session.Shared.FinishModuleLoad(path, res)
+			waiters := session.Shared.FinishModuleLoad(path, res)
 			session.ValueStack.Push(res)
+			e.scheduleModuleWaiters(waiters, res, nil)
 			return nil
 		}
-		session.Shared.FinishModuleLoad(path, nil)
-		return fmt.Errorf("failed to load module %s", path)
+		err := fmt.Errorf("failed to load module %s", path)
+		waiters := session.Shared.FinishModuleLoad(path, nil)
+		e.scheduleModuleWaiters(waiters, nil, err)
+		return err
 
 	case OpImportDone:
 		return errors.New("OpImportDone should not be reached in synchronous import mode")
@@ -2693,22 +2811,57 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 		if fiber == nil {
 			return nil
 		}
-		stop, err := e.runSession(fiber.Session, fiberInstructionQuantum)
+		frame := fiber.CurrentFrame()
+		if frame == nil {
+			e.scheduler.FinishCurrent()
+			continue
+		}
+		stop, err := frame.Executor.runSession(frame.Session, fiberInstructionQuantum)
 		if err != nil {
-			if fiber.ID != root.ID {
-				e.CleanupSession(fiber.Session)
+			for {
+				errFrame := fiber.PopFrame()
+				if errFrame == nil {
+					break
+				}
+				finishSessionSharedInitialization(errFrame.Session, err)
+				if errFrame.OnError != nil {
+					err = errFrame.OnError(errFrame, err)
+				}
+				if errFrame.Cleanup {
+					errFrame.Executor.CleanupSession(errFrame.Session)
+				}
 			}
 			return err
 		}
 		switch stop {
 		case runStopDone:
-			if fiber.ID == root.ID {
+			doneFrame := fiber.PopFrame()
+			if doneFrame == nil {
+				e.scheduler.FinishCurrent()
+				continue
+			}
+			if doneFrame.OnDone != nil {
+				if err := doneFrame.OnDone(doneFrame); err != nil {
+					if doneFrame.Cleanup {
+						doneFrame.Executor.CleanupSession(doneFrame.Session)
+					}
+					return err
+				}
+			}
+			if doneFrame.Cleanup {
+				doneFrame.Executor.CleanupSession(doneFrame.Session)
+			}
+			if len(fiber.Frames) == 0 {
+				if fiber.ID != root.ID {
+					e.scheduler.FinishCurrent()
+					continue
+				}
 				e.scheduler.Stop()
 				return nil
 			}
-			e.CleanupSession(fiber.Session)
+			e.scheduler.EnqueueFiber(fiber)
 			e.scheduler.FinishCurrent()
-		case runStopYield, runStopSleep:
+		case runStopYield, runStopSuspend:
 			// The scheduler method already parked the current fiber.
 		}
 	}
@@ -2777,8 +2930,8 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 			if errors.Is(err, errFiberYield) {
 				return runStopYield, nil
 			}
-			if errors.Is(err, errFiberSleep) {
-				return runStopSleep, nil
+			if errors.Is(err, errFiberSuspend) {
+				return runStopSuspend, nil
 			}
 			frames := session.GenerateStackTrace(&task)
 			var vme *VMError
@@ -3061,14 +3214,18 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	}
 }
 
-func (e *Executor) executeImportedProgram(parent *StackContext, path string, prepared *PreparedProgram) (*Var, error) {
+func (e *Executor) startImportedProgram(parent *StackContext, path string, prepared *PreparedProgram) error {
+	if e.scheduler == nil || e.scheduler.Current() == nil {
+		return fmt.Errorf("module %s requires an active VM scheduler", path)
+	}
 	modExecutor, err := NewExecutorFromPrepared(prepared)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	modExecutor.ModulePlanLoader = e.ModulePlanLoader
 	modExecutor.StepLimit = e.StepLimit
 	modExecutor.routes = e.routes
+	modExecutor.scheduler = e.scheduler
 
 	modSession := modExecutor.NewSession(parent.Context, "global")
 	modSession.StepLimit = parent.StepLimit
@@ -3081,12 +3238,56 @@ func (e *Executor) executeImportedProgram(parent *StackContext, path string, pre
 	}
 	modSession.ImportChain[path] = true
 
-	if err := modExecutor.InitializeSession(modSession, nil, false); err != nil {
+	if err := modExecutor.prepareSession(modSession, nil, false); err != nil {
 		parent.StepCount = modSession.StepCount
-		return nil, err
+		return err
 	}
-	parent.StepCount = modSession.StepCount
-	return e.buildImportedModuleValue(path, modExecutor, modSession), nil
+	frame := &FiberFrame{
+		Executor: modExecutor,
+		Session:  modSession,
+		Kind:     FrameModuleInit,
+	}
+	frame.OnDone = func(done *FiberFrame) error {
+		parent.StepCount = done.Session.StepCount
+		res := e.buildImportedModuleValue(path, modExecutor, done.Session)
+		waiters := parent.Shared.FinishModuleLoad(path, res)
+		parent.ValueStack.Push(res)
+		e.scheduleModuleWaiters(waiters, res, nil)
+		return nil
+	}
+	frame.OnError = func(done *FiberFrame, loadErr error) error {
+		parent.StepCount = done.Session.StepCount
+		waiters := parent.Shared.FinishModuleLoad(path, nil)
+		e.scheduleModuleWaiters(waiters, nil, loadErr)
+		return loadErr
+	}
+	if err := e.scheduler.PushFrame(frame); err != nil {
+		return err
+	}
+	if err := e.scheduler.YieldCurrent(); err != nil {
+		return err
+	}
+	return errFiberYield
+}
+
+func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err error) {
+	if len(waiters) == 0 || e.scheduler == nil {
+		return
+	}
+	for _, waiter := range waiters {
+		if waiter.Fiber == nil || waiter.Frame == nil {
+			continue
+		}
+		data, _ := waiter.Resume.Data.(*ResumeModuleData)
+		if data == nil {
+			data = &ResumeModuleData{}
+			waiter.Resume.Data = data
+		}
+		data.Value = value
+		data.Err = err
+		waiter.Frame.Session.TaskStack = append(waiter.Frame.Session.TaskStack, waiter.Resume)
+		e.scheduler.EnqueueFiber(waiter.Fiber)
+	}
 }
 
 func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
@@ -3107,7 +3308,7 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	var err error
 	if e.scheduler != nil && e.scheduler.Current() == nil {
 		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(session)
+		root, resetErr := e.scheduler.Reset(session, e)
 		if resetErr != nil {
 			e.runMu.Unlock()
 			err = resetErr
@@ -3138,7 +3339,23 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	ctx.LHSStack = &LHSStack{}
 	ctx.UnwindMode = UnwindNone
 
-	err := e.Run(ctx)
+	var err error
+	if e.scheduler == nil {
+		e.scheduler = NewFiberScheduler()
+	}
+	if e.scheduler.Current() == nil {
+		e.runMu.Lock()
+		root, resetErr := e.scheduler.Reset(ctx, e)
+		if resetErr != nil {
+			err = resetErr
+		} else {
+			err = e.runFibers(ctx.Context, root)
+			e.scheduler.Stop()
+		}
+		e.runMu.Unlock()
+	} else {
+		err = e.Run(ctx)
+	}
 	var res *Var
 	if err == nil {
 		res = ctx.ValueStack.Pop()

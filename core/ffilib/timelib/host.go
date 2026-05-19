@@ -2,6 +2,7 @@ package timelib
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -19,25 +20,36 @@ func (h *TimeHost) Unix(sec, nsec int64) *Time {
 	return &Time{T: time.Unix(sec, nsec)}
 }
 
-func (h *TimeHost) Sleep(ctx context.Context, ns int64) {
-	if ns <= 0 {
-		return
-	}
-	if time.Duration(ns) > time.Second {
-		end := ns % int64(time.Second)
-		dest := ns / int64(time.Second)
-		for i := int64(0); i < dest; i++ {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			time.Sleep(time.Second)
+func (h *TimeHost) Sleep(ns int64) ffigo.Async[ffigo.Void] {
+	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+		if ns <= 0 {
+			done.Complete(ffigo.Void{}, nil)
+			return nil, nil
 		}
-		time.Sleep(time.Duration(end))
-	} else {
-		time.Sleep(time.Duration(ns))
-	}
+		timer := time.NewTimer(time.Duration(ns))
+		cancelled := make(chan struct{})
+		var once sync.Once
+		go func() {
+			select {
+			case <-timer.C:
+				done.Complete(ffigo.Void{}, nil)
+			case <-ctx.Done():
+				done.Complete(ffigo.Void{}, ctx.Err())
+			case <-cancelled:
+			}
+		}()
+		return func() {
+			once.Do(func() {
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				close(cancelled)
+			})
+		}, nil
+	})
 }
 
 func (h *TimeHost) Since(t *Time) int64 {

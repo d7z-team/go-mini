@@ -38,9 +38,9 @@
   - JSON 默认只接受 `go-mini-bytecode`
 - 调试器保留前端/LSP 所需的 AST 蓝图，但不依赖 `Task.Node`
 - `go` 是 VM 单线程 fiber 原语
-  - 不保留 `spawn/await`、task handle、TaskGroup、取消/状态 API
-  - 上下文切换只允许通过 VM safe point，例如 `task.Yield()` / `task.Sleep(ms)`
-  - 禁止恢复宿主 goroutine 级 task scheduler
+  - VM 侧不暴露 yield API；上下文切换只允许通过内部 safe point 或异步 FFI completion
+  - `time.Sleep(ns)` 是异步 FFI，完成后通知 scheduler 恢复 fiber
+  - 禁止恢复宿主 goroutine 级并发调度器
 - `ffigen` 使用精简后的生成模型
   - 只保留 `-pkg` / `-out`
   - `ffigen:module` 是 VM 命名唯一来源
@@ -52,7 +52,7 @@
 
 - 非 debugger 模式下，不得新增基于 AST 节点的运行时主逻辑
 - 新能力必须先落在 lowering / bytecode / payload，再由 runtime 消费
-- 禁止引入新的 `task.Node.(*ast.X)` 常驻分支
+- 禁止在 runtime 主路径新增 AST 节点依赖
 
 ### 2.2 bytecode 是唯一装载工件
 
@@ -78,8 +78,8 @@
 ### 2.5 Go fiber 单线程约束
 
 - VM 内部永远按单线程执行模型设计，不得新增 host goroutine 执行 VM task
-- `go f()` 只能编译/执行为 fiber 上下文切换，不得恢复 task handle、await、状态轮询或取消 API
-- `task` 模块只暴露调度 safe point；新增并发能力必须先证明不会破坏单线程 VM 语义
+- `go f()` 只能编译/执行为 fiber 上下文切换
+- 新增并发能力必须先证明不会破坏单线程 VM 语义
 
 ### 2.6 类型系统强约束
 

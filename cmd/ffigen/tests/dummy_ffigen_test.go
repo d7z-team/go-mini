@@ -47,7 +47,11 @@ func (__p *MockOSProxy) Open(name string) (*File, error) {
 
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Open, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Open, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -96,7 +100,11 @@ func (__p *MockOSProxy) Name(f *File) string {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Name, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Name, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -120,7 +128,11 @@ func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Stat, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Stat, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -167,7 +179,11 @@ func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
 	}
 	wireBuf.WriteBytes(b)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Read, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Read, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -213,7 +229,11 @@ func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
 	}
 	wireBuf.WriteBytes(b)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Write, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Write, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -258,7 +278,11 @@ func (__p *MockOSProxy) Close(f *File) error {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Close, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Close, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -291,7 +315,11 @@ func (__p *MockOSProxy) Deep(n Nested) Nested {
 	wireBuf.WriteVarint(int64(n.Info.Size))
 	wireBuf.WriteVarint(int64(n.Level))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_MockOS_Deep, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Deep, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -308,7 +336,7 @@ func (__p *MockOSProxy) Deep(n Nested) Nested {
 	return v_0
 }
 
-func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Open":
@@ -503,12 +531,18 @@ type MockOS_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *MockOS_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return MockOSHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *MockOS_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MockOSHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *MockOS_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return MockOSHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *MockOS_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return MockOSHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
@@ -563,7 +597,11 @@ func (__p *ContextMockProxy) WithContext(ctx context.Context, key string) string
 
 	wireBuf.WriteString(string(key))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_ContextMock_WithContext, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_ContextMock_WithContext, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -578,7 +616,11 @@ func (__p *ContextMockProxy) WithoutContext(val string) string {
 
 	wireBuf.WriteString(string(val))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ContextMock_WithoutContext, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ContextMock_WithoutContext, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -587,7 +629,7 @@ func (__p *ContextMockProxy) WithoutContext(val string) string {
 	return v_0
 }
 
-func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "WithContext":
@@ -633,12 +675,18 @@ type ContextMock_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *ContextMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ContextMockHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *ContextMock_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ContextMockHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *ContextMock_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ContextMockHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *ContextMock_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ContextMockHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
@@ -682,7 +730,11 @@ func (__p *NativeMockProxy) GetStruct() NativeStruct {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetStruct, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_GetStruct, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -699,7 +751,11 @@ func (__p *NativeMockProxy) GetPtr() *NativeStruct {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_GetPtr, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_GetPtr, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -722,7 +778,11 @@ func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
 	wireBuf.WriteString(string(s.Msg))
 	wireBuf.WriteVarint(int64(s.Value))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetStruct, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_SetStruct, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -749,7 +809,11 @@ func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_NativeMock_SetPtr, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_SetPtr, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -761,7 +825,7 @@ func (__p *NativeMockProxy) SetPtr(s *NativeStruct) int64 {
 	return v_0
 }
 
-func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetStruct":
@@ -840,12 +904,18 @@ type NativeMock_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *NativeMock_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return NativeMockHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *NativeMock_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return NativeMockHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *NativeMock_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return NativeMockHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *NativeMock_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return NativeMockHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
@@ -879,7 +949,7 @@ const (
 	MethodID_Page_GetByPlaceholder = 1
 )
 
-func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetByPlaceholder":
@@ -935,12 +1005,18 @@ type Page_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Page_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return PageHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Page_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return PageHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Page_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return PageHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Page_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return PageHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Page_Bridge) DestroyHandle(handle uint32) error {

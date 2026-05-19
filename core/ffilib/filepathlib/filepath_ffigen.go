@@ -40,7 +40,11 @@ func (__p *FilepathProxy) Base(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Base, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Base, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -55,7 +59,11 @@ func (__p *FilepathProxy) Clean(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Clean, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Clean, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -70,7 +78,11 @@ func (__p *FilepathProxy) Dir(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Dir, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Dir, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -85,7 +97,11 @@ func (__p *FilepathProxy) Ext(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Ext, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Ext, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -100,7 +116,11 @@ func (__p *FilepathProxy) IsAbs(path string) bool {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_IsAbs, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_IsAbs, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -118,7 +138,11 @@ func (__p *FilepathProxy) Join(elem ...string) string {
 		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Join, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Join, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -134,7 +158,11 @@ func (__p *FilepathProxy) Match(pattern string, name string) (bool, error) {
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(name))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Match, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Match, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -168,7 +196,11 @@ func (__p *FilepathProxy) Rel(basepath string, targpath string) (string, error) 
 	wireBuf.WriteString(string(basepath))
 	wireBuf.WriteString(string(targpath))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Rel, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Rel, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -201,7 +233,11 @@ func (__p *FilepathProxy) Split(path string) (string, string) {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_Split, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -218,7 +254,11 @@ func (__p *FilepathProxy) ToSlash(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_ToSlash, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_ToSlash, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -233,7 +273,11 @@ func (__p *FilepathProxy) FromSlash(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_FromSlash, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_FromSlash, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -248,7 +292,11 @@ func (__p *FilepathProxy) VolumeName(path string) string {
 
 	wireBuf.WriteString(string(path))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Filepath_VolumeName, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_VolumeName, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -257,7 +305,7 @@ func (__p *FilepathProxy) VolumeName(path string) string {
 	return v_0
 }
 
-func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Base":
@@ -430,12 +478,18 @@ type Filepath_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Filepath_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FilepathHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Filepath_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FilepathHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Filepath_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return FilepathHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Filepath_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FilepathHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {

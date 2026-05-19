@@ -37,7 +37,11 @@ func (__p *SortProxy) Ints(x []int64) []int64 {
 		wireBuf.WriteVarint(int64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Ints, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Ints, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -62,7 +66,11 @@ func (__p *SortProxy) Float64s(x []float64) []float64 {
 		wireBuf.WriteFloat64(float64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64s, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Float64s, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -84,7 +92,11 @@ func (__p *SortProxy) Strings(x []string) []string {
 		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Strings, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Strings, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -106,7 +118,11 @@ func (__p *SortProxy) IntsAreSorted(x []int64) bool {
 		wireBuf.WriteVarint(int64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_IntsAreSorted, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_IntsAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -124,7 +140,11 @@ func (__p *SortProxy) Float64sAreSorted(x []float64) bool {
 		wireBuf.WriteFloat64(float64(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_Float64sAreSorted, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Float64sAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -142,7 +162,11 @@ func (__p *SortProxy) StringsAreSorted(x []string) bool {
 		wireBuf.WriteString(string(item))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Sort_StringsAreSorted, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_StringsAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -151,7 +175,7 @@ func (__p *SortProxy) StringsAreSorted(x []string) bool {
 	return v_0
 }
 
-func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Ints":
@@ -276,12 +300,18 @@ type Sort_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Sort_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return SortHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Sort_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return SortHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Sort_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return SortHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Sort_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return SortHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Sort_Bridge) DestroyHandle(handle uint32) error {

@@ -187,8 +187,8 @@ func TestMultiAssignment(t *testing.T) {
 
 type mockTupleBridge struct{}
 
-func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b *mockTupleBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	a := reader.ReadVarint()
 	bVal := reader.ReadVarint()
 
@@ -201,7 +201,7 @@ func (b *mockTupleBridge) Call(ctx context.Context, methodID uint32, args []byte
 	return buf.Bytes(), nil
 }
 
-func (b *mockTupleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *mockTupleBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

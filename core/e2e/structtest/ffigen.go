@@ -20,7 +20,7 @@ const (
 	MethodID_Calculator_GetBase  = 3
 )
 
-func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Add":
@@ -112,12 +112,18 @@ type Calculator_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Calculator_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return CalculatorHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Calculator_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return CalculatorHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Calculator_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return CalculatorHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Calculator_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return CalculatorHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
@@ -151,7 +157,7 @@ const (
 	MethodID_Table_GetString = 2
 )
 
-func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "SetString":
@@ -232,12 +238,18 @@ type Table_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Table_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return TableHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Table_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TableHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Table_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return TableHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Table_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return TableHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Table_Bridge) DestroyHandle(handle uint32) error {
@@ -270,7 +282,7 @@ const (
 	MethodID_Factory_NewTable = 2
 )
 
-func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -327,12 +339,18 @@ type Factory_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Factory_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FactoryHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Factory_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FactoryHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Factory_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return FactoryHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Factory_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FactoryHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Factory_Bridge) DestroyHandle(handle uint32) error {

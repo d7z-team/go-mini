@@ -153,13 +153,13 @@ func TestFFIInterfaceReturn(t *testing.T) {
 
 type mockLoggerBridge struct{}
 
-func (m *mockLoggerBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
+func (m *mockLoggerBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil // Not used in this test
 }
 
-func (m *mockLoggerBridge) Invoke(ctx context.Context, methodName string, args []byte) ([]byte, error) {
-	if methodName == "Log" {
-		reader := ffigo.NewReader(args)
+func (m *mockLoggerBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req.Method == "Log" {
+		reader := ffigo.NewReader(req.Args)
 		// 动态接口调用第一个参数是 receiver (Any)
 		_ = reader.ReadAny() // Skip receiver handle
 
@@ -171,7 +171,7 @@ func (m *mockLoggerBridge) Invoke(ctx context.Context, methodName string, args [
 		buf.WriteAny("Logged: " + msg)
 		return buf.Bytes(), nil
 	}
-	return nil, fmt.Errorf("unknown method: %s", methodName)
+	return nil, fmt.Errorf("unknown method: %s", req.Method)
 }
 
 func (m *mockLoggerBridge) DestroyHandle(handle uint32) error {

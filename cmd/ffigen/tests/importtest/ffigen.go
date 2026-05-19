@@ -30,9 +30,13 @@ func (p *ImportTesterProxy) Sleep(ctx context.Context, d time.Duration) error {
 	// Casting time.Duration to Int64
 	buf.WriteVarint(int64(d))
 
-	retData, err := p.bridge.Call(ctx, MethodID_ImportTester_Sleep, buf.Bytes())
-	_ = retData
+	ret, err := p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_ImportTester_Sleep, Args: append([]byte(nil), buf.Bytes()...)})
+	_ = ret
 	_ = err
+	if err != nil {
+		return err
+	}
+	retData, err := ffigo.SyncBytes(ret)
 	if err != nil {
 		return err
 	}
@@ -55,7 +59,7 @@ func (p *ImportTesterProxy) Sleep(ctx context.Context, d time.Duration) error {
 	return err_0
 }
 
-func ImportTesterHostRouter(ctx context.Context, impl ImportTester, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) ([]byte, error) {
+func ImportTesterHostRouter(ctx context.Context, impl ImportTester, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sleep":
@@ -100,12 +104,12 @@ type ImportTester_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *ImportTester_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *ImportTester_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *ImportTester_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *ImportTester_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *ImportTester_Bridge) DestroyHandle(handle uint32) error {

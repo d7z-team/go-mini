@@ -15,11 +15,11 @@ type securitySimpleBridge struct {
 	Callback func(methodID uint32, args []byte) ([]byte, error)
 }
 
-func (b *securitySimpleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return b.Callback(methodID, args)
+func (b *securitySimpleBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Callback(req.MethodID, req.Args)
 }
 
-func (b *securitySimpleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *securitySimpleBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

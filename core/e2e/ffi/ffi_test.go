@@ -15,18 +15,18 @@ type MockFmtBridge struct {
 	LastOutput string
 }
 
-func (b *MockFmtBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	if methodID == 1 { // Println
-		reader := ffigo.NewReader(args)
+func (b *MockFmtBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req.MethodID == 1 { // Println
+		reader := ffigo.NewReader(req.Args)
 		msg := reader.ReadString()
 		b.LastOutput = msg
 		fmt.Printf("[FFI fmt.Println] %s\n", msg) //nolint:forbidigo // allowed for testing
 		return nil, nil
 	}
-	return nil, fmt.Errorf("unknown method %d", methodID)
+	return nil, fmt.Errorf("unknown method %d", req.MethodID)
 }
 
-func (b *MockFmtBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *MockFmtBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

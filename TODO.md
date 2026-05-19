@@ -1,21 +1,21 @@
 # TODO: Go-Mini 演进路径
 
-更新时间: 2026-04-11
+更新时间: 2026-05-19
 
 ## 当前 go fiber 模型状态
 
-- [x] 已移除旧 task 多线程实现，不保留兼容 API。
 - [x] `go f()` 已改为 VM 内部 fiber 调度原语，不返回 handle/result。
 - [x] VM 执行保持单线程；上下文切换只发生在 VM safe point。
-- [x] `task` 模块只保留 `task.Sleep(ms)` 与 `task.Yield()`。
+- [x] VM 侧不暴露 yield API。
+- [x] `time.Sleep(ns)` 改为异步 FFI，完成后通知 VM scheduler 恢复 fiber。
 - [x] root `main` 结束时未完成 child fiber 一律停止，不自动等待后台 fiber。
 - [x] child fiber panic 默认失败整个 VM，除非在 child 内部 recover。
-- [x] 闭包 capture 回到普通共享引用语义，不再做 task-boundary snapshot。
+- [x] 闭包 capture 使用普通共享引用语义。
 
 ### Go fiber 后续设计
 
 - [ ] **补齐 debugger fiber 标识**: 当前 debugger 能命中 child fiber 断点；后续仍需决定是否在调试事件里显式暴露 fiber/session 标识，以及多 fiber 单步时的事件顺序与宿主交互策略。
-- [ ] **评估 channel/select 语义**: 若后续需要更强协作模型，应在单线程 scheduler 上设计 channel/select，而不是恢复宿主 goroutine task。
+- [ ] **评估 channel/select 语义**: 若后续需要更强协作模型，应在单线程 scheduler 上设计 channel/select。
 
 ## Phase 1: Runtime 全量脱 AST (已完成)
 **目标**: 编译/执行形态分离，执行主路径不再依赖 `ast.Node` 引用。
@@ -92,7 +92,7 @@
 - [x] **为局部变量分配固定 slot**。
 - [x] **为闭包捕获分配 upvalue 索引**。
 - [x] **让 lowering 输出带 slot 信息的任务数据**，而不是只输出变量名。
-- [x] **收敛局部预声明为精确作用域分析**: 已移除函数级 `predeclareFunctionLocals` 依赖，改为按 block/synthetic inner block 精确建模。
+- [x] **收敛局部预声明为精确作用域分析**: 当前按 block/synthetic inner block 精确建模。
 - [x] **补充符号解析异常场景测试**: 已覆盖 shadowing、分支内声明、for/range/catch 局部变量、typed-nil AST 边界。
 
 ### M. 运行时栈帧重构

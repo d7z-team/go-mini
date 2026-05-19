@@ -34,7 +34,11 @@ func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_GetSameObject, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_GetSameObject, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -75,7 +79,11 @@ func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_IsSame, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_IsSame, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -94,7 +102,11 @@ func (__p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
 		wireBuf.WriteString(string(v))
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoMap, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_EchoMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -118,7 +130,11 @@ func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	wireBuf.WriteString(string(e.BaseField))
 	wireBuf.WriteVarint(int64(e.ExtraField))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_AdvancedFFI_EchoEmbedded, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_EchoEmbedded, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -131,7 +147,7 @@ func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
 	return v_0
 }
 
-func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetSameObject":
@@ -233,12 +249,18 @@ type AdvancedFFI_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *AdvancedFFI_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *AdvancedFFI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *AdvancedFFI_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *AdvancedFFI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {

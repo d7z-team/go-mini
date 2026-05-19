@@ -454,9 +454,6 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if val, ok := mod.Load(property); ok {
 			return val, nil
 		}
-		if mod.Name == "task" && isTaskModuleIntrinsic(property) {
-			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: property}}, nil
-		}
 		// Fallback to FFI routes
 		routeKey := fmt.Sprintf("%s.%s", mod.Name, property)
 		if route, ok := e.routes[routeKey]; ok {
@@ -549,18 +546,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			return nil
 		}
 	}
-	if receiver != nil && receiver.VType == TypeModule && name != "" {
-		if modRef, ok := receiver.Ref.(*VMModule); ok && modRef.Name == "task" {
-			actualArgs := args
-			if len(args) > 0 && args[0] == receiver {
-				actualArgs = args[1:]
-			}
-			if handled, err := e.invokeTaskModuleIntrinsic(session, name, actualArgs); handled {
-				return err
-			}
-		}
-	}
-
 	// 1. Intrinsics
 	if mod == nil && receiver == nil && callable == nil {
 		switch name {
@@ -862,12 +847,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		}
 	}
 
-	if mod != nil && mod.Name == "task" {
-		if handled, err := e.invokeTaskModuleIntrinsic(session, name, args); handled {
-			return err
-		}
-	}
-
 	// 2. Closure / Method Value / FFI Route
 	if callable != nil {
 		c := e.unwrapValue(callable)
@@ -876,9 +855,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		}
 		if c != nil {
 			if route, ok := c.Ref.(FFIRoute); ok {
-				if handled, err := e.invokeTaskModuleRoute(session, route.Name, args); handled {
-					return err
-				}
 				return e.evalFFIAndPush(session, route, args, argLHS)
 			}
 		}
@@ -888,17 +864,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case *VMClosure:
 				return e.setupFuncCall(session, "closure", nil, args, ref)
 			case *VMMethodValue:
-				if ref.Receiver != nil && ref.Receiver.VType == TypeModule {
-					if modRef, ok := ref.Receiver.Ref.(*VMModule); ok && modRef.Name == "task" {
-						actualArgs := args
-						if len(args) > 0 && args[0] == ref.Receiver {
-							actualArgs = args[1:]
-						}
-						if handled, err := e.invokeTaskModuleIntrinsic(session, ref.Method, actualArgs); handled {
-							return err
-						}
-					}
-				}
 				// Resolve as FFI method
 				if route, ok := e.routes[ref.Method]; ok {
 					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
@@ -923,9 +888,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		routeKey = fmt.Sprintf("%s.%s", mod.Name, name)
 	}
 	if route, ok := e.routes[routeKey]; ok {
-		if handled, err := e.invokeTaskModuleRoute(session, route.Name, args); handled {
-			return err
-		}
 		return e.evalFFIAndPush(session, route, args, argLHS)
 	}
 
@@ -993,77 +955,6 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 	return &VMError{Message: fmt.Sprintf("function or method %s not found", name), IsPanic: true}
 }
 
-func (e *Executor) invokeTaskModuleIntrinsic(session *StackContext, name string, args []*Var) (bool, error) {
-	switch name {
-	case "Sleep":
-		session.ValueStack.Push(nil)
-		if err := e.taskSleepCall(args); err != nil {
-			return true, err
-		}
-		return true, nil
-	case "Yield":
-		session.ValueStack.Push(nil)
-		return true, e.taskYieldCall()
-	default:
-		return false, nil
-	}
-}
-
-func (e *Executor) invokeTaskModuleRoute(session *StackContext, routeName string, args []*Var) (bool, error) {
-	switch routeName {
-	case "task.Sleep":
-		return e.invokeTaskModuleIntrinsic(session, "Sleep", args)
-	case "task.Yield":
-		return e.invokeTaskModuleIntrinsic(session, "Yield", args)
-	default:
-		return false, nil
-	}
-}
-
-func isTaskModuleIntrinsic(name string) bool {
-	switch name {
-	case "Sleep", "Yield":
-		return true
-	default:
-		return false
-	}
-}
-
-func (e *Executor) taskSleepCall(args []*Var) error {
-	if len(args) != 1 || args[0] == nil {
-		return &VMError{Message: "task.Sleep requires exactly 1 millisecond argument", IsPanic: true}
-	}
-	arg := e.unwrapValue(args[0])
-	if arg == nil {
-		return &VMError{Message: "task.Sleep requires a non-nil millisecond argument", IsPanic: true}
-	}
-	ms, err := arg.ToInt()
-	if err != nil {
-		return &VMError{Message: err.Error(), IsPanic: true}
-	}
-	if ms < 0 {
-		ms = 0
-	}
-	if e.scheduler == nil || e.scheduler.Current() == nil {
-		time.Sleep(time.Duration(ms) * time.Millisecond)
-		return nil
-	}
-	if err := e.scheduler.SleepCurrent(time.Duration(ms) * time.Millisecond); err != nil {
-		return &VMError{Message: err.Error(), IsPanic: true}
-	}
-	return errFiberSleep
-}
-
-func (e *Executor) taskYieldCall() error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
-		return nil
-	}
-	if err := e.scheduler.YieldCurrent(); err != nil {
-		return &VMError{Message: err.Error(), IsPanic: true}
-	}
-	return errFiberYield
-}
-
 func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
 	if e.scheduler == nil {
 		return &VMError{Message: "fiber scheduler is not initialized", IsPanic: true}
@@ -1092,7 +983,7 @@ func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod 
 			Args:     append([]*Var(nil), args...),
 		},
 	})
-	if _, err := e.scheduler.Go(child); err != nil {
+	if _, err := e.scheduler.Go(child, e); err != nil {
 		e.CleanupSession(child)
 		return &VMError{Message: err.Error(), IsPanic: true}
 	}

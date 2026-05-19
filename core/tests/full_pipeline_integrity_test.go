@@ -44,7 +44,7 @@ package main
 
 import "helper"
 import "encoding/json"
-import "task"
+import "time"
 
 var trace = boot()
 var payload any
@@ -99,7 +99,7 @@ func main() {
 		defer mark("child.defer")
 		childResult = helper.Next() + base
 	}(5)
-	task.Yield()
+	time.Sleep(1)
 	mark("go")
 
 	raw, err := json.Marshal(map[string]any{

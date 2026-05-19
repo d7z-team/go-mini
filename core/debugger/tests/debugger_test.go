@@ -287,23 +287,23 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	}
 }
 
-func TestDebugger_TaskBreakpointHitsChildTask(t *testing.T) {
+func TestDebugger_FiberBreakpointHitsChildFiber(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
 
 	sourceProgram := `
 	package main
-	import "task"
+	import "time"
 
 	func worker() Int64 {
-		task.Sleep(20) // Line 6
-		x := 1         // Line 7
+		time.Sleep(20000000) // Line 6
+		x := 1               // Line 7
 		return x
 	}
 
 	func main() {
 		go worker()
-		task.Sleep(50)
+		time.Sleep(50000000)
 	}
 	`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
@@ -326,11 +326,11 @@ func TestDebugger_TaskBreakpointHitsChildTask(t *testing.T) {
 	select {
 	case event := <-dbg.EventChan:
 		if event.Loc.L != 6 {
-			t.Fatalf("expected child task breakpoint at line 6, got %d", event.Loc.L)
+			t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
 		}
 		dbg.CommandChan <- debugger.CmdContinue
 	case <-ctx.Done():
-		t.Fatal("timeout waiting for child task breakpoint")
+		t.Fatal("timeout waiting for child fiber breakpoint")
 	}
 
 	if err := <-done; err != nil {
@@ -338,24 +338,24 @@ func TestDebugger_TaskBreakpointHitsChildTask(t *testing.T) {
 	}
 }
 
-func TestDebugger_TaskBreakpointHitsMultipleTasks(t *testing.T) {
+func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
 
 	sourceProgram := `
 	package main
-	import "task"
+	import "time"
 
 	func worker() Int64 {
-		task.Sleep(20) // Line 6
-		x := 1         // Line 7
+		time.Sleep(20000000) // Line 6
+		x := 1               // Line 7
 		return x
 	}
 
 	func main() {
 		go worker()
 		go worker()
-		task.Sleep(50)
+		time.Sleep(50000000)
 	}
 	`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
@@ -380,7 +380,7 @@ func TestDebugger_TaskBreakpointHitsMultipleTasks(t *testing.T) {
 		select {
 		case event := <-dbg.EventChan:
 			if event.Loc.L != 6 {
-				t.Fatalf("expected child task breakpoint at line 6, got %d", event.Loc.L)
+				t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
 			}
 			hits++
 			dbg.CommandChan <- debugger.CmdContinue
@@ -389,11 +389,11 @@ func TestDebugger_TaskBreakpointHitsMultipleTasks(t *testing.T) {
 				t.Fatal(err)
 			}
 			if hits < 2 {
-				t.Fatalf("expected at least 2 child task breakpoint hits, got %d", hits)
+				t.Fatalf("expected at least 2 child fiber breakpoint hits, got %d", hits)
 			}
 			return
 		case <-ctx.Done():
-			t.Fatal("timeout waiting for multi-task debugger completion")
+			t.Fatal("timeout waiting for multi-fiber debugger completion")
 		}
 	}
 }

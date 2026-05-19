@@ -35,7 +35,10 @@ func (__p *FmtProxy) Print(ctx context.Context, args ...any) {
 		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Print, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Print, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
+		err = syncErr
+	}
 	_ = err
 	return
 }
@@ -49,7 +52,10 @@ func (__p *FmtProxy) Println(ctx context.Context, args ...any) {
 		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Println, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Println, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
+		err = syncErr
+	}
 	_ = err
 	return
 }
@@ -64,7 +70,10 @@ func (__p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
 		wireBuf.WriteAny(item)
 	}
 
-	_, err := __p.bridge.Call(ctx, MethodID_Fmt_Printf, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Printf, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
+		err = syncErr
+	}
 	_ = err
 	return
 }
@@ -79,7 +88,11 @@ func (__p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) st
 		wireBuf.WriteAny(item)
 	}
 
-	retData, err := __p.bridge.Call(ctx, MethodID_Fmt_Sprintf, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Sprintf, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -88,7 +101,7 @@ func (__p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) st
 	return v_0
 }
 
-func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Print":
@@ -253,12 +266,18 @@ type Fmt_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Fmt_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FmtHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Fmt_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FmtHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Fmt_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return FmtHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Fmt_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FmtHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {

@@ -32,7 +32,10 @@ func (__p *LoggerProxy) Log(ctx context.Context, msg string, level string, code 
 	wireBuf.WriteString(string(level))
 	wireBuf.WriteVarint(int64(code))
 
-	_, err := __p.bridge.Call(ctx, MethodID_Logger_Log, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Logger_Log, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
+		err = syncErr
+	}
 	_ = err
 	return
 }
@@ -45,12 +48,15 @@ func (__p *LoggerProxy) Internal(arg0 string, arg1 string, arg2 int64) {
 	wireBuf.WriteString(string(arg1))
 	wireBuf.WriteVarint(int64(arg2))
 
-	_, err := __p.bridge.Call(context.Background(), MethodID_Logger_Internal, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Logger_Internal, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
+		err = syncErr
+	}
 	_ = err
 	return
 }
 
-func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Log":
@@ -108,12 +114,18 @@ type Logger_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Logger_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return LoggerHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Logger_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return LoggerHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Logger_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return LoggerHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Logger_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return LoggerHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Logger_Bridge) DestroyHandle(handle uint32) error {

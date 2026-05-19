@@ -12,8 +12,8 @@ import (
 
 type arrayCopyBackBridge struct{}
 
-func (arrayCopyBackBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (arrayCopyBackBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	count := int(reader.ReadUvarint())
 	values := make([]int64, count)
 	for i := range values {
@@ -41,8 +41,8 @@ func (arrayCopyBackBridge) Call(_ context.Context, _ uint32, args []byte) ([]byt
 	return out, nil
 }
 
-func (b arrayCopyBackBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return b.Call(ctx, 0, args)
+func (b arrayCopyBackBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
 }
 
 func (arrayCopyBackBridge) DestroyHandle(uint32) error { return nil }

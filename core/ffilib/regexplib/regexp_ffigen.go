@@ -41,7 +41,11 @@ func (__p *RegexpProxy) Match(pattern string, b []byte) (bool, error) {
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteBytes(b)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_Match, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_Match, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,7 +79,11 @@ func (__p *RegexpProxy) MatchString(pattern string, s string) (bool, error) {
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_MatchString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_MatchString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -108,7 +116,11 @@ func (__p *RegexpProxy) QuoteMeta(s string) string {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_QuoteMeta, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_QuoteMeta, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -124,7 +136,11 @@ func (__p *RegexpProxy) FindString(pattern string, s string) string {
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -141,7 +157,11 @@ func (__p *RegexpProxy) FindAllString(pattern string, s string, n int) ([]string
 	wireBuf.WriteString(string(s))
 	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindAllString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindAllString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -179,7 +199,11 @@ func (__p *RegexpProxy) FindStringIndex(pattern string, s string) ([]int, error)
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindStringIndex, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -220,7 +244,11 @@ func (__p *RegexpProxy) FindStringSubmatchIndex(pattern string, s string) ([]int
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindStringSubmatchIndex, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringSubmatchIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -261,7 +289,11 @@ func (__p *RegexpProxy) FindStringSubmatch(pattern string, s string) []string {
 	wireBuf.WriteString(string(pattern))
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindStringSubmatch, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringSubmatch, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -282,7 +314,11 @@ func (__p *RegexpProxy) FindAllStringSubmatch(pattern string, s string, n int) (
 	wireBuf.WriteString(string(s))
 	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_FindAllStringSubmatch, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindAllStringSubmatch, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -325,7 +361,11 @@ func (__p *RegexpProxy) ReplaceAllString(pattern string, src string, repl string
 	wireBuf.WriteString(string(src))
 	wireBuf.WriteString(string(repl))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_ReplaceAllString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_ReplaceAllString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -360,7 +400,11 @@ func (__p *RegexpProxy) ReplaceAllLiteralString(pattern string, src string, repl
 	wireBuf.WriteString(string(src))
 	wireBuf.WriteString(string(repl))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_ReplaceAllLiteralString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_ReplaceAllLiteralString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -395,7 +439,11 @@ func (__p *RegexpProxy) Split(pattern string, s string, n int) ([]string, error)
 	wireBuf.WriteString(string(s))
 	wireBuf.WriteVarint(int64(n))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Regexp_Split, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -426,7 +474,7 @@ func (__p *RegexpProxy) Split(pattern string, s string, n int) ([]string, error)
 	return v_0, err_1
 }
 
-func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Match":
@@ -715,12 +763,18 @@ type Regexp_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Regexp_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return RegexpHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Regexp_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return RegexpHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Regexp_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return RegexpHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Regexp_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return RegexpHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Regexp_Bridge) DestroyHandle(handle uint32) error {

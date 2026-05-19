@@ -29,7 +29,11 @@ func (__p *ErrorsProxy) New(text string) error {
 
 	wireBuf.WriteString(string(text))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Errors_New, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Errors_New, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -54,7 +58,7 @@ func (__p *ErrorsProxy) New(text string) error {
 	return err_0
 }
 
-func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -98,12 +102,18 @@ type Errors_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Errors_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ErrorsHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Errors_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ErrorsHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Errors_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ErrorsHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Errors_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ErrorsHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Errors_Bridge) DestroyHandle(handle uint32) error {

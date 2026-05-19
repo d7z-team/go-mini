@@ -12,8 +12,8 @@ import (
 
 type bytesCopyBackBridge struct{}
 
-func (bytesCopyBackBridge) Call(_ context.Context, _ uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (bytesCopyBackBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	input := reader.ReadBytes()
 	mutated := append([]byte(strings.ToUpper(string(input))), '!')
 
@@ -26,8 +26,8 @@ func (bytesCopyBackBridge) Call(_ context.Context, _ uint32, args []byte) ([]byt
 	return out, nil
 }
 
-func (b bytesCopyBackBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return b.Call(ctx, 0, args)
+func (b bytesCopyBackBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
 }
 
 func (bytesCopyBackBridge) DestroyHandle(uint32) error { return nil }

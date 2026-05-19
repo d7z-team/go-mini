@@ -47,22 +47,22 @@ GOCACHE=/tmp/go-build-cache go test ./core/e2e/...
 GOCACHE=/tmp/go-build-cache go test ./...
 ```
 
-## Task Concurrency
+## Fiber Concurrency
 
 Go-Mini uses a single-threaded cooperative fiber model:
 
 - `go f()` schedules a VM fiber; it does not return a handle or result
 - the VM never runs two fibers in parallel; switching only happens at VM safe points
-- `task.Yield()` gives another runnable fiber a chance to run
-- `task.Sleep(ms)` parks the current fiber and lets the scheduler run other fibers
+- VM code does not expose a public yield API
+- `time.Sleep(ns)` is an async FFI call; completion notifies the scheduler and resumes the parked fiber
+- synchronous FFI calls still block the VM; only async FFI returns create suspend/resume points
 - captured closures share normal VM state with the parent because there is no parallel execution
 
 Lifecycle rules:
 
 - root `main` returning stops all unfinished child fibers immediately
-- unfinished background fibers are not awaited automatically
+- unfinished background fibers are not waited for automatically
 - a child fiber panic fails the whole VM execution unless recovered inside that fiber
-- removed APIs are intentionally unavailable: `spawn`, `await`, task handles, task groups, task status, and task cancellation
 
 ## Docs
 

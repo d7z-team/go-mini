@@ -33,7 +33,11 @@ func (__p *BytesRefAPIProxy) Mutate(buf *ffigo.BytesRef) int64 {
 		wireBuf.WriteBytes(buf.Value)
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_BytesRefAPI_Mutate, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_BytesRefAPI_Mutate, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -53,7 +57,7 @@ func (__p *BytesRefAPIProxy) Mutate(buf *ffigo.BytesRef) int64 {
 	return v_0
 }
 
-func BytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func BytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Mutate":
@@ -95,12 +99,18 @@ type BytesRefAPI_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *BytesRefAPI_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *BytesRefAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *BytesRefAPI_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *BytesRefAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *BytesRefAPI_Bridge) DestroyHandle(handle uint32) error {

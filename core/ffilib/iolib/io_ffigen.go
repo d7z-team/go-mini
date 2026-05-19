@@ -50,7 +50,11 @@ func (__p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 
 	wireBuf.WriteAny(r)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_ReadAll, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_ReadAll, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -84,7 +88,11 @@ func (__p *IOProxy) Copy(ctx context.Context, dst any, src any) (int64, error) {
 	wireBuf.WriteAny(dst)
 	wireBuf.WriteAny(src)
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_Copy, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_Copy, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -121,7 +129,11 @@ func (__p *IOProxy) WriteString(ctx context.Context, w any, s string) (int64, er
 	wireBuf.WriteAny(w)
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(ctx, MethodID_IO_WriteString, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_WriteString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -151,7 +163,7 @@ func (__p *IOProxy) WriteString(ctx context.Context, w any, s string) (int64, er
 	return v_0, err_1
 }
 
-func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "ReadAll":
@@ -320,12 +332,18 @@ type IO_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *IO_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return IOHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *IO_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return IOHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *IO_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return IOHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *IO_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return IOHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *IO_Bridge) DestroyHandle(handle uint32) error {
@@ -367,7 +385,7 @@ const (
 	MethodID_File_WriteNative = 11
 )
 
-func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Write":
@@ -716,12 +734,18 @@ type File_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *File_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return FileHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *File_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FileHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *File_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return FileHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *File_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return FileHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *File_Bridge) DestroyHandle(handle uint32) error {

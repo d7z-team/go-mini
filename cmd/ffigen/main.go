@@ -98,6 +98,9 @@ type displayTypeResolver struct {
 const (
 	bytesRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.BytesRef"
 	arrayRefQualifiedType = "gopkg.d7z.net/go-mini/core/ffigo.ArrayRef"
+	asyncQualifiedType    = "gopkg.d7z.net/go-mini/core/ffigo.Async"
+	voidQualifiedType     = "gopkg.d7z.net/go-mini/core/ffigo.Void"
+	tuple2QualifiedType   = "gopkg.d7z.net/go-mini/core/ffigo.Tuple2"
 )
 
 func main() {
@@ -1045,6 +1048,12 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 	if typeName == "" {
 		return "Any"
 	}
+	if inner, ok := asyncElemTypeString(typeName); ok {
+		return r.NormalizeTypeString(inner)
+	}
+	if items, ok := tuple2ElemTypeStrings(typeName); ok {
+		return "tuple(" + r.NormalizeTypeString(items[0]) + ", " + r.NormalizeTypeString(items[1]) + ")"
+	}
 	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
 		return "Ptr<" + r.NormalizeTypeString(typeName[4:len(typeName)-1]) + ">"
 	}
@@ -1078,6 +1087,8 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 		return "TypeBytes"
 	case "error":
 		return "Error"
+	case voidQualifiedType, "ffigo.Void", "Void":
+		return "Void"
 	case "any", "interface{}":
 		return "Any"
 	case "context.Context", "Context":
@@ -1089,6 +1100,12 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	if isBytesRefExpr(expr) {
 		return "TypeBytes"
+	}
+	if inner, ok := asyncElemExpr(expr); ok {
+		return r.VMType(inner)
+	}
+	if items, ok := tuple2ElemExprs(expr); ok {
+		return "tuple(" + r.VMType(items[0]) + ", " + r.VMType(items[1]) + ")"
 	}
 	if elemExpr, ok := arrayRefElemExpr(expr); ok {
 		return fmt.Sprintf("Array<%s>", r.VMType(elemExpr))
@@ -1229,6 +1246,16 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			actualRet = results[0]
 		}
 		return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
+	}
+	asyncReturn := func(funcType *ast.FuncType) (ast.Expr, string, bool) {
+		if funcType == nil || funcType.Results == nil || len(funcType.Results.List) != 1 {
+			return nil, "", false
+		}
+		elem, ok := asyncElemExpr(funcType.Results.List[0].Type)
+		if !ok {
+			return nil, "", false
+		}
+		return elem, typeToString(elem), true
 	}
 	interfaceSchemaLiteral := buildInterfaceSchemaLiteral(iface, funcSpec)
 	interfaceSchemaVar := interfaceSchemaVarName(displayTypeName(name))
@@ -1423,6 +1450,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 				}
 				fmt.Fprintf(&sb, ") ")
 			}
+			if _, asyncElemType, ok := asyncReturn(funcType); ok {
+				fmt.Fprintf(&sb, "{\n\treturn ffigo.AsyncFunc[%s](func(ctx context.Context, done ffigo.Completion[%s]) (func(), error) {\n", toGoType(asyncElemType), toGoType(asyncElemType))
+				fmt.Fprintf(&sb, "\t\treturn nil, fmt.Errorf(\"ffigen: proxy async call %s.%s is not supported\")\n", name, methodName)
+				fmt.Fprintf(&sb, "\t})\n}\n\n")
+				continue
+			}
 
 			const wireBufName = "wireBuf"
 			fmt.Fprintf(&sb, "{\n\t%s := ffigo.GetBuffer()\n\tdefer ffigo.ReleaseBuffer(%s)\n\n", wireBufName, wireBufName)
@@ -1496,11 +1529,13 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 			}
 
 			needsRetBuf := funcType.Results != nil && len(funcType.Results.List) > 0
+			fmt.Fprintf(&sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: MethodID_%s_%s, Args: append([]byte(nil), %s.Bytes()...)})\n", contextVarName, name, methodName, wireBufName)
 			if needsRetBuf || hasErr || hasCopyBack {
-				fmt.Fprintf(&sb, "\n\tretData, err := __p.bridge.Call(%s, MethodID_%s_%s, %s.Bytes())\n", contextVarName, name, methodName, wireBufName)
+				fmt.Fprintf(&sb, "\tretData, syncErr := ffigo.SyncBytes(__ret)\n")
+				fmt.Fprintf(&sb, "\tif err == nil { err = syncErr }\n")
 				fmt.Fprintf(&sb, "\t_ = retData\n")
 			} else {
-				fmt.Fprintf(&sb, "\n\t_, err := __p.bridge.Call(%s, MethodID_%s_%s, %s.Bytes())\n", contextVarName, name, methodName, wireBufName)
+				fmt.Fprintf(&sb, "\tif syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil { err = syncErr }\n")
 			}
 			fmt.Fprintf(&sb, "\t_ = err\n")
 
@@ -1579,7 +1614,7 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	if isStruct {
 		implType = "*" + name
 	}
-	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {\n", name, implType)
+	fmt.Fprintf(&sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {\n", name, implType)
 	fmt.Fprintf(&sb, "\tif methodID == 0 && methodName != \"\" {\n")
 	fmt.Fprintf(&sb, "\t\tswitch methodName {\n")
 	for _, method := range iface.Methods.List {
@@ -1757,6 +1792,18 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 		} else {
 			fmt.Fprintf(&sb, "\t\t%s%s(%s)\n", callPrefix, methodName, strings.Join(callParams, ", "))
 		}
+		if elemExpr, elemType, ok := asyncReturn(funcType); ok {
+			goElemType := toGoType(elemType)
+			fmt.Fprintf(&sb, "\t\treturn ffigo.AsyncValue[%s](r0, func(resBuf *ffigo.Buffer, value %s) error {\n", goElemType, goElemType)
+			if tupleItems, tupleOK := tuple2ElemExprs(elemExpr); tupleOK {
+				emitWrite(&sb, "value.V0", vmType(tupleItems[0]), tupleItems[0], structs, "resBuf", true)
+				emitWrite(&sb, "value.V1", vmType(tupleItems[1]), tupleItems[1], structs, "resBuf", true)
+			} else if vmType(elemExpr) != "Void" {
+				emitWrite(&sb, "value", vmType(elemExpr), elemExpr, structs, "resBuf", true)
+			}
+			fmt.Fprintf(&sb, "\t\t\treturn nil\n\t\t}), nil\n")
+			continue
+		}
 		fmt.Fprintf(&sb, "\t\tresBuf := ffigo.GetBuffer()\n")
 		if hasCopyBack {
 			fmt.Fprintf(&sb, "\t\tresBuf.WriteUvarint(uint64(%d))\n", len(copyBackVars))
@@ -1811,10 +1858,12 @@ func generateCode(pkg string, spec *ast.TypeSpec, structs map[string]*ast.Struct
 	fmt.Fprintf(&sb, "}\n\n")
 
 	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, implType)
-	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {\n", name)
-	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, methodID, \"\", args)\n}\n\n", name)
-	fmt.Fprintf(&sb, "func (b *%s_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {\n", name)
-	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, method, args)\n}\n\n", name)
+	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", name)
+	fmt.Fprintf(&sb, "\tif req == nil { return nil, fmt.Errorf(\"ffigen: missing FFI request\") }\n")
+	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, req.MethodID, \"\", req.Args)\n}\n\n", name)
+	fmt.Fprintf(&sb, "func (b *%s_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", name)
+	fmt.Fprintf(&sb, "\tif req == nil { return nil, fmt.Errorf(\"ffigen: missing FFI request\") }\n")
+	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)\n}\n\n", name)
 	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
 	if schemas == nil {
@@ -2684,6 +2733,8 @@ func toGoType(pType string) string {
 		return "any"
 	case "TypeBytes":
 		return "[]byte"
+	case "Void":
+		return "ffigo.Void"
 	case "error":
 		return "error"
 	default:
@@ -2724,6 +2775,66 @@ func isArrayRefTypeString(typeName string) bool {
 		typeName = base
 	}
 	return typeName == arrayRefQualifiedType || typeName == "ffigo.ArrayRef" || typeName == "ArrayRef"
+}
+
+func isGenericTypeBase(typeName string, bases ...string) bool {
+	base, _, ok := splitGenericType(typeName)
+	if !ok {
+		return false
+	}
+	base = strings.TrimSpace(base)
+	for _, want := range bases {
+		if base == want {
+			return true
+		}
+	}
+	return false
+}
+
+func asyncElemTypeString(typeName string) (string, bool) {
+	if !isGenericTypeBase(typeName, asyncQualifiedType, "ffigo.Async", "Async") {
+		return "", false
+	}
+	_, args, _ := splitGenericType(typeName)
+	if len(args) != 1 {
+		return "", false
+	}
+	return args[0], true
+}
+
+func tuple2ElemTypeStrings(typeName string) ([]string, bool) {
+	if !isGenericTypeBase(typeName, tuple2QualifiedType, "ffigo.Tuple2", "Tuple2") {
+		return nil, false
+	}
+	_, args, _ := splitGenericType(typeName)
+	if len(args) != 2 {
+		return nil, false
+	}
+	return args, true
+}
+
+func asyncElemExpr(expr ast.Expr) (ast.Expr, bool) {
+	switch t := expr.(type) {
+	case *ast.IndexExpr:
+		if isGenericTypeBase(typeToString(t), asyncQualifiedType, "ffigo.Async", "Async") {
+			return t.Index, true
+		}
+	case *ast.IndexListExpr:
+		if isGenericTypeBase(typeToString(t), asyncQualifiedType, "ffigo.Async", "Async") && len(t.Indices) == 1 {
+			return t.Indices[0], true
+		}
+	}
+	return nil, false
+}
+
+func tuple2ElemExprs(expr ast.Expr) ([]ast.Expr, bool) {
+	switch t := expr.(type) {
+	case *ast.IndexListExpr:
+		if isGenericTypeBase(typeToString(t), tuple2QualifiedType, "ffigo.Tuple2", "Tuple2") && len(t.Indices) == 2 {
+			return t.Indices, true
+		}
+	}
+	return nil, false
 }
 
 func arrayRefElemExpr(expr ast.Expr) (ast.Expr, bool) {

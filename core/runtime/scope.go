@@ -128,7 +128,22 @@ type SharedState struct {
 	globals        map[string]*Var
 	moduleCache    map[string]*Var
 	loadingModules map[string]bool
+	moduleWaiters  map[string][]moduleWaiter
 	initState      sharedInitState
+}
+
+type ModuleLoadState uint8
+
+const (
+	ModuleLoadReady ModuleLoadState = iota
+	ModuleLoadStart
+	ModuleLoadWait
+)
+
+type moduleWaiter struct {
+	Fiber  *VMFiber
+	Frame  *FiberFrame
+	Resume Task
 }
 
 type SharedStateSnapshot struct {
@@ -369,6 +384,7 @@ func NewSharedState() *SharedState {
 		globals:        make(map[string]*Var),
 		moduleCache:    make(map[string]*Var),
 		loadingModules: make(map[string]bool),
+		moduleWaiters:  make(map[string][]moduleWaiter),
 	}
 	state.cond = sync.NewCond(&state.mu)
 	return state
@@ -948,12 +964,13 @@ type StackContext struct {
 	// 0: Running, 1: Aborted/Cancelled, 2: Paused
 	status int32
 
-	PanicVar     *Var         // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
-	PanicMessage string       // 存储发生 panic 时的文本消息
-	PanicTrace   []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
-	Executor     *Executor
-	Shared       *SharedState
-	ImportChain  map[string]bool
+	PanicVar       *Var         // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
+	PanicMessage   string       // 存储发生 panic 时的文本消息
+	PanicTrace     []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
+	Executor       *Executor
+	Shared         *SharedState
+	ImportChain    map[string]bool
+	OwnsSharedInit bool
 
 	// 运行时状态 (Session State)
 
@@ -1237,27 +1254,34 @@ func (s *SharedState) SetModuleLoading(path string, loading bool) {
 	}
 }
 
-func (s *SharedState) BeginModuleLoad(path string) (*Var, bool) {
+func (s *SharedState) BeginModuleLoad(path string) (*Var, ModuleLoadState) {
 	if s == nil {
-		return nil, false
+		return nil, ModuleLoadWait
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for {
-		if v, ok := s.moduleCache[path]; ok {
-			return v, false
-		}
-		if !s.loadingModules[path] {
-			s.loadingModules[path] = true
-			return nil, true
-		}
-		s.cond.Wait()
+	if v, ok := s.moduleCache[path]; ok {
+		return v, ModuleLoadReady
 	}
+	if !s.loadingModules[path] {
+		s.loadingModules[path] = true
+		return nil, ModuleLoadStart
+	}
+	return nil, ModuleLoadWait
 }
 
-func (s *SharedState) FinishModuleLoad(path string, v *Var) {
-	if s == nil {
+func (s *SharedState) AddModuleWaiter(path string, waiter moduleWaiter) {
+	if s == nil || waiter.Fiber == nil || waiter.Frame == nil {
 		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.moduleWaiters[path] = append(s.moduleWaiters[path], waiter)
+}
+
+func (s *SharedState) FinishModuleLoad(path string, v *Var) []moduleWaiter {
+	if s == nil {
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1265,9 +1289,12 @@ func (s *SharedState) FinishModuleLoad(path string, v *Var) {
 		s.moduleCache[path] = v
 	}
 	delete(s.loadingModules, path)
+	waiters := append([]moduleWaiter(nil), s.moduleWaiters[path]...)
+	delete(s.moduleWaiters, path)
 	if s.cond != nil {
 		s.cond.Broadcast()
 	}
+	return waiters
 }
 
 func (lc *LexicalContext) Load(name string) (*Var, error) {

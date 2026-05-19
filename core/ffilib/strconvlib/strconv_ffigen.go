@@ -39,7 +39,11 @@ func (__p *StrconvProxy) Atoi(s string) (int, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Atoi, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Atoi, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -75,7 +79,11 @@ func (__p *StrconvProxy) Itoa(i int) string {
 
 	wireBuf.WriteVarint(int64(i))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Itoa, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Itoa, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -90,7 +98,11 @@ func (__p *StrconvProxy) ParseBool(str string) (bool, error) {
 
 	wireBuf.WriteString(string(str))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseBool, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseBool, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -124,7 +136,11 @@ func (__p *StrconvProxy) ParseFloat(s string, bitSize int) (float64, error) {
 	wireBuf.WriteString(string(s))
 	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseFloat, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseFloat, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -159,7 +175,11 @@ func (__p *StrconvProxy) ParseInt(s string, base int, bitSize int) (int64, error
 	wireBuf.WriteVarint(int64(base))
 	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_ParseInt, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseInt, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -195,7 +215,11 @@ func (__p *StrconvProxy) FormatBool(b bool) string {
 
 	wireBuf.WriteBool(bool(b))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatBool, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatBool, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -213,7 +237,11 @@ func (__p *StrconvProxy) FormatFloat(f float64, format uint8, prec int, bitSize 
 	wireBuf.WriteVarint(int64(prec))
 	wireBuf.WriteVarint(int64(bitSize))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatFloat, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatFloat, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -229,7 +257,11 @@ func (__p *StrconvProxy) FormatInt(i int64, base int) string {
 	wireBuf.WriteVarint(int64(i))
 	wireBuf.WriteVarint(int64(base))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_FormatInt, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatInt, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -244,7 +276,11 @@ func (__p *StrconvProxy) Quote(s string) string {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Quote, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Quote, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -259,7 +295,11 @@ func (__p *StrconvProxy) Unquote(s string) (string, error) {
 
 	wireBuf.WriteString(string(s))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_Strconv_Unquote, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Unquote, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -286,7 +326,7 @@ func (__p *StrconvProxy) Unquote(s string) (string, error) {
 	return v_0, err_1
 }
 
-func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Atoi":
@@ -501,12 +541,18 @@ type Strconv_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Strconv_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return StrconvHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *Strconv_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return StrconvHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Strconv_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return StrconvHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *Strconv_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return StrconvHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {

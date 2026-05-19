@@ -30,7 +30,11 @@ func (__p *JSONProxy) Marshal(v any) ([]byte, error) {
 
 	wireBuf.WriteAny(v)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Marshal, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_JSON_Marshal, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -63,7 +67,11 @@ func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
 
 	wireBuf.WriteBytes(data)
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_JSON_Unmarshal, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_JSON_Unmarshal, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -90,7 +98,7 @@ func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
 	return v_0, err_1
 }
 
-func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Marshal":
@@ -176,12 +184,18 @@ type JSON_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *JSON_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return JSONHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *JSON_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return JSONHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *JSON_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return JSONHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *JSON_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return JSONHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *JSON_Bridge) DestroyHandle(handle uint32) error {

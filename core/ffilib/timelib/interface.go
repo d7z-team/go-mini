@@ -2,8 +2,9 @@
 package timelib
 
 import (
-	"context"
 	"time"
+
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 // Module 接口定义了时间模块的操作
@@ -34,7 +35,7 @@ const (
 type Module interface {
 	Now() *Time
 	Unix(sec, nsec int64) *Time
-	Sleep(ctx context.Context, ns int64)
+	Sleep(ns int64) ffigo.Async[ffigo.Void]
 	Since(t *Time) int64
 	Until(t *Time) int64
 	Parse(layout, value string) (*Time, error)

@@ -1,6 +1,6 @@
 package main
 
-import "task"
+import "time"
 
 func fail() {
 	panic("worker failed")
@@ -10,5 +10,5 @@ func main() {
 	go fail()
 
 	// go fiber 的 panic 会直接让整个 VM 执行失败。
-	task.Yield()
+	time.Sleep(1)
 }

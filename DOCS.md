@@ -198,21 +198,16 @@ println(*p)
 
 ## 4.1 Go Fiber 调度语义
 
-当前并发模型只有一类原语：`go f()`。它会创建 VM 内部 fiber，但整个 VM 始终单线程执行；所谓并发只是 `task.Yield()` / `task.Sleep(ms)` 等安全点上的上下文切换。
-
-已移除且不保留兼容的旧 API：
-
-- `spawn(...)` / `await(...)`
-- `task.Task` / `task.TaskGroup`
-- `task.Status` / `task.Err` / `task.Cancel`
-- `task.AddTask` / `task.WaitTasks` / `task.GroupErr` / `task.CancelGroup`
+当前并发模型只有一类 VM 原语：`go f()`。它会创建 VM 内部 fiber，但整个 VM 始终单线程执行；所谓并发只是内部 safe point 或异步 FFI completion 触发的上下文切换。
 
 ### 基本用法
+
+VM 侧不暴露公开 yield API。需要等待外部事件或让出执行时，应通过异步 FFI；标准库 `time.Sleep(ns)` 就是异步 FFI，返回值类型仍是 `Void`。
 
 ```go
 package main
 
-import "task"
+import "time"
 
 var result = 0
 
@@ -222,30 +217,30 @@ func work() {
 
 func main() {
     go work()
-    task.Yield()
+    time.Sleep(1)
     if result != 42 {
         panic("worker did not run")
     }
 }
 ```
 
-`task.Sleep(ms)` 会挂起当前 fiber，并让 scheduler 执行其它 runnable fiber：
+`time.Sleep(ns)` 会挂起当前 fiber；宿主 timer 完成后通过 FFI completion 通知 scheduler 恢复：
 
 ```go
 package main
 
-import "task"
+import "time"
 
 var done = false
 
 func worker() {
-    task.Sleep(10)
+    time.Sleep(10000000)
     done = true
 }
 
 func main() {
     go worker()
-    task.Sleep(20)
+    time.Sleep(20000000)
     if !done {
         panic("worker did not finish")
     }
@@ -255,8 +250,8 @@ func main() {
 失败语义：
 
 - child fiber 的 panic 会让整个 VM 执行失败，除非在 child fiber 内部 recover
-- `go f()` 没有返回值、没有 handle，也不能 await
-- 需要把结果带回父流程时，使用共享变量、显式 channel 类库（未来能力）或其它同步协议；当前内置只提供 Yield/Sleep 安全点
+- `go f()` 没有返回值，父流程需要通过共享状态或显式同步协议观察结果
+- 需要把结果带回父流程时，使用共享变量、显式 channel 类库（未来能力）或其它同步协议
 
 ### Root 生命周期
 
@@ -270,21 +265,21 @@ root `main` 是整个程序的根 fiber。
 
 ### 结果共享
 
-因为 VM 永远单线程，`go` fiber 不再做 task-boundary snapshot capture。闭包 capture、VM array/map、VM pointer 和 host handle 都按普通引用语义共享；不会出现并行数据竞争，但仍需要明确调度点，否则 child fiber 可能没有机会运行。
+因为 VM 永远单线程，闭包 capture、VM array/map、VM pointer 和 host handle 都按普通引用语义共享；不会出现并行数据竞争，但仍需要明确调度点，否则 child fiber 可能没有机会运行。
 
 示例：
 
 ```go
 package main
 
-import "task"
+import "time"
 
 func main() {
 	result := 0
 	go func(x Int64) {
 		result = x * 2
 	}(21)
-	task.Yield()
+	time.Sleep(1)
 	if result != 42 {
 		panic("unexpected result")
 	}
@@ -294,13 +289,13 @@ func main() {
 ### 当前限制
 
 - 没有 `chan/select` 语义
-- 没有 task handle、状态查询、取消和结果 await
-- 同步 FFI 调用会阻塞整个 VM；只有 VM 内建的 `task.Sleep` / `task.Yield` 是调度点
+- 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前 fiber 并在 completion 时恢复
+- `time.Sleep(ns)` 是标准库异步 FFI，不是 VM 内建调度 API
 
 ### 使用警告
 
 - `go f()` 不代表宿主 goroutine，也不提供并行执行。
-- 没有调度点时，root `main` 可能直接返回并停止尚未运行的 child fiber。
+- 没有异步 completion 或内部 safe point 时，root `main` 可能直接返回并停止尚未运行的 child fiber。
 - child fiber 的 panic 默认会失败整个 VM；需要隔离失败时在 child 内部使用 `try/recover`。
 
 ## 5. FFI 生成器

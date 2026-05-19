@@ -36,7 +36,11 @@ func (__p *OrderServiceProxy) New(id string) (*Order, error) {
 
 	wireBuf.WriteString(string(id))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_New, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_New, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -87,7 +91,11 @@ func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) erro
 	wireBuf.WriteString(string(name))
 	wireBuf.WriteFloat64(float64(price))
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_AddItem, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_AddItem, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -127,7 +135,11 @@ func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_GetTotal, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_GetTotal, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -169,7 +181,11 @@ func (__p *OrderServiceProxy) Close(o *Order) error {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_OrderService_Close, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_Close, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	if err != nil {
@@ -194,7 +210,7 @@ func (__p *OrderServiceProxy) Close(o *Order) error {
 	return err_0
 }
 
-func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
@@ -324,12 +340,18 @@ type OrderService_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *OrderService_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *OrderService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *OrderService_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *OrderService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {

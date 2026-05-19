@@ -33,10 +33,10 @@ type NumericSafetyBridge struct {
 	impl *NumericSafetyImpl
 }
 
-func (b *NumericSafetyBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b *NumericSafetyBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	// fmt.Printf("Bridge.Call methodID=%d\n", methodID)
-	switch methodID {
+	switch req.MethodID {
 	case 1: // AcceptInt8(int8)
 		var v int8
 		{
@@ -74,7 +74,7 @@ func (b *NumericSafetyBridge) Call(ctx context.Context, methodID uint32, args []
 	return nil, errors.New("unknown method")
 }
 
-func (b *NumericSafetyBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *NumericSafetyBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 func (b *NumericSafetyBridge) DestroyHandle(id uint32) error { return nil }

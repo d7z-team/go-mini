@@ -36,7 +36,11 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 		}
 	}
 
-	retData, err := __p.bridge.Call(context.Background(), MethodID_ArrayRefAPI_Rewrite, wireBuf.Bytes())
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ArrayRefAPI_Rewrite, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	retData, syncErr := ffigo.SyncBytes(__ret)
+	if err == nil {
+		err = syncErr
+	}
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
@@ -66,7 +70,7 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 	return v_0
 }
 
-func ArrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (retData []byte, bridgeErr error) {
+func ArrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Rewrite":
@@ -121,12 +125,18 @@ type ArrayRefAPI_Bridge struct {
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *ArrayRefAPI_Bridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, methodID, "", args)
+func (b *ArrayRefAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *ArrayRefAPI_Bridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, method, args)
+func (b *ArrayRefAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
 func (b *ArrayRefAPI_Bridge) DestroyHandle(handle uint32) error {

@@ -14,12 +14,12 @@ type rangeContinueHandleBridge struct {
 	downloaded []uint64
 }
 
-func (b *rangeContinueHandleBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b *rangeContinueHandleBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	switch methodID {
+	switch req.MethodID {
 	case 1:
 		buf.WriteUvarint(2)
 		buf.WriteUvarint(1)
@@ -55,12 +55,12 @@ func (b *rangeContinueHandleBridge) Call(ctx context.Context, methodID uint32, a
 		b.downloaded = append(b.downloaded, handle)
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unexpected method id %d", methodID)
+		return nil, fmt.Errorf("unexpected method id %d", req.MethodID)
 	}
 }
 
-func (b *rangeContinueHandleBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, fmt.Errorf("unexpected invoke: %s", method)
+func (b *rangeContinueHandleBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, fmt.Errorf("unexpected invoke: %s", req.Method)
 }
 
 func (b *rangeContinueHandleBridge) DestroyHandle(handle uint32) error {

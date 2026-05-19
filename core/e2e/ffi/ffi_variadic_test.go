@@ -52,8 +52,8 @@ type PrinterBridge struct {
 	impl PrinterAPI
 }
 
-func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b *PrinterBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	prefix := reader.ReadString()
 
 	// 根据标准化协议：[Count (Uvarint)] [Item1] [Item2]...
@@ -74,7 +74,7 @@ func (b *PrinterBridge) Call(ctx context.Context, methodID uint32, args []byte) 
 	return resBuf.Bytes(), nil
 }
 
-func (b *PrinterBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
+func (b *PrinterBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
 

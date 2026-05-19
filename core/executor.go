@@ -32,7 +32,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
-	"gopkg.d7z.net/go-mini/core/ffilib/tasklib"
 	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
 	"gopkg.d7z.net/go-mini/core/ffilib/unicode/utf8lib"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -384,7 +383,6 @@ func NewMiniExecutor() *MiniExecutor {
 	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
 	iolib.RegisterIOSafe(res, &iolib.IOHost{}, res.registry)
 	imagelib.RegisterImageAll(res, &imagelib.ImageHost{}, res.registry)
-	tasklib.RegisterTaskAll(res)
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}

@@ -57,6 +57,11 @@ const (
 	OpMakeClosure
 	OpLineStep
 	OpInvokeDirect
+	OpResumeFFI
+	OpResumeModule
+	OpInitGlobal
+	OpStoreGlobalInit
+	OpFinishSharedInit
 )
 
 func (op OpCode) String() string {
@@ -169,6 +174,16 @@ func (op OpCode) String() string {
 		return "LINE_STEP"
 	case OpInvokeDirect:
 		return "INVOKE_DIRECT"
+	case OpResumeFFI:
+		return "RESUME_FFI"
+	case OpResumeModule:
+		return "RESUME_MODULE"
+	case OpInitGlobal:
+		return "INIT_GLOBAL"
+	case OpStoreGlobalInit:
+		return "STORE_GLOBAL_INIT"
+	case OpFinishSharedInit:
+		return "FINISH_SHARED_INIT"
 	default:
 		return "UNKNOWN"
 	}
@@ -197,6 +212,30 @@ type Task struct {
 	Op     OpCode
 	Source *SourceRef
 	Data   interface{}
+}
+
+type ResumeFFIData struct {
+	Route           FFIRoute
+	CopyBackTargets []ffiCopyBackTarget
+	Ret             []byte
+	Err             error
+}
+
+type ResumeModuleData struct {
+	Path  string
+	Value *Var
+	Err   error
+}
+
+type InitGlobalData struct {
+	Name    string
+	Kind    RuntimeType
+	HasInit bool
+	Plan    []Task
+}
+
+type FinishSharedInitData struct {
+	Env map[string]*Var
 }
 
 type DeclareVarData struct {

@@ -12,12 +12,12 @@ import (
 
 type mockContinueBridge struct{}
 
-func (b *mockContinueBridge) Call(ctx context.Context, methodID uint32, args []byte) ([]byte, error) {
-	reader := ffigo.NewReader(args)
+func (b *mockContinueBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 
-	switch methodID {
+	switch req.MethodID {
 	case 1:
 		val := reader.ReadVarint()
 		buf.WriteBool(val >= 3)
@@ -25,12 +25,12 @@ func (b *mockContinueBridge) Call(ctx context.Context, methodID uint32, args []b
 	case 2:
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unexpected method id %d", methodID)
+		return nil, fmt.Errorf("unexpected method id %d", req.MethodID)
 	}
 }
 
-func (b *mockContinueBridge) Invoke(ctx context.Context, method string, args []byte) ([]byte, error) {
-	return nil, fmt.Errorf("unexpected invoke: %s", method)
+func (b *mockContinueBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, fmt.Errorf("unexpected invoke: %s", req.Method)
 }
 
 func (b *mockContinueBridge) DestroyHandle(handle uint32) error {
