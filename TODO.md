@@ -14,10 +14,13 @@
 - VM 并发模型是单线程 cooperative fiber；`go f()` 创建 VM fiber，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
 - `time.Sleep(ns)` 是标准库异步 FFI，完成后通知 scheduler 恢复 fiber。
+- 异步 FFI completion 由 scheduler 内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
+- context 取消或 VM 致命错误会统一 abort 当前 run，取消 pending FFI，清理 module loading / waiters，并按 frame 错误路径执行必要 session 清理。
 - 同步 FFI 调用阻塞整个 VM；只有返回 `ffigo.Async[T]` 的 FFI 会挂起当前 fiber。
 - FFI completion 时执行 copy-back；共享变量交错按 completion 处理顺序写回。
 - 闭包、VM array/map、VM pointer 和 host handle 均按普通引用语义共享；VM 内部不并行执行，因此无宿主级数据竞争。
 - root `main` 返回后，未完成 child fiber 立即停止；child fiber panic 默认失败整个 VM，除非在 child 内部 recover。
+- Debugger pause event 显式暴露 `FiberID`；root fiber 通常为 1，child fiber 为后续递增 ID。
 - 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表只服务调试和必要兼容查找。
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链。
@@ -26,10 +29,10 @@
 
 ### Debugger Fiber 标识
 
-- [ ] 决定调试事件是否显式暴露 fiber/session 标识。
+- [x] 决定调试事件显式暴露 fiber 标识。
 - [ ] 设计多 fiber 单步、继续、暂停时的事件顺序。
 - [ ] 明确 debugger 与宿主交互时的 fiber 选择策略。
-- [ ] 补齐 debugger fiber 标识与多 fiber 调试回归测试。
+- [x] 补齐 debugger fiber 标识与多 fiber 调试回归测试。
 
 ### Channel / Select 语义评估
 

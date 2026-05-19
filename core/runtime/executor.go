@@ -2806,7 +2806,7 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 	for {
 		fiber, err := e.scheduler.Next(ctx)
 		if err != nil {
-			return err
+			return e.abortRun(err)
 		}
 		if fiber == nil {
 			return nil
@@ -2818,20 +2818,7 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 		}
 		stop, err := frame.Executor.runSession(frame.Session, fiberInstructionQuantum)
 		if err != nil {
-			for {
-				errFrame := fiber.PopFrame()
-				if errFrame == nil {
-					break
-				}
-				finishSessionSharedInitialization(errFrame.Session, err)
-				if errFrame.OnError != nil {
-					err = errFrame.OnError(errFrame, err)
-				}
-				if errFrame.Cleanup {
-					errFrame.Executor.CleanupSession(errFrame.Session)
-				}
-			}
-			return err
+			return e.abortRun(err)
 		}
 		switch stop {
 		case runStopDone:
@@ -2845,7 +2832,7 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 					if doneFrame.Cleanup {
 						doneFrame.Executor.CleanupSession(doneFrame.Session)
 					}
-					return err
+					return e.abortRun(err)
 				}
 			}
 			if doneFrame.Cleanup {
@@ -2865,6 +2852,85 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 			// The scheduler method already parked the current fiber.
 		}
 	}
+}
+
+func (e *Executor) abortRun(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if e.scheduler == nil {
+		return cause
+	}
+	fibers := e.scheduler.AbortAll()
+	fibers = e.cancelModuleLoadsForFibers(fibers)
+	result := e.unwindFiberErrors(fibers, cause)
+	if result == nil {
+		return cause
+	}
+	return result
+}
+
+func (e *Executor) cancelModuleLoadsForFibers(fibers []*VMFiber) []*VMFiber {
+	seen := make(map[*SharedState]bool)
+	for i := 0; i < len(fibers); i++ {
+		fiber := fibers[i]
+		if fiber == nil {
+			continue
+		}
+		for _, frame := range fiber.Frames {
+			if frame == nil || frame.Session == nil || frame.Session.Shared == nil {
+				continue
+			}
+			shared := frame.Session.Shared
+			if seen[shared] {
+				continue
+			}
+			seen[shared] = true
+			for _, waiter := range shared.CancelModuleLoads() {
+				if waiter.Fiber != nil {
+					fibers = append(fibers, waiter.Fiber)
+				}
+			}
+		}
+	}
+	return fibers
+}
+
+func (e *Executor) unwindFiberErrors(fibers []*VMFiber, cause error) error {
+	result := cause
+	replaced := false
+	seen := make(map[*VMFiber]bool)
+	for _, fiber := range fibers {
+		if fiber == nil || seen[fiber] {
+			continue
+		}
+		seen[fiber] = true
+		if err := e.unwindFiberError(fiber, cause); err != nil && !replaced {
+			result = err
+			replaced = true
+		}
+	}
+	return result
+}
+
+func (e *Executor) unwindFiberError(fiber *VMFiber, cause error) error {
+	err := cause
+	for {
+		frame := fiber.PopFrame()
+		if frame == nil {
+			break
+		}
+		finishSessionSharedInitialization(frame.Session, err)
+		if frame.OnError != nil {
+			if next := frame.OnError(frame, err); next != nil {
+				err = next
+			}
+		}
+		if frame.Cleanup {
+			frame.Executor.CleanupSession(frame.Session)
+		}
+	}
+	return err
 }
 
 func (e *Executor) runSession(session *StackContext, budget int) (runStop, error) {
@@ -2902,7 +2968,14 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 			if session.Debugger != nil && task.Source != nil {
 				if session.Debugger.ShouldTrigger(task.Source.Line) {
 					session.Debugger.SetStepping(false)
+					var fiberID uint32
+					if e.scheduler != nil {
+						if fiber := e.scheduler.Current(); fiber != nil {
+							fiberID = fiber.ID
+						}
+					}
 					session.Debugger.EventChan <- &debugger.Event{
+						FiberID: fiberID,
 						Loc: &ast.Position{
 							F: task.Source.File,
 							L: task.Source.Line,

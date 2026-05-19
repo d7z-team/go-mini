@@ -1297,6 +1297,24 @@ func (s *SharedState) FinishModuleLoad(path string, v *Var) []moduleWaiter {
 	return waiters
 }
 
+func (s *SharedState) CancelModuleLoads() []moduleWaiter {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	waiters := make([]moduleWaiter, 0)
+	for _, items := range s.moduleWaiters {
+		waiters = append(waiters, items...)
+	}
+	s.loadingModules = make(map[string]bool)
+	s.moduleWaiters = make(map[string][]moduleWaiter)
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
+	return waiters
+}
+
 func (lc *LexicalContext) Load(name string) (*Var, error) {
 	if lc == nil {
 		return nil, errors.New("missing lexical context")

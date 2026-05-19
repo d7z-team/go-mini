@@ -41,6 +41,9 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	select {
 	case event := <-dbg.EventChan:
 		t.Logf("Hit breakpoint at line %d", event.Loc.L)
+		if event.FiberID != 1 {
+			t.Fatalf("expected root fiber id 1, got %d", event.FiberID)
+		}
 		if event.Loc.L != 5 {
 			t.Fatalf("Expected break at line 5, got %d", event.Loc.L)
 		}
@@ -328,6 +331,9 @@ func TestDebugger_FiberBreakpointHitsChildFiber(t *testing.T) {
 		if event.Loc.L != 6 {
 			t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
 		}
+		if event.FiberID <= 1 {
+			t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+		}
 		dbg.CommandChan <- debugger.CmdContinue
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for child fiber breakpoint")
@@ -376,13 +382,18 @@ func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
 	}()
 
 	hits := 0
+	fiberHits := make(map[uint32]bool)
 	for {
 		select {
 		case event := <-dbg.EventChan:
 			if event.Loc.L != 6 {
 				t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
 			}
+			if event.FiberID <= 1 {
+				t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+			}
 			hits++
+			fiberHits[event.FiberID] = true
 			dbg.CommandChan <- debugger.CmdContinue
 		case err := <-done:
 			if err != nil {
@@ -390,6 +401,9 @@ func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
 			}
 			if hits < 2 {
 				t.Fatalf("expected at least 2 child fiber breakpoint hits, got %d", hits)
+			}
+			if len(fiberHits) < 2 {
+				t.Fatalf("expected breakpoints from at least 2 child fibers, got ids %v", fiberHits)
 			}
 			return
 		case <-ctx.Done():

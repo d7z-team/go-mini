@@ -15,6 +15,7 @@ const (
 )
 
 type Event struct {
+	FiberID   uint32
 	Loc       *ast.Position
 	Variables map[string]string
 }

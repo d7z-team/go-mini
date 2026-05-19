@@ -2,13 +2,16 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
@@ -190,5 +193,61 @@ func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 	}
 	if shared.IsModuleLoading("parentbroken") {
 		t.Fatal("parentbroken should not remain in loading set")
+	}
+}
+
+func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+
+	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
+		if path != "slowmod" {
+			return nil, fmt.Errorf("%w: %s", miniruntime.ErrModuleNotFound, path)
+		}
+		converter := ffigo.NewGoToASTConverter()
+		node, err := converter.ConvertSource("slowmod.mini", `
+package slowmod
+
+import "time"
+
+var Exported = wait()
+
+func wait() int {
+	time.Sleep(1000000000)
+	return 1
+}
+`)
+		if err != nil {
+			return nil, err
+		}
+		return node.(*ast.ProgramStmt), nil
+	})
+
+	runtime, err := executor.NewRuntimeByGoCode(`
+package main
+import "slowmod"
+
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	err = runtime.Execute(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline, got %T %v", err, err)
+	}
+
+	shared := runtime.SharedState()
+	if shared == nil {
+		t.Fatal("expected shared state")
+	}
+	if shared.HasModule("slowmod") {
+		mod, _ := shared.Module("slowmod")
+		t.Fatalf("slowmod should not be committed into cache after cancellation: %#v", mod)
+	}
+	if shared.IsModuleLoading("slowmod") {
+		t.Fatal("slowmod should not remain in loading set after cancellation")
 	}
 }
