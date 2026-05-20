@@ -536,7 +536,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			}
 		}
 		if st.Init != nil {
-			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: false, Children: []miniast.Stmt{c.convertStmt(st.Init), res}}
+			return res
 		}
 		return res
 	case *ast.TypeSwitchStmt:

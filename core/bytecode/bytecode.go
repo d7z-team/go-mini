@@ -14,7 +14,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 4
+	CurrentVersion       = 5
 )
 
 type Location struct {
@@ -65,7 +65,7 @@ func NewProgram() *Program {
 	return &Program{
 		Format:    FormatGoMiniBytecode,
 		Version:   CurrentVersion,
-		OpcodeSet: "runtime.opcode.v3",
+		OpcodeSet: "runtime.opcode.v4",
 		Globals:   make([]Global, 0),
 		Entry:     make([]Instruction, 0),
 		Functions: make([]Function, 0),
@@ -108,6 +108,11 @@ func (p *Program) Validate() error {
 		}
 		if err := validateInstructions(fn.Instructions); err != nil {
 			return fmt.Errorf("invalid function %s: %w", fn.Name, err)
+		}
+	}
+	if p.Executable != nil {
+		if err := runtime.ValidatePreparedProgram(p.Executable); err != nil {
+			return fmt.Errorf("invalid executable bytecode: %w", err)
 		}
 	}
 	return nil

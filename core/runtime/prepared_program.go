@@ -217,6 +217,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		mainStmts = append(mainStmts, stmt)
 	}
 	prepared.MainTasks = exec.buildStmtPlanWithScope(mainStmts, rootScope)
+	if err := ValidatePreparedProgram(prepared); err != nil {
+		return nil, err
+	}
 	return prepared, nil
 }
 

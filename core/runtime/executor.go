@@ -195,6 +195,9 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 	if prepared == nil {
 		return nil, errors.New("missing prepared program")
 	}
+	if err := ValidatePreparedProgram(prepared); err != nil {
+		return nil, err
+	}
 	result := &Executor{
 		globalInitOrder:  append([]string(nil), prepared.GlobalInitOrder...),
 		globalInitGroups: cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
@@ -979,31 +982,37 @@ func scheduleCallBoundaryDefers(session *StackContext, task Task, data *CallBoun
 	return true
 }
 
+func setUnwindMode(session *StackContext, mode UnwindMode) {
+	if session == nil {
+		return
+	}
+	session.UnwindMode = mode
+	if mode == UnwindNone {
+		session.skippedScopeEnters = 0
+	}
+}
+
 // Unwind State Machine
 func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error) {
-	// During UnwindContinue and UnwindBreak, OpScopeEnter tasks that were
-	// in the loop body after the control-flow instruction are being skipped.
-	// Their matching OpScopeExit tasks must also be skipped to avoid
-	// corrupting the scope chain and losing access to variables declared
-	// in outer scopes.
-	if session.UnwindMode == UnwindContinue || session.UnwindMode == UnwindBreak {
+	// When unwinding, future scope-enter tasks are skipped. Their matching
+	// exits must be skipped as well; otherwise unwinding can pop scopes that
+	// were never entered in this execution path.
+	if session.UnwindMode != UnwindNone {
 		switch task.Op {
 		case OpScopeEnter, OpForScopeEnter, OpRangeScopeEnter, OpCatchScopeEnter:
-			session.continueSkipScope++
+			session.skippedScopeEnters++
 			return true, nil
 		case OpScopeExit, OpForScopeExit:
-			if session.continueSkipScope > 0 {
-				session.continueSkipScope--
+			if session.skippedScopeEnters > 0 {
+				session.skippedScopeEnters--
 				return true, nil
 			}
-		case OpFinally:
-			return false, nil
 		}
 	}
 
 	if task.Op == OpScopeExit || task.Op == OpForScopeExit || task.Op == OpFinally {
 		prevMode := session.UnwindMode
-		session.UnwindMode = UnwindNone
+		setUnwindMode(session, UnwindNone)
 		session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: prevMode})
 		session.TaskStack = append(session.TaskStack, *task)
 		return true, nil
@@ -1012,7 +1021,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	if task.Op == OpRunDefers {
 		if owner := callBoundaryDeferOwner(session); owner != nil && len(owner.DeferStack) > 0 {
 			prevMode := session.UnwindMode
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			session.TaskStack = append(session.TaskStack, Task{Op: OpResumeUnwind, Data: prevMode})
 			owner.RunDefers()
 			return true, nil
@@ -1021,7 +1030,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	}
 
 	if task.Op == OpCatchBoundary && session.UnwindMode == UnwindPanic {
-		session.UnwindMode = UnwindNone
+		setUnwindMode(session, UnwindNone)
 		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
 		if data, ok := task.Data.(*CatchData); ok {
 			session.TaskStack = append(session.TaskStack, data.Body...)
@@ -1038,7 +1047,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 
 	if task.Op == OpLoopContinue {
 		if session.UnwindMode == UnwindContinue {
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			return true, nil
 		}
 	}
@@ -1046,7 +1055,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 	if task.Op == OpRangeIter {
 		if session.UnwindMode == UnwindContinue {
 			pruneRangeContinueResidualTasks(session)
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			session.TaskStack = append(session.TaskStack, *task)
 			return true, nil
 		}
@@ -1071,17 +1080,17 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 		}
 		if session.UnwindMode == UnwindPanic || session.UnwindMode == UnwindReturn {
 			prevMode := session.UnwindMode
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			if scheduleCallBoundaryDefers(session, *task, data, &prevMode) {
 				return true, nil
 			}
-			session.UnwindMode = prevMode
+			setUnwindMode(session, prevMode)
 		}
 		oldStack := data.OldStack
 		hasReturn := data.HasReturn
 
 		if session.UnwindMode == UnwindReturn {
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			if hasReturn {
 				res, _ := session.LoadReturn()
 				session.ValueStack.Push(res)
@@ -1109,7 +1118,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 
 	if task.Op == OpLoopBoundary {
 		if session.UnwindMode == UnwindBreak {
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			return true, nil
 		}
 		if session.UnwindMode == UnwindContinue {
@@ -1121,7 +1130,7 @@ func (e *Executor) handleUnwind(session *StackContext, task *Task) (bool, error)
 				return false, nil
 			}
 
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 			if err := e.dispatch(session, *task); err != nil {
 				return false, err
 			}
@@ -1442,12 +1451,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return session.StoreSymbol(sym, session.ValueStack.Pop())
 	case OpScopeEnter:
-		scopeName := task.Data.(string)
-		session.ScopeApply(scopeName)
-		return nil
+		scopeName, ok := task.Data.(string)
+		if !ok || scopeName == "" {
+			return errors.New("OpScopeEnter missing scope name")
+		}
+		return session.ScopeApply(scopeName)
 	case OpScopeExit:
-		session.ScopeExit()
-		return nil
+		return session.ScopeExit()
 	case OpAssign:
 		if session.LHSStack == nil {
 			session.LHSStack = &LHSStack{}
@@ -2056,7 +2066,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		if session.UnwindMode == UnwindReturn {
-			session.UnwindMode = UnwindNone
+			setUnwindMode(session, UnwindNone)
 		}
 		return nil
 	case OpAssert:
@@ -2162,12 +2172,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		return nil
 	case OpForScopeEnter:
-		session.ScopeApplyLoopBody("for_body")
-		return nil
+		return session.ScopeApplyLoopBody("for_body")
 	case OpForScopeExit:
 		session.SyncLoopScope()
-		session.ScopeExit()
-		return nil
+		return session.ScopeExit()
 	case OpLoopContinue:
 		return nil
 	case OpRangeInit:
@@ -2234,7 +2242,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		rData := data.Range
 		key := data.Key
 		val := data.Val
-		session.ScopeApply("for_range_body")
+		if err := session.ScopeApply("for_range_body"); err != nil {
+			return err
+		}
 		if rData.Define {
 			if rData.Key != "" && rData.Key != "_" {
 				if rData.KeySym.Kind == SymbolLocal {
@@ -2353,7 +2363,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		varName := data.Catch.VarName
 		varSym := data.Catch.Sym
 		panicVar := data.Panic
-		session.ScopeApply("catch")
+		if err := session.ScopeApply("catch"); err != nil {
+			return err
+		}
 		if varName != "" {
 			if varSym.Kind == SymbolLocal {
 				_ = session.DeclareSymbol(varSym, MustParseRuntimeType("Any"))
@@ -3633,7 +3645,7 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 	session.TaskStack = []Task{}
 	session.ValueStack = &ValueStack{}
 	session.LHSStack = &LHSStack{}
-	session.UnwindMode = UnwindNone
+	setUnwindMode(session, UnwindNone)
 
 	for i := len(stmts) - 1; i >= 0; i-- {
 		session.TaskStack = append(session.TaskStack, e.tasksForStmt(stmts[i], nil)...)
@@ -3671,7 +3683,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 	ctx.TaskStack = []Task{{Op: OpImportInit, Data: &ImportInitData{Path: n.Path}}}
 	ctx.ValueStack = &ValueStack{}
 	ctx.LHSStack = &LHSStack{}
-	ctx.UnwindMode = UnwindNone
+	setUnwindMode(ctx, UnwindNone)
 
 	var err error
 	if e.scheduler == nil {

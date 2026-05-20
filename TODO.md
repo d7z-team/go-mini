@@ -8,6 +8,7 @@
 
 - 执行主路径以 `PreparedProgram` / `go-mini-bytecode` 为唯一装载工件，非调试运行不依赖 AST 节点。
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
+- `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow 校验，非法 executable bytecode 必须在执行前拒绝。
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型，`ffigen:module` 是 VM 可见模块名来源。

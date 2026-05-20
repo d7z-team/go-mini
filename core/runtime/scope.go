@@ -1102,10 +1102,9 @@ type StackContext struct {
 	LHSStack   *LHSStack
 	UnwindMode UnwindMode
 
-	// continueSkipScope tracks the number of nested OpScopeEnter tasks
-	// that were skipped during UnwindContinue to avoid executing
-	// their orphaned OpScopeExit counterparts.
-	continueSkipScope int
+	// skippedScopeEnters tracks scope-enter tasks skipped during any unwind so
+	// their orphaned scope-exit tasks are skipped as well.
+	skippedScopeEnters int
 
 	// resumeSignal is used to unblock the execution loop after a pause.
 	resumeSignal chan struct{}
@@ -1693,7 +1692,13 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 	return fmt.Errorf("undefined: %s", variable)
 }
 
-func (ctx *StackContext) ScopeApply(scope string) {
+func (ctx *StackContext) ScopeApply(scope string) error {
+	if ctx == nil {
+		return errors.New("missing stack context")
+	}
+	if ctx.Stack == nil {
+		return errors.New("scope enter without active scope")
+	}
 	newDepth := 1
 	var frame *SlotFrame
 	if ctx.Stack != nil {
@@ -1701,7 +1706,7 @@ func (ctx *StackContext) ScopeApply(scope string) {
 		frame = ctx.Stack.Frame
 	}
 	if newDepth > DefaultMaxStackDepth {
-		panic(errors.New("stack overflow"))
+		return errors.New("stack overflow")
 	}
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
@@ -1718,6 +1723,7 @@ func (ctx *StackContext) ScopeApply(scope string) {
 			return ctx.Stack.CurrentDeferOwner()
 		}(),
 	}
+	return nil
 }
 
 func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
@@ -1747,7 +1753,13 @@ func cloneSlotFrame(frame *SlotFrame) *SlotFrame {
 	return cloned
 }
 
-func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
+func (ctx *StackContext) ScopeApplyLoopBody(scope string) error {
+	if ctx == nil {
+		return errors.New("missing stack context")
+	}
+	if ctx.Stack == nil {
+		return errors.New("loop scope enter without active scope")
+	}
 	newDepth := 1
 	var parentFrame *SlotFrame
 	if ctx.Stack != nil {
@@ -1755,7 +1767,7 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 		parentFrame = ctx.Stack.Frame
 	}
 	if newDepth > DefaultMaxStackDepth {
-		panic(errors.New("stack overflow"))
+		return errors.New("stack overflow")
 	}
 	clonedFrame := cloneSlotFrame(parentFrame)
 	syncLimit := 0
@@ -1778,6 +1790,7 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 			return ctx.Stack.CurrentDeferOwner()
 		}(),
 	}
+	return nil
 }
 
 func (ctx *StackContext) SyncLoopScope() {
@@ -1805,14 +1818,27 @@ func (ctx *StackContext) SyncLoopScope() {
 	}
 }
 
-func (ctx *StackContext) WithScope(sType string, child func(ctx *StackContext)) {
-	ctx.ScopeApply(sType)
-	defer ctx.ScopeExit()
+func (ctx *StackContext) WithScope(sType string, child func(ctx *StackContext)) error {
+	if err := ctx.ScopeApply(sType); err != nil {
+		return err
+	}
+	defer func() { _ = ctx.ScopeExit() }()
 	child(ctx)
+	return nil
 }
 
-func (ctx *StackContext) ScopeExit() {
+func (ctx *StackContext) ScopeExit() error {
+	if ctx == nil {
+		return errors.New("missing stack context")
+	}
+	if ctx.Stack == nil {
+		return errors.New("scope exit without active scope")
+	}
+	if ctx.Stack.Parent == nil {
+		return errors.New("scope exit would leave root scope")
+	}
 	ctx.Stack = ctx.Stack.Parent
+	return nil
 }
 
 func (ctx *StackContext) Store(variable string, expr *Var) error {
@@ -2332,7 +2358,10 @@ func (ctx *StackContext) WithFuncScope(name string, exec func(*Stack, *StackCont
 		root = root.Parent
 	}
 	ctx.Stack = root
-	ctx.ScopeApply(name)
+	if err := ctx.ScopeApply(name); err != nil {
+		ctx.Stack = old
+		return err
+	}
 	defer func() { ctx.Stack = old }()
 	return exec(old, ctx)
 }

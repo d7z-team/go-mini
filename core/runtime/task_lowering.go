@@ -252,13 +252,15 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if !n.Inner {
 			childScope = scope.childBlock()
 		}
-		out := make([]Task, 0)
+		body := make([]Task, 0)
+		for _, child := range n.Children {
+			body = append(e.tasksForStmtInScope(child, data, childScope), body...)
+		}
+		out := make([]Task, 0, len(body)+2)
 		if !n.Inner {
 			out = append(out, Task{Op: OpScopeExit})
 		}
-		for _, child := range n.Children {
-			out = append(e.tasksForStmtInScope(child, data, childScope), out...)
-		}
+		out = append(out, body...)
 		if !n.Inner {
 			out = append(out, Task{Op: OpScopeEnter, Data: "block"})
 		}

@@ -1059,7 +1059,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 		newDepth = root.Depth + 1
 	}
 	if newDepth > DefaultMaxStackDepth {
-		panic(errors.New("stack overflow"))
+		return errors.New("stack overflow")
 	}
 	newStack := &Stack{
 		Parent:     root,
