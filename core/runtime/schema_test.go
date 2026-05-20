@@ -97,27 +97,53 @@ func TestParseRuntimeInterfaceSpec(t *testing.T) {
 }
 
 func TestParseRuntimeTypeAndCanonicalID(t *testing.T) {
-	typ, err := ParseRuntimeType("Ptr<gopkg.d7z.net/demo.Type>")
+	typ, err := ParseRuntimeType("Ptr<demo.Type>")
 	if err != nil {
 		t.Fatalf("ParseRuntimeType failed: %v", err)
 	}
 	if typ.Kind != RuntimeTypePointer {
 		t.Fatalf("unexpected type kind: %v", typ.Kind)
 	}
-	if typ.TypeID != "gopkg.d7z.net/demo.Type" {
+	if typ.TypeID != "demo.Type" {
 		t.Fatalf("unexpected canonical type id: %s", typ.TypeID)
 	}
-	if got := CanonicalTypeID("Ptr<gopkg.d7z.net/demo.Type>"); got != "gopkg.d7z.net/demo.Type" {
+	if got := CanonicalTypeID("Ptr<demo.Type>"); got != "demo.Type" {
 		t.Fatalf("unexpected canonical id helper result: %s", got)
 	}
-	hostRef, err := ParseRuntimeType("HostRef<gopkg.d7z.net/demo.Type>")
+	hostRef, err := ParseRuntimeType("HostRef<demo.Type>")
 	if err != nil {
 		t.Fatalf("ParseRuntimeType HostRef failed: %v", err)
 	}
-	if hostRef.Kind != RuntimeTypeHostRef || hostRef.TypeID != "gopkg.d7z.net/demo.Type" {
+	if hostRef.Kind != RuntimeTypeHostRef || hostRef.TypeID != "demo.Type" {
 		t.Fatalf("unexpected HostRef type: %+v", hostRef)
 	}
-	if got := CanonicalTypeID("HostRef<gopkg.d7z.net/demo.Type>"); got != "gopkg.d7z.net/demo.Type" {
+	if got := CanonicalTypeID("HostRef<demo.Type>"); got != "demo.Type" {
 		t.Fatalf("unexpected host ref canonical id helper result: %s", got)
+	}
+}
+
+func TestParseRuntimeTypeRejectsNonCanonicalTypes(t *testing.T) {
+	tests := []string{
+		"int",
+		"uint",
+		"Int",
+		"[]Int64",
+		"map[string]int",
+		"function(int) Void",
+		"Array<int>",
+		"complex64",
+		"HostRef<gopkg.d7z.net/demo.Type>",
+	}
+	for _, spec := range tests {
+		if _, err := ParseRuntimeType(spec); err == nil {
+			t.Fatalf("expected non-canonical type %q to be rejected", spec)
+		}
+	}
+}
+
+func TestSetRawTypeDoesNotPreserveInvalidType(t *testing.T) {
+	v := NewVar("int", TypeInt)
+	if v.RawType() != "Any" || v.TypeInfo.Kind != RuntimeTypeAny {
+		t.Fatalf("expected invalid raw type to fall back to Any, got %+v", v.TypeInfo)
 	}
 }

@@ -11,6 +11,21 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 	if plan == nil {
 		return errors.New("missing prepared program")
 	}
+	for name, typ := range plan.NamedTypes {
+		if err := validateRuntimeType("named type "+name, typ); err != nil {
+			return err
+		}
+	}
+	for name, spec := range plan.StructSchemas {
+		if err := validateRuntimeStructSpec("struct schema "+name, spec); err != nil {
+			return err
+		}
+	}
+	for name, spec := range plan.InterfaceSchemas {
+		if err := validateRuntimeInterfaceSpec("interface schema "+name, spec); err != nil {
+			return err
+		}
+	}
 	for i, group := range plan.GlobalInitGroups {
 		if group == nil {
 			return fmt.Errorf("global init group %d is nil", i)
@@ -26,6 +41,9 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		if global.Name == "" {
 			return fmt.Errorf("global %s missing name", name)
 		}
+		if err := validateRuntimeType("global "+name+" kind", global.Kind); err != nil {
+			return err
+		}
 		if err := validatePreparedTaskPlan(fmt.Sprintf("global %s init", name), global.InitPlan, 0); err != nil {
 			return err
 		}
@@ -39,6 +57,9 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		}
 		if fn.FunctionSig == nil {
 			return fmt.Errorf("function %s missing signature", name)
+		}
+		if err := validateRuntimeFuncSig("function "+name+" signature", fn.FunctionSig); err != nil {
+			return err
 		}
 		if err := validatePreparedTaskPlan("function "+name, fn.BodyTasks, 0); err != nil {
 			return err
@@ -200,13 +221,13 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 		if !ok || data == nil {
 			return fmt.Errorf("%s missing CompositeData", plan)
 		}
-		return nil
+		return validateRuntimeType(plan+".type", data.Type)
 	case OpIndex:
 		data, ok := task.Data.(*IndexData)
 		if !ok || data == nil {
 			return fmt.Errorf("%s missing IndexData", plan)
 		}
-		return nil
+		return validateRuntimeType(plan+".result", data.ResultType)
 	case OpSlice:
 		data, ok := task.Data.(*SliceData)
 		if !ok || data == nil {
@@ -248,19 +269,26 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 		if !ok || data == nil {
 			return fmt.Errorf("%s missing AssertData", plan)
 		}
-		return nil
+		if err := validateRuntimeType(plan+".target", data.TargetType); err != nil {
+			return err
+		}
+		return validateRuntimeType(plan+".result", data.ResultType)
 	case OpPush:
 		if task.Data == nil {
 			return nil
 		}
-		if _, ok := task.Data.(*Var); !ok {
+		value, ok := task.Data.(*Var)
+		if !ok {
 			return fmt.Errorf("%s payload must be *Var", plan)
 		}
-		return nil
+		return validateRuntimeType(plan+".value", value.RuntimeType())
 	case OpMakeClosure:
 		data, ok := task.Data.(*ClosureData)
 		if !ok || data == nil || data.FunctionSig == nil {
 			return fmt.Errorf("%s missing ClosureData", plan)
+		}
+		if err := validateRuntimeFuncSig(plan+".signature", data.FunctionSig); err != nil {
+			return err
 		}
 		return validatePreparedTaskPlan(plan+".closure", data.BodyTasks, depth+1)
 	case OpEvalLHS:
@@ -299,6 +327,9 @@ func validateVarDeclData(plan string, data *VarDeclData) error {
 	for i, binding := range data.Bindings {
 		if binding.Name == "" && binding.Sym.Kind != SymbolUnknown {
 			return fmt.Errorf("%s binding %d has unnamed symbol", plan, i)
+		}
+		if err := validateRuntimeType(fmt.Sprintf("%s binding %d kind", plan, i), binding.Kind); err != nil {
+			return err
 		}
 		if err := validateSymbolRef(fmt.Sprintf("%s binding %d", plan, i), binding.Sym); err != nil {
 			return err
@@ -347,6 +378,11 @@ func validateSwitchData(plan string, data *SwitchData, depth int) error {
 		return err
 	}
 	for i, c := range data.Cases {
+		for j, typ := range c.TypeNames {
+			if err := validateRuntimeType(fmt.Sprintf("%s.case_%d_type_%d", plan, i, j), typ); err != nil {
+				return err
+			}
+		}
 		for j, expr := range c.Exprs {
 			if err := validatePreparedTaskPlan(fmt.Sprintf("%s.case_%d_expr_%d", plan, i, j), expr, depth+1); err != nil {
 				return err
@@ -357,6 +393,88 @@ func validateSwitchData(plan string, data *SwitchData, depth int) error {
 		}
 	}
 	return validatePreparedTaskPlan(plan+".switch_default", data.DefaultBody, depth+1)
+}
+
+func validateRuntimeType(plan string, typ RuntimeType) error {
+	if typ.Kind == RuntimeTypeInvalid && typ.Raw.IsEmpty() {
+		return fmt.Errorf("%s missing runtime type", plan)
+	}
+	if typ.Raw.IsEmpty() {
+		return fmt.Errorf("%s missing raw runtime type", plan)
+	}
+	if _, err := ParseRuntimeType(typ.Raw.Ast()); err != nil {
+		return fmt.Errorf("%s: %w", plan, err)
+	}
+	return nil
+}
+
+func validateRuntimeFuncSig(plan string, sig *RuntimeFuncSig) error {
+	if sig == nil {
+		return fmt.Errorf("%s missing function signature", plan)
+	}
+	if sig.Spec.IsEmpty() {
+		return fmt.Errorf("%s missing function spec", plan)
+	}
+	if _, err := ParseRuntimeFuncSig(sig.Spec.Ast()); err != nil {
+		return fmt.Errorf("%s: %w", plan, err)
+	}
+	for i, param := range sig.ParamTypes {
+		if err := validateRuntimeType(fmt.Sprintf("%s param %d", plan, i), param); err != nil {
+			return err
+		}
+	}
+	return validateRuntimeType(plan+" return", sig.ReturnType)
+}
+
+func validateRuntimeStructSpec(plan string, spec *RuntimeStructSpec) error {
+	if spec == nil {
+		return fmt.Errorf("%s is nil", plan)
+	}
+	if err := validateRuntimeType(plan+".type", spec.TypeInfo); err != nil {
+		return err
+	}
+	for i, field := range spec.Fields {
+		if field.Type.IsEmpty() {
+			return fmt.Errorf("%s field %d missing type", plan, i)
+		}
+		if _, err := ParseRuntimeType(field.Type.Ast()); err != nil {
+			return fmt.Errorf("%s field %d: %w", plan, i, err)
+		}
+		if err := validateRuntimeType(fmt.Sprintf("%s field %d info", plan, i), field.TypeInfo); err != nil {
+			return err
+		}
+	}
+	for _, method := range spec.Methods {
+		if err := validateRuntimeFuncSig(plan+" method "+method.Name, method.Spec); err != nil {
+			return err
+		}
+	}
+	for name, sig := range spec.ByMethod {
+		if err := validateRuntimeFuncSig(plan+" method "+name, sig); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRuntimeInterfaceSpec(plan string, spec *RuntimeInterfaceSpec) error {
+	if spec == nil {
+		return fmt.Errorf("%s is nil", plan)
+	}
+	if err := validateRuntimeType(plan+".type", spec.TypeInfo); err != nil {
+		return err
+	}
+	for _, method := range spec.Methods {
+		if err := validateRuntimeFuncSig(plan+" method "+method.Name, method.Spec); err != nil {
+			return err
+		}
+	}
+	for name, sig := range spec.ByName {
+		if err := validateRuntimeFuncSig(plan+" method "+name, sig); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateSymbolRef(plan string, sym SymbolRef) error {

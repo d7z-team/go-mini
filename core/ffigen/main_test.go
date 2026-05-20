@@ -1,4 +1,4 @@
-package main
+package ffigen
 
 import (
 	"go/ast"
@@ -31,13 +31,7 @@ type BrowserModule interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -67,6 +61,34 @@ type BrowserModule interface {
 	}
 }
 
+func TestRunUsesOptions(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module demo
+type DemoModule interface {
+	Echo(s string) string
+}
+`)
+
+	outputPath := filepath.Join(workspace, "demo_ffigen.go")
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      outputPath,
+		Args:        []string{filepath.Join(workspace, "api.go")},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	if !strings.Contains(string(content), "func RegisterDemoModule(") {
+		t.Fatalf("expected generated module registration, got:\n%s", string(content))
+	}
+}
+
 func TestRunDirKeepsVariadicArg(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
@@ -85,13 +107,7 @@ type BrowserModule interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -123,13 +139,7 @@ type RegexpModule interface {
 `)
 
 	outputPath := filepath.Join(workspace, "regexp_ffigen.go")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputPath
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputPath)
 
 	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
@@ -158,13 +168,7 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -198,13 +202,7 @@ func (o *Browser) AutoPage(url string) *Browser {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -237,13 +235,7 @@ func (f *Factory) New(base int64) *Factory {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -279,13 +271,7 @@ type Mutator interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -321,13 +307,7 @@ type Mutator interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -370,13 +350,7 @@ func (f *Factory) New(base int64) *Factory {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_factory.go")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputPath
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputPath)
 
 	if err := runFileMode([]string{sourcePath}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
@@ -409,13 +383,7 @@ func (t *Table) SetString(row, col int, val string) {}
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -450,13 +418,7 @@ type B interface {
 }
 `)
 
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = filepath.Join(workspace, "gen")
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", filepath.Join(workspace, "gen"))
 
 	err := runDirectoryMode(workspace)
 	if err == nil || !strings.Contains(err.Error(), "at most one ffigen:module") {
@@ -473,13 +435,7 @@ type Demo interface {
 }
 `)
 
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = filepath.Join(workspace, "ffigen_pkgmode.go")
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", filepath.Join(workspace, "ffigen_pkgmode.go"))
 
 	err := runFileMode([]string{filepath.Join(workspace, "api.go")})
 	if err == nil || !strings.Contains(err.Error(), "reserved package output name") {
@@ -507,13 +463,7 @@ type OrderService interface {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_shared.go")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputPath
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputPath)
 
 	err := runFileMode([]string{
 		filepath.Join(workspace, "order.go"),
@@ -549,13 +499,7 @@ type Demo interface {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_demo.go")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputPath
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputPath)
 
 	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
@@ -587,13 +531,7 @@ var _ = engine.NewMiniExecutor
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_demo.go")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputPath
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputPath)
 
 	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode should ignore sibling _test.go files, got %v", err)
@@ -632,13 +570,7 @@ type ReadWriter interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -668,13 +600,7 @@ type Reader interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = "pkgmode"
-	*outFile = outputDir
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+	setGenerationOutput(t, "pkgmode", outputDir)
 
 	if err := runDirectoryMode(workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
@@ -725,13 +651,25 @@ func TestRunDirRejectsEmbeddedMethodConflict(t *testing.T) {
 	}
 }
 
+func setGenerationOutput(t *testing.T, packageName, output string) {
+	t.Helper()
+	oldPkg, oldOut := *pkgName, *outFile
+	*pkgName = packageName
+	*outFile = output
+	t.Cleanup(func() {
+		*pkgName = oldPkg
+		*outFile = oldOut
+	})
+}
+
 func makeModuleTempDir(t *testing.T) string {
 	t.Helper()
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
-	workspace, err := os.MkdirTemp(cwd, "ffigen-main-test-")
+	// Keep test packages inside the module so go list can derive module metadata.
+	workspace, err := os.MkdirTemp(cwd, "ffigen-main-test-") //nolint:usetesting // must stay inside the module for go list
 	if err != nil {
 		t.Fatalf("mkdir temp: %v", err)
 	}

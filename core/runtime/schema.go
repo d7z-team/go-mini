@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -94,13 +95,18 @@ func (t *RuntimeType) UnmarshalJSON(data []byte) error {
 	type runtimeTypeAlias RuntimeType
 	var alias runtimeTypeAlias
 	if err := json.Unmarshal(data, &alias); err == nil {
-		*t = RuntimeType(alias)
-		if t.Kind == RuntimeTypeInvalid && !t.Raw.IsEmpty() {
-			parsed, parseErr := ParseRuntimeType(t.Raw.Ast())
-			if parseErr == nil {
-				*t = parsed
-			}
+		if alias.Kind == RuntimeTypeInvalid && alias.Raw.IsEmpty() {
+			*t = RuntimeType(alias)
+			return nil
 		}
+		if alias.Raw.IsEmpty() {
+			return errors.New("runtime type missing raw type")
+		}
+		parsed, parseErr := ParseRuntimeType(alias.Raw.Ast())
+		if parseErr != nil {
+			return parseErr
+		}
+		*t = parsed
 		return nil
 	}
 
@@ -405,6 +411,9 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 	specType := ast.GoMiniType(strings.TrimSpace(string(spec)))
 	if specType.IsEmpty() || specType.IsVoid() {
 		return RuntimeType{Kind: RuntimeTypeVoid, Raw: TypeSpec(specType)}, nil
+	}
+	if err := specType.ValidateCanonical(); err != nil {
+		return RuntimeType{}, err
 	}
 	if specType == ast.TypeAny || specType == ast.TypeModule || specType == ast.TypeClosure {
 		return RuntimeType{Kind: RuntimeTypeAny, Raw: TypeSpec(specType), TypeID: CanonicalTypeID(string(specType))}, nil

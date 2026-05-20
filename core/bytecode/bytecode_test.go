@@ -73,7 +73,7 @@ func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
 	}
 	prog.Executable = &runtime.PreparedProgram{
 		Globals: map[string]*runtime.PreparedGlobal{
-			"counter": {Name: "counter", HasInit: true},
+			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: true},
 		},
 		Functions: map[string]*runtime.PreparedFunction{
 			"main": {Name: "main", FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void")},
@@ -118,8 +118,8 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	prog.Entry = []Instruction{{Op: "CALL", Operand: "main", Comment: "call main"}}
 	prog.Executable = &runtime.PreparedProgram{
 		Globals: map[string]*runtime.PreparedGlobal{
-			"counter": {Name: "counter", HasInit: true},
-			"pending": {Name: "pending", HasInit: false},
+			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: true},
+			"pending": {Name: "pending", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: false},
 		},
 		Functions: map[string]*runtime.PreparedFunction{
 			"main": {
@@ -171,7 +171,7 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 						Op: runtime.OpSwitchTag,
 						Data: &runtime.SwitchData{
 							Init: []runtime.Task{
-								{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 1}},
+								{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 1}},
 							},
 							Tag: []runtime.Task{
 								{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "v"}},
@@ -180,10 +180,10 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 								{
 									Exprs: [][]runtime.Task{
 										{
-											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 2}},
+											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 2}},
 										},
 										{
-											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int"), VType: runtime.TypeInt, I64: 3}},
+											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 3}},
 										},
 									},
 									Body: []runtime.Task{
@@ -227,5 +227,28 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 		if !strings.Contains(asm, sym) {
 			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
 		}
+	}
+}
+
+func TestBytecodeJSONRejectsNonCanonicalExecutableType(t *testing.T) {
+	payload := []byte(`{
+		"format":"go-mini-bytecode",
+		"version":5,
+		"opcode_set":"runtime.opcode.v4",
+		"executable":{
+			"global_init_order":[],
+			"globals":{
+				"counter":{"name":"counter","kind":{"Kind":3,"Raw":"int"},"has_init":false}
+			},
+			"functions":{},
+			"main_tasks":[]
+		}
+	}`)
+	_, err := UnmarshalJSON(payload)
+	if err == nil {
+		t.Fatal("expected non-canonical executable type rejection")
+	}
+	if !strings.Contains(err.Error(), "non-canonical type") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

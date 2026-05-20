@@ -1,4 +1,4 @@
-//go:generate go run ../../../cmd/ffigen/main.go -pkg canonicaltest -out canonical_type_ffigen.go canonical_type_infra.go
+//go:generate go run ../../../cmd/ffigen -pkg canonicaltest -out canonical_type_ffigen.go canonical_type_infra.go
 package canonicaltest
 
 import (

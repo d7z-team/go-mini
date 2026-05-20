@@ -1133,7 +1133,6 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 }
 
 func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) error {
-	// Let's use the old evalFFI logic
 	res, err := e.evalFFI(session, route, args, argLHS)
 	if err != nil {
 		return err

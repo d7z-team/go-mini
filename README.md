@@ -4,7 +4,7 @@ Go-Mini is a Go-like scripting engine with a bytecode-first runtime.
 
 - Compile source code to `go-mini-bytecode`
 - Run prepared programs without AST on the main runtime path
-- Generate schema-only FFI bindings with `cmd/ffigen`
+- Generate schema-only FFI bindings with the `cmd/ffigen` CLI backed by `core/ffigen`
 
 ## Install
 
@@ -18,13 +18,13 @@ go install gopkg.d7z.net/go-mini/cmd/ffigen@latest
 Run a script:
 
 ```bash
-go run ./cmd/exec -run script.go
+go run ./cmd/exec -run script.mgo
 ```
 
 Compile to bytecode:
 
 ```bash
-go run ./cmd/exec -o script.json script.go
+go run ./cmd/exec -o script.json script.mgo
 ```
 
 Run bytecode:

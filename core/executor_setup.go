@@ -1,0 +1,281 @@
+package engine
+
+import (
+	"fmt"
+	"strings"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/compiler"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/crypto/md5lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/crypto/sha256lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/encoding/base64lib"
+	"gopkg.d7z.net/go-mini/core/ffilib/encoding/hexlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/filepathlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/imagelib"
+	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
+	"gopkg.d7z.net/go-mini/core/ffilib/jsonlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/math/randlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/net/urllib"
+	"gopkg.d7z.net/go-mini/core/ffilib/regexplib"
+	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/synclib"
+	"gopkg.d7z.net/go-mini/core/ffilib/timelib"
+	"gopkg.d7z.net/go-mini/core/ffilib/unicode/utf8lib"
+	"gopkg.d7z.net/go-mini/core/runtime"
+)
+
+func NewMiniExecutor() *MiniExecutor {
+	res := &MiniExecutor{
+		routes:           make(map[string]runtime.FFIRoute),
+		constants:        make(map[string]string),
+		registry:         ffigo.NewHandleRegistry(),
+		moduleBlueprints: make(map[string]*ast.ProgramStmt),
+		modules:          make(map[string]*runtime.PreparedProgram),
+		funcSchemas:      make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		structsMeta:      make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		interfacesMeta:   make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
+		MaxTypeDepth:     256,
+	}
+
+	// 默认注册 panic 签名以便通过验证
+	res.mustAddFuncSchemaLocked("panic", runtime.MustParseRuntimeFuncSig("function(String) Void"))
+	res.mustAddFuncSchemaLocked("recover", runtime.MustParseRuntimeFuncSig("function() Any"))
+	res.mustAddFuncSchemaLocked("String", runtime.MustParseRuntimeFuncSig("function(Any) String"))
+	res.mustAddFuncSchemaLocked("TypeBytes", runtime.MustParseRuntimeFuncSig("function(Any) TypeBytes"))
+	res.mustAddFuncSchemaLocked("len", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("cap", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("make", runtime.MustParseRuntimeFuncSig("function(String, ...Int64) Any"))
+	res.mustAddFuncSchemaLocked("new", runtime.MustParseRuntimeFuncSig("function(String) Any"))
+	res.mustAddFuncSchemaLocked("append", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Any"))
+	res.mustAddFuncSchemaLocked("delete", runtime.MustParseRuntimeFuncSig("function(Any, Any) Void"))
+	res.mustAddFuncSchemaLocked("Int64", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
+	res.mustAddFuncSchemaLocked("Float64", runtime.MustParseRuntimeFuncSig("function(Any) Float64"))
+	res.mustAddFuncSchemaLocked("require", runtime.MustParseRuntimeFuncSig("function(String) TypeModule"))
+
+	// Inject default libraries that do not let scripts discover the host
+	// filesystem/environment on their own.
+	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
+	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, Any) Bool"), "Check if an error matches a target handle")
+	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
+	timelib.RegisterTimeAll(res, &timelib.TimeHost{}, res.registry)
+	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)
+	mathlib.RegisterMath(res, &mathlib.MathHost{}, res.registry)
+	filepathlib.RegisterFilepath(res, &filepathlib.FilepathHost{}, res.registry)
+	strconvlib.RegisterStrconv(res, &strconvlib.StrconvHost{}, res.registry)
+	byteslib.RegisterBytes(res, &byteslib.BytesHost{}, res.registry)
+	sortlib.RegisterSort(res, &sortlib.SortHost{}, res.registry)
+	regexplib.RegisterRegexp(res, &regexplib.RegexpHost{}, res.registry)
+	randlib.RegisterRand(res, randlib.NewRandHost(), res.registry)
+	utf8lib.RegisterUTF8(res, &utf8lib.UTF8Host{}, res.registry)
+	synclib.RegisterSyncAll(res, &synclib.ModuleHost{}, res.registry)
+	base64lib.RegisterBase64(res, &base64lib.Base64Host{}, res.registry)
+	hexlib.RegisterHex(res, &hexlib.HexHost{}, res.registry)
+	md5lib.RegisterMD5(res, &md5lib.MD5Host{}, res.registry)
+	sha256lib.RegisterSHA256(res, &sha256lib.SHA256Host{}, res.registry)
+	urllib.RegisterURL(res, &urllib.URLHost{}, res.registry)
+	iolib.RegisterIOSafe(res, &iolib.IOHost{}, res.registry)
+	imagelib.RegisterImageAll(res, &imagelib.ImageHost{}, res.registry)
+
+	// Inject fmt by default (supports context-based redirection)
+	fmtImpl := &fmtlib.FmtHost{}
+	fmtlib.RegisterFmt(res, fmtImpl, res.registry)
+	fmtlib.RegisterFmtAliases(res, fmtImpl, res.registry)
+
+	return res
+}
+
+func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
+	return func(path string) (*ast.ProgramStmt, error) {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+		if astNode, ok := e.moduleBlueprints[path]; ok {
+			return astNode, nil
+		}
+		if e.astModuleLoader != nil {
+			return e.astModuleLoader(path)
+		}
+		return nil, fmt.Errorf("module not found: %s", path)
+	}
+}
+
+func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedProgram, error) {
+	return func(path string) (*runtime.PreparedProgram, error) {
+		e.mu.RLock()
+		if prepared, ok := e.modules[path]; ok && prepared != nil {
+			e.mu.RUnlock()
+			return prepared, nil
+		}
+		e.mu.RUnlock()
+		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
+	}
+}
+
+func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
+	if executor == nil {
+		return
+	}
+	executor.ModulePlanLoader = e.modulePlanLoader()
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for name, route := range e.routes {
+		executor.RegisterRoute(name, route)
+	}
+	for name, spec := range e.structsMeta {
+		executor.RegisterStructSchema(string(name), spec)
+	}
+	for name, spec := range e.interfacesMeta {
+		executor.RegisterInterfaceSchema(string(name), spec)
+	}
+	for name, val := range e.constants {
+		executor.RegisterConstant(name, val)
+	}
+}
+
+func (e *MiniExecutor) newCompiler() *compiler.Compiler {
+	schema := e.ExportedSchema()
+	return compiler.New(compiler.Config{
+		ModuleLoader:     e.moduleASTLoader(),
+		FuncSchemas:      schema.Funcs,
+		StructSchemas:    schema.Structs,
+		InterfaceSchemas: schema.Interfaces,
+		Constants:        e.GetExportedConstants(),
+		MaxTypeDepth:     e.MaxTypeDepth,
+	})
+}
+
+func newMiniAstError(err error, semanticCtx *ast.SemanticContext, node ast.Node) error {
+	var logs []ast.Logs
+	if semanticCtx != nil {
+		logs = semanticCtx.Logs()
+	}
+	return &ast.MiniAstError{Err: err, Logs: logs, Node: node}
+}
+
+func compiledProgramNode(compiled *compiler.Artifact) *ast.ProgramStmt {
+	if compiled == nil {
+		return nil
+	}
+	return compiled.Program
+}
+
+func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error {
+	if compiled == nil || compiled.Program == nil {
+		return nil
+	}
+	if len(compiled.ImportedPrograms) > 0 {
+		e.mu.Lock()
+		for path, prog := range compiled.ImportedPrograms {
+			if prog != nil {
+				e.moduleBlueprints[path] = prog
+			}
+		}
+		e.mu.Unlock()
+	}
+	return e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{})
+}
+
+func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported map[string]*ast.ProgramStmt, visiting map[string]bool) error {
+	for _, imp := range program.Imports {
+		path := strings.TrimSpace(imp.Path)
+		if path == "" {
+			continue
+		}
+
+		e.mu.RLock()
+		prepared := e.modules[path]
+		prog := e.moduleBlueprints[path]
+		e.mu.RUnlock()
+		if prepared != nil {
+			continue
+		}
+		if prog == nil && imported != nil {
+			prog = imported[path]
+		}
+		if prog == nil {
+			continue
+		}
+		if visiting[path] {
+			return fmt.Errorf("circular module dependency while preparing %s", path)
+		}
+
+		visiting[path] = true
+		compiled, _, err := e.newCompiler().CompileProgram(path, "", prog, false)
+		if err != nil {
+			delete(visiting, path)
+			return fmt.Errorf("compile module %s: %w", path, err)
+		}
+		if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+			delete(visiting, path)
+			return fmt.Errorf("module %s did not produce executable bytecode", path)
+		}
+
+		e.mu.Lock()
+		e.modules[path] = compiled.Bytecode.Executable
+		if prog != nil {
+			e.moduleBlueprints[path] = prog
+		}
+		e.mu.Unlock()
+
+		if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, visiting); err != nil {
+			delete(visiting, path)
+			return err
+		}
+		delete(visiting, path)
+	}
+	return nil
+}
+
+func newEmptyRuntimeExecutor() (*runtime.Executor, error) {
+	return runtime.NewExecutorFromPrepared(&runtime.PreparedProgram{
+		Globals:   map[string]*runtime.PreparedGlobal{},
+		Functions: map[string]*runtime.PreparedFunction{},
+		MainTasks: []runtime.Task{},
+	})
+}
+
+func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStmt, error)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.astModuleLoader = loader
+}
+
+// RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
+func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
+	var prepared *runtime.PreparedProgram
+	if prog != nil {
+		if prog.Compiled != nil && prog.Compiled.Bytecode != nil && prog.Compiled.Bytecode.Executable != nil {
+			prepared = prog.Compiled.Bytecode.Executable
+		} else if prog.Program != nil {
+			compiled, _, err := e.newCompiler().CompileProgram(path, "", prog.Program, false)
+			if err == nil && compiled != nil && compiled.Bytecode != nil {
+				prepared = compiled.Bytecode.Executable
+			}
+		}
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if prog == nil {
+		delete(e.modules, path)
+		delete(e.moduleBlueprints, path)
+		return
+	}
+	delete(e.modules, path)
+	if prog.Program != nil {
+		e.moduleBlueprints[path] = prog.Program
+	} else {
+		delete(e.moduleBlueprints, path)
+	}
+	if prepared != nil {
+		e.modules[path] = prepared
+		return
+	}
+}

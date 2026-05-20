@@ -613,7 +613,15 @@ func isCanonicalNamedType(o GoMiniType) bool {
 		return false
 	}
 	switch s {
-	case "any", "interface{}", "string", "int", "int64", "float64", "bool", "byte", "error", "void":
+	case "any", "interface{}", "string", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float", "float32", "float64", "complex64", "complex128",
+		"bool", "byte", "rune", "error", "void",
+		"Int", "Int8", "Int16", "Int32", "Float", "Float32",
+		"Uint", "Uint8", "Uint16", "Uint32", "Uint64", "Byte":
+		return false
+	}
+	if strings.Contains(s, "/") {
 		return false
 	}
 	if strings.ContainsAny(s, "[]*") {

@@ -471,7 +471,7 @@ func TestOpEvalLHSPushesAddressOntoLHSStack(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 	session.ValueStack.Push(NewInt(1))
-	session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(7)}}, TypeInfo: MustParseRuntimeType("[]Int64")})
+	session.ValueStack.Push(&Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(7)}}, TypeInfo: MustParseRuntimeType("Array<Int64>")})
 
 	if err := exec.dispatch(session, Task{Op: OpEvalLHS, Data: &LHSData{Kind: LHSTypeIndex}}); err != nil {
 		t.Fatalf("eval lhs failed: %v", err)
@@ -636,7 +636,7 @@ func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 		t.Fatalf("unexpected local address value: %#v", got)
 	}
 
-	arr := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1), NewInt(2)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
+	arr := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1), NewInt(2)}}, TypeInfo: MustParseRuntimeType("Array<Int64>")}
 	index := &LHSIndex{Obj: arr, Index: NewInt(1)}
 	if err := exec.assignAddress(session, index, NewInt(9)); err != nil {
 		t.Fatalf("assign indexed address failed: %v", err)

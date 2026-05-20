@@ -16,16 +16,16 @@ const (
 	pseudoOpLoadConst = "PSEUDO_LOAD_CONST"
 )
 
-func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode.Program {
+func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) (*bytecode.Program, error) {
 	if program == nil {
-		return nil
+		return nil, nil
 	}
 
 	builder := &bytecodeBuilder{program: program}
 	bc := bytecode.NewProgram()
 	prepared, err := runtime.PrepareProgram(program)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	bc.Blueprint = bytecode.NewBlueprint(program)
 	bc.Executable = prepared
@@ -40,7 +40,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode
 			bc.Globals = nil
 			bc.Entry = nil
 			bc.Functions = nil
-			return bc
+			return bc, nil
 		}
 		bc.Globals = append(bc.Globals, bytecode.Global{Name: name, Instructions: code})
 	}
@@ -49,7 +49,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode
 	if !ok {
 		bc.Entry = nil
 		bc.Functions = nil
-		return bc
+		return bc, nil
 	}
 	bc.Entry = entry
 
@@ -67,7 +67,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode
 		code, ok := builder.compileStatements([]ast.Stmt{fn.Body})
 		if !ok {
 			bc.Functions = nil
-			return bc
+			return bc, nil
 		}
 		bc.Functions = append(bc.Functions, bytecode.Function{
 			Name:         name,
@@ -76,7 +76,27 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) *bytecode
 		})
 	}
 
-	return bc
+	return bc, nil
+}
+
+// CompileEvalTasks lowers a single expression into a prepared return task plan.
+func CompileEvalTasks(expr ast.Expr) ([]runtime.Task, error) {
+	prepared, err := runtime.PrepareProgram(&ast.ProgramStmt{
+		BaseNode:   ast.BaseNode{ID: "eval", Meta: "boot"},
+		Constants:  map[string]string{},
+		Variables:  map[ast.Ident]ast.Expr{},
+		Types:      map[ast.Ident]ast.GoMiniType{},
+		Structs:    map[ast.Ident]*ast.StructStmt{},
+		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Functions:  map[ast.Ident]*ast.FunctionStmt{},
+		Main: []ast.Stmt{
+			&ast.ReturnStmt{Results: []ast.Expr{expr}},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prepared.MainTasks, nil
 }
 
 type bytecodeBuilder struct {

@@ -61,8 +61,8 @@ func TestOpCallEllipsisUnwrapsAnyArray(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
-	base := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
-	tailInner := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(2), NewInt(3)}}, TypeInfo: MustParseRuntimeType("[]Int64")}
+	base := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(1)}}, TypeInfo: MustParseRuntimeType("Array<Int64>")}
+	tailInner := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{NewInt(2), NewInt(3)}}, TypeInfo: MustParseRuntimeType("Array<Int64>")}
 	tail := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: tailInner}
 
 	session.ValueStack.Push(base)

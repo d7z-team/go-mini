@@ -85,7 +85,7 @@ if err != nil {
 如果你已经有文件名，也可以：
 
 ```go
-bytecodeProgram, err := executor.CompileGoFileToBytecode("script.mini", source)
+bytecodeProgram, err := executor.CompileGoFileToBytecode("script.mgo", source)
 ```
 
 ### 2.3 从 MiniProgram 取出 bytecode
@@ -166,13 +166,13 @@ _ = program
 
 ```bash
 # 执行源码
-mini-exec -run script.mini
+mini-exec -run script.mgo
 
 # 只编译并输出 bytecode JSON
-mini-exec -o script.json script.mini
+mini-exec -o script.json script.mgo
 
 # 反汇编源码编译结果
-mini-exec -d script.mini
+mini-exec -d script.mgo
 
 # 从 bytecode 执行
 mini-exec -bytecode script.json
@@ -315,7 +315,7 @@ func main() {
 
 ## 5. FFI 生成器
 
-`ffigen` 负责把 Go 接口或结构体导出为 schema-only FFI 桥接代码。
+`ffigen` 负责把 Go 接口或结构体导出为 schema-only FFI 桥接代码；CLI 入口在 `cmd/ffigen`，生成器核心在 `core/ffigen`。
 
 ### 5.1 参数模型
 

@@ -57,7 +57,7 @@ func TestConcurrentModuleImportSingleflight(t *testing.T) {
 		loads.Add(1)
 		time.Sleep(20 * time.Millisecond)
 		converter := ffigo.NewGoToASTConverter()
-		node, err := converter.ConvertSource("sharedmod.mini", `
+		node, err := converter.ConvertSource("sharedmod.mgo", `
 package sharedmod
 
 var Value = 1
@@ -85,8 +85,9 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	loads.Store(0)
+	if got := loads.Load(); got != 1 {
+		t.Fatalf("module loader invoked %d times during compile, want 1", got)
+	}
 
 	const goroutines = 8
 	var wg sync.WaitGroup
@@ -107,7 +108,7 @@ func main() {
 		}
 	}
 	if got := loads.Load(); got != 1 {
-		t.Fatalf("module loader invoked %d times, want 1", got)
+		t.Fatalf("module loader invoked %d times after runtime executes, want 1", got)
 	}
 }
 
@@ -119,7 +120,7 @@ func TestConcurrentSharedMapMutationDoesNotPanic(t *testing.T) {
 			return nil, nil
 		}
 		converter := ffigo.NewGoToASTConverter()
-		node, err := converter.ConvertSource("counter.mini", `
+		node, err := converter.ConvertSource("counter.mgo", `
 package counter
 
 var Stats = map[string]int{"n": 0}

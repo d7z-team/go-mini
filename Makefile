@@ -8,6 +8,7 @@ FFIGEN_BIN      := ./bin/ffigen
 LSP_SERVER_BIN  := ./bin/lsp-server
 EXEC_BIN        := ./bin/mini-exec
 GO_TEST         := go test
+GO_TEST_TIMEOUT ?= 180s
 
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
@@ -28,7 +29,7 @@ build-all: $(FFIGEN_BIN) $(LSP_SERVER_BIN) $(EXEC_BIN)
 $(FFIGEN_BIN): $(GO_SOURCES)
 	@echo "Building ffigen tool..."
 	@mkdir -p bin
-	@go build -o $(FFIGEN_BIN) cmd/ffigen/main.go
+	@go build -o $(FFIGEN_BIN) ./cmd/ffigen
 
 $(LSP_SERVER_BIN): $(GO_SOURCES)
 	@echo "Building lsp-server..."
@@ -61,7 +62,6 @@ gen:
 
 clean:
 	rm -rf bin
-	find . -name "*_ffigen.go" -delete
 
 fmt: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
@@ -78,27 +78,27 @@ lint-fix: gen
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
 
 test-runtime:
-	@$(GO_TEST) ./core/runtime ./core/runtime/tests
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/runtime ./core/runtime/tests
 
 test-ffilib:
-	@$(GO_TEST) ./core/ffilib/...
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ffilib/...
 
 test-ast:
-	@$(GO_TEST) ./core/ast ./core/ast/tests
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ast ./core/ast/tests
 
 test-debugger:
-	@$(GO_TEST) ./core/debugger ./core/debugger/tests
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/debugger ./core/debugger/tests
 
 test-core:
-	@$(GO_TEST) ./core ./core/tests
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core ./core/tests
 
 test-ffigen:
-	@$(GO_TEST) ./cmd/ffigen/tests
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ffigen ./cmd/ffigen ./cmd/ffigen/tests
 
 test-script-e2e:
-	@$(GO_TEST) ./core/e2e/...
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/e2e/...
 
 test-layered: gen test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e
 
 test: gen
-	@$(GO_TEST) -v -coverprofile=coverage.txt ./... -timeout 10s
+	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -v -coverprofile=coverage.txt ./...

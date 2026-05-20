@@ -204,7 +204,7 @@ func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
 			return nil, fmt.Errorf("%w: %s", miniruntime.ErrModuleNotFound, path)
 		}
 		converter := ffigo.NewGoToASTConverter()
-		node, err := converter.ConvertSource("slowmod.mini", `
+		node, err := converter.ConvertSource("slowmod.mgo", `
 package slowmod
 
 import "time"

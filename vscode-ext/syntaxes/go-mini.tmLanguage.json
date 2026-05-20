@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Go-Mini",
-  "scopeName": "source.mini",
+  "scopeName": "source.mgo",
   "patterns": [
     { "include": "#comments" },
     { "include": "#keywords" },
@@ -12,31 +12,31 @@
   "repository": {
     "comments": {
       "patterns": [
-        { "name": "comment.line.double-slash.mini", "match": "//.*" },
-        { "name": "comment.block.mini", "begin": "/\\*", "end": "\\*/" }
+        { "name": "comment.line.double-slash.mgo", "match": "//.*" },
+        { "name": "comment.block.mgo", "begin": "/\\*", "end": "\\*/" }
       ]
     },
     "keywords": {
       "patterns": [{
-        "name": "keyword.control.mini",
+        "name": "keyword.control.mgo",
         "match": "\\b(if|else|for|range|switch|case|default|return|defer|go|try|catch|finally|throw|break|continue|fallthrough|package|import|func|var|type|struct|interface)\\b"
       }]
     },
     "strings": {
       "patterns": [
-        { "name": "string.quoted.double.mini", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.mini" }] },
-        { "name": "string.quoted.raw.mini", "begin": "`", "end": "`" }
+        { "name": "string.quoted.double.mgo", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.mgo" }] },
+        { "name": "string.quoted.raw.mgo", "begin": "`", "end": "`" }
       ]
     },
     "numbers": {
       "patterns": [{
-        "name": "constant.numeric.mini",
+        "name": "constant.numeric.mgo",
         "match": "\\b\\d+(\\.\\d+)?\\b"
       }]
     },
     "types": {
       "patterns": [{
-        "name": "entity.name.type.mini",
+        "name": "entity.name.type.mgo",
         "match": "\\b(Int64|Float64|String|Bool|Any|Void|TypeBytes|TypeModule|TypeClosure|Ptr|Array|Map)\\b"
       }]
     }

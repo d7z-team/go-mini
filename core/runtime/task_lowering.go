@@ -776,9 +776,13 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		if n == nil {
 			return []Task{{Op: OpPush}}, true
 		}
+		resultType := n.GetBase().Type
+		if resultType.IsEmpty() {
+			resultType = ast.TypeAny
+		}
 		out := []Task{{Op: OpIndex, Data: &IndexData{
 			Multi:      n.Multi,
-			ResultType: MustParseRuntimeType(n.GetBase().Type),
+			ResultType: MustParseRuntimeType(resultType),
 		}}}
 		out = append(out, e.tasksForExprInScope(n.Index, scope)...)
 		out = append(out, e.tasksForExprInScope(n.Object, scope)...)
@@ -794,10 +798,14 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		if n == nil {
 			return []Task{{Op: OpPush}}, true
 		}
+		resultType := n.GetBase().Type
+		if resultType.IsEmpty() {
+			resultType = ast.TypeAny
+		}
 		out := []Task{{Op: OpAssert, Data: &AssertData{
 			TargetType: MustParseRuntimeType(n.Type),
 			Multi:      n.Multi,
-			ResultType: MustParseRuntimeType(n.GetBase().Type),
+			ResultType: MustParseRuntimeType(resultType),
 		}}}
 		out = append(out, e.tasksForExprInScope(n.X, scope)...)
 		return out, true

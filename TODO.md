@@ -11,7 +11,7 @@
 - `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow 校验，非法 executable bytecode 必须在执行前拒绝。
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
-- `ffigen` 只保留 `-pkg` / `-out` 参数模型，`ffigen:module` 是 VM 可见模块名来源。
+- `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
 - 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。

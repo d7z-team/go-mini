@@ -29,6 +29,9 @@ type Artifact struct {
 	Program         *ast.ProgramStmt
 	GlobalInitOrder []string
 	Bytecode        *bytecode.Program
+	// ImportedPrograms contains AST modules resolved during compilation; callers
+	// can compile them into prepared modules before runtime execution starts.
+	ImportedPrograms map[string]*ast.ProgramStmt
 }
 
 func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
@@ -125,6 +128,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		Source:   source,
 		Program:  program,
 	}
+	importedPrograms := map[string]*ast.ProgramStmt{}
 
 	validator, err := ast.NewValidatorWithExternalTypes(program, c.resolvedTypeSpecs(), c.cfg.Constants, tolerant)
 	if err != nil {
@@ -134,7 +138,15 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
 		ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
 	}
-	validator.SetModuleLoader(c.cfg.ModuleLoader)
+	if c.cfg.ModuleLoader != nil {
+		validator.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
+			prog, err := c.cfg.ModuleLoader(path)
+			if err == nil && prog != nil {
+				importedPrograms[path] = prog
+			}
+			return prog, err
+		})
+	}
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	if err := program.Check(semanticCtx); err != nil {
@@ -150,7 +162,14 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	if err := fillArtifactGlobalInitOrder(artifact, artifact.Program, true); err != nil {
 		return artifact, semanticCtx, err
 	}
-	artifact.Bytecode = buildBytecode(artifact.Program, artifact.GlobalInitOrder)
+	bytecodeProgram, err := buildBytecode(artifact.Program, artifact.GlobalInitOrder)
+	if err != nil {
+		return artifact, semanticCtx, err
+	}
+	artifact.Bytecode = bytecodeProgram
+	if len(importedPrograms) > 0 {
+		artifact.ImportedPrograms = importedPrograms
+	}
 	return artifact, semanticCtx, nil
 }
 

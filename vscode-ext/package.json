@@ -32,7 +32,7 @@
     "grammars": [
       {
         "language": "go-mini",
-        "scopeName": "source.mini",
+        "scopeName": "source.mgo",
         "path": "./syntaxes/go-mini.tmLanguage.json"
       }
     ],
