@@ -210,13 +210,13 @@ println(*p)
 
 - array、map、`Ptr<T>`、`HostRef<T>`、closure、module 和 interface 内部目标仍共享底层对象。
 - `Ptr<T>` 指向 VM slot；`*p = v` 会写回目标 slot，并继续执行声明类型校验。
-- 闭包 capture 共享同一个 slot，因此 child fiber 可以修改父作用域捕获变量。
+- 闭包 capture 共享同一个 slot，因此子 VM 执行上下文可以修改父作用域捕获变量。
 
 map 与 struct 是不同运行时类型。map key 会保留 primitive key 类型，`Map<Int64, String>{1: "a"}` 与 `Map<String, String>{"1": "a"}` 不会在运行时混淆。
 
-## 4.1 Go Fiber 调度语义
+## 4.1 VM 执行上下文调度语义
 
-当前并发模型只有一类 VM 原语：`go f()`。它会创建 VM 内部 fiber，但整个 VM 始终单线程执行；所谓并发只是内部 safe point 或异步 FFI completion 触发的上下文切换。
+当前并发模型只有一类 VM 原语：`go f()`。它会创建子 VM 执行上下文，但整个 VM 始终单线程执行；所谓并发只是 VM 调度器在内部 safe point 或异步 FFI completion 处切换执行上下文。
 
 ### 基本用法
 
@@ -265,23 +265,23 @@ func main() {
 
 失败语义：
 
-- child fiber 的 panic 会让整个 VM 执行失败，除非在 child fiber 内部 recover
+- 子执行上下文的 panic 会让整个 VM 执行失败，除非在子上下文内部 recover
 - `go f()` 没有返回值，父流程需要通过共享状态或显式同步协议观察结果
 - 需要把结果带回父流程时，使用共享变量、显式 channel 类库（未来能力）或其它同步协议
 
 ### Root 生命周期
 
-root `main` 是整个程序的根 fiber。
+root `main` 是整个程序的根执行上下文。
 
-- `main()` 正常返回时，所有未完成 child fiber 会立即停止
-- `main()` panic 返回时，同样会停止所有未完成 child fiber
-- runtime 不会在退出阶段自动等待后台 fiber 收尾
+- `main()` 正常返回时，所有未完成子执行上下文会立即停止
+- `main()` panic 返回时，同样会停止所有未完成子执行上下文
+- runtime 不会在退出阶段自动等待后台执行上下文收尾
 
 这意味着 `go f()` 的默认语义是 fire-and-forget，但不是“main 退出后继续后台存活”。
 
 ### 结果共享
 
-因为 VM 永远单线程，闭包 capture、VM array/map、VM pointer 和 host handle 都按普通引用语义共享；不会出现并行数据竞争，但仍需要明确调度点，否则 child fiber 可能没有机会运行。
+因为 VM 永远单线程，闭包 capture、VM array/map、VM pointer 和 host handle 都按普通引用语义共享；不会出现并行数据竞争，但仍需要明确调度点，否则子执行上下文可能没有机会运行。
 
 示例：
 
@@ -305,13 +305,13 @@ func main() {
 ### 当前限制
 
 - 没有 `chan/select` 语义
-- 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前 fiber 并在 completion 时恢复
+- 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前执行上下文并在 completion 时恢复
 
 ### 使用警告
 
 - `go f()` 不代表宿主 goroutine，也不提供并行执行。
-- 没有异步 completion 或内部 safe point 时，root `main` 可能直接返回并停止尚未运行的 child fiber。
-- child fiber 的 panic 默认会失败整个 VM；需要隔离失败时在 child 内部使用 `try/recover`。
+- 没有异步 completion 或内部 safe point 时，root `main` 可能直接返回并停止尚未运行的子执行上下文。
+- 子执行上下文的 panic 默认会失败整个 VM；需要隔离失败时在子上下文内部使用 `try/recover`。
 
 ## 5. FFI 生成器
 

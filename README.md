@@ -66,21 +66,21 @@ FFI struct schemas are either `VMValue` or `HostOpaque`.
 - VM code cannot create opaque host objects with `T{}`, `var x T`, or `new(T)`.
 - Opaque host objects must come from FFI factories or FFI return values, for example `sync.NewWaitGroup()`.
 
-## Fiber Concurrency
+## VM Execution Context Concurrency
 
-Go-Mini uses a single-threaded cooperative fiber model:
+Go-Mini uses single-threaded cooperative scheduling for VM execution contexts:
 
-- `go f()` schedules a VM fiber; it does not return a handle or result
-- the VM never runs two fibers in parallel; switching only happens at VM safe points
+- `go f()` schedules a child VM execution context; it does not return a handle or result
+- the VM never runs two execution contexts in parallel; switching only happens at VM safe points
 - VM code does not expose a public yield API
 - synchronous FFI calls still block the VM; only async FFI returns create suspend/resume points
 - captured closures share normal VM state with the parent because there is no parallel execution
 
 Lifecycle rules:
 
-- root `main` returning stops all unfinished child fibers immediately
-- unfinished background fibers are not waited for automatically
-- a child fiber panic fails the whole VM execution unless recovered inside that fiber
+- root `main` returning stops all unfinished child execution contexts immediately
+- unfinished background execution contexts are not waited for automatically
+- a child execution context panic fails the whole VM execution unless recovered inside that context
 
 ## Docs
 

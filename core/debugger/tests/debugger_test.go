@@ -50,8 +50,8 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	select {
 	case event := <-dbg.EventChan:
 		t.Logf("Hit breakpoint at line %d", event.Loc.L)
-		if event.FiberID != 1 {
-			t.Fatalf("expected root fiber id 1, got %d", event.FiberID)
+		if event.ExecutionContextID != 1 {
+			t.Fatalf("expected root execution context id 1, got %d", event.ExecutionContextID)
 		}
 		if event.Loc.L != 5 {
 			t.Fatalf("Expected break at line 5, got %d", event.Loc.L)
@@ -299,7 +299,7 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	}
 }
 
-func TestDebugger_FiberBreakpointHitsChildFiber(t *testing.T) {
+func TestDebugger_ContextBreakpointHitsChildContext(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
 
@@ -338,14 +338,14 @@ func TestDebugger_FiberBreakpointHitsChildFiber(t *testing.T) {
 	select {
 	case event := <-dbg.EventChan:
 		if event.Loc.L != 6 {
-			t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
+			t.Fatalf("expected child execution context breakpoint at line 6, got %d", event.Loc.L)
 		}
-		if event.FiberID <= 1 {
-			t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+		if event.ExecutionContextID <= 1 {
+			t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 		}
 		dbg.CommandChan <- debugger.CmdContinue
 	case <-ctx.Done():
-		t.Fatal("timeout waiting for child fiber breakpoint")
+		t.Fatal("timeout waiting for child execution context breakpoint")
 	}
 
 	if err := <-done; err != nil {
@@ -353,7 +353,7 @@ func TestDebugger_FiberBreakpointHitsChildFiber(t *testing.T) {
 	}
 }
 
-func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
+func TestDebugger_ContextBreakpointHitsMultipleContexts(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
 
@@ -391,37 +391,37 @@ func TestDebugger_FiberBreakpointHitsMultipleFibers(t *testing.T) {
 	}()
 
 	hits := 0
-	fiberHits := make(map[uint32]bool)
+	contextHits := make(map[uint32]bool)
 	for {
 		select {
 		case event := <-dbg.EventChan:
 			if event.Loc.L != 6 {
-				t.Fatalf("expected child fiber breakpoint at line 6, got %d", event.Loc.L)
+				t.Fatalf("expected child execution context breakpoint at line 6, got %d", event.Loc.L)
 			}
-			if event.FiberID <= 1 {
-				t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+			if event.ExecutionContextID <= 1 {
+				t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 			}
 			hits++
-			fiberHits[event.FiberID] = true
+			contextHits[event.ExecutionContextID] = true
 			dbg.CommandChan <- debugger.CmdContinue
 		case err := <-done:
 			if err != nil {
 				t.Fatal(err)
 			}
 			if hits < 2 {
-				t.Fatalf("expected at least 2 child fiber breakpoint hits, got %d", hits)
+				t.Fatalf("expected at least 2 child execution context breakpoint hits, got %d", hits)
 			}
-			if len(fiberHits) < 2 {
-				t.Fatalf("expected breakpoints from at least 2 child fibers, got ids %v", fiberHits)
+			if len(contextHits) < 2 {
+				t.Fatalf("expected breakpoints from at least 2 child execution contexts, got ids %v", contextHits)
 			}
 			return
 		case <-ctx.Done():
-			t.Fatal("timeout waiting for multi-fiber debugger completion")
+			t.Fatal("timeout waiting for multi-context debugger completion")
 		}
 	}
 }
 
-func TestDebugger_FiberBreakpointUsesAllStopPause(t *testing.T) {
+func TestDebugger_ContextBreakpointUsesAllStopPause(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	testExecutor.InjectStandardLibraries()
 
@@ -470,20 +470,20 @@ func TestDebugger_FiberBreakpointUsesAllStopPause(t *testing.T) {
 	select {
 	case event := <-dbg.EventChan:
 		if event.Loc.L != 8 {
-			t.Fatalf("expected child fiber breakpoint at line 8, got %d", event.Loc.L)
+			t.Fatalf("expected child execution context breakpoint at line 8, got %d", event.Loc.L)
 		}
-		if event.FiberID <= 1 {
-			t.Fatalf("expected child fiber id greater than root, got %d", event.FiberID)
+		if event.ExecutionContextID <= 1 {
+			t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 		}
 		ticksBefore := mustLoadInt64Global(t, testProgram, "ticks")
 		time.Sleep(50 * time.Millisecond)
 		ticksAfter := mustLoadInt64Global(t, testProgram, "ticks")
 		if ticksAfter != ticksBefore {
-			t.Fatalf("expected all-stop pause to freeze other fibers, ticks changed from %d to %d", ticksBefore, ticksAfter)
+			t.Fatalf("expected all-stop pause to freeze other execution contexts, ticks changed from %d to %d", ticksBefore, ticksAfter)
 		}
 		dbg.CommandChan <- debugger.CmdContinue
 	case <-ctx.Done():
-		t.Fatal("timeout waiting for child fiber breakpoint")
+		t.Fatal("timeout waiting for child execution context breakpoint")
 	}
 
 	if err := <-done; err != nil {

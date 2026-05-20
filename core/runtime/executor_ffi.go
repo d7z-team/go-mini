@@ -140,7 +140,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 			e.scheduler.AbortFFI(token)
 			return nil, err
 		}
-		return nil, errFiberSuspend
+		return nil, errExecutionContextSuspend
 	default:
 		return nil, fmt.Errorf("ffi route %s returned unsupported payload %T", route.Name, ret)
 	}

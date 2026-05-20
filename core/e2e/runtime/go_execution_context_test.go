@@ -19,7 +19,7 @@ func newGoProgram(t *testing.T, code string) *engine.MiniProgram {
 	return prog
 }
 
-func TestGoRootReturnStopsPendingFiber(t *testing.T) {
+func TestGoRootReturnStopsPendingExecutionContext(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -44,11 +44,11 @@ func main() {
 		t.Fatal("missing global done")
 	}
 	if done == nil || done.Bool {
-		t.Fatalf("expected pending fiber to be stopped before setting done, got %#v", done)
+		t.Fatalf("expected pending execution context to be stopped before setting done, got %#v", done)
 	}
 }
 
-func TestGoFiberRunsAtYieldPoint(t *testing.T) {
+func TestGoExecutionContextRunsAtYieldPoint(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -73,7 +73,7 @@ func main() {
 	}
 }
 
-func TestGoFiberSleepSwitchesContext(t *testing.T) {
+func TestGoSleepSwitchesExecutionContext(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -100,7 +100,7 @@ func main() {
 	}
 }
 
-func TestGoFiberSharesCapturedState(t *testing.T) {
+func TestGoExecutionContextSharesCapturedState(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -113,7 +113,7 @@ func main() {
 	}()
 	time.Sleep(1)
 	if x != 2 {
-		panic("go fiber did not share captured state")
+		panic("go execution context did not share captured state")
 	}
 }
 `)
@@ -122,7 +122,7 @@ func main() {
 	}
 }
 
-func TestGoFiberStructArgumentUsesValueSemantics(t *testing.T) {
+func TestGoExecutionContextStructArgumentUsesValueSemantics(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -141,7 +141,7 @@ func main() {
 	go worker(b)
 	time.Sleep(1)
 	if b.Value != 1 {
-		panic("go fiber argument mutated caller struct")
+		panic("go execution context argument mutated caller struct")
 	}
 }
 `)
@@ -150,7 +150,7 @@ func main() {
 	}
 }
 
-func TestGoFiberPanicFailsProgram(t *testing.T) {
+func TestGoExecutionContextPanicFailsProgram(t *testing.T) {
 	prog := newGoProgram(t, `
 package main
 
@@ -167,6 +167,6 @@ func main() {
 `)
 	err := prog.Execute(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("expected child fiber panic, got %v", err)
+		t.Fatalf("expected child execution context panic, got %v", err)
 	}
 }

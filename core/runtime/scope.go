@@ -80,7 +80,7 @@ func (e *VMError) Error() string {
 	}
 	sb.WriteString(e.Message)
 	if len(e.Frames) > 0 {
-		sb.WriteString("\n\ngoroutine (mini) [running]:")
+		sb.WriteString("\n\nvm execution context (mini) [running]:")
 		for _, f := range e.Frames {
 			// VSCode 终端匹配模式： path:line:col
 			fmt.Fprintf(&sb, "\n%s()\n\t%s:%d:%d", f.Function, f.Filename, f.Line, f.Column)
@@ -144,9 +144,9 @@ const (
 )
 
 type moduleWaiter struct {
-	Fiber  *VMFiber
-	Frame  *FiberFrame
-	Resume Task
+	ExecutionContext *VMExecutionContext
+	Frame            *ExecutionContextFrame
+	Resume           Task
 }
 
 type SharedStateSnapshot struct {
@@ -1080,7 +1080,7 @@ type StackContext struct {
 	// 0: Running, 1: Aborted/Cancelled, 2: Paused
 	status int32
 
-	PanicVar       *Var         // 用于存储当前 goroutine/执行上下文中正在冒泡的 panic 对象
+	PanicVar       *Var         // 用于存储当前 VM 执行上下文中正在冒泡的 panic 对象
 	PanicMessage   string       // 存储发生 panic 时的文本消息
 	PanicTrace     []StackFrame // 存储发生 panic 时的原始堆栈信息，避免 unwind 期间 TaskStack 被清空导致丢失
 	Executor       *Executor
@@ -1383,7 +1383,7 @@ func (s *SharedState) BeginModuleLoad(path string) (*Var, ModuleLoadState) {
 }
 
 func (s *SharedState) AddModuleWaiter(path string, waiter moduleWaiter) {
-	if s == nil || waiter.Fiber == nil || waiter.Frame == nil {
+	if s == nil || waiter.ExecutionContext == nil || waiter.Frame == nil {
 		return
 	}
 	s.mu.Lock()

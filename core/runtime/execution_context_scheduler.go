@@ -8,44 +8,44 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-type FiberFrameKind uint8
+type ExecutionContextFrameKind uint8
 
 const (
-	FrameRoot FiberFrameKind = iota
+	FrameRoot ExecutionContextFrameKind = iota
 	FrameGo
 	FrameModuleInit
 )
 
-type FiberFrame struct {
+type ExecutionContextFrame struct {
 	Executor *Executor
 	Session  *StackContext
-	Kind     FiberFrameKind
-	OnDone   func(*FiberFrame) error
-	OnError  func(*FiberFrame, error) error
+	Kind     ExecutionContextFrameKind
+	OnDone   func(*ExecutionContextFrame) error
+	OnError  func(*ExecutionContextFrame, error) error
 	Cleanup  bool
 }
 
-type VMFiber struct {
+type VMExecutionContext struct {
 	ID     uint32
-	Frames []*FiberFrame
+	Frames []*ExecutionContextFrame
 }
 
-func (f *VMFiber) CurrentFrame() *FiberFrame {
+func (f *VMExecutionContext) CurrentFrame() *ExecutionContextFrame {
 	if f == nil || len(f.Frames) == 0 {
 		return nil
 	}
 	return f.Frames[len(f.Frames)-1]
 }
 
-func (f *VMFiber) PushFrame(frame *FiberFrame) error {
+func (f *VMExecutionContext) PushFrame(frame *ExecutionContextFrame) error {
 	if f == nil || frame == nil || frame.Executor == nil || frame.Session == nil {
-		return errors.New("invalid fiber frame")
+		return errors.New("invalid VM execution context frame")
 	}
 	f.Frames = append(f.Frames, frame)
 	return nil
 }
 
-func (f *VMFiber) PopFrame() *FiberFrame {
+func (f *VMExecutionContext) PopFrame() *ExecutionContextFrame {
 	if f == nil || len(f.Frames) == 0 {
 		return nil
 	}
@@ -61,37 +61,37 @@ type ffiCompletion struct {
 	err   error
 }
 
-type suspendedFiber struct {
-	Fiber  *VMFiber
-	Frame  *FiberFrame
-	Resume Task
-	Cancel func()
+type suspendedExecutionContext struct {
+	ExecutionContext *VMExecutionContext
+	Frame            *ExecutionContextFrame
+	Resume           Task
+	Cancel           func()
 }
 
 const completionDrainBudget = 256
 
-type fiberQueue struct {
-	items []*VMFiber
+type executionContextQueue struct {
+	items []*VMExecutionContext
 	head  int
 }
 
-func (q *fiberQueue) push(fiber *VMFiber) {
-	if fiber == nil {
+func (q *executionContextQueue) push(execCtx *VMExecutionContext) {
+	if execCtx == nil {
 		return
 	}
-	q.items = append(q.items, fiber)
+	q.items = append(q.items, execCtx)
 }
 
-func (q *fiberQueue) pop() *VMFiber {
+func (q *executionContextQueue) pop() *VMExecutionContext {
 	if q.head >= len(q.items) {
 		return nil
 	}
-	fiber := q.items[q.head]
+	execCtx := q.items[q.head]
 	q.items[q.head] = nil
 	q.head++
 	if q.head == len(q.items) {
 		q.reset()
-		return fiber
+		return execCtx
 	}
 	if q.head > 64 && q.head*2 >= len(q.items) {
 		copy(q.items, q.items[q.head:])
@@ -100,20 +100,20 @@ func (q *fiberQueue) pop() *VMFiber {
 		q.items = q.items[:tail]
 		q.head = 0
 	}
-	return fiber
+	return execCtx
 }
 
-func (q *fiberQueue) len() int {
+func (q *executionContextQueue) len() int {
 	return len(q.items) - q.head
 }
 
-func (q *fiberQueue) reset() {
+func (q *executionContextQueue) reset() {
 	clear(q.items)
 	q.items = nil
 	q.head = 0
 }
 
-func (q *fiberQueue) appendTo(dst []*VMFiber) []*VMFiber {
+func (q *executionContextQueue) appendTo(dst []*VMExecutionContext) []*VMExecutionContext {
 	if q.len() == 0 {
 		return dst
 	}
@@ -160,31 +160,31 @@ func (q *completionQueue) reset() {
 	q.head = 0
 }
 
-type FiberScheduler struct {
+type ExecutionContextScheduler struct {
 	mu        sync.Mutex
 	runID     uint64
 	nextID    uint32
 	nextToken uint64
-	current   *VMFiber
-	runq      fiberQueue
-	pending   map[uint64]*suspendedFiber
+	current   *VMExecutionContext
+	runq      executionContextQueue
+	pending   map[uint64]*suspendedExecutionContext
 	completed completionQueue
 	accepted  map[uint64]struct{}
 	wake      chan struct{}
 	stopped   bool
 }
 
-func NewFiberScheduler() *FiberScheduler {
-	return &FiberScheduler{
-		pending:  make(map[uint64]*suspendedFiber),
+func NewExecutionContextScheduler() *ExecutionContextScheduler {
+	return &ExecutionContextScheduler{
+		pending:  make(map[uint64]*suspendedExecutionContext),
 		accepted: make(map[uint64]struct{}),
 		wake:     make(chan struct{}, 1),
 	}
 }
 
-func (s *FiberScheduler) Reset(root *StackContext, exec *Executor) (*VMFiber, error) {
+func (s *ExecutionContextScheduler) Reset(root *StackContext, exec *Executor) (*VMExecutionContext, error) {
 	if s == nil || root == nil || exec == nil {
-		return nil, errors.New("invalid fiber root")
+		return nil, errors.New("invalid root VM execution context")
 	}
 	s.Stop()
 	s.mu.Lock()
@@ -194,26 +194,26 @@ func (s *FiberScheduler) Reset(root *StackContext, exec *Executor) (*VMFiber, er
 	s.nextToken = 0
 	s.current = nil
 	s.runq.reset()
-	s.pending = make(map[uint64]*suspendedFiber)
+	s.pending = make(map[uint64]*suspendedExecutionContext)
 	s.completed.reset()
 	s.accepted = make(map[uint64]struct{})
 	if s.wake == nil {
 		s.wake = make(chan struct{}, 1)
 	}
 	s.stopped = false
-	rootFiber := &VMFiber{
+	rootExecCtx := &VMExecutionContext{
 		ID: s.nextID,
-		Frames: []*FiberFrame{{
+		Frames: []*ExecutionContextFrame{{
 			Executor: exec,
 			Session:  root,
 			Kind:     FrameRoot,
 		}},
 	}
-	s.runq.push(rootFiber)
-	return rootFiber, nil
+	s.runq.push(rootExecCtx)
+	return rootExecCtx, nil
 }
 
-func (s *FiberScheduler) Current() *VMFiber {
+func (s *ExecutionContextScheduler) Current() *VMExecutionContext {
 	if s == nil {
 		return nil
 	}
@@ -222,43 +222,43 @@ func (s *FiberScheduler) Current() *VMFiber {
 	return s.current
 }
 
-func (s *FiberScheduler) Go(session *StackContext, exec *Executor) (*VMFiber, error) {
+func (s *ExecutionContextScheduler) Go(session *StackContext, exec *Executor) (*VMExecutionContext, error) {
 	if s == nil || session == nil || exec == nil {
-		return nil, errors.New("invalid go fiber")
+		return nil, errors.New("invalid go execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return nil, errors.New("cannot start go fiber after scheduler stopped")
+		return nil, errors.New("cannot start go execution context after scheduler stopped")
 	}
 	s.nextID++
-	fiber := &VMFiber{
+	execCtx := &VMExecutionContext{
 		ID: s.nextID,
-		Frames: []*FiberFrame{{
+		Frames: []*ExecutionContextFrame{{
 			Executor: exec,
 			Session:  session,
 			Kind:     FrameGo,
 			Cleanup:  true,
 		}},
 	}
-	s.runq.push(fiber)
-	return fiber, nil
+	s.runq.push(execCtx)
+	return execCtx, nil
 }
 
-func (s *FiberScheduler) PushFrame(frame *FiberFrame) error {
+func (s *ExecutionContextScheduler) PushFrame(frame *ExecutionContextFrame) error {
 	if s == nil {
-		return errors.New("missing current fiber")
+		return errors.New("missing current VM execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil {
-		return errors.New("missing current fiber")
+		return errors.New("missing current VM execution context")
 	}
 	return s.current.PushFrame(frame)
 }
 
-func (s *FiberScheduler) EnqueueFiber(fiber *VMFiber) {
-	if s == nil || fiber == nil {
+func (s *ExecutionContextScheduler) EnqueueExecutionContext(execCtx *VMExecutionContext) {
+	if s == nil || execCtx == nil {
 		return
 	}
 	s.mu.Lock()
@@ -266,52 +266,52 @@ func (s *FiberScheduler) EnqueueFiber(fiber *VMFiber) {
 	if s.stopped {
 		return
 	}
-	s.runq.push(fiber)
+	s.runq.push(execCtx)
 	s.signalLocked()
 }
 
-func (s *FiberScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireCompletion, error) {
+func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireCompletion, error) {
 	if s == nil {
-		return 0, nil, errors.New("missing current fiber")
+		return 0, nil, errors.New("missing current VM execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil {
-		return 0, nil, errors.New("missing current fiber")
+		return 0, nil, errors.New("missing current VM execution context")
 	}
 	frame := s.current.CurrentFrame()
 	if frame == nil {
-		return 0, nil, errors.New("missing current fiber frame")
+		return 0, nil, errors.New("missing current VM execution context frame")
 	}
 	s.nextToken++
 	token := (s.runID << 32) | s.nextToken
-	s.pending[token] = &suspendedFiber{
-		Fiber:  s.current,
-		Frame:  frame,
-		Resume: resume,
+	s.pending[token] = &suspendedExecutionContext{
+		ExecutionContext: s.current,
+		Frame:            frame,
+		Resume:           resume,
 	}
 	return token, ffiCompletionSink{scheduler: s, token: token}, nil
 }
 
-func (s *FiberScheduler) CommitFFI(token uint64, cancel func()) error {
+func (s *ExecutionContextScheduler) CommitFFI(token uint64, cancel func()) error {
 	if s == nil {
-		return errors.New("missing current fiber")
+		return errors.New("missing current VM execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil {
-		return errors.New("missing current fiber")
+		return errors.New("missing current VM execution context")
 	}
 	pending := s.pending[token]
 	if pending == nil {
-		return errors.New("missing pending ffi fiber")
+		return errors.New("missing pending FFI execution context")
 	}
 	pending.Cancel = cancel
 	s.current = nil
 	return nil
 }
 
-func (s *FiberScheduler) AbortFFI(token uint64) {
+func (s *ExecutionContextScheduler) AbortFFI(token uint64) {
 	if s == nil {
 		return
 	}
@@ -321,25 +321,25 @@ func (s *FiberScheduler) AbortFFI(token uint64) {
 	delete(s.accepted, token)
 }
 
-func (s *FiberScheduler) ParkCurrent() (*VMFiber, *FiberFrame, error) {
+func (s *ExecutionContextScheduler) ParkCurrent() (*VMExecutionContext, *ExecutionContextFrame, error) {
 	if s == nil {
-		return nil, nil, errors.New("missing current fiber")
+		return nil, nil, errors.New("missing current VM execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil {
-		return nil, nil, errors.New("missing current fiber")
+		return nil, nil, errors.New("missing current VM execution context")
 	}
 	frame := s.current.CurrentFrame()
 	if frame == nil {
-		return nil, nil, errors.New("missing current fiber frame")
+		return nil, nil, errors.New("missing current VM execution context frame")
 	}
-	fiber := s.current
+	execCtx := s.current
 	s.current = nil
-	return fiber, frame, nil
+	return execCtx, frame, nil
 }
 
-func (s *FiberScheduler) YieldCurrent() error {
+func (s *ExecutionContextScheduler) YieldCurrent() error {
 	if s == nil {
 		return nil
 	}
@@ -354,7 +354,7 @@ func (s *FiberScheduler) YieldCurrent() error {
 	return nil
 }
 
-func (s *FiberScheduler) FinishCurrent() {
+func (s *ExecutionContextScheduler) FinishCurrent() {
 	if s == nil {
 		return
 	}
@@ -363,38 +363,38 @@ func (s *FiberScheduler) FinishCurrent() {
 	s.current = nil
 }
 
-func (s *FiberScheduler) Stop() {
+func (s *ExecutionContextScheduler) Stop() {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	cancels := s.clearLocked()
 	s.mu.Unlock()
-	runFiberCancels(cancels)
+	runExecutionContextCancels(cancels)
 }
 
-func (s *FiberScheduler) AbortAll() []*VMFiber {
+func (s *ExecutionContextScheduler) AbortAll() []*VMExecutionContext {
 	if s == nil {
 		return nil
 	}
 	s.mu.Lock()
-	fibers := make([]*VMFiber, 0, 1+s.runq.len()+len(s.pending))
+	execCtxs := make([]*VMExecutionContext, 0, 1+s.runq.len()+len(s.pending))
 	if s.current != nil {
-		fibers = append(fibers, s.current)
+		execCtxs = append(execCtxs, s.current)
 	}
-	fibers = s.runq.appendTo(fibers)
+	execCtxs = s.runq.appendTo(execCtxs)
 	for _, pending := range s.pending {
-		if pending != nil && pending.Fiber != nil {
-			fibers = append(fibers, pending.Fiber)
+		if pending != nil && pending.ExecutionContext != nil {
+			execCtxs = append(execCtxs, pending.ExecutionContext)
 		}
 	}
 	cancels := s.clearLocked()
 	s.mu.Unlock()
-	runFiberCancels(cancels)
-	return fibers
+	runExecutionContextCancels(cancels)
+	return execCtxs
 }
 
-func (s *FiberScheduler) completeWire(token uint64, ret []byte, err error) bool {
+func (s *ExecutionContextScheduler) completeWire(token uint64, ret []byte, err error) bool {
 	if s == nil {
 		return false
 	}
@@ -419,7 +419,7 @@ func (s *FiberScheduler) completeWire(token uint64, ret []byte, err error) bool 
 	return true
 }
 
-func (s *FiberScheduler) Next(ctx context.Context) (*VMFiber, error) {
+func (s *ExecutionContextScheduler) Next(ctx context.Context) (*VMExecutionContext, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -427,9 +427,9 @@ func (s *FiberScheduler) Next(ctx context.Context) (*VMFiber, error) {
 		ctx = context.Background()
 	}
 	for {
-		fiber, done, wake := s.nextReady()
-		if fiber != nil || done {
-			return fiber, nil
+		execCtx, done, wake := s.nextReady()
+		if execCtx != nil || done {
+			return execCtx, nil
 		}
 		select {
 		case <-wake:
@@ -439,7 +439,7 @@ func (s *FiberScheduler) Next(ctx context.Context) (*VMFiber, error) {
 	}
 }
 
-func (s *FiberScheduler) nextReady() (*VMFiber, bool, <-chan struct{}) {
+func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-chan struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
@@ -447,12 +447,12 @@ func (s *FiberScheduler) nextReady() (*VMFiber, bool, <-chan struct{}) {
 	}
 	s.drainCompletionsLocked()
 	if s.runq.len() > 0 {
-		fiber := s.runq.pop()
+		execCtx := s.runq.pop()
 		if s.completed.len() > 0 {
 			s.signalLocked()
 		}
-		s.current = fiber
-		return fiber, false, nil
+		s.current = execCtx
+		return execCtx, false, nil
 	}
 	if len(s.pending) == 0 {
 		return nil, true, nil
@@ -466,7 +466,7 @@ func (s *FiberScheduler) nextReady() (*VMFiber, bool, <-chan struct{}) {
 	return nil, false, s.wake
 }
 
-func (s *FiberScheduler) drainCompletionsLocked() {
+func (s *ExecutionContextScheduler) drainCompletionsLocked() {
 	for drained := 0; drained < completionDrainBudget; drained++ {
 		completion, ok := s.completed.pop()
 		if !ok {
@@ -476,7 +476,7 @@ func (s *FiberScheduler) drainCompletionsLocked() {
 	}
 }
 
-func (s *FiberScheduler) completeLocked(completion ffiCompletion) {
+func (s *ExecutionContextScheduler) completeLocked(completion ffiCompletion) {
 	pending := s.pending[completion.token]
 	if pending == nil {
 		delete(s.accepted, completion.token)
@@ -489,10 +489,10 @@ func (s *FiberScheduler) completeLocked(completion ffiCompletion) {
 		data.Err = completion.err
 	}
 	pending.Frame.Session.TaskStack = append(pending.Frame.Session.TaskStack, pending.Resume)
-	s.runq.push(pending.Fiber)
+	s.runq.push(pending.ExecutionContext)
 }
 
-func (s *FiberScheduler) clearLocked() []func() {
+func (s *ExecutionContextScheduler) clearLocked() []func() {
 	cancels := make([]func(), 0, len(s.pending))
 	for _, pending := range s.pending {
 		if pending != nil && pending.Cancel != nil {
@@ -501,7 +501,7 @@ func (s *FiberScheduler) clearLocked() []func() {
 	}
 	s.current = nil
 	s.runq.reset()
-	s.pending = make(map[uint64]*suspendedFiber)
+	s.pending = make(map[uint64]*suspendedExecutionContext)
 	s.completed.reset()
 	s.accepted = make(map[uint64]struct{})
 	s.stopped = true
@@ -509,7 +509,7 @@ func (s *FiberScheduler) clearLocked() []func() {
 	return cancels
 }
 
-func (s *FiberScheduler) signalLocked() {
+func (s *ExecutionContextScheduler) signalLocked() {
 	if s.wake == nil {
 		return
 	}
@@ -519,7 +519,7 @@ func (s *FiberScheduler) signalLocked() {
 	}
 }
 
-func runFiberCancels(cancels []func()) {
+func runExecutionContextCancels(cancels []func()) {
 	for _, cancel := range cancels {
 		if cancel != nil {
 			cancel()
@@ -528,7 +528,7 @@ func runFiberCancels(cancels []func()) {
 }
 
 type ffiCompletionSink struct {
-	scheduler *FiberScheduler
+	scheduler *ExecutionContextScheduler
 	token     uint64
 }
 

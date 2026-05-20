@@ -10,6 +10,6 @@ func fail() {
 func main() {
 	go fail()
 
-	// main 返回后，尚未完成的 child fiber 会被停止，因此这里不会观察到 panic。
+	// main 返回后，尚未完成的子执行上下文会被停止，因此这里不会观察到 panic。
 	time.Sleep(500 * time.Millisecond)
 }

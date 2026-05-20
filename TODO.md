@@ -11,11 +11,11 @@
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型，`ffigen:module` 是 VM 可见模块名来源。
-- VM 并发模型是单线程 cooperative fiber；`go f()` 创建 VM fiber，不返回 handle/result。
+- VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
-- 异步 FFI completion 由 scheduler 内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
+- 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
 - context 取消或 VM 致命错误会统一 abort 当前 run，取消 pending FFI，清理 module loading / waiters，并按 frame 错误路径执行必要 session 清理。
-- 同步 FFI 调用阻塞整个 VM；只有返回 `ffigo.Async[T]` 的 FFI 会挂起当前 fiber。
+- 同步 FFI 调用阻塞整个 VM；只有返回 `ffigo.Async[T]` 的 FFI 会挂起当前 VM 执行上下文。
 - FFI completion 时执行 copy-back；共享变量交错按 completion 处理顺序写回。
 - VM 变量存储统一为 `Slot{Decl, Value}`；声明类型属于 slot，赋值只规范化并更新 slot value。
 - VM struct 是独立 `TypeStruct` / `VMStruct`，不再复用 map；struct 赋值、参数传递、返回值和 value receiver 按值复制字段 slot。
@@ -24,25 +24,25 @@
 - map key 保留 primitive key 类型，避免 string/int/bool/float key 在运行时被同一个字符串键混淆。
 - FFI struct schema 区分 `VMValue` 和 `HostOpaque`；`HostOpaque` 只能以 `HostRef<T>` 形式进入 VM。
 - VM 不能创建 opaque host object；`T{}`、`var x T`、`new(T)` 以及直接包含 opaque value 的 VM 值类型会被编译/运行时拒绝。
-- root `main` 返回后，未完成 child fiber 立即停止；child fiber panic 默认失败整个 VM，除非在 child 内部 recover。
-- Debugger pause event 显式暴露 `FiberID`；root fiber 通常为 1，child fiber 为后续递增 ID。
+- root `main` 返回后，未完成子执行上下文立即停止；子执行上下文 panic 默认失败整个 VM，除非在子上下文内部 recover。
+- Debugger pause event 显式暴露 `ExecutionContextID`；该字段表示 VM 执行上下文 ID，root 通常为 1，子上下文为后续递增 ID。
 - 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表只服务调试和必要兼容查找。
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链。
 
 ## 剩余工作
 
-### Debugger Fiber 标识与暂停策略
+### Debugger 执行上下文标识与暂停策略
 
-- [x] 决定调试事件显式暴露 fiber 标识。
-- [x] 当前 debugger pause 策略固定为 all-stop；任一 fiber 命中断点或人工暂停时，整个 VM 暂停等待全局 command。
-- [x] 补齐 debugger fiber 标识与 all-stop 多 fiber 调试回归测试。
-- [ ] 如后续需要 non-stop 多 fiber 调试，再单独设计 per-fiber pause 集合、命令路由和事件顺序。
+- [x] 决定调试事件显式暴露 VM 执行上下文标识。
+- [x] 当前 debugger pause 策略固定为 all-stop；任一执行上下文命中断点或人工暂停时，整个 VM 暂停等待全局 command。
+- [x] 补齐 debugger 执行上下文标识与 all-stop 多上下文调试回归测试。
+- [ ] 如后续需要 non-stop 多上下文调试，再单独设计 per-context pause 集合、命令路由和事件顺序。
 
 ### Channel / Select 语义评估
 
 - [ ] 评估是否需要语言级 channel/select。
-- [ ] 若需要，先完成基于单线程 scheduler 的语义设计。
+- [ ] 若需要，先完成基于单线程 VM 调度器的语义设计。
 - [ ] 明确 send/receive/select 与 async FFI completion 的调度关系。
 - [ ] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义。
 - [ ] 设计 lowering / bytecode / runtime payload 结构后再进入实现。
@@ -84,4 +84,4 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make test
 - 引用/值语义相关改动必须保持 slot assignment 为唯一写入路径，避免重新引入 boxed cell 或无类型变量覆盖。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
 - VM 内部始终单线程执行，不新增宿主 goroutine 执行 VM 指令。
-- 新增并发能力必须证明不会破坏单线程 scheduler 语义。
+- 新增并发能力必须证明不会破坏单线程 VM 调度器语义。

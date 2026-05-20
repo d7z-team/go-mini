@@ -15,10 +15,10 @@ const (
 )
 
 type Event struct {
-	// FiberID identifies which fiber triggered the current all-stop pause.
-	FiberID   uint32
-	Loc       *ast.Position
-	Variables map[string]string
+	// ExecutionContextID identifies which VM execution context triggered the current all-stop pause.
+	ExecutionContextID uint32
+	Loc                *ast.Position
+	Variables          map[string]string
 }
 
 type Session struct {

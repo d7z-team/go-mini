@@ -12,8 +12,8 @@
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
 - 闭包运行时结构只保留执行必要信息，不重新引入 AST 函数字段作为执行依赖。
-- VM 内部始终按单线程 fiber 模型执行，不新增 host goroutine 执行 VM task。
-- 新增并发能力必须证明不会破坏单线程 scheduler 语义。
+- VM 内部始终按单线程协作式 VM 执行上下文调度，不新增 host goroutine 执行 VM task。
+- 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/ffigo/converter.go` 中立即规范化。
 - 手写 AST / JSON AST 若出现非 canonical type，必须直接编译错误，不做兼容修复。

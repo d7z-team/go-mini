@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/internal/testutil"
 )
 
-func TestWaitGroupSynchronizesFibers(t *testing.T) {
+func TestWaitGroupSynchronizesExecutionContexts(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

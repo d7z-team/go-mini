@@ -35,7 +35,7 @@ type Executor struct {
 	mu             sync.RWMutex
 	runMu          sync.Mutex
 	shared         *SharedState
-	scheduler      *FiberScheduler
+	scheduler      *ExecutionContextScheduler
 }
 
 type runStop uint8
@@ -46,11 +46,11 @@ const (
 	runStopSuspend
 )
 
-const fiberInstructionQuantum = 256
+const executionContextInstructionQuantum = 256
 
 var (
-	errFiberYield   = errors.New("fiber yielded")
-	errFiberSuspend = errors.New("fiber suspended")
+	errExecutionContextYield   = errors.New("VM execution context yielded")
+	errExecutionContextSuspend = errors.New("VM execution context suspended")
 )
 
 var ErrModuleNotFound = errors.New("module not found")
@@ -199,7 +199,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		routes:          make(map[string]FFIRoute),
 		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:          NewSharedState(),
-		scheduler:       NewFiberScheduler(),
+		scheduler:       NewExecutionContextScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -395,7 +395,7 @@ func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
 			e.runMu.Unlock()
 			err = resetErr
 		} else {
-			err = e.runFibers(ctx.Context, root)
+			err = e.runExecutionContexts(ctx.Context, root)
 			e.scheduler.Stop()
 			e.runMu.Unlock()
 		}
@@ -564,10 +564,10 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 
 func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[string]*Var) error {
 	if e.scheduler == nil {
-		e.scheduler = NewFiberScheduler()
+		e.scheduler = NewExecutionContextScheduler()
 	}
 	if e.scheduler.Current() != nil {
-		return errors.New("shared state initialization cannot start inside an active fiber")
+		return errors.New("shared state initialization cannot start inside an active VM execution context")
 	}
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
@@ -583,7 +583,7 @@ func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[str
 		e.runMu.Unlock()
 		return err
 	}
-	err = e.runFibers(ctx, root)
+	err = e.runExecutionContexts(ctx, root)
 	e.scheduler.Stop()
 	e.runMu.Unlock()
 	return err
@@ -807,7 +807,7 @@ func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err
 		return err
 	}
 	defer e.scheduler.Stop()
-	return e.runFibers(ctx, root)
+	return e.runExecutionContexts(ctx, root)
 }
 
 func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
@@ -821,7 +821,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 			e.runMu.Unlock()
 			return resetErr
 		}
-		err = e.runFibers(session.Context, root)
+		err = e.runExecutionContexts(session.Context, root)
 		e.scheduler.Stop()
 		e.runMu.Unlock()
 		return err
@@ -2301,19 +2301,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			if e.scheduler == nil || e.scheduler.Current() == nil {
 				return fmt.Errorf("module %s is already loading and cannot be parked without an active scheduler", path)
 			}
-			fiber, frame, err := e.scheduler.ParkCurrent()
+			execCtx, frame, err := e.scheduler.ParkCurrent()
 			if err != nil {
 				return err
 			}
 			session.Shared.AddModuleWaiter(path, moduleWaiter{
-				Fiber: fiber,
-				Frame: frame,
+				ExecutionContext: execCtx,
+				Frame:            frame,
 				Resume: Task{
 					Op:   OpResumeModule,
 					Data: &ResumeModuleData{Path: path},
 				},
 			})
-			return errFiberSuspend
+			return errExecutionContextSuspend
 		}
 		session.ImportChain[path] = true
 		defer delete(session.ImportChain, path)
@@ -2322,7 +2322,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			prepared, err := e.ModulePlanLoader(path)
 			if err == nil {
 				err := e.startImportedProgram(session, path, prepared)
-				if err != nil && !errors.Is(err, errFiberYield) {
+				if err != nil && !errors.Is(err, errExecutionContextYield) {
 					waiters := session.Shared.FinishModuleLoad(path, nil)
 					e.scheduleModuleWaiters(waiters, nil, err)
 					return err
@@ -2897,30 +2897,30 @@ func (e *Executor) Run(session *StackContext) error {
 	return err
 }
 
-func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
+func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionContext) error {
 	if e.scheduler == nil || root == nil {
-		return errors.New("invalid fiber scheduler")
+		return errors.New("invalid VM execution context scheduler")
 	}
 	for {
-		fiber, err := e.scheduler.Next(ctx)
+		execCtx, err := e.scheduler.Next(ctx)
 		if err != nil {
 			return e.abortRun(err)
 		}
-		if fiber == nil {
+		if execCtx == nil {
 			return nil
 		}
-		frame := fiber.CurrentFrame()
+		frame := execCtx.CurrentFrame()
 		if frame == nil {
 			e.scheduler.FinishCurrent()
 			continue
 		}
-		stop, err := frame.Executor.runSession(frame.Session, fiberInstructionQuantum)
+		stop, err := frame.Executor.runSession(frame.Session, executionContextInstructionQuantum)
 		if err != nil {
 			return e.abortRun(err)
 		}
 		switch stop {
 		case runStopDone:
-			doneFrame := fiber.PopFrame()
+			doneFrame := execCtx.PopFrame()
 			if doneFrame == nil {
 				e.scheduler.FinishCurrent()
 				continue
@@ -2936,18 +2936,18 @@ func (e *Executor) runFibers(ctx context.Context, root *VMFiber) error {
 			if doneFrame.Cleanup {
 				doneFrame.Executor.CleanupSession(doneFrame.Session)
 			}
-			if len(fiber.Frames) == 0 {
-				if fiber.ID != root.ID {
+			if len(execCtx.Frames) == 0 {
+				if execCtx.ID != root.ID {
 					e.scheduler.FinishCurrent()
 					continue
 				}
 				e.scheduler.Stop()
 				return nil
 			}
-			e.scheduler.EnqueueFiber(fiber)
+			e.scheduler.EnqueueExecutionContext(execCtx)
 			e.scheduler.FinishCurrent()
 		case runStopYield, runStopSuspend:
-			// The scheduler method already parked the current fiber.
+			// The scheduler method already parked the current VM execution context.
 		}
 	}
 }
@@ -2959,23 +2959,23 @@ func (e *Executor) abortRun(cause error) error {
 	if e.scheduler == nil {
 		return cause
 	}
-	fibers := e.scheduler.AbortAll()
-	fibers = e.cancelModuleLoadsForFibers(fibers)
-	result := e.unwindFiberErrors(fibers, cause)
+	execCtxs := e.scheduler.AbortAll()
+	execCtxs = e.cancelModuleLoadsForExecutionContexts(execCtxs)
+	result := e.unwindExecutionContextErrors(execCtxs, cause)
 	if result == nil {
 		return cause
 	}
 	return result
 }
 
-func (e *Executor) cancelModuleLoadsForFibers(fibers []*VMFiber) []*VMFiber {
+func (e *Executor) cancelModuleLoadsForExecutionContexts(execCtxs []*VMExecutionContext) []*VMExecutionContext {
 	seen := make(map[*SharedState]bool)
-	for i := 0; i < len(fibers); i++ {
-		fiber := fibers[i]
-		if fiber == nil {
+	for i := 0; i < len(execCtxs); i++ {
+		execCtx := execCtxs[i]
+		if execCtx == nil {
 			continue
 		}
-		for _, frame := range fiber.Frames {
+		for _, frame := range execCtx.Frames {
 			if frame == nil || frame.Session == nil || frame.Session.Shared == nil {
 				continue
 			}
@@ -2985,25 +2985,25 @@ func (e *Executor) cancelModuleLoadsForFibers(fibers []*VMFiber) []*VMFiber {
 			}
 			seen[shared] = true
 			for _, waiter := range shared.CancelModuleLoads() {
-				if waiter.Fiber != nil {
-					fibers = append(fibers, waiter.Fiber)
+				if waiter.ExecutionContext != nil {
+					execCtxs = append(execCtxs, waiter.ExecutionContext)
 				}
 			}
 		}
 	}
-	return fibers
+	return execCtxs
 }
 
-func (e *Executor) unwindFiberErrors(fibers []*VMFiber, cause error) error {
+func (e *Executor) unwindExecutionContextErrors(execCtxs []*VMExecutionContext, cause error) error {
 	result := cause
 	replaced := false
-	seen := make(map[*VMFiber]bool)
-	for _, fiber := range fibers {
-		if fiber == nil || seen[fiber] {
+	seen := make(map[*VMExecutionContext]bool)
+	for _, execCtx := range execCtxs {
+		if execCtx == nil || seen[execCtx] {
 			continue
 		}
-		seen[fiber] = true
-		if err := e.unwindFiberError(fiber, cause); err != nil && !replaced {
+		seen[execCtx] = true
+		if err := e.unwindExecutionContextError(execCtx, cause); err != nil && !replaced {
 			result = err
 			replaced = true
 		}
@@ -3011,10 +3011,10 @@ func (e *Executor) unwindFiberErrors(fibers []*VMFiber, cause error) error {
 	return result
 }
 
-func (e *Executor) unwindFiberError(fiber *VMFiber, cause error) error {
+func (e *Executor) unwindExecutionContextError(execCtx *VMExecutionContext, cause error) error {
 	err := cause
 	for {
-		frame := fiber.PopFrame()
+		frame := execCtx.PopFrame()
 		if frame == nil {
 			break
 		}
@@ -3066,14 +3066,14 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 			if session.Debugger != nil && task.Source != nil {
 				if session.Debugger.ShouldTrigger(task.Source.Line) {
 					session.Debugger.SetStepping(false)
-					var fiberID uint32
+					var execCtxID uint32
 					if e.scheduler != nil {
-						if fiber := e.scheduler.Current(); fiber != nil {
-							fiberID = fiber.ID
+						if execCtx := e.scheduler.Current(); execCtx != nil {
+							execCtxID = execCtx.ID
 						}
 					}
 					session.Debugger.EventChan <- &debugger.Event{
-						FiberID: fiberID,
+						ExecutionContextID: execCtxID,
 						Loc: &ast.Position{
 							F: task.Source.File,
 							L: task.Source.Line,
@@ -3081,7 +3081,7 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 						},
 						Variables: session.Stack.DumpVariables(),
 					}
-					// Debugger pause is currently all-stop: once any fiber triggers a pause,
+					// Debugger pause is currently all-stop: once any VM execution context triggers a pause,
 					// the single-threaded VM waits here for a global debugger command.
 					cmd := <-session.Debugger.CommandChan
 					if cmd == debugger.CmdStepInto {
@@ -3100,10 +3100,10 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 		}
 
 		if err := e.dispatch(session, task); err != nil {
-			if errors.Is(err, errFiberYield) {
+			if errors.Is(err, errExecutionContextYield) {
 				return runStopYield, nil
 			}
-			if errors.Is(err, errFiberSuspend) {
+			if errors.Is(err, errExecutionContextSuspend) {
 				return runStopSuspend, nil
 			}
 			frames := session.GenerateStackTrace(&task)
@@ -3415,12 +3415,12 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 		parent.StepCount = modSession.StepCount
 		return err
 	}
-	frame := &FiberFrame{
+	frame := &ExecutionContextFrame{
 		Executor: modExecutor,
 		Session:  modSession,
 		Kind:     FrameModuleInit,
 	}
-	frame.OnDone = func(done *FiberFrame) error {
+	frame.OnDone = func(done *ExecutionContextFrame) error {
 		parent.StepCount = done.Session.StepCount
 		res := e.buildImportedModuleValue(path, modExecutor, done.Session)
 		waiters := parent.Shared.FinishModuleLoad(path, res)
@@ -3428,7 +3428,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 		e.scheduleModuleWaiters(waiters, res, nil)
 		return nil
 	}
-	frame.OnError = func(done *FiberFrame, loadErr error) error {
+	frame.OnError = func(done *ExecutionContextFrame, loadErr error) error {
 		parent.StepCount = done.Session.StepCount
 		waiters := parent.Shared.FinishModuleLoad(path, nil)
 		e.scheduleModuleWaiters(waiters, nil, loadErr)
@@ -3440,7 +3440,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	if err := e.scheduler.YieldCurrent(); err != nil {
 		return err
 	}
-	return errFiberYield
+	return errExecutionContextYield
 }
 
 func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err error) {
@@ -3448,7 +3448,7 @@ func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err
 		return
 	}
 	for _, waiter := range waiters {
-		if waiter.Fiber == nil || waiter.Frame == nil {
+		if waiter.ExecutionContext == nil || waiter.Frame == nil {
 			continue
 		}
 		data, _ := waiter.Resume.Data.(*ResumeModuleData)
@@ -3459,7 +3459,7 @@ func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err
 		data.Value = value
 		data.Err = err
 		waiter.Frame.Session.TaskStack = append(waiter.Frame.Session.TaskStack, waiter.Resume)
-		e.scheduler.EnqueueFiber(waiter.Fiber)
+		e.scheduler.EnqueueExecutionContext(waiter.ExecutionContext)
 	}
 }
 
@@ -3486,7 +3486,7 @@ func (e *Executor) ExecuteStmts(session *StackContext, stmts []ast.Stmt) error {
 			e.runMu.Unlock()
 			err = resetErr
 		} else {
-			err = e.runFibers(session.Context, root)
+			err = e.runExecutionContexts(session.Context, root)
 			e.scheduler.Stop()
 			e.runMu.Unlock()
 		}
@@ -3514,7 +3514,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 
 	var err error
 	if e.scheduler == nil {
-		e.scheduler = NewFiberScheduler()
+		e.scheduler = NewExecutionContextScheduler()
 	}
 	if e.scheduler.Current() == nil {
 		e.runMu.Lock()
@@ -3522,7 +3522,7 @@ func (e *Executor) ImportModule(ctx *StackContext, n *ast.ImportExpr) (*Var, err
 		if resetErr != nil {
 			err = resetErr
 		} else {
-			err = e.runFibers(ctx.Context, root)
+			err = e.runExecutionContexts(ctx.Context, root)
 			e.scheduler.Stop()
 		}
 		e.runMu.Unlock()

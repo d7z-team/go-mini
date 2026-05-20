@@ -975,7 +975,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 
 func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
 	if e.scheduler == nil {
-		return &VMError{Message: "fiber scheduler is not initialized", IsPanic: true}
+		return &VMError{Message: "VM execution context scheduler is not initialized", IsPanic: true}
 	}
 	if e.scheduler.Current() == nil {
 		return &VMError{Message: "go requires an active VM scheduler", IsPanic: true}
