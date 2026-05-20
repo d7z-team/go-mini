@@ -385,7 +385,7 @@ func main() {
 	}
 }
 
-func TestImportedRootCheckWithoutExplicitImportButWithPackageType(t *testing.T) {
+func TestImportedRootCheckWithPackageType(t *testing.T) {
 	conv := ffigo.NewGoToASTConverter()
 
 	// 模拟已加载但未导入的子模块

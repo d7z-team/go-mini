@@ -188,7 +188,7 @@ func TestStackContextUpvalueSlotsShareCapturedCell(t *testing.T) {
 	}
 }
 
-func TestCaptureSymbolForUpvalueForwardsSharedCellAcrossNestedClosures(t *testing.T) {
+func TestCaptureSymbolForwardsNestedCell(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	outer := exec.NewSession(context.Background(), "global")
 	outer.ScopeApply("outer")
@@ -653,7 +653,7 @@ func TestResolveAddressSupportsLoadStoreAndUpdate(t *testing.T) {
 	}
 }
 
-func TestResolveAddressSupportsAnyWrappedMapMemberAndDereferenceTargets(t *testing.T) {
+func TestResolveAddressSupportsWrappedTargets(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 

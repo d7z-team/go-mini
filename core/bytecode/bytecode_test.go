@@ -101,7 +101,7 @@ func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
 	}
 }
 
-func TestDisassembleUsesNasmStyleAndIncludesExecutableMetadata(t *testing.T) {
+func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	prog := NewProgram()
 	prog.Blueprint = &Blueprint{
 		Package:   "demo",

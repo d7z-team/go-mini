@@ -237,7 +237,7 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 	exec.RegisterFFISchema("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 }
 
-func TestMiniExecutorRejectsConflictingStructSchemaRegistration(t *testing.T) {
+func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
 
@@ -350,7 +350,7 @@ func main() { Result = Result + 41 }
 	}
 }
 
-func TestModuleImportUsesPreparedExecutableWithoutModuleBlueprint(t *testing.T) {
+func TestModuleImportUsesPreparedExecutable(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	helperSource := `
 package helper

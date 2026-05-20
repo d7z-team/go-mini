@@ -450,7 +450,7 @@ func main() {
 	}
 }
 
-func TestStructuredForwardingKeepsReturnPathDiagnosticWithoutGenericWrapper(t *testing.T) {
+func TestStructuredForwardingKeepsReturnPath(t *testing.T) {
 	code := `package main
 func bad(a Bool) Int64 {
 	if a {

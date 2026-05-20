@@ -55,7 +55,7 @@ func registerNestedRangeOuterLoopSchemas(exec *engine.MiniExecutor, bridge *nest
 		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Int64"), "")
 }
 
-func TestNestedOuterLoopRangeContinueKeepsOuterLocalAcrossAllLoaders(t *testing.T) {
+func TestRangeContinueKeepsOuterLocalAllLoaders(t *testing.T) {
 	const code = `
 package main
 import "fmt"

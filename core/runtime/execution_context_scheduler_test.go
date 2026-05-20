@@ -2,7 +2,7 @@ package runtime
 
 import "testing"
 
-func TestExecutionContextSchedulerRoundRobinKeepsFIFOOrder(t *testing.T) {
+func TestSchedulerRoundRobinFIFO(t *testing.T) {
 	scheduler := NewExecutionContextScheduler()
 	first := &VMExecutionContext{ID: 1}
 	second := &VMExecutionContext{ID: 2}
@@ -31,7 +31,7 @@ func TestExecutionContextSchedulerRoundRobinKeepsFIFOOrder(t *testing.T) {
 	}
 }
 
-func TestExecutionContextSchedulerCompletionDrainBudgetPreservesRunnableFairness(t *testing.T) {
+func TestSchedulerDrainBudgetFairness(t *testing.T) {
 	const completions = completionDrainBudget + 44
 
 	scheduler := NewExecutionContextScheduler()

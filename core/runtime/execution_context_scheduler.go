@@ -68,30 +68,27 @@ type suspendedExecutionContext struct {
 	Cancel           func()
 }
 
-const completionDrainBudget = 256
-
-type executionContextQueue struct {
-	items []*VMExecutionContext
+type schedulerQueue[T any] struct {
+	items []T
 	head  int
 }
 
-func (q *executionContextQueue) push(execCtx *VMExecutionContext) {
-	if execCtx == nil {
-		return
-	}
-	q.items = append(q.items, execCtx)
+func (q *schedulerQueue[T]) push(item T) {
+	q.items = append(q.items, item)
 }
 
-func (q *executionContextQueue) pop() *VMExecutionContext {
+func (q *schedulerQueue[T]) pop() (T, bool) {
 	if q.head >= len(q.items) {
-		return nil
+		var zero T
+		return zero, false
 	}
-	execCtx := q.items[q.head]
-	q.items[q.head] = nil
+	item := q.items[q.head]
+	var zero T
+	q.items[q.head] = zero
 	q.head++
 	if q.head == len(q.items) {
 		q.reset()
-		return execCtx
+		return item, true
 	}
 	if q.head > 64 && q.head*2 >= len(q.items) {
 		copy(q.items, q.items[q.head:])
@@ -100,65 +97,27 @@ func (q *executionContextQueue) pop() *VMExecutionContext {
 		q.items = q.items[:tail]
 		q.head = 0
 	}
-	return execCtx
+	return item, true
 }
 
-func (q *executionContextQueue) len() int {
+func (q *schedulerQueue[T]) len() int {
 	return len(q.items) - q.head
 }
 
-func (q *executionContextQueue) reset() {
+func (q *schedulerQueue[T]) reset() {
 	clear(q.items)
 	q.items = nil
 	q.head = 0
 }
 
-func (q *executionContextQueue) appendTo(dst []*VMExecutionContext) []*VMExecutionContext {
+func (q *schedulerQueue[T]) appendTo(dst []T) []T {
 	if q.len() == 0 {
 		return dst
 	}
 	return append(dst, q.items[q.head:]...)
 }
 
-type completionQueue struct {
-	items []ffiCompletion
-	head  int
-}
-
-func (q *completionQueue) push(completion ffiCompletion) {
-	q.items = append(q.items, completion)
-}
-
-func (q *completionQueue) pop() (ffiCompletion, bool) {
-	if q.head >= len(q.items) {
-		return ffiCompletion{}, false
-	}
-	completion := q.items[q.head]
-	q.items[q.head] = ffiCompletion{}
-	q.head++
-	if q.head == len(q.items) {
-		q.reset()
-		return completion, true
-	}
-	if q.head > 64 && q.head*2 >= len(q.items) {
-		copy(q.items, q.items[q.head:])
-		tail := len(q.items) - q.head
-		clear(q.items[tail:])
-		q.items = q.items[:tail]
-		q.head = 0
-	}
-	return completion, true
-}
-
-func (q *completionQueue) len() int {
-	return len(q.items) - q.head
-}
-
-func (q *completionQueue) reset() {
-	clear(q.items)
-	q.items = nil
-	q.head = 0
-}
+const completionDrainBudget = 256
 
 type ExecutionContextScheduler struct {
 	mu        sync.Mutex
@@ -166,9 +125,9 @@ type ExecutionContextScheduler struct {
 	nextID    uint32
 	nextToken uint64
 	current   *VMExecutionContext
-	runq      executionContextQueue
+	runq      schedulerQueue[*VMExecutionContext]
 	pending   map[uint64]*suspendedExecutionContext
-	completed completionQueue
+	completed schedulerQueue[ffiCompletion]
 	accepted  map[uint64]struct{}
 	wake      chan struct{}
 	stopped   bool
@@ -447,7 +406,7 @@ func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-ch
 	}
 	s.drainCompletionsLocked()
 	if s.runq.len() > 0 {
-		execCtx := s.runq.pop()
+		execCtx, _ := s.runq.pop()
 		if s.completed.len() > 0 {
 			s.signalLocked()
 		}

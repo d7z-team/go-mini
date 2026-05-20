@@ -69,7 +69,7 @@ func TestCanonicalTypeSystem(t *testing.T) {
 	}
 }
 
-func TestCanonicalTypeSatisfiesInterfaceAcrossDistinctCanonicalPaths(t *testing.T) {
+func TestCanonicalTypeInterfaceAcrossPaths(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	executor.InjectStandardLibraries()
 

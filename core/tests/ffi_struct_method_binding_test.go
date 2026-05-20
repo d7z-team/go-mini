@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-func TestFFIStructMethodBindingDoesNotStripNonReceiverFirstParam(t *testing.T) {
+func TestFFIMethodBindingKeepsFirstParam(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	exec.DeclareStructSchema("demo.Table", runtime.MustParseRuntimeStructSpec("demo.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<demo.Table>, Int64, Int64, String) Void; }"))
 	exec.DeclareFuncSchema("demo.NewTable", runtime.MustParseRuntimeFuncSig("function() HostRef<demo.Table>"))

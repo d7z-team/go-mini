@@ -6,7 +6,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestDefaultIOModuleSchemaIsAvailableWithoutHostFileAccess(t *testing.T) {
+func TestDefaultIOModuleSchemaNoHostAccess(t *testing.T) {
 	e := engine.NewMiniExecutor()
 	code := `package main
 		import "io"

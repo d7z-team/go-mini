@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestRunDirectoryModeGeneratesPackageOutputAndSkipsOwnedStructRegistrations(t *testing.T) {
+func TestRunDirGeneratesPackageOutput(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "page.go", `package pkgmode
 
@@ -67,7 +67,7 @@ type BrowserModule interface {
 	}
 }
 
-func TestRunDirectoryModeDoesNotTreatVariadicArgumentAsStructReceiver(t *testing.T) {
+func TestRunDirKeepsVariadicArg(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
 
@@ -147,7 +147,7 @@ type RegexpModule interface {
 	}
 }
 
-func TestRunDirectoryModeUsesInjectedReceiverForStructMethods(t *testing.T) {
+func TestRunDirInjectsStructReceiver(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
 
@@ -184,7 +184,7 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 	}
 }
 
-func TestRunDirectoryModeUsesInjectedReceiverForModuleQualifiedStructMethods(t *testing.T) {
+func TestRunDirInjectsModuleStructReceiver(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "browser.go", `package pkgmode
 
@@ -224,7 +224,7 @@ func (o *Browser) AutoPage(url string) *Browser {
 	}
 }
 
-func TestRunDirectoryModeDoesNotInjectReceiverForModuleOnlyStruct(t *testing.T) {
+func TestRunDirSkipsModuleOnlyReceiver(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "factory.go", `package pkgmode
 
@@ -398,7 +398,7 @@ func (f *Factory) New(base int64) *Factory {
 	}
 }
 
-func TestRunDirectoryModePreservesGroupedStructMethodParametersInSchema(t *testing.T) {
+func TestRunDirPreservesGroupedParams(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "table.go", `package pkgmode
 
@@ -487,7 +487,7 @@ type Demo interface {
 	}
 }
 
-func TestRunFileModeDeduplicatesSharedStructSchemasAcrossTargets(t *testing.T) {
+func TestRunFileDedupesSharedStructs(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "order.go", `package pkgmode
 
@@ -536,7 +536,7 @@ type OrderService interface {
 	}
 }
 
-func TestRunFileModeFallsBackToImportAliasWhenModuleIsUnresolved(t *testing.T) {
+func TestRunFileUsesImportAliasFallback(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "api.go", `package pkgmode
 
@@ -607,7 +607,7 @@ func TestDetectGenerationModeRejectsGeneratedFileInput(t *testing.T) {
 	}
 }
 
-func TestRunDirectoryModeFlattensEmbeddedInterfacesIntoSchema(t *testing.T) {
+func TestRunDirFlattensEmbeddedInterfaces(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "api.go", `package pkgmode
 
@@ -691,7 +691,7 @@ type Reader interface {
 	}
 }
 
-func TestRunDirectoryModeRejectsConflictingEmbeddedInterfaceMethods(t *testing.T) {
+func TestRunDirRejectsEmbeddedMethodConflict(t *testing.T) {
 	readerA := &ast.InterfaceType{
 		Methods: &ast.FieldList{List: []*ast.Field{
 			{

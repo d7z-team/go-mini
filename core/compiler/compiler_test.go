@@ -259,7 +259,7 @@ func main() {
 	}
 }
 
-func TestCompileSourceKeepsExecutableBytecodeWhenDisplayBytecodeUnsupported(t *testing.T) {
+func TestCompileSourceKeepsExecutableBytecode(t *testing.T) {
 	c := New(Config{})
 	artifact, _, _, err := c.CompileSource("snippet", `
 package main

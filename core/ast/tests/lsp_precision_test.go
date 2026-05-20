@@ -608,7 +608,7 @@ func TestConcreteMapIndexRejectsAnyKeyType(t *testing.T) {
 	}
 }
 
-func TestCompositeExprIgnoresInvalidChildrenForArrayInference(t *testing.T) {
+func TestCompositeExprSkipsInvalidArrayChildren(t *testing.T) {
 	ctx := newTestSemanticContext(t)
 	expr := &ast.CompositeExpr{
 		BaseNode: ast.BaseNode{Meta: "composite"},
