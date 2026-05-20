@@ -362,8 +362,8 @@ func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope
 		return nil
 	}
 	plan := make([]Task, 0)
-	for i := len(stmts) - 1; i >= 0; i-- {
-		plan = append(plan, e.tasksForStmtInScope(stmts[i], nil, scope)...)
+	for _, stmt := range stmts {
+		plan = append(e.tasksForStmtInScope(stmt, nil, scope), plan...)
 	}
 	return plan
 }
@@ -646,12 +646,13 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 		return nil, fmt.Errorf("invalid interface type: %s", actualInterfaceType)
 	}
 
+	target := cloneVarForAssign(inner)
 	vtable := make([]*Var, len(spec.Methods))
 	for _, method := range spec.Methods {
 		if method.Spec == nil {
 			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceSpec, method.Name)
 		}
-		callable, ok := e.resolveMethodValue(inner, method.Name)
+		callable, ok := e.resolveMethodValue(target, method.Name)
 		expected := method.Spec.FunctionType()
 		if !ok || !e.isCallableCompatible(callable, &expected) {
 			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceSpec, method.Name)
@@ -662,7 +663,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 	v := &Var{
 		VType: TypeInterface,
 		Ref: &VMInterface{
-			Target: cloneVarForAssign(inner),
+			Target: target,
 			Spec:   spec,
 			VTable: vtable,
 		},

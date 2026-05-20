@@ -153,26 +153,6 @@ func storeTasksForSymbol(sym SymbolRef) []Task {
 	}
 }
 
-func predeclareInnerBlockBindings(stmt ast.Stmt, scope *loweringScope) {
-	if stmt == nil || scope == nil {
-		return
-	}
-	switch n := stmt.(type) {
-	case *ast.BlockStmt:
-		if n == nil || !n.Inner {
-			return
-		}
-		for _, child := range n.Children {
-			predeclareInnerBlockBindings(child, scope)
-		}
-	case *ast.GenDeclStmt:
-		if n == nil {
-			return
-		}
-		scope.declare(string(n.Name))
-	}
-}
-
 func (e *Executor) setSource(tasks []Task, node ast.Node) []Task {
 	if isNilNode(node) {
 		return tasks
@@ -260,33 +240,12 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if !n.Inner {
 			childScope = scope.childBlock()
 		}
-		for _, child := range n.Children {
-			switch stmt := child.(type) {
-			case *ast.GenDeclStmt:
-				childScope.declare(string(stmt.Name))
-			case *ast.BlockStmt:
-				predeclareInnerBlockBindings(stmt, childScope)
-			case *ast.RangeStmt:
-				if stmt != nil && stmt.Define {
-					if stmt.Key != "" {
-						childScope.declare(string(stmt.Key))
-					}
-					if stmt.Value != "" {
-						childScope.declare(string(stmt.Value))
-					}
-				}
-			case *ast.TryStmt:
-				if stmt != nil && stmt.Catch != nil && stmt.Catch.VarName != "" {
-					childScope.declare(string(stmt.Catch.VarName))
-				}
-			}
-		}
 		out := make([]Task, 0)
 		if !n.Inner {
 			out = append(out, Task{Op: OpScopeExit})
 		}
-		for i := len(n.Children) - 1; i >= 0; i-- {
-			out = append(out, e.tasksForStmtInScope(n.Children[i], data, childScope)...)
+		for _, child := range n.Children {
+			out = append(e.tasksForStmtInScope(child, data, childScope), out...)
 		}
 		if !n.Inner {
 			out = append(out, Task{Op: OpScopeEnter, Data: "block"})
@@ -308,6 +267,32 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 	case *ast.AssignmentStmt:
 		if n == nil {
 			return nil, true
+		}
+		if n.Kind == ast.AssignDefine {
+			rhsTasks := e.tasksForExprInScope(n.Value, scope)
+			if ident, ok := n.LHS.(*ast.IdentifierExpr); ok && ident != nil {
+				name := string(ident.Name)
+				if name != "_" {
+					if _, exists := scope.bindings[name]; !exists {
+						scope.declare(name)
+					}
+				}
+				sym := scope.resolveOrImplicit(name)
+				switch sym.Kind {
+				case SymbolLocal:
+					out := []Task{{Op: OpStoreLocal, Data: sym}}
+					out = append(out, rhsTasks...)
+					return out, true
+				case SymbolUpvalue:
+					out := []Task{{Op: OpStoreUpvalue, Data: sym}}
+					out = append(out, rhsTasks...)
+					return out, true
+				}
+			}
+			out := []Task{{Op: OpAssign}}
+			out = append(out, rhsTasks...)
+			out = append(out, e.tasksForLHSInScope(n.LHS, scope)...)
+			return out, true
 		}
 		if _, ok := data.(*Var); !ok {
 			if ident, ok := n.LHS.(*ast.IdentifierExpr); ok && ident != nil {
@@ -336,6 +321,25 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 	case *ast.MultiAssignmentStmt:
 		if n == nil {
 			return nil, true
+		}
+		if n.Kind == ast.AssignDefine {
+			rhsTasks := e.tasksForExprInScope(n.Value, scope)
+			for _, lhs := range n.LHS {
+				ident, ok := lhs.(*ast.IdentifierExpr)
+				if !ok || ident == nil || ident.Name == "_" {
+					continue
+				}
+				name := string(ident.Name)
+				if _, exists := scope.bindings[name]; !exists {
+					scope.declare(name)
+				}
+			}
+			out := []Task{{Op: OpMultiAssign, Data: len(n.LHS)}}
+			out = append(out, rhsTasks...)
+			for i := len(n.LHS) - 1; i >= 0; i-- {
+				out = append(out, e.tasksForLHSInScope(n.LHS[i], scope)...)
+			}
+			return out, true
 		}
 		out := []Task{{Op: OpMultiAssign, Data: len(n.LHS)}}
 		out = append(out, e.tasksForExprInScope(n.Value, scope)...)

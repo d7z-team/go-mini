@@ -756,13 +756,11 @@ func TestLoweringHandlesTypedNilASTNodes(t *testing.T) {
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
 
-	scope := exec.newRootLoweringScope().childFunction()
 	var nilBlock *ast.BlockStmt
 	var nilExpr *ast.IdentifierExpr
 	var nilIndex *ast.IndexExpr
 	var nilMember *ast.MemberExpr
 	var nilStar *ast.StarExpr
-	predeclareInnerBlockBindings(nilBlock, scope)
 
 	stmtCases := []ast.Stmt{
 		nilBlock,

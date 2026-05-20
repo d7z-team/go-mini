@@ -250,6 +250,29 @@ func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, erro
 	return nil, nil
 }
 
+func (c *GoToASTConverter) convertAssignRHS(st *ast.AssignStmt) miniast.Expr {
+	if len(st.Rhs) == 1 {
+		rhsExpr := c.convertExpr(st.Rhs[0])
+		if len(st.Lhs) == 2 {
+			if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
+				ta.Multi = true
+			} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
+				ie.Multi = true
+			}
+		}
+		return rhsExpr
+	}
+
+	comp := &miniast.CompositeExpr{
+		BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
+		Kind:     "Array<Any>",
+	}
+	for _, r := range st.Rhs {
+		comp.Values = append(comp.Values, miniast.CompositeElement{Value: c.convertExpr(r)})
+	}
+	return comp
+}
+
 func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc string) *miniast.StructStmt {
 	res := &miniast.StructStmt{
 		BaseNode:  miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
@@ -359,120 +382,32 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		}
 		return res
 	case *ast.AssignStmt:
+		rhsExpr := c.convertAssignRHS(st)
 		if st.Tok == token.DEFINE {
-			var children []miniast.Stmt
-			var lhsExprs []miniast.Expr
-			var defineNames []miniast.Ident
-			groupID := c.genID(st, "short_define")
-
-			// 尝试推导右值类型
-			inferredType := string(miniast.TypeAny)
-			if len(st.Rhs) == 1 {
-				if comp, ok := st.Rhs[0].(*ast.CompositeLit); ok {
-					fullType := miniast.GoMiniType(c.typeToString(comp.Type))
-					if len(st.Lhs) > 1 {
-						// 多重赋值：如果右值是容器，则推导元素类型
-						if fullType.IsArray() {
-							if elem, ok := fullType.ReadArrayItemType(); ok {
-								inferredType = string(elem)
-							}
-						} else if fullType.IsMap() {
-							if _, val, ok := fullType.GetMapKeyValueTypes(); ok {
-								inferredType = string(val)
-							}
-						}
-					} else {
-						inferredType = string(fullType)
-					}
-				}
-			}
-
+			lhsExprs := make([]miniast.Expr, 0, len(st.Lhs))
 			for _, lhs := range st.Lhs {
-				if ident, ok := lhs.(*ast.Ident); ok {
-					if ident.Name != "_" {
-						children = append(children, &miniast.GenDeclStmt{
-							BaseNode:    miniast.BaseNode{ID: c.genID(lhs, "decl"), Meta: "decl", Loc: c.extractLoc(lhs)},
-							Name:        miniast.Ident(ident.Name),
-							Kind:        miniast.GoMiniType(inferredType),
-							DefineGroup: groupID,
-						})
-						defineNames = append(defineNames, miniast.Ident(ident.Name))
-						lhsExprs = append(lhsExprs, &miniast.IdentifierExpr{
-							BaseNode: miniast.BaseNode{ID: c.genID(lhs, "identifier"), Meta: "identifier", Loc: c.extractLoc(lhs)},
-							Name:     miniast.Ident(ident.Name),
-						})
-					} else {
-						// Skip evaluation for blank identifier
-						lhsExprs = append(lhsExprs, nil)
-					}
+				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" && len(st.Lhs) > 1 {
+					lhsExprs = append(lhsExprs, nil)
+					continue
 				}
+				lhsExprs = append(lhsExprs, c.convertExpr(lhs))
 			}
-
-			var rhsExpr miniast.Expr
-			if len(st.Rhs) == 1 {
-				rhsExpr = c.convertExpr(st.Rhs[0])
-				if len(st.Lhs) == 2 {
-					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
-						ta.Multi = true
-					} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
-						ie.Multi = true
-					}
-				}
-			} else {
-				// Create a composite expr for multiple RHS values
-				comp := &miniast.CompositeExpr{
-					BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
-					Kind:     "Array<Any>",
-				}
-				for _, r := range st.Rhs {
-					comp.Values = append(comp.Values, miniast.CompositeElement{Value: c.convertExpr(r)})
-				}
-				rhsExpr = comp
-			}
-
 			if len(lhsExprs) == 1 {
-				children = append(children, &miniast.AssignmentStmt{
-					BaseNode:    miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
-					Kind:        miniast.AssignSet,
-					LHS:         lhsExprs[0],
-					Value:       rhsExpr,
-					DefineNames: defineNames,
-					DefineGroup: groupID,
-				})
-			} else {
-				children = append(children, &miniast.MultiAssignmentStmt{
-					BaseNode:    miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
-					Kind:        miniast.AssignSet,
-					LHS:         lhsExprs,
-					Value:       rhsExpr,
-					DefineNames: defineNames,
-					DefineGroup: groupID,
-				})
+				return &miniast.AssignmentStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)},
+					Kind:     miniast.AssignDefine,
+					LHS:      lhsExprs[0],
+					Value:    rhsExpr,
+				}
 			}
-			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: true, Children: children}
+			return &miniast.MultiAssignmentStmt{
+				BaseNode: miniast.BaseNode{ID: c.genID(st, "multi_assignment"), Meta: "multi_assignment", Loc: c.extractLoc(st)},
+				Kind:     miniast.AssignDefine,
+				LHS:      lhsExprs,
+				Value:    rhsExpr,
+			}
 		}
 		if st.Tok == token.ASSIGN {
-			var rhsExpr miniast.Expr
-			if len(st.Rhs) == 1 {
-				rhsExpr = c.convertExpr(st.Rhs[0])
-				if len(st.Lhs) == 2 {
-					if ta, ok := rhsExpr.(*miniast.TypeAssertExpr); ok {
-						ta.Multi = true
-					} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
-						ie.Multi = true
-					}
-				}
-			} else {
-				comp := &miniast.CompositeExpr{
-					BaseNode: miniast.BaseNode{ID: c.genID(st, "rhs_composite"), Meta: "composite", Loc: c.extractLoc(st)},
-					Kind:     "Array<Any>",
-				}
-				for _, r := range st.Rhs {
-					comp.Values = append(comp.Values, miniast.CompositeElement{Value: c.convertExpr(r)})
-				}
-				rhsExpr = comp
-			}
-
 			if len(st.Lhs) == 1 {
 				return &miniast.AssignmentStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "assignment"), Meta: "assignment", Loc: c.extractLoc(st)}, Kind: miniast.AssignSet, LHS: c.convertExpr(st.Lhs[0]), Value: rhsExpr}
 			}

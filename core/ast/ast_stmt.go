@@ -493,13 +493,6 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 
 	var hasError bool
 	for i := 0; i < len(b.Children); i++ {
-		if consumed, failed := b.checkShortDefineGroup(semCtx, i); consumed > 0 {
-			if failed {
-				hasError = true
-			}
-			i += consumed - 1
-			continue
-		}
 		child := b.Children[i]
 		logCount := semCtx.LogCount()
 		if err := child.Check(semCtx); ForwardStructuredError(semCtx, child, logCount, err) {
@@ -510,68 +503,6 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 		return errors.New("block validation failed")
 	}
 	return nil
-}
-
-func (b *BlockStmt) checkShortDefineGroup(ctx *SemanticContext, start int) (consumed int, failed bool) {
-	if start < 0 || start >= len(b.Children) {
-		return 0, false
-	}
-	decl, ok := b.Children[start].(*GenDeclStmt)
-	if !ok || decl.DefineGroup == "" {
-		return 0, false
-	}
-
-	group := decl.DefineGroup
-	end := start
-	for end < len(b.Children) {
-		nextDecl, ok := b.Children[end].(*GenDeclStmt)
-		if !ok || nextDecl.DefineGroup != group {
-			break
-		}
-		end++
-	}
-	if end >= len(b.Children) {
-		return 0, false
-	}
-
-	var defineNames []Ident
-	switch stmt := b.Children[end].(type) {
-	case *AssignmentStmt:
-		if stmt.DefineGroup != group || len(stmt.DefineNames) == 0 {
-			return 0, false
-		}
-		defineNames = stmt.DefineNames
-	case *MultiAssignmentStmt:
-		if stmt.DefineGroup != group || len(stmt.DefineNames) == 0 {
-			return 0, false
-		}
-		defineNames = stmt.DefineNames
-	default:
-		return 0, false
-	}
-
-	newCount := 0
-	for _, name := range defineNames {
-		if name == "_" {
-			continue
-		}
-		if !ctx.IsLocalVariable(name) {
-			newCount++
-		}
-	}
-	if newCount == 0 {
-		err := errors.New("no new variables on left side of :=")
-		ctx.AddErrorAt(b.Children[end], "%s", err.Error())
-		failed = true
-	}
-
-	for idx := start; idx <= end; idx++ {
-		logCount := ctx.LogCount()
-		if err := b.Children[idx].Check(ctx); ForwardStructuredError(ctx, b.Children[idx], logCount, err) {
-			failed = true
-		}
-	}
-	return end - start + 1, failed
 }
 
 func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
@@ -1435,11 +1366,9 @@ func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
 // MultiAssignmentStmt 表示多变量解构赋值语句
 type MultiAssignmentStmt struct {
 	BaseNode
-	Kind        AssignKind `json:"kind"`
-	LHS         []Expr     `json:"lhs"`
-	Value       Expr       `json:"value"`
-	DefineNames []Ident    `json:"define_names,omitempty"`
-	DefineGroup string     `json:"define_group,omitempty"`
+	Kind  AssignKind `json:"kind"`
+	LHS   []Expr     `json:"lhs"`
+	Value Expr       `json:"value"`
 }
 
 func (m *MultiAssignmentStmt) GetBase() *BaseNode { return &m.BaseNode }
@@ -1592,9 +1521,8 @@ func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 // GenDeclStmt 变量声明
 type GenDeclStmt struct {
 	BaseNode
-	Name        Ident
-	Kind        GoMiniType
-	DefineGroup string `json:"define_group,omitempty"`
+	Name Ident
+	Kind GoMiniType
 }
 
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
@@ -1649,11 +1577,9 @@ func (g *GenDeclStmt) Optimize(ctx *OptimizeContext) Node {
 // AssignmentStmt 表示赋值语句
 type AssignmentStmt struct {
 	BaseNode
-	Kind        AssignKind `json:"kind"`
-	LHS         Expr       `json:"lhs"`
-	Value       Expr       `json:"value"`
-	DefineNames []Ident    `json:"define_names,omitempty"`
-	DefineGroup string     `json:"define_group,omitempty"`
+	Kind  AssignKind `json:"kind"`
+	LHS   Expr       `json:"lhs"`
+	Value Expr       `json:"value"`
 }
 
 func (a *AssignmentStmt) GetBase() *BaseNode { return &a.BaseNode }
@@ -1684,6 +1610,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		ident.Name = ident.Name.Resolve(ctx.ValidContext)
 		if ident.Name == "_" {
 			if err := a.Value.Check(ctx); err != nil {
+				return err
+			}
+			if a.Kind == AssignDefine {
+				err := errors.New("no new variables on left side of :=")
+				ctx.AddErrorf("%s", err.Error())
 				return err
 			}
 			ident.Type = a.Value.GetBase().Type

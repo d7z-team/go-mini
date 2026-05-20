@@ -183,6 +183,46 @@ func TestMultiAssignment(t *testing.T) {
 			t.Fatalf("unexpected compile error: %v", err)
 		}
 	})
+
+	t.Run("ShortDeclRHSUsesPreviousBindings", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			x := 5
+			y, x := x, 7
+			if y != 5 {
+				panic("short declaration RHS did not read previous x")
+			}
+			if x != 7 {
+				panic("short declaration did not update x")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclRHSCannotSeeNewName", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			y := y
+			_ = y
+		}
+		`
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Fatal("expected compile error for short declaration RHS reading newly declared y")
+		}
+		if !strings.Contains(err.Error(), "变量 y 不存在") {
+			t.Fatalf("unexpected compile error: %v", err)
+		}
+	})
 }
 
 type mockTupleBridge struct{}

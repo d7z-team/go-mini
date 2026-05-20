@@ -265,21 +265,35 @@ func cloneVarForAssign(v *Var) *Var {
 		Bridge:   v.Bridge,
 		Ref:      v.Ref, // 共享内部引用
 	}
-	if v.VType == TypeInterface {
+	switch v.VType {
+	case TypeInterface:
 		if inter, ok := v.Ref.(*VMInterface); ok {
+			target := cloneVarForAssign(inter.Target)
 			vtable := make([]*Var, len(inter.VTable))
 			for i, item := range inter.VTable {
 				vtable[i] = cloneVarForAssign(item)
+				if vtable[i] != nil {
+					if method, ok := vtable[i].Ref.(*VMMethodValue); ok {
+						method.Receiver = target
+					}
+				}
 			}
 			res.Ref = &VMInterface{
-				Target: cloneVarForAssign(inter.Target),
+				Target: target,
 				Spec:   inter.Spec,
 				VTable: vtable,
 			}
 		}
-	} else if v.VType == TypeStruct {
+	case TypeStruct:
 		if st, ok := v.Ref.(*VMStruct); ok {
 			res.Ref = st.CloneForAssign()
+		}
+	case TypeClosure:
+		if method, ok := v.Ref.(*VMMethodValue); ok {
+			res.Ref = &VMMethodValue{
+				Receiver: cloneVarForAssign(method.Receiver),
+				Method:   method.Method,
+			}
 		}
 	}
 

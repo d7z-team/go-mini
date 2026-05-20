@@ -514,7 +514,17 @@ func findInStmt(s Stmt, name string) Node {
 		if string(st.Name) == name {
 			return st
 		}
+	case *AssignmentStmt:
+		if st.Kind != AssignDefine {
+			return nil
+		}
+		if ident, ok := st.LHS.(*IdentifierExpr); ok && string(ident.Name) == name {
+			return ident
+		}
 	case *MultiAssignmentStmt:
+		if st.Kind != AssignDefine {
+			return nil
+		}
 		for _, lhs := range st.LHS {
 			if ident, ok := lhs.(*IdentifierExpr); ok && string(ident.Name) == name {
 				return ident
@@ -1084,10 +1094,15 @@ func collectDeclaredNamesInStmt(stmt Stmt, visible map[string]struct{}) {
 			visible[string(s.Name)] = struct{}{}
 		}
 	case *AssignmentStmt:
-		if ident, ok := s.LHS.(*IdentifierExpr); ok && ident.Name != "" {
-			visible[string(ident.Name)] = struct{}{}
+		if s.Kind == AssignDefine {
+			if ident, ok := s.LHS.(*IdentifierExpr); ok && ident.Name != "" {
+				visible[string(ident.Name)] = struct{}{}
+			}
 		}
 	case *MultiAssignmentStmt:
+		if s.Kind != AssignDefine {
+			return
+		}
 		for _, lhs := range s.LHS {
 			if ident, ok := lhs.(*IdentifierExpr); ok && ident.Name != "" {
 				visible[string(ident.Name)] = struct{}{}
