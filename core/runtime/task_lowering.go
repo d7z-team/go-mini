@@ -90,6 +90,18 @@ func (s *loweringScope) declare(name string) SymbolRef {
 	return sym
 }
 
+func (s *loweringScope) declareParam(name string) {
+	if s.fn == nil {
+		s.declare(name)
+		return
+	}
+	sym := SymbolRef{Name: name, Kind: SymbolLocal, Slot: s.fn.nextLocal}
+	s.fn.nextLocal++
+	if name != "" && name != "_" {
+		s.bindings[name] = sym
+	}
+}
+
 func (s *loweringScope) resolve(name string) (SymbolRef, bool) {
 	if sym, ok := s.bindings[name]; ok {
 		return sym, true
@@ -255,15 +267,36 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if n == nil {
 			return nil, true
 		}
-		sym := scope.declare(string(n.Name))
-		return []Task{{
-			Op: OpDeclareVar,
-			Data: &DeclareVarData{
-				Name: string(n.Name),
-				Kind: MustParseRuntimeType(n.Kind),
+		mode := VarDeclInitPerBinding
+		if len(n.Values) == 0 {
+			mode = VarDeclInitZero
+		} else if len(n.Values) == 1 && len(n.Bindings) > 1 {
+			mode = VarDeclInitDestructure
+		}
+		data := &VarDeclData{
+			Bindings:   make([]DeclareVarData, 0, len(n.Bindings)),
+			ValueCount: len(n.Values),
+			Mode:       mode,
+		}
+		valueTasks := make([]Task, 0)
+		for i := len(n.Values) - 1; i >= 0; i-- {
+			valueTasks = append(valueTasks, e.tasksForExprInScope(n.Values[i], scope)...)
+		}
+		for _, binding := range n.Bindings {
+			name := string(binding.Name)
+			sym := SymbolRef{Name: name, Kind: SymbolUnknown, Slot: -1}
+			if name != "" && name != "_" {
+				sym = scope.declare(name)
+			}
+			data.Bindings = append(data.Bindings, DeclareVarData{
+				Name: name,
+				Kind: MustParseRuntimeType(binding.Kind),
 				Sym:  sym,
-			},
-		}}, true
+			})
+		}
+		out := []Task{{Op: OpDeclareInitVars, Data: data}}
+		out = append(out, valueTasks...)
+		return out, true
 	case *ast.AssignmentStmt:
 		if n == nil {
 			return nil, true
@@ -322,8 +355,20 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if n == nil {
 			return nil, true
 		}
+		mode := MultiAssignPerBinding
+		if len(n.Values) == 1 && len(n.LHS) > 1 {
+			mode = MultiAssignDestructure
+		}
+		data := &MultiAssignData{
+			LHSCount:   len(n.LHS),
+			ValueCount: len(n.Values),
+			Mode:       mode,
+		}
 		if n.Kind == ast.AssignDefine {
-			rhsTasks := e.tasksForExprInScope(n.Value, scope)
+			valueTasks := make([]Task, 0)
+			for i := len(n.Values) - 1; i >= 0; i-- {
+				valueTasks = append(valueTasks, e.tasksForExprInScope(n.Values[i], scope)...)
+			}
 			for _, lhs := range n.LHS {
 				ident, ok := lhs.(*ast.IdentifierExpr)
 				if !ok || ident == nil || ident.Name == "_" {
@@ -334,15 +379,17 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 					scope.declare(name)
 				}
 			}
-			out := []Task{{Op: OpMultiAssign, Data: len(n.LHS)}}
-			out = append(out, rhsTasks...)
+			out := []Task{{Op: OpMultiAssign, Data: data}}
+			out = append(out, valueTasks...)
 			for i := len(n.LHS) - 1; i >= 0; i-- {
 				out = append(out, e.tasksForLHSInScope(n.LHS[i], scope)...)
 			}
 			return out, true
 		}
-		out := []Task{{Op: OpMultiAssign, Data: len(n.LHS)}}
-		out = append(out, e.tasksForExprInScope(n.Value, scope)...)
+		out := []Task{{Op: OpMultiAssign, Data: data}}
+		for i := len(n.Values) - 1; i >= 0; i-- {
+			out = append(out, e.tasksForExprInScope(n.Values[i], scope)...)
+		}
 		for i := len(n.LHS) - 1; i >= 0; i-- {
 			out = append(out, e.tasksForLHSInScope(n.LHS[i], scope)...)
 		}
@@ -554,33 +601,44 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 		if n == nil {
 			return nil, true
 		}
+		switchScope := scope.childBlock()
 		plan := &SwitchData{
 			IsType:    n.IsType,
 			HasTag:    n.Tag != nil,
 			HasAssign: n.Assign != nil,
 		}
 		if n.Init != nil {
-			plan.Init = e.tasksForStmtInScope(n.Init, nil, scope.childBlock())
+			plan.Init = e.tasksForStmtInScope(n.Init, nil, switchScope)
 		}
 		if n.Tag != nil {
-			plan.Tag = e.tasksForExprInScope(n.Tag, scope)
+			plan.Tag = e.tasksForExprInScope(n.Tag, switchScope)
 		}
 		if n.Assign != nil {
 			if n.IsType {
 				switch assign := n.Assign.(type) {
 				case *ast.AssignmentStmt:
-					plan.AssignLHS = e.tasksForLHSInScope(assign.LHS, scope)
+					if assign.Kind == ast.AssignDefine {
+						if ident, ok := assign.LHS.(*ast.IdentifierExpr); ok && ident != nil && ident.Name != "_" {
+							switchScope.declare(string(ident.Name))
+						}
+					}
+					plan.AssignLHS = e.tasksForLHSInScope(assign.LHS, switchScope)
 				case *ast.BlockStmt:
 					var lhs ast.Expr
 					for _, child := range assign.Children {
 						if asg, ok := child.(*ast.AssignmentStmt); ok {
 							lhs = asg.LHS
+							if asg.Kind == ast.AssignDefine {
+								if ident, ok := asg.LHS.(*ast.IdentifierExpr); ok && ident != nil && ident.Name != "_" {
+									switchScope.declare(string(ident.Name))
+								}
+							}
 						}
 					}
 					if lhs == nil {
 						return nil, false
 					}
-					plan.AssignLHS = e.tasksForLHSInScope(lhs, scope)
+					plan.AssignLHS = e.tasksForLHSInScope(lhs, switchScope)
 				default:
 					return nil, false
 				}
@@ -592,11 +650,11 @@ func (e *Executor) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweri
 				return nil, false
 			}
 			if clause.List == nil {
-				plan.DefaultBody = e.tasksForStmtInScope(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil, scope.childBlock())
+				plan.DefaultBody = e.tasksForStmtInScope(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil, switchScope.childBlock())
 				continue
 			}
 			caseData := SwitchCaseData{
-				Body: e.tasksForStmtInScope(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil, scope.childBlock()),
+				Body: e.tasksForStmtInScope(&ast.BlockStmt{Children: clause.Body, Inner: true}, nil, switchScope.childBlock()),
 			}
 			for _, expr := range clause.List {
 				if n.IsType {
@@ -830,8 +888,16 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 			return []Task{{Op: OpPush}}, true
 		}
 		fnScope := scope.childFunction()
+		seenParams := make(map[string]struct{}, len(n.Params))
 		for _, p := range n.Params {
-			fnScope.declare(string(p.Name))
+			name := string(p.Name)
+			if name != "" && name != "_" {
+				if _, exists := seenParams[name]; exists {
+					return nil, false
+				}
+				seenParams[name] = struct{}{}
+			}
+			fnScope.declareParam(name)
 		}
 		captures := make([]string, len(n.CaptureNames))
 		copy(captures, n.CaptureNames)

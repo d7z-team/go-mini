@@ -155,8 +155,10 @@ func TestValidatedASTRejectsAssignmentWithoutKind(t *testing.T) {
 					Children: []ast.Stmt{
 						&ast.GenDeclStmt{
 							BaseNode: ast.BaseNode{Meta: "decl"},
-							Name:     "x",
-							Kind:     "Int64",
+							Bindings: []ast.VarBinding{{
+								Name: "x",
+								Kind: "Int64",
+							}},
 						},
 						&ast.AssignmentStmt{
 							BaseNode: ast.BaseNode{Meta: "assignment"},
@@ -176,5 +178,131 @@ func TestValidatedASTRejectsAssignmentWithoutKind(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "assignment missing assignment kind") {
 		t.Fatalf("unexpected semantic error: %v", err)
+	}
+}
+
+func TestJSONDeclRejectsLegacyShape(t *testing.T) {
+	_, err := engine.Unmarshal([]byte(`{"meta":"decl","name":"x","kind":"Int64"}`))
+	if err == nil {
+		t.Fatal("expected legacy decl JSON to fail")
+	}
+	if !strings.Contains(err.Error(), "bindings") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestJSONMultiAssignmentRejectsLegacyValueShape(t *testing.T) {
+	_, err := engine.Unmarshal([]byte(`{
+		"meta":"multi_assignment",
+		"kind":":=",
+		"lhs":[{"meta":"identifier","name":"a"},{"meta":"identifier","name":"b"}],
+		"value":{"meta":"identifier","name":"pair"}
+	}`))
+	if err == nil {
+		t.Fatal("expected legacy multi_assignment JSON to fail")
+	}
+	if !strings.Contains(err.Error(), "values") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestJSONInferredDeclRequiresInitializer(t *testing.T) {
+	node, err := engine.Unmarshal([]byte(`{
+		"meta":"boot",
+		"constants":{},
+		"variables":{},
+		"types":{},
+		"structs":{},
+		"functions":{},
+		"main":[
+			{"meta":"decl","bindings":[{"name":"x","inferred":true}]}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	_, _, err = engine.ValidateAndOptimize(node, func(v *ast.ValidContext) error { return nil })
+	if err == nil {
+		t.Fatal("expected inferred decl without initializer to fail")
+	}
+	if !strings.Contains(err.Error(), "cannot infer type") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExplicitTupleDeclarationAcceptsTupleValue(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	program := &ast.ProgramStmt{
+		BaseNode:   ast.BaseNode{Meta: "boot"},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[ast.Ident]ast.Expr{},
+		Types:      map[ast.Ident]ast.GoMiniType{},
+		Structs:    map[ast.Ident]*ast.StructStmt{},
+		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Functions: map[ast.Ident]*ast.FunctionStmt{
+			"pair": {
+				BaseNode: ast.BaseNode{Meta: "function"},
+				Name:     "pair",
+				FunctionType: ast.FunctionType{
+					Return: "tuple(Int64, String)",
+				},
+				Body: &ast.BlockStmt{
+					BaseNode: ast.BaseNode{Meta: "block"},
+					Inner:    true,
+					Children: []ast.Stmt{
+						&ast.ReturnStmt{
+							BaseNode: ast.BaseNode{Meta: "return"},
+							Results: []ast.Expr{
+								&ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "Int64"}, Value: "1"},
+								&ast.LiteralExpr{BaseNode: ast.BaseNode{Meta: "literal", Type: "String"}, Value: "go"},
+							},
+						},
+					},
+				},
+			},
+			"main": {
+				BaseNode: ast.BaseNode{Meta: "function"},
+				Name:     "main",
+				FunctionType: ast.FunctionType{
+					Return: "Void",
+				},
+				Body: &ast.BlockStmt{
+					BaseNode: ast.BaseNode{Meta: "block"},
+					Inner:    true,
+					Children: []ast.Stmt{
+						&ast.GenDeclStmt{
+							BaseNode: ast.BaseNode{Meta: "decl"},
+							Bindings: []ast.VarBinding{{
+								Name: "t",
+								Kind: "tuple(Int64, String)",
+							}},
+							Values: []ast.Expr{
+								&ast.CallExprStmt{
+									BaseNode: ast.BaseNode{Meta: "call"},
+									Func:     &ast.ConstRefExpr{BaseNode: ast.BaseNode{Meta: "const_ref"}, Name: "pair"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	validatedProgram, _, err := engine.ValidateAndOptimize(program, func(v *ast.ValidContext) error { return nil })
+	if err != nil {
+		t.Fatalf("validation failed: %v", err)
+	}
+	compiled, err := testExecutor.CompileProgram(validatedProgram)
+	if err != nil {
+		t.Fatalf("CompileProgram failed: %v", err)
+	}
+	testProgram, err := testExecutor.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		t.Fatalf("NewRuntimeByCompiled failed: %v", err)
+	}
+	if err := testProgram.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute failed: %v", err)
 	}
 }

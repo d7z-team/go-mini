@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 )
@@ -14,10 +15,11 @@ type PreparedProgram struct {
 	StructSchemas    map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
 	InterfaceSchemas map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
 
-	GlobalInitOrder []string                     `json:"global_init_order"`
-	Globals         map[string]*PreparedGlobal   `json:"globals"`
-	Functions       map[string]*PreparedFunction `json:"functions"`
-	MainTasks       []Task                       `json:"main_tasks"`
+	GlobalInitOrder  []string                     `json:"global_init_order"`
+	GlobalInitGroups []*PreparedGlobalInit        `json:"global_init_groups,omitempty"`
+	Globals          map[string]*PreparedGlobal   `json:"globals"`
+	Functions        map[string]*PreparedFunction `json:"functions"`
+	MainTasks        []Task                       `json:"main_tasks"`
 }
 
 type PreparedGlobal struct {
@@ -25,6 +27,11 @@ type PreparedGlobal struct {
 	Kind     RuntimeType `json:"kind"`
 	HasInit  bool        `json:"has_init"`
 	InitPlan []Task      `json:"init_plan,omitempty"`
+}
+
+type PreparedGlobalInit struct {
+	Names    []string `json:"names"`
+	InitPlan []Task   `json:"init_plan,omitempty"`
 }
 
 type PreparedFunction struct {
@@ -38,9 +45,14 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		return nil, errors.New("invalid program")
 	}
 
-	order, err := program.GlobalInitOrder()
+	program.SyncTopLevelDeclVariables()
+	groups, err := program.GlobalInitGroups()
 	if err != nil {
-		order = program.DeclaredGlobalOrder()
+		groups = program.DeclaredGlobalGroups()
+	}
+	order := make([]ast.Ident, 0, len(program.Variables))
+	for _, group := range groups {
+		order = append(order, group.Names...)
 	}
 
 	importAliases := make(map[string]string, len(program.Imports))
@@ -60,6 +72,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		StructSchemas:    make(map[string]*RuntimeStructSpec, len(program.Structs)),
 		InterfaceSchemas: make(map[string]*RuntimeInterfaceSpec, len(program.Interfaces)),
 		GlobalInitOrder:  identSliceToStrings(order),
+		GlobalInitGroups: make([]*PreparedGlobalInit, 0, len(groups)),
 		Globals:          make(map[string]*PreparedGlobal, len(program.Variables)),
 		Functions:        make(map[string]*PreparedFunction, len(program.Functions)),
 	}
@@ -107,27 +120,70 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 	}
 
 	rootScope := exec.newRootLoweringScope()
-	globalKinds := make(map[string]RuntimeType, len(program.Variables))
-	for _, stmt := range program.Main {
-		if decl, ok := stmt.(*ast.GenDeclStmt); ok {
-			globalKinds[string(decl.Name)] = MustParseRuntimeType(decl.Kind)
+	for _, group := range groups {
+		if len(group.Names) == 0 {
+			continue
+		}
+		var planStmt ast.Stmt
+		if group.Decl != nil {
+			planStmt = group.Decl
+		} else {
+			bindings := make([]ast.VarBinding, 0, len(group.Names))
+			for _, ident := range group.Names {
+				kind := ast.TypeAny
+				if expr := program.Variables[ident]; expr != nil && !expr.GetBase().Type.IsEmpty() {
+					kind = expr.GetBase().Type
+				}
+				bindings = append(bindings, ast.VarBinding{Name: ident, Kind: kind})
+			}
+			planStmt = &ast.GenDeclStmt{BaseNode: ast.BaseNode{Meta: "decl"}, Bindings: bindings, Values: group.Values}
+		}
+		initPlan := exec.tasksForStmtInScope(planStmt, nil, rootScope)
+		prepared.GlobalInitGroups = append(prepared.GlobalInitGroups, &PreparedGlobalInit{
+			Names:    identSliceToStrings(group.Names),
+			InitPlan: initPlan,
+		})
+		if group.Decl != nil {
+			for _, binding := range group.Decl.Bindings {
+				if binding.Name == "" || binding.Name == "_" {
+					continue
+				}
+				if _, ok := program.Variables[binding.Name]; !ok {
+					continue
+				}
+				name := string(binding.Name)
+				prepared.Globals[name] = &PreparedGlobal{
+					Name:    name,
+					Kind:    MustParseRuntimeType(binding.Kind),
+					HasInit: len(group.Decl.Values) > 0,
+				}
+			}
+			continue
+		}
+		for _, ident := range group.Names {
+			expr := program.Variables[ident]
+			kind := MustParseRuntimeType(ast.TypeAny)
+			var initPlan []Task
+			if expr != nil {
+				if !expr.GetBase().Type.IsEmpty() {
+					kind = MustParseRuntimeType(expr.GetBase().Type)
+				}
+				initPlan = exec.tasksForExprInScope(expr, rootScope)
+			}
+			name := string(ident)
+			prepared.Globals[name] = &PreparedGlobal{
+				Name:     name,
+				Kind:     kind,
+				HasInit:  expr != nil,
+				InitPlan: initPlan,
+			}
 		}
 	}
-	for ident, expr := range program.Variables {
+	for ident := range program.Variables {
 		name := string(ident)
-		item := &PreparedGlobal{
-			Name:    name,
-			HasInit: expr != nil,
+		if _, ok := prepared.Globals[name]; !ok {
+			prepared.Globals[name] = &PreparedGlobal{Name: name, Kind: MustParseRuntimeType(ast.TypeAny)}
 		}
-		if kind, ok := globalKinds[name]; ok {
-			item.Kind = kind
-		} else if expr != nil {
-			item.Kind = MustParseRuntimeType(expr.GetBase().Type)
-		}
-		if expr != nil {
-			item.InitPlan = exec.tasksForExprInScope(expr, rootScope)
-		}
-		prepared.Globals[name] = item
 	}
 	for ident, fn := range program.Functions {
 		if fn == nil {
@@ -135,8 +191,16 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		}
 		name := string(ident)
 		fnScope := rootScope.childFunction()
+		seenParams := make(map[string]struct{}, len(fn.Params))
 		for _, p := range fn.Params {
-			fnScope.declare(string(p.Name))
+			paramName := string(p.Name)
+			if paramName != "" && paramName != "_" {
+				if _, exists := seenParams[paramName]; exists {
+					return nil, fmt.Errorf("parameter redeclared during lowering: %s", paramName)
+				}
+				seenParams[paramName] = struct{}{}
+			}
+			fnScope.declareParam(paramName)
 		}
 		prepared.Functions[name] = &PreparedFunction{
 			Name:        name,
@@ -144,7 +208,15 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 			BodyTasks:   exec.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}
 	}
-	prepared.MainTasks = exec.buildStmtPlanWithScope(program.Main, rootScope)
+	mainStmts := make([]ast.Stmt, 0, len(program.Main))
+	for _, stmt := range program.Main {
+		decl, ok := stmt.(*ast.GenDeclStmt)
+		if ok && isGlobalDecl(program, decl) {
+			continue
+		}
+		mainStmts = append(mainStmts, stmt)
+	}
+	prepared.MainTasks = exec.buildStmtPlanWithScope(mainStmts, rootScope)
 	return prepared, nil
 }
 
@@ -161,11 +233,22 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		StructSchemas:    cloneRuntimeStructSpecMap(plan.StructSchemas),
 		InterfaceSchemas: cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
 		GlobalInitOrder:  append([]string(nil), plan.GlobalInitOrder...),
+		GlobalInitGroups: make([]*PreparedGlobalInit, 0, len(plan.GlobalInitGroups)),
 		Globals:          make(map[string]*PreparedGlobal, len(plan.Globals)),
 		Functions:        make(map[string]*PreparedFunction, len(plan.Functions)),
 		MainTasks:        cloneTasks(plan.MainTasks),
 	}
 
+	for _, group := range plan.GlobalInitGroups {
+		if group == nil {
+			cloned.GlobalInitGroups = append(cloned.GlobalInitGroups, nil)
+			continue
+		}
+		cloned.GlobalInitGroups = append(cloned.GlobalInitGroups, &PreparedGlobalInit{
+			Names:    append([]string(nil), group.Names...),
+			InitPlan: cloneTasks(group.InitPlan),
+		})
+	}
 	for name, global := range plan.Globals {
 		if global == nil {
 			cloned.Globals[name] = nil
@@ -191,6 +274,21 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 	}
 
 	return cloned
+}
+
+func isGlobalDecl(program *ast.ProgramStmt, decl *ast.GenDeclStmt) bool {
+	if program == nil || decl == nil {
+		return false
+	}
+	for _, binding := range decl.Bindings {
+		if binding.Name == "" || binding.Name == "_" {
+			continue
+		}
+		if _, ok := program.Variables[binding.Name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func identSliceToStrings(items []ast.Ident) []string {

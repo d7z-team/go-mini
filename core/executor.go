@@ -422,11 +422,14 @@ func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedPr
 			if err != nil {
 				return nil, err
 			}
-			prepared, prepErr := runtime.PrepareProgram(prog)
-			if prepErr != nil {
-				return nil, prepErr
+			compiled, _, compileErr := e.newCompiler().CompileProgram(path, "", prog, false)
+			if compileErr != nil {
+				return nil, compileErr
 			}
-			return prepared, nil
+			if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+				return nil, fmt.Errorf("module %s did not produce executable bytecode", path)
+			}
+			return compiled.Bytecode.Executable, nil
 		}
 		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
 	}

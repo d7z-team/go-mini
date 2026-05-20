@@ -118,6 +118,62 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
+	p.SyncTopLevelDeclVariables()
+
+	type globalDeclInfo struct {
+		kind     GoMiniType
+		inferred bool
+	}
+	globalDecls := make(map[Ident]globalDeclInfo, len(p.Variables))
+	for _, stmt := range p.Main {
+		decl, ok := stmt.(*GenDeclStmt)
+		if !ok || decl == nil {
+			continue
+		}
+		infos, ok := decl.resolveBindings(ctx, true)
+		if !ok {
+			hasError = true
+			continue
+		}
+		for _, info := range infos {
+			if info.name == "_" {
+				continue
+			}
+			if _, isGlobal := p.Variables[info.name]; !isGlobal {
+				continue
+			}
+			if _, exists := globalDecls[info.name]; exists {
+				ctx.AddErrorf("variable redeclared in this block: %s", info.name)
+				hasError = true
+				continue
+			}
+			globalDecls[info.name] = globalDeclInfo{kind: info.kind, inferred: info.inferred}
+		}
+	}
+
+	// 先登记所有显式全局声明和导入别名；inferred 全局必须等 initializer 推断完成后再进入作用域。
+	for _, name := range p.DeclaredGlobalOrder() {
+		if !name.Valid(ctx.ValidContext) {
+			ctx.AddErrorf("invalid identifier: %s", name)
+			hasError = true
+			continue
+		}
+		if decl, ok := globalDecls[name]; ok {
+			if decl.inferred {
+				continue
+			}
+			ctx.root.Global.Fields[name] = decl.kind
+			ctx.AddVariable(name, decl.kind)
+			continue
+		}
+		if expr := p.Variables[name]; expr != nil {
+			if _, ok := expr.(*ImportExpr); ok {
+				ctx.root.Global.Fields[name] = TypeModule
+				ctx.AddVariable(name, TypeModule)
+			}
+		}
+	}
+
 	// 第三遍：全量语义校验
 	for _, structDef := range p.Structs {
 		logCount := ctx.LogCount()
@@ -126,30 +182,56 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	varOrder, orderErr := p.GlobalInitOrder()
+	groupOrder, orderErr := p.GlobalInitGroups()
 	if orderErr != nil {
 		ctx.AddErrorf("%s", orderErr.Error())
 		hasError = true
-		varOrder = p.DeclaredGlobalOrder()
+		groupOrder = p.DeclaredGlobalGroups()
 	}
 
-	for _, i := range varOrder {
-		stmt := p.Variables[i]
-		if !i.Valid(ctx.ValidContext) {
-			ctx.AddErrorf("invalid identifier: %s", i)
-			hasError = true
+	for _, group := range groupOrder {
+		if group.Decl != nil {
+			infos, ok := group.Decl.resolveBindings(ctx, true)
+			if !ok {
+				hasError = true
+				continue
+			}
+			finalTypes, ok := group.Decl.resolveValueTypes(ctx, infos)
+			if !ok {
+				hasError = true
+				continue
+			}
+			for i, info := range infos {
+				if info.name == "_" {
+					continue
+				}
+				if _, isGlobal := p.Variables[info.name]; !isGlobal {
+					continue
+				}
+				ctx.root.Global.Fields[info.name] = finalTypes[i]
+				ctx.AddVariable(info.name, finalTypes[i])
+			}
 			continue
 		}
-		if stmt != nil {
-			logCount := ctx.LogCount()
-			if err := stmt.Check(ctx); ForwardStructuredError(ctx, stmt, logCount, err) {
-				hasError = true
+
+		for _, name := range group.Names {
+			expr := p.Variables[name]
+			finalType := TypeAny
+			if expr != nil {
+				logCount := ctx.LogCount()
+				if err := expr.Check(ctx); ForwardStructuredError(ctx, expr, logCount, err) {
+					hasError = true
+					continue
+				}
+				finalType = expr.GetBase().Type
+				if finalType.IsEmpty() || finalType.IsVoid() {
+					ctx.AddErrorf("global %s initializer has invalid type: %s", name, finalType)
+					hasError = true
+					continue
+				}
 			}
-			ctx.root.Global.Fields[i] = stmt.GetBase().Type
-			ctx.AddVariable(i, stmt.GetBase().Type)
-		} else {
-			ctx.root.Global.Fields[i] = "Any"
-			ctx.AddVariable(i, "Any")
+			ctx.root.Global.Fields[name] = finalType
+			ctx.AddVariable(name, finalType)
 		}
 	}
 
@@ -161,6 +243,11 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, node := range p.Main {
+		if decl, ok := node.(*GenDeclStmt); ok {
+			if p.isGlobalDecl(decl) {
+				continue
+			}
+		}
 		logCount := ctx.LogCount()
 		if err := node.Check(ctx); ForwardStructuredError(ctx, node, logCount, err) {
 			hasError = true
@@ -237,31 +324,12 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 			continue
 		}
 
-		// 处理顶级变量声明提升：如果是被 Mangle 过的 AssignmentStmt，且 Variables 中尚不存在
-		if assign, ok := optimized.(*AssignmentStmt); ok {
-			if ident, ok := assign.LHS.(*IdentifierExpr); ok && strings.Contains(string(ident.Name), ".") {
-				if _, exists := p.Variables[ident.Name]; !exists {
-					p.Variables[ident.Name] = assign.Value
-					// 为了兼容 E2E 测试中的 Mangle 校验，我们将其转换为 GenDeclStmt 形式放回 Main
-					genDecl := &GenDeclStmt{
-						BaseNode: assign.BaseNode,
-						Name:     ident.Name,
-						Kind:     assign.Value.GetBase().Type,
-					}
-					genDecl.Meta = "gen_decl"
-					newMain = append(newMain, genDecl)
-					// 同时保留 AssignmentStmt 的副作用（执行初始化）
-					newMain = append(newMain, assign)
-					continue
-				}
-			}
-		}
-
 		if stmt, ok := optimized.(Stmt); ok {
 			newMain = append(newMain, stmt)
 		}
 	}
 	p.Main = newMain
+	p.SyncTopLevelDeclVariables()
 	return p
 }
 
@@ -278,13 +346,69 @@ func (p *ProgramStmt) String() string {
 	return buffer.String()
 }
 
-// DeclaredGlobalOrder returns top-level variable names in declaration order.
-// Imports are treated as synthetic globals and come before var declarations.
-func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
-	seen := make(map[Ident]struct{})
-	order := make([]Ident, 0, len(p.Variables))
+type GlobalDeclGroup struct {
+	Names  []Ident
+	Values []Expr
+	Decl   *GenDeclStmt
+}
 
-	add := func(name Ident) {
+func (p *ProgramStmt) SyncTopLevelDeclVariables() {
+	if p == nil {
+		return
+	}
+	if p.Variables == nil {
+		p.Variables = make(map[Ident]Expr)
+	}
+	for _, stmt := range p.Main {
+		decl, ok := stmt.(*GenDeclStmt)
+		if !ok || decl == nil {
+			continue
+		}
+		for i, binding := range decl.Bindings {
+			name := binding.Name
+			if name == "" || name == "_" {
+				continue
+			}
+			p.Variables[name] = decl.valueForBinding(i)
+		}
+	}
+}
+
+func (g *GenDeclStmt) valueForBinding(index int) Expr {
+	if g == nil || len(g.Values) == 0 {
+		return nil
+	}
+	if len(g.Values) == len(g.Bindings) && index >= 0 && index < len(g.Values) {
+		return g.Values[index]
+	}
+	if len(g.Values) == 1 {
+		return g.Values[0]
+	}
+	return nil
+}
+
+func (p *ProgramStmt) isGlobalDecl(decl *GenDeclStmt) bool {
+	if p == nil || decl == nil {
+		return false
+	}
+	for _, binding := range decl.Bindings {
+		if binding.Name == "" || binding.Name == "_" {
+			continue
+		}
+		if _, ok := p.Variables[binding.Name]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *ProgramStmt) DeclaredGlobalGroups() []GlobalDeclGroup {
+	if p == nil {
+		return nil
+	}
+	seen := make(map[Ident]struct{})
+	groups := make([]GlobalDeclGroup, 0, len(p.Variables))
+	addSingle := func(name Ident) {
 		if name == "" {
 			return
 		}
@@ -295,7 +419,11 @@ func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
 			return
 		}
 		seen[name] = struct{}{}
-		order = append(order, name)
+		var values []Expr
+		if expr := p.Variables[name]; expr != nil {
+			values = []Expr{expr}
+		}
+		groups = append(groups, GlobalDeclGroup{Names: []Ident{name}, Values: values})
 	}
 
 	for _, imp := range p.Imports {
@@ -304,23 +432,40 @@ func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
 			parts := strings.Split(imp.Path, "/")
 			alias = parts[len(parts)-1]
 		}
-		add(Ident(alias))
+		addSingle(Ident(alias))
 	}
 
 	for _, stmt := range p.Main {
 		decl, ok := stmt.(*GenDeclStmt)
-		if ok {
-			add(decl.Name)
+		if !ok || decl == nil {
+			continue
+		}
+		names := make([]Ident, 0, len(decl.Bindings))
+		for _, binding := range decl.Bindings {
+			name := binding.Name
+			if name == "" || name == "_" {
+				continue
+			}
+			if _, ok := p.Variables[name]; !ok {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
+		if len(names) > 0 {
+			groups = append(groups, GlobalDeclGroup{Names: names, Values: decl.Values, Decl: decl})
 		}
 	}
 
-	remaining := make([]Ident, 0, len(p.Variables)-len(order))
+	remaining := make([]Ident, 0, len(p.Variables))
 	for name := range p.Variables {
 		if _, ok := seen[name]; !ok {
 			remaining = append(remaining, name)
 		}
 	}
-
 	sort.Slice(remaining, func(i, j int) bool {
 		li, lj := p.globalDeclLess(remaining[i], remaining[j])
 		if li != lj {
@@ -328,44 +473,83 @@ func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
 		}
 		return remaining[i] < remaining[j]
 	})
+	for _, name := range remaining {
+		addSingle(name)
+	}
+	return groups
+}
 
-	return append(order, remaining...)
+// DeclaredGlobalOrder returns top-level variable names in declaration order.
+// Imports are treated as synthetic globals and come before var declarations.
+func (p *ProgramStmt) DeclaredGlobalOrder() []Ident {
+	order := make([]Ident, 0, len(p.Variables))
+	for _, group := range p.DeclaredGlobalGroups() {
+		order = append(order, group.Names...)
+	}
+	return order
+}
+
+func (p *ProgramStmt) GlobalInitGroups() ([]GlobalDeclGroup, error) {
+	declared := p.DeclaredGlobalGroups()
+	nameToGroup := make(map[Ident]int, len(p.Variables))
+	for i, group := range declared {
+		for _, name := range group.Names {
+			nameToGroup[name] = i
+		}
+	}
+
+	order := make([]GlobalDeclGroup, 0, len(declared))
+	state := make(map[int]byte, len(declared))
+
+	var visit func(index int) error
+	visit = func(index int) error {
+		switch state[index] {
+		case 1:
+			names := make([]string, len(declared[index].Names))
+			for i, name := range declared[index].Names {
+				names[i] = string(name)
+			}
+			return fmt.Errorf("circular dependency detected in global initialization: %s", strings.Join(names, ","))
+		case 2:
+			return nil
+		}
+
+		state[index] = 1
+		for dep := range p.globalDependenciesForValues(declared[index].Values) {
+			depIndex, ok := nameToGroup[dep]
+			if !ok {
+				continue
+			}
+			if depIndex == index {
+				return fmt.Errorf("self dependency detected in global initialization: %s", dep)
+			}
+			if err := visit(depIndex); err != nil {
+				return err
+			}
+		}
+		state[index] = 2
+		order = append(order, declared[index])
+		return nil
+	}
+
+	for i := range declared {
+		if err := visit(i); err != nil {
+			return declared, err
+		}
+	}
+	return order, nil
 }
 
 // GlobalInitOrder resolves package-level initialization order.
 // It preserves declaration order where possible, but forces dependencies first.
 func (p *ProgramStmt) GlobalInitOrder() ([]Ident, error) {
-	declared := p.DeclaredGlobalOrder()
-	order := make([]Ident, 0, len(declared))
-	state := make(map[Ident]byte, len(declared))
-
-	var visit func(name Ident) error
-	visit = func(name Ident) error {
-		switch state[name] {
-		case 1:
-			return fmt.Errorf("circular dependency detected in global initialization: %s", name)
-		case 2:
-			return nil
-		}
-
-		state[name] = 1
-		for dep := range p.globalDependencies(name) {
-			if dep == name {
-				return fmt.Errorf("self dependency detected in global initialization: %s", name)
-			}
-			if err := visit(dep); err != nil {
-				return err
-			}
-		}
-		state[name] = 2
-		order = append(order, name)
-		return nil
+	groups, err := p.GlobalInitGroups()
+	if err != nil {
+		return p.DeclaredGlobalOrder(), err
 	}
-
-	for _, name := range declared {
-		if err := visit(name); err != nil {
-			return declared, err
-		}
+	order := make([]Ident, 0, len(p.Variables))
+	for _, group := range groups {
+		order = append(order, group.Names...)
 	}
 	return order, nil
 }
@@ -390,11 +574,11 @@ func (p *ProgramStmt) globalDeclLess(a, b Ident) (bool, bool) {
 	return false, false
 }
 
-func (p *ProgramStmt) globalDependencies(name Ident) map[Ident]struct{} {
+func (p *ProgramStmt) globalDependenciesForValues(values []Expr) map[Ident]struct{} {
 	deps := make(map[Ident]struct{})
-	expr := p.Variables[name]
-	p.collectGlobalDependencies(expr, deps)
-	delete(deps, name)
+	for _, expr := range values {
+		p.collectGlobalDependencies(expr, deps)
+	}
 	return deps
 }
 
@@ -810,12 +994,27 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 		var tType GoMiniType
 		if len(r.Results) > 1 {
 			var rTypes []GoMiniType
+			expectedItems, expectedTuple := expectedReturn.ReadTuple()
 			for _, result := range r.Results {
-				rTypes = append(rTypes, result.GetBase().Type)
+				resultType := result.GetBase().Type
+				if resultType.IsTuple() {
+					i := len(rTypes)
+					if !expectedTuple || i >= len(expectedItems) || !expectedItems[i].IsTuple() {
+						err := fmt.Errorf("multiple-value return used in single-value result slot: %s", resultType)
+						ctx.AddErrorAt(result, "%s", err.Error())
+						return err
+					}
+				}
+				rTypes = append(rTypes, resultType)
 			}
 			tType = CreateTupleType(rTypes...)
 		} else {
 			tType = r.Results[0].GetBase().Type
+			if tType.IsTuple() && !expectedReturn.IsTuple() {
+				err := fmt.Errorf("multiple-value return used in single-value result slot: %s", tType)
+				ctx.AddErrorAt(r.Results[0], "%s", err.Error())
+				return err
+			}
 		}
 
 		if !tType.IsAssignableTo(expectedReturn) {
@@ -963,6 +1162,13 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 		keyType, valueType, _ = objType.GetMapKeyValueTypes()
 	} else if objType.IsArray() {
 		valueType, _ = objType.ReadArrayItemType()
+	}
+
+	r.Key = r.Key.Resolve(ctx.ValidContext)
+	r.Value = r.Value.Resolve(ctx.ValidContext)
+	if r.Define && r.Key != "" && r.Key != "_" && r.Value != "" && r.Value != "_" && r.Key == r.Value {
+		rangeCtx.AddErrorf("%s repeated on left side of :=", r.Key)
+		hasError = true
 	}
 
 	if r.Key != "" && r.Key != "_" {
@@ -1298,11 +1504,20 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 
 	var hasError bool
 	// 1. 检查参数有效性
+	seenParams := make(map[Ident]struct{}, len(f.Params))
 	for _, param := range f.Params {
 		if param.Name == "" || !param.Name.Valid(funcCtx.ValidContext) {
 			err := fmt.Errorf("invalid param name: %s", param.Name)
 			funcCtx.AddErrorf("%s", err.Error())
 			hasError = true
+		}
+		if param.Name != "" && param.Name != "_" {
+			if _, exists := seenParams[param.Name]; exists {
+				err := fmt.Errorf("parameter redeclared: %s", param.Name)
+				funcCtx.AddErrorf("%s", err.Error())
+				hasError = true
+			}
+			seenParams[param.Name] = struct{}{}
 		}
 		if param.Type.IsVoid() {
 			err := fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
@@ -1314,7 +1529,7 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 	// 2. 创建函数作用域并添加参数
 	bodyCtx := funcCtx.Child(f.Body)
 	for _, param := range f.Params {
-		if param.Name != "" {
+		if param.Name != "" && param.Name != "_" {
 			bodyCtx.AddVariable(param.Name, param.Type)
 		}
 	}
@@ -1366,9 +1581,9 @@ func (f *FunctionStmt) Optimize(ctx *OptimizeContext) Node {
 // MultiAssignmentStmt 表示多变量解构赋值语句
 type MultiAssignmentStmt struct {
 	BaseNode
-	Kind  AssignKind `json:"kind"`
-	LHS   []Expr     `json:"lhs"`
-	Value Expr       `json:"value"`
+	Kind   AssignKind `json:"kind"`
+	LHS    []Expr     `json:"lhs"`
+	Values []Expr     `json:"values"`
 }
 
 func (m *MultiAssignmentStmt) GetBase() *BaseNode { return &m.BaseNode }
@@ -1386,72 +1601,148 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-	if m.Value == nil {
-		err := errors.New("multi assignment missing value")
+	if len(m.Values) == 0 {
+		err := errors.New("multi assignment missing values")
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
-
-	if err := m.Value.Check(ctx); err != nil {
-		return err
-	}
-
-	valType := m.Value.GetBase().Type
-	var elementTypes []GoMiniType
-
-	if valType.IsTuple() {
-		elementTypes, _ = valType.ReadTuple()
-	} else if valType.IsArray() {
-		itemType, _ := valType.ReadArrayItemType()
-		for i := 0; i < len(m.LHS); i++ {
-			elementTypes = append(elementTypes, itemType)
-		}
-	} else if valType.IsAny() {
-		for i := 0; i < len(m.LHS); i++ {
-			elementTypes = append(elementTypes, "Any")
-		}
-	} else {
-		err := fmt.Errorf("cannot destructure non-composite type: %s", valType)
-		ctx.AddErrorf("%s", err.Error())
-		return err
-	}
-
-	if len(m.LHS) != len(elementTypes) {
-		err := fmt.Errorf("assignment count mismatch: %d = %d", len(m.LHS), len(elementTypes))
+	if len(m.Values) != len(m.LHS) && !(len(m.Values) == 1 && len(m.LHS) > 1) {
+		err := fmt.Errorf("assignment count mismatch: %d names = %d values", len(m.LHS), len(m.Values))
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
 
 	var hasError bool
+	if m.Kind == AssignDefine {
+		seen := make(map[Ident]struct{}, len(m.LHS))
+		for _, lhs := range m.LHS {
+			if lhs == nil {
+				continue
+			}
+			ident, ok := lhs.(*IdentifierExpr)
+			if !ok || ident == nil {
+				ctx.AddErrorAt(lhs, "non-name on left side of :=")
+				hasError = true
+				continue
+			}
+			ident.Name = ident.Name.Resolve(ctx.ValidContext)
+			if ident.Name == "_" {
+				continue
+			}
+			if _, exists := seen[ident.Name]; exists {
+				ctx.AddErrorAt(ident, "%s repeated on left side of :=", ident.Name)
+				hasError = true
+				continue
+			}
+			seen[ident.Name] = struct{}{}
+		}
+	}
+
+	perBinding := len(m.Values) == len(m.LHS)
+	valueTypes := make([]GoMiniType, len(m.Values))
+	for i, value := range m.Values {
+		if value == nil {
+			ctx.AddErrorf("multi assignment has nil value")
+			hasError = true
+			continue
+		}
+		logCount := ctx.LogCount()
+		if err := value.Check(ctx); ForwardStructuredError(ctx, value, logCount, err) {
+			hasError = true
+			continue
+		}
+		typ := value.GetBase().Type
+		if typ.IsEmpty() || typ.IsVoid() {
+			ctx.AddErrorf("assignment value has invalid type: %s", typ)
+			hasError = true
+			continue
+		}
+		valueTypes[i] = typ
+	}
+	if hasError {
+		return errors.New("multi assignment validation failed")
+	}
+
+	var elementTypes []GoMiniType
+	if perBinding {
+		elementTypes = valueTypes
+	} else {
+		switch valType := valueTypes[0]; {
+		case valType.IsTuple():
+			elementTypes, _ = valType.ReadTuple()
+		case valType.IsArray():
+			itemType, _ := valType.ReadArrayItemType()
+			for i := 0; i < len(m.LHS); i++ {
+				elementTypes = append(elementTypes, itemType)
+			}
+		case valType.IsAny():
+			for i := 0; i < len(m.LHS); i++ {
+				elementTypes = append(elementTypes, TypeAny)
+			}
+		default:
+			err := fmt.Errorf("cannot destructure non-composite type: %s", valType)
+			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
+		if len(m.LHS) != len(elementTypes) {
+			err := fmt.Errorf("assignment count mismatch: %d = %d", len(m.LHS), len(elementTypes))
+			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
+	}
+
+	type pendingVar struct {
+		name Ident
+		typ  GoMiniType
+	}
+	pendingNew := make([]pendingVar, 0, len(m.LHS))
 	newCount := 0
 	for i, lhs := range m.LHS {
 		targetType := elementTypes[i]
+		value := Expr(nil)
+		if perBinding {
+			value = m.Values[i]
+		}
 		if lhs == nil {
-			// Skip check for blank identifier
+			if perBinding && targetType.IsTuple() {
+				ctx.AddErrorf("multiple-value initializer used in single-value assignment slot: %s", targetType)
+				hasError = true
+			}
 			continue
 		}
 
 		if ident, ok := lhs.(*IdentifierExpr); ok {
 			ident.Name = ident.Name.Resolve(ctx.ValidContext)
 			if ident.Name == "_" {
+				if perBinding && targetType.IsTuple() {
+					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
+					hasError = true
+				}
 				ident.Type = targetType
 				continue
 			}
 			if m.Kind == AssignDefine {
 				if vType, sameScope := ctx.vars[ident.Name]; sameScope {
+					if perBinding && targetType.IsTuple() && !vType.IsTuple() {
+						ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
+						hasError = true
+						continue
+					}
 					if !targetType.IsAssignableTo(vType) {
 						err := fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
 						ctx.AddErrorf("%s", err.Error())
 						hasError = true
 					}
-					if vType == "Any" && targetType != "Any" {
-						ctx.UpdateVariable(ident.Name, targetType)
-					}
 					ident.Type = targetType
 					continue
 				}
+				if perBinding && targetType.IsTuple() {
+					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
+					hasError = true
+					continue
+				}
 				if !targetType.IsVoid() {
-					ctx.AddVariable(ident.Name, targetType)
+					pendingNew = append(pendingNew, pendingVar{name: ident.Name, typ: targetType})
 					ident.Type = targetType
 					newCount++
 				}
@@ -1464,13 +1755,15 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 				ctx.AddErrorf("%s", err.Error())
 				hasError = true
 			} else {
+				if perBinding && targetType.IsTuple() && !vType.IsTuple() {
+					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
+					hasError = true
+					continue
+				}
 				if !targetType.IsAssignableTo(vType) {
 					err := fmt.Errorf("type mismatch at index %d: cannot assign %s to %s (%s)", i, targetType, ident.Name, vType)
 					ctx.AddErrorf("%s", err.Error())
 					hasError = true
-				}
-				if vType == "Any" && targetType != "Any" {
-					ctx.UpdateVariable(ident.Name, targetType)
 				}
 				ident.Type = targetType
 			}
@@ -1479,6 +1772,11 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 				hasError = true
 			} else {
 				lhsType := lhs.GetBase().Type
+				if perBinding && targetType.IsTuple() && !lhsType.IsTuple() {
+					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
+					hasError = true
+					continue
+				}
 				if !targetType.IsAssignableTo(lhsType) {
 					err := fmt.Errorf("assignment type mismatch at index %d: LHS is %s, RHS is %s", i, lhsType, targetType)
 					ctx.AddErrorf("%s", err.Error())
@@ -1495,6 +1793,9 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 	if hasError {
 		return errors.New("multi assignment validation failed")
 	}
+	for _, item := range pendingNew {
+		ctx.AddVariable(item.name, item.typ)
+	}
 	return nil
 }
 
@@ -1508,21 +1809,38 @@ func (m *MultiAssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 			}
 		}
 	}
-	if m.Value != nil {
-		if opt := m.Value.Optimize(ctx); opt != nil {
+	for i, value := range m.Values {
+		if value == nil {
+			continue
+		}
+		if opt := value.Optimize(ctx); opt != nil {
 			if val, ok := opt.(Expr); ok {
-				m.Value = val
+				m.Values[i] = val
 			}
 		}
 	}
 	return m
 }
 
+// VarBinding describes one name in a var declaration.
+type VarBinding struct {
+	Name     Ident      `json:"name"`
+	Kind     GoMiniType `json:"kind,omitempty"`
+	Inferred bool       `json:"inferred,omitempty"`
+}
+
+type resolvedVarBinding struct {
+	index    int
+	name     Ident
+	kind     GoMiniType
+	inferred bool
+}
+
 // GenDeclStmt 变量声明
 type GenDeclStmt struct {
 	BaseNode
-	Name Ident
-	Kind GoMiniType
+	Bindings []VarBinding `json:"bindings"`
+	Values   []Expr       `json:"values,omitempty"`
 }
 
 func (g *GenDeclStmt) GetBase() *BaseNode { return &g.BaseNode }
@@ -1530,48 +1848,202 @@ func (g *GenDeclStmt) stmtNode()          {}
 func (g *GenDeclStmt) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(g)
 	g.Type = "Void"
-	g.Name = g.Name.Resolve(ctx.ValidContext)
-
-	// 处理顶级变量命名空间
-	if ctx.parent == nil && ctx.root.Package != "" && ctx.root.Package != "main" {
-		if !strings.Contains(string(g.Name), ".") {
-			g.Name = Ident(fmt.Sprintf("%s.%s", ctx.root.Package, g.Name))
+	infos, ok := g.resolveBindings(ctx, false)
+	if !ok {
+		return errors.New("variable declaration validation failed")
+	}
+	finalTypes, ok := g.resolveValueTypes(ctx, infos)
+	if !ok {
+		return errors.New("variable declaration validation failed")
+	}
+	for i, info := range infos {
+		if info.name == "_" {
+			continue
 		}
+		ctx.AddVariable(info.name, finalTypes[i])
 	}
-
-	if !g.Name.Valid(ctx.ValidContext) {
-		err := fmt.Errorf("invalid identifier: %s", g.Name)
-		ctx.AddErrorf("%s", err.Error())
-		return err
-	}
-	g.Kind = g.Kind.Resolve(ctx.ValidContext)
-	if !g.Kind.Valid(ctx.ValidContext) {
-		err := fmt.Errorf("invalid type: %s", g.Kind)
-		ctx.AddErrorf("%s", err.Error())
-		return err
-	}
-	if ctx.ContainsHostOpaqueValue(g.Kind) {
-		err := fmt.Errorf("变量 %s 不能声明为 opaque host value 类型: %s", g.Name, g.Kind)
-		ctx.AddErrorf("%s", err.Error())
-		return err
-	}
-	if ctx.IsLocalVariable(g.Name) {
-		if ctx.parent == nil {
-			ctx.AddVariable(g.Name, g.Kind)
-			return nil
-		}
-		// Allow "re-declaration" if we are in a local scope to support a, err := f1(); b, err := f2()
-		// Go allows this as long as there is at least one new variable.
-		// In go-mini, we relax this to always allow re-decl in local scope for now,
-		// relying on the executor's idempotency.
-		return nil
-	}
-	ctx.AddVariable(g.Name, g.Kind)
 	return nil
 }
 
 func (g *GenDeclStmt) Optimize(ctx *OptimizeContext) Node {
+	for i, value := range g.Values {
+		if value == nil {
+			continue
+		}
+		if opt := value.Optimize(ctx); opt != nil {
+			if expr, ok := opt.(Expr); ok {
+				g.Values[i] = expr
+			}
+		}
+	}
 	return g
+}
+
+func (g *GenDeclStmt) resolveBindings(ctx *SemanticContext, allowExisting bool) ([]resolvedVarBinding, bool) {
+	if len(g.Bindings) == 0 {
+		ctx.AddErrorf("variable declaration missing bindings")
+		return nil, false
+	}
+
+	infos := make([]resolvedVarBinding, 0, len(g.Bindings))
+	seen := make(map[Ident]struct{}, len(g.Bindings))
+	ok := true
+	for i := range g.Bindings {
+		binding := &g.Bindings[i]
+		binding.Name = binding.Name.Resolve(ctx.ValidContext)
+		name := binding.Name
+
+		if name == "" || !name.Valid(ctx.ValidContext) {
+			ctx.AddErrorf("invalid identifier: %s", name)
+			ok = false
+			continue
+		}
+		if name != "_" {
+			if _, exists := seen[name]; exists {
+				ctx.AddErrorf("variable redeclared in this block: %s", name)
+				ok = false
+				continue
+			}
+			seen[name] = struct{}{}
+			if !allowExisting && ctx.IsLocalVariable(name) {
+				ctx.AddErrorf("variable redeclared in this block: %s", name)
+				ok = false
+				continue
+			}
+		}
+
+		kind := binding.Kind.Resolve(ctx.ValidContext)
+		if binding.Inferred {
+			binding.Kind = kind
+			infos = append(infos, resolvedVarBinding{index: i, name: name, kind: kind, inferred: true})
+			continue
+		}
+		if kind.IsEmpty() {
+			ctx.AddErrorf("variable %s declaration missing type", name)
+			ok = false
+			continue
+		}
+		if kind.IsVoid() {
+			ctx.AddErrorf("不能声明 void 类型的变量: %s", name)
+			ok = false
+			continue
+		}
+		if !kind.Valid(ctx.ValidContext) {
+			ctx.AddErrorf("invalid type: %s", kind)
+			ok = false
+			continue
+		}
+		if ctx.ContainsHostOpaqueValue(kind) {
+			ctx.AddErrorf("变量 %s 不能声明为 opaque host value 类型: %s", name, kind)
+			ok = false
+			continue
+		}
+		binding.Kind = kind
+		infos = append(infos, resolvedVarBinding{index: i, name: name, kind: kind})
+	}
+	return infos, ok
+}
+
+func (g *GenDeclStmt) resolveValueTypes(ctx *SemanticContext, infos []resolvedVarBinding) ([]GoMiniType, bool) {
+	finalTypes := make([]GoMiniType, len(infos))
+	if len(g.Values) == 0 {
+		ok := true
+		for i, info := range infos {
+			if info.inferred {
+				ctx.AddErrorf("cannot infer type for %s without initializer", info.name)
+				ok = false
+				continue
+			}
+			finalTypes[i] = info.kind
+		}
+		return finalTypes, ok
+	}
+
+	if len(g.Values) != len(infos) && !(len(g.Values) == 1 && len(infos) > 1) {
+		ctx.AddErrorf("variable declaration count mismatch: %d names = %d values", len(infos), len(g.Values))
+		return nil, false
+	}
+
+	valueTypes := make([]GoMiniType, len(g.Values))
+	ok := true
+	for i, value := range g.Values {
+		if value == nil {
+			ctx.AddErrorf("variable declaration has nil initializer")
+			ok = false
+			continue
+		}
+		if len(g.Values) == len(infos) && !infos[i].inferred {
+			if sub, isComposite := value.(*CompositeExpr); isComposite && sub.Kind == "" {
+				sub.BaseNode.Type = infos[i].kind
+			}
+		}
+		logCount := ctx.LogCount()
+		if err := value.Check(ctx); ForwardStructuredError(ctx, value, logCount, err) {
+			ok = false
+			continue
+		}
+		typ := value.GetBase().Type
+		if typ.IsEmpty() || typ.IsVoid() {
+			ctx.AddErrorf("initializer has invalid type: %s", typ)
+			ok = false
+			continue
+		}
+		valueTypes[i] = typ
+	}
+	if !ok {
+		return nil, false
+	}
+
+	if len(g.Values) == len(infos) {
+		copy(finalTypes, valueTypes)
+	} else {
+		switch typ := valueTypes[0]; {
+		case typ.IsTuple():
+			items, _ := typ.ReadTuple()
+			if len(items) != len(infos) {
+				ctx.AddErrorf("tuple declaration count mismatch: %d names = %d values", len(infos), len(items))
+				return nil, false
+			}
+			copy(finalTypes, items)
+		case typ.IsArray():
+			itemType, _ := typ.ReadArrayItemType()
+			for i := range finalTypes {
+				finalTypes[i] = itemType
+			}
+		case typ.IsAny():
+			for i := range finalTypes {
+				finalTypes[i] = TypeAny
+			}
+		default:
+			ctx.AddErrorf("cannot destructure non-composite type: %s", typ)
+			return nil, false
+		}
+	}
+
+	for i, info := range infos {
+		valueType := finalTypes[i]
+		if info.inferred {
+			if len(g.Values) == len(infos) && valueType.IsTuple() {
+				ctx.AddErrorAt(g.Values[i], "multiple-value initializer used in single-value declaration slot: %s", valueType)
+				ok = false
+				continue
+			}
+			g.Bindings[info.index].Kind = valueType
+			continue
+		}
+		if len(g.Values) == len(infos) && valueType.IsTuple() && !info.kind.IsTuple() {
+			ctx.AddErrorAt(g.Values[i], "multiple-value initializer used in single-value declaration slot: %s", valueType)
+			ok = false
+			continue
+		}
+		if !valueType.IsAssignableTo(info.kind) {
+			ctx.AddErrorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", valueType, info.name, info.kind)
+			ok = false
+			continue
+		}
+		finalTypes[i] = info.kind
+	}
+	return finalTypes, ok
 }
 
 // AssignmentStmt 表示赋值语句
@@ -1612,12 +2084,18 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			if err := a.Value.Check(ctx); err != nil {
 				return err
 			}
+			miniType := a.Value.GetBase().Type
+			if miniType.IsTuple() {
+				err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", miniType)
+				ctx.AddErrorAt(a.Value, "%s", err.Error())
+				return err
+			}
 			if a.Kind == AssignDefine {
 				err := errors.New("no new variables on left side of :=")
 				ctx.AddErrorf("%s", err.Error())
 				return err
 			}
-			ident.Type = a.Value.GetBase().Type
+			ident.Type = miniType
 			return nil
 		}
 
@@ -1643,6 +2121,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 					ctx.AddErrorf("%s", err.Error())
 					return err
 				}
+				if miniType.IsTuple() && !vType.IsTuple() {
+					err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", miniType)
+					ctx.AddErrorAt(a.Value, "%s", err.Error())
+					return err
+				}
 				if !miniType.IsAssignableTo(vType) {
 					err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
 					ctx.AddErrorAt(a.Value, "%s", err.Error())
@@ -1663,6 +2146,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			if miniType.IsVoid() {
 				err := fmt.Errorf("类型 (%s) 不支持赋值", miniType)
 				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			if miniType.IsTuple() {
+				err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", miniType)
+				ctx.AddErrorAt(a.Value, "%s", err.Error())
 				return err
 			}
 			ctx.AddVariable(ident.Name, miniType)
@@ -1703,13 +2191,15 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		}
 
 		if b {
+			if miniType.IsTuple() && !vType.IsTuple() {
+				err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", miniType)
+				ctx.AddErrorAt(a.Value, "%s", err.Error())
+				return err
+			}
 			if !miniType.IsAssignableTo(vType) {
 				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
 				ctx.AddErrorAt(a.Value, "%s", err.Error())
 				return err
-			}
-			if vType == "Any" && miniType != "Any" {
-				ctx.UpdateVariable(ident.Name, miniType)
 			}
 			// Update the identifier's own type so subsequent uses in the AST might benefit,
 			// though typical Check flows rely on GetVariable.
@@ -1723,6 +2213,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 	}
 
 	// 对于其他复杂的 LHS (IndexExpr, MemberExpr)，直接进行类型检查
+	if a.Kind == AssignDefine {
+		err := errors.New("non-name on left side of :=")
+		ctx.AddErrorAt(a.LHS, "%s", err.Error())
+		return err
+	}
 	if err := a.LHS.Check(ctx); err != nil {
 		return err
 	}
@@ -1732,6 +2227,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 
 	lhsType := a.LHS.GetBase().Type
 	valType := a.Value.GetBase().Type
+	if valType.IsTuple() && !lhsType.IsTuple() {
+		err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", valType)
+		ctx.AddErrorAt(a.Value, "%s", err.Error())
+		return err
+	}
 	if !valType.IsAssignableTo(lhsType) {
 		err := fmt.Errorf("赋值类型不匹配: 左值类型为 %s，右值类型为 %s", lhsType, valType)
 		ctx.AddErrorf("%s", err.Error())

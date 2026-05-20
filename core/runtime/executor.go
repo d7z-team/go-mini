@@ -17,13 +17,14 @@ import (
 )
 
 type Executor struct {
-	metadata        *runtimeMetadataRegistry
-	consts          map[string]string
-	globals         map[string]*RuntimeGlobal
-	functions       map[string]*RuntimeFunction
-	mainTasks       []Task
-	globalInitOrder []string
-	importAliases   map[string]string
+	metadata         *runtimeMetadataRegistry
+	consts           map[string]string
+	globals          map[string]*RuntimeGlobal
+	functions        map[string]*RuntimeFunction
+	mainTasks        []Task
+	globalInitOrder  []string
+	globalInitGroups []*RuntimeGlobalInit
+	importAliases    map[string]string
 
 	routes map[string]FFIRoute
 
@@ -59,6 +60,11 @@ type RuntimeGlobal struct {
 	Name     string
 	Kind     RuntimeType
 	HasInit  bool
+	InitPlan []Task
+}
+
+type RuntimeGlobalInit struct {
+	Names    []string
 	InitPlan []Task
 }
 
@@ -190,16 +196,17 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		return nil, errors.New("missing prepared program")
 	}
 	result := &Executor{
-		globalInitOrder: append([]string(nil), prepared.GlobalInitOrder...),
-		importAliases:   make(map[string]string, len(prepared.ImportAliases)),
-		metadata:        newRuntimeMetadataRegistry(),
-		globals:         make(map[string]*RuntimeGlobal),
-		functions:       make(map[string]*RuntimeFunction),
-		consts:          make(map[string]string),
-		routes:          make(map[string]FFIRoute),
-		interfaceCache:  make(map[TypeSpec]*RuntimeInterfaceSpec),
-		shared:          NewSharedState(),
-		scheduler:       NewExecutionContextScheduler(),
+		globalInitOrder:  append([]string(nil), prepared.GlobalInitOrder...),
+		globalInitGroups: cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
+		importAliases:    make(map[string]string, len(prepared.ImportAliases)),
+		metadata:         newRuntimeMetadataRegistry(),
+		globals:          make(map[string]*RuntimeGlobal),
+		functions:        make(map[string]*RuntimeFunction),
+		consts:           make(map[string]string),
+		routes:           make(map[string]FFIRoute),
+		interfaceCache:   make(map[TypeSpec]*RuntimeInterfaceSpec),
+		shared:           NewSharedState(),
+		scheduler:        NewExecutionContextScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -211,6 +218,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 		return
 	}
 	e.globalInitOrder = append([]string(nil), prepared.GlobalInitOrder...)
+	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneStringMap(prepared.Constants)
 	for name, typeInfo := range prepared.NamedTypes {
@@ -348,6 +356,7 @@ func (e *Executor) SetGlobalInitOrder(order []string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.globalInitOrder = append([]string(nil), order...)
+	e.globalInitGroups = nil
 }
 
 func cloneTasks(tasks []Task) []Task {
@@ -355,6 +364,24 @@ func cloneTasks(tasks []Task) []Task {
 		return nil
 	}
 	return append([]Task(nil), tasks...)
+}
+
+func cloneRuntimeGlobalInitGroupsFromPrepared(groups []*PreparedGlobalInit) []*RuntimeGlobalInit {
+	if len(groups) == 0 {
+		return nil
+	}
+	out := make([]*RuntimeGlobalInit, 0, len(groups))
+	for _, group := range groups {
+		if group == nil {
+			out = append(out, nil)
+			continue
+		}
+		out = append(out, &RuntimeGlobalInit{
+			Names:    append([]string(nil), group.Names...),
+			InitPlan: cloneTasks(group.InitPlan),
+		})
+	}
+	return out
 }
 
 func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope) []Task {
@@ -549,7 +576,7 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 		Executor:     e,
 		Shared:       e.shared,
 		ImportChain:  make(map[string]bool),
-		Stack:        &Stack{MemoryPtr: make(map[string]*Slot), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
+		Stack:        &Stack{MemoryPtr: make(map[string]*Slot), Symbols: make(map[string]SymbolRef), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
 		Debugger:     debugger.GetDebugger(ctx),
 		TaskStack:    make([]Task, 0, 128),
 		ValueStack:   &ValueStack{},
@@ -707,13 +734,18 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 	case TypeModule:
 		if mod, ok := val.Ref.(*VMModule); ok {
-			if mod.Context != nil {
-				if v, err := mod.Context.Load(name); err == nil && v != nil {
+			if mod.Context != nil && mod.Context.Shared != nil {
+				if v, ok := mod.Context.Shared.LoadGlobal(name); ok && v != nil {
 					return v, true
 				}
 			}
 			if v, ok := mod.Load(name); ok && v != nil {
 				return v, true
+			}
+			if mod.Context != nil {
+				if v, err := mod.Context.Load(name); err == nil && v != nil {
+					return v, true
+				}
 			}
 			routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
 			if route, ok := e.routes[routeKey]; ok {
@@ -883,6 +915,16 @@ func (e *Executor) scheduleSharedInitialization(session *StackContext, env map[s
 	}
 	session.OwnsSharedInit = true
 	session.TaskStack = append(session.TaskStack, Task{Op: OpFinishSharedInit, Data: &FinishSharedInitData{Env: env}})
+	if len(e.globalInitGroups) > 0 {
+		for i := len(e.globalInitGroups) - 1; i >= 0; i-- {
+			group := e.globalInitGroups[i]
+			if group == nil {
+				continue
+			}
+			session.TaskStack = append(session.TaskStack, cloneTasks(group.InitPlan)...)
+		}
+		return nil
+	}
 	for i := len(e.globalInitOrder) - 1; i >= 0; i-- {
 		name := e.globalInitOrder[i]
 		global, ok := e.lookupGlobal(name)
@@ -1177,22 +1219,96 @@ func pruneRangeContinueResidualTasks(session *StackContext) {
 	}
 }
 
+func (e *Executor) declareInitVars(session *StackContext, data *VarDeclData) error {
+	if data == nil {
+		return errors.New("missing var declaration data")
+	}
+
+	values := make([]*Var, 0, len(data.Bindings))
+	switch data.Mode {
+	case "", VarDeclInitZero:
+		if data.ValueCount != 0 {
+			return fmt.Errorf("var declaration zero-init expected no values, got %d", data.ValueCount)
+		}
+	case VarDeclInitDestructure:
+		if data.ValueCount != 1 {
+			return fmt.Errorf("var declaration expected single expandable value, got %d", data.ValueCount)
+		}
+		value := session.ValueStack.Pop()
+		if value == nil {
+			return errors.New("var declaration: RHS evaluated to nil")
+		}
+		value = e.unwrapValue(value)
+		if value == nil {
+			return errors.New("var declaration: RHS evaluated to nil")
+		}
+		if value.VType != TypeArray {
+			return &VMError{Message: fmt.Sprintf("cannot destructure type %v", value.VType), IsPanic: true}
+		}
+		raw := value.Ref.(*VMArray).Snapshot()
+		if len(raw) != len(data.Bindings) {
+			return &VMError{Message: fmt.Sprintf("var declaration: destructure count mismatch (need %d, got %d)", len(data.Bindings), len(raw)), IsPanic: true}
+		}
+		values = make([]*Var, len(raw))
+		for i, item := range raw {
+			values[i] = cloneVarForAssign(item)
+		}
+	case VarDeclInitPerBinding:
+		if data.ValueCount != len(data.Bindings) {
+			return fmt.Errorf("var declaration count mismatch: %d names = %d values", len(data.Bindings), data.ValueCount)
+		}
+		values = make([]*Var, data.ValueCount)
+		for i := data.ValueCount - 1; i >= 0; i-- {
+			values[i] = session.ValueStack.Pop()
+		}
+	default:
+		return fmt.Errorf("unknown var declaration init mode: %s", data.Mode)
+	}
+
+	for i, binding := range data.Bindings {
+		if binding.Name == "" || binding.Name == "_" {
+			continue
+		}
+		var value *Var
+		if len(values) > 0 {
+			value = values[i]
+		}
+		switch binding.Sym.Kind {
+		case SymbolLocal:
+			if err := session.DeclareSymbol(binding.Sym, binding.Kind); err != nil {
+				return err
+			}
+			if len(values) > 0 {
+				if err := session.StoreSymbol(binding.Sym, value); err != nil {
+					return err
+				}
+			}
+		case SymbolUpvalue:
+			if len(values) > 0 {
+				if err := session.StoreSymbol(binding.Sym, value); err != nil {
+					return err
+				}
+			}
+		default:
+			if err := session.InitGlobal(binding.Name, binding.Kind, value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (e *Executor) dispatch(session *StackContext, task Task) error {
 	switch task.Op {
 	case OpLineStep:
 		// Should be handled in the main loop before dispatch
 		return nil
-	case OpDeclareVar:
-		data := task.Data.(*DeclareVarData)
-		if data.Sym.Kind == SymbolLocal {
-			return session.DeclareSymbol(data.Sym, data.Kind)
+	case OpDeclareInitVars:
+		data, ok := task.Data.(*VarDeclData)
+		if !ok || data == nil {
+			return errors.New("OpDeclareInitVars missing VarDeclData")
 		}
-		if session.Stack.Depth == 1 && session.Stack.Scope == "global" {
-			if _, ok := session.Shared.LoadGlobal(data.Name); ok {
-				return nil
-			}
-		}
-		return session.NewVar(data.Name, data.Kind)
+		return e.declareInitVars(session, data)
 	case OpApplyBinary:
 		op := task.Data.(string)
 		r := session.ValueStack.Pop()
@@ -1346,36 +1462,60 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if session.LHSStack == nil {
 			session.LHSStack = &LHSStack{}
 		}
-		lhsCount := task.Data.(int)
-		val := session.ValueStack.Pop()
+		data, ok := task.Data.(*MultiAssignData)
+		if !ok || data == nil {
+			return errors.New("OpMultiAssign missing MultiAssignData")
+		}
+		if data.LHSCount <= 0 {
+			return fmt.Errorf("multi assignment missing LHS count: %d", data.LHSCount)
+		}
+		lhsCount := data.LHSCount
 		descs := make([]LHSValue, lhsCount)
 		for i := lhsCount - 1; i >= 0; i-- {
 			descs[i] = session.LHSStack.Pop()
 		}
 
-		if val == nil {
-			return errors.New("multi assignment: RHS evaluated to nil")
-		}
-
 		var elements []*Var
-		switch val.VType {
-		case TypeArray:
-			rawElements := val.Ref.(*VMArray).Snapshot()
-			// Snapshot to prevent issues with self-assignment like a, b = b, a
-			elements = make([]*Var, len(rawElements))
-			for i, v := range rawElements {
-				if v != nil {
-					elements[i] = cloneVarForAssign(v)
-				} else {
-					elements[i] = nil
+		switch data.Mode {
+		case MultiAssignDestructure:
+			if data.ValueCount != 1 {
+				return fmt.Errorf("multi assignment expected one destructured value, got %d", data.ValueCount)
+			}
+			val := session.ValueStack.Pop()
+			if val == nil {
+				return errors.New("multi assignment: RHS evaluated to nil")
+			}
+			val = e.unwrapValue(val)
+			if val == nil {
+				return errors.New("multi assignment: RHS evaluated to nil")
+			}
+			switch val.VType {
+			case TypeArray:
+				rawElements := val.Ref.(*VMArray).Snapshot()
+				elements = make([]*Var, len(rawElements))
+				for i, v := range rawElements {
+					if v != nil {
+						elements[i] = cloneVarForAssign(v)
+					} else {
+						elements[i] = nil
+					}
 				}
+			default:
+				return &VMError{Message: fmt.Sprintf("cannot destructure type %v", val.VType), IsPanic: true}
+			}
+			if len(elements) != lhsCount {
+				return &VMError{Message: fmt.Sprintf("multi assignment: destructure count mismatch (need %d, got %d)", lhsCount, len(elements)), IsPanic: true}
+			}
+		case MultiAssignPerBinding:
+			if data.ValueCount != lhsCount {
+				return fmt.Errorf("multi assignment count mismatch: %d names = %d values", lhsCount, data.ValueCount)
+			}
+			elements = make([]*Var, data.ValueCount)
+			for i := data.ValueCount - 1; i >= 0; i-- {
+				elements[i] = cloneVarForAssign(session.ValueStack.Pop())
 			}
 		default:
-			return &VMError{Message: fmt.Sprintf("cannot destructure type %v", val.VType), IsPanic: true}
-		}
-
-		if len(elements) < lhsCount {
-			return &VMError{Message: fmt.Sprintf("multi assignment: not enough elements to destructure (need %d, got %d)", lhsCount, len(elements)), IsPanic: true}
+			return fmt.Errorf("unknown multi assignment mode: %s", data.Mode)
 		}
 
 		for i := 0; i < lhsCount; i++ {
@@ -1400,12 +1540,16 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				elements[i] = session.ValueStack.Pop()
 			}
 			res := &Var{VType: TypeArray, Ref: &VMArray{Data: elements}}
-			_ = session.StoreReturn(res)
+			if err := session.StoreReturn(res); err != nil {
+				return err
+			}
 		} else if count == 1 {
 			// 单返回值
 			res := session.ValueStack.Pop()
 			if res != nil {
-				_ = session.StoreReturn(res)
+				if err := session.StoreReturn(res); err != nil {
+					return err
+				}
 			}
 		}
 		session.UnwindMode = UnwindReturn
@@ -1539,7 +1683,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		} else {
 			return errors.New("OpComposite missing CompositeData")
 		}
-		if typ.IsHostRef() || e.runtimeTypeContainsHostOpaqueValue(typ, 0) {
+		exec := e
+		if session.Executor != nil {
+			exec = session.Executor
+		}
+		if typ.IsHostRef() || exec.runtimeTypeContainsHostOpaqueValue(typ, 0) {
 			return &VMError{Message: fmt.Sprintf("opaque host type %s cannot be created by VM", typ.Raw), IsPanic: true}
 		}
 		isArray := typ.IsArray()
@@ -1561,7 +1709,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		if !isMap && !typ.IsEmpty() {
-			v, err := e.initializeType(session, typ, 0)
+			v, err := exec.initializeType(session, typ, 0)
 			if err != nil {
 				return err
 			}
@@ -1631,7 +1779,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			} else if entries[i].HasExprKey {
 				keyVal := session.ValueStack.Pop()
 				var err error
-				keyName, err = e.varToTypedMapKey(keyVal, keyType)
+				keyName, err = exec.varToTypedMapKey(keyVal, keyType)
 				if err != nil {
 					return err
 				}
@@ -2241,7 +2389,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return errors.New("OpInitGlobal missing InitGlobalData")
 		}
 		if data.HasInit {
-			session.TaskStack = append(session.TaskStack, Task{Op: OpStoreGlobalInit, Data: data.Name})
+			session.TaskStack = append(session.TaskStack, Task{Op: OpStoreGlobalInit, Data: &InitGlobalData{Name: data.Name, Kind: data.Kind}})
 			session.TaskStack = append(session.TaskStack, cloneTasks(data.Plan)...)
 			return nil
 		}
@@ -2249,19 +2397,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if kind.IsEmpty() {
 			kind = MustParseRuntimeType("Any")
 		}
-		v, err := e.initializeType(session, kind, 0)
-		if err != nil {
-			return err
-		}
-		session.Shared.StoreGlobal(data.Name, v)
-		return nil
+		return session.InitGlobal(data.Name, kind, nil)
 	case OpStoreGlobalInit:
-		name, ok := task.Data.(string)
-		if !ok || name == "" {
-			return errors.New("OpStoreGlobalInit missing global name")
+		data, ok := task.Data.(*InitGlobalData)
+		if !ok || data == nil || data.Name == "" {
+			return errors.New("OpStoreGlobalInit missing InitGlobalData")
 		}
-		session.Shared.StoreGlobal(name, session.ValueStack.Pop())
-		return nil
+		return session.InitGlobal(data.Name, data.Kind, session.ValueStack.Pop())
 	case OpFinishSharedInit:
 		data, _ := task.Data.(*FinishSharedInitData)
 		finishSessionSharedInitialization(session, nil)
@@ -2726,9 +2868,21 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			}
 			return &resolvedAddress{
 				load: func() (*Var, error) {
+					if mod.Context.Shared != nil {
+						if v, ok := mod.Context.Shared.LoadGlobal(desc.Property); ok {
+							return v, nil
+						}
+					}
 					return mod.Context.Load(desc.Property)
 				},
 				store: func(val *Var) error {
+					if mod.Context.Shared != nil && mod.Context.Shared.HasGlobal(desc.Property) {
+						return (&StackContext{
+							Executor: mod.Context.Executor,
+							Shared:   mod.Context.Shared,
+							Stack:    mod.Context.Stack,
+						}).StoreSymbol(SymbolRef{Name: desc.Property, Kind: SymbolGlobal, Slot: -1}, val)
+					}
 					return mod.Context.Store(desc.Property, val)
 				},
 			}, nil
@@ -3343,9 +3497,16 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	exports := make(map[string]*Var)
 	for name := range modExec.globals {
 		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			v, err := modSession.Load(name)
-			if err == nil {
-				exports[name] = v
+			if modSession != nil {
+				if modSession.Shared != nil {
+					if v, ok := modSession.Shared.LoadGlobal(name); ok {
+						exports[name] = v
+						continue
+					}
+				}
+				if v, err := modSession.Load(name); err == nil {
+					exports[name] = v
+				}
 			}
 		}
 	}

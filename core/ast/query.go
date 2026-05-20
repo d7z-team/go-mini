@@ -98,7 +98,9 @@ func Walk(v Visitor, node Node) {
 		for _, expr := range n.LHS {
 			Walk(v, expr)
 		}
-		Walk(v, n.Value)
+		for _, value := range n.Values {
+			Walk(v, value)
+		}
 	case *TryStmt:
 		Walk(v, n.Body)
 		if n.Catch != nil {
@@ -511,8 +513,10 @@ func findInStmt(s Stmt, name string) Node {
 	}
 	switch st := s.(type) {
 	case *GenDeclStmt:
-		if string(st.Name) == name {
-			return st
+		for _, binding := range st.Bindings {
+			if string(binding.Name) == name {
+				return st
+			}
 		}
 	case *AssignmentStmt:
 		if st.Kind != AssignDefine {
@@ -739,7 +743,14 @@ func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 				info.Signature = fmt.Sprintf("var %s %s", id.Name, d.GetBase().Type)
 			}
 		case *GenDeclStmt:
-			info.Signature = fmt.Sprintf("var %s %s", d.Name, d.Kind)
+			parts := make([]string, 0, len(d.Bindings))
+			for _, binding := range d.Bindings {
+				if binding.Name == "" {
+					continue
+				}
+				parts = append(parts, fmt.Sprintf("%s %s", binding.Name, binding.Kind))
+			}
+			info.Signature = "var " + strings.Join(parts, ", ")
 		}
 		return info
 	}
@@ -1090,8 +1101,10 @@ func collectDeclaredNamesInStmt(stmt Stmt, visible map[string]struct{}) {
 	}
 	switch s := stmt.(type) {
 	case *GenDeclStmt:
-		if s.Name != "" {
-			visible[string(s.Name)] = struct{}{}
+		for _, binding := range s.Bindings {
+			if binding.Name != "" {
+				visible[string(binding.Name)] = struct{}{}
+			}
 		}
 	case *AssignmentStmt:
 		if s.Kind == AssignDefine {

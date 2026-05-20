@@ -587,10 +587,12 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 	var sawLocalDecl, sawParamLoad, sawLocalLoad, sawGlobalLoad, sawBuiltinCall bool
 	for _, task := range data.BodyTasks {
 		switch task.Op {
-		case OpDeclareVar:
-			decl := task.Data.(*DeclareVarData)
-			if decl.Name == "y" && decl.Sym.Kind == SymbolLocal {
-				sawLocalDecl = true
+		case OpDeclareInitVars:
+			decl := task.Data.(*VarDeclData)
+			for _, binding := range decl.Bindings {
+				if binding.Name == "y" && binding.Sym.Kind == SymbolLocal && decl.Mode == VarDeclInitZero {
+					sawLocalDecl = true
+				}
 			}
 		case OpLoadVar, OpLoadLocal, OpLoadUpvalue:
 			name, kind, ok := taskLoadSymbol(task)

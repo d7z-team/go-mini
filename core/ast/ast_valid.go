@@ -608,20 +608,6 @@ func (c *ValidContext) AddVariable(name Ident, oType GoMiniType) {
 	}
 }
 
-func (c *ValidContext) UpdateVariable(name Ident, oType GoMiniType) {
-	ctx := c
-	for ctx != nil {
-		if _, ok := ctx.vars[name]; ok {
-			ctx.vars[name] = oType
-			return
-		}
-		ctx = ctx.parent
-	}
-	if _, ok := c.root.vars[name]; ok {
-		c.root.vars[name] = oType
-	}
-}
-
 func (c *ValidContext) CheckScope(targetMeta string) (Node, bool) {
 	item := c
 	for item != nil {
@@ -880,9 +866,16 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 	funcCtx.closureNode = f
 
 	// 1. 检查参数有效性
+	seenParams := make(map[Ident]struct{}, len(f.Params))
 	for _, param := range f.Params {
 		if param.Name == "" || !param.Name.Valid(funcCtx.ValidContext) {
 			return fmt.Errorf("invalid param name: %s", param.Name)
+		}
+		if param.Name != "_" {
+			if _, exists := seenParams[param.Name]; exists {
+				return fmt.Errorf("parameter redeclared: %s", param.Name)
+			}
+			seenParams[param.Name] = struct{}{}
 		}
 		if param.Type.IsVoid() {
 			return fmt.Errorf("%s 不接受 void 类型作为函数参数", param.Name)
@@ -892,7 +885,7 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 	// 2. 创建函数作用域并添加参数
 	bodyCtx := funcCtx.Child(f.Body)
 	for _, param := range f.Params {
-		if param.Name != "" {
+		if param.Name != "" && param.Name != "_" {
 			bodyCtx.AddVariable(param.Name, param.Type)
 		}
 	}

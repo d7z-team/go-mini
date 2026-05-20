@@ -453,14 +453,19 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		}
 	case TypeModule:
 		mod := obj.Ref.(*VMModule)
-		if mod.Context != nil {
-			val, err := mod.Context.Load(property)
-			if err == nil {
+		if mod.Context != nil && mod.Context.Shared != nil {
+			if val, ok := mod.Context.Shared.LoadGlobal(property); ok {
 				return val, nil
 			}
 		}
 		if val, ok := mod.Load(property); ok {
 			return val, nil
+		}
+		if mod.Context != nil {
+			val, err := mod.Context.Load(property)
+			if err == nil {
+				return val, nil
+			}
 		}
 		// Fallback to FFI routes
 		routeKey := fmt.Sprintf("%s.%s", mod.Name, property)
@@ -1059,6 +1064,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	newStack := &Stack{
 		Parent:     root,
 		MemoryPtr:  make(map[string]*Slot),
+		Symbols:    make(map[string]SymbolRef),
 		Frame:      &SlotFrame{},
 		Scope:      name,
 		Depth:      newDepth,
@@ -1072,6 +1078,13 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	if closure != nil {
 		newStack.Frame.Upvalues = append(newStack.Frame.Upvalues, closure.UpvalueSlots...)
 		newStack.Frame.UpvalueNames = append(newStack.Frame.UpvalueNames, closure.UpvalueNames...)
+		for i, name := range closure.UpvalueNames {
+			if name == "" || name == "_" {
+				continue
+			}
+			newStack.Frame.ensureUpvalueSlot(i, name)
+			newStack.Symbols[name] = SymbolRef{Name: name, Kind: SymbolUpvalue, Slot: i}
+		}
 	}
 
 	// Inject params

@@ -1029,6 +1029,7 @@ type SlotFrame struct {
 type Stack struct {
 	Parent    *Stack
 	MemoryPtr map[string]*Slot
+	Symbols   map[string]SymbolRef
 	Frame     *SlotFrame
 	FrameBase *SlotFrame
 	FrameSync int
@@ -1257,6 +1258,37 @@ func (s *SharedState) StoreGlobal(name string, v *Var) {
 	s.globals[name] = NewSlot(v.RuntimeType(), v)
 }
 
+func (ctx *StackContext) InitGlobal(name string, kind RuntimeType, expr *Var) error {
+	if ctx == nil || ctx.Shared == nil {
+		return errors.New("missing shared state for global init")
+	}
+	if kind.IsEmpty() {
+		kind = MustParseRuntimeType("Any")
+	}
+	return ctx.Shared.UpdateGlobal(name, func(current *Slot, exists bool) (*Slot, error) {
+		var value *Var
+		var err error
+		if expr == nil {
+			if ctx.Executor != nil {
+				value, err = ctx.Executor.initializeType(ctx, kind, 0)
+			} else {
+				value, err = nilValueForType(kind)
+			}
+		} else {
+			value, err = ctx.prepareAssignedValue(kind, expr)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if exists && current != nil {
+			current.Decl = kind
+			current.Value = value
+			return current, nil
+		}
+		return NewSlot(kind, value), nil
+	})
+}
+
 func (s *SharedState) UpdateGlobal(name string, fn func(current *Slot, exists bool) (*Slot, error)) error {
 	if s == nil {
 		return nil
@@ -1450,26 +1482,15 @@ func (s *Stack) DumpVariables() map[string]string {
 	curr := s
 	for curr != nil {
 		if curr.Frame != nil {
-			for i, name := range curr.Frame.LocalNames {
+			for name, sym := range curr.Symbols {
 				if name == "" {
 					continue
 				}
 				if _, exists := result[name]; exists {
 					continue
 				}
-				if i < len(curr.Frame.Locals) && curr.Frame.Locals[i] != nil && curr.Frame.Locals[i].Value != nil {
-					result[name] = fmt.Sprintf("%v", curr.Frame.Locals[i].Value.Interface())
-				}
-			}
-			for i, name := range curr.Frame.UpvalueNames {
-				if name == "" {
-					continue
-				}
-				if _, exists := result[name]; exists {
-					continue
-				}
-				if i < len(curr.Frame.Upvalues) && curr.Frame.Upvalues[i] != nil && curr.Frame.Upvalues[i].Value != nil {
-					result[name] = fmt.Sprintf("%v", curr.Frame.Upvalues[i].Value.Interface())
+				if slot := lookupFrameSlotBySymbol(curr.Frame, sym); slot != nil && slot.Value != nil {
+					result[name] = fmt.Sprintf("%v", slot.Value.Interface())
 				}
 			}
 			if curr.Frame.Return != nil && curr.Frame.ReturnName != "" && curr.Frame.Return.Value != nil {
@@ -1501,8 +1522,10 @@ func (f *SlotFrame) ensureLocalSlot(slot int, name string) {
 	for len(f.LocalNames) <= slot {
 		f.LocalNames = append(f.LocalNames, "")
 	}
-	if name != "" && f.LocalNames[slot] == "" {
-		f.LocalNames[slot] = name
+	if name != "" {
+		if f.LocalNames[slot] == "" {
+			f.LocalNames[slot] = name
+		}
 		f.LocalIndex[name] = slot
 	}
 }
@@ -1520,8 +1543,10 @@ func (f *SlotFrame) ensureUpvalueSlot(slot int, name string) {
 	for len(f.UpvalueNames) <= slot {
 		f.UpvalueNames = append(f.UpvalueNames, "")
 	}
-	if name != "" && f.UpvalueNames[slot] == "" {
-		f.UpvalueNames[slot] = name
+	if name != "" {
+		if f.UpvalueNames[slot] == "" {
+			f.UpvalueNames[slot] = name
+		}
 		f.UpvalueIndex[name] = slot
 	}
 }
@@ -1532,6 +1557,33 @@ func lookupFrameVarByName(frame *SlotFrame, name string) *Var {
 		return nil
 	}
 	return slot.Value
+}
+
+func lookupFrameSlotBySymbol(frame *SlotFrame, sym SymbolRef) *Slot {
+	if frame == nil {
+		return nil
+	}
+	switch sym.Kind {
+	case SymbolLocal:
+		if sym.Slot >= 0 && sym.Slot < len(frame.Locals) {
+			return frame.Locals[sym.Slot]
+		}
+	case SymbolUpvalue:
+		if sym.Slot >= 0 && sym.Slot < len(frame.Upvalues) {
+			return frame.Upvalues[sym.Slot]
+		}
+	}
+	return nil
+}
+
+func lookupStackSymbolByName(stack *Stack, name string) (SymbolRef, bool) {
+	if stack == nil || name == "" {
+		return SymbolRef{}, false
+	}
+	if sym, ok := stack.Symbols[name]; ok {
+		return sym, true
+	}
+	return SymbolRef{}, false
 }
 
 func lookupFrameSlotByName(frame *SlotFrame, name string) *Slot {
@@ -1569,6 +1621,11 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 	}
 	s := stack
 	for s != nil {
+		if sym, ok := lookupStackSymbolByName(s, variable); ok {
+			if slot := lookupFrameSlotBySymbol(s.Frame, sym); slot != nil {
+				return slot.Value, nil
+			}
+		}
 		if slot, ok := s.MemoryPtr[variable]; ok {
 			if slot == nil {
 				return nil, nil
@@ -1616,8 +1673,8 @@ func storeVarToScope(exec *Executor, shared *SharedState, stack *Stack, variable
 	}
 	s := stack
 	for s != nil {
-		if sym, ok := lookupFrameSymbolByName(s.Frame, variable); ok {
-			ctx := &StackContext{Executor: exec, Shared: shared, Stack: stack}
+		if sym, ok := lookupStackSymbolByName(s, variable); ok {
+			ctx := &StackContext{Executor: exec, Shared: shared, Stack: s}
 			return ctx.StoreSymbol(sym, expr)
 		}
 		if slot, ok := s.MemoryPtr[variable]; ok {
@@ -1649,6 +1706,7 @@ func (ctx *StackContext) ScopeApply(scope string) {
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Slot),
+		Symbols:   make(map[string]SymbolRef),
 		Frame:     frame,
 		FrameBase: frame,
 		Scope:     scope,
@@ -1707,6 +1765,7 @@ func (ctx *StackContext) ScopeApplyLoopBody(scope string) {
 	ctx.Stack = &Stack{
 		Parent:    ctx.Stack,
 		MemoryPtr: make(map[string]*Slot),
+		Symbols:   make(map[string]SymbolRef),
 		Frame:     clonedFrame,
 		FrameBase: parentFrame,
 		FrameSync: syncLimit,
@@ -1758,7 +1817,7 @@ func (ctx *StackContext) ScopeExit() {
 
 func (ctx *StackContext) Store(variable string, expr *Var) error {
 	if ctx.Stack != nil {
-		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, variable); ok {
+		if sym, ok := lookupStackSymbolByName(ctx.Stack, variable); ok {
 			return ctx.StoreSymbol(sym, expr)
 		}
 	}
@@ -1782,6 +1841,12 @@ func (ctx *StackContext) DeclareSymbol(sym SymbolRef, kind RuntimeType) error {
 		ctx.Stack.Frame = &SlotFrame{}
 	}
 	ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
+	if sym.Name != "" && sym.Name != "_" {
+		if ctx.Stack.Symbols == nil {
+			ctx.Stack.Symbols = make(map[string]SymbolRef)
+		}
+		ctx.Stack.Symbols[sym.Name] = sym
+	}
 	var v *Var
 	if ctx.Executor != nil {
 		var err error
@@ -1801,7 +1866,7 @@ func (ctx *StackContext) Load(name string) (*Var, error) {
 		return nil, nil
 	}
 	if ctx.Stack != nil {
-		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+		if sym, ok := lookupStackSymbolByName(ctx.Stack, name); ok {
 			return ctx.LoadSymbol(sym)
 		}
 	}
@@ -1839,7 +1904,7 @@ func (ctx *StackContext) LoadSymbol(sym SymbolRef) (*Var, error) {
 
 func (ctx *StackContext) CaptureVar(name string) (*Slot, error) {
 	if ctx.Stack != nil {
-		if sym, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+		if sym, ok := lookupStackSymbolByName(ctx.Stack, name); ok {
 			return ctx.CaptureSymbol(sym)
 		}
 	}
@@ -1847,7 +1912,11 @@ func (ctx *StackContext) CaptureVar(name string) (*Slot, error) {
 	for s != nil {
 		v, ok := s.MemoryPtr[name]
 		if !ok {
-			v = lookupFrameSlotByName(s.Frame, name)
+			if sym, symOK := lookupStackSymbolByName(s, name); symOK {
+				v = lookupFrameSlotBySymbol(s.Frame, sym)
+			} else {
+				v = lookupFrameSlotByName(s.Frame, name)
+			}
 			ok = v != nil
 		}
 		if ok {
@@ -1940,7 +2009,7 @@ func (ctx *StackContext) SetInterrupt(scopeName, interruptType string) error {
 
 func (ctx *StackContext) NewVar(name string, kind RuntimeType) error {
 	if ctx.Stack != nil {
-		if _, ok := lookupFrameSymbolByName(ctx.Stack.Frame, name); ok {
+		if _, ok := lookupStackSymbolByName(ctx.Stack, name); ok {
 			return nil
 		}
 	}
@@ -2033,8 +2102,37 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 	if expr == nil {
 		return nilValueForType(target)
 	}
+	if !target.IsEmpty() && target.Kind != RuntimeTypeTuple && expr.RuntimeType().Kind == RuntimeTypeTuple {
+		return nil, fmt.Errorf("multiple-value value cannot be assigned to %s", target.Raw)
+	}
 	if target.IsAny() {
 		return cloneVarForAssign(expr), nil
+	}
+	if target.Kind == RuntimeTypeTuple {
+		actual := expr
+		if ctx.Executor != nil {
+			actual = ctx.Executor.unwrapValue(expr)
+		}
+		if actual == nil || actual.VType != TypeArray {
+			return nil, fmt.Errorf("type mismatch: cannot assign %s to %s", runtimeTypeForAssignment(actual).Raw, target.Raw)
+		}
+		arr, ok := actual.Ref.(*VMArray)
+		if !ok {
+			return nil, fmt.Errorf("type mismatch: expected tuple-compatible array for %s", target.Raw)
+		}
+		rawItems := arr.Snapshot()
+		if len(rawItems) != len(target.Params) {
+			return nil, fmt.Errorf("tuple assignment count mismatch: %d = %d", len(rawItems), len(target.Params))
+		}
+		items := make([]*Var, len(rawItems))
+		for i := range rawItems {
+			item, err := ctx.prepareAssignedValue(target.Params[i], rawItems[i])
+			if err != nil {
+				return nil, fmt.Errorf("tuple item %d: %w", i, err)
+			}
+			items[i] = item
+		}
+		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: items}}, nil
 	}
 	if target.IsInterface() {
 		if ctx.Executor == nil {
@@ -2050,11 +2148,98 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 		}
 		return ctx.Executor.CheckSatisfaction(expr, string(target.Raw))
 	}
-	value := cloneVarForAssign(expr)
+	actual := expr
+	if ctx.Executor != nil {
+		actual = ctx.Executor.unwrapValue(expr)
+	} else if expr != nil && expr.VType == TypeAny {
+		if inner, ok := expr.Ref.(*Var); ok {
+			actual = inner
+		}
+	}
+	source := runtimeTypeForAssignment(actual)
+	if source.IsEmpty() || source.IsAny() {
+		return nil, fmt.Errorf("cannot assign dynamically typed value to %s", target.Raw)
+	}
+	if !source.IsAssignableTo(target) {
+		return nil, fmt.Errorf("type mismatch: cannot assign %s to %s", source.Raw, target.Raw)
+	}
+	if target.IsNumeric() && source.IsNumeric() {
+		switch {
+		case target.IsInt():
+			switch actual.VType {
+			case TypeInt:
+				value := NewInt(actual.I64)
+				value.SetRuntimeType(target)
+				return value, nil
+			case TypeFloat:
+				value := NewInt(int64(actual.F64))
+				value.SetRuntimeType(target)
+				return value, nil
+			}
+		default:
+			switch actual.VType {
+			case TypeInt:
+				value := NewFloat(float64(actual.I64))
+				value.SetRuntimeType(target)
+				return value, nil
+			case TypeFloat:
+				value := NewFloat(actual.F64)
+				value.SetRuntimeType(target)
+				return value, nil
+			}
+		}
+		return nil, fmt.Errorf("type mismatch: expected numeric value for %s, got %s", target.Raw, actual.VType)
+	}
+	if target.IsString() && source.Raw == TypeSpec("Error") {
+		text, err := actual.ToError()
+		if err != nil {
+			return nil, err
+		}
+		value := NewString(text)
+		value.SetRuntimeType(target)
+		return value, nil
+	}
+	value := cloneVarForAssign(actual)
 	if value != nil {
 		value.SetRuntimeType(target)
 	}
 	return value, nil
+}
+
+func runtimeTypeForAssignment(v *Var) RuntimeType {
+	if v == nil {
+		return RuntimeType{}
+	}
+	declared := v.RuntimeType()
+	if !declared.IsEmpty() && !declared.IsAny() {
+		return declared
+	}
+	switch v.VType {
+	case TypeInt:
+		return MustParseRuntimeType("Int64")
+	case TypeFloat:
+		return MustParseRuntimeType("Float64")
+	case TypeString:
+		return MustParseRuntimeType("String")
+	case TypeBytes:
+		return MustParseRuntimeType("TypeBytes")
+	case TypeBool:
+		return MustParseRuntimeType("Bool")
+	case TypeError:
+		return MustParseRuntimeType("Error")
+	case TypeStruct:
+		if st, ok := v.Ref.(*VMStruct); ok && st != nil && st.Spec != nil && !st.Spec.TypeInfo.IsEmpty() {
+			return st.Spec.TypeInfo
+		}
+		return declared
+	case TypeInterface:
+		if !declared.IsEmpty() {
+			return declared
+		}
+		return MustParseRuntimeType("Any")
+	default:
+		return declared
+	}
 }
 
 func nilValueForType(target RuntimeType) (*Var, error) {
@@ -2071,8 +2256,12 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: nil}}, nil
 	case target.IsMap():
 		return &Var{TypeInfo: target, VType: TypeMap, Ref: &VMMap{Data: nil}}, nil
+	case target.Kind == RuntimeTypeTuple:
+		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: make([]*Var, len(target.Params))}}, nil
 	case target.Raw == "TypeBytes":
 		return &Var{TypeInfo: target, VType: TypeBytes}, nil
+	case target.Raw == "Error":
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("nil is not assignable to %s", target.Raw)
 	}
@@ -2102,10 +2291,22 @@ func (ctx *StackContext) StoreSymbol(sym SymbolRef, expr *Var) error {
 			ctx.Stack.Frame = &SlotFrame{}
 		}
 		ctx.Stack.Frame.ensureLocalSlot(sym.Slot, sym.Name)
+		if sym.Name != "" && sym.Name != "_" {
+			if ctx.Stack.Symbols == nil {
+				ctx.Stack.Symbols = make(map[string]SymbolRef)
+			}
+			ctx.Stack.Symbols[sym.Name] = sym
+		}
 		return ctx.storeSlot(&ctx.Stack.Frame.Locals[sym.Slot], expr)
 	case SymbolUpvalue:
 		if ctx.Stack != nil && ctx.Stack.Frame != nil {
 			ctx.Stack.Frame.ensureUpvalueSlot(sym.Slot, sym.Name)
+			if sym.Name != "" && sym.Name != "_" {
+				if ctx.Stack.Symbols == nil {
+					ctx.Stack.Symbols = make(map[string]SymbolRef)
+				}
+				ctx.Stack.Symbols[sym.Name] = sym
+			}
 			return ctx.storeSlot(&ctx.Stack.Frame.Upvalues[sym.Slot], expr)
 		}
 	case SymbolGlobal:

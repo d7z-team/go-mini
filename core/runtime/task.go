@@ -3,8 +3,7 @@ package runtime
 type OpCode int
 
 const (
-	OpDeclareVar OpCode = iota
-	OpEvalLHS
+	OpEvalLHS OpCode = iota
 	OpApplyBinary
 	OpApplyUnary
 	OpPop
@@ -62,12 +61,11 @@ const (
 	OpInitGlobal
 	OpStoreGlobalInit
 	OpFinishSharedInit
+	OpDeclareInitVars
 )
 
 func (op OpCode) String() string {
 	switch op {
-	case OpDeclareVar:
-		return "DECLARE_VAR"
 	case OpEvalLHS:
 		return "EVAL_LHS"
 	case OpApplyBinary:
@@ -184,6 +182,8 @@ func (op OpCode) String() string {
 		return "STORE_GLOBAL_INIT"
 	case OpFinishSharedInit:
 		return "FINISH_SHARED_INIT"
+	case OpDeclareInitVars:
+		return "DECLARE_INIT_VARS"
 	default:
 		return "UNKNOWN"
 	}
@@ -242,6 +242,33 @@ type DeclareVarData struct {
 	Name string
 	Kind RuntimeType
 	Sym  SymbolRef
+}
+
+type VarDeclInitMode string
+
+const (
+	VarDeclInitZero        VarDeclInitMode = "zero"
+	VarDeclInitPerBinding  VarDeclInitMode = "per_binding"
+	VarDeclInitDestructure VarDeclInitMode = "destructure"
+)
+
+type VarDeclData struct {
+	Bindings   []DeclareVarData
+	ValueCount int
+	Mode       VarDeclInitMode
+}
+
+type MultiAssignMode string
+
+const (
+	MultiAssignPerBinding  MultiAssignMode = "per_binding"
+	MultiAssignDestructure MultiAssignMode = "destructure"
+)
+
+type MultiAssignData struct {
+	LHSCount   int
+	ValueCount int
+	Mode       MultiAssignMode
 }
 
 type SymbolKind uint8

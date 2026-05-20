@@ -263,7 +263,7 @@ func TestNewRuntimeByJSONRejectsASTPayload(t *testing.T) {
 }
 
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
-	payload := []byte(`{"format":"go-mini-bytecode","version":1,"opcode_set":"runtime.opcode.v1","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":1}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":2}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":3}},{"op":32}]}}`)
+	payload := []byte(`{"format":"go-mini-bytecode","version":4,"opcode_set":"runtime.opcode.v3","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":1}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":2}},{"op":57,"data_kind":"literal_var","data":{"type":"Int64","vtype":0,"i64":3}},{"op":32}]}}`)
 	_, err := bytecode.UnmarshalJSON(payload)
 	if err == nil {
 		t.Fatal("expected executable task decode failure")

@@ -102,7 +102,20 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 	case *ast.BlockStmt:
 		return b.compileStatements(n.Children)
 	case *ast.GenDeclStmt:
-		return nil, true
+		out := make([]bytecode.Instruction, 0)
+		for _, value := range n.Values {
+			code, ok := b.compileExpr(value)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, code...)
+		}
+		names := make([]string, 0, len(n.Bindings))
+		for _, binding := range n.Bindings {
+			names = append(names, string(binding.Name))
+		}
+		out = append(out, b.runtimeInstruction(n, runtime.OpDeclareInitVars, strings.Join(names, ","), "Variable declaration"))
+		return out, true
 	case *ast.AssignmentStmt:
 		lhs, ok := b.compileLHS(n.LHS)
 		if !ok {
@@ -123,12 +136,15 @@ func (b *bytecodeBuilder) compileStmt(stmt ast.Stmt) ([]bytecode.Instruction, bo
 			}
 			out = append(out, code...)
 		}
-		val, ok := b.compileExpr(n.Value)
-		if !ok {
-			return nil, false
+		for _, value := range n.Values {
+			code, ok := b.compileExpr(value)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, code...)
 		}
-		out = append(out, val...)
-		out = append(out, b.runtimeInstruction(n, runtime.OpMultiAssign, strconv.Itoa(len(n.LHS)), "Multiple assignment"))
+		operand := fmt.Sprintf("lhs=%d values=%d", len(n.LHS), len(n.Values))
+		out = append(out, b.runtimeInstruction(n, runtime.OpMultiAssign, operand, "Multiple assignment"))
 		return out, true
 	case *ast.IncDecStmt:
 		lhs, ok := b.compileLHS(n.Operand)

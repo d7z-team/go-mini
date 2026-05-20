@@ -380,11 +380,24 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return n, nil
 	case "decl":
 		var raw struct {
-			Name string `json:"name"`
-			Kind string `json:"kind"`
+			Bindings []ast.VarBinding  `json:"bindings"`
+			Values   []json.RawMessage `json:"values,omitempty"`
 		}
-		_ = json.Unmarshal(data, &raw)
-		return &ast.GenDeclStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Kind: ast.GoMiniType(raw.Kind)}, nil
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, err
+		}
+		if len(raw.Bindings) == 0 {
+			return nil, errors.New("decl node must use bindings")
+		}
+		n := &ast.GenDeclStmt{BaseNode: baseNode, Bindings: raw.Bindings}
+		for _, rawValue := range raw.Values {
+			value, err := parseExpr(rawValue)
+			if err != nil {
+				return nil, err
+			}
+			n.Values = append(n.Values, value)
+		}
+		return n, nil
 	case "increment":
 		var raw struct {
 			Operand  json.RawMessage `json:"operand"`
@@ -514,18 +527,29 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return n, nil
 	case "multi_assignment":
 		var raw struct {
-			Kind string            `json:"kind"`
-			LHS  []json.RawMessage `json:"lhs"`
-			Val  json.RawMessage   `json:"value"`
+			Kind   string            `json:"kind"`
+			LHS    []json.RawMessage `json:"lhs"`
+			Values []json.RawMessage `json:"values"`
 		}
-		_ = json.Unmarshal(data, &raw)
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, err
+		}
+		if len(raw.Values) == 0 {
+			return nil, errors.New("multi_assignment node must use values")
+		}
 		n := &ast.MultiAssignmentStmt{BaseNode: baseNode, Kind: ast.AssignKind(raw.Kind)}
 		for _, l := range raw.LHS {
 			if e, err := parseExpr(l); err == nil {
 				n.LHS = append(n.LHS, e)
 			}
 		}
-		n.Value, _ = parseExpr(raw.Val)
+		for _, rawValue := range raw.Values {
+			value, err := parseExpr(rawValue)
+			if err != nil {
+				return nil, err
+			}
+			n.Values = append(n.Values, value)
+		}
 		return n, nil
 	case "bad_expr":
 		var raw struct {

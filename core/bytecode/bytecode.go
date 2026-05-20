@@ -14,7 +14,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 2
+	CurrentVersion       = 4
 )
 
 type Location struct {
@@ -65,7 +65,7 @@ func NewProgram() *Program {
 	return &Program{
 		Format:    FormatGoMiniBytecode,
 		Version:   CurrentVersion,
-		OpcodeSet: "runtime.opcode.v1",
+		OpcodeSet: "runtime.opcode.v3",
 		Globals:   make([]Global, 0),
 		Entry:     make([]Instruction, 0),
 		Functions: make([]Function, 0),

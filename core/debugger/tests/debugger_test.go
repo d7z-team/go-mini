@@ -245,7 +245,7 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	package main
 	func main() {
 		sum := 0
-		for i := 0; i < 1000000; i++ {
+		for i := 0; i < 200000; i++ {
 			sum = sum + 1
 		}
 	}

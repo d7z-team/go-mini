@@ -56,11 +56,13 @@ func (t *Task) UnmarshalJSON(data []byte) error {
 
 func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, error) {
 	switch op {
-	case OpDeclareVar:
-		return marshalTaskDataValue("declare_var", data)
+	case OpDeclareInitVars:
+		return marshalTaskDataValue("declare_init_vars", data)
 	case OpApplyBinary, OpApplyUnary, OpIncDec, OpInterrupt, OpMember, OpInitVar, OpScopeEnter:
 		return marshalTaskDataValue("string", data)
-	case OpMultiAssign, OpReturn:
+	case OpMultiAssign:
+		return marshalTaskDataValue("multi_assign", data)
+	case OpReturn:
 		return marshalTaskDataValue("int", data)
 	case OpScheduleDefer:
 		return marshalTaskDataValue("defer", data)
@@ -150,11 +152,13 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return nil, nil
 	}
 	switch op {
-	case OpDeclareVar:
-		return decodeTaskData[*DeclareVarData](raw)
+	case OpDeclareInitVars:
+		return decodeTaskData[*VarDeclData](raw)
 	case OpApplyBinary, OpApplyUnary, OpIncDec, OpInterrupt, OpMember, OpInitVar, OpScopeEnter:
 		return decodeTaskData[string](raw)
-	case OpMultiAssign, OpReturn:
+	case OpMultiAssign:
+		return decodeTaskData[*MultiAssignData](raw)
+	case OpReturn:
 		return decodeTaskData[int](raw)
 	case OpScheduleDefer:
 		return decodeTaskData[*DeferData](raw)

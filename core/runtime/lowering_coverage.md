@@ -20,7 +20,7 @@
 | `ast.ExpressionStmt` | **Lowered** | 转换为表达式任务 + `OpPop` (若有返回值) |
 | `ast.CallExprStmt` | **Lowered** | 转换为 `OpCall` + `CallData` |
 | `ast.InterruptStmt` | **Lowered** | 转换为 `OpInterrupt` (break/continue) |
-| `ast.GenDeclStmt` | **Lowered** | 转换为 `OpDeclareVar` (变量声明) |
+| `ast.GenDeclStmt` | **Lowered** | 转换为 `OpDeclareInitVars` (变量声明与可选初始化) |
 | `ast.ProgramStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，不进入执行路径 |
 | `ast.FunctionStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，转换为运行时闭包 |
 | `ast.StructStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，注册到结构体映射 |

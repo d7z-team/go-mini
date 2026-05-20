@@ -694,3 +694,45 @@ func TestResolveAddressSupportsWrappedTargets(t *testing.T) {
 		t.Fatalf("unexpected wrapped dereference value: %#v", got)
 	}
 }
+
+func TestNameLookupRestoresOuterShadowAfterScopeExit(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	session.ScopeApply("fn")
+
+	outer := SymbolRef{Name: "x", Kind: SymbolLocal, Slot: 0}
+	if err := session.DeclareSymbol(outer, MustParseRuntimeType("Int64")); err != nil {
+		t.Fatalf("declare outer failed: %v", err)
+	}
+	if err := session.StoreSymbol(outer, NewInt(7)); err != nil {
+		t.Fatalf("store outer failed: %v", err)
+	}
+
+	session.ScopeApply("block")
+	inner := SymbolRef{Name: "x", Kind: SymbolLocal, Slot: 1}
+	if err := session.DeclareSymbol(inner, MustParseRuntimeType("String")); err != nil {
+		t.Fatalf("declare inner failed: %v", err)
+	}
+	if err := session.StoreSymbol(inner, NewString("inner")); err != nil {
+		t.Fatalf("store inner failed: %v", err)
+	}
+	got, err := session.Load("x")
+	if err != nil {
+		t.Fatalf("load inner failed: %v", err)
+	}
+	if got == nil || got.VType != TypeString || got.Str != "inner" {
+		t.Fatalf("unexpected inner value: %#v", got)
+	}
+
+	session.ScopeExit()
+	got, err = session.Load("x")
+	if err != nil {
+		t.Fatalf("load outer failed: %v", err)
+	}
+	if got == nil || got.VType != TypeInt || got.I64 != 7 {
+		t.Fatalf("unexpected outer value after shadow exit: %#v", got)
+	}
+	if vars := session.Stack.DumpVariables(); vars["x"] != "7" {
+		t.Fatalf("dump should expose active outer x, got %v", vars)
+	}
+}

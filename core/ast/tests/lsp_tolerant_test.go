@@ -36,11 +36,15 @@ func main() {
 	foundB := false
 	v := &testVisitor{
 		onVisit: func(node ast.Node) {
-			if assign, ok := node.(*ast.AssignmentStmt); ok {
-				if ident, ok := assign.LHS.(*ast.IdentifierExpr); ok {
-					if string(ident.Name) == "a" {
+			if decl, ok := node.(*ast.GenDeclStmt); ok {
+				for _, binding := range decl.Bindings {
+					if string(binding.Name) == "a" {
 						foundA = true
 					}
+				}
+			}
+			if assign, ok := node.(*ast.AssignmentStmt); ok {
+				if ident, ok := assign.LHS.(*ast.IdentifierExpr); ok {
 					if string(ident.Name) == "b" {
 						foundB = true
 						// b := a + (里面应该包含 BadExpr)
