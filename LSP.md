@@ -12,7 +12,24 @@ LSP 展示的函数签名和类型文本使用项目统一的 canonical type ren
 
 ## 1. 推荐后端接入
 
-如果你在 Web IDE 或服务端集成，不必启动 `cmd/lsp-server`。推荐直接封装 `core/lspserv`：
+Go-Mini 提供两类常见接入方式：
+
+- `stdio`：给 VSCode、Neovim 等标准 LSP 客户端使用，直接启动 `cmd/lsp-server`。
+- HTTP / RPC：给 Web IDE、Serverless 或自定义后端使用，直接封装 `core/lspserv`。
+
+### stdio LSP
+
+`cmd/lsp-server` 通过标准输入/输出处理 JSON-RPC LSP 消息：
+
+```bash
+go run ./cmd/lsp-server
+```
+
+编辑器插件只需要把该命令配置为 language server command。服务端支持 initialize、didOpen、didChange、didClose、completion、hover、definition、references、shutdown 和 exit。
+
+### HTTP / RPC API
+
+如果你在 Web IDE 或服务端集成，不必启动 `cmd/lsp-server`。推荐在自己的 HTTP / RPC handler 中复用同一个 `LSPServer`：
 
 ```go
 executor := engine.NewMiniExecutor()
@@ -21,13 +38,15 @@ executor.InjectStandardLibraries()
 lsp := lspserv.NewLSPServer(executor)
 ```
 
-典型请求流：
+典型 API 请求流：
 
 1. `UpdateSession(uri, code)`
 2. `GetCompletions(uri, line, char)`
 3. `GetHover(uri, line, char)`
 4. `GetDefinition` / `GetReferences(uri, line, char, includeDeclaration)`
 5. `RemoveSession(uri)` 清理关闭文件的缓存与诊断
+
+HTTP 形态可以按能力拆成 `/diagnostics`、`/completion`、`/hover`、`/definition`、`/references` 等接口；每个请求先同步当前文件内容，再执行查询即可。`line` / `char` 与 LSP 一样从 0 开始。
 
 ## 2. 无状态模式
 
