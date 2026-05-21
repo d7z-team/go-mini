@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestConvertSourceTolerant_VariableRetention(t *testing.T) {
@@ -14,7 +14,7 @@ func main() {
 	var a = 10
 	b := a + 
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, errs := conv.ConvertSourceTolerant("snippet", code)
 
 	if len(errs) == 0 {

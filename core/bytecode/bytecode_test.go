@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -57,56 +56,8 @@ func TestBytecodeJSONRejectsUnsupportedVersion(t *testing.T) {
 	}
 }
 
-func TestRebuildProgramFromBlueprintAndExecutable(t *testing.T) {
-	prog := NewProgram()
-	prog.Blueprint = &Blueprint{
-		Package:   "demo",
-		Constants: map[string]string{"Version": "v1"},
-		Types:     map[ast.Ident]ast.GoMiniType{"Alias": "String"},
-		Structs: map[ast.Ident]*ast.StructStmt{
-			"Payload": {
-				Name:       "Payload",
-				Fields:     map[ast.Ident]ast.GoMiniType{"Msg": "String"},
-				FieldNames: []ast.Ident{"Msg"},
-			},
-		},
-	}
-	prog.Executable = &runtime.PreparedProgram{
-		Globals: map[string]*runtime.PreparedGlobal{
-			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: true},
-		},
-		Functions: map[string]*runtime.PreparedFunction{
-			"main": {Name: "main", FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void")},
-		},
-	}
-
-	rebuilt, err := prog.RebuildProgram()
-	if err != nil {
-		t.Fatalf("rebuild program failed: %v", err)
-	}
-	if rebuilt.Package != "demo" {
-		t.Fatalf("unexpected package: %s", rebuilt.Package)
-	}
-	if rebuilt.Constants["Version"] != "v1" {
-		t.Fatalf("unexpected constants: %#v", rebuilt.Constants)
-	}
-	if rebuilt.Structs["Payload"] == nil {
-		t.Fatalf("expected struct metadata: %#v", rebuilt.Structs)
-	}
-	if _, ok := rebuilt.Variables["counter"]; !ok {
-		t.Fatalf("expected global names from executable: %#v", rebuilt.Variables)
-	}
-	if rebuilt.Functions["main"] == nil {
-		t.Fatalf("expected function stubs from executable: %#v", rebuilt.Functions)
-	}
-}
-
 func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	prog := NewProgram()
-	prog.Blueprint = &Blueprint{
-		Package:   "demo",
-		Constants: map[string]string{"Version": "v1"},
-	}
 	prog.Globals = []Global{
 		{
 			Name: "counter",
@@ -117,6 +68,17 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	}
 	prog.Entry = []Instruction{{Op: "CALL", Operand: "main", Comment: "call main"}}
 	prog.Executable = &runtime.PreparedProgram{
+		Package:   "demo",
+		Constants: map[string]string{"Version": "v1"},
+		NamedTypes: map[string]runtime.RuntimeType{
+			"Alias": runtime.MustParseRuntimeType("String"),
+		},
+		StructSchemas: map[string]*runtime.RuntimeStructSpec{
+			"Payload": runtime.MustParseRuntimeStructSpec("Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"),
+		},
+		InterfaceSchemas: map[string]*runtime.RuntimeInterfaceSpec{
+			"Reader": runtime.MustParseRuntimeInterfaceSpec("interface{Read() String;}"),
+		},
 		Globals: map[string]*runtime.PreparedGlobal{
 			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: true},
 			"pending": {Name: "pending", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: false},
@@ -137,6 +99,11 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	asm := prog.Disassemble()
 	expected := []string{
 		"section .bss",
+		"; package    demo",
+		"section .note.go_mini",
+		"; type Alias = String",
+		"; struct Payload { Msg String }",
+		"; interface Reader interface{Read() String;}",
 		"global.pending: resq 1",
 		"section .data",
 		"global.counter: ; has_init=true",
@@ -160,8 +127,8 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 
 func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 	prog := NewProgram()
-	prog.Blueprint = &Blueprint{Package: "demo"}
 	prog.Executable = &runtime.PreparedProgram{
+		Package: "demo",
 		Functions: map[string]*runtime.PreparedFunction{
 			"main": {
 				Name:        "main",

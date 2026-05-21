@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
+func (c *Converter) convertStmt(s ast.Stmt) miniast.Stmt {
 	if s == nil {
 		return nil
 	}
@@ -255,7 +255,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 	return c.badStmt(s, fmt.Sprintf("不支持的语句: %T", s))
 }
 
-func (c *GoToASTConverter) toBlock(s ast.Stmt) *miniast.BlockStmt {
+func (c *Converter) toBlock(s ast.Stmt) *miniast.BlockStmt {
 	if b, ok := s.(*ast.BlockStmt); ok {
 		res := &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(b, "block"), Meta: "block", Loc: c.extractLoc(b)}}
 		for _, item := range b.List {

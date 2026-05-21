@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-type GoToASTConverter struct {
+type Converter struct {
 	fset       *token.FileSet
 	imports    map[string]string // Alias -> Path
 	interfaces map[string]*ast.InterfaceType
@@ -33,18 +33,18 @@ func (e *ConvertError) Error() string {
 	return e.Message
 }
 
-func (c *GoToASTConverter) reset() {
+func (c *Converter) reset() {
 	c.fset = token.NewFileSet()
 	c.imports = make(map[string]string)
 	c.interfaces = make(map[string]*ast.InterfaceType)
 	c.errs = nil
 }
 
-func (c *GoToASTConverter) addError(node ast.Node, message string) {
+func (c *Converter) addError(node ast.Node, message string) {
 	c.errs = append(c.errs, &ConvertError{Pos: c.extractLoc(node), Message: message})
 }
 
-func (c *GoToASTConverter) badExpr(node ast.Node, message string) miniast.Expr {
+func (c *Converter) badExpr(node ast.Node, message string) miniast.Expr {
 	c.addError(node, message)
 	return &miniast.BadExpr{
 		BaseNode: miniast.BaseNode{ID: c.genID(node, "bad_expr"), Meta: "bad_expr", Loc: c.extractLoc(node), InvalidCause: message},
@@ -52,7 +52,7 @@ func (c *GoToASTConverter) badExpr(node ast.Node, message string) miniast.Expr {
 	}
 }
 
-func (c *GoToASTConverter) badStmt(node ast.Node, message string) miniast.Stmt {
+func (c *Converter) badStmt(node ast.Node, message string) miniast.Stmt {
 	c.addError(node, message)
 	return &miniast.BadStmt{
 		BaseNode: miniast.BaseNode{ID: c.genID(node, "bad_stmt"), Meta: "bad_stmt", Loc: c.extractLoc(node), InvalidCause: message},
@@ -60,7 +60,7 @@ func (c *GoToASTConverter) badStmt(node ast.Node, message string) miniast.Stmt {
 	}
 }
 
-func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
+func (c *Converter) genID(node ast.Node, meta string) string {
 	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) {
 		return "meta_" + meta
 	}
@@ -72,7 +72,7 @@ func (c *GoToASTConverter) genID(node ast.Node, meta string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-func (c *GoToASTConverter) extractLoc(node ast.Node) *miniast.Position {
+func (c *Converter) extractLoc(node ast.Node) *miniast.Position {
 	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) || c.fset == nil {
 		return nil
 	}
@@ -90,8 +90,8 @@ func (c *GoToASTConverter) extractLoc(node ast.Node) *miniast.Position {
 	}
 }
 
-func NewGoToASTConverter() *GoToASTConverter {
-	return &GoToASTConverter{
+func NewConverter() *Converter {
+	return &Converter{
 		fset:       token.NewFileSet(),
 		imports:    make(map[string]string),
 		interfaces: make(map[string]*ast.InterfaceType),

@@ -17,19 +17,17 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 		Functions: make(map[ast.Ident]*ast.FunctionStmt),
 	})
 
-	methodSig := ast.FunctionType{Return: "Error"}
-	readSig := ast.FunctionType{Return: "tuple(Int64, Error)"}
 	obj := &Var{
 		VType:    TypeMap,
 		TypeInfo: MustParseRuntimeType("demo.Reader"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"Close": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionSig: MustFuncSigFromFunction(methodSig)},
+				Ref:   &VMClosure{FunctionSig: MustParseRuntimeFuncSig("function() Error")},
 			},
 			"Read": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionSig: MustFuncSigFromFunction(readSig)},
+				Ref:   &VMClosure{FunctionSig: MustParseRuntimeFuncSig("function() tuple(Int64, Error)")},
 			},
 		}},
 	}

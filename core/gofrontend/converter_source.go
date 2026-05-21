@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-func (c *GoToASTConverter) ConvertSource(filename, code string) (miniast.Node, error) {
+func (c *Converter) ConvertSource(filename, code string) (miniast.Node, error) {
 	node, errs := c.convert(filename, code, false)
 	if len(errs) > 0 {
 		return nil, errs[0]
@@ -20,11 +20,11 @@ func (c *GoToASTConverter) ConvertSource(filename, code string) (miniast.Node, e
 	return node, nil
 }
 
-func (c *GoToASTConverter) ConvertSourceTolerant(filename, code string) (miniast.Node, []error) {
+func (c *Converter) ConvertSourceTolerant(filename, code string) (miniast.Node, []error) {
 	return c.convert(filename, code, true)
 }
 
-func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (miniast.Node, []error) {
+func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node, []error) {
 	c.reset()
 	mode := parser.ParseComments
 	if tolerant {
@@ -167,7 +167,7 @@ func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (minias
 	return program, errs
 }
 
-func (c *GoToASTConverter) ConvertExprSource(code string) (miniast.Expr, error) {
+func (c *Converter) ConvertExprSource(code string) (miniast.Expr, error) {
 	c.reset()
 	e, err := parser.ParseExpr(code)
 	if err != nil {
@@ -180,7 +180,7 @@ func (c *GoToASTConverter) ConvertExprSource(code string) (miniast.Expr, error) 
 	return expr, nil
 }
 
-func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, error) {
+func (c *Converter) ConvertStmtsSource(code string) ([]miniast.Stmt, error) {
 	wrapper := fmt.Sprintf("package main\nfunc main() {\n%s\n}", code)
 	node, err := c.ConvertSource("snippet", wrapper)
 	if err != nil {

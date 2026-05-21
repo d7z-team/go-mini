@@ -1,13 +1,14 @@
 # Go-Mini LSP 集成指南
 
-`go-mini` 的 LSP / 查询能力建立在 AST 蓝图与语义上下文之上，和运行时执行链各自独立：
+`go-mini` 的 LSP / 查询能力建立在源码 AST 与语义上下文之上，和运行时执行链各自独立：
 
 - LSP 使用 `core/ast` 与 `core/lspserv`
+- 源码解析和 tolerant conversion 使用 `core/gofrontend`
 - 执行使用 compiled artifact / prepared program / bytecode
 
 IDE 能力基于源码和 AST，执行链基于 compiled artifact / prepared program / bytecode。
 
-LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 Go 前端输入层出现，进入 Mini AST 后不再保留。
+LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
 
 ## 1. 推荐后端接入
 
@@ -105,7 +106,7 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 
 需要明确区分：
 
-- LSP / IDE 查询：基于 AST 蓝图
+- LSP / IDE 查询：基于源码 AST
 - 运行 / 反汇编 / 持久化：基于 bytecode / prepared program
 
 如果你的系统既要编辑又要运行，推荐双链设计：

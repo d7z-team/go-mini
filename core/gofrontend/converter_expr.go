@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
+func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 	if e == nil {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 	return c.badExpr(e, fmt.Sprintf("不支持的表达式: %T", e))
 }
 
-func (c *GoToASTConverter) convertOp(op token.Token) string {
+func (c *Converter) convertOp(op token.Token) string {
 	switch op {
 	case token.ADD:
 		return "Plus"
@@ -243,7 +243,7 @@ func (c *GoToASTConverter) convertOp(op token.Token) string {
 	return op.String()
 }
 
-func (c *GoToASTConverter) convertArgs(args []ast.Expr) []miniast.Expr {
+func (c *Converter) convertArgs(args []ast.Expr) []miniast.Expr {
 	var res []miniast.Expr
 	for _, a := range args {
 		if ca := c.convertExpr(a); ca != nil {

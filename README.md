@@ -3,7 +3,7 @@
 Go-Mini is a Go-like scripting engine with a bytecode-first runtime.
 
 - Compile source code to `go-mini-bytecode`
-- Run prepared programs without AST on the main runtime path
+- Convert Go source to Mini AST in `core/gofrontend`, lower AST to `PreparedProgram` in `core/lowering`, then run prepared programs without AST on the runtime path
 - Generate schema-only FFI bindings with the `cmd/ffigen` CLI backed by `core/ffigen`
 
 ## Install
@@ -53,8 +53,12 @@ Go-Mini uses canonical VM type text such as `Array<T>`, `Map<K, V>`, `Ptr<T>`, `
 
 - `core/typespec` owns the grammar and renderer.
 - `core/ast/ast_types.go` is the frontend-facing type API.
-- `core/runtime/schema.go` is the VM/schema-facing type API and does not depend on AST type helpers.
-- Hand-written AST/JSON/bytecode inputs must already use canonical type text; Go-style spellings are normalized only in the Go frontend.
+- `core/runtime/schema.go` is the VM/schema-facing type API and runtime does not import `core/ast`.
+- Hand-written AST/JSON/bytecode inputs must already use canonical type text; Go-style spellings are normalized only in `core/gofrontend`.
+
+## Runtime Boundary
+
+Source inputs are normalized by `core/gofrontend`, compiled through `core/compiler`, and lowered by `core/lowering`. `core/ffigo` is reserved for FFI wire / bridge helpers and does not contain source conversion. Bytecode JSON execution requires the embedded `Executable` prepared program and does not rebuild an AST program from bytecode metadata.
 
 ## VM Value And Reference Model
 

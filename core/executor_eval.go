@@ -85,7 +85,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
 	e.mu.RLock()
-	for _, s := range e.moduleBlueprints {
+	for _, s := range e.moduleSources {
 		for name, sDef := range s.Structs {
 			program.Structs[name] = sDef
 		}

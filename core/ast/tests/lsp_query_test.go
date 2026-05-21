@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestFindNodeAt(t *testing.T) {
@@ -14,7 +14,7 @@ func main() {
 	b := a + 20
 	fmt.Println(b)
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func MyFunc(param1 int) {
 	}
 }
 func main() {}`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-func (c *GoToASTConverter) canonicalBuiltinTypeName(name string) string {
+func (c *Converter) canonicalBuiltinTypeName(name string) string {
 	switch name {
 	case "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
@@ -29,11 +29,11 @@ func (c *GoToASTConverter) canonicalBuiltinTypeName(name string) string {
 	return name
 }
 
-func (c *GoToASTConverter) typeToString(e ast.Expr) string {
+func (c *Converter) typeToString(e ast.Expr) string {
 	return c.typeToStringWithDepth(e, 0)
 }
 
-func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
+func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	if e == nil {
 		return string(miniast.TypeAny)
 	}
@@ -122,7 +122,7 @@ func (c *GoToASTConverter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	return string(miniast.TypeAny)
 }
 
-func (c *GoToASTConverter) expandInterface(t *ast.InterfaceType, depth int) string {
+func (c *Converter) expandInterface(t *ast.InterfaceType, depth int) string {
 	methods := make(map[string]*miniast.FunctionType)
 	if t.Methods != nil {
 		for _, m := range t.Methods.List {

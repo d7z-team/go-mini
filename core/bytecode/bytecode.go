@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -49,16 +48,7 @@ type Program struct {
 	Globals    []Global                 `json:"globals"`
 	Entry      []Instruction            `json:"entry"`
 	Functions  []Function               `json:"functions"`
-	Blueprint  *Blueprint               `json:"blueprint,omitempty"`
 	Executable *runtime.PreparedProgram `json:"executable,omitempty"`
-}
-
-type Blueprint struct {
-	Package    string                           `json:"package,omitempty"`
-	Constants  map[string]string                `json:"constants,omitempty"`
-	Types      map[ast.Ident]ast.GoMiniType     `json:"types,omitempty"`
-	Structs    map[ast.Ident]*ast.StructStmt    `json:"structs,omitempty"`
-	Interfaces map[ast.Ident]*ast.InterfaceStmt `json:"interfaces,omitempty"`
 }
 
 func NewProgram() *Program {
@@ -118,67 +108,6 @@ func (p *Program) Validate() error {
 	return nil
 }
 
-func NewBlueprint(program *ast.ProgramStmt) *Blueprint {
-	if program == nil {
-		return nil
-	}
-	blueprint := &Blueprint{
-		Package:    program.Package,
-		Constants:  cloneStringMap(program.Constants),
-		Types:      cloneTypesMap(program.Types),
-		Structs:    cloneStructs(program.Structs),
-		Interfaces: cloneInterfaces(program.Interfaces),
-	}
-	return blueprint
-}
-
-func (p *Program) RebuildProgram() (*ast.ProgramStmt, error) {
-	if p == nil {
-		return nil, errors.New("nil bytecode program")
-	}
-	if err := p.Validate(); err != nil {
-		return nil, err
-	}
-	prog := &ast.ProgramStmt{
-		BaseNode:   ast.BaseNode{ID: "bytecode", Meta: "boot", Type: "Void"},
-		Package:    "main",
-		Constants:  make(map[string]string),
-		Variables:  make(map[ast.Ident]ast.Expr),
-		Types:      make(map[ast.Ident]ast.GoMiniType),
-		Structs:    make(map[ast.Ident]*ast.StructStmt),
-		Interfaces: make(map[ast.Ident]*ast.InterfaceStmt),
-		Functions:  make(map[ast.Ident]*ast.FunctionStmt),
-		Main:       []ast.Stmt{},
-	}
-	if p.Blueprint != nil {
-		if p.Blueprint.Package != "" {
-			prog.Package = p.Blueprint.Package
-		}
-		prog.Constants = cloneStringMap(p.Blueprint.Constants)
-		prog.Types = cloneTypesMap(p.Blueprint.Types)
-		prog.Structs = cloneStructs(p.Blueprint.Structs)
-		prog.Interfaces = cloneInterfaces(p.Blueprint.Interfaces)
-	}
-	if p.Executable != nil {
-		for name := range p.Executable.Globals {
-			prog.Variables[ast.Ident(name)] = nil
-		}
-		for name, fn := range p.Executable.Functions {
-			if fn == nil {
-				continue
-			}
-			ident := ast.Ident(name)
-			prog.Functions[ident] = &ast.FunctionStmt{
-				BaseNode:     ast.BaseNode{ID: "bytecode_fn_" + name},
-				FunctionType: fn.FunctionSig.FunctionType(),
-				Name:         ident,
-				Body:         &ast.BlockStmt{Children: []ast.Stmt{}, Inner: true},
-			}
-		}
-	}
-	return prog, nil
-}
-
 func UnmarshalJSON(data []byte) (*Program, error) {
 	var program Program
 	if err := json.Unmarshal(data, &program); err != nil {
@@ -199,28 +128,28 @@ func (p *Program) Disassemble() string {
 	sb.WriteString("; go-mini bytecode disassembly\n")
 	fmt.Fprintf(&sb, "; format     %s v%d\n", p.Format, p.Version)
 	fmt.Fprintf(&sb, "; opcode_set %s\n", p.OpcodeSet)
-	if p.Blueprint != nil && p.Blueprint.Package != "" {
-		fmt.Fprintf(&sb, "; package    %s\n", p.Blueprint.Package)
+	if p.Executable != nil && p.Executable.Package != "" {
+		fmt.Fprintf(&sb, "; package    %s\n", p.Executable.Package)
 	}
 	fmt.Fprintf(&sb, "; globals    display=%d executable=%d\n", len(p.Globals), len(disassembleExecutableGlobals(p)))
 	fmt.Fprintf(&sb, "; functions  display=%d executable=%d\n", len(p.Functions), len(disassembleExecutableFunctions(p)))
 	sb.WriteString("\n")
 
-	writeBlueprintSection(&sb, p)
+	writeExecutableMetadataSection(&sb, p)
 	writeGlobalsSections(&sb, p)
 	writeTextSection(&sb, p)
 
 	return sb.String()
 }
 
-func writeBlueprintSection(sb *strings.Builder, p *Program) {
-	if p == nil || p.Blueprint == nil {
+func writeExecutableMetadataSection(sb *strings.Builder, p *Program) {
+	if p == nil || p.Executable == nil {
 		return
 	}
 
-	if len(p.Blueprint.Types) > 0 || len(p.Blueprint.Structs) > 0 || len(p.Blueprint.Interfaces) > 0 {
+	if len(p.Executable.NamedTypes) > 0 || len(p.Executable.StructSchemas) > 0 || len(p.Executable.InterfaceSchemas) > 0 {
 		sb.WriteString("section .note.go_mini\n")
-		writeBlueprintNotes(sb, p)
+		writeExecutableMetadataNotes(sb, p)
 		sb.WriteString("\n")
 	}
 }
@@ -747,49 +676,49 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 	}
 }
 
-func writeBlueprintNotes(sb *strings.Builder, p *Program) {
-	if p == nil || p.Blueprint == nil {
+func writeExecutableMetadataNotes(sb *strings.Builder, p *Program) {
+	if p == nil || p.Executable == nil {
 		return
 	}
-	typeKeys := make([]string, 0, len(p.Blueprint.Types))
-	for name := range p.Blueprint.Types {
-		typeKeys = append(typeKeys, string(name))
+	typeKeys := make([]string, 0, len(p.Executable.NamedTypes))
+	for name := range p.Executable.NamedTypes {
+		typeKeys = append(typeKeys, name)
 	}
 	sort.Strings(typeKeys)
 	for _, name := range typeKeys {
-		fmt.Fprintf(sb, "; type %s = %s\n", name, p.Blueprint.Types[ast.Ident(name)])
+		fmt.Fprintf(sb, "; type %s = %s\n", name, p.Executable.NamedTypes[name].Raw)
 	}
 
-	structKeys := make([]string, 0, len(p.Blueprint.Structs))
-	for name := range p.Blueprint.Structs {
-		structKeys = append(structKeys, string(name))
+	structKeys := make([]string, 0, len(p.Executable.StructSchemas))
+	for name := range p.Executable.StructSchemas {
+		structKeys = append(structKeys, name)
 	}
 	sort.Strings(structKeys)
 	for _, name := range structKeys {
-		spec := p.Blueprint.Structs[ast.Ident(name)]
+		spec := p.Executable.StructSchemas[name]
 		if spec == nil {
 			fmt.Fprintf(sb, "; struct %s\n", name)
 			continue
 		}
-		fields := make([]string, 0, len(spec.FieldNames))
-		for _, fieldName := range spec.FieldNames {
-			fields = append(fields, fmt.Sprintf("%s %s", fieldName, spec.Fields[fieldName]))
+		fields := make([]string, 0, len(spec.Fields))
+		for _, field := range spec.Fields {
+			fields = append(fields, fmt.Sprintf("%s %s", field.Name, field.Type))
 		}
 		fmt.Fprintf(sb, "; struct %s { %s }\n", name, strings.Join(fields, "; "))
 	}
 
-	ifaceKeys := make([]string, 0, len(p.Blueprint.Interfaces))
-	for name := range p.Blueprint.Interfaces {
-		ifaceKeys = append(ifaceKeys, string(name))
+	ifaceKeys := make([]string, 0, len(p.Executable.InterfaceSchemas))
+	for name := range p.Executable.InterfaceSchemas {
+		ifaceKeys = append(ifaceKeys, name)
 	}
 	sort.Strings(ifaceKeys)
 	for _, name := range ifaceKeys {
-		spec := p.Blueprint.Interfaces[ast.Ident(name)]
+		spec := p.Executable.InterfaceSchemas[name]
 		if spec == nil {
 			fmt.Fprintf(sb, "; interface %s\n", name)
 			continue
 		}
-		fmt.Fprintf(sb, "; interface %s %s\n", name, spec.Type)
+		fmt.Fprintf(sb, "; interface %s %s\n", name, spec.Spec)
 	}
 }
 
@@ -840,70 +769,4 @@ func validateInstructions(instructions []Instruction) error {
 		}
 	}
 	return nil
-}
-
-func cloneStringMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return make(map[string]string)
-	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneTypesMap(in map[ast.Ident]ast.GoMiniType) map[ast.Ident]ast.GoMiniType {
-	if len(in) == 0 {
-		return make(map[ast.Ident]ast.GoMiniType)
-	}
-	out := make(map[ast.Ident]ast.GoMiniType, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneStructs(in map[ast.Ident]*ast.StructStmt) map[ast.Ident]*ast.StructStmt {
-	if len(in) == 0 {
-		return make(map[ast.Ident]*ast.StructStmt)
-	}
-	out := make(map[ast.Ident]*ast.StructStmt, len(in))
-	for k, v := range in {
-		if v == nil {
-			out[k] = nil
-			continue
-		}
-		fields := make(map[ast.Ident]ast.GoMiniType, len(v.Fields))
-		for fieldName, fieldType := range v.Fields {
-			fields[fieldName] = fieldType
-		}
-		out[k] = &ast.StructStmt{
-			BaseNode:   v.BaseNode,
-			Name:       v.Name,
-			Fields:     fields,
-			FieldNames: append([]ast.Ident(nil), v.FieldNames...),
-			Doc:        v.Doc,
-		}
-	}
-	return out
-}
-
-func cloneInterfaces(in map[ast.Ident]*ast.InterfaceStmt) map[ast.Ident]*ast.InterfaceStmt {
-	if len(in) == 0 {
-		return make(map[ast.Ident]*ast.InterfaceStmt)
-	}
-	out := make(map[ast.Ident]*ast.InterfaceStmt, len(in))
-	for k, v := range in {
-		if v == nil {
-			out[k] = nil
-			continue
-		}
-		out[k] = &ast.InterfaceStmt{
-			BaseNode: v.BaseNode,
-			Name:     v.Name,
-			Type:     v.Type,
-		}
-	}
-	return out
 }

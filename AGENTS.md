@@ -5,10 +5,12 @@
 ## 核心约束
 
 - 非调试执行主路径不得重新引入 AST 节点依赖。
+- runtime 包及其依赖图不得引入 `core/ast`；Go source 到 Mini AST 的转换只允许在 `core/gofrontend`，AST 到执行计划的转换只允许在 `core/lowering`。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，`go-mini-bytecode` / `PreparedProgram` 是唯一执行装载工件。
 - 不要扩展 AST-only 执行装载入口。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
+- `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
 - canonical type 文本格式只允许由 `core/typespec` 实现；前端使用 `core/ast/ast_types.go` 门面，VM/runtime 使用 `runtime.TypeSpec` / schema 门面。
@@ -17,7 +19,7 @@
 - VM 内部始终按单线程协作式 VM 执行上下文调度，不新增 host goroutine 执行 VM task。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
-- Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/ffigo/converter.go` 中立即规范化。
+- Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。
 - 手写 AST / JSON AST 若出现非 canonical type，必须直接编译错误，不做兼容修复。
 
 ## 协作规则
@@ -27,6 +29,7 @@
 - 涉及 CLI、序列化或持久化时，默认接入 bytecode-first 主链。
 - 涉及 FFI 时，先确认改动属于 `ffigen`、runtime schema 注册还是标准库模块测试。
 - 每完成一块能力立刻补测试。
+- 架构约束的外部命令检查（如 `go list -deps`、`rg`、`make`）属于提交前人工/代理检查，不要塞进普通包单元测试；单元测试只保留不依赖外部命令的轻量源码或行为检查。
 
 ## 提交前检查
 

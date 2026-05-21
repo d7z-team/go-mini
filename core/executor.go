@@ -16,12 +16,12 @@ type MiniExecutor struct {
 	routes          map[string]runtime.FFIRoute
 	constants       map[string]string
 
-	registry         *ffigo.HandleRegistry
-	moduleBlueprints map[string]*ast.ProgramStmt
-	modules          map[string]*runtime.PreparedProgram
-	funcSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
-	structsMeta      map[ast.Ident]*runtime.RuntimeStructSpec
-	interfacesMeta   map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	registry       *ffigo.HandleRegistry
+	moduleSources  map[string]*ast.ProgramStmt
+	modules        map[string]*runtime.PreparedProgram
+	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
+	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
+	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }

@@ -33,15 +33,15 @@ import (
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		routes:           make(map[string]runtime.FFIRoute),
-		constants:        make(map[string]string),
-		registry:         ffigo.NewHandleRegistry(),
-		moduleBlueprints: make(map[string]*ast.ProgramStmt),
-		modules:          make(map[string]*runtime.PreparedProgram),
-		funcSchemas:      make(map[ast.Ident]*runtime.RuntimeFuncSig),
-		structsMeta:      make(map[ast.Ident]*runtime.RuntimeStructSpec),
-		interfacesMeta:   make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
-		MaxTypeDepth:     256,
+		routes:         make(map[string]runtime.FFIRoute),
+		constants:      make(map[string]string),
+		registry:       ffigo.NewHandleRegistry(),
+		moduleSources:  make(map[string]*ast.ProgramStmt),
+		modules:        make(map[string]*runtime.PreparedProgram),
+		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
+		MaxTypeDepth:   256,
 	}
 
 	// 默认注册 panic 签名以便通过验证
@@ -95,7 +95,7 @@ func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, er
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
-		if astNode, ok := e.moduleBlueprints[path]; ok {
+		if astNode, ok := e.moduleSources[path]; ok {
 			return astNode, nil
 		}
 		if e.astModuleLoader != nil {
@@ -174,7 +174,7 @@ func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error
 		e.mu.Lock()
 		for path, prog := range compiled.ImportedPrograms {
 			if prog != nil {
-				e.moduleBlueprints[path] = prog
+				e.moduleSources[path] = prog
 			}
 		}
 		e.mu.Unlock()
@@ -191,7 +191,7 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 
 		e.mu.RLock()
 		prepared := e.modules[path]
-		prog := e.moduleBlueprints[path]
+		prog := e.moduleSources[path]
 		e.mu.RUnlock()
 		if prepared != nil {
 			continue
@@ -220,7 +220,7 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 		e.mu.Lock()
 		e.modules[path] = compiled.Bytecode.Executable
 		if prog != nil {
-			e.moduleBlueprints[path] = prog
+			e.moduleSources[path] = prog
 		}
 		e.mu.Unlock()
 
@@ -265,14 +265,14 @@ func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 	defer e.mu.Unlock()
 	if prog == nil {
 		delete(e.modules, path)
-		delete(e.moduleBlueprints, path)
+		delete(e.moduleSources, path)
 		return
 	}
 	delete(e.modules, path)
 	if prog.Program != nil {
-		e.moduleBlueprints[path] = prog.Program
+		e.moduleSources[path] = prog.Program
 	} else {
-		delete(e.moduleBlueprints, path)
+		delete(e.moduleSources, path)
 	}
 	if prepared != nil {
 		e.modules[path] = prepared

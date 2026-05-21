@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestStructFieldNavigation(t *testing.T) {
@@ -16,7 +16,7 @@ func main() {
 	s := MyStruct{X: 10}
 	print(s.X) // Target: 7:10
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func main() {
 	s := S{X: 10}
 	res := s.Calc() // Target: 6:11
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func main() {
 		print(v)
 	}
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func main() {
 }
 
 func TestImportedAliasReturnMemberDefinition(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct {
@@ -171,7 +171,7 @@ func main() {
 }
 
 func TestImportedInterfaceChainMemberDefinition(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct {

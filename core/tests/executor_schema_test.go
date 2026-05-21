@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -123,7 +124,41 @@ func main() {
 	}
 }
 
-func TestNewRuntimeByBytecodeJSONRebuildsProgramBlueprint(t *testing.T) {
+func TestPreparedProgramJSONRoundTripExecutes(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	compiled, err := exec.CompileGoCode(`
+package main
+var counter = 1
+func main() { counter = counter + 41 }
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		t.Fatal("expected executable bytecode")
+	}
+	payload, err := json.Marshal(compiled.Bytecode.Executable)
+	if err != nil {
+		t.Fatalf("marshal prepared program failed: %v", err)
+	}
+	var prepared runtime.PreparedProgram
+	if err := json.Unmarshal(payload, &prepared); err != nil {
+		t.Fatalf("unmarshal prepared program failed: %v", err)
+	}
+	runtimeExec, err := runtime.NewExecutorFromPrepared(&prepared)
+	if err != nil {
+		t.Fatalf("new executor from prepared failed: %v", err)
+	}
+	if err := runtimeExec.Execute(context.Background()); err != nil {
+		t.Fatalf("execute prepared roundtrip failed: %v", err)
+	}
+	counter, ok := runtimeExec.SharedStateSnapshot().LoadGlobal("counter")
+	if !ok || counter == nil || counter.I64 != 42 {
+		t.Fatalf("unexpected counter global: %#v", counter)
+	}
+}
+
+func TestNewRuntimeByBytecodeJSONUsesExecutableMetadataOnly(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
@@ -147,6 +182,19 @@ func main() {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
+	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		t.Fatal("expected executable bytecode")
+	}
+	executable := compiled.Bytecode.Executable
+	if executable.Constants["Version"] != "v1" {
+		t.Fatalf("unexpected executable constants: %#v", executable.Constants)
+	}
+	if executable.StructSchemas["Payload"] == nil {
+		t.Fatalf("expected executable struct schema: %#v", executable.StructSchemas)
+	}
+	if executable.InterfaceSchemas["Reader"] == nil {
+		t.Fatalf("expected executable interface schema: %#v", executable.InterfaceSchemas)
+	}
 	payload, err := compiled.MarshalBytecodeJSON()
 	if err != nil {
 		t.Fatalf("marshal bytecode failed: %v", err)
@@ -159,25 +207,12 @@ func main() {
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-
-	rebuilt := prog.Program
-	if rebuilt == nil {
-		t.Fatal("expected rebuilt program")
+	if prog.Program != nil {
+		t.Fatal("bytecode runtime should not rebuild or retain an AST program")
 	}
-	if rebuilt.Package != "main" {
-		t.Fatalf("unexpected package: %s", rebuilt.Package)
-	}
-	if rebuilt.Constants["Version"] != "v1" {
-		t.Fatalf("unexpected constant map: %#v", rebuilt.Constants)
-	}
-	if rebuilt.Structs["Payload"] == nil {
-		t.Fatalf("expected rebuilt struct metadata: %#v", rebuilt.Structs)
-	}
-	if rebuilt.Interfaces["Reader"] == nil {
-		t.Fatalf("expected rebuilt interface metadata: %#v", rebuilt.Interfaces)
-	}
-	if rebuilt.Functions["main"] == nil {
-		t.Fatalf("expected rebuilt function stubs: %#v", rebuilt.Functions)
+	counter, ok := prog.SharedState().LoadGlobal("counter")
+	if !ok || counter == nil || counter.I64 != 2 {
+		t.Fatalf("unexpected counter global: %#v", counter)
 	}
 }
 
@@ -293,6 +328,20 @@ func main() {}
 	}
 }
 
+func TestNewRuntimeByBytecodeRejectsMissingExecutable(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	program := bytecode.NewProgram()
+	program.Entry = []bytecode.Instruction{{Op: "PUSH", Operand: "1"}}
+
+	_, err := exec.NewRuntimeByBytecode(program)
+	if err == nil {
+		t.Fatal("expected missing executable bytecode error")
+	}
+	if !strings.Contains(err.Error(), "missing executable bytecode") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestCompileGoCodeToBytecodeReturnsExecutableProgram(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	program, err := exec.CompileGoCodeToBytecode(`
@@ -313,7 +362,7 @@ func main() {}
 	}
 }
 
-func TestExecutableBytecodeWithoutBlueprintLoadsAndExecutes(t *testing.T) {
+func TestExecutableOnlyBytecodeLoadsAndExecutes(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -329,7 +378,6 @@ func main() { Result = Result + 41 }
 	}
 
 	executableOnly := *program
-	executableOnly.Blueprint = nil
 	executableOnly.Globals = nil
 	executableOnly.Entry = nil
 	executableOnly.Functions = nil
@@ -365,7 +413,6 @@ func Answer() Int64 { return 40 }
 		t.Fatalf("helper bytecode accessor failed: %v", err)
 	}
 	helperExecutableOnly := *helperBytecode
-	helperExecutableOnly.Blueprint = nil
 	helperExecutableOnly.Globals = nil
 	helperExecutableOnly.Entry = nil
 	helperExecutableOnly.Functions = nil
@@ -375,7 +422,7 @@ func Answer() Int64 { return 40 }
 		t.Fatalf("load executable-only helper failed: %v", err)
 	}
 	if helperRuntime.Program != nil {
-		t.Fatal("helper runtime should not carry a rebuilt AST blueprint")
+		t.Fatal("helper runtime should not carry a rebuilt AST program")
 	}
 
 	exec.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
@@ -447,10 +494,13 @@ func main() {}
 	if err != nil {
 		t.Fatalf("artifact from bytecode json failed: %v", err)
 	}
-	if artifact == nil || artifact.Bytecode == nil || artifact.Program == nil {
-		t.Fatal("expected rebuilt artifact")
+	if artifact == nil || artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		t.Fatal("expected executable artifact")
 	}
-	if artifact.Program.Constants["Version"] != "v1" {
-		t.Fatalf("unexpected rebuilt constants: %#v", artifact.Program.Constants)
+	if artifact.Program != nil {
+		t.Fatal("bytecode artifact should not rebuild an AST program")
+	}
+	if artifact.Bytecode.Executable.Constants["Version"] != "v1" {
+		t.Fatalf("unexpected executable constants: %#v", artifact.Bytecode.Executable.Constants)
 	}
 }

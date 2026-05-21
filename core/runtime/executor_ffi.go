@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"strings"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -50,7 +49,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	} else {
 		// 普通非变长函数序列化
 		for i, arg := range args {
-			argType := RuntimeType{Kind: RuntimeTypeAny, Raw: TypeSpec(ast.TypeAny), TypeID: CanonicalTypeID(string(ast.TypeAny))}
+			argType := RuntimeType{Kind: RuntimeTypeAny, Raw: SpecAny, TypeID: CanonicalTypeID(string(SpecAny))}
 			if funcSig != nil && i < len(funcSig.ParamTypes) {
 				argType = funcSig.ParamTypes[i]
 			}

@@ -8,7 +8,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 // TestModuleConsistency 验证跨模块变量修改的强一致性
@@ -30,7 +30,7 @@ func TestModuleConsistency(t *testing.T) {
 				Val++
 			}
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, _ := converter.ConvertSource("snippet", code)
 			return node.(*ast.ProgramStmt), nil
 		}
@@ -128,7 +128,7 @@ func TestModuleClosureConsistency(t *testing.T) {
 				}
 			}
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, _ := converter.ConvertSource("snippet", code)
 			return node.(*ast.ProgramStmt), nil
 		}

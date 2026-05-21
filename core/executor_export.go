@@ -108,7 +108,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 	}
 
 	// 3. 处理已加载的 Modules (脚本模块)
-	for modName, prog := range e.moduleBlueprints {
+	for modName, prog := range e.moduleSources {
 		mod := getModule(modName)
 		// 导出函数
 		for fnName, fnStmt := range prog.Functions {
@@ -145,7 +145,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 		}
 	}
 	for modName, prepared := range e.modules {
-		if _, hasBlueprint := e.moduleBlueprints[modName]; hasBlueprint || prepared == nil {
+		if _, hasSourceModule := e.moduleSources[modName]; hasSourceModule || prepared == nil {
 			continue
 		}
 		mod := getModule(modName)

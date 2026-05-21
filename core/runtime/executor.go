@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -168,44 +167,6 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.mainTasks = cloneTasks(prepared.MainTasks)
 }
 
-func runtimeStructSpecFromStmt(stmt *ast.StructStmt) *RuntimeStructSpec {
-	if stmt == nil {
-		return nil
-	}
-	fields := make([]RuntimeStructField, 0, len(stmt.FieldNames))
-	byName := make(map[string]RuntimeStructField, len(stmt.Fields))
-	for _, fieldName := range stmt.FieldNames {
-		fieldType := stmt.Fields[fieldName]
-		typeInfo, err := ParseRuntimeType(fieldType)
-		if err != nil {
-			return nil
-		}
-		field := RuntimeStructField{
-			Name:     string(fieldName),
-			Type:     TypeSpec(fieldType),
-			TypeInfo: typeInfo,
-		}
-		fields = append(fields, field)
-		byName[field.Name] = field
-	}
-	typeInfo := RuntimeType{
-		Kind:   RuntimeTypeStruct,
-		Raw:    TypeSpec(stmt.Name),
-		TypeID: CanonicalTypeID(string(stmt.Name)),
-		Fields: fields,
-	}
-	return &RuntimeStructSpec{
-		Name:      string(stmt.Name),
-		TypeID:    CanonicalTypeID(string(stmt.Name)),
-		Spec:      TypeSpec(stmt.Name),
-		Ownership: StructOwnershipVMValue,
-		TypeInfo:  typeInfo,
-		Layout:    buildStructLayout(fields),
-		Fields:    fields,
-		ByName:    byName,
-	}
-}
-
 func (e *Executor) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
 	return e.metadata.resolveNamedType(typ)
 }
@@ -294,17 +255,6 @@ func cloneRuntimeGlobalInitGroupsFromPrepared(groups []*PreparedGlobalInit) []*R
 		})
 	}
 	return out
-}
-
-func (e *Executor) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope) []Task {
-	if len(stmts) == 0 {
-		return nil
-	}
-	plan := make([]Task, 0)
-	for _, stmt := range stmts {
-		plan = append(e.tasksForStmtInScope(stmt, nil, scope), plan...)
-	}
-	return plan
 }
 
 func (e *Executor) lookupFunction(name string) (*RuntimeFunction, bool) {
@@ -465,8 +415,7 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 			return nil, fmt.Errorf("type %v does not implement %s: missing method schema %s", inner.VType, interfaceSpec, method.Name)
 		}
 		callable, ok := e.resolveMethodValue(target, method.Name)
-		expected := method.Spec.FunctionType()
-		if !ok || !e.isCallableCompatible(callable, &expected) {
+		if !ok || !e.isCallableCompatible(callable, method.Spec) {
 			return nil, fmt.Errorf("type %v does not implement %s: missing or incompatible method %s", inner.VType, interfaceSpec, method.Name)
 		}
 		vtable[method.Index] = callable
@@ -547,7 +496,7 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 	return nil, false
 }
 
-func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) bool {
+func (e *Executor) isCallableCompatible(v *Var, expectedSig *RuntimeFuncSig) bool {
 	v = e.unwrapValue(v)
 	if v == nil {
 		return false
@@ -557,22 +506,23 @@ func (e *Executor) isCallableCompatible(v *Var, expectedSig *ast.FunctionType) b
 			if cl.FunctionSig == nil {
 				return false
 			}
-			actual := cl.FunctionSig.FunctionType()
-			return e.isSignatureCompatible(&actual, expectedSig)
+			return e.isSignatureCompatible(cl.FunctionSig, expectedSig)
 		}
 	}
 	if route, ok := v.Ref.(FFIRoute); ok {
 		if route.FuncSig != nil {
-			actual := route.FuncSig.FunctionType()
-			return e.isSignatureCompatible(&actual, expectedSig)
+			return e.isSignatureCompatible(route.FuncSig, expectedSig)
 		}
 	}
 	return true // 默认放行，由运行期进一步处理
 }
 
-func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) bool {
+func (e *Executor) isSignatureCompatible(actual, expected *RuntimeFuncSig) bool {
+	if actual == nil || expected == nil {
+		return actual == expected
+	}
 	// 如果 expected 是 interface{Method} 这种没有详细签名的（默认 Return: Any），直接放行
-	if expected.Return == "Any" && len(expected.Params) == 0 && !expected.Variadic {
+	if expected.ReturnType.Raw == SpecAny && len(expected.ParamTypes) == 0 && !expected.Variadic {
 		return true
 	}
 
@@ -580,29 +530,29 @@ func (e *Executor) isSignatureCompatible(actual, expected *ast.FunctionType) boo
 	if !actual.Variadic && expected.Variadic {
 		return false
 	}
-	if !actual.Variadic && len(actual.Params) != len(expected.Params) {
+	if !actual.Variadic && len(actual.ParamTypes) != len(expected.ParamTypes) {
 		return false
 	}
 
 	// 参数类型校验
-	for i := range expected.Params {
-		var actType ast.GoMiniType = "Any"
-		if i < len(actual.Params) {
-			actType = actual.Params[i].Type
+	for i := range expected.ParamTypes {
+		actType := MustParseRuntimeType(SpecAny)
+		if i < len(actual.ParamTypes) {
+			actType = actual.ParamTypes[i]
 		} else if actual.Variadic {
-			actType = actual.Params[len(actual.Params)-1].Type
+			actType = actual.ParamTypes[len(actual.ParamTypes)-1]
 		}
 
-		if !expected.Params[i].Type.IsAssignableTo(actType) {
+		if !expected.ParamTypes[i].IsAssignableTo(actType) {
 			return false
 		}
 	}
 
 	// 返回值兼容性
-	if actual.Return == "Void" && expected.Return == "Any" {
+	if actual.ReturnType.Raw == SpecVoid && expected.ReturnType.Raw == SpecAny {
 		return true
 	}
-	return actual.Return.IsAssignableTo(expected.Return)
+	return actual.ReturnType.IsAssignableTo(expected.ReturnType)
 }
 
 func (e *Executor) Run(session *StackContext) error {
@@ -787,7 +737,7 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 					}
 					session.Debugger.EventChan <- &debugger.Event{
 						ExecutionContextID: execCtxID,
-						Loc: &ast.Position{
+						Loc: &debugger.Position{
 							F: task.Source.File,
 							L: task.Source.Line,
 							C: task.Source.Col,

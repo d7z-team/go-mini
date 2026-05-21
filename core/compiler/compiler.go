@@ -6,7 +6,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -44,13 +44,6 @@ func ArtifactFromBytecode(program *bytecode.Program) (*Artifact, error) {
 	artifact := &Artifact{
 		Filename: "bytecode",
 		Bytecode: program,
-	}
-	if program.Blueprint != nil {
-		rebuilt, err := program.RebuildProgram()
-		if err != nil {
-			return nil, err
-		}
-		artifact.Program = rebuilt
 	}
 	if program.Executable != nil {
 		artifact.GlobalInitOrder = append([]string(nil), program.Executable.GlobalInitOrder...)
@@ -249,6 +242,6 @@ func identSliceToStrings(items []ast.Ident) []string {
 	return out
 }
 
-func newConverter() *ffigo.GoToASTConverter {
-	return ffigo.NewGoToASTConverter()
+func newConverter() *gofrontend.Converter {
+	return gofrontend.NewConverter()
 }

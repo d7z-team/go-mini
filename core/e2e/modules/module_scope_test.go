@@ -7,7 +7,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 // TestModulePrivateScope 验证跨模块调用时，被调模块的私有变量作用域是否丢失
@@ -28,7 +28,7 @@ func TestModulePrivateScope(t *testing.T) {
 				return "Result: " + utils
 			}
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, _ := converter.ConvertSource("snippet", code)
 			return node.(*ast.ProgramStmt), nil
 		}

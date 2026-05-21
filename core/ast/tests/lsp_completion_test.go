@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestUnimportedFFIValidation(t *testing.T) {
@@ -13,7 +13,7 @@ func TestUnimportedFFIValidation(t *testing.T) {
 func main() {
 	os.ReadFile("test.txt")
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestUnimportedFFICompletion(t *testing.T) {
 func main() {
 	os.ReadFile("test")
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func main() {
 }
 
 func TestGoSourceModuleCompletion(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	// 模拟导入的子模块
 	subCode := `package mymath
@@ -140,7 +140,7 @@ func TestGlobalPackageCompletion(t *testing.T) {
 func main() {
 	
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +177,7 @@ func TestUnimportedFFIValidationError(t *testing.T) {
 func main() {
 	os.NonExistentFunction("test.txt")
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +206,7 @@ func TestUnimportedUnknownPackageCompletion(t *testing.T) {
 func main() {
 	unknownpkg.SomeFunc()
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestUnimportedUnknownPackageCheck(t *testing.T) {
 func main() {
 	unknownpkg.SomeFunc()
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func main() {
 }
 
 func TestImportedRootCompletionWithoutExplicitImport(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	// 模拟已加载但未导入的子模块
 	subCode := `package mymath
@@ -296,7 +296,7 @@ func main() {
 }
 
 func TestImportedRootCheckWithoutExplicitImport(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	// 模拟已加载但未导入的子模块
 	subCode := `package mymath
@@ -337,7 +337,7 @@ func main() {
 }
 
 func TestImportedRootPathCompletionWithoutExplicitImport(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	// 模拟已加载但未导入的子模块，路径带有层级
 	subCode := `package math
@@ -386,7 +386,7 @@ func main() {
 }
 
 func TestImportedRootCheckWithPackageType(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	// 模拟已加载但未导入的子模块
 	subCode := `package mymath
@@ -433,7 +433,7 @@ func main() {
 }
 
 func TestImportedRootCheckMemberNotExist(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 func Add(a Int64, b Int64) Int64 { return a + b }`
@@ -478,7 +478,7 @@ func main() {
 	later := 1
 }`
 
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +506,7 @@ func main() {
 	time.Sleep(1 * time.Second)
 	fmt.Println("Done.")
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -539,7 +539,7 @@ func main() {
 }
 
 func TestImportedModuleChainedMemberCompletion(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct { X Int64; Y Int64 }
@@ -587,7 +587,7 @@ func main() {
 }
 
 func TestImportedModuleTupleReturnMemberCompletion(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct { X Int64; Y Int64 }
@@ -633,7 +633,7 @@ func main() {
 }
 
 func TestImportedModuleAliasReturnMemberCompletion(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct { X Int64; Y Int64 }
@@ -680,7 +680,7 @@ func main() {
 }
 
 func TestImportedModuleInterfaceChainCompletion(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct { X Int64; Y Int64 }

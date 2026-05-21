@@ -9,7 +9,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -35,7 +35,7 @@ func TestModuleComprehensive(t *testing.T) {
 				return Point{X: x, Y: y}
 			}
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, err := converter.ConvertSource("snippet", code)
 			if err != nil {
 				return nil, err
@@ -99,7 +99,7 @@ func TestCircularDependency(t *testing.T) {
 		default:
 			return nil, errors.New("not found")
 		}
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, _ := converter.ConvertSource("snippet", code)
 		return node.(*ast.ProgramStmt), nil
 	})

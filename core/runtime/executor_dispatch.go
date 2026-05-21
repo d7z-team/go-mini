@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 func (e *Executor) dispatch(session *StackContext, task Task) error {
@@ -1273,7 +1271,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			closure.UpvalueSlots[i] = cellVar
 			closure.UpvalueNames[i] = capture.Name
 		}
-		v := NewVar(ast.TypeClosure, TypeClosure)
+		v := NewVar(SpecClosure, TypeClosure)
 		v.Ref = closure
 		session.ValueStack.Push(v)
 		return nil

@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestCanonicalBuiltinTypeNameCoversGoIntegerAliases(t *testing.T) {
-	converter := NewGoToASTConverter()
+	converter := NewConverter()
 	for _, name := range []string{"uint64", "uintptr", "byte", "rune"} {
 		if got := converter.canonicalBuiltinTypeName(name); got != "Int64" {
 			t.Fatalf("expected %s to normalize to Int64, got %s", name, got)
@@ -57,7 +57,7 @@ func main() {
 					t.Fatalf("ConvertSource panicked: %v", r)
 				}
 			}()
-			_, err := NewGoToASTConverter().ConvertSource("bad.mgo", tc.code)
+			_, err := NewConverter().ConvertSource("bad.mgo", tc.code)
 			if err == nil {
 				t.Fatal("expected conversion error")
 			}

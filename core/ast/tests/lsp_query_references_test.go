@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestFindAllReferences(t *testing.T) {
@@ -18,7 +18,7 @@ func main() {
 	}
 	f()
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func main() {
 	other := MyStruct{X: 20}
 	print(other.X)
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)

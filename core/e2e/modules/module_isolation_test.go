@@ -10,7 +10,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -26,7 +26,7 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 			var Exported = "partial"
 			var Trigger = 1 / 0
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, err := converter.ConvertSource("snippet", code)
 			if err != nil {
 				return nil, err
@@ -84,7 +84,7 @@ func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 			var Exported = "partial"
 			var Trigger = fail()
 			`
-			converter := ffigo.NewGoToASTConverter()
+			converter := gofrontend.NewConverter()
 			node, err := converter.ConvertSource("snippet", code)
 			if err != nil {
 				return nil, err
@@ -150,7 +150,7 @@ func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 		default:
 			return nil, fmt.Errorf("module not found: %s", path)
 		}
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, err := converter.ConvertSource("snippet", code)
 		if err != nil {
 			return nil, err
@@ -203,7 +203,7 @@ func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
 		if path != "slowmod" {
 			return nil, fmt.Errorf("%w: %s", miniruntime.ErrModuleNotFound, path)
 		}
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, err := converter.ConvertSource("slowmod.mgo", `
 package slowmod
 

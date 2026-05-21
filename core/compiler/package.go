@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 const ScriptFileExt = ".mgo"
@@ -50,7 +50,7 @@ func ParseSourceFiles(files []SourceFile, tolerant bool) ([]*ast.ProgramStmt, []
 		return nil, nil, errors.New("missing source files")
 	}
 
-	converter := ffigo.NewGoToASTConverter()
+	converter := gofrontend.NewConverter()
 	programs := make([]*ast.ProgramStmt, 0, len(files))
 	var allErrs []error
 

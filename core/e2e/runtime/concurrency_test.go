@@ -9,7 +9,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -56,7 +56,7 @@ func TestConcurrentModuleImportSingleflight(t *testing.T) {
 		}
 		loads.Add(1)
 		time.Sleep(20 * time.Millisecond)
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, err := converter.ConvertSource("sharedmod.mgo", `
 package sharedmod
 
@@ -119,7 +119,7 @@ func TestConcurrentSharedMapMutationDoesNotPanic(t *testing.T) {
 		if path != "counter" {
 			return nil, nil
 		}
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, err := converter.ConvertSource("counter.mgo", `
 package counter
 

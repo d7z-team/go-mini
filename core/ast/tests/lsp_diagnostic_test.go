@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestStructuredDiagnostics(t *testing.T) {
@@ -15,7 +15,7 @@ func main() {
 	a := 10
 	a = "string" // Type error
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestPrimitiveMethodNotFound(t *testing.T) {
 		},
 	}
 
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			node, err := conv.ConvertSource("snippet", tt.code)
@@ -126,7 +126,7 @@ func main() {
 	data.NotFound()
 	fmt.Printf("1+1=%v\n", 2)
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +171,7 @@ func main() {
 	Add(1, "2")
 	Add(1)
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func main() {
 	bad := badCall()
 	print(bad[unknown])
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSourceTolerant("snippet", code)
 	if len(err) > 0 {
 		t.Fatalf("unexpected tolerant parse errors: %v", err)
@@ -251,7 +251,7 @@ func main() {
 	_ = arr["0"]
 	_ = arr[1:"2"]
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func main() {
 	var a Int64
 	a = "x"
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ func main() {
 	d := !1
 	e := 1 << "2"
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -433,7 +433,7 @@ func main() {
 		print(1)
 	}
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -457,7 +457,7 @@ func bad(a Bool) Int64 {
 		return 1
 	}
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	node, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)

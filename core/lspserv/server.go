@@ -13,7 +13,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/compiler"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -204,7 +204,7 @@ func snapshotPackageFiles(pkg *packageState) ([]*fileSession, uint64) {
 
 func parseFileForLSP(file *fileSession) parsedFile {
 	result := parsedFile{uri: file.uri}
-	converter := ffigo.NewGoToASTConverter()
+	converter := gofrontend.NewConverter()
 	node, errs := converter.ConvertSourceTolerant(file.uri, file.code)
 	for _, err := range errs {
 		var scanErr scanner.Error
@@ -217,7 +217,7 @@ func parseFileForLSP(file *fileSession) parsedFile {
 			})
 			continue
 		}
-		var convertErr *ffigo.ConvertError
+		var convertErr *gofrontend.ConvertError
 		if errors.As(err, &convertErr) && convertErr.Pos != nil {
 			result.diagnostics = append(result.diagnostics, Diagnostic{
 				Range:    FromInternalPos(convertErr.Pos),
@@ -377,7 +377,7 @@ func mergeDiagnostics(dst, src map[string][]Diagnostic) {
 }
 
 func detectPackageName(uri, code string) string {
-	converter := ffigo.NewGoToASTConverter()
+	converter := gofrontend.NewConverter()
 	node, _ := converter.ConvertSourceTolerant(uri, code)
 	if prog, ok := node.(*ast.ProgramStmt); ok && prog.Package != "" {
 		return prog.Package

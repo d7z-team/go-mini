@@ -3,8 +3,6 @@ package debugger
 import (
 	"context"
 	"sync/atomic"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 type Command string
@@ -17,8 +15,16 @@ const (
 type Event struct {
 	// ExecutionContextID identifies which VM execution context triggered the current all-stop pause.
 	ExecutionContextID uint32
-	Loc                *ast.Position
+	Loc                *Position
 	Variables          map[string]string
+}
+
+type Position struct {
+	F  string
+	L  int
+	C  int
+	EL int
+	EC int
 }
 
 type Session struct {

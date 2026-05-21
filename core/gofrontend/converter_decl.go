@@ -1,4 +1,4 @@
-package ffigo
+package gofrontend
 
 import (
 	"go/ast"
@@ -6,7 +6,7 @@ import (
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
 
-func (c *GoToASTConverter) convertAssignRHS(st *ast.AssignStmt) []miniast.Expr {
+func (c *Converter) convertAssignRHS(st *ast.AssignStmt) []miniast.Expr {
 	if len(st.Rhs) == 1 {
 		rhsExpr := c.convertExpr(st.Rhs[0])
 		if len(st.Lhs) == 2 {
@@ -26,7 +26,7 @@ func (c *GoToASTConverter) convertAssignRHS(st *ast.AssignStmt) []miniast.Expr {
 	return values
 }
 
-func (c *GoToASTConverter) convertValueSpecDecl(s *ast.ValueSpec) *miniast.GenDeclStmt {
+func (c *Converter) convertValueSpecDecl(s *ast.ValueSpec) *miniast.GenDeclStmt {
 	kind := miniast.GoMiniType("")
 	if s.Type != nil {
 		kind = miniast.GoMiniType(c.typeToString(s.Type))
@@ -63,7 +63,7 @@ func declValueForBinding(decl *miniast.GenDeclStmt, index int) miniast.Expr {
 	return nil
 }
 
-func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc string) *miniast.StructStmt {
+func (c *Converter) convertStruct(name string, s *ast.StructType, doc string) *miniast.StructStmt {
 	res := &miniast.StructStmt{
 		BaseNode:  miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
 		Name:      miniast.Ident(name),
@@ -83,7 +83,7 @@ func (c *GoToASTConverter) convertStruct(name string, s *ast.StructType, doc str
 	return res
 }
 
-func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
+func (c *Converter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	fnName := d.Name.Name
 	var params []miniast.FunctionParam
 	var receiverType string

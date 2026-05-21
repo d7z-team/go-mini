@@ -3,8 +3,6 @@ package runtime
 import (
 	"errors"
 	"fmt"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 func (s *Stack) DumpVariables() map[string]string {
@@ -183,14 +181,14 @@ func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variabl
 					BodyTasks:   cloneTasks(fn.BodyTasks),
 					Context:     &LexicalContext{Executor: exec, Shared: shared, Stack: stack},
 				},
-				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
+				TypeInfo: MustParseRuntimeType(SpecClosure),
 			}, nil
 		}
 		if route, ok := exec.routes[variable]; ok {
 			return &Var{
 				VType:    TypeAny,
 				Ref:      route,
-				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
+				TypeInfo: MustParseRuntimeType(SpecClosure),
 			}, nil
 		}
 	}
@@ -496,23 +494,23 @@ func (ctx *StackContext) CaptureVar(name string) (*Slot, error) {
 
 		// 1. 尝试查找脚本定义的函数
 		if fn, ok := exec.functions[name]; ok {
-			return NewSlot(MustParseRuntimeType(ast.TypeClosure), &Var{
+			return NewSlot(MustParseRuntimeType(SpecClosure), &Var{
 				VType: TypeClosure,
 				Ref: &VMClosure{
 					FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 					BodyTasks:   cloneTasks(fn.BodyTasks),
 					Context:     &LexicalContext{Executor: ctx.Executor, Shared: ctx.Shared, Stack: ctx.Stack},
 				},
-				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
+				TypeInfo: MustParseRuntimeType(SpecClosure),
 			}), nil
 		}
 
 		// 2. 尝试查找 FFI 路由
 		if route, ok := exec.routes[name]; ok {
-			return NewSlot(MustParseRuntimeType(ast.TypeClosure), &Var{
+			return NewSlot(MustParseRuntimeType(SpecClosure), &Var{
 				VType:    TypeAny,
 				Ref:      route,
-				TypeInfo: MustParseRuntimeType(ast.TypeClosure),
+				TypeInfo: MustParseRuntimeType(SpecClosure),
 			}), nil
 		}
 	}
@@ -796,10 +794,10 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 		return MustParseRuntimeType("Any")
 	case TypeClosure:
 		if cl, ok := v.Ref.(*VMClosure); ok && cl != nil && cl.FunctionSig != nil {
-			return runtimeTypeFromFunction(cl.FunctionSig.FunctionType())
+			return runtimeTypeFromFuncSig(cl.FunctionSig)
 		}
 		if route, ok := v.Ref.(FFIRoute); ok && route.FuncSig != nil {
-			return runtimeTypeFromFunction(route.FuncSig.FunctionType())
+			return runtimeTypeFromFuncSig(route.FuncSig)
 		}
 		return declared
 	default:
@@ -807,10 +805,17 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 	}
 }
 
-func runtimeTypeFromFunction(fn ast.FunctionType) RuntimeType {
-	typ, err := ParseRuntimeType(fn.MiniType())
+func runtimeTypeFromFuncSig(sig *RuntimeFuncSig) RuntimeType {
+	if sig == nil {
+		return RuntimeType{}
+	}
+	spec := sig.Spec
+	if spec.IsEmpty() {
+		spec = TypeSpec(sig.SignatureString())
+	}
+	typ, err := ParseRuntimeType(spec)
 	if err != nil {
-		return RuntimeType{Raw: TypeSpec(fn.MiniType())}
+		return RuntimeType{Raw: spec}
 	}
 	return typ
 }

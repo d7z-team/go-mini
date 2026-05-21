@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"time"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 // isEmptyVar is already defined in executor.go, but we can reuse it since it doesn't have a receiver.
@@ -299,22 +297,6 @@ func (e *Executor) evalLiteralToVar(val string) *Var {
 		return NewBool(false)
 	}
 	return NewString(val)
-}
-
-func (e *Executor) evalLiteralDirect(n *ast.LiteralExpr) (*Var, error) {
-	switch n.Type {
-	case "Int64":
-		v, _ := strconv.ParseInt(n.Value, 10, 64)
-		return NewInt(v), nil
-	case "Float64":
-		v, _ := strconv.ParseFloat(n.Value, 64)
-		return NewFloat(v), nil
-	case "String":
-		return NewString(n.Value), nil
-	case "Bool":
-		return NewBool(n.Value == "true"), nil
-	}
-	return nil, &VMError{Message: fmt.Sprintf("unknown literal %s", n.Type), IsPanic: true}
 }
 
 func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {

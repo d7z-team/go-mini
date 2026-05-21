@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestFindHoverInfo(t *testing.T) {
@@ -22,7 +22,7 @@ func main() {
 	s := MyStruct{X: 10}
 	res := MyFunc(1, 2)
 }`
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 	prog, err := conv.ConvertSource("snippet", code)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func main() {
 }
 
 func TestImportedTupleReturnMemberHover(t *testing.T) {
-	conv := ffigo.NewGoToASTConverter()
+	conv := gofrontend.NewConverter()
 
 	subCode := `package mymath
 type Point struct { X Int64; Y Int64 }

@@ -7,7 +7,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 func TestPathTraversalSecurity(t *testing.T) {
@@ -42,7 +42,7 @@ func TestImportDepthLimit(t *testing.T) {
 		depth++
 		next := fmt.Sprintf("m%d", depth)
 		code := fmt.Sprintf("package %s; import \"%s\"; func Run() {}", path, next)
-		converter := ffigo.NewGoToASTConverter()
+		converter := gofrontend.NewConverter()
 		node, _ := converter.ConvertSource("snippet", code)
 		return node.(*ast.ProgramStmt), nil
 	})

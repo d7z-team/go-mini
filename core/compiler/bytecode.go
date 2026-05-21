@@ -8,6 +8,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/lowering"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -23,11 +24,10 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) (*bytecod
 
 	builder := &bytecodeBuilder{program: program}
 	bc := bytecode.NewProgram()
-	prepared, err := runtime.PrepareProgram(program)
+	prepared, err := lowering.PrepareProgram(program)
 	if err != nil {
 		return nil, err
 	}
-	bc.Blueprint = bytecode.NewBlueprint(program)
 	bc.Executable = prepared
 
 	for _, name := range globalInitOrder {
@@ -81,7 +81,7 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) (*bytecod
 
 // CompileEvalTasks lowers a single expression into a prepared return task plan.
 func CompileEvalTasks(expr ast.Expr) ([]runtime.Task, error) {
-	prepared, err := runtime.PrepareProgram(&ast.ProgramStmt{
+	prepared, err := lowering.PrepareProgram(&ast.ProgramStmt{
 		BaseNode:   ast.BaseNode{ID: "eval", Meta: "boot"},
 		Constants:  map[string]string{},
 		Variables:  map[ast.Ident]ast.Expr{},
