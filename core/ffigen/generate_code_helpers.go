@@ -5,69 +5,70 @@ import (
 	"go/ast"
 	"sort"
 	"strings"
+
+	miniast "gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 func generatedFuncSpec(vmType func(ast.Expr) string) func(*ast.FuncType) string {
 	return func(funcType *ast.FuncType) string {
-		var params []string
+		var params []miniast.FunctionParam
+		var variadic bool
 		if funcType.Params != nil {
 			for i, p := range funcType.Params.List {
-				pType := vmType(p.Type)
+				pType := miniast.GoMiniType(vmType(p.Type))
 				if i == 0 && (pType == "context.Context" || pType == "Context") {
 					continue
 				}
-				prefix := ""
 				if _, ok := p.Type.(*ast.Ellipsis); ok {
-					prefix = "..."
-					if strings.HasPrefix(pType, "Array<") && strings.HasSuffix(pType, ">") {
-						pType = pType[6 : len(pType)-1]
+					variadic = true
+					if elem, ok := pType.ReadArrayItemType(); ok {
+						pType = elem
 					}
 				}
 				if len(p.Names) == 0 {
-					params = append(params, prefix+pType)
+					params = append(params, miniast.FunctionParam{Type: pType})
 				} else {
 					for range p.Names {
-						params = append(params, prefix+pType)
+						params = append(params, miniast.FunctionParam{Type: pType})
 					}
 				}
 			}
 		}
-		var results []string
+		var results []miniast.GoMiniType
 		if funcType.Results != nil {
 			for _, r := range funcType.Results.List {
-				t := vmType(r.Type)
+				t := miniast.GoMiniType(vmType(r.Type))
 				if t == "error" {
-					results = append(results, "Error")
+					results = append(results, miniast.TypeError)
 				} else {
 					results = append(results, t)
 				}
 			}
 		}
-		actualRet := "Void"
-		if len(results) > 1 {
-			actualRet = "tuple(" + strings.Join(results, ", ") + ")"
-		} else if len(results) == 1 {
-			actualRet = results[0]
+		actualRet := miniast.TypeVoid
+		if len(results) > 0 {
+			actualRet = miniast.CreateTupleType(results...)
 		}
-		return fmt.Sprintf("function(%s) %s", strings.Join(params, ", "), actualRet)
+		return string(miniast.CreateFunctionType(params, actualRet, variadic))
 	}
 }
 
-func generatedAsyncReturn(funcType *ast.FuncType) (ast.Expr, string, bool) {
+func (g *Generator) generatedAsyncReturn(funcType *ast.FuncType) (ast.Expr, string, bool) {
 	if funcType == nil || funcType.Results == nil || len(funcType.Results.List) != 1 {
 		return nil, "", false
 	}
-	elem, ok := asyncElemExpr(funcType.Results.List[0].Type)
+	elem, ok := g.asyncElemExpr(funcType.Results.List[0].Type)
 	if !ok {
 		return nil, "", false
 	}
-	return elem, typeToString(elem), true
+	return elem, g.typeToString(elem), true
 }
 
-func generatedMethodHasReceiver(funcType *ast.FuncType, isStruct bool, methodsPrefix string, displayTypeName func(string) string) bool {
+func (g *Generator) generatedMethodHasReceiver(funcType *ast.FuncType, isStruct bool, methodsPrefix string, displayTypeName func(string) string) bool {
 	hasContext := false
 	if funcType.Params != nil && len(funcType.Params.List) > 0 {
-		pType := typeToString(funcType.Params.List[0].Type)
+		pType := g.typeToString(funcType.Params.List[0].Type)
 		if pType == "context.Context" || pType == "Context" {
 			hasContext = true
 		}
@@ -83,15 +84,15 @@ func generatedMethodHasReceiver(funcType *ast.FuncType, isStruct bool, methodsPr
 		field := funcType.Params.List[paramIdx]
 		return len(field.Names) > 0 && field.Names[0].Name == "__recv"
 	}
-	receiverType := displayTypeName(typeToString(funcType.Params.List[paramIdx].Type))
-	if inner, ok := refElementType(receiverType); ok {
+	receiverType := displayTypeName(g.typeToString(funcType.Params.List[paramIdx].Type))
+	if inner, ok := ffigo.RefElementType(receiverType); ok {
 		receiverType = inner
 	}
 	expectedType := displayTypeName(methodsPrefix)
 	return receiverType == expectedType
 }
 
-func writeGeneratedBoundRegistrations(sb *strings.Builder, indent string, iface *ast.InterfaceType, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool, displayTypeName func(string) string) {
+func (g *Generator) writeGeneratedBoundRegistrations(sb *strings.Builder, indent string, iface *ast.InterfaceType, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool, displayTypeName func(string) string) {
 	for i, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
@@ -99,7 +100,7 @@ func writeGeneratedBoundRegistrations(sb *strings.Builder, indent string, iface 
 		methodName := method.Names[0].Name
 		funcType := method.Type.(*ast.FuncType)
 		routePrefix := fixedPrefix
-		if !isStruct && moduleName != "" && methodsPrefix != "" && !generatedMethodHasReceiver(funcType, isStruct, methodsPrefix, displayTypeName) {
+		if !isStruct && moduleName != "" && methodsPrefix != "" && !g.generatedMethodHasReceiver(funcType, isStruct, methodsPrefix, displayTypeName) {
 			routePrefix = moduleName
 		}
 		fmt.Fprintf(sb, "%sregistrar.RegisterFFISchema(\"%s%s%s\", bridge, %s_FFI_Schemas[%d].MethodID, %s_FFI_Schemas[%d].Sig, %s_FFI_Schemas[%d].Doc)\n",
@@ -107,20 +108,19 @@ func writeGeneratedBoundRegistrations(sb *strings.Builder, indent string, iface 
 	}
 }
 
-func buildGeneratedStructSchemaLiteral(iface *ast.InterfaceType, structs map[string]*ast.StructType, structName string, includeFields, includeMethods bool, displayTypeName func(string) string, funcSpec func(*ast.FuncType) string) string {
-	var fieldsSB strings.Builder
-	fieldsSB.WriteString("struct { ")
+func (g *Generator) buildGeneratedStructSchemaLiteral(iface *ast.InterfaceType, structs map[string]*ast.StructType, structName string, includeFields, includeMethods bool, displayTypeName func(string) string, funcSpec func(*ast.FuncType) string) string {
+	var members []miniast.StructMemberType
 	if includeFields {
 		if str, ok := structs[structName]; ok {
 			var keys []string
 			fMap := make(map[string]string)
-			getFields(structs, structName, fMap)
+			g.getFields(structs, structName, fMap)
 			for k := range fMap {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				fmt.Fprintf(&fieldsSB, "%s %s; ", k, displayTypeName(fMap[k]))
+				members = append(members, miniast.StructMemberType{Name: k, Type: miniast.GoMiniType(displayTypeName(fMap[k]))})
 			}
 			_ = str
 		}
@@ -131,9 +131,8 @@ func buildGeneratedStructSchemaLiteral(iface *ast.InterfaceType, structs map[str
 				continue
 			}
 			mName := method.Names[0].Name
-			fmt.Fprintf(&fieldsSB, "%s %s; ", mName, funcSpec(method.Type.(*ast.FuncType)))
+			members = append(members, miniast.StructMemberType{Name: mName, Type: miniast.GoMiniType(funcSpec(method.Type.(*ast.FuncType)))})
 		}
 	}
-	fieldsSB.WriteString("}")
-	return fieldsSB.String()
+	return string(miniast.CreateStructType(members))
 }

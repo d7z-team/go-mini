@@ -16,14 +16,18 @@ import (
 )
 
 type sourceImporter struct {
-	fallback types.Importer
-	cache    map[string]*types.Package
+	fallback   types.Importer
+	cache      map[string]*types.Package
+	modulePath string
+	moduleDir  string
 }
 
-func newSourceImporter() types.Importer {
+func (g *Generator) newSourceImporter() types.Importer {
 	return &sourceImporter{
-		fallback: importer.Default(),
-		cache:    make(map[string]*types.Package),
+		fallback:   importer.Default(),
+		cache:      make(map[string]*types.Package),
+		modulePath: g.modulePath,
+		moduleDir:  g.moduleDir,
 	}
 }
 
@@ -31,7 +35,7 @@ func (i *sourceImporter) Import(path string) (*types.Package, error) {
 	if pkg, ok := i.cache[path]; ok {
 		return pkg, nil
 	}
-	if modulePath != "" && moduleDir != "" && (path == modulePath || strings.HasPrefix(path, modulePath+"/")) {
+	if i.modulePath != "" && i.moduleDir != "" && (path == i.modulePath || strings.HasPrefix(path, i.modulePath+"/")) {
 		pkg, err := i.importFromModule(path)
 		if err == nil {
 			i.cache[path] = pkg
@@ -47,11 +51,11 @@ func (i *sourceImporter) Import(path string) (*types.Package, error) {
 
 func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
 	// This importer only needs exported symbol names for selector type-checking.
-	rel := strings.TrimPrefix(path, modulePath)
+	rel := strings.TrimPrefix(path, i.modulePath)
 	rel = strings.TrimPrefix(rel, "/")
-	dir := moduleDir
+	dir := i.moduleDir
 	if rel != "" {
-		dir = filepath.Join(moduleDir, filepath.FromSlash(rel))
+		dir = filepath.Join(i.moduleDir, filepath.FromSlash(rel))
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -134,11 +138,11 @@ func parserErrorContext(err error, source string) string {
 	return sb.String()
 }
 
-func resolveToBasicType(e ast.Expr) string {
-	if typeInfo == nil || e == nil {
+func (g *Generator) resolveToBasicType(e ast.Expr) string {
+	if g.typeInfo == nil || e == nil {
 		return ""
 	}
-	if tv, ok := typeInfo.Types[e]; ok {
+	if tv, ok := g.typeInfo.Types[e]; ok {
 		underlying := tv.Type.Underlying()
 		if basic, ok := underlying.(*types.Basic); ok {
 			return basic.Name()
@@ -170,8 +174,8 @@ func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
 	return meta
 }
 
-func derivePackageDefaultModule(files []*ast.File) string {
-	return deriveModuleFromFiles(fset, files)
+func (g *Generator) derivePackageDefaultModule(files []*ast.File) string {
+	return deriveModuleFromFiles(g.fset, files)
 }
 
 func materializeTargetMeta(meta targetMeta, defaultModule string) targetMeta {
@@ -181,28 +185,31 @@ func materializeTargetMeta(meta targetMeta, defaultModule string) targetMeta {
 	return meta
 }
 
-func resolveImportedModule(importPath string) string {
+func (g *Generator) resolveImportedModule(importPath string) string {
 	if importPath == "" {
 		return ""
 	}
-	if moduleName, ok := moduleCache[importPath]; ok {
+	if g.moduleCache == nil {
+		g.moduleCache = make(map[string]string)
+	}
+	if moduleName, ok := g.moduleCache[importPath]; ok {
 		return moduleName
 	}
 	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", importPath)
 	out, err := cmd.Output()
 	if err != nil {
-		moduleCache[importPath] = ""
+		g.moduleCache[importPath] = ""
 		return ""
 	}
 	dir := strings.TrimSpace(string(out))
 	if dir == "" {
-		moduleCache[importPath] = ""
+		g.moduleCache[importPath] = ""
 		return ""
 	}
 	tempSet := token.NewFileSet()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		moduleCache[importPath] = ""
+		g.moduleCache[importPath] = ""
 		return ""
 	}
 	var files []*ast.File
@@ -220,7 +227,7 @@ func resolveImportedModule(importPath string) string {
 		}
 	}
 	moduleName := deriveModuleFromFiles(tempSet, files)
-	moduleCache[importPath] = moduleName
+	g.moduleCache[importPath] = moduleName
 	return moduleName
 }
 

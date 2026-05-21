@@ -1,6 +1,7 @@
 package ffigo
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 
@@ -13,7 +14,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 	}
 	switch st := s.(type) {
 	case *ast.BadStmt:
-		return &miniast.BadStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "bad_stmt"), Meta: "bad_stmt", Loc: c.extractLoc(st)}}
+		return c.badStmt(st, "无法解析的语句")
 	case *ast.ExprStmt:
 		expr := c.convertExpr(st.X)
 		if call, ok := expr.(*miniast.CallExprStmt); ok {
@@ -31,6 +32,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		return res
 	case *ast.AssignStmt:
 		rhsExprs := c.convertAssignRHS(st)
+		if len(rhsExprs) == 0 {
+			return c.badStmt(st, "赋值语句缺少右侧表达式")
+		}
 		if st.Tok == token.DEFINE {
 			lhsExprs := make([]miniast.Expr, 0, len(st.Lhs))
 			for _, lhs := range st.Lhs {
@@ -76,7 +80,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		case token.QUO_ASSIGN:
 			op = token.QUO
 		default:
-			return nil
+			return c.badStmt(st, "不支持的复合赋值操作: "+st.Tok.String())
 		}
 		if len(st.Lhs) == 1 && len(st.Rhs) == 1 {
 			lhs := c.convertExpr(st.Lhs[0])
@@ -90,7 +94,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 				},
 			}
 		}
-		return nil
+		return c.badStmt(st, "不支持的复合赋值形式")
 	case *ast.DeclStmt:
 		if decl, ok := st.Decl.(*ast.GenDecl); ok && decl.Tok == token.VAR {
 			var children []miniast.Stmt
@@ -101,7 +105,7 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 			}
 			return &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "block"), Meta: "block", Loc: c.extractLoc(st)}, Inner: true, Children: children}
 		}
-		return nil
+		return c.badStmt(st, "只支持 var 声明语句")
 	case *ast.IfStmt:
 		res := &miniast.IfStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "if"), Meta: "if", Loc: c.extractLoc(st)}}
 		res.Cond = c.convertExpr(st.Cond)
@@ -129,10 +133,18 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 	case *ast.RangeStmt:
 		res := &miniast.RangeStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "range"), Meta: "range", Loc: c.extractLoc(st)}}
 		if st.Key != nil {
-			res.Key = miniast.Ident(st.Key.(*ast.Ident).Name)
+			key, ok := st.Key.(*ast.Ident)
+			if !ok {
+				return c.badStmt(st.Key, "range 的 key 目标只支持标识符")
+			}
+			res.Key = miniast.Ident(key.Name)
 		}
 		if st.Value != nil {
-			res.Value = miniast.Ident(st.Value.(*ast.Ident).Name)
+			value, ok := st.Value.(*ast.Ident)
+			if !ok {
+				return c.badStmt(st.Value, "range 的 value 目标只支持标识符")
+			}
+			res.Value = miniast.Ident(value.Name)
 		}
 		res.X = c.convertExpr(st.X)
 		res.Body = c.toBlock(st.Body)
@@ -154,7 +166,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 					cClause.List = append(cClause.List, c.convertExpr(expr))
 				}
 				for _, bStmt := range clause.Body {
-					cClause.Body = append(cClause.Body, c.convertStmt(bStmt))
+					if stmt := c.convertStmt(bStmt); stmt != nil {
+						cClause.Body = append(cClause.Body, stmt)
+					}
 				}
 				res.Body.Children = append(res.Body.Children, cClause)
 			}
@@ -208,7 +222,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 					cClause.List = append(cClause.List, c.convertExpr(expr))
 				}
 				for _, bStmt := range clause.Body {
-					cClause.Body = append(cClause.Body, c.convertStmt(bStmt))
+					if stmt := c.convertStmt(bStmt); stmt != nil {
+						cClause.Body = append(cClause.Body, stmt)
+					}
 				}
 				res.Body.Children = append(res.Body.Children, cClause)
 			}
@@ -219,13 +235,13 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if cExpr, ok := call.(*miniast.CallExprStmt); ok {
 			return &miniast.DeferStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "defer"), Meta: "defer", Loc: c.extractLoc(st)}, Call: cExpr}
 		}
-		return nil
+		return c.badStmt(st, "defer 只支持函数调用")
 	case *ast.GoStmt:
 		call := c.convertExpr(st.Call)
 		if cExpr, ok := call.(*miniast.CallExprStmt); ok {
 			return &miniast.GoStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "go"), Meta: "go", Loc: c.extractLoc(st)}, Call: cExpr}
 		}
-		return nil
+		return c.badStmt(st, "go 只支持函数调用")
 	case *ast.BlockStmt:
 		return c.toBlock(st)
 	case *ast.IncDecStmt:
@@ -234,8 +250,9 @@ func (c *GoToASTConverter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if st.Tok == token.BREAK || st.Tok == token.CONTINUE {
 			return &miniast.InterruptStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "interrupt"), Meta: "interrupt", Loc: c.extractLoc(st)}, InterruptType: st.Tok.String()}
 		}
+		return c.badStmt(st, "不支持的跳转语句: "+st.Tok.String())
 	}
-	return nil
+	return c.badStmt(s, fmt.Sprintf("不支持的语句: %T", s))
 }
 
 func (c *GoToASTConverter) toBlock(s ast.Stmt) *miniast.BlockStmt {

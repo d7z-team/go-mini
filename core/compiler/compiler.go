@@ -184,7 +184,7 @@ func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
 		if v == nil {
 			continue
 		}
-		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ast.StructOwnershipVMValue}
+		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
 	}
 	for k, v := range c.cfg.StructSchemas {
 		if v == nil {
@@ -194,13 +194,13 @@ func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
 		if v.Ownership == runtime.StructOwnershipHostOpaque {
 			ownership = ast.StructOwnershipHostOpaque
 		}
-		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ownership}
+		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ownership}
 	}
 	for k, v := range c.cfg.InterfaceSchemas {
 		if v == nil {
 			continue
 		}
-		res[k] = ast.ExternalTypeSpec{Type: v.Spec.Ast(), Ownership: ast.StructOwnershipVMValue}
+		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
 	}
 	return res
 }

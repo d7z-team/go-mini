@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-20
+更新时间: 2026-05-21
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -10,6 +10,7 @@
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
 - `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow 校验，非法 executable bytecode 必须在执行前拒绝。
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
+- canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
@@ -84,5 +85,6 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make test
 - Host opaque object 不得被 VM materialize；只能通过 FFI factory/return 形成 `HostRef<T>`。
 - 引用/值语义相关改动必须保持 slot assignment 为唯一写入路径，避免重新引入 boxed cell 或无类型变量覆盖。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
+- 除 `core/typespec` 和 `core/ast/ast_types.go` 外，不得手动拼接 canonical type 文本；前端走 `ast_types` 构造器，VM/runtime 走 `runtime.TypeSpec` / schema 构造器。
 - VM 内部始终单线程执行，不新增宿主 goroutine 执行 VM 指令。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。

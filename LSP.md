@@ -7,6 +7,8 @@
 
 IDE 能力基于源码和 AST，执行链基于 compiled artifact / prepared program / bytecode。
 
+LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 Go 前端输入层出现，进入 Mini AST 后不再保留。
+
 ## 1. 推荐后端接入
 
 如果你在 Web IDE 或服务端集成，不必启动 `cmd/lsp-server`。推荐直接封装 `core/lspserv`：

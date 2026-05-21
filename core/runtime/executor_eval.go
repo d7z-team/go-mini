@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -572,12 +571,16 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "make first argument must be a type string", IsPanic: true}
 			}
 			tStr := typVar.Str
-			if strings.HasPrefix(tStr, "Map<") {
+			targetType, err := ParseRuntimeType(tStr)
+			if err != nil {
+				return &VMError{Message: fmt.Sprintf("invalid make type %q: %v", tStr, err), IsPanic: true}
+			}
+			if targetType.IsMap() {
 				v := &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}}
 				v.SetRawType(tStr)
 				session.ValueStack.Push(v)
 				return nil
-			} else if strings.HasPrefix(tStr, "Array<") || tStr == "TypeBytes" {
+			} else if targetType.IsArray() || targetType.Raw == SpecBytes {
 				length := 0
 				capacity := 0
 				if len(args) > 1 && args[1] != nil {
@@ -601,13 +604,13 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					}
 					capacity = int(cInt)
 				}
-				if tStr == "TypeBytes" {
+				if targetType.Raw == SpecBytes {
 					v := &Var{VType: TypeBytes, B: make([]byte, length, capacity)}
 					v.SetRawType(tStr)
 					session.ValueStack.Push(v)
 				} else {
 					arr := make([]*Var, length, capacity)
-					innerType, _ := MustParseRuntimeType(tStr).ReadArrayItemType()
+					innerType, _ := targetType.ReadArrayItemType()
 					for i := 0; i < length; i++ {
 						item, err := e.initializeType(session, innerType, 0)
 						if err != nil {
@@ -845,11 +848,15 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "new requires a type string as argument", IsPanic: true}
 			}
 			tStr := args[0].Str
-			innerType := tStr
-			if strings.HasPrefix(tStr, "Ptr<") && strings.HasSuffix(tStr, ">") {
-				innerType = tStr[4 : len(tStr)-1]
+			targetType, err := ParseRuntimeType(tStr)
+			if err != nil {
+				return &VMError{Message: fmt.Sprintf("invalid new type %q: %v", tStr, err), IsPanic: true}
 			}
-			val, err := e.initializeType(session, MustParseRuntimeType(innerType), 0)
+			innerType := targetType
+			if targetType.IsPtr() && targetType.Elem != nil {
+				innerType = *targetType.Elem
+			}
+			val, err := e.initializeType(session, innerType, 0)
 			if err != nil {
 				return err
 			}
@@ -862,9 +869,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			res := &Var{
 				VType:  TypeHandle,
 				Handle: internalID,
-				Ref:    NewSlot(MustParseRuntimeType(innerType), val),
+				Ref:    NewSlot(innerType, val),
 			}
-			res.SetRawType("Ptr<" + innerType + ">")
+			res.SetRawType(PtrType(innerType.Raw).String())
 			session.ValueStack.Push(res)
 			return nil
 		}
@@ -1038,7 +1045,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 		}
 	}
 	if sig == nil {
-		sig = MustParseRuntimeFuncSig("function() Void")
+		sig = MustRuntimeFuncSig(SpecVoid, false)
 	}
 
 	// Default lexical scope is global

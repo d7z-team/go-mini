@@ -3,6 +3,8 @@ package ast
 import (
 	"fmt"
 	"strings"
+
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 // GoMiniType 类型的表达形式
@@ -25,30 +27,15 @@ func (o GoMiniType) IsEmpty() bool { return o == "" }
 
 // BaseName 提取类型的基准名称 (例如 Ptr<MyStruct> -> MyStruct)
 func (o GoMiniType) BaseName() string {
-	s := string(o)
-	if strings.HasPrefix(s, "Ptr<") {
-		return GoMiniType(s[4 : len(s)-1]).BaseName()
-	}
-	if strings.HasPrefix(s, "HostRef<") {
-		return GoMiniType(s[8 : len(s)-1]).BaseName()
-	}
-	if strings.HasPrefix(s, "Array<") {
-		return GoMiniType(s[6 : len(s)-1]).BaseName()
-	}
-	if strings.HasPrefix(s, "Map<") {
-		// Just take the value type for base
-		_, v, _ := o.GetMapKeyValueTypes()
-		return v.BaseName()
-	}
-	return s
+	return typespec.Type(o).BaseName().String()
 }
 
 func (o GoMiniType) IsVoid() bool {
-	return o == "" || o == TypeVoid
+	return typespec.Type(o).IsVoid()
 }
 
 func (o GoMiniType) IsPrimitive() bool {
-	return o.IsAny() || o.IsString() || o.IsNumeric() || o.IsBool() || o == TypeBytes || o == TypeError
+	return typespec.Type(o).IsPrimitive()
 }
 
 func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
@@ -60,227 +47,106 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	return &res, true
 }
 
-func (o GoMiniType) IsAny() bool    { return o == TypeAny || o == TypeModule || o == TypeClosure }
-func (o GoMiniType) IsString() bool { return o == TypeString }
-func (o GoMiniType) IsInt() bool    { return o == TypeInt64 }
-func (o GoMiniType) IsBool() bool   { return o == TypeBool }
+func (o GoMiniType) IsAny() bool    { return typespec.Type(o).IsAny() }
+func (o GoMiniType) IsString() bool { return typespec.Type(o).IsString() }
+func (o GoMiniType) IsInt() bool    { return typespec.Type(o).IsInt() }
+func (o GoMiniType) IsBool() bool   { return typespec.Type(o).IsBool() }
 func (o GoMiniType) IsNumeric() bool {
-	return o == TypeInt64 || o == TypeFloat64
+	return typespec.Type(o).IsNumeric()
 }
 
 func (o GoMiniType) IsPtr() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "Ptr<") && strings.HasSuffix(s, ">")
+	return typespec.Type(o).IsPtr()
 }
 
 func (o GoMiniType) IsHostRef() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "HostRef<") && strings.HasSuffix(s, ">")
+	return typespec.Type(o).IsHostRef()
 }
 
 func (o GoMiniType) IsArray() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "Array<")
+	return typespec.Type(o).IsArray()
 }
 
 func (o GoMiniType) IsInterface() bool {
-	s := strings.TrimSpace(string(o))
-	return strings.HasPrefix(s, "interface") && strings.Contains(s, "{") && strings.HasSuffix(s, "}")
+	return typespec.Type(o).IsInterface()
 }
 
 func (o GoMiniType) IsStruct() bool {
-	s := strings.TrimSpace(string(o))
-	return strings.HasPrefix(s, "struct") && strings.Contains(s, "{") && strings.HasSuffix(s, "}")
+	return typespec.Type(o).IsStruct()
 }
 
 func (o GoMiniType) ReadStructFields() (map[string]GoMiniType, bool) {
-	if !o.IsStruct() {
+	fields, ok := typespec.Type(o).StructFields()
+	if !ok {
 		return nil, false
 	}
-	s := strings.TrimSpace(string(o))
-	start := strings.Index(s, "{")
-	inner := s[start+1 : len(s)-1]
-	if strings.TrimSpace(inner) == "" {
-		return map[string]GoMiniType{}, true
-	}
-	parts := strings.Split(inner, ";")
-	res := make(map[string]GoMiniType)
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		fParts := strings.SplitN(p, " ", 2)
-		if len(fParts) == 2 {
-			res[strings.TrimSpace(fParts[0])] = GoMiniType(strings.TrimSpace(fParts[1]))
-		}
+	res := make(map[string]GoMiniType, len(fields))
+	for _, field := range fields {
+		res[field.Name] = GoMiniType(field.Type)
 	}
 	return res, true
 }
 
 func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
-	if !o.IsInterface() {
+	methods, ok := typespec.Type(o).InterfaceMethods()
+	if !ok {
 		return nil, false
 	}
-	s := strings.TrimSpace(string(o))
-	start := strings.Index(s, "{")
-	inner := s[start+1 : len(s)-1]
-	if strings.TrimSpace(inner) == "" {
-		return map[string]*FunctionType{}, true
+	res := make(map[string]*FunctionType, len(methods))
+	for _, method := range methods {
+		fn := functionFromTypeSpec(method.Sig)
+		res[method.Name] = &fn
 	}
-	// 支持分号作为主要分隔符，内部可能含有逗号
-	parts := strings.Split(inner, ";")
-	methods := make(map[string]*FunctionType)
-	for _, p := range parts {
-		m := strings.TrimSpace(p)
-		if m != "" {
-			// 解析方法名和签名：Read(Array<Uint8>, Int64) String
-			name := m
-			var sig *FunctionType
-			if idx := strings.Index(m, "("); idx != -1 {
-				name = strings.TrimSpace(m[:idx])
-				// 寻找括号配对
-				pCount, aCount := 0, 0
-				endIdx := -1
-				for i := idx; i < len(m); i++ {
-					switch m[i] {
-					case '(':
-						pCount++
-					case ')':
-						pCount--
-					case '<':
-						aCount++
-					case '>':
-						aCount--
-					}
-					if pCount == 0 && aCount == 0 {
-						endIdx = i
-						break
-					}
-				}
-				if endIdx != -1 {
-					sigStr := "function" + m[idx:endIdx+1]
-					retPart := strings.TrimSpace(m[endIdx+1:])
-					if retPart != "" {
-						sigStr += " " + retPart
-					}
-					if f, ok := GoMiniType(sigStr).ReadFunc(); ok {
-						sig = f
-					}
-				}
-			}
-			// 如果没有显式签名，视为通用函数
-			if sig == nil {
-				sig = &FunctionType{Return: "Any"}
-			} else if sig.Return == "Void" {
-				// 对于接口方法，如果没有写返回值，通常期望是 Any (兼容动态对象)
-				sig.Return = "Any"
-			}
-			methods[name] = sig
-		}
-	}
-	return methods, true
+	return res, true
 }
 
 func (o GoMiniType) IsMap() bool {
-	s := string(o)
-	return strings.HasPrefix(s, "Map<")
+	return typespec.Type(o).IsMap()
 }
 
 func (o GoMiniType) ReadArrayItemType() (GoMiniType, bool) {
-	s := string(o)
-	if strings.HasPrefix(s, "Array<") && len(s) > 7 {
-		return GoMiniType(s[6 : len(s)-1]), true
-	}
-	if strings.HasPrefix(s, "...") { // 仅用于兼容处理 Spec 解析
-		return GoMiniType(s[3:]), true
-	}
-	return "", false
+	elem, ok := typespec.Type(o).ReadArrayItemType()
+	return GoMiniType(elem), ok
 }
 
 func CreateArrayType(elementType GoMiniType) GoMiniType {
-	return GoMiniType(fmt.Sprintf("Array<%s>", elementType))
+	return GoMiniType(typespec.Array(typespec.Type(elementType)))
 }
 
 func (o GoMiniType) GetPtrElementType() (GoMiniType, bool) {
-	if !o.IsPtr() {
-		return "", false
-	}
-	s := string(o)
-	return GoMiniType(s[4 : len(s)-1]), true
+	elem, ok := typespec.Type(o).PtrElement()
+	return GoMiniType(elem), ok
 }
 
 func (o GoMiniType) ToPtr() GoMiniType {
-	return GoMiniType(fmt.Sprintf("Ptr<%s>", o))
+	return GoMiniType(typespec.Ptr(typespec.Type(o)))
 }
 
 func (o GoMiniType) GetHostRefElementType() (GoMiniType, bool) {
-	if !o.IsHostRef() {
-		return "", false
-	}
-	s := string(o)
-	return GoMiniType(s[8 : len(s)-1]), true
+	elem, ok := typespec.Type(o).HostRefElement()
+	return GoMiniType(elem), ok
 }
 
 func (o GoMiniType) ToHostRef() GoMiniType {
-	return GoMiniType(fmt.Sprintf("HostRef<%s>", o))
+	return GoMiniType(typespec.HostRef(typespec.Type(o)))
 }
 
 func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
-	if !o.IsMap() {
-		return "", "", false
-	}
-	s := string(o)
-	if strings.HasPrefix(s, "Map<") {
-		inner := s[4 : len(s)-1]
-		parts := splitByComma(inner)
-		if len(parts) != 2 {
-			return "", "", false
-		}
-		return GoMiniType(strings.TrimSpace(parts[0])), GoMiniType(strings.TrimSpace(parts[1])), true
-	}
-	return "", "", false
+	key, value, ok := typespec.Type(o).MapTypes()
+	return GoMiniType(key), GoMiniType(value), ok
 }
 
 func CreateMapType(keyType, valueType GoMiniType) GoMiniType {
-	return GoMiniType(fmt.Sprintf("Map<%s, %s>", keyType, valueType))
+	return GoMiniType(typespec.Map(typespec.Type(keyType), typespec.Type(valueType)))
 }
 
 func (o GoMiniType) ReadFunc() (*FunctionType, bool) {
-	s := string(o)
-	if !strings.HasPrefix(s, "function(") {
+	fn, ok := typespec.Type(o).Function()
+	if !ok {
 		return nil, false
 	}
-	start := len("function(")
-	pCount, aCount := 1, 0
-	paramEnd := -1
-	for i := start; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			pCount++
-		case ')':
-			pCount--
-		case '<':
-			aCount++
-		case '>':
-			aCount--
-		}
-		if pCount == 0 && aCount == 0 {
-			paramEnd = i
-			break
-		}
-	}
-	if paramEnd == -1 {
-		return nil, false
-	}
-	paramsStr := s[start:paramEnd]
-	returnsStr := strings.TrimSpace(s[paramEnd+1:])
-	params, isVariadic := parseParams(paramsStr)
-	var returns GoMiniType = "Void"
-	if returnsStr != "" {
-		returns = parseReturnType(returnsStr)
-	}
-	return &FunctionType{Params: params, Return: returns, Variadic: isVariadic}, true
+	res := functionFromTypeSpec(fn)
+	return &res, true
 }
 
 type FunctionType struct {
@@ -290,15 +156,7 @@ type FunctionType struct {
 }
 
 func (ft *FunctionType) MiniType() GoMiniType {
-	var params []string
-	for i, p := range ft.Params {
-		prefix := ""
-		if ft.Variadic && i == len(ft.Params)-1 {
-			prefix = "..."
-		}
-		params = append(params, prefix+string(p.Type))
-	}
-	return GoMiniType(fmt.Sprintf("function(%s) %s", strings.Join(params, ","), ft.Return))
+	return CreateFunctionType(ft.Params, ft.Return, ft.Variadic)
 }
 
 type FunctionParam struct {
@@ -314,137 +172,25 @@ type CallFunctionType struct {
 }
 
 func (c CallFunctionType) String() string {
-	var params []string
-	for i, p := range c.Params {
-		prefix := ""
-		if c.Variadic && i == len(c.Params)-1 {
-			prefix = "..."
-		}
-		params = append(params, prefix+string(p))
+	params := make([]FunctionParam, 0, len(c.Params))
+	for _, p := range c.Params {
+		params = append(params, FunctionParam{Type: p})
 	}
-	return fmt.Sprintf("function(%s) %s", strings.Join(params, ","), c.Returns)
+	return string(CreateFunctionType(params, c.Returns, c.Variadic))
 }
 
 func (c CallFunctionType) MiniType() GoMiniType { return GoMiniType(c.String()) }
 
-func parseParams(paramsStr string) ([]FunctionParam, bool) {
-	paramsStr = strings.TrimSpace(paramsStr)
-	if paramsStr == "" {
-		return nil, false
-	}
-	isVariadic := false
-	var params []FunctionParam
-	parts := splitByComma(paramsStr)
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if strings.HasPrefix(part, "...") {
-			isVariadic = true
-			part = strings.TrimPrefix(part, "...")
-		}
-		partRunes := []rune(part)
-		end := len(partRunes) - 1
-		for end >= 0 && partRunes[end] == ' ' {
-			end--
-		}
-		nameEnd := end
-		for nameEnd >= 0 && isIdentChar(partRunes[nameEnd]) {
-			nameEnd--
-		}
-		nameEnd++
-		var paramName Ident
-		var typeStr string
-		if nameEnd <= end && nameEnd > 0 && partRunes[nameEnd-1] == ' ' {
-			paramName = Ident(partRunes[nameEnd : end+1])
-			typeStr = strings.TrimSpace(string(partRunes[:nameEnd-1]))
-		} else {
-			typeStr = strings.TrimSpace(part)
-		}
-		params = append(params, FunctionParam{Name: paramName, Type: GoMiniType(typeStr)})
-	}
-	return params, isVariadic
-}
-
-func isIdentChar(ch rune) bool {
-	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
-}
-
-func parseReturnType(returnStr string) GoMiniType {
-	returnStr = strings.TrimSpace(returnStr)
-	if returnStr == "" {
-		return ""
-	}
-	if len(returnStr) > 0 && returnStr[0] == '(' {
-		returnStr = strings.TrimSpace(returnStr[1 : len(returnStr)-1])
-		var types []string
-		typeParts := splitByComma(returnStr)
-		for _, part := range typeParts {
-			if part = strings.TrimSpace(part); part != "" {
-				types = append(types, part)
-			}
-		}
-		if len(types) > 1 {
-			return GoMiniType("tuple(" + strings.Join(types, ", ") + ")")
-		}
-		if len(types) == 1 {
-			return GoMiniType(types[0])
-		}
-	}
-	return GoMiniType(returnStr)
-}
-
 func (o GoMiniType) ReadTuple() ([]GoMiniType, bool) {
-	s := string(o)
-	if !strings.HasPrefix(s, "tuple(") || !strings.HasSuffix(s, ")") {
+	items, ok := typespec.Type(o).TupleTypes()
+	if !ok {
 		return nil, false
 	}
-	inner := strings.TrimSpace(s[6 : len(s)-1])
-	if inner == "" {
-		return []GoMiniType{}, true
+	res := make([]GoMiniType, 0, len(items))
+	for _, item := range items {
+		res = append(res, GoMiniType(item))
 	}
-	var types []GoMiniType
-	for _, part := range splitByComma(inner) {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			types = append(types, GoMiniType(part))
-		}
-	}
-	return types, true
-}
-
-func splitByComma(s string) []string {
-	var parts []string
-	var current strings.Builder
-	pDepth, bDepth, aDepth := 0, 0, 0
-	for _, ch := range s {
-		switch ch {
-		case '(':
-			pDepth++
-		case ')':
-			pDepth--
-		case '[':
-			bDepth++
-		case ']':
-			bDepth--
-		case '<':
-			aDepth++
-		case '>':
-			aDepth--
-		case ',':
-			if pDepth == 0 && bDepth == 0 && aDepth == 0 {
-				parts = append(parts, strings.TrimSpace(current.String()))
-				current.Reset()
-				continue
-			}
-		}
-		current.WriteRune(ch)
-	}
-	if current.Len() > 0 {
-		parts = append(parts, strings.TrimSpace(current.String()))
-	}
-	return parts
+	return res, true
 }
 
 func (ft *FunctionType) ToCallFunctionType() CallFunctionType {
@@ -456,42 +202,11 @@ func (ft *FunctionType) ToCallFunctionType() CallFunctionType {
 }
 
 func (o GoMiniType) Equals(other GoMiniType) bool {
-	if o == other || o.IsAny() || other.IsAny() {
-		return true
-	}
-	if o.IsArray() && other.IsArray() {
-		oElem, _ := o.ReadArrayItemType()
-		otherElem, _ := other.ReadArrayItemType()
-		return oElem.Equals(otherElem)
-	}
-	if o.IsPtr() && other.IsPtr() {
-		oElem, _ := o.GetPtrElementType()
-		otherElem, _ := other.GetPtrElementType()
-		return oElem.Equals(otherElem)
-	}
-	if o.IsHostRef() && other.IsHostRef() {
-		oElem, _ := o.GetHostRefElementType()
-		otherElem, _ := other.GetHostRefElementType()
-		return oElem.Equals(otherElem)
-	}
-	if o.IsTuple() && other.IsTuple() {
-		oTypes, _ := o.ReadTuple()
-		otherTypes, _ := other.ReadTuple()
-		if len(oTypes) != len(otherTypes) {
-			return false
-		}
-		for i := range oTypes {
-			if !oTypes[i].Equals(otherTypes[i]) {
-				return false
-			}
-		}
-		return true
-	}
-	return string(o) == string(other)
+	return typespec.Type(o).Equals(typespec.Type(other))
 }
 
 func (o GoMiniType) IsTuple() bool {
-	return strings.HasPrefix(string(o), "tuple(") && strings.HasSuffix(string(o), ")")
+	return typespec.Type(o).IsTuple()
 }
 
 func (o GoMiniType) StructName() (Ident, bool) {
@@ -508,129 +223,19 @@ func (o GoMiniType) StructName() (Ident, bool) {
 }
 
 func CreateTupleType(types ...GoMiniType) GoMiniType {
-	if len(types) == 0 {
-		return TypeVoid
+	items := make([]typespec.Type, 0, len(types))
+	for _, typ := range types {
+		items = append(items, typespec.Type(typ))
 	}
-	if len(types) == 1 {
-		return types[0]
-	}
-	var s []string
-	for _, t := range types {
-		s = append(s, string(t))
-	}
-	return GoMiniType("tuple(" + strings.Join(s, ", ") + ")")
+	return GoMiniType(typespec.Tuple(items...))
 }
 
 func (o GoMiniType) IsCanonical() bool {
-	switch o {
-	case TypeInt64, TypeFloat64, TypeString, TypeBool, TypeBytes, TypeAny, TypeError, TypeVoid, TypeModule, TypeClosure:
-		return true
-	}
-	if o.IsTuple() {
-		types, ok := o.ReadTuple()
-		if !ok {
-			return false
-		}
-		for _, t := range types {
-			if !t.IsCanonical() {
-				return false
-			}
-		}
-		return true
-	}
-	if o.IsPtr() {
-		elem, ok := o.GetPtrElementType()
-		return ok && elem.IsCanonical()
-	}
-	if o.IsHostRef() {
-		elem, ok := o.GetHostRefElementType()
-		return ok && elem.IsCanonical()
-	}
-	if o.IsArray() {
-		elem, ok := o.ReadArrayItemType()
-		return ok && elem.IsCanonical()
-	}
-	if o.IsMap() {
-		k, v, ok := o.GetMapKeyValueTypes()
-		return ok && k.IsCanonical() && v.IsCanonical()
-	}
-	if o.IsStruct() {
-		fields, ok := o.ReadStructFields()
-		if !ok {
-			return false
-		}
-		for _, t := range fields {
-			if !t.IsCanonical() {
-				return false
-			}
-		}
-		return true
-	}
-	if o.IsInterface() {
-		methods, ok := o.ReadInterfaceMethods()
-		if !ok {
-			return false
-		}
-		for _, sig := range methods {
-			if sig == nil {
-				return false
-			}
-			if !sig.Return.IsCanonical() {
-				return false
-			}
-			for _, p := range sig.Params {
-				if !p.Type.IsCanonical() {
-					return false
-				}
-			}
-		}
-		return true
-	}
-	if fn, ok := o.ReadFunc(); ok {
-		if !fn.Return.IsCanonical() {
-			return false
-		}
-		for _, p := range fn.Params {
-			if !p.Type.IsCanonical() {
-				return false
-			}
-		}
-		return true
-	}
-	return isCanonicalNamedType(o)
+	return typespec.Type(o).IsCanonical()
 }
 
 func (o GoMiniType) ValidateCanonical() error {
-	if o.IsCanonical() {
-		return nil
-	}
-	return fmt.Errorf("non-canonical type: %s", o)
-}
-
-func isCanonicalNamedType(o GoMiniType) bool {
-	s := string(o)
-	if s == "" {
-		return false
-	}
-	switch s {
-	case "any", "interface{}", "string", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-		"float", "float32", "float64", "complex64", "complex128",
-		"bool", "byte", "rune", "error", "void",
-		"Int", "Int8", "Int16", "Int32", "Float", "Float32",
-		"Uint", "Uint8", "Uint16", "Uint32", "Uint64", "Byte":
-		return false
-	}
-	if strings.Contains(s, "/") {
-		return false
-	}
-	if strings.ContainsAny(s, "[]*") {
-		return false
-	}
-	if strings.Contains(s, "interface{}") {
-		return false
-	}
-	return true
+	return typespec.Type(o).ValidateCanonical()
 }
 
 func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
@@ -648,7 +253,7 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 	if o.IsMap() {
 		k, val, _ := o.GetMapKeyValueTypes()
-		return GoMiniType(fmt.Sprintf("Map<%s, %s>", k.Resolve(v), val.Resolve(v)))
+		return CreateMapType(k.Resolve(v), val.Resolve(v))
 	}
 	if o.IsPtr() {
 		elem, _ := o.GetPtrElementType()
@@ -728,6 +333,17 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	if o.IsInterface() {
 		return true
 	}
+	if fn, ok := o.ReadFunc(); ok {
+		if !fn.Return.Resolve(v).Valid(v) {
+			return false
+		}
+		for _, p := range fn.Params {
+			if !p.Type.Resolve(v).Valid(v) {
+				return false
+			}
+		}
+		return true
+	}
 	if _, ok := v.GetType(Ident(o)); ok {
 		return true
 	}
@@ -739,15 +355,7 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 }
 
 func (ft *FunctionType) String() string {
-	var pStrs []string
-	for i, p := range ft.Params {
-		prefix := ""
-		if ft.Variadic && i == len(ft.Params)-1 {
-			prefix = "..."
-		}
-		pStrs = append(pStrs, fmt.Sprintf("%s%s %s", prefix, p.Type, p.Name))
-	}
-	return fmt.Sprintf("function(%s) %s", strings.Join(pStrs, ", "), ft.Return)
+	return string(CreateFunctionType(ft.Params, ft.Return, ft.Variadic))
 }
 
 func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
@@ -773,70 +381,10 @@ func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
 }
 
 func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
-	return o.isAssignableToRecursive(target, 0, DefaultMaxTypeDepth)
+	return typespec.Type(o).IsAssignableToWithMaxDepth(typespec.Type(target), DefaultMaxTypeDepth)
 }
 
 var DefaultMaxTypeDepth = 256
-
-func (o GoMiniType) isAssignableToRecursive(target GoMiniType, depth, maxDepth int) bool {
-	if depth > maxDepth {
-		return false // Prevent DoS via recursive types
-	}
-	if target.IsAny() || o.IsAny() || o == "Constant" {
-		return true
-	}
-	if o.Equals(target) {
-		return true
-	}
-	if target.IsString() && o == "Error" {
-		return true // Error 自动转 String
-	}
-	if target.IsNumeric() && o.IsNumeric() {
-		return true // 数值类型互转 (Int64 <-> Float64)
-	}
-	if o.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsHostRef() && !target.IsInterface() {
-		// 允许 Map 赋值给命名的结构体类型
-		return true
-	}
-	if target.IsInterface() {
-		if o.IsInterface() {
-			// 如果双方都是接口，检查 o 是否包含了 target 的所有方法
-			oMethods, _ := o.ReadInterfaceMethods()
-			targetMethods, _ := target.ReadInterfaceMethods()
-			for name := range targetMethods {
-				if _, ok := oMethods[name]; !ok {
-					return false
-				}
-				// 暂时只检查方法名存在，未来可进一步检查签名兼容性
-			}
-			return true
-		}
-		// 允许非接口类型赋值给接口（由运行时进一步校验鸭子类型）
-		return true
-	}
-	if target.IsPtr() && o.IsHostRef() {
-		targetElem, _ := target.GetPtrElementType()
-		hostElem, _ := o.GetHostRefElementType()
-		return hostElem.Equals(targetElem)
-	}
-	if o.IsHostRef() || target.IsHostRef() {
-		return o.Equals(target)
-	}
-	// 处理指针自动解引用/取地址兼容性
-	if target.IsPtr() && !o.IsPtr() {
-		unPtr, _ := target.GetPtrElementType()
-		if unPtr.isAssignableToRecursive(o, depth+1, maxDepth) {
-			return true
-		}
-	}
-	if o.IsPtr() && !target.IsPtr() {
-		unPtr, _ := o.GetPtrElementType()
-		if unPtr.isAssignableToRecursive(target, depth+1, maxDepth) {
-			return true
-		}
-	}
-	return o.Equals(target)
-}
 
 // IsValid 检查类型字符串是否符合规范（基础类型、规范容器格式或带点包路径）
 func (o GoMiniType) IsValid() bool {
@@ -851,19 +399,65 @@ func (o GoMiniType) IsStrictValid() bool {
 // ZeroVar 返回该类型的默认零值（以 Var 形式）
 // 注意：该方法返回的是一个简单的值对象，复合类型返回 nil Ref 的 Var
 func (o GoMiniType) ZeroVar() interface{} {
-	t := string(o)
-	if strings.HasPrefix(t, "Ptr<") || strings.HasPrefix(t, "HostRef<") || strings.HasPrefix(t, "Array<") || strings.HasPrefix(t, "Map<") || o == TypeAny || o == TypeBytes {
-		return nil
+	return typespec.Type(o).ZeroValue()
+}
+
+func CreateFunctionType(params []FunctionParam, ret GoMiniType, variadic bool) GoMiniType {
+	items := make([]typespec.Param, 0, len(params))
+	for _, param := range params {
+		items = append(items, typespec.Param{Name: string(param.Name), Type: typespec.Type(param.Type)})
 	}
-	switch t {
-	case "Int64":
-		return int64(0)
-	case "Float64":
-		return 0.0
-	case "String":
-		return ""
-	case "Bool":
-		return false
+	return GoMiniType(typespec.Func(items, typespec.Type(ret), variadic))
+}
+
+func CreateInterfaceType(methods map[string]*FunctionType) GoMiniType {
+	items := make(map[string]typespec.Function, len(methods))
+	for name, method := range methods {
+		if method == nil {
+			continue
+		}
+		items[name] = functionToTypeSpec(*method)
 	}
-	return nil
+	return GoMiniType(typespec.Interface(typespec.SortedMethods(items)))
+}
+
+func CreateStructType(fields []StructMemberType) GoMiniType {
+	members := make([]typespec.Member, 0, len(fields))
+	for _, field := range fields {
+		members = append(members, typespec.Member{Name: field.Name, Type: typespec.Type(field.Type)})
+	}
+	return GoMiniType(typespec.Struct(members))
+}
+
+func CreateQualifiedType(owner, name string) GoMiniType {
+	owner = strings.TrimSpace(owner)
+	name = strings.TrimSpace(name)
+	if owner == "" {
+		return GoMiniType(name)
+	}
+	if name == "" {
+		return GoMiniType(owner)
+	}
+	return GoMiniType(fmt.Sprintf("%s.%s", owner, name))
+}
+
+type StructMemberType struct {
+	Name string
+	Type GoMiniType
+}
+
+func functionFromTypeSpec(fn typespec.Function) FunctionType {
+	params := make([]FunctionParam, 0, len(fn.Params))
+	for _, param := range fn.Params {
+		params = append(params, FunctionParam{Name: Ident(param.Name), Type: GoMiniType(param.Type)})
+	}
+	return FunctionType{Params: params, Return: GoMiniType(fn.Return), Variadic: fn.Variadic}
+}
+
+func functionToTypeSpec(fn FunctionType) typespec.Function {
+	params := make([]typespec.Param, 0, len(fn.Params))
+	for _, param := range fn.Params {
+		params = append(params, typespec.Param{Name: string(param.Name), Type: typespec.Type(param.Type)})
+	}
+	return typespec.Function{Params: params, Return: typespec.Type(fn.Return), Variadic: fn.Variadic}
 }

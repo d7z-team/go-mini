@@ -11,6 +11,8 @@
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
+- canonical type 文本格式只允许由 `core/typespec` 实现；前端使用 `core/ast/ast_types.go` 门面，VM/runtime 使用 `runtime.TypeSpec` / schema 门面。
+- 除上述类型格式化层外，不得手动拼接 `Array<T>`、`Map<K, V>`、`Ptr<T>`、`HostRef<T>`、`tuple(...)`、`function(...)`、`interface{...}`、`struct {...}`。
 - 闭包运行时结构只保留执行必要信息，不重新引入 AST 函数字段作为执行依赖。
 - VM 内部始终按单线程协作式 VM 执行上下文调度，不新增 host goroutine 执行 VM task。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。

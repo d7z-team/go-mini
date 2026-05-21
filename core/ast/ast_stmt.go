@@ -83,7 +83,12 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	// 第一遍：预注册所有结构体
-	for _, structDef := range p.Structs {
+	for name, structDef := range p.Structs {
+		if structDef == nil {
+			ctx.AddErrorf("struct %s is nil", name)
+			hasError = true
+			continue
+		}
 		structDef.GetBase().EnsureID(ctx.ValidContext)
 		if !structDef.PreRegister(ctx.ValidContext) {
 			ctx.AddErrorf("struct %s pre-registration failed", structDef.Name)
@@ -91,6 +96,11 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 	for _, stmt := range p.Main {
+		if stmt == nil {
+			ctx.AddErrorf("program main contains nil statement")
+			hasError = true
+			continue
+		}
 		if s, ok := stmt.(*StructStmt); ok {
 			s.GetBase().EnsureID(ctx.ValidContext)
 			if !s.PreRegister(ctx.ValidContext) {
@@ -102,6 +112,11 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 
 	// 第二遍：预注册所有函数签名
 	for name, function := range p.Functions {
+		if function == nil {
+			ctx.AddErrorf("function %s is nil", name)
+			hasError = true
+			continue
+		}
 		function.GetBase().EnsureID(ctx.ValidContext)
 		if _, ok := function.PreRegister(ctx.ValidContext); !ok {
 			ctx.AddErrorf("function %s pre-registration failed", name)
@@ -109,6 +124,9 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 	for _, stmt := range p.Main {
+		if stmt == nil {
+			continue
+		}
 		if f, ok := stmt.(*FunctionStmt); ok {
 			f.GetBase().EnsureID(ctx.ValidContext)
 			if _, ok := f.PreRegister(ctx.ValidContext); !ok {
@@ -126,6 +144,9 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 	globalDecls := make(map[Ident]globalDeclInfo, len(p.Variables))
 	for _, stmt := range p.Main {
+		if stmt == nil {
+			continue
+		}
 		decl, ok := stmt.(*GenDeclStmt)
 		if !ok || decl == nil {
 			continue
@@ -175,7 +196,12 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	// 第三遍：全量语义校验
-	for _, structDef := range p.Structs {
+	for name, structDef := range p.Structs {
+		if structDef == nil {
+			ctx.AddErrorf("struct %s is nil", name)
+			hasError = true
+			continue
+		}
 		logCount := ctx.LogCount()
 		if err := structDef.Check(ctx); ForwardStructuredError(ctx, structDef, logCount, err) {
 			hasError = true
@@ -235,7 +261,12 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	for _, function := range p.Functions {
+	for name, function := range p.Functions {
+		if function == nil {
+			ctx.AddErrorf("function %s is nil", name)
+			hasError = true
+			continue
+		}
 		logCount := ctx.LogCount()
 		if err := function.Check(ctx); ForwardStructuredError(ctx, function, logCount, err) {
 			hasError = true
@@ -243,6 +274,11 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, node := range p.Main {
+		if node == nil {
+			ctx.AddErrorf("program main contains nil statement")
+			hasError = true
+			continue
+		}
 		if decl, ok := node.(*GenDeclStmt); ok {
 			if p.isGlobalDecl(decl) {
 				continue
@@ -678,6 +714,11 @@ func (b *BlockStmt) Check(ctx *SemanticContext) error {
 	var hasError bool
 	for i := 0; i < len(b.Children); i++ {
 		child := b.Children[i]
+		if child == nil {
+			semCtx.AddErrorf("block contains nil statement")
+			hasError = true
+			continue
+		}
 		logCount := semCtx.LogCount()
 		if err := child.Check(semCtx); ForwardStructuredError(semCtx, child, logCount, err) {
 			hasError = true
@@ -696,6 +737,9 @@ func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
 
 	var newChildren []Stmt
 	for _, child := range b.Children {
+		if child == nil {
+			continue
+		}
 		optimized := child.Optimize(ctx)
 		if optimized == nil {
 			continue
@@ -1288,6 +1332,11 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for _, child := range s.Body.Children {
+		if child == nil {
+			ctx.AddErrorf("switch body contains nil statement")
+			hasError = true
+			continue
+		}
 		clause, ok := child.(*CaseClause)
 		if !ok {
 			err := fmt.Errorf("switch 语句只能包含 CaseClause, 得到 %T", child)
@@ -1310,6 +1359,11 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 			}
 			// 校验 Case 的 Body
 			for _, s := range clause.Body {
+				if s == nil {
+					ctx.AddErrorf("case body contains nil statement")
+					hasError = true
+					continue
+				}
 				logCount := inner.LogCount()
 				if err := s.Check(inner); ForwardStructuredError(inner, s, logCount, err) {
 					hasError = true
@@ -1387,6 +1441,11 @@ func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) erro
 	c.Type = "Void"
 	var hasError bool
 	for i, expr := range c.List {
+		if expr == nil {
+			ctx.AddErrorf("case list contains nil expression")
+			hasError = true
+			continue
+		}
 		if err := expr.Check(ctx); err != nil {
 			hasError = true
 		} else {
@@ -1399,6 +1458,11 @@ func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) erro
 		}
 	}
 	for i, stmt := range c.Body {
+		if stmt == nil {
+			ctx.AddErrorf("case body contains nil statement")
+			hasError = true
+			continue
+		}
 		if err := stmt.Check(ctx); err != nil {
 			hasError = true
 		} else {

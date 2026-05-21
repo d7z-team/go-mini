@@ -54,7 +54,7 @@ func main() {
 	if !strings.Contains(info2.Doc, "MyFunc adds two numbers") {
 		t.Errorf("Func hover info mismatch, got doc: %q", info2.Doc)
 	}
-	if info2.Signature != "function(Int64,Int64) Int64" {
+	if info2.Signature != "function(Int64, Int64) Int64" {
 		t.Errorf("Func signature mismatch, got: %s", info2.Signature)
 	}
 }

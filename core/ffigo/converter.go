@@ -1,6 +1,7 @@
 package ffigo
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"hash/fnv"
@@ -14,6 +15,49 @@ type GoToASTConverter struct {
 	fset       *token.FileSet
 	imports    map[string]string // Alias -> Path
 	interfaces map[string]*ast.InterfaceType
+	errs       []error
+}
+
+type ConvertError struct {
+	Pos     *miniast.Position
+	Message string
+}
+
+func (e *ConvertError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Pos != nil && e.Pos.L > 0 {
+		return fmt.Sprintf("%s:%d:%d: %s", e.Pos.F, e.Pos.L, e.Pos.C, e.Message)
+	}
+	return e.Message
+}
+
+func (c *GoToASTConverter) reset() {
+	c.fset = token.NewFileSet()
+	c.imports = make(map[string]string)
+	c.interfaces = make(map[string]*ast.InterfaceType)
+	c.errs = nil
+}
+
+func (c *GoToASTConverter) addError(node ast.Node, message string) {
+	c.errs = append(c.errs, &ConvertError{Pos: c.extractLoc(node), Message: message})
+}
+
+func (c *GoToASTConverter) badExpr(node ast.Node, message string) miniast.Expr {
+	c.addError(node, message)
+	return &miniast.BadExpr{
+		BaseNode: miniast.BaseNode{ID: c.genID(node, "bad_expr"), Meta: "bad_expr", Loc: c.extractLoc(node), InvalidCause: message},
+		RawText:  message,
+	}
+}
+
+func (c *GoToASTConverter) badStmt(node ast.Node, message string) miniast.Stmt {
+	c.addError(node, message)
+	return &miniast.BadStmt{
+		BaseNode: miniast.BaseNode{ID: c.genID(node, "bad_stmt"), Meta: "bad_stmt", Loc: c.extractLoc(node), InvalidCause: message},
+		RawText:  message,
+	}
 }
 
 func (c *GoToASTConverter) genID(node ast.Node, meta string) string {

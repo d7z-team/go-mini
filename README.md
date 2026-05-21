@@ -47,6 +47,15 @@ GOCACHE=/tmp/go-build-cache go test -timeout 180s ./core/e2e/...
 GOCACHE=/tmp/go-build-cache go test -timeout 180s ./...
 ```
 
+## Canonical Type Text
+
+Go-Mini uses canonical VM type text such as `Array<T>`, `Map<K, V>`, `Ptr<T>`, `HostRef<T>`, `tuple(...)`, and `function(...) R`.
+
+- `core/typespec` owns the grammar and renderer.
+- `core/ast/ast_types.go` is the frontend-facing type API.
+- `core/runtime/schema.go` is the VM/schema-facing type API and does not depend on AST type helpers.
+- Hand-written AST/JSON/bytecode inputs must already use canonical type text; Go-style spellings are normalized only in the Go frontend.
+
 ## VM Value And Reference Model
 
 Go-Mini stores variables in VM slots. A slot owns the declared type, and assignment normalizes the incoming value into that slot.

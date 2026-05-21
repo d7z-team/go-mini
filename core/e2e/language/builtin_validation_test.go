@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -12,20 +11,16 @@ func TestInvalidMakeCompileError(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	t.Run("String Literal as Type", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("expected panic for string literal in make")
-			} else if !strings.Contains(fmt.Sprint(r), "第一个参数必须是类型") {
-				t.Errorf("unexpected panic message: %v", r)
-			}
-		}()
 		code := `
 		package main
 		func main() {
 			m := make("InvalidType")
 		}
 		`
-		_, _ = executor.NewRuntimeByGoCode(code)
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil || !strings.Contains(err.Error(), "第一个参数必须是类型") {
+			t.Fatalf("expected compile error for string literal in make, got %v", err)
+		}
 	})
 }
 
@@ -33,20 +28,16 @@ func TestNewBuiltinCompileError(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	t.Run("String Literal as Type", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("expected panic for string literal in new")
-			} else if !strings.Contains(fmt.Sprint(r), "第一个参数必须是类型") {
-				t.Errorf("unexpected panic message: %v", r)
-			}
-		}()
 		code := `
 		package main
 		func main() {
 			p := new("InvalidType")
 		}
 		`
-		_, _ = executor.NewRuntimeByGoCode(code)
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil || !strings.Contains(err.Error(), "第一个参数必须是类型") {
+			t.Fatalf("expected compile error for string literal in new, got %v", err)
+		}
 	})
 
 	t.Run("Dynamic Variable as Type", func(t *testing.T) {

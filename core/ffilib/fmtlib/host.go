@@ -57,6 +57,6 @@ func RegisterFmtAliases(executor interface {
 }, impl Fmt, registry *ffigo.HandleRegistry,
 ) {
 	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
-	executor.RegisterFFISchema("print", bridge, MethodID_Fmt_Print, runtime.MustParseRuntimeFuncSig("function(...Any) Void"), "Print values to stdout")
-	executor.RegisterFFISchema("println", bridge, MethodID_Fmt_Println, runtime.MustParseRuntimeFuncSig("function(...Any) Void"), "Print values to stdout with newline")
+	executor.RegisterFFISchema("print", bridge, MethodID_Fmt_Print, runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny), "Print values to stdout")
+	executor.RegisterFFISchema("println", bridge, MethodID_Fmt_Println, runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny), "Print values to stdout with newline")
 }

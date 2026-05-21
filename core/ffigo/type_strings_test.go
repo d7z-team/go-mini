@@ -40,7 +40,13 @@ func TestAsyncTupleAndCollectionTypeStrings(t *testing.T) {
 	if elem, ok := ReadArrayItemType("Array<String>"); !ok || elem != "String" {
 		t.Fatalf("Array elem = %q, %v", elem, ok)
 	}
+	if elem, ok := ReadArrayItemType("Ptr<String>"); ok || elem != "" {
+		t.Fatalf("Ptr array elem = %q, %v, want empty false", elem, ok)
+	}
 	if key, value, ok := ReadMapKeyValueTypes("Map<String, Array<Int64>>"); !ok || key != "String" || value != "Array<Int64>" {
 		t.Fatalf("Map parts = %q, %q, %v", key, value, ok)
+	}
+	if key, value, ok := ReadMapKeyValueTypes("Map<String, tuple(Int64, Error)>"); !ok || key != "String" || value != "tuple(Int64, Error)" {
+		t.Fatalf("Nested map parts = %q, %q, %v", key, value, ok)
 	}
 }

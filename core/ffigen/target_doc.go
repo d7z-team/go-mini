@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-func resolveTargetDoc(file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {
-	return resolveTargetDocWithFileSet(fset, file, genDecl, typeSpec)
+func (g *Generator) resolveTargetDoc(file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {
+	return resolveTargetDocWithFileSet(g.fset, file, genDecl, typeSpec)
 }
 
 func isGeneratedFile(filename string, file *ast.File) bool {

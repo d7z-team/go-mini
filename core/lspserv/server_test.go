@@ -192,6 +192,26 @@ func TestUpdateSessionReportsMergeErrorsAsDiagnostics(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionReportsConverterErrorsAtSourceRange(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+
+	diags, _ := server.UpdateSession("file:///workspace/a/main.mgo", `package main
+func main() {
+	_ = new("Int64")
+}
+`)
+	current := diags["file:///workspace/a/main.mgo"]
+	if len(current) == 0 {
+		t.Fatalf("expected converter diagnostic, got %+v", diags)
+	}
+	if !strings.Contains(current[0].Message, "new 第一个参数必须是类型") {
+		t.Fatalf("unexpected diagnostic message: %+v", current[0])
+	}
+	if current[0].Range.Start.Line != 2 {
+		t.Fatalf("expected zero-based diagnostic line 2 for literal, got %+v", current[0].Range)
+	}
+}
+
 func TestRangeForScannerErrorClampsEOFToVisibleRange(t *testing.T) {
 	rng := rangeForScannerError("package main\nfunc main() {\n", scanner.Error{
 		Pos: token.Position{Line: 3, Column: 2},

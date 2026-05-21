@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 type RuntimeTypeKind uint8
@@ -28,37 +28,75 @@ const (
 	RuntimeTypeInterface
 )
 
-type TypeSpec string
+type TypeSpec = typespec.Type
 
-func (s TypeSpec) String() string { return string(s) }
-func (s TypeSpec) Ast() ast.GoMiniType {
-	return ast.GoMiniType(s)
-}
-func (s TypeSpec) IsEmpty() bool                      { return s.Ast().IsEmpty() }
-func (s TypeSpec) IsVoid() bool                       { return s.Ast().IsVoid() }
-func (s TypeSpec) IsAny() bool                        { return s.Ast().IsAny() }
-func (s TypeSpec) IsInt() bool                        { return s.Ast().IsInt() }
-func (s TypeSpec) IsString() bool                     { return s.Ast().IsString() }
-func (s TypeSpec) IsBool() bool                       { return s.Ast().IsBool() }
-func (s TypeSpec) IsNumeric() bool                    { return s.Ast().IsNumeric() }
-func (s TypeSpec) IsPtr() bool                        { return s.Ast().IsPtr() }
-func (s TypeSpec) IsHostRef() bool                    { return s.Ast().IsHostRef() }
-func (s TypeSpec) IsArray() bool                      { return s.Ast().IsArray() }
-func (s TypeSpec) IsMap() bool                        { return s.Ast().IsMap() }
-func (s TypeSpec) IsInterface() bool                  { return s.Ast().IsInterface() }
-func (s TypeSpec) IsTuple() bool                      { return s.Ast().IsTuple() }
-func (s TypeSpec) Equals(other TypeSpec) bool         { return s.Ast().Equals(other.Ast()) }
-func (s TypeSpec) IsAssignableTo(other TypeSpec) bool { return s.Ast().IsAssignableTo(other.Ast()) }
-func (s TypeSpec) ReadArrayItemType() (TypeSpec, bool) {
-	elem, ok := s.Ast().ReadArrayItemType()
-	return TypeSpec(elem), ok
+const (
+	SpecInt64   TypeSpec = typespec.Int64
+	SpecFloat64 TypeSpec = typespec.Float64
+	SpecString  TypeSpec = typespec.String
+	SpecBool    TypeSpec = typespec.Bool
+	SpecBytes   TypeSpec = typespec.Bytes
+	SpecAny     TypeSpec = typespec.Any
+	SpecError   TypeSpec = typespec.Error
+	SpecVoid    TypeSpec = typespec.Void
+	SpecModule  TypeSpec = typespec.Module
+	SpecClosure TypeSpec = typespec.Closure
+)
+
+func PtrType(elem TypeSpec) TypeSpec     { return typespec.Ptr(elem) }
+func HostRefType(elem TypeSpec) TypeSpec { return typespec.HostRef(elem) }
+func ArrayType(elem TypeSpec) TypeSpec   { return typespec.Array(elem) }
+func MapType(key, value TypeSpec) TypeSpec {
+	return typespec.Map(key, value)
 }
 
-func (s TypeSpec) GetMapKeyValueTypes() (TypeSpec, TypeSpec, bool) {
-	key, value, ok := s.Ast().GetMapKeyValueTypes()
-	return TypeSpec(key), TypeSpec(value), ok
+func TupleType(items ...TypeSpec) TypeSpec {
+	types := append([]typespec.Type(nil), items...)
+	return typespec.Tuple(types...)
 }
-func (s TypeSpec) ZeroVar() interface{} { return s.Ast().ZeroVar() }
+
+func FuncType(params []RuntimeFuncParam, ret TypeSpec, variadic bool) TypeSpec {
+	items := make([]typespec.Param, 0, len(params))
+	for _, param := range params {
+		items = append(items, typespec.Param{Name: param.Name, Type: param.Type.Raw})
+	}
+	return typespec.Func(items, ret, variadic)
+}
+
+func InterfaceType(methods []RuntimeInterfaceMethod) TypeSpec {
+	items := make([]typespec.Method, 0, len(methods))
+	for _, method := range methods {
+		if method.Name == "" || method.Spec == nil {
+			continue
+		}
+		params := make([]typespec.Param, 0, len(method.Spec.ParamTypes))
+		for i, paramType := range method.Spec.ParamTypes {
+			name := ""
+			if i < len(method.Spec.ParamNames) {
+				name = method.Spec.ParamNames[i]
+			}
+			params = append(params, typespec.Param{Name: name, Type: paramType.Raw})
+		}
+		items = append(items, typespec.Method{
+			Name: method.Name,
+			Sig: typespec.Function{
+				Params:   params,
+				Return:   method.Spec.ReturnType.Raw,
+				Variadic: method.Spec.Variadic,
+			},
+		})
+	}
+	return typespec.Interface(items)
+}
+
+func MustRuntimeFuncSig(ret TypeSpec, variadic bool, params ...TypeSpec) *RuntimeFuncSig {
+	items := make([]RuntimeFuncParam, 0, len(params))
+	for _, param := range params {
+		items = append(items, RuntimeFuncParam{Type: MustParseRuntimeType(param)})
+	}
+	spec := FuncType(items, ret, variadic)
+	return MustParseRuntimeFuncSig(spec)
+}
 
 // RuntimeType is a parsed, structural view of Go-Mini type metadata.
 type RuntimeType struct {
@@ -82,7 +120,7 @@ type RuntimeType struct {
 func (t RuntimeType) MarshalJSON() ([]byte, error) {
 	type runtimeTypeAlias RuntimeType
 	if t.Kind == RuntimeTypeInvalid && !t.Raw.IsEmpty() {
-		parsed, err := ParseRuntimeType(t.Raw.Ast())
+		parsed, err := ParseRuntimeType(t.Raw)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +140,7 @@ func (t *RuntimeType) UnmarshalJSON(data []byte) error {
 		if alias.Raw.IsEmpty() {
 			return errors.New("runtime type missing raw type")
 		}
-		parsed, parseErr := ParseRuntimeType(alias.Raw.Ast())
+		parsed, parseErr := ParseRuntimeType(alias.Raw)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -110,7 +148,7 @@ func (t *RuntimeType) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var raw ast.GoMiniType
+	var raw TypeSpec
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
@@ -290,15 +328,7 @@ func CloneRuntimeInterfaceSpec(spec *RuntimeInterfaceSpec) *RuntimeInterfaceSpec
 }
 
 func CanonicalTypeID(name string) string {
-	name = strings.TrimSpace(name)
-	name = strings.TrimPrefix(name, "*")
-	if strings.HasPrefix(name, "Ptr<") && strings.HasSuffix(name, ">") {
-		return CanonicalTypeID(name[4 : len(name)-1])
-	}
-	if strings.HasPrefix(name, "HostRef<") && strings.HasSuffix(name, ">") {
-		return CanonicalTypeID(name[8 : len(name)-1])
-	}
-	return name
+	return typespec.CanonicalTypeID(name)
 }
 
 func MustParseRuntimeType[S ~string](spec S) RuntimeType {
@@ -377,7 +407,7 @@ func (t RuntimeType) ReadArrayItemType() (RuntimeType, bool) {
 	if !ok {
 		return RuntimeType{}, false
 	}
-	elemInfo, err := ParseRuntimeType(elem.Ast())
+	elemInfo, err := ParseRuntimeType(elem)
 	if err != nil {
 		return RuntimeType{}, false
 	}
@@ -388,15 +418,15 @@ func (t RuntimeType) GetMapKeyValueTypes() (RuntimeType, RuntimeType, bool) {
 	if t.Key != nil && t.Value != nil {
 		return *t.Key, *t.Value, true
 	}
-	key, value, ok := t.Raw.GetMapKeyValueTypes()
+	key, value, ok := t.Raw.MapTypes()
 	if !ok {
 		return RuntimeType{}, RuntimeType{}, false
 	}
-	keyInfo, err := ParseRuntimeType(key.Ast())
+	keyInfo, err := ParseRuntimeType(key)
 	if err != nil {
 		return RuntimeType{}, RuntimeType{}, false
 	}
-	valueInfo, err := ParseRuntimeType(value.Ast())
+	valueInfo, err := ParseRuntimeType(value)
 	if err != nil {
 		return RuntimeType{}, RuntimeType{}, false
 	}
@@ -404,25 +434,25 @@ func (t RuntimeType) GetMapKeyValueTypes() (RuntimeType, RuntimeType, bool) {
 }
 
 func (t RuntimeType) ZeroVar() interface{} {
-	return t.Raw.ZeroVar()
+	return t.Raw.ZeroValue()
 }
 
 func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
-	specType := ast.GoMiniType(strings.TrimSpace(string(spec)))
+	specType := TypeSpec(strings.TrimSpace(string(spec)))
 	if specType.IsEmpty() || specType.IsVoid() {
-		return RuntimeType{Kind: RuntimeTypeVoid, Raw: TypeSpec(specType)}, nil
+		return RuntimeType{Kind: RuntimeTypeVoid, Raw: specType}, nil
 	}
 	if err := specType.ValidateCanonical(); err != nil {
 		return RuntimeType{}, err
 	}
-	if specType == ast.TypeAny || specType == ast.TypeModule || specType == ast.TypeClosure {
-		return RuntimeType{Kind: RuntimeTypeAny, Raw: TypeSpec(specType), TypeID: CanonicalTypeID(string(specType))}, nil
+	if specType == typespec.Any || specType == typespec.Module || specType == typespec.Closure {
+		return RuntimeType{Kind: RuntimeTypeAny, Raw: specType, TypeID: CanonicalTypeID(string(specType))}, nil
 	}
 	if specType.IsPrimitive() {
-		return RuntimeType{Kind: RuntimeTypePrimitive, Raw: TypeSpec(specType), TypeID: CanonicalTypeID(string(specType))}, nil
+		return RuntimeType{Kind: RuntimeTypePrimitive, Raw: specType, TypeID: CanonicalTypeID(string(specType))}, nil
 	}
 	if specType.IsPtr() {
-		elem, ok := specType.GetPtrElementType()
+		elem, ok := specType.PtrElement()
 		if !ok {
 			return RuntimeType{}, fmt.Errorf("invalid pointer type: %s", specType)
 		}
@@ -432,13 +462,13 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypePointer,
-			Raw:    TypeSpec(specType),
+			Raw:    specType,
 			TypeID: elemType.TypeID,
 			Elem:   &elemType,
 		}, nil
 	}
 	if specType.IsHostRef() {
-		elem, ok := specType.GetHostRefElementType()
+		elem, ok := specType.HostRefElement()
 		if !ok {
 			return RuntimeType{}, fmt.Errorf("invalid host reference type: %s", specType)
 		}
@@ -448,7 +478,7 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypeHostRef,
-			Raw:    TypeSpec(specType),
+			Raw:    specType,
 			TypeID: elemType.TypeID,
 			Elem:   &elemType,
 		}, nil
@@ -464,13 +494,13 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypeArray,
-			Raw:    TypeSpec(specType),
+			Raw:    specType,
 			TypeID: elemType.TypeID,
 			Elem:   &elemType,
 		}, nil
 	}
 	if specType.IsMap() {
-		key, value, ok := specType.GetMapKeyValueTypes()
+		key, value, ok := specType.MapTypes()
 		if !ok {
 			return RuntimeType{}, fmt.Errorf("invalid map type: %s", specType)
 		}
@@ -484,13 +514,13 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypeMap,
-			Raw:    TypeSpec(specType),
+			Raw:    specType,
 			TypeID: valueType.TypeID,
 			Key:    &keyType,
 			Value:  &valueType,
 		}, nil
 	}
-	if types, ok := specType.ReadTuple(); ok {
+	if types, ok := specType.TupleTypes(); ok {
 		params := make([]RuntimeType, 0, len(types))
 		for _, item := range types {
 			itemType, err := ParseRuntimeType(item)
@@ -501,12 +531,12 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypeTuple,
-			Raw:    TypeSpec(specType),
+			Raw:    specType,
 			TypeID: CanonicalTypeID(string(specType)),
 			Params: params,
 		}, nil
 	}
-	if fn, ok := specType.ReadFunc(); ok {
+	if fn, ok := specType.Function(); ok {
 		params := make([]RuntimeType, 0, len(fn.Params))
 		for _, p := range fn.Params {
 			paramType, err := ParseRuntimeType(p.Type)
@@ -521,7 +551,7 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:     RuntimeTypeFunction,
-			Raw:      TypeSpec(specType),
+			Raw:      specType,
 			TypeID:   CanonicalTypeID(string(specType)),
 			Params:   params,
 			Return:   &retType,
@@ -529,24 +559,24 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}, nil
 	}
 	if specType.IsStruct() {
-		return parseRuntimeStructType(TypeSpec(specType))
+		return parseRuntimeStructType(specType)
 	}
 	if specType.IsInterface() {
-		return parseRuntimeInterfaceType(TypeSpec(specType))
+		return parseRuntimeInterfaceType(specType)
 	}
 	return RuntimeType{
 		Kind:   RuntimeTypeNamed,
-		Raw:    TypeSpec(specType),
+		Raw:    specType,
 		TypeID: CanonicalTypeID(string(specType)),
 	}, nil
 }
 
 func ParseRuntimeFuncSig[S ~string](spec S) (*RuntimeFuncSig, error) {
-	specType := ast.GoMiniType(spec)
+	specType := TypeSpec(strings.TrimSpace(string(spec)))
 	if specType.IsEmpty() {
 		return nil, nil
 	}
-	fn, ok := specType.ReadFunc()
+	fn, ok := specType.Function()
 	if !ok {
 		return nil, fmt.Errorf("invalid function spec: %s", specType)
 	}
@@ -558,67 +588,20 @@ func ParseRuntimeFuncSig[S ~string](spec S) (*RuntimeFuncSig, error) {
 			return nil, err
 		}
 		params = append(params, paramType)
-		names = append(names, string(p.Name))
+		names = append(names, p.Name)
 	}
 	retType, err := ParseRuntimeType(fn.Return)
 	if err != nil {
 		return nil, err
 	}
 	return &RuntimeFuncSig{
-		Spec:       TypeSpec(specType),
+		Spec:       specType,
 		ParamNames: names,
 		ParamTypes: params,
 		ParamModes: defaultFFIParamModes(len(params)),
 		ReturnType: retType,
 		Variadic:   fn.Variadic,
 	}, nil
-}
-
-func RuntimeFuncSigFromFunction(fn ast.FunctionType) (*RuntimeFuncSig, error) {
-	params := make([]RuntimeType, 0, len(fn.Params))
-	names := make([]string, 0, len(fn.Params))
-	for _, p := range fn.Params {
-		paramType, err := ParseRuntimeType(p.Type)
-		if err != nil {
-			return nil, err
-		}
-		params = append(params, paramType)
-		names = append(names, string(p.Name))
-	}
-	retType, err := ParseRuntimeType(fn.Return)
-	if err != nil {
-		return nil, err
-	}
-	return &RuntimeFuncSig{
-		Spec:       TypeSpec(fn.MiniType()),
-		ParamNames: names,
-		ParamTypes: params,
-		ParamModes: defaultFFIParamModes(len(params)),
-		ReturnType: retType,
-		Variadic:   fn.Variadic,
-	}, nil
-}
-
-func (s *RuntimeFuncSig) FunctionType() ast.FunctionType {
-	if s == nil {
-		return ast.FunctionType{}
-	}
-	params := make([]ast.FunctionParam, 0, len(s.ParamTypes))
-	for i, paramType := range s.ParamTypes {
-		name := ""
-		if i < len(s.ParamNames) {
-			name = s.ParamNames[i]
-		}
-		params = append(params, ast.FunctionParam{
-			Name: ast.Ident(name),
-			Type: paramType.Raw.Ast(),
-		})
-	}
-	return ast.FunctionType{
-		Params:   params,
-		Return:   s.ReturnType.Raw.Ast(),
-		Variadic: s.Variadic,
-	}
 }
 
 func (s *RuntimeFuncSig) SignatureString() string {
@@ -628,8 +611,15 @@ func (s *RuntimeFuncSig) SignatureString() string {
 	if !s.Spec.IsEmpty() {
 		return string(s.Spec)
 	}
-	fn := s.FunctionType()
-	return string(fn.MiniType())
+	params := make([]RuntimeFuncParam, 0, len(s.ParamTypes))
+	for i, typ := range s.ParamTypes {
+		name := ""
+		if i < len(s.ParamNames) {
+			name = s.ParamNames[i]
+		}
+		params = append(params, RuntimeFuncParam{Name: name, Type: typ})
+	}
+	return FuncType(params, s.ReturnType.Raw, s.Variadic).String()
 }
 
 func defaultFFIParamModes(n int) []FFIParamMode {
@@ -673,11 +663,11 @@ func ParseRuntimeStructSpec[S ~string](name string, ownership RuntimeStructOwner
 	if !ownership.Valid() {
 		return nil, fmt.Errorf("invalid struct ownership for %s: %s", name, ownership)
 	}
-	specType := ast.GoMiniType(spec)
+	specType := TypeSpec(strings.TrimSpace(string(spec)))
 	if specType.IsEmpty() {
 		return nil, nil
 	}
-	typeInfo, err := parseRuntimeStructType(TypeSpec(specType))
+	typeInfo, err := parseRuntimeStructType(specType)
 	if err != nil {
 		return nil, fmt.Errorf("invalid struct spec for %s: %w", name, err)
 	}
@@ -704,7 +694,7 @@ func ParseRuntimeStructSpec[S ~string](name string, ownership RuntimeStructOwner
 	return &RuntimeStructSpec{
 		Name:      name,
 		TypeID:    CanonicalTypeID(name),
-		Spec:      TypeSpec(specType),
+		Spec:      specType,
 		Ownership: ownership,
 		TypeInfo:  typeInfo,
 		Layout:    layout,
@@ -716,11 +706,11 @@ func ParseRuntimeStructSpec[S ~string](name string, ownership RuntimeStructOwner
 }
 
 func ParseRuntimeInterfaceSpec[S ~string](spec S) (*RuntimeInterfaceSpec, error) {
-	specType := ast.GoMiniType(spec)
+	specType := TypeSpec(strings.TrimSpace(string(spec)))
 	if specType.IsEmpty() {
 		return nil, nil
 	}
-	typeInfo, err := parseRuntimeInterfaceType(TypeSpec(specType))
+	typeInfo, err := parseRuntimeInterfaceType(specType)
 	if err != nil {
 		return nil, err
 	}
@@ -729,7 +719,7 @@ func ParseRuntimeInterfaceSpec[S ~string](spec S) (*RuntimeInterfaceSpec, error)
 	byName := make(map[string]*RuntimeFuncSig, len(typeInfo.Methods))
 	methodIndex := make(map[string]int, len(typeInfo.Methods))
 	for i, method := range typeInfo.Methods {
-		fnSig, err := ParseRuntimeFuncSig(method.Spec.Spec.Ast())
+		fnSig, err := ParseRuntimeFuncSig(method.Spec.Spec)
 		if err != nil {
 			return nil, err
 		}
@@ -740,7 +730,7 @@ func ParseRuntimeInterfaceSpec[S ~string](spec S) (*RuntimeInterfaceSpec, error)
 
 	return &RuntimeInterfaceSpec{
 		TypeID:      typeInfo.TypeID,
-		Spec:        TypeSpec(specType),
+		Spec:        specType,
 		TypeInfo:    typeInfo,
 		Methods:     methods,
 		ByName:      byName,
@@ -769,14 +759,6 @@ func MustParseRuntimeFuncSig[S ~string](spec S) *RuntimeFuncSig {
 	return sig
 }
 
-func MustRuntimeFuncSigFromFunction(fn ast.FunctionType) *RuntimeFuncSig {
-	sig, err := RuntimeFuncSigFromFunction(fn)
-	if err != nil {
-		panic(err)
-	}
-	return sig
-}
-
 func MustParseRuntimeFuncSigWithModes[S ~string](spec S, modes ...FFIParamMode) *RuntimeFuncSig {
 	return CloneRuntimeFuncSigWithParamModes(MustParseRuntimeFuncSig(spec), modes...)
 }
@@ -798,30 +780,19 @@ func MustParseRuntimeInterfaceSpec[S ~string](spec S) *RuntimeInterfaceSpec {
 }
 
 func parseRuntimeStructType(spec TypeSpec) (RuntimeType, error) {
-	raw := strings.TrimSpace(spec.String())
-	start := strings.Index(raw, "{")
-	if start == -1 || !strings.HasSuffix(raw, "}") {
+	members, ok := spec.StructFields()
+	if !ok {
 		return RuntimeType{}, fmt.Errorf("malformed struct type: %s", spec)
 	}
-	inner := raw[start+1 : len(raw)-1]
-	parts := strings.Split(inner, ";")
-	fields := make([]RuntimeStructField, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		items := strings.SplitN(part, " ", 2)
-		if len(items) != 2 {
-			return RuntimeType{}, fmt.Errorf("invalid struct field: %s", part)
-		}
-		fieldType := TypeSpec(strings.TrimSpace(items[1]))
+	fields := make([]RuntimeStructField, 0, len(members))
+	for _, member := range members {
+		fieldType := member.Type
 		typeInfo, err := ParseRuntimeType(fieldType)
 		if err != nil {
 			return RuntimeType{}, err
 		}
 		fields = append(fields, RuntimeStructField{
-			Name:     strings.TrimSpace(items[0]),
+			Name:     member.Name,
 			Type:     fieldType,
 			TypeInfo: typeInfo,
 		})
@@ -869,22 +840,21 @@ func buildStructLayout(fields []RuntimeStructField) StructLayout {
 }
 
 func parseRuntimeInterfaceType(spec TypeSpec) (RuntimeType, error) {
-	methods, ok := spec.Ast().ReadInterfaceMethods()
+	methods, ok := spec.InterfaceMethods()
 	if !ok {
 		return RuntimeType{}, fmt.Errorf("invalid interface type: %s", spec)
 	}
+	byName := make(map[string]typespec.Function, len(methods))
 	names := make([]string, 0, len(methods))
-	for name := range methods {
-		names = append(names, name)
+	for _, method := range methods {
+		byName[method.Name] = method.Sig
+		names = append(names, method.Name)
 	}
 	sort.Strings(names)
 	items := make([]RuntimeInterfaceMethod, 0, len(names))
 	for index, name := range names {
-		fn := methods[name]
-		if fn == nil {
-			continue
-		}
-		methodSpec := fn.MiniType()
+		fn := byName[name]
+		methodSpec := typespec.Func(fn.Params, fn.Return, fn.Variadic)
 		fnSig, err := ParseRuntimeFuncSig(methodSpec)
 		if err != nil {
 			return RuntimeType{}, err

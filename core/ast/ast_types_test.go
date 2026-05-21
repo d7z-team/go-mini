@@ -63,6 +63,12 @@ func TestGoMiniType_ArrayOperations(t *testing.T) {
 			t.Errorf("ReadArrayItemType() = %v, %v, want Int64, true", elem, ok)
 		}
 	})
+	t.Run("Pointer Is Not Array", func(t *testing.T) {
+		elem, ok := GoMiniType("Ptr<Int64>").ReadArrayItemType()
+		if ok || elem != "" {
+			t.Errorf("ReadArrayItemType() = %v, %v, want empty false", elem, ok)
+		}
+	})
 }
 
 func TestGoMiniType_FunctionParsing(t *testing.T) {

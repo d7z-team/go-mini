@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 // 供解卷状态恢复使用
@@ -209,8 +207,8 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 			continue
 		}
 		if tag == nil || (tag.VType == TypeAny && tag.Ref == nil) {
-			raw := targetType.Raw.Ast()
-			if raw == "nil" || raw == ast.TypeAny {
+			raw := targetType.Raw
+			if raw == "nil" || raw == "Any" {
 				return true
 			}
 			continue

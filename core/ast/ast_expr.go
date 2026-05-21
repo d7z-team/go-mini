@@ -537,7 +537,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 	if objType == "Error" {
 		if m.Property == "Error" {
-			m.Type = "function() String"
+			m.Type = CreateFunctionType(nil, TypeString, false)
 			return nil
 		}
 	}
@@ -874,7 +874,7 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 			if allSameVal && haveReliableVal && !commonValType.IsEmpty() {
 				finalVal = commonValType
 			}
-			c.Type = GoMiniType(fmt.Sprintf("Map<%s, %s>", finalKey, finalVal))
+			c.Type = CreateMapType(finalKey, finalVal)
 		} else {
 			finalVal := GoMiniType("Any")
 			if allSameVal && haveReliableVal && !commonValType.IsEmpty() && len(c.Values) > 0 {

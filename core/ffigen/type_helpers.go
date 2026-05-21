@@ -6,6 +6,7 @@ import (
 	"go/types"
 	"strings"
 
+	miniast "gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -17,84 +18,84 @@ func isPrimitive(name string) bool {
 	return false
 }
 
-func typeToString(expr ast.Expr) string {
+func (g *Generator) typeToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		if obj := lookupTypeObject(t); obj != nil && obj.Pkg() != nil && obj.Pkg().Path() != packagePath {
+		if obj := g.lookupTypeObject(t); obj != nil && obj.Pkg() != nil && obj.Pkg().Path() != g.packagePath {
 			return obj.Pkg().Path() + "." + obj.Name()
 		}
 		return t.Name
 	case *ast.ArrayType:
-		return fmt.Sprintf("Array<%s>", typeToString(t.Elt))
+		return string(miniast.CreateArrayType(miniast.GoMiniType(g.typeToString(t.Elt))))
 	case *ast.MapType:
-		return fmt.Sprintf("Map<%s, %s>", typeToString(t.Key), typeToString(t.Value))
+		return string(miniast.CreateMapType(
+			miniast.GoMiniType(g.typeToString(t.Key)),
+			miniast.GoMiniType(g.typeToString(t.Value)),
+		))
 	case *ast.StarExpr:
-		return fmt.Sprintf("HostRef<%s>", typeToString(t.X))
+		return string(miniast.GoMiniType(g.typeToString(t.X)).ToHostRef())
 	case *ast.SelectorExpr:
-		if obj := lookupTypeObject(t.Sel); obj != nil && obj.Pkg() != nil {
+		if obj := g.lookupTypeObject(t.Sel); obj != nil && obj.Pkg() != nil {
 			return obj.Pkg().Path() + "." + obj.Name()
 		}
 		if x, ok := t.X.(*ast.Ident); ok {
-			if importPath, ok := knownImports[x.Name]; ok {
+			if importPath, ok := g.knownImports[x.Name]; ok {
 				return importPath + "." + t.Sel.Name
 			}
 			return x.Name + "." + t.Sel.Name
 		}
 		return t.Sel.Name
 	case *ast.IndexExpr:
-		return fmt.Sprintf("%s<%s>", typeToString(t.X), typeToString(t.Index))
+		return fmt.Sprintf("%s<%s>", g.typeToString(t.X), g.typeToString(t.Index))
 	case *ast.IndexListExpr:
 		parts := make([]string, 0, len(t.Indices))
 		for _, idx := range t.Indices {
-			parts = append(parts, typeToString(idx))
+			parts = append(parts, g.typeToString(idx))
 		}
-		return fmt.Sprintf("%s<%s>", typeToString(t.X), strings.Join(parts, ", "))
+		return fmt.Sprintf("%s<%s>", g.typeToString(t.X), strings.Join(parts, ", "))
 	case *ast.InterfaceType:
 		if t.Methods == nil || len(t.Methods.List) == 0 {
 			return "Any"
 		}
 		return "interface{}"
 	case *ast.Ellipsis:
-		return fmt.Sprintf("Array<%s>", typeToString(t.Elt))
+		return string(miniast.CreateArrayType(miniast.GoMiniType(g.typeToString(t.Elt))))
 	default:
 		return "Any"
 	}
 }
 
-func lookupTypeObject(id *ast.Ident) types.Object {
-	if id == nil || typeInfo == nil {
+func (g *Generator) lookupTypeObject(id *ast.Ident) types.Object {
+	if id == nil || g.typeInfo == nil {
 		return nil
 	}
-	if obj := typeInfo.Uses[id]; obj != nil {
+	if obj := g.typeInfo.Uses[id]; obj != nil {
 		return obj
 	}
-	return typeInfo.Defs[id]
+	return g.typeInfo.Defs[id]
 }
 
-func toGoType(pType string) string {
-	if inner, ok := refElementType(pType); ok {
-		return "*" + toGoType(inner)
+func (g *Generator) toGoType(pType string) string {
+	if inner, ok := ffigo.RefElementType(pType); ok {
+		return "*" + g.toGoType(inner)
 	}
-	if strings.HasPrefix(pType, "Array<") {
-		inner := pType[6 : len(pType)-1]
+	miniType := miniast.GoMiniType(pType)
+	if innerType, ok := miniType.ReadArrayItemType(); ok {
+		inner := string(innerType)
 		if inner == "Uint8" || inner == "byte" || inner == "uint8" {
 			return "[]byte"
 		}
-		return "[]" + toGoType(inner)
+		return "[]" + g.toGoType(inner)
 	}
-	if strings.HasPrefix(pType, "Map<") {
-		inner := pType[4 : len(pType)-1]
-		parts := strings.SplitN(inner, ",", 2)
-		if len(parts) == 2 {
-			return "map[" + toGoType(strings.TrimSpace(parts[0])) + "]" + toGoType(strings.TrimSpace(parts[1]))
-		}
+	if key, value, ok := miniType.GetMapKeyValueTypes(); ok {
+		return "map[" + g.toGoType(string(key)) + "]" + g.toGoType(string(value))
 	}
-	if base, args, ok := splitGenericType(pType); ok {
+	if base, args, ok := ffigo.SplitGenericType(pType); ok {
 		goArgs := make([]string, 0, len(args))
 		for _, arg := range args {
-			goArgs = append(goArgs, toGoType(arg))
+			goArgs = append(goArgs, g.toGoType(arg))
 		}
-		return toGoType(base) + "[" + strings.Join(goArgs, ", ") + "]"
+		return g.toGoType(base) + "[" + strings.Join(goArgs, ", ") + "]"
 	}
 	switch pType {
 	case "Uint32", "uint32":
@@ -135,7 +136,7 @@ func toGoType(pType string) string {
 		return "error"
 	default:
 		if owner, name, ok := splitQualifiedTypeName(pType); ok && strings.Contains(owner, "/") {
-			for alias, path := range knownImports {
+			for alias, path := range g.knownImports {
 				if path == owner {
 					return alias + "." + name
 				}
@@ -151,11 +152,11 @@ func isBytesRefTypeString(typeName string) bool {
 	return ffigo.IsBytesRefTypeString(typeName)
 }
 
-func isBytesRefExpr(expr ast.Expr) bool {
+func (g *Generator) isBytesRefExpr(expr ast.Expr) bool {
 	if expr == nil {
 		return false
 	}
-	return isBytesRefTypeString(typeToString(expr))
+	return isBytesRefTypeString(g.typeToString(expr))
 }
 
 func isArrayRefTypeString(typeName string) bool {
@@ -166,62 +167,54 @@ func isGenericTypeBase(typeName string, bases ...string) bool {
 	return ffigo.IsGenericTypeBase(typeName, bases...)
 }
 
-func asyncElemTypeString(typeName string) (string, bool) {
-	return ffigo.AsyncElemTypeString(typeName)
-}
-
-func tuple2ElemTypeStrings(typeName string) ([]string, bool) {
-	return ffigo.Tuple2ElemTypeStrings(typeName)
-}
-
-func asyncElemExpr(expr ast.Expr) (ast.Expr, bool) {
+func (g *Generator) asyncElemExpr(expr ast.Expr) (ast.Expr, bool) {
 	switch t := expr.(type) {
 	case *ast.IndexExpr:
-		if isGenericTypeBase(typeToString(t), ffigo.AsyncQualifiedType, "ffigo.Async", "Async") {
+		if isGenericTypeBase(g.typeToString(t), ffigo.AsyncQualifiedType, "ffigo.Async", "Async") {
 			return t.Index, true
 		}
 	case *ast.IndexListExpr:
-		if isGenericTypeBase(typeToString(t), ffigo.AsyncQualifiedType, "ffigo.Async", "Async") && len(t.Indices) == 1 {
+		if isGenericTypeBase(g.typeToString(t), ffigo.AsyncQualifiedType, "ffigo.Async", "Async") && len(t.Indices) == 1 {
 			return t.Indices[0], true
 		}
 	}
 	return nil, false
 }
 
-func tuple2ElemExprs(expr ast.Expr) ([]ast.Expr, bool) {
+func (g *Generator) tuple2ElemExprs(expr ast.Expr) ([]ast.Expr, bool) {
 	switch t := expr.(type) {
 	case *ast.IndexListExpr:
-		if isGenericTypeBase(typeToString(t), ffigo.Tuple2QualifiedType, "ffigo.Tuple2", "Tuple2") && len(t.Indices) == 2 {
+		if isGenericTypeBase(g.typeToString(t), ffigo.Tuple2QualifiedType, "ffigo.Tuple2", "Tuple2") && len(t.Indices) == 2 {
 			return t.Indices, true
 		}
 	}
 	return nil, false
 }
 
-func arrayRefElemExpr(expr ast.Expr) (ast.Expr, bool) {
+func (g *Generator) arrayRefElemExpr(expr ast.Expr) (ast.Expr, bool) {
 	star, ok := expr.(*ast.StarExpr)
 	if !ok {
 		return nil, false
 	}
 	switch t := star.X.(type) {
 	case *ast.IndexExpr:
-		if isArrayRefTypeString(typeToString(t.X)) {
+		if isArrayRefTypeString(g.typeToString(t.X)) {
 			return t.Index, true
 		}
 	case *ast.IndexListExpr:
-		if isArrayRefTypeString(typeToString(t.X)) && len(t.Indices) == 1 {
+		if isArrayRefTypeString(g.typeToString(t.X)) && len(t.Indices) == 1 {
 			return t.Indices[0], true
 		}
 	}
 	return nil, false
 }
 
-func copyBackKind(expr ast.Expr) string {
+func (g *Generator) copyBackKind(expr ast.Expr) string {
 	switch {
-	case isBytesRefExpr(expr):
+	case g.isBytesRefExpr(expr):
 		return "bytes"
 	case func() bool {
-		_, ok := arrayRefElemExpr(expr)
+		_, ok := g.arrayRefElemExpr(expr)
 		return ok
 	}():
 		return "array"
@@ -230,18 +223,18 @@ func copyBackKind(expr ast.Expr) string {
 	}
 }
 
-func funcParamModes(funcType *ast.FuncType) []string {
+func (g *Generator) funcParamModes(funcType *ast.FuncType) []string {
 	var modes []string
 	if funcType == nil || funcType.Params == nil {
 		return nil
 	}
 	for i, p := range funcType.Params.List {
-		pType := typeToString(p.Type)
+		pType := g.typeToString(p.Type)
 		if i == 0 && (pType == "context.Context" || pType == "Context") {
 			continue
 		}
 		mode := "runtime.FFIParamIn"
-		switch copyBackKind(p.Type) {
+		switch g.copyBackKind(p.Type) {
 		case "bytes":
 			mode = "runtime.FFIParamInOutBytes"
 		case "array":
@@ -258,8 +251,8 @@ func funcParamModes(funcType *ast.FuncType) []string {
 	return modes
 }
 
-func hasCopyBackParam(funcType *ast.FuncType) bool {
-	for _, mode := range funcParamModes(funcType) {
+func (g *Generator) hasCopyBackParam(funcType *ast.FuncType) bool {
+	for _, mode := range g.funcParamModes(funcType) {
 		if mode == "runtime.FFIParamInOutBytes" || mode == "runtime.FFIParamInOutArray" {
 			return true
 		}
@@ -267,30 +260,59 @@ func hasCopyBackParam(funcType *ast.FuncType) bool {
 	return false
 }
 
-func splitGenericType(typeName string) (string, []string, bool) {
-	return ffigo.SplitGenericType(typeName)
-}
-
-func refElementType(typeName string) (string, bool) {
-	return ffigo.RefElementType(typeName)
-}
-
 func isRefTypeString(typeName string) bool {
 	return ffigo.IsRefTypeString(typeName)
 }
 
-func refTypeID(typeName, moduleName string) string {
-	if inner, ok := refElementType(typeName); ok {
+func isInterfaceTypeString(typeName string) bool {
+	typeName = strings.TrimSpace(typeName)
+	return miniast.GoMiniType(typeName).IsInterface() || strings.HasPrefix(typeName, "interface{")
+}
+
+func walkNestedTypeNames(typeName string, asHostRef bool, visit func(string, bool)) {
+	typeName = strings.TrimSpace(typeName)
+	if typeName == "" || visit == nil {
+		return
+	}
+	miniType := miniast.GoMiniType(typeName)
+	if elem, ok := miniType.GetPtrElementType(); ok {
+		walkNestedTypeNames(string(elem), true, visit)
+		return
+	}
+	if elem, ok := miniType.GetHostRefElementType(); ok {
+		walkNestedTypeNames(string(elem), true, visit)
+		return
+	}
+	if elem, ok := miniType.ReadArrayItemType(); ok {
+		walkNestedTypeNames(string(elem), asHostRef, visit)
+		return
+	}
+	if key, value, ok := miniType.GetMapKeyValueTypes(); ok {
+		walkNestedTypeNames(string(key), asHostRef, visit)
+		walkNestedTypeNames(string(value), asHostRef, visit)
+		return
+	}
+	if items, ok := miniType.ReadTuple(); ok {
+		for _, item := range items {
+			walkNestedTypeNames(string(item), asHostRef, visit)
+		}
+		return
+	}
+	visit(typeName, asHostRef)
+}
+
+func (g *Generator) refTypeID(typeName, moduleName string) string {
+	if inner, ok := ffigo.RefElementType(typeName); ok {
 		inner = strings.TrimSpace(inner)
 		if owner, name, ok := splitQualifiedTypeName(inner); ok {
-			if knownPath, known := knownImports[owner]; known {
-				if mod := resolveImportedModule(knownPath); mod != "" {
+			if knownPath, known := g.knownImports[owner]; known {
+				if mod := g.resolveImportedModule(knownPath); mod != "" {
 					return mod + "." + name
 				}
 				return owner + "." + name
 			}
 			if strings.Contains(owner, "/") {
-				if mod := resolveImportedModule(owner); mod != "" {
+				if mod := g.resolveImportedModule(owner); mod != "" {
 					return mod + "." + name
 				}
 			}
@@ -313,7 +335,8 @@ func readMapKeyValueTypes(pType string) (string, string, bool) {
 }
 
 func zeroValue(t string) string {
-	if isRefTypeString(t) || strings.HasPrefix(t, "Array<") || t == "Any" || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
+	miniType := miniast.GoMiniType(t)
+	if isRefTypeString(t) || miniType.IsArray() || miniType.IsMap() || miniType.IsAny() || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
 		return "nil"
 	}
 	switch t {

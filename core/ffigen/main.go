@@ -7,11 +7,16 @@ import (
 	"go/types"
 )
 
-var (
-	pkgName = new(string)
-	outFile = new(string)
+// Options configures one ffigen generation run.
+type Options struct {
+	PackageName string
+	Output      string
+	Args        []string
+}
 
-	// 类型推导上下文
+type Generator struct {
+	opts Options
+
 	typeInfo     *types.Info
 	fset         *token.FileSet
 	knownImports map[string]string
@@ -19,13 +24,10 @@ var (
 	packagePath  string
 	modulePath   string
 	moduleDir    string
-)
+}
 
-// Options configures one ffigen generation run.
-type Options struct {
-	PackageName string
-	Output      string
-	Args        []string
+func NewGenerator(opts Options) *Generator {
+	return &Generator{opts: opts}
 }
 
 type targetMeta struct {
@@ -91,6 +93,7 @@ func (r *schemaRegistry) Ensure(displayName, ownership, specLiteral string) stri
 }
 
 type displayTypeResolver struct {
+	gen               *Generator
 	moduleName        string
 	importAliases     map[string]string
 	collidingBaseName map[string]bool

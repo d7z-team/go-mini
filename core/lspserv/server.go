@@ -217,6 +217,16 @@ func parseFileForLSP(file *fileSession) parsedFile {
 			})
 			continue
 		}
+		var convertErr *ffigo.ConvertError
+		if errors.As(err, &convertErr) && convertErr.Pos != nil {
+			result.diagnostics = append(result.diagnostics, Diagnostic{
+				Range:    FromInternalPos(convertErr.Pos),
+				Severity: 1,
+				Source:   "go-mini-syntax",
+				Message:  convertErr.Message,
+			})
+			continue
+		}
 		if err != nil {
 			result.diagnostics = append(result.diagnostics, Diagnostic{
 				Range:    FromInternalPos(&ast.Position{F: file.uri, L: 1, C: 1}),

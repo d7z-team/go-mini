@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func flattenInterfaceType(name string, iface *ast.InterfaceType, interfaces map[string]*ast.InterfaceType) (*ast.InterfaceType, error) {
+func (g *Generator) flattenInterfaceType(name string, iface *ast.InterfaceType, interfaces map[string]*ast.InterfaceType) (*ast.InterfaceType, error) {
 	seenInterfaces := make(map[string]bool)
 	seenMethods := make(map[string]string)
 	flat := &ast.InterfaceType{Methods: &ast.FieldList{}}
@@ -28,7 +28,7 @@ func flattenInterfaceType(name string, iface *ast.InterfaceType, interfaces map[
 		}
 		for _, field := range current.Methods.List {
 			if len(field.Names) == 0 {
-				embeddedName := typeToString(field.Type)
+				embeddedName := g.typeToString(field.Type)
 				if local, ok := embeddedInterfaceName(field.Type); ok {
 					target, ok := interfaces[local]
 					if !ok {
@@ -39,18 +39,18 @@ func flattenInterfaceType(name string, iface *ast.InterfaceType, interfaces map[
 					}
 					continue
 				}
-				methods, err := synthesizeEmbeddedInterfaceMethods(field.Type)
+				methods, err := g.synthesizeEmbeddedInterfaceMethods(field.Type)
 				if err != nil {
 					return fmt.Errorf("embedded interface %s: %w", embeddedName, err)
 				}
 				for _, method := range methods {
-					if err := appendFlattenedMethod(flat, seenMethods, method); err != nil {
+					if err := g.appendFlattenedMethod(flat, seenMethods, method); err != nil {
 						return err
 					}
 				}
 				continue
 			}
-			if err := appendFlattenedMethod(flat, seenMethods, field); err != nil {
+			if err := g.appendFlattenedMethod(flat, seenMethods, field); err != nil {
 				return err
 			}
 		}
@@ -72,7 +72,7 @@ func embeddedInterfaceName(expr ast.Expr) (string, bool) {
 	}
 }
 
-func appendFlattenedMethod(dst *ast.InterfaceType, seen map[string]string, field *ast.Field) error {
+func (g *Generator) appendFlattenedMethod(dst *ast.InterfaceType, seen map[string]string, field *ast.Field) error {
 	if field == nil || len(field.Names) == 0 {
 		return nil
 	}
@@ -81,7 +81,7 @@ func appendFlattenedMethod(dst *ast.InterfaceType, seen map[string]string, field
 	if !ok {
 		return fmt.Errorf("method %s is not a function", methodName)
 	}
-	sig := funcTypeKey(funcType)
+	sig := g.funcTypeKey(funcType)
 	if existing, ok := seen[methodName]; ok {
 		if existing != sig {
 			return fmt.Errorf("method conflict for %s: %s vs %s", methodName, existing, sig)
@@ -97,14 +97,14 @@ func appendFlattenedMethod(dst *ast.InterfaceType, seen map[string]string, field
 	return nil
 }
 
-func funcTypeKey(fn *ast.FuncType) string {
+func (g *Generator) funcTypeKey(fn *ast.FuncType) string {
 	if fn == nil {
 		return "func()"
 	}
 	var params []string
 	if fn.Params != nil {
 		for _, field := range fn.Params.List {
-			typeName := typeToString(field.Type)
+			typeName := g.typeToString(field.Type)
 			count := len(field.Names)
 			if count == 0 {
 				count = 1
@@ -117,7 +117,7 @@ func funcTypeKey(fn *ast.FuncType) string {
 	var results []string
 	if fn.Results != nil {
 		for _, field := range fn.Results.List {
-			typeName := typeToString(field.Type)
+			typeName := g.typeToString(field.Type)
 			count := len(field.Names)
 			if count == 0 {
 				count = 1
@@ -168,8 +168,8 @@ func cloneFieldList(list *ast.FieldList) *ast.FieldList {
 	return res
 }
 
-func synthesizeEmbeddedInterfaceMethods(expr ast.Expr) ([]*ast.Field, error) {
-	typ := typeInfo.TypeOf(expr)
+func (g *Generator) synthesizeEmbeddedInterfaceMethods(expr ast.Expr) ([]*ast.Field, error) {
+	typ := g.typeInfo.TypeOf(expr)
 	if typ == nil {
 		return nil, errors.New("missing type info")
 	}
@@ -188,7 +188,7 @@ func synthesizeEmbeddedInterfaceMethods(expr ast.Expr) ([]*ast.Field, error) {
 		if !ok {
 			return nil, fmt.Errorf("method %s has non-signature type", method.Name())
 		}
-		funcType, err := parseFuncTypeFromSignature(sig)
+		funcType, err := g.parseFuncTypeFromSignature(sig)
 		if err != nil {
 			return nil, fmt.Errorf("parse method %s signature: %w", method.Name(), err)
 		}
@@ -200,12 +200,12 @@ func synthesizeEmbeddedInterfaceMethods(expr ast.Expr) ([]*ast.Field, error) {
 	return methods, nil
 }
 
-func parseFuncTypeFromSignature(sig *types.Signature) (*ast.FuncType, error) {
+func (g *Generator) parseFuncTypeFromSignature(sig *types.Signature) (*ast.FuncType, error) {
 	qualifier := func(pkg *types.Package) string {
 		if pkg == nil {
 			return ""
 		}
-		for alias, path := range knownImports {
+		for alias, path := range g.knownImports {
 			if path == pkg.Path() {
 				return alias
 			}

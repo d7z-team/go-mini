@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -31,9 +32,8 @@ type BrowserModule interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -89,6 +89,73 @@ type DemoModule interface {
 	}
 }
 
+func TestRunConcurrentUsesIndependentGeneratorState(t *testing.T) {
+	workspaceA := makeModuleTempDir(t)
+	writeTestFile(t, workspaceA, "api.go", `package pkgmode
+
+// ffigen:module alpha
+type AlphaModule interface {
+	Echo(s string) string
+}
+`)
+	workspaceB := makeModuleTempDir(t)
+	writeTestFile(t, workspaceB, "api.go", `package pkgmode
+
+// ffigen:module beta
+type BetaModule interface {
+	Ping(n int64) int64
+}
+`)
+
+	outputA := filepath.Join(workspaceA, "alpha_ffigen.go")
+	outputB := filepath.Join(workspaceB, "beta_ffigen.go")
+	errCh := make(chan error, 2)
+	var wg sync.WaitGroup
+	type runCase struct {
+		workspace string
+		output    string
+	}
+	for _, run := range []runCase{
+		{workspace: workspaceA, output: outputA},
+		{workspace: workspaceB, output: outputB},
+	} {
+		run := run
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- Run(Options{
+				PackageName: "pkgmode",
+				Output:      run.output,
+				Args:        []string{filepath.Join(run.workspace, "api.go")},
+			})
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent Run failed: %v", err)
+		}
+	}
+
+	contentA, err := os.ReadFile(outputA)
+	if err != nil {
+		t.Fatalf("read alpha output: %v", err)
+	}
+	contentB, err := os.ReadFile(outputB)
+	if err != nil {
+		t.Fatalf("read beta output: %v", err)
+	}
+	codeA := string(contentA)
+	codeB := string(contentB)
+	if !strings.Contains(codeA, "func RegisterAlphaModule(") || strings.Contains(codeA, "RegisterBetaModule") {
+		t.Fatalf("alpha output was contaminated:\n%s", codeA)
+	}
+	if !strings.Contains(codeB, "func RegisterBetaModule(") || strings.Contains(codeB, "RegisterAlphaModule") {
+		t.Fatalf("beta output was contaminated:\n%s", codeB)
+	}
+}
+
 func TestRunDirKeepsVariadicArg(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
@@ -107,9 +174,8 @@ type BrowserModule interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -139,9 +205,8 @@ type RegexpModule interface {
 `)
 
 	outputPath := filepath.Join(workspace, "regexp_ffigen.go")
-	setGenerationOutput(t, "pkgmode", outputPath)
 
-	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+	if err := runFileModeForTest("pkgmode", outputPath, []string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
 	}
 	content, err := os.ReadFile(outputPath)
@@ -168,9 +233,8 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -202,9 +266,8 @@ func (o *Browser) AutoPage(url string) *Browser {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -235,9 +298,8 @@ func (f *Factory) New(base int64) *Factory {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -271,9 +333,8 @@ type Mutator interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -307,9 +368,8 @@ type Mutator interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -350,9 +410,8 @@ func (f *Factory) New(base int64) *Factory {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_factory.go")
-	setGenerationOutput(t, "pkgmode", outputPath)
 
-	if err := runFileMode([]string{sourcePath}); err != nil {
+	if err := runFileModeForTest("pkgmode", outputPath, []string{sourcePath}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
 	}
 
@@ -383,9 +442,8 @@ func (t *Table) SetString(row, col int, val string) {}
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -418,9 +476,7 @@ type B interface {
 }
 `)
 
-	setGenerationOutput(t, "pkgmode", filepath.Join(workspace, "gen"))
-
-	err := runDirectoryMode(workspace)
+	err := runDirectoryModeForTest("pkgmode", filepath.Join(workspace, "gen"), workspace)
 	if err == nil || !strings.Contains(err.Error(), "at most one ffigen:module") {
 		t.Fatalf("expected multiple-module error, got %v", err)
 	}
@@ -435,9 +491,7 @@ type Demo interface {
 }
 `)
 
-	setGenerationOutput(t, "pkgmode", filepath.Join(workspace, "ffigen_pkgmode.go"))
-
-	err := runFileMode([]string{filepath.Join(workspace, "api.go")})
+	err := runFileModeForTest("pkgmode", filepath.Join(workspace, "ffigen_pkgmode.go"), []string{filepath.Join(workspace, "api.go")})
 	if err == nil || !strings.Contains(err.Error(), "reserved package output name") {
 		t.Fatalf("expected reserved-name rejection, got %v", err)
 	}
@@ -463,9 +517,8 @@ type OrderService interface {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_shared.go")
-	setGenerationOutput(t, "pkgmode", outputPath)
 
-	err := runFileMode([]string{
+	err := runFileModeForTest("pkgmode", outputPath, []string{
 		filepath.Join(workspace, "order.go"),
 		filepath.Join(workspace, "service.go"),
 	})
@@ -499,9 +552,8 @@ type Demo interface {
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_demo.go")
-	setGenerationOutput(t, "pkgmode", outputPath)
 
-	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+	if err := runFileModeForTest("pkgmode", outputPath, []string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
 	}
 	content, err := os.ReadFile(outputPath)
@@ -531,9 +583,8 @@ var _ = engine.NewMiniExecutor
 `)
 
 	outputPath := filepath.Join(workspace, "ffigen_demo.go")
-	setGenerationOutput(t, "pkgmode", outputPath)
 
-	if err := runFileMode([]string{filepath.Join(workspace, "api.go")}); err != nil {
+	if err := runFileModeForTest("pkgmode", outputPath, []string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode should ignore sibling _test.go files, got %v", err)
 	}
 }
@@ -570,9 +621,8 @@ type ReadWriter interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -600,9 +650,8 @@ type Reader interface {
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
-	setGenerationOutput(t, "pkgmode", outputDir)
 
-	if err := runDirectoryMode(workspace); err != nil {
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
 
@@ -641,7 +690,7 @@ func TestRunDirRejectsEmbeddedMethodConflict(t *testing.T) {
 		}},
 	}
 
-	_, err := flattenInterfaceType("Broken", broken, map[string]*ast.InterfaceType{
+	_, err := NewGenerator(Options{PackageName: "pkgmode", Output: "unused"}).flattenInterfaceType("Broken", broken, map[string]*ast.InterfaceType{
 		"ReaderA": readerA,
 		"ReaderB": readerB,
 		"Broken":  broken,
@@ -651,15 +700,12 @@ func TestRunDirRejectsEmbeddedMethodConflict(t *testing.T) {
 	}
 }
 
-func setGenerationOutput(t *testing.T, packageName, output string) {
-	t.Helper()
-	oldPkg, oldOut := *pkgName, *outFile
-	*pkgName = packageName
-	*outFile = output
-	t.Cleanup(func() {
-		*pkgName = oldPkg
-		*outFile = oldOut
-	})
+func runDirectoryModeForTest(packageName, output, dir string) error {
+	return NewGenerator(Options{PackageName: packageName, Output: output}).runDirectoryMode(dir)
+}
+
+func runFileModeForTest(packageName, output string, args []string) error {
+	return NewGenerator(Options{PackageName: packageName, Output: output}).runFileMode(args)
 }
 
 func makeModuleTempDir(t *testing.T) string {

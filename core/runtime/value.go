@@ -8,7 +8,6 @@ import (
 	"sync"
 	"weak"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -369,8 +368,8 @@ func (v *Var) SetRawType(typ string) {
 	}
 	v.TypeInfo = RuntimeType{
 		Kind:   RuntimeTypeAny,
-		Raw:    TypeSpec(ast.TypeAny),
-		TypeID: CanonicalTypeID(string(ast.TypeAny)),
+		Raw:    SpecAny,
+		TypeID: CanonicalTypeID(SpecAny.String()),
 	}
 }
 

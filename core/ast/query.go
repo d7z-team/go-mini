@@ -784,13 +784,13 @@ var miniKeywords = []string{
 }
 
 var miniBuiltins = map[string]string{
-	"len":     "function(Any) Int64",
-	"append":  "function(Array<Any>, Any) Array<Any>",
-	"make":    "function(Type, ...Int64) Any",
-	"new":     "function(Type) Ptr<Any>",
-	"panic":   "function(Any) Void",
-	"print":   "function(...Any) Void",
-	"println": "function(...Any) Void",
+	"len":     string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeInt64, false)),
+	"append":  string(CreateFunctionType([]FunctionParam{{Type: CreateArrayType(TypeAny)}, {Type: TypeAny}}, CreateArrayType(TypeAny), false)),
+	"make":    string(CreateFunctionType([]FunctionParam{{Type: "Type"}, {Type: TypeInt64}}, TypeAny, true)),
+	"new":     string(CreateFunctionType([]FunctionParam{{Type: "Type"}}, TypeAny.ToPtr(), false)),
+	"panic":   string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, false)),
+	"print":   string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, true)),
+	"println": string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, true)),
 }
 
 // FindCompletionsAt 获取指定位置的代码补全建议

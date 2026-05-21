@@ -11,8 +11,10 @@ import (
 	"strings"
 )
 
-func parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
-	fset = token.NewFileSet()
+func (g *Generator) parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
+	if g.fset == nil {
+		g.fset = token.NewFileSet()
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -27,7 +29,7 @@ func parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
 		if absOutFile != "" && absFilePath == absOutFile {
 			continue
 		}
-		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		file, err := parser.ParseFile(g.fset, filePath, nil, parser.ParseComments)
 		if err != nil {
 			return nil, fmt.Errorf("parsing file %s: %w", filePath, err)
 		}
@@ -39,8 +41,8 @@ func parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
 	return files, nil
 }
 
-func parseFileInputs(args []string, outFile string) ([]*ast.File, []*ast.File, error) {
-	fset = token.NewFileSet()
+func (g *Generator) parseFileInputs(args []string, outFile string) ([]*ast.File, []*ast.File, error) {
+	g.fset = token.NewFileSet()
 	seenDirs := make(map[string]bool)
 	parsedFiles := make(map[string]*ast.File)
 	absOutFile, _ := filepath.Abs(outFile)
@@ -54,19 +56,19 @@ func parseFileInputs(args []string, outFile string) ([]*ast.File, []*ast.File, e
 		dir := filepath.Dir(absPath)
 		if !seenDirs[dir] {
 			seenDirs[dir] = true
-			dirFiles, err := parseDirectoryFiles(dir, absOutFile)
+			dirFiles, err := g.parseDirectoryFiles(dir, absOutFile)
 			if err != nil {
 				return nil, nil, err
 			}
 			for _, file := range dirFiles {
-				pos := fset.Position(file.Pos())
+				pos := g.fset.Position(file.Pos())
 				absFile, _ := filepath.Abs(pos.Filename)
 				parsedFiles[absFile] = file
 				allFiles = append(allFiles, file)
 			}
 		}
 		if _, ok := parsedFiles[absPath]; !ok {
-			file, err := parser.ParseFile(fset, absPath, nil, parser.ParseComments)
+			file, err := parser.ParseFile(g.fset, absPath, nil, parser.ParseComments)
 			if err != nil {
 				return nil, nil, fmt.Errorf("parsing explicitly provided file %s: %w", absPath, err)
 			}
@@ -97,20 +99,20 @@ type packageData struct {
 	ownedStructs  map[string]bool
 }
 
-func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData) {
+func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData) {
 	preKnownImports := collectImportAliases(allFiles)
-	conf := types.Config{Importer: newSourceImporter(), IgnoreFuncBodies: true}
+	conf := types.Config{Importer: g.newSourceImporter(), IgnoreFuncBodies: true}
 	info := &types.Info{
 		Types: make(map[ast.Expr]types.TypeAndValue),
 		Defs:  make(map[*ast.Ident]types.Object),
 		Uses:  make(map[*ast.Ident]types.Object),
 	}
-	typeInfo = info
-	checkPath := packagePath
+	g.typeInfo = info
+	checkPath := g.packagePath
 	if checkPath == "" {
-		checkPath = *pkgName
+		checkPath = g.opts.PackageName
 	}
-	if _, err := conf.Check(checkPath, fset, allFiles, info); err != nil {
+	if _, err := conf.Check(checkPath, g.fset, allFiles, info); err != nil {
 		// 类型检查失败不一定意味着无法生成，但我们需要感知这些错误。
 		// 在 FFI 生成场景中，如果缺少某些外部依赖，conf.Check 会报错，
 		// 只要我们关注的 target 结构是完整的，通常可以继续。
@@ -119,8 +121,8 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 		}
 	}
 
-	knownImports = make(map[string]string)
-	moduleCache = make(map[string]string)
+	g.knownImports = make(map[string]string)
+	g.moduleCache = make(map[string]string)
 	structs := make(map[string]*ast.StructType)
 	interfaces := make(map[string]*ast.InterfaceType)
 	globalConsts := make(map[string]string)
@@ -133,7 +135,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 			if imp.Name != nil {
 				alias = imp.Name.Name
 			}
-			knownImports[alias] = path
+			g.knownImports[alias] = path
 		}
 		ast.Inspect(node, func(n ast.Node) bool {
 			gd, ok := n.(*ast.GenDecl)
@@ -164,7 +166,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 		})
 	}
 
-	defaultModule := derivePackageDefaultModule(allFiles)
+	defaultModule := g.derivePackageDefaultModule(allFiles)
 	packageMode := len(allFiles) == len(targetFiles)
 	moduleNames := make(map[string]bool)
 	var targets []ffigenTarget
@@ -180,7 +182,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 				if !ok {
 					continue
 				}
-				meta := parseTargetMeta(resolveTargetDoc(node, gd, typeSpec))
+				meta := parseTargetMeta(g.resolveTargetDoc(node, gd, typeSpec))
 				mat := materializeTargetMeta(meta, defaultModule)
 				if mat.moduleName != "" {
 					moduleNames[mat.moduleName] = true
@@ -205,7 +207,7 @@ func collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, pac
 				if len(methods) == 0 {
 					continue
 				}
-				virtualIface := synthesizeInterface(methods, mat.methodsMarked)
+				virtualIface := g.synthesizeInterface(methods, mat.methodsMarked)
 				virtualSpec := *typeSpec
 				virtualSpec.Type = virtualIface
 				targets = append(targets, ffigenTarget{

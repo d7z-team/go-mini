@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", runtime.StructOwnershipHostOpaque, "struct { }")
+var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", runtime.StructOwnershipHostOpaque, "struct {}")
 
 var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", runtime.StructOwnershipVMValue, "struct { BaseField String; ExtraField Int64; }")
 

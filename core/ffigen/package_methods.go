@@ -22,7 +22,7 @@ func findMethodsForStruct(files []*ast.File, structName string) []*ast.FuncDecl 
 	return res
 }
 
-func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.InterfaceType {
+func (g *Generator) synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.InterfaceType {
 	iface := &ast.InterfaceType{
 		Methods: &ast.FieldList{},
 	}
@@ -33,7 +33,7 @@ func synthesizeInterface(methods []*ast.FuncDecl, addReceiver bool) *ast.Interfa
 		if addReceiver {
 			hasContext := false
 			if len(ft.Params.List) > 0 {
-				pType := typeToString(ft.Params.List[0].Type)
+				pType := g.typeToString(ft.Params.List[0].Type)
 				if pType == "context.Context" || pType == "Context" {
 					hasContext = true
 				}

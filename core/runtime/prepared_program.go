@@ -204,7 +204,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*PreparedProgram, error) {
 		}
 		prepared.Functions[name] = &PreparedFunction{
 			Name:        name,
-			FunctionSig: MustRuntimeFuncSigFromFunction(fn.FunctionType),
+			FunctionSig: MustFuncSigFromFunction(fn.FunctionType),
 			BodyTasks:   exec.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}
 	}

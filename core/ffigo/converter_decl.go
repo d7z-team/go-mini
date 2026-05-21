@@ -1,9 +1,7 @@
 package ffigo
 
 import (
-	"fmt"
 	"go/ast"
-	"strings"
 
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
@@ -93,10 +91,11 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	if d.Recv != nil && len(d.Recv.List) > 0 {
 		recv := d.Recv.List[0]
 		typeName := c.typeToString(recv.Type)
-		baseTypeName := strings.TrimPrefix(typeName, "Ptr<")
-		baseTypeName = strings.TrimPrefix(baseTypeName, "*")
-		baseTypeName = strings.TrimSuffix(baseTypeName, ">")
-		receiverType = baseTypeName
+		recvType := miniast.GoMiniType(typeName)
+		if elem, ok := recvType.GetPtrElementType(); ok {
+			recvType = elem
+		}
+		receiverType = string(recvType)
 		if len(recv.Names) > 0 {
 			params = append(params, miniast.FunctionParam{Name: miniast.Ident(recv.Names[0].Name), Type: miniast.GoMiniType(typeName)})
 		} else {
@@ -133,15 +132,11 @@ func (c *GoToASTConverter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 		}
 	}
 	if d.Type.Results != nil && len(d.Type.Results.List) > 0 {
-		var returns []string
+		var returns []miniast.GoMiniType
 		for _, r := range d.Type.Results.List {
-			returns = append(returns, c.typeToString(r.Type))
+			returns = append(returns, miniast.GoMiniType(c.typeToString(r.Type)))
 		}
-		if len(returns) > 1 {
-			fn.Return = miniast.GoMiniType(fmt.Sprintf("tuple(%s)", strings.Join(returns, ", ")))
-		} else {
-			fn.Return = miniast.GoMiniType(returns[0])
-		}
+		fn.Return = miniast.CreateTupleType(returns...)
 	} else {
 		fn.Return = "Void"
 	}

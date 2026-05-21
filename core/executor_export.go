@@ -67,7 +67,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 	for name, spec := range e.funcSchemas {
 		sName := string(name)
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
-			meta.Builtins[sName] = e.formatSchemaWithDoc(spec.Spec.Ast(), "", spec)
+			meta.Builtins[sName] = e.formatSchemaWithDoc(ast.GoMiniType(spec.Spec), "", spec)
 		}
 	}
 

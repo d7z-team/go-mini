@@ -25,11 +25,11 @@ func TestCheckSatisfactionBuildsInterfaceVTable(t *testing.T) {
 		Ref: &VMMap{Data: map[string]*Var{
 			"Close": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionSig: MustRuntimeFuncSigFromFunction(methodSig)},
+				Ref:   &VMClosure{FunctionSig: MustFuncSigFromFunction(methodSig)},
 			},
 			"Read": {
 				VType: TypeClosure,
-				Ref:   &VMClosure{FunctionSig: MustRuntimeFuncSigFromFunction(readSig)},
+				Ref:   &VMClosure{FunctionSig: MustFuncSigFromFunction(readSig)},
 			},
 		}},
 	}

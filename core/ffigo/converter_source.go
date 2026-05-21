@@ -25,6 +25,7 @@ func (c *GoToASTConverter) ConvertSourceTolerant(filename, code string) (miniast
 }
 
 func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (miniast.Node, []error) {
+	c.reset()
 	mode := parser.ParseComments
 	if tolerant {
 		mode |= parser.AllErrors
@@ -45,7 +46,6 @@ func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (minias
 	}
 
 	// 记录导入
-	c.imports = make(map[string]string)
 	var miniImports []miniast.ImportSpec
 	if f != nil {
 		for _, imp := range f.Imports {
@@ -163,15 +163,21 @@ func (c *GoToASTConverter) convert(filename, code string, tolerant bool) (minias
 		}
 	}
 
+	errs = append(errs, c.errs...)
 	return program, errs
 }
 
 func (c *GoToASTConverter) ConvertExprSource(code string) (miniast.Expr, error) {
+	c.reset()
 	e, err := parser.ParseExpr(code)
 	if err != nil {
 		return nil, err
 	}
-	return c.convertExpr(e), nil
+	expr := c.convertExpr(e)
+	if len(c.errs) > 0 {
+		return nil, c.errs[0]
+	}
+	return expr, nil
 }
 
 func (c *GoToASTConverter) ConvertStmtsSource(code string) ([]miniast.Stmt, error) {

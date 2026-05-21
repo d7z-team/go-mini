@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"strconv"
-	"strings"
 
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
@@ -16,7 +15,7 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 	}
 	switch ex := e.(type) {
 	case *ast.BadExpr:
-		return &miniast.BadExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "bad_expr"), Meta: "bad_expr", Loc: c.extractLoc(ex)}}
+		return c.badExpr(ex, "无法解析的表达式")
 	case *ast.BasicLit:
 		t := string(miniast.TypeString)
 		val := ex.Value
@@ -64,37 +63,41 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 	case *ast.ParenExpr:
 		return c.convertExpr(ex.X)
 	case *ast.CallExpr:
-		funExpr := c.convertExpr(ex.Fun)
-		if ident, ok := funExpr.(*miniast.IdentifierExpr); ok {
-			funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: ident.Name}
-		}
+		var funExpr miniast.Expr
 		if array, ok := ex.Fun.(*ast.ArrayType); ok {
 			if ident, ok := array.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 				funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: miniast.Ident(miniast.TypeBytes)}
 			}
 		}
+		if funExpr == nil {
+			funExpr = c.convertExpr(ex.Fun)
+		}
+		if ident, ok := funExpr.(*miniast.IdentifierExpr); ok {
+			funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: ident.Name}
+		}
 		if ident, ok := funExpr.(*miniast.ConstRefExpr); ok {
 			switch ident.Name {
 			case "make", "new":
-				if len(ex.Args) > 0 {
-					// 严格检测：Go 语言中 new/make 的第一个参数必须是类型标识符，不能是值字面量
-					if _, isLit := ex.Args[0].(*ast.BasicLit); isLit {
-						panic(fmt.Errorf("%s 第一个参数必须是类型，不能是字符串字面量", ident.Name))
-					}
-
-					typeArg := c.typeToString(ex.Args[0])
-					args := []miniast.Expr{&miniast.LiteralExpr{
-						BaseNode: miniast.BaseNode{
-							ID:   c.genID(ex.Args[0], "literal"),
-							Meta: "literal",
-							Type: miniast.TypeString,
-							Loc:  c.extractLoc(ex.Args[0]),
-						},
-						Value: typeArg,
-					}}
-					args = append(args, c.convertArgs(ex.Args[1:])...)
-					return &miniast.CallExprStmt{BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)}, Func: funExpr, Args: args}
+				if len(ex.Args) == 0 {
+					return c.badExpr(ex, string(ident.Name)+" 至少需要一个类型参数")
 				}
+				// 严格检测：Go 语言中 new/make 的第一个参数必须是类型标识符，不能是值字面量
+				if _, isLit := ex.Args[0].(*ast.BasicLit); isLit {
+					return c.badExpr(ex.Args[0], string(ident.Name)+" 第一个参数必须是类型，不能是字面量")
+				}
+
+				typeArg := c.typeToString(ex.Args[0])
+				args := []miniast.Expr{&miniast.LiteralExpr{
+					BaseNode: miniast.BaseNode{
+						ID:   c.genID(ex.Args[0], "literal"),
+						Meta: "literal",
+						Type: miniast.TypeString,
+						Loc:  c.extractLoc(ex.Args[0]),
+					},
+					Value: typeArg,
+				}}
+				args = append(args, c.convertArgs(ex.Args[1:])...)
+				return &miniast.CallExprStmt{BaseNode: miniast.BaseNode{ID: c.genID(ex, "call"), Meta: "call", Loc: c.extractLoc(ex)}, Func: funExpr, Args: args}
 			case "require":
 				if len(ex.Args) == 1 {
 					if lit, ok := ex.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
@@ -166,26 +169,34 @@ func (c *GoToASTConverter) convertExpr(e ast.Expr) miniast.Expr {
 				}
 			}
 		}
-		retType := "Void"
+		retType := miniast.TypeVoid
 		if ex.Type.Results != nil {
-			var results []string
+			var results []miniast.GoMiniType
 			for _, r := range ex.Type.Results.List {
-				results = append(results, c.typeToString(r.Type))
+				results = append(results, miniast.GoMiniType(c.typeToString(r.Type)))
 			}
-			if len(results) > 1 {
-				retType = "tuple(" + strings.Join(results, ", ") + ")"
-			} else if len(results) == 1 {
-				retType = results[0]
+			if len(results) > 0 {
+				retType = miniast.CreateTupleType(results...)
 			}
 		}
-		funcExpr := &miniast.FuncLitExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "func_lit"), Meta: "func_lit", Loc: c.extractLoc(ex)}, FunctionType: miniast.FunctionType{Params: params, Return: miniast.GoMiniType(retType)}}
+		funcExpr := &miniast.FuncLitExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "func_lit"), Meta: "func_lit", Loc: c.extractLoc(ex)}, FunctionType: miniast.FunctionType{Params: params, Return: retType}}
 		if ex.Body != nil {
-			funcExpr.Body = c.convertStmt(ex.Body).(*miniast.BlockStmt)
+			body := c.convertStmt(ex.Body)
+			block, ok := body.(*miniast.BlockStmt)
+			if !ok {
+				funcExpr.Body = &miniast.BlockStmt{
+					BaseNode: miniast.BaseNode{ID: c.genID(ex.Body, "block"), Meta: "block", Loc: c.extractLoc(ex.Body), InvalidCause: "函数 literal 主体无法转换为 block"},
+					Inner:    true,
+					Children: []miniast.Stmt{c.badStmt(ex.Body, "函数 literal 主体无法转换为 block")},
+				}
+				return funcExpr
+			}
+			funcExpr.Body = block
 			funcExpr.Body.Inner = true
 		}
 		return funcExpr
 	}
-	return nil
+	return c.badExpr(e, fmt.Sprintf("不支持的表达式: %T", e))
 }
 
 func (c *GoToASTConverter) convertOp(op token.Token) string {

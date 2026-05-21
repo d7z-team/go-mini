@@ -912,7 +912,7 @@ func (e *Executor) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]Task, 
 		captures := make([]string, len(n.CaptureNames))
 		copy(captures, n.CaptureNames)
 		return []Task{{Op: OpMakeClosure, Data: &ClosureData{
-			FunctionSig:  MustRuntimeFuncSigFromFunction(n.FunctionType),
+			FunctionSig:  MustFuncSigFromFunction(n.FunctionType),
 			BodyTasks:    e.tasksForStmtInScope(n.Body, nil, fnScope),
 			CaptureNames: captures,
 			CaptureRefs:  append([]SymbolRef(nil), fnScope.fn.order...),

@@ -1,6 +1,10 @@
 package ffigo
 
-import "strings"
+import (
+	"strings"
+
+	"gopkg.d7z.net/go-mini/core/typespec"
+)
 
 const (
 	// PackageImportPath is the canonical Go import path for the FFI helper package.
@@ -30,35 +34,16 @@ func SplitGenericType(typeName string) (string, []string, bool) {
 	if inner == "" {
 		return base, nil, true
 	}
-	var parts []string
-	depth := 0
-	last := 0
-	for i, r := range inner {
-		switch r {
-		case '<':
-			depth++
-		case '>':
-			depth--
-		case ',':
-			if depth == 0 {
-				parts = append(parts, strings.TrimSpace(inner[last:i]))
-				last = i + 1
-			}
-		}
-	}
-	parts = append(parts, strings.TrimSpace(inner[last:]))
-	return base, parts, true
+	return base, typespec.SplitCommaAware(inner), true
 }
 
 // RefElementType returns the element type for HostRef<T> and Ptr<T>.
 func RefElementType(typeName string) (string, bool) {
-	typeName = strings.TrimSpace(typeName)
-	for _, prefix := range []string{"HostRef<", "Ptr<"} {
-		if strings.HasPrefix(typeName, prefix) && strings.HasSuffix(typeName, ">") {
-			return strings.TrimSpace(typeName[len(prefix) : len(typeName)-1]), true
-		}
+	elem, ok := typespec.Type(strings.TrimSpace(typeName)).RefElement()
+	if !ok {
+		return "", false
 	}
-	return "", false
+	return elem.String(), true
 }
 
 // IsRefTypeString reports whether typeName is a VM reference wrapper string.
@@ -129,20 +114,18 @@ func Tuple2ElemTypeStrings(typeName string) ([]string, bool) {
 
 // ReadArrayItemType returns the element type for Array<T>.
 func ReadArrayItemType(typeName string) (string, bool) {
-	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
-		return typeName[6 : len(typeName)-1], true
+	elem, ok := typespec.Type(strings.TrimSpace(typeName)).ReadArrayItemType()
+	if !ok {
+		return "", false
 	}
-	return "", false
+	return elem.String(), true
 }
 
 // ReadMapKeyValueTypes returns the key and value type strings for Map<K, V>.
 func ReadMapKeyValueTypes(typeName string) (string, string, bool) {
-	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
-		inner := typeName[4 : len(typeName)-1]
-		parts := strings.SplitN(inner, ",", 2)
-		if len(parts) == 2 {
-			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), true
-		}
+	key, value, ok := typespec.Type(strings.TrimSpace(typeName)).MapTypes()
+	if !ok {
+		return "", "", false
 	}
-	return "", "", false
+	return key.String(), value.String(), true
 }

@@ -794,9 +794,25 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 			return declared
 		}
 		return MustParseRuntimeType("Any")
+	case TypeClosure:
+		if cl, ok := v.Ref.(*VMClosure); ok && cl != nil && cl.FunctionSig != nil {
+			return runtimeTypeFromFunction(cl.FunctionSig.FunctionType())
+		}
+		if route, ok := v.Ref.(FFIRoute); ok && route.FuncSig != nil {
+			return runtimeTypeFromFunction(route.FuncSig.FunctionType())
+		}
+		return declared
 	default:
 		return declared
 	}
+}
+
+func runtimeTypeFromFunction(fn ast.FunctionType) RuntimeType {
+	typ, err := ParseRuntimeType(fn.MiniType())
+	if err != nil {
+		return RuntimeType{Raw: TypeSpec(fn.MiniType())}
+	}
+	return typ
 }
 
 func nilValueForType(target RuntimeType) (*Var, error) {
@@ -815,6 +831,8 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 		return &Var{TypeInfo: target, VType: TypeMap, Ref: &VMMap{Data: nil}}, nil
 	case target.Kind == RuntimeTypeTuple:
 		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: make([]*Var, len(target.Params))}}, nil
+	case target.Kind == RuntimeTypeFunction:
+		return NewVarWithRuntimeType(target, TypeClosure), nil
 	case target.Raw == "TypeBytes":
 		return &Var{TypeInfo: target, VType: TypeBytes}, nil
 	case target.Raw == "Error":

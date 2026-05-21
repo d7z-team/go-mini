@@ -45,24 +45,24 @@ func NewMiniExecutor() *MiniExecutor {
 	}
 
 	// 默认注册 panic 签名以便通过验证
-	res.mustAddFuncSchemaLocked("panic", runtime.MustParseRuntimeFuncSig("function(String) Void"))
-	res.mustAddFuncSchemaLocked("recover", runtime.MustParseRuntimeFuncSig("function() Any"))
-	res.mustAddFuncSchemaLocked("String", runtime.MustParseRuntimeFuncSig("function(Any) String"))
-	res.mustAddFuncSchemaLocked("TypeBytes", runtime.MustParseRuntimeFuncSig("function(Any) TypeBytes"))
-	res.mustAddFuncSchemaLocked("len", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
-	res.mustAddFuncSchemaLocked("cap", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
-	res.mustAddFuncSchemaLocked("make", runtime.MustParseRuntimeFuncSig("function(String, ...Int64) Any"))
-	res.mustAddFuncSchemaLocked("new", runtime.MustParseRuntimeFuncSig("function(String) Any"))
-	res.mustAddFuncSchemaLocked("append", runtime.MustParseRuntimeFuncSig("function(Any, ...Any) Any"))
-	res.mustAddFuncSchemaLocked("delete", runtime.MustParseRuntimeFuncSig("function(Any, Any) Void"))
-	res.mustAddFuncSchemaLocked("Int64", runtime.MustParseRuntimeFuncSig("function(Any) Int64"))
-	res.mustAddFuncSchemaLocked("Float64", runtime.MustParseRuntimeFuncSig("function(Any) Float64"))
-	res.mustAddFuncSchemaLocked("require", runtime.MustParseRuntimeFuncSig("function(String) TypeModule"))
+	res.mustAddFuncSchemaLocked("panic", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString))
+	res.mustAddFuncSchemaLocked("recover", runtime.MustRuntimeFuncSig(runtime.SpecAny, false))
+	res.mustAddFuncSchemaLocked("String", runtime.MustRuntimeFuncSig(runtime.SpecString, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("TypeBytes", runtime.MustRuntimeFuncSig(runtime.SpecBytes, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("len", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("cap", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("make", runtime.MustRuntimeFuncSig(runtime.SpecAny, true, runtime.SpecString, runtime.SpecInt64))
+	res.mustAddFuncSchemaLocked("new", runtime.MustRuntimeFuncSig(runtime.SpecAny, false, runtime.SpecString))
+	res.mustAddFuncSchemaLocked("append", runtime.MustRuntimeFuncSig(runtime.SpecAny, true, runtime.SpecAny, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("delete", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("Int64", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("Float64", runtime.MustRuntimeFuncSig(runtime.SpecFloat64, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("require", runtime.MustRuntimeFuncSig(runtime.SpecModule, false, runtime.SpecString))
 
 	// Inject default libraries that do not let scripts discover the host
 	// filesystem/environment on their own.
 	errorslib.RegisterErrors(res, &errorslib.ErrorsHost{}, res.registry)
-	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustParseRuntimeFuncSig("function(Error, Any) Bool"), "Check if an error matches a target handle")
+	res.RegisterFFISchema("errors.Is", nil, 999999999, runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecError, runtime.SpecAny), "Check if an error matches a target handle")
 	jsonlib.RegisterJSON(res, &jsonlib.JSONHost{}, res.registry)
 	timelib.RegisterTimeAll(res, &timelib.TimeHost{}, res.registry)
 	stringslib.RegisterStrings(res, &stringslib.StringsHost{}, res.registry)

@@ -166,7 +166,7 @@ func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.Runtime
 func (e *MiniExecutor) formatRouteSchema(route runtime.FFIRoute) string {
 	spec := ast.GoMiniType("")
 	if route.FuncSig != nil {
-		spec = route.FuncSig.Spec.Ast()
+		spec = ast.GoMiniType(route.FuncSig.Spec)
 	}
 	return e.formatSchemaWithDoc(spec, route.Doc, route.FuncSig)
 }

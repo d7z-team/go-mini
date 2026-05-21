@@ -1,20 +1,21 @@
 package ffigen
 
 import (
-	"fmt"
 	"go/ast"
 	"strings"
 
+	miniast "gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string, ownedStructs map[string]bool, currentOwned string) *displayTypeResolver {
+func (g *Generator) newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string, ownedStructs map[string]bool, currentOwned string) *displayTypeResolver {
 	resolver := &displayTypeResolver{
+		gen:               g,
 		moduleName:        moduleName,
-		importAliases:     make(map[string]string, len(knownImports)),
+		importAliases:     make(map[string]string, len(g.knownImports)),
 		collidingBaseName: make(map[string]bool),
 	}
-	for alias, path := range knownImports {
+	for alias, path := range g.knownImports {
 		resolver.importAliases[alias] = path
 	}
 	nameOwners := make(map[string]string)
@@ -44,19 +45,19 @@ func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs
 			funcType := method.Type.(*ast.FuncType)
 			if funcType.Params != nil {
 				for _, param := range funcType.Params.List {
-					record(typeToString(param.Type))
+					record(g.typeToString(param.Type))
 				}
 			}
 			if funcType.Results != nil {
 				for _, result := range funcType.Results.List {
-					record(typeToString(result.Type))
+					record(g.typeToString(result.Type))
 				}
 			}
 		}
 	}
-	for _, structName := range collectReferencedStructs(iface, structs, ownedStructs, currentOwned) {
+	for _, structName := range g.collectReferencedStructSet(iface, structs, ownedStructs, currentOwned).ordered {
 		fieldMap := make(map[string]string)
-		getFields(structs, structName, fieldMap)
+		g.getFields(structs, structName, fieldMap)
 		for _, fieldType := range fieldMap {
 			record(fieldType)
 		}
@@ -65,41 +66,14 @@ func newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs
 }
 
 func collectNamedTypeRefs(typeName string) []string {
-	typeName = strings.TrimSpace(typeName)
-	if typeName == "" {
-		return nil
-	}
-	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-		return collectNamedTypeRefs(typeName[4 : len(typeName)-1])
-	}
-	if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
-		return collectNamedTypeRefs(typeName[8 : len(typeName)-1])
-	}
-	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
-		return collectNamedTypeRefs(typeName[6 : len(typeName)-1])
-	}
-	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
-		inner := typeName[4 : len(typeName)-1]
-		parts := strings.SplitN(inner, ",", 2)
-		if len(parts) != 2 {
-			return nil
+	var refs []string
+	walkNestedTypeNames(typeName, false, func(name string, _ bool) {
+		if isPrimitive(name) || name == "error" || name == "any" || name == "interface{}" || name == "context.Context" || name == "Context" {
+			return
 		}
-		return append(
-			collectNamedTypeRefs(strings.TrimSpace(parts[0])),
-			collectNamedTypeRefs(strings.TrimSpace(parts[1]))...,
-		)
-	}
-	if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
-		var refs []string
-		for _, part := range strings.Split(typeName[6:len(typeName)-1], ",") {
-			refs = append(refs, collectNamedTypeRefs(strings.TrimSpace(part))...)
-		}
-		return refs
-	}
-	if isPrimitive(typeName) || typeName == "error" || typeName == "any" || typeName == "interface{}" || typeName == "context.Context" || typeName == "Context" {
-		return nil
-	}
-	return []string{typeName}
+		refs = append(refs, name)
+	})
+	return refs
 }
 
 func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
@@ -107,34 +81,37 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 	if typeName == "" {
 		return "Any"
 	}
-	if inner, ok := asyncElemTypeString(typeName); ok {
+	if inner, ok := ffigo.AsyncElemTypeString(typeName); ok {
 		return r.NormalizeTypeString(inner)
 	}
-	if items, ok := tuple2ElemTypeStrings(typeName); ok {
-		return "tuple(" + r.NormalizeTypeString(items[0]) + ", " + r.NormalizeTypeString(items[1]) + ")"
+	if items, ok := ffigo.Tuple2ElemTypeStrings(typeName); ok {
+		return string(miniast.CreateTupleType(
+			miniast.GoMiniType(r.NormalizeTypeString(items[0])),
+			miniast.GoMiniType(r.NormalizeTypeString(items[1])),
+		))
 	}
-	if strings.HasPrefix(typeName, "Ptr<") && strings.HasSuffix(typeName, ">") {
-		return "Ptr<" + r.NormalizeTypeString(typeName[4:len(typeName)-1]) + ">"
+	miniType := miniast.GoMiniType(typeName)
+	if elem, ok := miniType.GetPtrElementType(); ok {
+		return string(miniast.GoMiniType(r.NormalizeTypeString(string(elem))).ToPtr())
 	}
-	if strings.HasPrefix(typeName, "HostRef<") && strings.HasSuffix(typeName, ">") {
-		return "HostRef<" + r.NormalizeTypeString(typeName[8:len(typeName)-1]) + ">"
+	if elem, ok := miniType.GetHostRefElementType(); ok {
+		return string(miniast.GoMiniType(r.NormalizeTypeString(string(elem))).ToHostRef())
 	}
-	if strings.HasPrefix(typeName, "Array<") && strings.HasSuffix(typeName, ">") {
-		return "Array<" + r.NormalizeTypeString(typeName[6:len(typeName)-1]) + ">"
+	if elem, ok := miniType.ReadArrayItemType(); ok {
+		return string(miniast.CreateArrayType(miniast.GoMiniType(r.NormalizeTypeString(string(elem)))))
 	}
-	if strings.HasPrefix(typeName, "Map<") && strings.HasSuffix(typeName, ">") {
-		inner := typeName[4 : len(typeName)-1]
-		parts := strings.SplitN(inner, ",", 2)
-		if len(parts) == 2 {
-			return fmt.Sprintf("Map<%s, %s>", r.NormalizeTypeString(strings.TrimSpace(parts[0])), r.NormalizeTypeString(strings.TrimSpace(parts[1])))
+	if key, value, ok := miniType.GetMapKeyValueTypes(); ok {
+		return string(miniast.CreateMapType(
+			miniast.GoMiniType(r.NormalizeTypeString(string(key))),
+			miniast.GoMiniType(r.NormalizeTypeString(string(value))),
+		))
+	}
+	if tupleItems, ok := miniType.ReadTuple(); ok {
+		items := make([]miniast.GoMiniType, 0, len(tupleItems))
+		for _, item := range tupleItems {
+			items = append(items, miniast.GoMiniType(r.NormalizeTypeString(string(item))))
 		}
-	}
-	if strings.HasPrefix(typeName, "tuple(") && strings.HasSuffix(typeName, ")") {
-		var normalized []string
-		for _, part := range strings.Split(typeName[6:len(typeName)-1], ",") {
-			normalized = append(normalized, r.NormalizeTypeString(strings.TrimSpace(part)))
-		}
-		return "tuple(" + strings.Join(normalized, ", ") + ")"
+		return string(miniast.CreateTupleType(items...))
 	}
 	switch typeName {
 	case "string":
@@ -162,19 +139,22 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 }
 
 func (r *displayTypeResolver) VMType(expr ast.Expr) string {
-	if isBytesRefExpr(expr) {
+	if r.gen.isBytesRefExpr(expr) {
 		return "TypeBytes"
 	}
-	if inner, ok := asyncElemExpr(expr); ok {
+	if inner, ok := r.gen.asyncElemExpr(expr); ok {
 		return r.VMType(inner)
 	}
-	if items, ok := tuple2ElemExprs(expr); ok {
-		return "tuple(" + r.VMType(items[0]) + ", " + r.VMType(items[1]) + ")"
+	if items, ok := r.gen.tuple2ElemExprs(expr); ok {
+		return string(miniast.CreateTupleType(
+			miniast.GoMiniType(r.VMType(items[0])),
+			miniast.GoMiniType(r.VMType(items[1])),
+		))
 	}
-	if elemExpr, ok := arrayRefElemExpr(expr); ok {
-		return fmt.Sprintf("Array<%s>", r.VMType(elemExpr))
+	if elemExpr, ok := r.gen.arrayRefElemExpr(expr); ok {
+		return string(miniast.CreateArrayType(miniast.GoMiniType(r.VMType(elemExpr))))
 	}
-	if bt := resolveToBasicType(expr); bt != "" {
+	if bt := r.gen.resolveToBasicType(expr); bt != "" {
 		switch {
 		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
 			return "Int64"
@@ -191,20 +171,20 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
 			return "TypeBytes"
 		}
-		return fmt.Sprintf("Array<%s>", r.VMType(t.Elt))
+		return string(miniast.CreateArrayType(miniast.GoMiniType(r.VMType(t.Elt))))
 	case *ast.MapType:
-		return fmt.Sprintf("Map<%s, %s>", r.VMType(t.Key), r.VMType(t.Value))
+		return string(miniast.CreateMapType(miniast.GoMiniType(r.VMType(t.Key)), miniast.GoMiniType(r.VMType(t.Value))))
 	case *ast.StarExpr:
-		return fmt.Sprintf("HostRef<%s>", r.VMType(t.X))
+		return string(miniast.GoMiniType(r.VMType(t.X)).ToHostRef())
 	case *ast.Ellipsis:
-		return fmt.Sprintf("Array<%s>", r.VMType(t.Elt))
+		return string(miniast.CreateArrayType(miniast.GoMiniType(r.VMType(t.Elt))))
 	case *ast.InterfaceType:
 		if t.Methods == nil || len(t.Methods.List) == 0 {
 			return "Any"
 		}
 		return "Any"
 	default:
-		return r.NormalizeTypeString(typeToString(expr))
+		return r.NormalizeTypeString(r.gen.typeToString(expr))
 	}
 }
 
@@ -216,17 +196,17 @@ func (r *displayTypeResolver) displayName(typeName string) string {
 	if strings.Contains(typeName, ".") {
 		owner, name, ok := splitQualifiedTypeName(typeName)
 		if ok {
-			if knownPath, known := knownImports[owner]; known {
-				moduleName := resolveImportedModule(knownPath)
+			if knownPath, known := r.gen.knownImports[owner]; known {
+				moduleName := r.gen.resolveImportedModule(knownPath)
 				if moduleName == "" {
 					return owner + "." + name
 				}
 				return moduleName + "." + name
 			}
 			if strings.Contains(owner, "/") {
-				moduleName := resolveImportedModule(owner)
+				moduleName := r.gen.resolveImportedModule(owner)
 				if moduleName == "" {
-					for alias, path := range knownImports {
+					for alias, path := range r.gen.knownImports {
 						if path == owner {
 							return alias + "." + name
 						}
@@ -258,13 +238,16 @@ func interfaceSchemaVarName(typeName string) string {
 }
 
 func buildInterfaceSchemaLiteral(iface *ast.InterfaceType, funcSpec func(*ast.FuncType) string) string {
-	var parts []string
+	methods := make(map[string]*miniast.FunctionType)
 	for _, method := range iface.Methods.List {
 		if len(method.Names) == 0 {
 			continue
 		}
-		suffix := strings.TrimPrefix(funcSpec(method.Type.(*ast.FuncType)), "function")
-		parts = append(parts, method.Names[0].Name+suffix+";")
+		fn, ok := miniast.GoMiniType(funcSpec(method.Type.(*ast.FuncType))).ReadFunc()
+		if !ok {
+			continue
+		}
+		methods[method.Names[0].Name] = fn
 	}
-	return "interface{" + strings.Join(parts, "") + "}"
+	return string(miniast.CreateInterfaceType(methods))
 }

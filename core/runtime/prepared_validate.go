@@ -402,7 +402,7 @@ func validateRuntimeType(plan string, typ RuntimeType) error {
 	if typ.Raw.IsEmpty() {
 		return fmt.Errorf("%s missing raw runtime type", plan)
 	}
-	if _, err := ParseRuntimeType(typ.Raw.Ast()); err != nil {
+	if _, err := ParseRuntimeType(typ.Raw); err != nil {
 		return fmt.Errorf("%s: %w", plan, err)
 	}
 	return nil
@@ -415,7 +415,7 @@ func validateRuntimeFuncSig(plan string, sig *RuntimeFuncSig) error {
 	if sig.Spec.IsEmpty() {
 		return fmt.Errorf("%s missing function spec", plan)
 	}
-	if _, err := ParseRuntimeFuncSig(sig.Spec.Ast()); err != nil {
+	if _, err := ParseRuntimeFuncSig(sig.Spec); err != nil {
 		return fmt.Errorf("%s: %w", plan, err)
 	}
 	for i, param := range sig.ParamTypes {
@@ -437,7 +437,7 @@ func validateRuntimeStructSpec(plan string, spec *RuntimeStructSpec) error {
 		if field.Type.IsEmpty() {
 			return fmt.Errorf("%s field %d missing type", plan, i)
 		}
-		if _, err := ParseRuntimeType(field.Type.Ast()); err != nil {
+		if _, err := ParseRuntimeType(field.Type); err != nil {
 			return fmt.Errorf("%s field %d: %w", plan, i, err)
 		}
 		if err := validateRuntimeType(fmt.Sprintf("%s field %d info", plan, i), field.TypeInfo); err != nil {

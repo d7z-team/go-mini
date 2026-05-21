@@ -6,7 +6,6 @@ import (
 	"strings"
 	"weak"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -51,27 +50,23 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			h = NewVMHandle(v, bridge)
 		}
 		res = &Var{VType: TypeHostRef, Handle: v, Bridge: bridge, Ref: h}
-		res.SetRawType("HostRef<Any>")
+		res.SetRawType(HostRefType(SpecAny).String())
 	case ffigo.InterfaceData:
-		var ifaceStr strings.Builder
-		ifaceStr.WriteString("interface{")
+		methods := make([]RuntimeInterfaceMethod, 0, len(v.Methods))
 		for k, sig := range v.Methods {
 			if strings.ContainsAny(k, "{};() ") {
 				continue
 			}
-			ifaceStr.WriteString(k)
-			if strings.HasPrefix(sig, "function(") {
-				ifaceStr.WriteString(strings.TrimPrefix(sig, "function"))
-			} else {
-				ifaceStr.WriteString(sig)
+			methodSig, err := ParseRuntimeFuncSig(sig)
+			if err != nil {
+				continue
 			}
-			ifaceStr.WriteString(";")
+			methods = append(methods, RuntimeInterfaceMethod{Name: k, Spec: methodSig})
 		}
-		ifaceStr.WriteString("}")
-		ifaceSpec, _ := ParseRuntimeInterfaceSpec(ast.GoMiniType(ifaceStr.String()))
+		ifaceSpec, _ := ParseRuntimeInterfaceSpec(InterfaceType(methods))
 
 		target := &Var{VType: TypeHostRef, Handle: v.Handle, Bridge: bridge}
-		target.SetRawType("HostRef<Any>")
+		target.SetRawType(HostRefType(SpecAny).String())
 		if v.Handle != 0 {
 			h := NewVMHandle(v.Handle, bridge)
 			target.Ref = h
@@ -134,7 +129,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 	case *ffigo.VMPointer:
 		inner := e.ToVar(session, v.Value, bridge)
 		res = &Var{VType: TypeHandle, Ref: NewSlot(MustParseRuntimeType("Any"), inner)}
-		res.SetRawType("Ptr<Any>")
+		res.SetRawType(PtrType(SpecAny).String())
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
 	}
@@ -158,7 +153,7 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 		Bridge: inner.Bridge,
 		Handle: inner.Handle,
 	}
-	res.SetRawType(string(ast.TypeAny))
+	res.SetRawType(SpecAny.String())
 	if session != nil && session.Stack != nil {
 		res.stack = weak.Make(session.Stack)
 	}

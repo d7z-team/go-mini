@@ -63,9 +63,18 @@ func (b *BadExpr) exprNode() {}
 
 func (b *BadExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
-	ctx.AddErrorf("语法错误：无法解析的表达式")
+	message := strings.TrimSpace(b.InvalidCause)
+	if message == "" {
+		message = strings.TrimSpace(b.RawText)
+	}
+	cause := message
+	if message == "" {
+		message = "无法解析的表达式"
+		cause = "前置bad_expr存在错误，无法精确推导"
+	}
+	ctx.AddErrorf("语法错误：%s", message)
 	b.Type = "Any"
-	b.InvalidCause = "前置bad_expr存在错误，无法精确推导"
+	b.InvalidCause = cause
 	return nil // 软处理：不中断校验流程
 }
 
@@ -83,8 +92,17 @@ func (b *BadStmt) stmtNode() {}
 
 func (b *BadStmt) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
-	ctx.AddErrorf("语法错误：无法解析的语句块")
-	b.InvalidCause = "前置bad_stmt存在错误，无法精确推导"
+	message := strings.TrimSpace(b.InvalidCause)
+	if message == "" {
+		message = strings.TrimSpace(b.RawText)
+	}
+	cause := message
+	if message == "" {
+		message = "无法解析的语句块"
+		cause = "前置bad_stmt存在错误，无法精确推导"
+	}
+	ctx.AddErrorf("语法错误：%s", message)
+	b.InvalidCause = cause
 	return nil // 软处理：不中断校验流程
 }
 

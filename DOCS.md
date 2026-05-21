@@ -6,6 +6,7 @@
 - 运行时执行 lowered task plan / prepared program
 - FFI 通过 `ffigen` 生成 schema-only 桥接代码
 - 执行入口统一落在 `Artifact` / bytecode，AST 只保留在编译、分析和调试边界
+- canonical type 文本由 `core/typespec` 统一实现；AST 前端通过 `core/ast/ast_types.go` 使用，runtime/VM 通过 `core/runtime/schema.go` 使用
 
 ## 1. 基础执行
 
@@ -50,6 +51,21 @@ _ = loaded
 ```
 
 ## 2. 编程接口
+
+### 2.0 Canonical Type
+
+Mini AST、lowering、compiler、bytecode 和 runtime 只接受 canonical type。常见格式包括：
+
+- `Array<T>`
+- `Map<K, V>`
+- `Ptr<T>`
+- `HostRef<T>`
+- `tuple(A, B)`
+- `function(A, B) R`
+- `interface{Read(TypeBytes) tuple(Int64, Error);}`
+- `struct { Name String; }`
+
+Go 风格输入如 `[]int`、`*T`、`map[string]int`、`interface{}` 只允许出现在 Go 前端，必须在 `ffigo` 转换阶段立即规范化。手写 AST、JSON AST、bytecode 和 FFI schema 不做兼容修复。
 
 ### 2.1 编译为 Artifact
 

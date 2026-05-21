@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct { }")
+var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct {}")
 
 var os_FileInfo_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.FileInfo", runtime.StructOwnershipVMValue, "struct { Name String; Size Int64; }")
 
@@ -18,9 +18,9 @@ var os_Nested_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.Nested",
 
 var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeStruct", runtime.StructOwnershipVMValue, "struct { Msg String; Value Int64; }")
 
-var native_NativeHandle_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeHandle", runtime.StructOwnershipHostOpaque, "struct { }")
+var native_NativeHandle_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeHandle", runtime.StructOwnershipHostOpaque, "struct {}")
 
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", runtime.StructOwnershipHostOpaque, "struct { }")
+var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", runtime.StructOwnershipHostOpaque, "struct {}")
 
 var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", runtime.StructOwnershipHostOpaque, "struct { GetByPlaceholder function(HostRef<Page>, String, ...Bool) HostRef<Selector>; }")
 

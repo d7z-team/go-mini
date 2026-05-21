@@ -50,7 +50,7 @@ func (e *Executor) Disassemble() (res string) {
 
 	for _, k := range keys {
 		f := e.functions[k]
-		sig := "function()"
+		sig := FuncType(nil, SpecVoid, false).String()
 		if f != nil && f.FunctionSig != nil {
 			sig = string(f.FunctionSig.Spec)
 		}
