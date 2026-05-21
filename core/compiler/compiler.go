@@ -6,6 +6,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -17,6 +18,7 @@ type Config struct {
 	InterfaceSchemas map[ast.Ident]*runtime.RuntimeInterfaceSpec
 	Constants        map[string]string
 	MaxTypeDepth     int
+	Templates        *calltemplate.Registry
 }
 
 type Compiler struct {
@@ -122,33 +124,78 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		Program:  program,
 	}
 	importedPrograms := map[string]*ast.ProgramStmt{}
-
-	validator, err := ast.NewValidatorWithExternalTypes(program, c.resolvedTypeSpecs(), c.cfg.Constants, tolerant)
+	templatePlan, err := c.buildTemplatePlan(importedPrograms)
 	if err != nil {
 		return artifact, nil, err
 	}
-	if c.cfg.MaxTypeDepth > 0 {
-		validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
-		ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
-	}
-	if c.cfg.ModuleLoader != nil {
-		validator.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-			prog, err := c.cfg.ModuleLoader(path)
-			if err == nil && prog != nil {
-				importedPrograms[path] = prog
-			}
-			return prog, err
-		})
+
+	if err := calltemplate.ValidateReservedDeclarations(program, c.cfg.Templates); err != nil {
+		return artifact, nil, err
 	}
 
+	newValidator := func(target *ast.ProgramStmt, includeTemplates bool) (*ast.ValidContext, error) {
+		specs, err := c.resolvedTypeSpecs(includeTemplates, templatePlan)
+		if err != nil {
+			return nil, err
+		}
+		validator, err := ast.NewValidatorWithExternalTypes(target, specs, c.cfg.Constants, tolerant)
+		if err != nil {
+			return nil, err
+		}
+		if c.cfg.MaxTypeDepth > 0 {
+			validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
+			ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
+		}
+		if c.cfg.ModuleLoader != nil {
+			validator.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
+				if prog, ok := importedPrograms[path]; ok {
+					return prog, nil
+				}
+				prog, err := c.cfg.ModuleLoader(path)
+				if err == nil && prog != nil {
+					importedPrograms[path] = prog
+				}
+				return prog, err
+			})
+		}
+		if includeTemplates && c.cfg.Templates != nil {
+			validator.SetTemplateBuiltins(c.cfg.Templates.CompletionSchemas())
+		}
+		return validator, nil
+	}
+
+	validator, err := newValidator(program, true)
+	if err != nil {
+		return artifact, nil, err
+	}
 	semanticCtx := ast.NewSemanticContext(validator)
 	if err := program.Check(semanticCtx); err != nil {
 		_ = fillArtifactGlobalInitOrder(artifact, program, false)
 		return artifact, semanticCtx, err
 	}
 
-	optimizeCtx := ast.NewOptimizeContext(validator)
-	if prog, ok := program.Optimize(optimizeCtx).(*ast.ProgramStmt); ok {
+	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates)
+	if err != nil {
+		return artifact, semanticCtx, err
+	}
+
+	activeValidator := validator
+	if expanded.Changed {
+		activeValidator, err = newValidator(artifact.Program, false)
+		if err != nil {
+			return artifact, semanticCtx, err
+		}
+		semanticCtx = ast.NewSemanticContext(activeValidator)
+		if err := artifact.Program.Check(semanticCtx); err != nil {
+			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
+			return artifact, semanticCtx, err
+		}
+		if err := expanded.CheckTypes(); err != nil {
+			return artifact, semanticCtx, err
+		}
+	}
+
+	if prog, ok := artifact.Program.Optimize(ast.NewOptimizeContext(activeValidator)).(*ast.ProgramStmt); ok {
 		artifact.Program = prog
 	}
 
@@ -160,16 +207,20 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		return artifact, semanticCtx, err
 	}
 	artifact.Bytecode = bytecodeProgram
-	if len(importedPrograms) > 0 {
-		artifact.ImportedPrograms = importedPrograms
+	if kept := pruneImportedPrograms(importedPrograms, artifact.Program); len(kept) > 0 {
+		artifact.ImportedPrograms = kept
 	}
 	return artifact, semanticCtx, nil
 }
 
-func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
-	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas) + len(c.cfg.InterfaceSchemas)
+func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.Plan) (map[ast.Ident]ast.ExternalTypeSpec, error) {
+	templateFuncs := map[ast.Ident]*runtime.RuntimeFuncSig(nil)
+	if includeTemplates && plan != nil {
+		templateFuncs = plan.FuncSchemas()
+	}
+	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas) + len(c.cfg.InterfaceSchemas) + len(templateFuncs)
 	if size == 0 {
-		return nil
+		return nil, nil
 	}
 
 	res := make(map[ast.Ident]ast.ExternalTypeSpec, size)
@@ -179,6 +230,19 @@ func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
 		}
 		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
 	}
+	for k, v := range templateFuncs {
+		if v == nil {
+			continue
+		}
+		spec := ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
+		if existing, ok := res[k]; ok {
+			if existing.Type != spec.Type {
+				return nil, errors.New("call template schema conflicts with external symbol " + string(k))
+			}
+			continue
+		}
+		res[k] = spec
+	}
 	for k, v := range c.cfg.StructSchemas {
 		if v == nil {
 			continue
@@ -187,15 +251,21 @@ func (c *Compiler) resolvedTypeSpecs() map[ast.Ident]ast.ExternalTypeSpec {
 		if v.Ownership == runtime.StructOwnershipHostOpaque {
 			ownership = ast.StructOwnershipHostOpaque
 		}
+		if _, ok := res[k]; ok {
+			return nil, errors.New("external struct schema conflicts with existing symbol " + string(k))
+		}
 		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ownership}
 	}
 	for k, v := range c.cfg.InterfaceSchemas {
 		if v == nil {
 			continue
 		}
+		if _, ok := res[k]; ok {
+			return nil, errors.New("external interface schema conflicts with existing symbol " + string(k))
+		}
 		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
 	}
-	return res
+	return res, nil
 }
 
 func (c *Compiler) CompileExprSource(code string) (ast.Expr, error) {

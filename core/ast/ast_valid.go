@@ -18,25 +18,26 @@ const (
 )
 
 type ValidRoot struct {
-	logs          []Logs
-	types         map[Ident]GoMiniType
-	structs       map[Ident]*ValidStruct
-	interfaces    map[Ident]*InterfaceStmt
-	program       *ProgramStmt
-	Global        *ValidStruct
-	id            uint64
-	Path          string // 模块的导入路径
-	Package       string
-	Imports       map[string]string
-	vars          map[Ident]GoMiniType
-	ModuleLoader  func(path string) (*ProgramStmt, error)
-	Imported      map[string]bool
-	ImportedRoots map[string]*ValidRoot
-	Discovered    map[Ident]string
-	KnownImports  map[string]struct{}
-	importStack   []string
-	MaxTypeDepth  int  // 递归类型检查深度限制
-	Tolerant      bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
+	logs             []Logs
+	types            map[Ident]GoMiniType
+	structs          map[Ident]*ValidStruct
+	interfaces       map[Ident]*InterfaceStmt
+	program          *ProgramStmt
+	Global           *ValidStruct
+	id               uint64
+	Path             string // 模块的导入路径
+	Package          string
+	Imports          map[string]string
+	vars             map[Ident]GoMiniType
+	ModuleLoader     func(path string) (*ProgramStmt, error)
+	Imported         map[string]bool
+	ImportedRoots    map[string]*ValidRoot
+	Discovered       map[Ident]string
+	KnownImports     map[string]struct{}
+	TemplateBuiltins map[string]GoMiniType
+	importStack      []string
+	MaxTypeDepth     int  // 递归类型检查深度限制
+	Tolerant         bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
 }
 
 type ValidContext struct {
@@ -99,17 +100,18 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 				Methods:   make(map[Ident]CallFunctionType),
 				Ownership: StructOwnershipVMValue,
 			},
-			Package:       pkgName,
-			Path:          pkgName, // 默认为包名
-			Imports:       imports,
-			vars:          make(map[Ident]GoMiniType),
-			Imported:      make(map[string]bool),
-			ImportedRoots: make(map[string]*ValidRoot),
-			Discovered:    make(map[Ident]string),
-			KnownImports:  make(map[string]struct{}),
-			importStack:   make([]string, 0),
-			MaxTypeDepth:  256,
-			Tolerant:      tolerant,
+			Package:          pkgName,
+			Path:             pkgName, // 默认为包名
+			Imports:          imports,
+			vars:             make(map[Ident]GoMiniType),
+			Imported:         make(map[string]bool),
+			ImportedRoots:    make(map[string]*ValidRoot),
+			Discovered:       make(map[Ident]string),
+			KnownImports:     make(map[string]struct{}),
+			TemplateBuiltins: make(map[string]GoMiniType),
+			importStack:      make([]string, 0),
+			MaxTypeDepth:     256,
+			Tolerant:         tolerant,
 		},
 		parent:  nil,
 		current: node,
@@ -859,6 +861,16 @@ func (c *ValidContext) ImportPackage(path string) error {
 
 func (c *ValidContext) SetModuleLoader(loader func(path string) (*ProgramStmt, error)) {
 	c.root.ModuleLoader = loader
+}
+
+func (c *ValidContext) SetTemplateBuiltins(items map[string]string) {
+	if c == nil || c.root == nil {
+		return
+	}
+	c.root.TemplateBuiltins = make(map[string]GoMiniType, len(items))
+	for name, spec := range items {
+		c.root.TemplateBuiltins[name] = GoMiniType(spec)
+	}
 }
 
 func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {

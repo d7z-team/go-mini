@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
@@ -28,10 +29,33 @@ func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, me
 	e.registerFFISchemaLocked(name, bridge, methodID, sig, doc)
 }
 
+func (e *MiniExecutor) RegisterFunctionTemplate(tpl calltemplate.FunctionTemplate) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.templates == nil {
+		e.templates = calltemplate.NewRegistry()
+	}
+	next := e.templates.Clone()
+	if next == nil {
+		next = calltemplate.NewRegistry()
+	}
+	if err := next.Register(tpl); err != nil {
+		return err
+	}
+	for name, registered := range next.Globals() {
+		if e.globalSymbolExistsLocked(name) {
+			return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
+		}
+	}
+	e.templates = next
+	return nil
+}
+
 // RegisterConstant 注册一个全局常量到执行器
 func (e *MiniExecutor) RegisterConstant(name, val string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.mustNotConflictGlobalTemplateLocked(name, "constant")
 	e.constants[name] = val
 }
 
@@ -61,6 +85,7 @@ func (e *MiniExecutor) DeclareFuncSchema(name string, sig *runtime.RuntimeFuncSi
 		delete(e.funcSchemas, ast.Ident(name))
 		return
 	}
+	e.mustNotConflictGlobalTemplateLocked(name, "function")
 	e.funcSchemas[ast.Ident(name)] = sig
 }
 
@@ -110,7 +135,38 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	return res
 }
 
+func (e *MiniExecutor) templateRegistrySnapshot() *calltemplate.Registry {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if e.templates == nil {
+		return nil
+	}
+	return e.templates.Clone()
+}
+
+func (e *MiniExecutor) globalSymbolExistsLocked(name string) bool {
+	if _, ok := e.funcSchemas[ast.Ident(name)]; ok {
+		return true
+	}
+	if _, ok := e.routes[name]; ok {
+		return true
+	}
+	if _, ok := e.constants[name]; ok {
+		return true
+	}
+	if _, ok := e.structsMeta[ast.Ident(name)]; ok {
+		return true
+	}
+	if _, ok := e.interfacesMeta[ast.Ident(name)]; ok {
+		return true
+	}
+	return false
+}
+
 func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) {
+	if funcSig != nil {
+		e.mustNotConflictGlobalTemplateLocked(name, "function")
+	}
 	next := runtime.FFIRoute{
 		Name:     name,
 		Bridge:   bridge,
@@ -132,6 +188,7 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 
 func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) {
 	if spec != nil {
+		e.mustNotConflictGlobalTemplateLocked(name, "struct")
 		if existing, ok := e.structsMeta[ast.Ident(name)]; ok {
 			merged, ok := mergeRuntimeStructSpec(existing, spec)
 			if !ok {
@@ -147,6 +204,7 @@ func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.Run
 
 func (e *MiniExecutor) registerInterfaceSchemaLocked(name string, spec *runtime.RuntimeInterfaceSpec) {
 	if spec != nil {
+		e.mustNotConflictGlobalTemplateLocked(name, "interface")
 		if existing, ok := e.interfacesMeta[ast.Ident(name)]; ok && existing.Spec != spec.Spec {
 			panic(fmt.Sprintf("ffi interface schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
 		}
@@ -160,7 +218,17 @@ func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.Runtime
 	if sig == nil {
 		panic("invalid builtin function schema: " + name)
 	}
+	e.mustNotConflictGlobalTemplateLocked(name, "function")
 	e.funcSchemas[ast.Ident(name)] = sig
+}
+
+func (e *MiniExecutor) mustNotConflictGlobalTemplateLocked(name, kind string) {
+	if e.templates == nil {
+		return
+	}
+	if tpl, ok := e.templates.GlobalTemplate(name); ok {
+		panic(fmt.Sprintf("%s %s conflicts with global call template %s", kind, name, tpl.ID))
+	}
 }
 
 func (e *MiniExecutor) formatRouteSchema(route runtime.FFIRoute) string {

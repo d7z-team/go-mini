@@ -7,6 +7,10 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
+var testExternalSpecs = map[ast.Ident]ast.GoMiniType{
+	"sink": ast.CreateFunctionType([]ast.FunctionParam{{Type: ast.TypeAny}}, ast.TypeVoid, true),
+}
+
 func newTestSemanticContext(t *testing.T) *ast.SemanticContext {
 	t.Helper()
 	prog := &ast.ProgramStmt{
@@ -18,7 +22,7 @@ func newTestSemanticContext(t *testing.T) *ast.SemanticContext {
 		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
 		Functions:  map[ast.Ident]*ast.FunctionStmt{},
 	}
-	validator, err := ast.NewValidator(prog, nil, nil, true)
+	validator, err := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	if err != nil {
 		t.Fatalf("new validator failed: %v", err)
 	}
@@ -55,7 +59,7 @@ func TestBadExprCallReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -87,7 +91,7 @@ func TestBadExprMemberReportsPreciseInferenceError(t *testing.T) {
 							BaseNode: ast.BaseNode{Meta: "call", Loc: &ast.Position{L: 2, C: 2, EL: 2, EC: 10}},
 							Func: &ast.ConstRefExpr{
 								BaseNode: ast.BaseNode{Meta: "const_ref", Loc: &ast.Position{L: 2, C: 2, EL: 2, EC: 6}},
-								Name:     "print",
+								Name:     "sink",
 							},
 							Args: []ast.Expr{
 								&ast.MemberExpr{
@@ -105,7 +109,7 @@ func TestBadExprMemberReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -137,7 +141,7 @@ func TestBadExprIndexReportsPreciseInferenceError(t *testing.T) {
 							BaseNode: ast.BaseNode{Meta: "call", Loc: &ast.Position{L: 2, C: 2, EL: 2, EC: 12}},
 							Func: &ast.ConstRefExpr{
 								BaseNode: ast.BaseNode{Meta: "const_ref", Loc: &ast.Position{L: 2, C: 2, EL: 2, EC: 6}},
-								Name:     "print",
+								Name:     "sink",
 							},
 							Args: []ast.Expr{
 								&ast.IndexExpr{
@@ -158,7 +162,7 @@ func TestBadExprIndexReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -198,7 +202,7 @@ func TestBadExprIndexOperandReportsPreciseInferenceError(t *testing.T) {
 							BaseNode: ast.BaseNode{Meta: "call", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 14}},
 							Func: &ast.ConstRefExpr{
 								BaseNode: ast.BaseNode{Meta: "const_ref", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 6}},
-								Name:     "print",
+								Name:     "sink",
 							},
 							Args: []ast.Expr{
 								&ast.IndexExpr{
@@ -219,7 +223,7 @@ func TestBadExprIndexOperandReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -260,7 +264,7 @@ func TestBadExprSliceReportsPreciseInferenceError(t *testing.T) {
 							BaseNode: ast.BaseNode{Meta: "call", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 16}},
 							Func: &ast.ConstRefExpr{
 								BaseNode: ast.BaseNode{Meta: "const_ref", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 6}},
-								Name:     "print",
+								Name:     "sink",
 							},
 							Args: []ast.Expr{
 								&ast.SliceExpr{
@@ -285,7 +289,7 @@ func TestBadExprSliceReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -322,7 +326,7 @@ func TestBadExprStringSliceReportsPreciseInferenceError(t *testing.T) {
 							BaseNode: ast.BaseNode{Meta: "call", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 14}},
 							Func: &ast.ConstRefExpr{
 								BaseNode: ast.BaseNode{Meta: "const_ref", Loc: &ast.Position{L: 3, C: 2, EL: 3, EC: 6}},
-								Name:     "print",
+								Name:     "sink",
 							},
 							Args: []ast.Expr{
 								&ast.SliceExpr{
@@ -347,7 +351,7 @@ func TestBadExprStringSliceReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -402,7 +406,7 @@ func TestInvalidCompositeMemberReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -460,7 +464,7 @@ func TestInvalidCompositeIndexReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")
@@ -522,7 +526,7 @@ func TestInvalidCompositeSliceReportsPreciseInferenceError(t *testing.T) {
 		},
 	}
 
-	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	validator, _ := ast.NewValidator(prog, testExternalSpecs, nil, true)
 	err := prog.Check(ast.NewSemanticContext(validator))
 	if err == nil {
 		t.Fatal("expected semantic error")

@@ -21,8 +21,6 @@ var builtinSymbols = map[string]struct{}{
 	"make":    {},
 	"new":     {},
 	"panic":   {},
-	"print":   {},
-	"println": {},
 	"real":    {},
 	"recover": {},
 	"require": {},

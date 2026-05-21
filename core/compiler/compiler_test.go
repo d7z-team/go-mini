@@ -334,13 +334,85 @@ func TestCompileFilesRejectsPackageMismatch(t *testing.T) {
 }
 
 func TestCompileFilesRejectsDuplicateDefinitions(t *testing.T) {
-	c := New(Config{})
-	_, _, _, err := c.CompileFiles([]SourceFile{
-		{Filename: "a.go", Code: "package main\nfunc helper() {}\n"},
-		{Filename: "b.go", Code: "package main\nfunc helper() {}\n"},
-	}, false)
-	if err == nil || !strings.Contains(err.Error(), "duplicate function definition") {
-		t.Fatalf("expected duplicate definition error, got %v", err)
+	cases := []struct {
+		name string
+		a    string
+		b    string
+		want string
+	}{
+		{
+			name: "function function",
+			a:    "package main\nfunc helper() {}\n",
+			b:    "package main\nfunc helper() {}\n",
+			want: "duplicate function definition",
+		},
+		{
+			name: "variable variable",
+			a:    "package main\nvar helper Int64\n",
+			b:    "package main\nvar helper Int64\n",
+			want: "duplicate variable definition",
+		},
+		{
+			name: "variable function",
+			a:    "package main\nvar helper Int64\n",
+			b:    "package main\nfunc helper() {}\n",
+			want: "duplicate top-level symbol helper",
+		},
+		{
+			name: "type function",
+			a:    "package main\ntype helper Int64\n",
+			b:    "package main\nfunc helper() {}\n",
+			want: "duplicate top-level symbol helper",
+		},
+		{
+			name: "import alias conflict",
+			a:    "package main\nimport f \"fmt\"\n",
+			b:    "package main\nimport f \"strings\"\n",
+			want: "duplicate import alias f",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := New(Config{}).CompileFiles([]SourceFile{
+				{Filename: "a.go", Code: tc.a},
+				{Filename: "b.go", Code: tc.b},
+			}, false)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestCompileSourceRejectsSingleFileDuplicateTopLevelSymbols(t *testing.T) {
+	cases := []struct {
+		name string
+		code string
+		want string
+	}{
+		{
+			name: "function function",
+			code: "package main\nfunc helper() {}\nfunc helper() {}\n",
+			want: "duplicate top-level function helper",
+		},
+		{
+			name: "variable function",
+			code: "package main\nvar helper Int64\nfunc helper() {}\n",
+			want: "duplicate top-level function helper",
+		},
+		{
+			name: "type type",
+			code: "package main\ntype helper Int64\ntype helper String\n",
+			want: "duplicate top-level type helper",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, _, err := New(Config{}).CompileSource("snippet", tc.code, false)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
 	}
 }
 

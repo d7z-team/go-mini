@@ -18,8 +18,11 @@ const (
 
 // ImportSpec 表示包导入声明
 type ImportSpec struct {
-	Alias string `json:"alias,omitempty"` // 别名，默认为空表示使用包名
-	Path  string `json:"path"`            // 导入路径
+	Alias       string `json:"alias,omitempty"`        // 别名，默认为空表示使用包名
+	Path        string `json:"path"`                   // 导入路径
+	File        string `json:"file,omitempty"`         // 所属源码文件
+	Synthetic   bool   `json:"synthetic,omitempty"`    // 编译期生成的导入
+	CompileOnly bool   `json:"compile_only,omitempty"` // 仅供编译期模板解析，不能进入 runtime
 }
 
 // ImportLocationKey returns the location-map key for a file-scoped import alias.
@@ -148,6 +151,10 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	p.SyncTopLevelDeclVariables()
+	if err := p.validateTopLevelNamespace(); err != nil {
+		ctx.AddErrorf("%s", err.Error())
+		hasError = true
+	}
 
 	type globalDeclInfo struct {
 		kind     GoMiniType
@@ -305,6 +312,86 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 			Err:  errors.New("semantic validation failed"),
 			Logs: ctx.Logs(),
 			Node: p,
+		}
+	}
+	return nil
+}
+
+func (p *ProgramStmt) validateTopLevelNamespace() error {
+	if p == nil {
+		return nil
+	}
+	seen := make(map[Ident]string)
+	importPaths := make(map[Ident]string)
+	add := func(name Ident, kind string) error {
+		if name == "" || name == "_" {
+			return nil
+		}
+		if existing, ok := seen[name]; ok {
+			if existing == kind {
+				return nil
+			}
+			return fmt.Errorf("duplicate top-level symbol %s: %s conflicts with %s", name, kind, existing)
+		}
+		seen[name] = kind
+		return nil
+	}
+	for _, imp := range p.Imports {
+		alias := Ident(imp.Alias)
+		if alias == "" {
+			parts := strings.Split(imp.Path, "/")
+			alias = Ident(parts[len(parts)-1])
+		}
+		if existingPath, ok := importPaths[alias]; ok && existingPath != imp.Path {
+			return fmt.Errorf("duplicate import alias %s: %s conflicts with %s", alias, imp.Path, existingPath)
+		}
+		importPaths[alias] = imp.Path
+		if err := add(alias, "import"); err != nil {
+			return err
+		}
+	}
+	for name := range p.Constants {
+		if err := add(Ident(name), "constant"); err != nil {
+			return err
+		}
+	}
+	for name, expr := range p.Variables {
+		kind := "variable"
+		if _, ok := expr.(*ImportExpr); ok {
+			kind = "import"
+		}
+		if err := add(name, kind); err != nil {
+			return err
+		}
+	}
+	for name := range p.Types {
+		if err := add(name, "type"); err != nil {
+			return err
+		}
+	}
+	for name := range p.Structs {
+		if err := add(name, "type"); err != nil {
+			return err
+		}
+	}
+	for name := range p.Interfaces {
+		if err := add(name, "type"); err != nil {
+			return err
+		}
+	}
+	for key, fn := range p.Functions {
+		if fn != nil && fn.ReceiverType != "" {
+			continue
+		}
+		if strings.Contains(string(key), ".") {
+			continue
+		}
+		name := key
+		if fn != nil && fn.Name != "" {
+			name = fn.Name
+		}
+		if err := add(name, "function"); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/ffilib/byteslib"
@@ -41,6 +42,7 @@ func NewMiniExecutor() *MiniExecutor {
 		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
 		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
 		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
+		templates:      calltemplate.NewRegistry(),
 		MaxTypeDepth:   256,
 	}
 
@@ -85,8 +87,7 @@ func NewMiniExecutor() *MiniExecutor {
 
 	// Inject fmt by default (supports context-based redirection)
 	fmtImpl := &fmtlib.FmtHost{}
-	fmtlib.RegisterFmt(res, fmtImpl, res.registry)
-	fmtlib.RegisterFmtAliases(res, fmtImpl, res.registry)
+	fmtlib.RegisterFmtAll(res, fmtImpl, res.registry)
 
 	return res
 }
@@ -148,6 +149,7 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 		InterfaceSchemas: schema.Interfaces,
 		Constants:        e.GetExportedConstants(),
 		MaxTypeDepth:     e.MaxTypeDepth,
+		Templates:        e.templateRegistrySnapshot(),
 	})
 }
 
@@ -172,8 +174,12 @@ func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error
 	}
 	if len(compiled.ImportedPrograms) > 0 {
 		e.mu.Lock()
-		for path, prog := range compiled.ImportedPrograms {
-			if prog != nil {
+		for _, imp := range compiled.Program.Imports {
+			path := strings.TrimSpace(imp.Path)
+			if path == "" {
+				continue
+			}
+			if prog := compiled.ImportedPrograms[path]; prog != nil {
 				e.moduleSources[path] = prog
 			}
 		}

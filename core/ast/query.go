@@ -920,13 +920,11 @@ var miniKeywords = []string{
 }
 
 var miniBuiltins = map[string]string{
-	"len":     string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeInt64, false)),
-	"append":  string(CreateFunctionType([]FunctionParam{{Type: CreateArrayType(TypeAny)}, {Type: TypeAny}}, CreateArrayType(TypeAny), false)),
-	"make":    string(CreateFunctionType([]FunctionParam{{Type: "Type"}, {Type: TypeInt64}}, TypeAny, true)),
-	"new":     string(CreateFunctionType([]FunctionParam{{Type: "Type"}}, TypeAny.ToPtr(), false)),
-	"panic":   string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, false)),
-	"print":   string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, true)),
-	"println": string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, true)),
+	"len":    string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeInt64, false)),
+	"append": string(CreateFunctionType([]FunctionParam{{Type: CreateArrayType(TypeAny)}, {Type: TypeAny}}, CreateArrayType(TypeAny), false)),
+	"make":   string(CreateFunctionType([]FunctionParam{{Type: "Type"}, {Type: TypeInt64}}, TypeAny, true)),
+	"new":    string(CreateFunctionType([]FunctionParam{{Type: "Type"}}, TypeAny.ToPtr(), false)),
+	"panic":  string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, false)),
 }
 
 // FindCompletionsAt 获取指定位置的代码补全建议
@@ -1030,6 +1028,12 @@ func FindCompletionsAtFile(root Node, file string, line, col int) []CompletionIt
 		for name, t := range miniBuiltins {
 			items = append(items, CompletionItem{Label: name, Kind: "builtin", Type: GoMiniType(t)})
 			seen[name] = true
+		}
+		for name, t := range ctx.root.TemplateBuiltins {
+			if !seen[name] {
+				items = append(items, CompletionItem{Label: name, Kind: "builtin", Type: t})
+				seen[name] = true
+			}
 		}
 	}
 

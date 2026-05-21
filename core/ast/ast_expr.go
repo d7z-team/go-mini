@@ -494,8 +494,10 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 // MemberExpr 表示成员访问表达式 (a.b)
 type MemberExpr struct {
 	BaseNode
-	Object   Expr  `json:"object"`
-	Property Ident `json:"property"`
+	Object                Expr   `json:"object"`
+	Property              Ident  `json:"property"`
+	ResolvedPackagePath   string `json:"-"`
+	ResolvedPackageMember bool   `json:"-"`
 }
 
 func (m *MemberExpr) GetBase() *BaseNode { return &m.BaseNode }
@@ -567,16 +569,22 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				prop := string(m.Property)
 				// 1. 变量/函数
 				if t, ok := srcRoot.vars[Ident(prop)]; ok {
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
 				}
 				// 2. 结构体
 				if _, ok := srcRoot.structs[Ident(prop)]; ok {
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(prop) // 或者需要包含包路径?
 					return nil
 				}
 				// 3. 接口
 				if _, ok := srcRoot.interfaces[Ident(prop)]; ok {
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(prop)
 					return nil
 				}
@@ -597,24 +605,32 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				// 1. 尝试作为变量/常量查找
 				if t, ok := ctx.GetVariable(fullPath); ok {
 					reportMissingImport()
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
 				}
 				// 2. 尝试作为函数查找
 				if fn, ok := ctx.GetFunction(fullPath); ok {
 					reportMissingImport()
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = fn.MiniType()
 					return nil
 				}
 				// 3. 尝试作为结构体查找
 				if _, ok := ctx.GetStruct(fullPath); ok {
 					reportMissingImport()
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(fullPath)
 					return nil
 				}
 				// 4. 尝试作为接口查找
 				if _, ok := ctx.GetInterface(fullPath); ok {
 					reportMissingImport()
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(fullPath)
 					return nil
 				}

@@ -53,6 +53,18 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 
 	var miniImports []miniast.ImportSpec
 	var importDecls []convertedImport
+	topLevelDecls := make(map[string]string)
+	declareTopLevel := func(name, kind string, node ast.Node) bool {
+		if name == "" || name == "_" {
+			return true
+		}
+		if existing, ok := topLevelDecls[name]; ok {
+			c.addError(node, fmt.Sprintf("duplicate top-level %s %s conflicts with existing %s", kind, name, existing))
+			return false
+		}
+		topLevelDecls[name] = kind
+		return true
+	}
 	if f != nil {
 		for _, imp := range f.Imports {
 			if len(imp.Path.Value) < 2 {
@@ -71,10 +83,14 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 				parts := strings.Split(path, "/")
 				alias = parts[len(parts)-1]
 			}
+			if !declareTopLevel(alias, "import", imp) {
+				continue
+			}
 			c.imports[alias] = path
 			spec := miniast.ImportSpec{
 				Alias: alias,
 				Path:  path,
+				File:  filename,
 			}
 			loc := c.extractLoc(imp)
 			if imp.Name != nil {
@@ -121,12 +137,17 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 				key := fn.Name
 				if fn.ReceiverType != "" {
 					key = miniast.Ident(string(fn.ReceiverType) + "." + string(fn.Name))
+				} else if !declareTopLevel(string(fn.Name), "function", d.Name) {
+					continue
 				}
 				program.Functions[key] = fn
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {
 					case *ast.TypeSpec:
+						if !declareTopLevel(s.Name.Name, "type", s.Name) {
+							continue
+						}
 						program.TypeLocs[miniast.Ident(s.Name.Name)] = c.extractLoc(s.Name)
 						if st, ok := s.Type.(*ast.StructType); ok {
 							var doc string
@@ -156,6 +177,9 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 						switch d.Tok {
 						case token.CONST:
 							for i, name := range s.Names {
+								if !declareTopLevel(name.Name, "constant", name) {
+									continue
+								}
 								if i < len(s.Values) {
 									if lit, ok := s.Values[i].(*ast.BasicLit); ok {
 										val := lit.Value
@@ -174,6 +198,9 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 						case token.VAR:
 							decl := c.convertValueSpecDecl(s)
 							for i, name := range s.Names {
+								if !declareTopLevel(name.Name, "variable", name) {
+									continue
+								}
 								program.Variables[miniast.Ident(name.Name)] = declValueForBinding(decl, i)
 							}
 							program.Main = append(program.Main, decl)

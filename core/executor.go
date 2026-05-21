@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -22,6 +23,7 @@ type MiniExecutor struct {
 	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
 	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
 	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	templates      *calltemplate.Registry
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }

@@ -10,6 +10,8 @@ IDE 能力基于源码和 AST，执行链基于 compiled artifact / prepared pro
 
 LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
 
+编译期调用模板会把自身的源码签名暴露给 LSP，因此 `print` / `println` 这类默认模板和自定义全局模板会参与补全、hover 与语义校验；模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
+
 ## 1. 推荐后端接入
 
 Go-Mini 提供两类常见接入方式：

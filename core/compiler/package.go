@@ -111,6 +111,11 @@ func MergePrograms(programs []*ast.ProgramStmt) (*ast.ProgramStmt, error) {
 func mergeProgram(dest, src *ast.ProgramStmt) error {
 	destImports := importAliasPaths(dest.Imports)
 	srcImports := importAliasPaths(src.Imports)
+	for alias, srcPath := range srcImports {
+		if destPath, ok := destImports[alias]; ok && destPath != srcPath {
+			return fmt.Errorf("duplicate import alias %s: %s vs %s", alias, destPath, srcPath)
+		}
+	}
 	if len(dest.Imports) == 0 {
 		dest.Imports = append(dest.Imports, src.Imports...)
 	} else {

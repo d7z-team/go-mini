@@ -7,6 +7,7 @@
 - `core/lowering` 负责 AST 到 `PreparedProgram` 的唯一转换
 - 运行时执行 lowered task plan / prepared program
 - FFI 通过 `ffigen` 生成 schema-only 桥接代码
+- 调用模板在 compiler 阶段展开成真实代码，bytecode / runtime 不保留模板执行逻辑
 - 执行入口统一落在 `Artifact` / bytecode，runtime 只消费 prepared executable，AST 只保留在编译、分析和调试边界
 - canonical type 文本由 `core/typespec` 统一实现；AST 前端通过 `core/ast/ast_types.go` 使用，runtime/VM 通过 `core/runtime/schema.go` 使用
 
@@ -179,6 +180,19 @@ _ = program
 ```
 
 `AnalyzeProgramTolerant(...)` 只用于分析边界，不是运行时装载口。执行仍应先编译成 `Artifact` 或 bytecode。
+
+### 2.7 调用模板
+
+调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用，例如默认的 `print(...)` / `println(...)` 会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
+
+模板入口有两类：
+
+- 全局函数模板：例如 `println(...)`，可以在任意位置调用；源码中不能声明同名函数、变量、参数或 import alias。
+- 包成员模板：例如编译期 facade 包 `aaa.BBB(...)`，调用会在展开后替换成模板生成的真实代码；`compile-only` facade 必须绑定到真实存在的包，展开后确认无残留引用再移除 import。
+
+模板体使用 Go `text/template` 渲染。可使用 `pkg "fmt"` 取得卫生的内部包 alias，使用 `args` / `arg` / `callArg` 处理普通与可变参数，使用 `fresh` 生成临时标识符。模板参数以 AST 占位符方式回填，不允许通过 `.Args` 等模板数据对象访问参数，也不把参数重新格式化为 Go 源码。模板声明的真实 import 必须在注册时已经存在；不存在则注册失败。同一包的 package template 只能全部是 runtime package 或全部是 compile-only package，不能混用。模板展开是 fixed-point：模板生成的代码如果继续调用模板，会递归展开直到只剩真实代码；递归模板链会在编译期报错。`stmt` 模板可以生成多条语句，但只能放在语句列表位置；`defer` / `go` 中的模板必须最终展开为单个 call expression。
+
+模板注册会拒绝覆盖真实内置函数、FFI 函数、常量、结构体和接口；源码也不能声明全局模板同名标识符。`__gomini_tpl_` 前缀保留给模板展开器，用户源码和模板 alias hint 都不能声明或请求该前缀。
 
 ## 3. CLI
 

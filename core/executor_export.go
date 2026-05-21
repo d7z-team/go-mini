@@ -70,6 +70,11 @@ func (e *MiniExecutor) ExportMetadata() string {
 			meta.Builtins[sName] = e.formatSchemaWithDoc(ast.GoMiniType(spec.Spec), "", spec)
 		}
 	}
+	if e.templates != nil {
+		for name, spec := range e.templates.CompletionSchemas() {
+			meta.Builtins[name] = spec
+		}
+	}
 
 	for name, spec := range e.interfacesMeta {
 		sName := string(name)

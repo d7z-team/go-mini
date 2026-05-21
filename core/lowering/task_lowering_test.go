@@ -114,7 +114,7 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 	program.Variables["g"] = nil
 	b := newBuilder(program.Constants, program.Variables, program.Functions)
 
-	expr, err := gofrontend.NewConverter().ConvertExprSource(`func(x Int64) Int64 { var y Int64; println(g); return x + y + g }`)
+	expr, err := gofrontend.NewConverter().ConvertExprSource(`func(x Int64) Int64 { var y Int64; len("abc"); return x + y + g }`)
 	if err != nil {
 		t.Fatalf("convert expr failed: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestLoweringAnnotatesSymbols(t *testing.T) {
 			}
 		case runtime.OpCall:
 			call := task.Data.(*runtime.CallData)
-			if call.Name == "println" {
+			if call.Name == "len" {
 				sawBuiltinCall = call.Sym.Kind == runtime.SymbolBuiltin
 			}
 		}
