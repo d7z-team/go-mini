@@ -14,3 +14,4 @@ Behavior:
 
 - Commands run against the current `.mgo` file's containing directory, matching the backend's package-directory model.
 - Run/compile/disassemble output is shown in a dedicated `Go-Mini` output panel instead of the active terminal.
+- The language server provides diagnostics, completion, hover, definition, references, and clears diagnostics when a file closes.

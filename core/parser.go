@@ -83,13 +83,17 @@ func ValidateAndOptimizeWithLoader(root ast.Node, loader func(path string) (*ast
 	var rootBlock *ast.ProgramStmt
 	if rootBlock, ok = root.(*ast.ProgramStmt); !ok {
 		rootBlock = &ast.ProgramStmt{
-			BaseNode:  ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
-			Constants: make(map[string]string),
-			Variables: make(map[ast.Ident]ast.Expr),
-			Types:     make(map[ast.Ident]ast.GoMiniType),
-			Structs:   make(map[ast.Ident]*ast.StructStmt),
-			Functions: make(map[ast.Ident]*ast.FunctionStmt),
-			Main:      make([]ast.Stmt, 0),
+			BaseNode:     ast.BaseNode{ID: "boot", Meta: "boot", Type: "Void"},
+			Constants:    make(map[string]string),
+			ConstantLocs: make(map[string]*ast.Position),
+			Variables:    make(map[ast.Ident]ast.Expr),
+			Types:        make(map[ast.Ident]ast.GoMiniType),
+			TypeLocs:     make(map[ast.Ident]*ast.Position),
+			Structs:      make(map[ast.Ident]*ast.StructStmt),
+			Interfaces:   make(map[ast.Ident]*ast.InterfaceStmt),
+			ImportLocs:   make(map[string]*ast.Position),
+			Functions:    make(map[ast.Ident]*ast.FunctionStmt),
+			Main:         make([]ast.Stmt, 0),
 		}
 		if block, ok := root.(*ast.BlockStmt); ok {
 			rootBlock.Main = block.Children
@@ -124,30 +128,41 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 	switch baseNode.Meta {
 	case "boot":
 		var raw struct {
-			Package   string                     `json:"package,omitempty"`
-			Imports   []ast.ImportSpec           `json:"imports,omitempty"`
-			Constants map[string]string          `json:"constants"`
-			Variables map[string]json.RawMessage `json:"variables"`
-			Types     map[string]ast.GoMiniType  `json:"types"`
-			Structs   map[string]json.RawMessage `json:"structs"`
-			Functions map[string]json.RawMessage `json:"functions"`
-			Main      []json.RawMessage          `json:"main"`
+			Package      string                     `json:"package,omitempty"`
+			Imports      []ast.ImportSpec           `json:"imports,omitempty"`
+			Constants    map[string]string          `json:"constants"`
+			ConstantLocs map[string]*ast.Position   `json:"constant_locs,omitempty"`
+			Variables    map[string]json.RawMessage `json:"variables"`
+			Types        map[string]ast.GoMiniType  `json:"types"`
+			TypeLocs     map[string]*ast.Position   `json:"type_locs,omitempty"`
+			Structs      map[string]json.RawMessage `json:"structs"`
+			Interfaces   map[string]json.RawMessage `json:"interfaces"`
+			Functions    map[string]json.RawMessage `json:"functions"`
+			ImportLocs   map[string]*ast.Position   `json:"import_locs,omitempty"`
+			Main         []json.RawMessage          `json:"main"`
 		}
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, err
 		}
 		result := &ast.ProgramStmt{
-			BaseNode:  baseNode,
-			Package:   raw.Package,
-			Imports:   raw.Imports,
-			Constants: raw.Constants,
-			Variables: make(map[ast.Ident]ast.Expr),
-			Types:     make(map[ast.Ident]ast.GoMiniType),
-			Structs:   make(map[ast.Ident]*ast.StructStmt),
-			Functions: make(map[ast.Ident]*ast.FunctionStmt),
+			BaseNode:     baseNode,
+			Package:      raw.Package,
+			Imports:      raw.Imports,
+			Constants:    raw.Constants,
+			ConstantLocs: raw.ConstantLocs,
+			Variables:    make(map[ast.Ident]ast.Expr),
+			Types:        make(map[ast.Ident]ast.GoMiniType),
+			TypeLocs:     make(map[ast.Ident]*ast.Position),
+			Structs:      make(map[ast.Ident]*ast.StructStmt),
+			Interfaces:   make(map[ast.Ident]*ast.InterfaceStmt),
+			Functions:    make(map[ast.Ident]*ast.FunctionStmt),
+			ImportLocs:   raw.ImportLocs,
 		}
 		for k, v := range raw.Types {
 			result.Types[ast.Ident(k)] = v
+		}
+		for k, v := range raw.TypeLocs {
+			result.TypeLocs[ast.Ident(k)] = v
 		}
 		for k, vData := range raw.Variables {
 			vNode, _ := parseExpr(vData)
@@ -159,6 +174,13 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 				return nil, err
 			}
 			result.Structs[ast.Ident(k)] = sNode.(*ast.StructStmt)
+		}
+		for k, iData := range raw.Interfaces {
+			iNode, err := unmarshalNode(iData)
+			if err != nil {
+				return nil, err
+			}
+			result.Interfaces[ast.Ident(k)] = iNode.(*ast.InterfaceStmt)
 		}
 		for k, fData := range raw.Functions {
 			fNode, err := unmarshalNode(fData)
@@ -291,19 +313,31 @@ func unmarshalNodeData(baseNode ast.BaseNode, data []byte) (ast.Node, error) {
 		return n, nil
 	case "struct":
 		var raw struct {
-			Name       string            `json:"name"`
-			Fields     map[string]string `json:"fields"`
-			FieldNames []string          `json:"field_names,omitempty"`
+			Name       string                   `json:"name"`
+			Fields     map[string]string        `json:"fields"`
+			FieldNames []string                 `json:"field_names,omitempty"`
+			FieldLocs  map[string]*ast.Position `json:"field_locs,omitempty"`
+			Doc        string                   `json:"doc,omitempty"`
 		}
 		_ = json.Unmarshal(data, &raw)
-		n := &ast.StructStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Fields: make(map[ast.Ident]ast.GoMiniType)}
+		n := &ast.StructStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Fields: make(map[ast.Ident]ast.GoMiniType), FieldLocs: make(map[ast.Ident]*ast.Position), Doc: raw.Doc}
 		for k, v := range raw.Fields {
 			n.Fields[ast.Ident(k)] = ast.GoMiniType(v)
 		}
 		for _, v := range raw.FieldNames {
 			n.FieldNames = append(n.FieldNames, ast.Ident(v))
 		}
+		for k, v := range raw.FieldLocs {
+			n.FieldLocs[ast.Ident(k)] = v
+		}
 		return n, nil
+	case "interface":
+		var raw struct {
+			Name string         `json:"name"`
+			Type ast.GoMiniType `json:"type"`
+		}
+		_ = json.Unmarshal(data, &raw)
+		return &ast.InterfaceStmt{BaseNode: baseNode, Name: ast.Ident(raw.Name), Type: raw.Type}, nil
 	case "range":
 		var raw struct {
 			Key    string          `json:"key"`

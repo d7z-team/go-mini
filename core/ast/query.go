@@ -30,6 +30,9 @@ func Walk(v Visitor, node Node) {
 		for _, stmt := range n.Structs {
 			Walk(v, stmt)
 		}
+		for _, stmt := range n.Interfaces {
+			Walk(v, stmt)
+		}
 		for _, expr := range n.Variables {
 			Walk(v, expr)
 		}
@@ -140,7 +143,7 @@ func Walk(v Visitor, node Node) {
 		if n.Body != nil {
 			Walk(v, n.Body)
 		}
-	case *StructStmt:
+	case *StructStmt, *InterfaceStmt:
 		// 叶子节点
 	case *GenDeclStmt, *InterruptStmt, *LiteralExpr, *IdentifierExpr, *ConstRefExpr, *ImportExpr, *BadExpr, *BadStmt:
 		// 叶子节点
@@ -149,6 +152,7 @@ func Walk(v Visitor, node Node) {
 
 // findNodeVisitor 用于搜索覆盖指定坐标的最小节点
 type findNodeVisitor struct {
+	targetFile string
 	targetLine int
 	targetCol  int
 	bestNode   Node
@@ -162,6 +166,9 @@ func (v *findNodeVisitor) Visit(node Node) Visitor {
 	if base != nil && base.Loc != nil {
 		loc := base.Loc
 
+		if v.targetFile != "" && loc.F != "" && loc.F != v.targetFile {
+			return v
+		}
 		if isInside(v.targetLine, v.targetCol, loc) {
 			// 如果命中，记录该节点。由于 Walk 是深度优先遍历，
 			// 后命中的节点一定是更小的子节点，所以我们直接更新 bestNode。
@@ -194,7 +201,13 @@ func isInside(line, col int, loc *Position) bool {
 
 // FindNodeAt 根据行列坐标（基于 1）查找最匹配的 AST 节点
 func FindNodeAt(root Node, line, col int) Node {
+	return FindNodeAtFile(root, "", line, col)
+}
+
+// FindNodeAtFile 根据文件名、行列坐标（基于 1）查找最匹配的 AST 节点
+func FindNodeAtFile(root Node, file string, line, col int) Node {
 	visitor := &findNodeVisitor{
+		targetFile: file,
 		targetLine: line,
 		targetCol:  col,
 	}
@@ -281,6 +294,91 @@ func virtualFieldDefinition(st *StructStmt, field Ident) Node {
 		},
 		Name: field,
 	}
+}
+
+func virtualConstantDefinition(prog *ProgramStmt, name string) Node {
+	if prog == nil {
+		return nil
+	}
+	val, ok := prog.Constants[name]
+	if !ok {
+		return nil
+	}
+	loc := prog.GetBase().Loc
+	if prog.ConstantLocs != nil && prog.ConstantLocs[name] != nil {
+		loc = prog.ConstantLocs[name]
+	}
+	return &LiteralExpr{
+		BaseNode: BaseNode{
+			ID:   "const_" + name,
+			Meta: "constant",
+			Type: "Constant",
+			Loc:  loc,
+		},
+		Value: val,
+	}
+}
+
+func virtualTypeDefinition(prog *ProgramStmt, name Ident) Node {
+	if prog == nil {
+		return nil
+	}
+	t, ok := prog.Types[name]
+	if !ok {
+		return nil
+	}
+	loc := prog.GetBase().Loc
+	if prog.TypeLocs != nil && prog.TypeLocs[name] != nil {
+		loc = prog.TypeLocs[name]
+	}
+	return &IdentifierExpr{
+		BaseNode: BaseNode{
+			ID:   "type_" + string(name),
+			Meta: "type",
+			Type: t,
+			Loc:  loc,
+		},
+		Name: name,
+	}
+}
+
+func virtualImportDefinition(prog *ProgramStmt, name Ident, usage Node) Node {
+	if prog == nil {
+		return nil
+	}
+	for _, imp := range prog.Imports {
+		alias := importSpecAlias(imp)
+		if alias != string(name) {
+			continue
+		}
+		loc := prog.GetBase().Loc
+		if prog.ImportLocs != nil && prog.ImportLocs[alias] != nil {
+			loc = prog.ImportLocs[alias]
+		}
+		if usage != nil && usage.GetBase() != nil && usage.GetBase().Loc != nil && prog.ImportLocs != nil {
+			if usageLoc := prog.ImportLocs[ImportLocationKey(usage.GetBase().Loc.F, alias)]; usageLoc != nil {
+				loc = usageLoc
+			}
+		}
+		return &IdentifierExpr{
+			BaseNode: BaseNode{
+				ID:   "import_" + alias,
+				Meta: "import",
+				Type: TypeModule,
+				Loc:  loc,
+			},
+			Name: Ident(alias),
+		}
+	}
+	return nil
+}
+
+func importSpecAlias(imp ImportSpec) string {
+	if imp.Alias != "" {
+		return imp.Alias
+	}
+	parts := strings.Split(imp.Path, "/")
+	return parts[len(parts)-1]
 }
 
 func definitionKey(node Node) string {
@@ -424,21 +522,20 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 				if f, ok := prog.Functions[ident.Name]; ok {
 					return f
 				}
-				// 检查常量 (由于常量没有物理 AST 节点，构造一个虚拟节点以支持 Hover/跳转)
-				if val, ok := prog.Constants[string(ident.Name)]; ok {
-					return &LiteralExpr{
-						BaseNode: BaseNode{
-							ID:   "const_" + string(ident.Name),
-							Meta: "constant",
-							Type: "Constant",
-							Loc:  prog.GetBase().Loc, // 回退：跳转到文件开头
-						},
-						Value: val,
-					}
+				if def := virtualConstantDefinition(prog, string(ident.Name)); def != nil {
+					return def
 				}
-				// 检查结构体
+				if def := virtualTypeDefinition(prog, ident.Name); def != nil {
+					return def
+				}
+				if it, ok := prog.Interfaces[ident.Name]; ok {
+					return it
+				}
 				if s, ok := prog.Structs[ident.Name]; ok {
 					return s
+				}
+				if def := virtualImportDefinition(prog, ident.Name, target); def != nil {
+					return def
 				}
 				// 回退：检查 Variables map (可能没有 GenDeclStmt 的老代码)
 				if v, ok := prog.Variables[ident.Name]; ok {
@@ -548,7 +645,7 @@ func findInStmt(s Stmt, name string) Node {
 }
 
 // FindAllReferences 查找所有引用该定义的地方
-func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
+func FindAllReferences(root, def Node, parentMap map[Node]Node, includeDeclaration bool) []Node {
 	var refs []Node
 	if def == nil {
 		return nil
@@ -586,7 +683,9 @@ func FindAllReferences(root, def Node, parentMap map[Node]Node) []Node {
 		refs = append(refs, node)
 	}
 
-	appendRef(def)
+	if includeDeclaration {
+		appendRef(def)
+	}
 
 	Walk(funcVisitor(func(node Node) bool {
 		if node == nil {
@@ -623,6 +722,25 @@ type HoverInfo struct {
 func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 	if target == nil {
 		return nil
+	}
+
+	switch t := target.(type) {
+	case *StructStmt:
+		return &HoverInfo{
+			Type:      t.GetBase().Type,
+			Signature: fmt.Sprintf("struct %s", t.Name),
+			Doc:       t.Doc,
+		}
+	case *InterfaceStmt:
+		return &HoverInfo{
+			Type:      t.Type,
+			Signature: fmt.Sprintf("interface %s %s", t.Name, t.Type),
+		}
+	case *ImportExpr:
+		return &HoverInfo{
+			Type:      TypeModule,
+			Signature: fmt.Sprintf("import %q", t.Path),
+		}
 	}
 
 	if member, ok := target.(*MemberExpr); ok {
@@ -738,6 +856,24 @@ func FindHoverInfo(root, target Node, parentMap map[Node]Node) *HoverInfo {
 		case *StructStmt:
 			info.Doc = d.Doc
 			info.Signature = fmt.Sprintf("struct %s", d.Name)
+		case *InterfaceStmt:
+			info.Type = d.Type
+			info.Signature = fmt.Sprintf("interface %s %s", d.Name, d.Type)
+		case *ImportExpr:
+			info.Type = TypeModule
+			info.Signature = fmt.Sprintf("import %q", d.Path)
+		case *IdentifierExpr:
+			switch d.GetBase().Meta {
+			case "type":
+				info.Signature = fmt.Sprintf("type %s %s", d.Name, d.GetBase().Type)
+			case "import":
+				info.Type = TypeModule
+				info.Signature = fmt.Sprintf("import %s", d.Name)
+			}
+		case *LiteralExpr:
+			if d.GetBase().Meta == "constant" {
+				info.Signature = "const " + d.Value
+			}
 		case *AssignmentStmt:
 			if id, ok := d.LHS.(*IdentifierExpr); ok {
 				info.Signature = fmt.Sprintf("var %s %s", id.Name, d.GetBase().Type)
@@ -763,7 +899,7 @@ func (f funcVisitor) Visit(node Node) Visitor {
 	if f(node) {
 		return f
 	}
-	return f
+	return nil
 }
 
 // 代码补全 (Code Completion)
@@ -795,7 +931,12 @@ var miniBuiltins = map[string]string{
 
 // FindCompletionsAt 获取指定位置的代码补全建议
 func FindCompletionsAt(root Node, line, col int) []CompletionItem {
-	node := FindNodeAt(root, line, col)
+	return FindCompletionsAtFile(root, "", line, col)
+}
+
+// FindCompletionsAtFile 获取指定文件位置的代码补全建议
+func FindCompletionsAtFile(root Node, file string, line, col int) []CompletionItem {
+	node := FindNodeAtFile(root, file, line, col)
 
 	pMap := BuildParentMap(root)
 
@@ -805,7 +946,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 	if node == nil || node == root {
 		for offset := 1; offset <= 2; offset++ {
 			if col-offset >= 1 {
-				prev := FindNodeAt(root, line, col-offset)
+				prev := FindNodeAtFile(root, file, line, col-offset)
 				if prev != nil && prev != root {
 					node = prev
 					break
@@ -816,7 +957,7 @@ func FindCompletionsAt(root Node, line, col int) []CompletionItem {
 		// 如果找到的是容器节点，也尝试偏移
 		switch node.(type) {
 		case *BlockStmt, *ProgramStmt:
-			prev := FindNodeAt(root, line, col-1)
+			prev := FindNodeAtFile(root, file, line, col-1)
 			if prev != nil && prev != root {
 				node = prev
 			}

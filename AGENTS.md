@@ -36,7 +36,7 @@
 - [ ] 非 debugger 主路径未重新引入 AST 依赖
 - [ ] 新能力已在 lowering / compiler / runtime 闭环
 - [ ] 相关测试已补齐
-- [ ] 已先执行 `make lint test`
+- [ ] 已先执行 `make lint test examples`
 - [ ] `TODO.md` 状态已同步
 
 ## 文档同步

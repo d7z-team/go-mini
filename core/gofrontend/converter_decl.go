@@ -63,9 +63,9 @@ func declValueForBinding(decl *miniast.GenDeclStmt, index int) miniast.Expr {
 	return nil
 }
 
-func (c *Converter) convertStruct(name string, s *ast.StructType, doc string) *miniast.StructStmt {
+func (c *Converter) convertStruct(name string, s *ast.StructType, loc *miniast.Position, doc string) *miniast.StructStmt {
 	res := &miniast.StructStmt{
-		BaseNode:  miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: c.extractLoc(s)},
+		BaseNode:  miniast.BaseNode{ID: c.genID(s, "struct"), Meta: "struct", Loc: loc},
 		Name:      miniast.Ident(name),
 		Fields:    make(map[miniast.Ident]miniast.GoMiniType),
 		FieldLocs: make(map[miniast.Ident]*miniast.Position),

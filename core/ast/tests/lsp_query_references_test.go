@@ -32,12 +32,17 @@ func main() {
 	}
 	t.Logf("DefNode at 2:5: %s (%T)", defNode.GetBase().Meta, defNode)
 
-	refs := ast.FindAllReferences(prog, defNode, parentMap)
+	refs := ast.FindAllReferences(prog, defNode, parentMap, true)
 	if len(refs) != 4 {
 		t.Errorf("Expected 4 references to 'a', got %d", len(refs))
 		for _, r := range refs {
 			t.Logf("Ref at %d:%d", r.GetBase().Loc.L, r.GetBase().Loc.C)
 		}
+	}
+
+	refsWithoutDecl := ast.FindAllReferences(prog, defNode, parentMap, false)
+	if len(refsWithoutDecl) != 3 {
+		t.Fatalf("expected 3 references without declaration, got %d", len(refsWithoutDecl))
 	}
 }
 
@@ -71,8 +76,13 @@ func main() {
 		t.Fatal("field definition not found")
 	}
 
-	refs := ast.FindAllReferences(prog, def, parentMap)
+	refs := ast.FindAllReferences(prog, def, parentMap, true)
 	if len(refs) != 3 {
 		t.Fatalf("expected 3 field references including definition, got %d", len(refs))
+	}
+
+	refsWithoutDecl := ast.FindAllReferences(prog, def, parentMap, false)
+	if len(refsWithoutDecl) != 2 {
+		t.Fatalf("expected 2 field references without definition, got %d", len(refsWithoutDecl))
 	}
 }

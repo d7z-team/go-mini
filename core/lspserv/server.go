@@ -18,10 +18,10 @@ import (
 )
 
 type ProgramView interface {
-	GetCompletionsAt(line, col int) []ast.CompletionItem
-	GetHoverAt(line, col int) *ast.HoverInfo
-	GetDefinitionAt(line, col int) ast.Node
-	GetReferencesAt(line, col int) []ast.Node
+	GetCompletionsAtFile(file string, line, col int) []ast.CompletionItem
+	GetHoverAtFile(file string, line, col int) *ast.HoverInfo
+	GetDefinitionAtFile(file string, line, col int) ast.Node
+	GetReferencesAtFile(file string, line, col int, includeDeclaration bool) []ast.Node
 }
 
 type Analyzer interface {
@@ -121,6 +121,48 @@ func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, er
 	return result, err
 }
 
+func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
+	s.mu.Lock()
+	file := s.files[uri]
+	if file == nil {
+		s.mu.Unlock()
+		return nil
+	}
+	delete(s.files, uri)
+	pkg := s.packages[file.pkgKey]
+	if pkg == nil {
+		s.mu.Unlock()
+		return map[string][]Diagnostic{uri: make([]Diagnostic, 0)}
+	}
+
+	pkg.mu.Lock()
+	delete(pkg.files, uri)
+	pkg.version++
+	if len(pkg.files) == 0 {
+		updates := make(map[string][]Diagnostic)
+		for diagURI, old := range pkg.publishedDiagnostics {
+			if len(old) > 0 {
+				updates[diagURI] = []Diagnostic{}
+			}
+		}
+		if _, ok := updates[uri]; !ok {
+			updates[uri] = []Diagnostic{}
+		}
+		delete(s.packages, file.pkgKey)
+		pkg.mu.Unlock()
+		s.mu.Unlock()
+		return updates
+	}
+	pkg.mu.Unlock()
+	s.mu.Unlock()
+
+	updates, _ := s.rebuildPackage(pkg)
+	if _, ok := updates[uri]; !ok {
+		updates[uri] = []Diagnostic{}
+	}
+	return updates
+}
+
 func (s *LSPServer) ensurePackageLocked(pkgKey string) *packageState {
 	if pkg := s.packages[pkgKey]; pkg != nil {
 		return pkg
@@ -151,6 +193,7 @@ func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, 
 	if len(files) == 0 {
 		return finalizeDiagnostics(pkg, nil), nil
 	}
+	codeByURI := fileCodeMap(files)
 
 	parsed := make([]parsedFile, 0, len(files))
 	diagnostics := make(map[string][]Diagnostic)
@@ -169,7 +212,7 @@ func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, 
 		}
 		if mergeURI != "" {
 			diagnostics[mergeURI] = append(diagnostics[mergeURI], Diagnostic{
-				Range:    FromInternalPos(&ast.Position{F: mergeURI, L: 1, C: 1}),
+				Range:    rangeForInternalPosition(codeByURI, &ast.Position{F: mergeURI, L: 1, C: 1}),
 				Severity: 1,
 				Source:   "go-mini",
 				Message:  mergeErr.Error(),
@@ -183,7 +226,7 @@ func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, 
 
 	prog, errs := s.executor.AnalyzeProgramTolerant(combined)
 	for _, err := range errs {
-		appendAnalysisDiagnostics(diagnostics, err)
+		appendAnalysisDiagnostics(diagnostics, codeByURI, err)
 	}
 	return finalizePackageState(pkg, version, prog, diagnostics), nil
 }
@@ -200,6 +243,23 @@ func snapshotPackageFiles(pkg *packageState) ([]*fileSession, uint64) {
 		return files[i].uri < files[j].uri
 	})
 	return files, pkg.version
+}
+
+func fileCodeMap(files []*fileSession) map[string]string {
+	res := make(map[string]string, len(files))
+	for _, file := range files {
+		if file != nil {
+			res[file.uri] = file.code
+		}
+	}
+	return res
+}
+
+func rangeForInternalPosition(codeByURI map[string]string, pos *ast.Position) Range {
+	if pos == nil {
+		return Range{}
+	}
+	return RangeFromInternalPos(codeByURI[pos.F], pos)
 }
 
 func parseFileForLSP(file *fileSession) parsedFile {
@@ -220,7 +280,7 @@ func parseFileForLSP(file *fileSession) parsedFile {
 		var convertErr *gofrontend.ConvertError
 		if errors.As(err, &convertErr) && convertErr.Pos != nil {
 			result.diagnostics = append(result.diagnostics, Diagnostic{
-				Range:    FromInternalPos(convertErr.Pos),
+				Range:    RangeFromInternalPos(file.code, convertErr.Pos),
 				Severity: 1,
 				Source:   "go-mini-syntax",
 				Message:  convertErr.Message,
@@ -229,7 +289,7 @@ func parseFileForLSP(file *fileSession) parsedFile {
 		}
 		if err != nil {
 			result.diagnostics = append(result.diagnostics, Diagnostic{
-				Range:    FromInternalPos(&ast.Position{F: file.uri, L: 1, C: 1}),
+				Range:    RangeFromInternalPos(file.code, &ast.Position{F: file.uri, L: 1, C: 1}),
 				Severity: 1,
 				Source:   "go-mini-syntax",
 				Message:  err.Error(),
@@ -262,7 +322,7 @@ func mergeParsedPrograms(parsed []parsedFile) (*ast.ProgramStmt, string, error) 
 	return combined, "", nil
 }
 
-func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, err error) {
+func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, codeByURI map[string]string, err error) {
 	if err == nil {
 		return
 	}
@@ -276,7 +336,7 @@ func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, err error) {
 				continue
 			}
 			diagnostics[loc.F] = append(diagnostics[loc.F], Diagnostic{
-				Range:    FromInternalPos(loc),
+				Range:    rangeForInternalPosition(codeByURI, loc),
 				Severity: 1,
 				Source:   "go-mini",
 				Message:  log.Message,
@@ -288,7 +348,7 @@ func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, err error) {
 	if errors.As(err, &vme) && len(vme.Frames) > 0 {
 		f := vme.Frames[0]
 		diagnostics[f.Filename] = append(diagnostics[f.Filename], Diagnostic{
-			Range:    FromInternalPos(&ast.Position{F: f.Filename, L: f.Line, C: f.Column}),
+			Range:    rangeForInternalPosition(codeByURI, &ast.Position{F: f.Filename, L: f.Line, C: f.Column}),
 			Severity: 1,
 			Source:   "go-mini-runtime",
 			Message:  vme.Message,
@@ -422,30 +482,34 @@ func rangeForScannerError(code string, scanErr scanner.Error) Range {
 	}
 
 	lineText := lines[lineIndex]
-	lineLen := len([]rune(lineText))
-	startChar := scanErr.Pos.Column - 1
-	if startChar < 0 {
-		startChar = 0
+	lineLenBytes := len(lineText)
+	lineLenUTF16 := utf16CharacterForByteColumn(lineText, lineLenBytes+1)
+	startByte := scanErr.Pos.Column - 1
+	if startByte < 0 {
+		startByte = 0
 	}
-	if startChar > lineLen {
-		startChar = lineLen
+	if startByte > lineLenBytes {
+		startByte = lineLenBytes
 	}
 
-	width := scannerErrorWidth(scanErr.Msg)
-	endChar := startChar + width
-	if endChar <= startChar {
-		endChar = startChar + 1
+	token := scannerErrorToken(scanErr.Msg)
+	endByte := startByte + len(token)
+	if token == "" {
+		endByte = startByte + 1
 	}
-	if endChar > lineLen {
-		endChar = lineLen
+	if endByte > lineLenBytes {
+		endByte = lineLenBytes
 	}
+
+	startChar := utf16CharacterForByteColumn(lineText, startByte+1)
+	endChar := utf16CharacterForByteColumn(lineText, endByte+1)
 	if endChar <= startChar {
-		if lineLen > 0 && startChar == lineLen {
+		if lineLenUTF16 > 0 && startChar == lineLenUTF16 {
 			startChar--
 		}
 		endChar = startChar + 1
-		if endChar > lineLen {
-			endChar = lineLen
+		if endChar > lineLenUTF16 {
+			endChar = lineLenUTF16
 		}
 	}
 	return Range{
@@ -454,17 +518,17 @@ func rangeForScannerError(code string, scanErr scanner.Error) Range {
 	}
 }
 
-func scannerErrorWidth(message string) int {
+func scannerErrorToken(message string) string {
 	matches := scannerFoundTokenPattern.FindStringSubmatch(message)
 	if len(matches) < 2 {
-		return 1
+		return ""
 	}
 	token := strings.TrimSpace(matches[1])
 	token = strings.Trim(token, "'")
 	if token == "" || token == "EOF" {
-		return 1
+		return ""
 	}
-	return len([]rune(token))
+	return token
 }
 
 func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem {
@@ -478,7 +542,7 @@ func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem 
 	if combined == nil {
 		return nil
 	}
-	items := combined.GetCompletionsAt(line+1, char+1)
+	items := combined.GetCompletionsAtFile(uri, line+1, char+1)
 	res := make([]CompletionItem, 0, len(items))
 	for _, it := range items {
 		res = append(res, CompletionItem{
@@ -503,7 +567,7 @@ func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
 	if combined == nil {
 		return nil
 	}
-	info := combined.GetHoverAt(line+1, char+1)
+	info := combined.GetHoverAtFile(uri, line+1, char+1)
 	if info == nil {
 		return nil
 	}
@@ -526,7 +590,7 @@ func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
 	if combined == nil {
 		return nil
 	}
-	def := combined.GetDefinitionAt(line+1, char+1)
+	def := combined.GetDefinitionAtFile(uri, line+1, char+1)
 	if def == nil {
 		return nil
 	}
@@ -535,10 +599,10 @@ func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
 	if defLoc != nil && defLoc.F != "" {
 		targetURI = defLoc.F
 	}
-	return []Location{{URI: targetURI, Range: FromInternalPos(defLoc)}}
+	return []Location{{URI: targetURI, Range: rangeForPackagePosition(pkg, targetURI, defLoc)}}
 }
 
-func (s *LSPServer) GetReferences(uri string, line, char int) []Location {
+func (s *LSPServer) GetReferences(uri string, line, char int, includeDeclaration bool) []Location {
 	pkg := s.packageForURI(uri)
 	if pkg == nil {
 		return nil
@@ -549,7 +613,7 @@ func (s *LSPServer) GetReferences(uri string, line, char int) []Location {
 	if combined == nil {
 		return nil
 	}
-	refs := combined.GetReferencesAt(line+1, char+1)
+	refs := combined.GetReferencesAtFile(uri, line+1, char+1, includeDeclaration)
 	res := make([]Location, 0, len(refs))
 	for _, r := range refs {
 		loc := r.GetBase().Loc
@@ -560,7 +624,21 @@ func (s *LSPServer) GetReferences(uri string, line, char int) []Location {
 		if loc.F != "" {
 			targetURI = loc.F
 		}
-		res = append(res, Location{URI: targetURI, Range: FromInternalPos(loc)})
+		res = append(res, Location{URI: targetURI, Range: rangeForPackagePosition(pkg, targetURI, loc)})
 	}
 	return res
+}
+
+func rangeForPackagePosition(pkg *packageState, uri string, pos *ast.Position) Range {
+	if pkg == nil || pos == nil {
+		return RangeFromInternalPos("", pos)
+	}
+	pkg.mu.RLock()
+	file := pkg.files[uri]
+	var code string
+	if file != nil {
+		code = file.code
+	}
+	pkg.mu.RUnlock()
+	return RangeFromInternalPos(code, pos)
 }

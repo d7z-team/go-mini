@@ -45,8 +45,14 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 		}
 	}
 
-	// 记录导入
+	type convertedImport struct {
+		spec miniast.ImportSpec
+		loc  *miniast.Position
+		node ast.Node
+	}
+
 	var miniImports []miniast.ImportSpec
+	var importDecls []convertedImport
 	if f != nil {
 		for _, imp := range f.Imports {
 			if len(imp.Path.Value) < 2 {
@@ -66,30 +72,43 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 				alias = parts[len(parts)-1]
 			}
 			c.imports[alias] = path
-			miniImports = append(miniImports, miniast.ImportSpec{
+			spec := miniast.ImportSpec{
 				Alias: alias,
 				Path:  path,
-			})
+			}
+			loc := c.extractLoc(imp)
+			if imp.Name != nil {
+				loc = c.extractLoc(imp.Name)
+			}
+			miniImports = append(miniImports, spec)
+			importDecls = append(importDecls, convertedImport{spec: spec, loc: loc, node: imp})
 		}
 	}
 
 	program := &miniast.ProgramStmt{
-		BaseNode:   miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
-		Constants:  make(map[string]string),
-		Variables:  make(map[miniast.Ident]miniast.Expr),
-		Types:      make(map[miniast.Ident]miniast.GoMiniType),
-		Structs:    make(map[miniast.Ident]*miniast.StructStmt),
-		Interfaces: make(map[miniast.Ident]*miniast.InterfaceStmt),
-		Functions:  make(map[miniast.Ident]*miniast.FunctionStmt),
-		Imports:    miniImports,
+		BaseNode:     miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
+		Constants:    make(map[string]string),
+		ConstantLocs: make(map[string]*miniast.Position),
+		Variables:    make(map[miniast.Ident]miniast.Expr),
+		Types:        make(map[miniast.Ident]miniast.GoMiniType),
+		TypeLocs:     make(map[miniast.Ident]*miniast.Position),
+		Structs:      make(map[miniast.Ident]*miniast.StructStmt),
+		Interfaces:   make(map[miniast.Ident]*miniast.InterfaceStmt),
+		ImportLocs:   make(map[string]*miniast.Position),
+		Functions:    make(map[miniast.Ident]*miniast.FunctionStmt),
+		Imports:      miniImports,
 	}
 	if f != nil {
 		program.Package = f.Name.Name
 	}
 
-	for i, imp := range miniImports {
+	for _, imported := range importDecls {
+		imp := imported.spec
+		loc := imported.loc
+		program.ImportLocs[imp.Alias] = loc
+		program.ImportLocs[miniast.ImportLocationKey(filename, imp.Alias)] = loc
 		program.Variables[miniast.Ident(imp.Alias)] = &miniast.ImportExpr{
-			BaseNode: miniast.BaseNode{ID: c.genID(f.Imports[i], "import"), Meta: "import", Type: miniast.TypeModule},
+			BaseNode: miniast.BaseNode{ID: c.genID(imported.node, "import"), Meta: "import", Type: miniast.TypeModule, Loc: loc},
 			Path:     imp.Path,
 		}
 	}
@@ -108,6 +127,7 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {
 					case *ast.TypeSpec:
+						program.TypeLocs[miniast.Ident(s.Name.Name)] = c.extractLoc(s.Name)
 						if st, ok := s.Type.(*ast.StructType); ok {
 							var doc string
 							if s.Doc != nil {
@@ -115,7 +135,7 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 							} else if d.Doc != nil {
 								doc = d.Doc.Text()
 							}
-							program.Structs[miniast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st, doc)
+							program.Structs[miniast.Ident(s.Name.Name)] = c.convertStruct(s.Name.Name, st, c.extractLoc(s.Name), doc)
 						} else if it, ok := s.Type.(*ast.InterfaceType); ok {
 							c.interfaces[s.Name.Name] = it // 记录接口定义
 							program.Interfaces[miniast.Ident(s.Name.Name)] = &miniast.InterfaceStmt{
@@ -123,7 +143,7 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 									ID:   c.genID(s, "interface"),
 									Meta: "interface",
 									Type: "Void",
-									Loc:  c.extractLoc(s),
+									Loc:  c.extractLoc(s.Name),
 								},
 								Name: miniast.Ident(s.Name.Name),
 								Type: miniast.GoMiniType(c.typeToString(it)),
@@ -147,6 +167,7 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 											}
 										}
 										program.Constants[name.Name] = val
+										program.ConstantLocs[name.Name] = c.extractLoc(name)
 									}
 								}
 							}

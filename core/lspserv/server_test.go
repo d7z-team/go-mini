@@ -13,13 +13,35 @@ import (
 )
 
 type stubProgram struct {
-	completions []ast.CompletionItem
+	completions        []ast.CompletionItem
+	definition         ast.Node
+	references         []ast.Node
+	includeDeclaration *bool
+	lastFile           string
 }
 
-func (p *stubProgram) GetCompletionsAt(line, col int) []ast.CompletionItem { return p.completions }
-func (p *stubProgram) GetHoverAt(line, col int) *ast.HoverInfo             { return nil }
-func (p *stubProgram) GetDefinitionAt(line, col int) ast.Node              { return nil }
-func (p *stubProgram) GetReferencesAt(line, col int) []ast.Node            { return nil }
+func (p *stubProgram) GetCompletionsAtFile(file string, line, col int) []ast.CompletionItem {
+	p.lastFile = file
+	return p.completions
+}
+
+func (p *stubProgram) GetHoverAtFile(file string, line, col int) *ast.HoverInfo {
+	p.lastFile = file
+	return nil
+}
+
+func (p *stubProgram) GetDefinitionAtFile(file string, line, col int) ast.Node {
+	p.lastFile = file
+	return p.definition
+}
+
+func (p *stubProgram) GetReferencesAtFile(file string, line, col int, includeDeclaration bool) []ast.Node {
+	p.lastFile = file
+	if p.includeDeclaration != nil {
+		*p.includeDeclaration = includeDeclaration
+	}
+	return p.references
+}
 
 type stubAnalyzer struct {
 	program ProgramView
@@ -28,6 +50,15 @@ type stubAnalyzer struct {
 
 func (s *stubAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt) (ProgramView, []error) {
 	return s.program, s.errs
+}
+
+func writeRPCMessages(dst *bytes.Buffer, bodies ...string) {
+	for _, body := range bodies {
+		dst.WriteString("Content-Length: ")
+		dst.WriteString(strconv.Itoa(len(body)))
+		dst.WriteString("\r\n\r\n")
+		dst.WriteString(body)
+	}
 }
 
 func TestPackageKeyForURIDistinguishesDirectories(t *testing.T) {
@@ -40,22 +71,28 @@ func TestPackageKeyForURIDistinguishesDirectories(t *testing.T) {
 
 func TestMergeProgramsIncludesImportsAndTypes(t *testing.T) {
 	dest := &ast.ProgramStmt{
-		Imports:    []ast.ImportSpec{{Path: "fmt"}},
-		Types:      map[ast.Ident]ast.GoMiniType{"AliasA": "Int64"},
-		Functions:  map[ast.Ident]*ast.FunctionStmt{},
-		Structs:    map[ast.Ident]*ast.StructStmt{},
-		Variables:  map[ast.Ident]ast.Expr{},
-		Constants:  map[string]string{},
-		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Imports:      []ast.ImportSpec{{Alias: "fmt", Path: "fmt"}},
+		ImportLocs:   map[string]*ast.Position{"fmt": {F: "a.go", L: 1, C: 8}},
+		Types:        map[ast.Ident]ast.GoMiniType{"AliasA": "Int64"},
+		TypeLocs:     map[ast.Ident]*ast.Position{"AliasA": {F: "a.go", L: 2, C: 6}},
+		Functions:    map[ast.Ident]*ast.FunctionStmt{},
+		Structs:      map[ast.Ident]*ast.StructStmt{},
+		Variables:    map[ast.Ident]ast.Expr{},
+		Constants:    map[string]string{"ConstA": "1"},
+		ConstantLocs: map[string]*ast.Position{"ConstA": {F: "a.go", L: 3, C: 7}},
+		Interfaces:   map[ast.Ident]*ast.InterfaceStmt{},
 	}
 	src := &ast.ProgramStmt{
-		Imports:    []ast.ImportSpec{{Path: "os"}},
-		Types:      map[ast.Ident]ast.GoMiniType{"AliasB": "String"},
-		Functions:  map[ast.Ident]*ast.FunctionStmt{},
-		Structs:    map[ast.Ident]*ast.StructStmt{},
-		Variables:  map[ast.Ident]ast.Expr{},
-		Constants:  map[string]string{},
-		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Imports:      []ast.ImportSpec{{Alias: "os", Path: "os"}},
+		ImportLocs:   map[string]*ast.Position{"os": {F: "b.go", L: 1, C: 8}},
+		Types:        map[ast.Ident]ast.GoMiniType{"AliasB": "String"},
+		TypeLocs:     map[ast.Ident]*ast.Position{"AliasB": {F: "b.go", L: 2, C: 6}},
+		Functions:    map[ast.Ident]*ast.FunctionStmt{},
+		Structs:      map[ast.Ident]*ast.StructStmt{},
+		Variables:    map[ast.Ident]ast.Expr{},
+		Constants:    map[string]string{"ConstB": "2"},
+		ConstantLocs: map[string]*ast.Position{"ConstB": {F: "b.go", L: 3, C: 7}},
+		Interfaces:   map[ast.Ident]*ast.InterfaceStmt{},
 	}
 
 	merged, err := compiler.MergePrograms([]*ast.ProgramStmt{dest, src})
@@ -67,6 +104,9 @@ func TestMergeProgramsIncludesImportsAndTypes(t *testing.T) {
 	}
 	if _, ok := merged.Types["AliasB"]; !ok {
 		t.Fatalf("expected merged types, got %+v", merged.Types)
+	}
+	if merged.ImportLocs["os"].F != "b.go" || merged.TypeLocs["AliasB"].F != "b.go" || merged.ConstantLocs["ConstB"].F != "b.go" {
+		t.Fatalf("expected merged declaration locations, got imports=%+v types=%+v constants=%+v", merged.ImportLocs, merged.TypeLocs, merged.ConstantLocs)
 	}
 }
 
@@ -96,12 +136,7 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 	completionBody := `{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///workspace/a/main.go"},"position":{"line":1,"character":1}}}`
 
 	var in bytes.Buffer
-	for _, body := range []string{initBody, openBody, completionBody} {
-		in.WriteString("Content-Length: ")
-		in.WriteString(strconv.Itoa(len(body)))
-		in.WriteString("\r\n\r\n")
-		in.WriteString(body)
-	}
+	writeRPCMessages(&in, initBody, openBody, completionBody)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -171,6 +206,110 @@ func TestUpdateSessionClearsPreviousSyntaxDiagnostics(t *testing.T) {
 	}
 }
 
+func TestRemoveSessionClearsDiagnosticsAndPackageState(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	uri := "file:///workspace/a/main.mgo"
+
+	first, _ := server.UpdateSession(uri, "package main\nfunc main() {\n    aaaa\n")
+	if len(first[uri]) == 0 {
+		t.Fatalf("expected diagnostics on first update, got %+v", first)
+	}
+
+	updates := server.RemoveSession(uri)
+	diags, ok := updates[uri]
+	if !ok {
+		t.Fatalf("expected clearing diagnostics entry, got %+v", updates)
+	}
+	if len(diags) != 0 {
+		t.Fatalf("expected diagnostics to clear, got %+v", diags)
+	}
+	if server.packageForURI(uri) != nil {
+		t.Fatal("expected removed file to leave no package session")
+	}
+}
+
+func TestServeStreamDidClosePublishesEmptyDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	uri := "file:///workspace/a/main.mgo"
+
+	openBody := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"` + uri + `","text":"package main\nfunc main() {\n    aaaa\n"}}}`
+	closeBody := `{"jsonrpc":"2.0","method":"textDocument/didClose","params":{"textDocument":{"uri":"` + uri + `"}}}`
+
+	var in bytes.Buffer
+	writeRPCMessages(&in, openBody, closeBody)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	if err := ServeStream(server, &in, &out, &errOut); err != nil {
+		t.Fatalf("ServeStream returned error: %v", err)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), `"diagnostics":[]`) {
+		t.Fatalf("expected didClose to publish empty diagnostics, got %q", out.String())
+	}
+}
+
+func TestServeStreamShutdownExitAndErrors(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	unknownBody := `{"jsonrpc":"2.0","id":1,"method":"workspace/unknown","params":{}}`
+	invalidParamsBody := `{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":"bad"}`
+	shutdownBody := `{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}`
+	afterShutdownBody := `{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///workspace/a/main.go"},"position":{"line":1,"character":1}}}`
+	exitBody := `{"jsonrpc":"2.0","method":"exit"}`
+
+	var in bytes.Buffer
+	writeRPCMessages(&in, unknownBody, invalidParamsBody, shutdownBody, afterShutdownBody, exitBody)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	if err := ServeStream(server, &in, &out, &errOut); err != nil {
+		t.Fatalf("ServeStream returned error: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, `"code":-32601`) {
+		t.Fatalf("expected method-not-found response, got %q", got)
+	}
+	if !strings.Contains(got, `"code":-32602`) {
+		t.Fatalf("expected invalid-params response, got %q", got)
+	}
+	if !strings.Contains(got, `"id":3`) {
+		t.Fatalf("expected shutdown response, got %q", got)
+	}
+	if !strings.Contains(got, `"id":4`) || !strings.Contains(got, `"code":-32600`) {
+		t.Fatalf("expected post-shutdown request rejection, got %q", got)
+	}
+}
+
+func TestGetReferencesHonorsIncludeDeclaration(t *testing.T) {
+	uri := "file:///workspace/a/main.go"
+	include := true
+	ref := &ast.IdentifierExpr{
+		BaseNode: ast.BaseNode{Loc: &ast.Position{F: uri, L: 2, C: 6, EL: 2, EC: 10}},
+		Name:     "name",
+	}
+	program := &stubProgram{
+		references:         []ast.Node{ref},
+		includeDeclaration: &include,
+	}
+	server := NewLSPServer(&stubAnalyzer{
+		program: program,
+	})
+
+	_, _ = server.UpdateSession(uri, "package main\nfunc main() {}\n")
+	locs := server.GetReferences(uri, 1, 5, false)
+	if include {
+		t.Fatal("expected includeDeclaration=false to reach ProgramView")
+	}
+	if program.lastFile != uri {
+		t.Fatalf("expected references query to include URI %q, got %q", uri, program.lastFile)
+	}
+	if len(locs) != 1 || locs[0].URI != uri {
+		t.Fatalf("expected one reference location, got %+v", locs)
+	}
+}
+
 func TestUpdateSessionReportsMergeErrorsAsDiagnostics(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 
@@ -232,5 +371,16 @@ func TestRangeForScannerErrorUsesTokenWidth(t *testing.T) {
 	})
 	if got := rng.End.Character - rng.Start.Character; got != 4 {
 		t.Fatalf("expected token width 4, got %+v", rng)
+	}
+}
+
+func TestRangeFromInternalPosUsesUTF16Columns(t *testing.T) {
+	code := "package main\nvar 名 = bad\n"
+	rng := RangeFromInternalPos(code, &ast.Position{F: "snippet", L: 2, C: 11, EL: 2, EC: 14})
+	if rng.Start.Line != 1 {
+		t.Fatalf("expected zero-based line 1, got %+v", rng)
+	}
+	if rng.Start.Character != 8 || rng.End.Character != 11 {
+		t.Fatalf("expected UTF-16 columns 8..11, got %+v", rng)
 	}
 }

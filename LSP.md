@@ -26,7 +26,8 @@ lsp := lspserv.NewLSPServer(executor)
 1. `UpdateSession(uri, code)`
 2. `GetCompletions(uri, line, char)`
 3. `GetHover(uri, line, char)`
-4. `GetDefinition` / `GetReferences`
+4. `GetDefinition` / `GetReferences(uri, line, char, includeDeclaration)`
+5. `RemoveSession(uri)` 清理关闭文件的缓存与诊断
 
 ## 2. 无状态模式
 
@@ -57,6 +58,7 @@ items := lsp.GetCompletions(uri, line, char)
 diags, _ := lsp.UpdateSession(msg.URI, msg.Code)
 items := lsp.GetCompletions(msg.URI, msg.Line, msg.Char)
 hover := lsp.GetHover(msg.URI, msg.Line, msg.Char)
+refs := lsp.GetReferences(msg.URI, msg.Line, msg.Char, true)
 ```
 
 适合：
@@ -84,7 +86,8 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 - 语法错误
 - 语义错误
 - 跨文件符号错误
-- 精确 range 输出
+- UTF-16 LSP range 输出
+- 关闭文件后清理旧诊断
 
 返回结构遵循 LSP 风格：
 
@@ -115,3 +118,9 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 2. 运行时走 `CompileGoCode` / `NewRuntimeByCompiled` / `NewRuntimeByBytecodeJSON`
 
 不要把 LSP 会话缓存当作执行入口。
+
+## 7. 当前 IDE 能力
+
+`cmd/lsp-server` 支持标准 stdio JSON-RPC 生命周期，包括 initialize、didOpen、didChange、didClose、shutdown 和 exit。
+
+导航与悬浮覆盖局部变量、全局变量、函数、方法、结构体字段、import 别名、常量、类型别名、结构体和接口声明。references 会按客户端传入的 `includeDeclaration` 决定是否返回声明位置。

@@ -19,6 +19,20 @@ type rpcMessage struct {
 	Error   interface{}     `json:"error,omitempty"`
 }
 
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type streamState struct {
+	shutdown bool
+}
+
+var (
+	errMissingTextDocumentURI = errors.New("missing textDocument.uri")
+	jsonNull                  = json.RawMessage("null")
+)
+
 type publishDiagnosticsParams struct {
 	URI         string       `json:"uri"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
@@ -44,6 +58,7 @@ func ServeStream(server *LSPServer, in io.Reader, out, errOut io.Writer) error {
 		_, _ = fmt.Fprintf(out, "Content-Length: %d\r\n\r\n%s", len(body), body)
 	}
 
+	state := &streamState{}
 	for {
 		msg, err := readMessage(reader)
 		if err != nil {
@@ -53,14 +68,18 @@ func ServeStream(server *LSPServer, in io.Reader, out, errOut io.Writer) error {
 			_, _ = fmt.Fprintf(errOut, "Error reading message: %v\n", err)
 			continue
 		}
+		shouldExit := false
 		func(m *rpcMessage) {
 			defer func() {
 				if r := recover(); r != nil {
 					_, _ = fmt.Fprintf(errOut, "LSP Panic recovered: %v\n", r)
 				}
 			}()
-			handleMessage(server, m, writeMessage, errOut)
+			shouldExit = handleMessage(server, m, state, writeMessage, errOut)
 		}(msg)
+		if shouldExit {
+			return nil
+		}
 	}
 }
 
@@ -93,7 +112,18 @@ func readMessage(r *bufio.Reader) (*rpcMessage, error) {
 	return &msg, nil
 }
 
-func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interface{}), errOut io.Writer) {
+func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, writeMessage func(interface{}), errOut io.Writer) bool {
+	if state != nil && state.shutdown && msg.Method != "exit" {
+		if msg.ID != nil {
+			writeMessage(rpcMessage{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Error:   rpcError{Code: -32600, Message: "server is shut down"},
+			})
+		}
+		return false
+	}
+
 	switch msg.Method {
 	case "initialize":
 		writeMessage(rpcMessage{
@@ -101,7 +131,10 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 			ID:      msg.ID,
 			Result: map[string]interface{}{
 				"capabilities": map[string]interface{}{
-					"textDocumentSync": 1,
+					"textDocumentSync": map[string]interface{}{
+						"openClose": true,
+						"change":    1,
+					},
 					"completionProvider": map[string]interface{}{
 						"resolveProvider":   false,
 						"triggerCharacters": []string{"."},
@@ -112,6 +145,22 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 				},
 			},
 		})
+		return false
+
+	case "initialized", "$/cancelRequest":
+		return false
+
+	case "shutdown":
+		if state != nil {
+			state.shutdown = true
+		}
+		if msg.ID != nil {
+			writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: jsonNull})
+		}
+		return false
+
+	case "exit":
+		return true
 
 	case "textDocument/didOpen", "textDocument/didChange":
 		var params struct {
@@ -124,9 +173,14 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 			} `json:"contentChanges"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			return
+			writeInvalidParams(msg, writeMessage, err)
+			return false
 		}
 		uri := params.TextDocument.URI
+		if strings.TrimSpace(uri) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
 		code := params.TextDocument.Text
 		if len(params.ContentChanges) > 0 {
 			code = params.ContentChanges[0].Text
@@ -150,6 +204,38 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 				Params:  json.RawMessage(payload),
 			})
 		}
+		return false
+
+	case "textDocument/didClose":
+		var params struct {
+			TextDocument struct {
+				URI string `json:"uri"`
+			} `json:"textDocument"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		for fURI, diags := range server.RemoveSession(params.TextDocument.URI) {
+			payload, marshalErr := json.Marshal(publishDiagnosticsParams{
+				URI:         fURI,
+				Diagnostics: diags,
+			})
+			if marshalErr != nil {
+				_, _ = fmt.Fprintf(errOut, "Error marshaling diagnostics for %s: %v\n", fURI, marshalErr)
+				continue
+			}
+			writeMessage(rpcMessage{
+				JSONRPC: "2.0",
+				Method:  "textDocument/publishDiagnostics",
+				Params:  json.RawMessage(payload),
+			})
+		}
+		return false
 
 	case "textDocument/completion":
 		var params struct {
@@ -157,10 +243,16 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 			Position     Position             `json:"position"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			return
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
 		}
 		items := server.GetCompletions(params.TextDocument.URI, params.Position.Line, params.Position.Character)
 		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: items})
+		return false
 
 	case "textDocument/hover":
 		var params struct {
@@ -168,10 +260,16 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 			Position     Position             `json:"position"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			return
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
 		}
 		hover := server.GetHover(params.TextDocument.URI, params.Position.Line, params.Position.Character)
 		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: hover})
+		return false
 
 	case "textDocument/definition":
 		var params struct {
@@ -179,20 +277,55 @@ func handleMessage(server *LSPServer, msg *rpcMessage, writeMessage func(interfa
 			Position     Position             `json:"position"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			return
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
 		}
 		locs := server.GetDefinition(params.TextDocument.URI, params.Position.Line, params.Position.Character)
 		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: locs})
+		return false
 
 	case "textDocument/references":
 		var params struct {
 			TextDocument struct{ URI string } `json:"textDocument"`
 			Position     Position             `json:"position"`
+			Context      struct {
+				IncludeDeclaration bool `json:"includeDeclaration"`
+			} `json:"context"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			return
+			writeInvalidParams(msg, writeMessage, err)
+			return false
 		}
-		locs := server.GetReferences(params.TextDocument.URI, params.Position.Line, params.Position.Character)
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		locs := server.GetReferences(params.TextDocument.URI, params.Position.Line, params.Position.Character, params.Context.IncludeDeclaration)
 		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: locs})
+		return false
+	default:
+		if msg.ID != nil {
+			writeMessage(rpcMessage{
+				JSONRPC: "2.0",
+				ID:      msg.ID,
+				Error:   rpcError{Code: -32601, Message: "method not found: " + msg.Method},
+			})
+		}
+		return false
 	}
+}
+
+func writeInvalidParams(msg *rpcMessage, writeMessage func(interface{}), err error) {
+	if msg == nil || msg.ID == nil {
+		return
+	}
+	writeMessage(rpcMessage{
+		JSONRPC: "2.0",
+		ID:      msg.ID,
+		Error:   rpcError{Code: -32602, Message: "invalid params: " + err.Error()},
+	})
 }

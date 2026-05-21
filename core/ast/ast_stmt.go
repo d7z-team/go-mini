@@ -22,18 +22,29 @@ type ImportSpec struct {
 	Path  string `json:"path"`            // 导入路径
 }
 
+// ImportLocationKey returns the location-map key for a file-scoped import alias.
+func ImportLocationKey(file, alias string) string {
+	if file == "" {
+		return alias
+	}
+	return file + "\x1f" + alias
+}
+
 // ProgramStmt 程序启动
 type ProgramStmt struct {
-	BaseNode   `json:",inline"`
-	Package    string                   `json:"package,omitempty"` // 包名，默认为main
-	Imports    []ImportSpec             `json:"imports,omitempty"` // 导入列表
-	Constants  map[string]string        `json:"constants"`         // 常量表
-	Variables  map[Ident]Expr           `json:"variables"`         // 声明的全局变量
-	Types      map[Ident]GoMiniType     `json:"types"`             // 命名类型定义 (type MyInt int64)
-	Structs    map[Ident]*StructStmt    `json:"structs"`           // 声明的对象 (对象)
-	Interfaces map[Ident]*InterfaceStmt `json:"interfaces"`        // 声明的接口
-	Functions  map[Ident]*FunctionStmt  `json:"functions"`         // 声明的函数 (解构为无作用域函数)
-	Main       []Stmt                   `json:"main"`              // 入口点 （如果没有内容则代表为 lib）
+	BaseNode     `json:",inline"`
+	Package      string                   `json:"package,omitempty"` // 包名，默认为main
+	Imports      []ImportSpec             `json:"imports,omitempty"` // 导入列表
+	Constants    map[string]string        `json:"constants"`         // 常量表
+	ConstantLocs map[string]*Position     `json:"constant_locs,omitempty"`
+	Variables    map[Ident]Expr           `json:"variables"` // 声明的全局变量
+	Types        map[Ident]GoMiniType     `json:"types"`     // 命名类型定义 (type MyInt int64)
+	TypeLocs     map[Ident]*Position      `json:"type_locs,omitempty"`
+	Structs      map[Ident]*StructStmt    `json:"structs"`    // 声明的对象 (对象)
+	Interfaces   map[Ident]*InterfaceStmt `json:"interfaces"` // 声明的接口
+	ImportLocs   map[string]*Position     `json:"import_locs,omitempty"`
+	Functions    map[Ident]*FunctionStmt  `json:"functions"` // 声明的函数 (解构为无作用域函数)
+	Main         []Stmt                   `json:"main"`      // 入口点 （如果没有内容则代表为 lib）
 }
 
 // InterfaceStmt 表示接口定义

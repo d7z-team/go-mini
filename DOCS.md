@@ -506,7 +506,7 @@ LSP 和查询能力建立在源码 AST 之上，执行主路径使用 compiled a
 
 ```go
 hover := program.GetHoverAt(10, 5)
-refs := program.GetReferencesAt(10, 5)
+refs := program.GetReferencesAt(10, 5, true)
 def := program.GetDefinitionAt(10, 5)
 ```
 

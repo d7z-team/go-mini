@@ -113,6 +113,51 @@ func TestJSONASTComprehensive(t *testing.T) {
 	}
 }
 
+func TestJSONASTPreservesLSPDeclarationMetadata(t *testing.T) {
+	node, err := engine.Unmarshal([]byte(`{
+		"meta":"boot",
+		"imports":[{"alias":"fmt","path":"fmt"}],
+		"import_locs":{"fmt":{"f":"snippet","l":2,"c":8,"el":2,"ec":13}},
+		"constants":{"Version":"1"},
+		"constant_locs":{"Version":{"f":"snippet","l":3,"c":7,"el":3,"ec":14}},
+		"variables":{},
+		"types":{"MyInt":"Int64"},
+		"type_locs":{"MyInt":{"f":"snippet","l":4,"c":6,"el":4,"ec":11}},
+		"structs":{
+			"Point":{
+				"meta":"struct",
+				"name":"Point",
+				"fields":{"X":"Int64"},
+				"field_names":["X"],
+				"field_locs":{"X":{"f":"snippet","l":6,"c":2,"el":6,"ec":3}}
+			}
+		},
+		"interfaces":{
+			"Reader":{
+				"meta":"interface",
+				"name":"Reader",
+				"type":"interface{Read() String;}",
+				"loc":{"f":"snippet","l":5,"c":6,"el":5,"ec":12}
+			}
+		},
+		"functions":{},
+		"main":[]
+	}`))
+	if err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	prog := node.(*ast.ProgramStmt)
+	if prog.ImportLocs["fmt"].C != 8 || prog.ConstantLocs["Version"].C != 7 || prog.TypeLocs["MyInt"].C != 6 {
+		t.Fatalf("expected top-level declaration locations, got imports=%+v constants=%+v types=%+v", prog.ImportLocs, prog.ConstantLocs, prog.TypeLocs)
+	}
+	if prog.Interfaces["Reader"].GetBase().Loc.C != 6 {
+		t.Fatalf("expected interface location, got %+v", prog.Interfaces["Reader"].GetBase().Loc)
+	}
+	if prog.Structs["Point"].FieldLocs["X"].C != 2 {
+		t.Fatalf("expected struct field location, got %+v", prog.Structs["Point"].FieldLocs)
+	}
+}
+
 func TestCompileProgramSupportsValidatedAST(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
 	artifact, err := testExecutor.CompileProgram(&ast.ProgramStmt{

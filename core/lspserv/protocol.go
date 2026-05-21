@@ -1,6 +1,8 @@
 package lspserv
 
 import (
+	"strings"
+
 	"gopkg.d7z.net/go-mini/core/ast"
 )
 
@@ -112,11 +114,19 @@ type Diagnostic struct {
 
 // FromInternalPos 将 go-mini 的 1-based Position 转换为 LSP 的 0-based Position
 func FromInternalPos(p *ast.Position) Range {
+	return RangeFromInternalPos("", p)
+}
+
+func RangeFromInternalPos(code string, p *ast.Position) Range {
 	if p == nil {
 		return Range{}
 	}
-	start := Position{Line: p.L - 1, Character: p.C - 1}
-	end := Position{Line: p.EL - 1, Character: p.EC - 1}
+	start := Position{Line: normalizeLine(p.L), Character: normalizeColumn(code, p.L, p.C)}
+	endLine := p.EL
+	if endLine <= 0 {
+		endLine = p.L
+	}
+	end := Position{Line: normalizeLine(endLine), Character: normalizeColumn(code, endLine, p.EC)}
 
 	// 如果结束位置无效（比如为 0），则退化为开始位置 + 1
 	if p.EL <= 0 {
@@ -139,4 +149,48 @@ func FromInternalPos(p *ast.Position) Range {
 		Start: start,
 		End:   end,
 	}
+}
+
+func normalizeLine(line int) int {
+	if line <= 0 {
+		return 0
+	}
+	return line - 1
+}
+
+func normalizeColumn(code string, line, col int) int {
+	if col <= 0 {
+		return 0
+	}
+	if code == "" {
+		return col - 1
+	}
+	lines := strings.Split(code, "\n")
+	lineIndex := line - 1
+	if lineIndex < 0 || lineIndex >= len(lines) {
+		return col - 1
+	}
+	return utf16CharacterForByteColumn(lines[lineIndex], col)
+}
+
+func utf16CharacterForByteColumn(line string, col int) int {
+	byteLimit := col - 1
+	if byteLimit <= 0 {
+		return 0
+	}
+	if byteLimit > len(line) {
+		byteLimit = len(line)
+	}
+	count := 0
+	for offset, r := range line {
+		if offset >= byteLimit {
+			break
+		}
+		if r > 0xffff {
+			count += 2
+		} else {
+			count++
+		}
+	}
+	return count
 }

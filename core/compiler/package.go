@@ -127,6 +127,7 @@ func mergeProgram(dest, src *ast.ProgramStmt) error {
 			dest.Imports = append(dest.Imports, imp)
 		}
 	}
+	mergeStringPositionMap(&dest.ImportLocs, src.ImportLocs)
 	for k, v := range src.Functions {
 		if _, exists := dest.Functions[k]; exists {
 			return fmt.Errorf("duplicate function definition: %s", k)
@@ -154,12 +155,14 @@ func mergeProgram(dest, src *ast.ProgramStmt) error {
 		}
 		dest.Constants[k] = v
 	}
+	mergeStringPositionMap(&dest.ConstantLocs, src.ConstantLocs)
 	for k, v := range src.Types {
 		if _, exists := dest.Types[k]; exists {
 			return fmt.Errorf("duplicate type definition: %s", k)
 		}
 		dest.Types[k] = v
 	}
+	mergeIdentPositionMap(&dest.TypeLocs, src.TypeLocs)
 	for k, v := range src.Interfaces {
 		if _, exists := dest.Interfaces[k]; exists {
 			return fmt.Errorf("duplicate interface definition: %s", k)
@@ -168,6 +171,30 @@ func mergeProgram(dest, src *ast.ProgramStmt) error {
 	}
 	dest.Main = append(dest.Main, src.Main...)
 	return nil
+}
+
+func mergeStringPositionMap(dest *map[string]*ast.Position, src map[string]*ast.Position) {
+	if len(src) == 0 {
+		return
+	}
+	if *dest == nil {
+		*dest = make(map[string]*ast.Position, len(src))
+	}
+	for k, v := range src {
+		(*dest)[k] = v
+	}
+}
+
+func mergeIdentPositionMap(dest *map[ast.Ident]*ast.Position, src map[ast.Ident]*ast.Position) {
+	if len(src) == 0 {
+		return
+	}
+	if *dest == nil {
+		*dest = make(map[ast.Ident]*ast.Position, len(src))
+	}
+	for k, v := range src {
+		(*dest)[k] = v
+	}
 }
 
 func importAliasPaths(imports []ast.ImportSpec) map[string]string {

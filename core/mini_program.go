@@ -81,12 +81,22 @@ func (p *MiniProgram) BuildAllCache() {
 
 // GetNodeAt 获取指定位置的节点
 func (p *MiniProgram) GetNodeAt(line, col int) ast.Node {
-	return ast.FindNodeAt(p.Program, line, col)
+	return p.GetNodeAtFile("", line, col)
+}
+
+// GetNodeAtFile 获取指定文件位置的节点
+func (p *MiniProgram) GetNodeAtFile(file string, line, col int) ast.Node {
+	return ast.FindNodeAtFile(p.Program, file, line, col)
 }
 
 // GetDefinitionAt 获取指定位置符号的定义
 func (p *MiniProgram) GetDefinitionAt(line, col int) ast.Node {
-	node := p.GetNodeAt(line, col)
+	return p.GetDefinitionAtFile("", line, col)
+}
+
+// GetDefinitionAtFile 获取指定文件位置符号的定义
+func (p *MiniProgram) GetDefinitionAtFile(file string, line, col int) ast.Node {
+	node := p.GetNodeAtFile(file, line, col)
 	if node == nil {
 		return nil
 	}
@@ -96,7 +106,12 @@ func (p *MiniProgram) GetDefinitionAt(line, col int) ast.Node {
 
 // GetHoverAt 获取指定位置符号的悬浮信息
 func (p *MiniProgram) GetHoverAt(line, col int) *ast.HoverInfo {
-	node := p.GetNodeAt(line, col)
+	return p.GetHoverAtFile("", line, col)
+}
+
+// GetHoverAtFile 获取指定文件位置符号的悬浮信息
+func (p *MiniProgram) GetHoverAtFile(file string, line, col int) *ast.HoverInfo {
+	node := p.GetNodeAtFile(file, line, col)
 	if node == nil {
 		return nil
 	}
@@ -105,8 +120,13 @@ func (p *MiniProgram) GetHoverAt(line, col int) *ast.HoverInfo {
 }
 
 // GetReferencesAt 获取指定位置符号的所有引用
-func (p *MiniProgram) GetReferencesAt(line, col int) []ast.Node {
-	node := p.GetNodeAt(line, col)
+func (p *MiniProgram) GetReferencesAt(line, col int, includeDeclaration bool) []ast.Node {
+	return p.GetReferencesAtFile("", line, col, includeDeclaration)
+}
+
+// GetReferencesAtFile 获取指定文件位置符号的所有引用
+func (p *MiniProgram) GetReferencesAtFile(file string, line, col int, includeDeclaration bool) []ast.Node {
+	node := p.GetNodeAtFile(file, line, col)
 	if node == nil {
 		return nil
 	}
@@ -115,12 +135,17 @@ func (p *MiniProgram) GetReferencesAt(line, col int) []ast.Node {
 	if def == nil {
 		return nil
 	}
-	return ast.FindAllReferences(p.Program, def, p.parentMap)
+	return ast.FindAllReferences(p.Program, def, p.parentMap, includeDeclaration)
 }
 
 // GetCompletionsAt 获取指定位置的代码补全建议
 func (p *MiniProgram) GetCompletionsAt(line, col int) []ast.CompletionItem {
-	return ast.FindCompletionsAt(p.Program, line, col)
+	return p.GetCompletionsAtFile("", line, col)
+}
+
+// GetCompletionsAtFile 获取指定文件位置的代码补全建议
+func (p *MiniProgram) GetCompletionsAtFile(file string, line, col int) []ast.CompletionItem {
+	return ast.FindCompletionsAtFile(p.Program, file, line, col)
 }
 
 func (p *MiniProgram) SetStepLimit(limit int64) {

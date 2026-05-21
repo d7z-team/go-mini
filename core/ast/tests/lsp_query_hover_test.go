@@ -59,6 +59,55 @@ func main() {
 	}
 }
 
+func TestFindHoverInfoForTopLevelDeclarations(t *testing.T) {
+	code := `package main
+import alias "fmt"
+const Version = "1"
+type MyInt int64
+type Reader interface { Read() string }
+func main() {
+	alias.Println(Version)
+	_ = MyInt(1)
+}`
+	conv := gofrontend.NewConverter()
+	prog, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parentMap := ast.BuildParentMap(prog)
+	tests := []struct {
+		name       string
+		line, col  int
+		wantText   string
+		wantGoType ast.GoMiniType
+	}{
+		{name: "import", line: 7, col: 2, wantText: "import alias", wantGoType: ast.TypeModule},
+		{name: "constant", line: 7, col: 16, wantText: "const 1", wantGoType: "Constant"},
+		{name: "type alias", line: 8, col: 6, wantText: "type MyInt Int64", wantGoType: "Int64"},
+		{name: "interface", line: 5, col: 7, wantText: "interface Reader", wantGoType: "interface{Read() String;}"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := ast.FindNodeAt(prog, tt.line, tt.col)
+			if node == nil {
+				t.Fatalf("node at %d:%d not found", tt.line, tt.col)
+			}
+			info := ast.FindHoverInfo(prog, node, parentMap)
+			if info == nil {
+				t.Fatalf("hover at %d:%d not found", tt.line, tt.col)
+			}
+			if info.Type != tt.wantGoType {
+				t.Fatalf("expected hover type %s, got %s", tt.wantGoType, info.Type)
+			}
+			if !strings.Contains(info.Signature, tt.wantText) {
+				t.Fatalf("expected signature containing %q, got %q", tt.wantText, info.Signature)
+			}
+		})
+	}
+}
+
 func TestImportedTupleReturnMemberHover(t *testing.T) {
 	conv := gofrontend.NewConverter()
 
