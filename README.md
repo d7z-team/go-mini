@@ -1,10 +1,15 @@
 # Go-Mini
 
-Go-Mini is a Go-like scripting engine with a bytecode-first runtime.
+Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and schema-based FFI.
 
-- Compile source code to `go-mini-bytecode`
-- Convert Go source to Mini AST in `core/gofrontend`, lower AST to `PreparedProgram` in `core/lowering`, then run prepared programs without AST on the runtime path
-- Generate schema-only FFI bindings with the `cmd/ffigen` CLI backed by `core/ffigen`
+## Features
+
+- Go-like syntax for small scripts and embedded workflows
+- Bytecode-first runtime
+- Embeddable Go API
+- CLI for running scripts and bytecode
+- FFI binding generator
+- LSP helpers for editor integrations
 
 ## Install
 
@@ -13,7 +18,7 @@ go install gopkg.d7z.net/go-mini/cmd/exec@latest
 go install gopkg.d7z.net/go-mini/cmd/ffigen@latest
 ```
 
-## Quick Start
+## CLI
 
 Run a script:
 
@@ -33,73 +38,62 @@ Run bytecode:
 go run ./cmd/exec -bytecode script.json
 ```
 
-Generate FFI bindings:
+## Embedding
+
+```go
+package main
+
+import (
+	"context"
+
+	engine "gopkg.d7z.net/go-mini/core"
+)
+
+func main() {
+	exec := engine.NewMiniExecutor()
+	prog, err := exec.NewRuntimeByGoCode(`
+package main
+
+func main() {
+	println("hello from go-mini")
+}
+`)
+	if err != nil {
+		panic(err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		panic(err)
+	}
+}
+```
+
+## FFI
+
+Generate bindings from Go interfaces:
 
 ```bash
 go run ./cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
+For examples and runtime integration details, see [DOCS.md](./DOCS.md).
+
 ## Development
 
 ```bash
+make lint test
+```
+
+Useful focused checks:
+
+```bash
 GOCACHE=/tmp/go-build-cache go test -timeout 180s ./core/runtime
-GOCACHE=/tmp/go-build-cache go test -timeout 180s ./core/e2e/...
 GOCACHE=/tmp/go-build-cache go test -timeout 180s ./...
 ```
 
-## Canonical Type Text
-
-Go-Mini uses canonical VM type text such as `Array<T>`, `Map<K, V>`, `Ptr<T>`, `HostRef<T>`, `tuple(...)`, and `function(...) R`.
-
-- `core/typespec` owns the grammar and renderer.
-- `core/ast/ast_types.go` is the frontend-facing type API.
-- `core/runtime/schema.go` is the VM/schema-facing type API and runtime does not import `core/ast`.
-- Hand-written AST/JSON/bytecode inputs must already use canonical type text; Go-style spellings are normalized only in `core/gofrontend`.
-
-## Runtime Boundary
-
-Source inputs are normalized by `core/gofrontend`, compiled through `core/compiler`, and lowered by `core/lowering`. `core/ffigo` is reserved for FFI wire / bridge helpers and does not contain source conversion. Bytecode JSON execution requires the embedded `Executable` prepared program and does not rebuild an AST program from bytecode metadata.
-
-## VM Value And Reference Model
-
-Go-Mini stores variables in VM slots. A slot owns the declared type, and assignment normalizes the incoming value into that slot.
-
-- Primitive values, bytes, and VM structs use value semantics.
-- VM structs are represented as structs, not maps; their fields are typed slots.
-- Arrays, maps, VM pointers, closures, modules, interfaces, and host handles are reference values.
-- `Ptr<T>` is a controlled VM slot reference, not a host memory address.
-- Passing a struct to a function or value receiver copies the struct value; mutating a pointer/reference field still mutates the referenced object.
-
-## FFI Host Objects
-
-FFI struct schemas are either `VMValue` or `HostOpaque`.
-
-- `VMValue` structs can be created and copied by VM code.
-- `HostOpaque` structs are opaque host resources and are only visible as `HostRef<T>`.
-- VM code cannot create opaque host objects with `T{}`, `var x T`, or `new(T)`.
-- Opaque host objects must come from FFI factories or FFI return values, for example `sync.NewWaitGroup()`.
-
-## VM Execution Context Concurrency
-
-Go-Mini uses single-threaded cooperative scheduling for VM execution contexts:
-
-- `go f()` schedules a child VM execution context; it does not return a handle or result
-- the VM never runs two execution contexts in parallel; switching only happens at VM safe points
-- VM code does not expose a public yield API
-- synchronous FFI calls still block the VM; only async FFI returns create suspend/resume points
-- captured closures share normal VM state with the parent because there is no parallel execution
-
-Lifecycle rules:
-
-- root `main` returning stops all unfinished child execution contexts immediately
-- unfinished background execution contexts are not waited for automatically
-- a child execution context panic fails the whole VM execution unless recovered inside that context
-
-## Docs
+## Documentation
 
 - [DOCS.md](./DOCS.md)
 - [LSP.md](./LSP.md)
-- [AGENTS.md](./AGENTS.md)
 - [TODO.md](./TODO.md)
 
 ## License
