@@ -119,13 +119,14 @@ func ValidateReservedDeclarations(program *ast.ProgramStmt, registry *Registry) 
 	return nil
 }
 
-func ExpandProgram(program *ast.ProgramStmt, registry *Registry) (*ExpandResult, error) {
+func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan) (*ExpandResult, error) {
 	if program == nil || registry == nil {
 		return &ExpandResult{}, nil
 	}
 	exp := &expander{
 		program:        program,
 		registry:       registry,
+		plan:           plan,
 		result:         &ExpandResult{},
 		syntheticUsed:  make(map[string]string),
 		syntheticNames: make(map[string]struct{}),
@@ -165,6 +166,7 @@ func ExpandProgram(program *ast.ProgramStmt, registry *Registry) (*ExpandResult,
 type expander struct {
 	program        *ast.ProgramStmt
 	registry       *Registry
+	plan           *Plan
 	result         *ExpandResult
 	syntheticUsed  map[string]string
 	syntheticNames map[string]struct{}
@@ -452,42 +454,57 @@ func (e *expander) expandCallAsStmt(call *ast.CallExprStmt) ([]ast.Stmt, error) 
 	if err != nil {
 		return nil, err
 	}
-	if tpl.BodyKind == TemplateStmt {
-		e.result.Changed = true
-		stmts, err := gofrontend.NewConverter().ConvertStmtsSource(rendered.Code)
-		if err != nil {
-			return nil, fmt.Errorf("expand call template %s as statements: %w", tpl.ID, err)
-		}
-		for _, stmt := range stmts {
-			if err := replacePlaceholdersStmt(stmt, rendered.Args); err != nil {
-				return nil, fmt.Errorf("expand call template %s placeholders: %w", tpl.ID, err)
-			}
-			copyRootSource(stmt, call)
-		}
-		return e.expandStmtList(stmts)
-	}
 	expr, err := gofrontend.NewConverter().ConvertExprSource(rendered.Code)
+	if err == nil {
+		e.result.Changed = true
+		expr, err = replacePlaceholdersExpr(expr, rendered.Args)
+		if err != nil {
+			return nil, fmt.Errorf("expand call template %s placeholders: %w", tpl.ID, err)
+		}
+		copyRootSource(expr, call)
+		final, err := e.expandExpr(expr)
+		if err != nil {
+			if tpl.SourceSig != nil && tpl.SourceSig.ReturnType.IsVoid() {
+				if st, ok := expr.(ast.Stmt); ok {
+					if items, stmtErr := e.expandStmt(st); stmtErr == nil {
+						return items, nil
+					}
+				}
+				stmt := &ast.ExpressionStmt{
+					BaseNode: ast.BaseNode{ID: call.ID, Meta: "expr_stmt", Loc: call.Loc},
+					X:        expr,
+				}
+				if items, stmtErr := e.expandStmt(stmt); stmtErr == nil {
+					return items, nil
+				}
+			}
+			return nil, err
+		}
+		e.result.Exprs = append(e.result.Exprs, ExpandedExpr{TemplateID: tpl.ID, Expr: final, SourceSig: runtime.CloneRuntimeFuncSig(tpl.SourceSig)})
+		if st, ok := final.(ast.Stmt); ok {
+			return []ast.Stmt{st}, nil
+		}
+		return []ast.Stmt{&ast.ExpressionStmt{
+			BaseNode: ast.BaseNode{ID: call.ID, Meta: "expr_stmt", Loc: call.Loc},
+			X:        final,
+		}}, nil
+	}
+	exprErr := err
+	stmts, err := gofrontend.NewConverter().ConvertStmtsSource(rendered.Code)
 	if err != nil {
-		return nil, fmt.Errorf("expand call template %s as expression: %w", tpl.ID, err)
+		return nil, fmt.Errorf("expand call template %s as expression: %v; as statements: %w", tpl.ID, exprErr, err)
+	}
+	if tpl.SourceSig == nil || !tpl.SourceSig.ReturnType.IsVoid() {
+		return nil, fmt.Errorf("call template %s renders statements and requires Void source signature", tpl.ID)
 	}
 	e.result.Changed = true
-	expr, err = replacePlaceholdersExpr(expr, rendered.Args)
-	if err != nil {
-		return nil, fmt.Errorf("expand call template %s placeholders: %w", tpl.ID, err)
+	for _, stmt := range stmts {
+		if err := replacePlaceholdersStmt(stmt, rendered.Args); err != nil {
+			return nil, fmt.Errorf("expand call template %s placeholders: %w", tpl.ID, err)
+		}
+		copyRootSource(stmt, call)
 	}
-	copyRootSource(expr, call)
-	final, err := e.expandExpr(expr)
-	if err != nil {
-		return nil, err
-	}
-	e.result.Exprs = append(e.result.Exprs, ExpandedExpr{TemplateID: tpl.ID, Expr: final, SourceSig: runtime.CloneRuntimeFuncSig(tpl.SourceSig)})
-	if st, ok := final.(ast.Stmt); ok {
-		return []ast.Stmt{st}, nil
-	}
-	return []ast.Stmt{&ast.ExpressionStmt{
-		BaseNode: ast.BaseNode{ID: call.ID, Meta: "expr_stmt", Loc: call.Loc},
-		X:        final,
-	}}, nil
+	return e.expandStmtList(stmts)
 }
 
 func (e *expander) expandExpr(expr ast.Expr) (ast.Expr, error) {
@@ -502,9 +519,6 @@ func (e *expander) expandExpr(expr ast.Expr) (ast.Expr, error) {
 		tpl, ok := e.matchCall(call)
 		if !ok {
 			return call, nil
-		}
-		if tpl.BodyKind != TemplateExpr {
-			return nil, fmt.Errorf("statement call template %s cannot be used as expression", tpl.ID)
 		}
 		if err := e.enterTemplate(tpl.ID); err != nil {
 			return nil, err
@@ -641,30 +655,26 @@ func (e *expander) expandCallForCallOnly(call ast.Expr) (*ast.CallExprStmt, erro
 	return c, nil
 }
 
-func (e *expander) matchCall(call *ast.CallExprStmt) (FunctionTemplate, bool) {
+func (e *expander) matchCall(call *ast.CallExprStmt) (registeredTemplate, bool) {
 	switch fn := call.Func.(type) {
 	case *ast.IdentifierExpr:
-		return e.registry.Global(string(fn.Name))
+		return e.registry.global(string(fn.Name))
 	case *ast.ConstRefExpr:
-		return e.registry.Global(string(fn.Name))
+		return e.registry.global(string(fn.Name))
 	case *ast.MemberExpr:
 		if fn.ResolvedPackageMember && fn.ResolvedPackagePath != "" {
-			return e.registry.PackageMember(fn.ResolvedPackagePath, string(fn.Property))
+			return e.registry.packageMember(fn.ResolvedPackagePath, string(fn.Property))
 		}
 		if id, ok := fn.Object.(*ast.IdentifierExpr); ok {
 			if path, ok := e.syntheticPathForAlias(string(id.Name)); ok {
-				return e.registry.PackageMember(path, string(fn.Property))
+				return e.registry.packageMember(path, string(fn.Property))
 			}
 		}
 	}
-	return FunctionTemplate{}, false
+	return registeredTemplate{}, false
 }
 
-func (e *expander) renderCall(tpl FunctionTemplate, call *ast.CallExprStmt) (renderedCall, error) {
-	allowedImports := make(map[string]TemplateImport, len(tpl.Imports))
-	for _, imp := range tpl.Imports {
-		allowedImports[imp.Path] = imp
-	}
+func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (renderedCall, error) {
 	args := make([]renderArg, 0, len(call.Args))
 	for i, arg := range call.Args {
 		name := e.syntheticIdent(fmt.Sprintf("arg_%d", i))
@@ -682,11 +692,12 @@ func (e *expander) renderCall(tpl FunctionTemplate, call *ast.CallExprStmt) (ren
 	freshNames := make(map[string]string)
 	tplParsed, err := template.New(tpl.ID).Funcs(template.FuncMap{
 		"pkg": func(importPath string) (string, error) {
-			imp, ok := allowedImports[importPath]
+			importPath = strings.TrimSpace(importPath)
+			_, ok := tpl.pkgRefs[importPath]
 			if !ok {
-				return "", fmt.Errorf("template %s uses undeclared import %s", tpl.ID, importPath)
+				return "", fmt.Errorf("template %s uses undeclared package %s", tpl.ID, importPath)
 			}
-			return e.importAlias(importPath, imp.AliasHint)
+			return e.importAlias(importPath)
 		},
 		"arg": func(index int) (string, error) {
 			if index < 0 || index >= len(args) {
@@ -725,9 +736,6 @@ func (e *expander) renderCall(tpl FunctionTemplate, call *ast.CallExprStmt) (ren
 	if err != nil {
 		return renderedCall{}, fmt.Errorf("parse call template %s: %w", tpl.ID, err)
 	}
-	if err := rejectTemplateDataAccess(tplParsed.Tree.Root); err != nil {
-		return renderedCall{}, fmt.Errorf("parse call template %s: %w", tpl.ID, err)
-	}
 	var buf bytes.Buffer
 	if err := tplParsed.Execute(&buf, nil); err != nil {
 		return renderedCall{}, fmt.Errorf("render call template %s: %w", tpl.ID, err)
@@ -739,21 +747,18 @@ func (e *expander) renderCall(tpl FunctionTemplate, call *ast.CallExprStmt) (ren
 	return renderedCall{Code: strings.TrimSpace(buf.String()), Args: argMap}, nil
 }
 
-func (e *expander) importAlias(importPath, hint string) (string, error) {
+func (e *expander) importAlias(importPath string) (string, error) {
 	if alias, ok := e.syntheticUsed[importPath]; ok {
 		return alias, nil
 	}
-	seed := hint
-	if seed == "" {
-		seed = path.Base(importPath)
-	}
+	seed := path.Base(importPath)
 	alias := e.syntheticIdent("pkg_" + sanitizeIdentSeed(seed))
 	e.syntheticUsed[importPath] = alias
 	e.program.Imports = append(e.program.Imports, ast.ImportSpec{
 		Alias:       alias,
 		Path:        importPath,
 		Synthetic:   true,
-		CompileOnly: e.registry.CompileOnlyPackage(importPath),
+		CompileOnly: e.plan.compileOnlyPackage(importPath),
 	})
 	if e.program.Variables == nil {
 		e.program.Variables = make(map[ast.Ident]ast.Expr)
@@ -864,7 +869,7 @@ func (e *expander) removeCompileOnlyImports() (bool, error) {
 	removePath := make(map[string]struct{})
 	imports := e.program.Imports[:0]
 	for _, imp := range e.program.Imports {
-		if !imp.CompileOnly && !e.registry.CompileOnlyPackage(imp.Path) {
+		if !imp.CompileOnly && !e.plan.compileOnlyPackage(imp.Path) {
 			imports = append(imports, imp)
 			continue
 		}

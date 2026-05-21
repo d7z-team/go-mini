@@ -14,54 +14,28 @@ import (
 
 const InternalNamePrefix = "__gomini_tpl_"
 
-type TemplateKind string
-
-const (
-	TemplateGlobalFunc  TemplateKind = "global_func"
-	TemplatePackageFunc TemplateKind = "package_func"
-)
-
-type TemplateBodyKind string
-
-const (
-	TemplateExpr TemplateBodyKind = "expr"
-	TemplateStmt TemplateBodyKind = "stmt"
-)
-
-type TemplatePackageMode string
-
-const (
-	RuntimePackage     TemplatePackageMode = "runtime_package"
-	CompileOnlyPackage TemplatePackageMode = "compile_only_package"
-)
-
-type TemplateImport struct {
-	Path      string
-	AliasHint string
-}
-
 type FunctionTemplate struct {
 	ID          string
-	Kind        TemplateKind
-	Name        string
 	PackagePath string
-	Member      string
+	Name        string
 	SourceSig   *runtime.RuntimeFuncSig
-	BodyKind    TemplateBodyKind
 	Body        string
-	PackageMode TemplatePackageMode
-	Imports     []TemplateImport
+}
+
+type registeredTemplate struct {
+	FunctionTemplate
+	pkgRefs map[string]struct{}
 }
 
 type Registry struct {
-	globals  map[string]FunctionTemplate
-	packages map[string]FunctionTemplate
+	globals  map[string]registeredTemplate
+	packages map[string]registeredTemplate
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
-		globals:  make(map[string]FunctionTemplate),
-		packages: make(map[string]FunctionTemplate),
+		globals:  make(map[string]registeredTemplate),
+		packages: make(map[string]registeredTemplate),
 	}
 }
 
@@ -71,10 +45,10 @@ func (r *Registry) Clone() *Registry {
 	}
 	out := NewRegistry()
 	for k, v := range r.globals {
-		out.globals[k] = cloneTemplate(v)
+		out.globals[k] = cloneRegisteredTemplate(v)
 	}
 	for k, v := range r.packages {
-		out.packages[k] = cloneTemplate(v)
+		out.packages[k] = cloneRegisteredTemplate(v)
 	}
 	return out
 }
@@ -84,47 +58,55 @@ func (r *Registry) Register(t FunctionTemplate) error {
 		return errors.New("nil template registry")
 	}
 	t = normalizeTemplate(t)
-	if err := validateTemplate(t); err != nil {
+	rt, err := validateTemplate(t)
+	if err != nil {
 		return err
 	}
-	t = cloneTemplate(t)
-	switch t.Kind {
-	case TemplateGlobalFunc:
-		if _, exists := r.globals[t.Name]; exists {
-			return fmt.Errorf("call template %s conflicts with existing global template %s", t.ID, t.Name)
+	if rt.PackagePath == "" {
+		if _, exists := r.globals[rt.Name]; exists {
+			return fmt.Errorf("call template %s conflicts with existing global template %s", rt.ID, rt.Name)
 		}
-		r.globals[t.Name] = t
-	case TemplatePackageFunc:
-		key := packageKey(t.PackagePath, t.Member)
-		if _, exists := r.packages[key]; exists {
-			return fmt.Errorf("call template %s conflicts with existing package template %s", t.ID, key)
-		}
-		for _, existing := range r.packages {
-			if existing.PackagePath == t.PackagePath && existing.PackageMode != t.PackageMode {
-				return fmt.Errorf("call template %s mixes package mode %s with existing %s for package %s", t.ID, t.PackageMode, existing.PackageMode, t.PackagePath)
-			}
-		}
-		r.packages[key] = t
-	default:
-		return fmt.Errorf("unsupported template kind %q", t.Kind)
+		r.globals[rt.Name] = cloneRegisteredTemplate(rt)
+		return nil
 	}
+	key := packageKey(rt.PackagePath, rt.Name)
+	if _, exists := r.packages[key]; exists {
+		return fmt.Errorf("call template %s conflicts with existing package template %s.%s", rt.ID, rt.PackagePath, rt.Name)
+	}
+	r.packages[key] = cloneRegisteredTemplate(rt)
 	return nil
 }
 
 func (r *Registry) Global(name string) (FunctionTemplate, bool) {
-	if r == nil {
+	rt, ok := r.global(name)
+	if !ok {
 		return FunctionTemplate{}, false
 	}
-	t, ok := r.globals[name]
-	return t, ok
+	return cloneTemplate(rt.FunctionTemplate), true
 }
 
-func (r *Registry) PackageMember(path, member string) (FunctionTemplate, bool) {
-	if r == nil {
+func (r *Registry) PackageMember(path, name string) (FunctionTemplate, bool) {
+	rt, ok := r.packageMember(path, name)
+	if !ok {
 		return FunctionTemplate{}, false
 	}
-	t, ok := r.packages[packageKey(path, member)]
-	return t, ok
+	return cloneTemplate(rt.FunctionTemplate), true
+}
+
+func (r *Registry) global(name string) (registeredTemplate, bool) {
+	if r == nil {
+		return registeredTemplate{}, false
+	}
+	t, ok := r.globals[name]
+	return cloneRegisteredTemplate(t), ok
+}
+
+func (r *Registry) packageMember(path, name string) (registeredTemplate, bool) {
+	if r == nil {
+		return registeredTemplate{}, false
+	}
+	t, ok := r.packages[packageKey(path, name)]
+	return cloneRegisteredTemplate(t), ok
 }
 
 func (r *Registry) Globals() map[string]FunctionTemplate {
@@ -133,7 +115,7 @@ func (r *Registry) Globals() map[string]FunctionTemplate {
 	}
 	out := make(map[string]FunctionTemplate, len(r.globals))
 	for name, t := range r.globals {
-		out[name] = cloneTemplate(t)
+		out[name] = cloneTemplate(t.FunctionTemplate)
 	}
 	return out
 }
@@ -144,7 +126,7 @@ func (r *Registry) PackageTemplates() map[string]FunctionTemplate {
 	}
 	out := make(map[string]FunctionTemplate, len(r.packages))
 	for key, t := range r.packages {
-		out[key] = cloneTemplate(t)
+		out[key] = cloneTemplate(t.FunctionTemplate)
 	}
 	return out
 }
@@ -158,7 +140,7 @@ func (r *Registry) FuncSchemas() map[ast.Ident]*runtime.RuntimeFuncSig {
 		out[ast.Ident(name)] = runtime.CloneRuntimeFuncSig(t.SourceSig)
 	}
 	for _, t := range r.packages {
-		out[ast.Ident(t.PackagePath+"."+t.Member)] = runtime.CloneRuntimeFuncSig(t.SourceSig)
+		out[ast.Ident(t.PackagePath+"."+t.Name)] = runtime.CloneRuntimeFuncSig(t.SourceSig)
 	}
 	return out
 }
@@ -189,74 +171,47 @@ func (r *Registry) CompletionSchemas() map[string]string {
 	return out
 }
 
-func (r *Registry) CompileOnlyPackage(path string) bool {
-	if r == nil {
-		return false
-	}
-	for _, t := range r.packages {
-		if t.PackagePath == path && t.PackageMode == CompileOnlyPackage {
-			return true
-		}
-	}
-	return false
-}
-
-func validateTemplate(t FunctionTemplate) error {
-	if strings.TrimSpace(t.ID) == "" {
-		return errors.New("call template requires id")
-	}
+func validateTemplate(t FunctionTemplate) (registeredTemplate, error) {
 	if t.SourceSig == nil {
-		return fmt.Errorf("call template %s requires source signature", t.ID)
+		return registeredTemplate{}, fmt.Errorf("call template %s requires source signature", templateID(t))
 	}
 	if strings.TrimSpace(t.Body) == "" {
-		return fmt.Errorf("call template %s requires body", t.ID)
+		return registeredTemplate{}, fmt.Errorf("call template %s requires body", templateID(t))
 	}
-	switch t.BodyKind {
-	case TemplateExpr, TemplateStmt:
-	default:
-		return fmt.Errorf("call template %s has unsupported body kind %q", t.ID, t.BodyKind)
-	}
-	switch t.Kind {
-	case TemplateGlobalFunc:
+	if t.PackagePath == "" {
 		if t.Name == "" {
-			return fmt.Errorf("global call template %s requires name", t.ID)
+			return registeredTemplate{}, fmt.Errorf("global call template %s requires name", templateID(t))
 		}
 		if !validTemplateIdent(t.Name) {
-			return fmt.Errorf("global call template %s has invalid name %s", t.ID, t.Name)
+			return registeredTemplate{}, fmt.Errorf("global call template %s has invalid name %s", templateID(t), t.Name)
 		}
-	case TemplatePackageFunc:
-		if t.PackagePath == "" || t.Member == "" {
-			return fmt.Errorf("package call template %s requires package path and member", t.ID)
+	} else {
+		if err := validatePackagePath(t.PackagePath); err != nil {
+			return registeredTemplate{}, fmt.Errorf("package call template %s has invalid package path %s: %w", templateID(t), t.PackagePath, err)
 		}
-		if !validTemplateIdent(t.Member) {
-			return fmt.Errorf("package call template %s has invalid member %s", t.ID, t.Member)
+		if t.Name == "" {
+			return registeredTemplate{}, fmt.Errorf("package call template %s requires name", templateID(t))
 		}
-		switch t.PackageMode {
-		case RuntimePackage, CompileOnlyPackage:
-		default:
-			return fmt.Errorf("package call template %s has unsupported package mode %q", t.ID, t.PackageMode)
+		if !validTemplateIdent(t.Name) {
+			return registeredTemplate{}, fmt.Errorf("package call template %s has invalid name %s", templateID(t), t.Name)
 		}
-	default:
-		return fmt.Errorf("call template %s has unsupported kind %q", t.ID, t.Kind)
 	}
-	if t.BodyKind == TemplateStmt && !t.SourceSig.ReturnType.IsVoid() {
-		return fmt.Errorf("statement call template %s must have Void return type", t.ID)
+	if t.ID == "" {
+		t.ID = templateID(t)
 	}
-	seenImports := make(map[string]struct{}, len(t.Imports))
-	for _, imp := range t.Imports {
-		path := strings.TrimSpace(imp.Path)
-		if path == "" {
-			return fmt.Errorf("call template %s has empty import path", t.ID)
-		}
-		if imp.AliasHint != "" && !validTemplateIdent(imp.AliasHint) {
-			return fmt.Errorf("call template %s import %s has invalid alias hint %s", t.ID, path, imp.AliasHint)
-		}
-		if _, ok := seenImports[path]; ok {
-			return fmt.Errorf("call template %s imports %s more than once", t.ID, path)
-		}
-		seenImports[path] = struct{}{}
+	tpl, err := parseTemplateBody(t.ID, t.Body)
+	if err != nil {
+		return registeredTemplate{}, err
 	}
-	tpl, err := template.New(t.ID).Funcs(template.FuncMap{
+	pkgRefs, err := inspectTemplateBody(tpl.Tree.Root)
+	if err != nil {
+		return registeredTemplate{}, fmt.Errorf("parse call template %s: %w", t.ID, err)
+	}
+	return registeredTemplate{FunctionTemplate: cloneTemplate(t), pkgRefs: pkgRefs}, nil
+}
+
+func parseTemplateBody(id, body string) (*template.Template, error) {
+	tpl, err := template.New(id).Funcs(template.FuncMap{
 		"pkg":      func(string) string { return "" },
 		"arg":      func(int) string { return "" },
 		"callArg":  func(int) string { return "" },
@@ -264,17 +219,15 @@ func validateTemplate(t FunctionTemplate) error {
 		"argc":     func() int { return 0 },
 		"ellipsis": func() bool { return false },
 		"fresh":    func(string) string { return "" },
-	}).Parse(t.Body)
+	}).Parse(body)
 	if err != nil {
-		return fmt.Errorf("parse call template %s: %w", t.ID, err)
+		return nil, fmt.Errorf("parse call template %s: %w", id, err)
 	}
-	if err := rejectTemplateDataAccess(tpl.Tree.Root); err != nil {
-		return fmt.Errorf("parse call template %s: %w", t.ID, err)
-	}
-	return nil
+	return tpl, nil
 }
 
-func rejectTemplateDataAccess(root parse.Node) error {
+func inspectTemplateBody(root parse.Node) (map[string]struct{}, error) {
+	refs := make(map[string]struct{})
 	var walk func(parse.Node) error
 	walk = func(node parse.Node) error {
 		if node == nil {
@@ -296,7 +249,23 @@ func rejectTemplateDataAccess(root parse.Node) error {
 				}
 			}
 		case *parse.CommandNode:
-			for _, arg := range n.Args {
+			for i, arg := range n.Args {
+				id, isIdent := arg.(*parse.IdentifierNode)
+				if isIdent && id.Ident == "pkg" {
+					if i != 0 || len(n.Args) != 2 {
+						return errors.New(`pkg must be called directly as {{ pkg "full/package/path" }}`)
+					}
+					pathArg, ok := n.Args[1].(*parse.StringNode)
+					if !ok {
+						return errors.New("pkg requires a string literal package path")
+					}
+					pkgPath := strings.TrimSpace(pathArg.Text)
+					if err := validatePackagePath(pkgPath); err != nil {
+						return fmt.Errorf("pkg package path %q is invalid: %w", pkgPath, err)
+					}
+					refs[pkgPath] = struct{}{}
+					return nil
+				}
 				if err := walk(arg); err != nil {
 					return err
 				}
@@ -345,21 +314,51 @@ func rejectTemplateDataAccess(root parse.Node) error {
 		}
 		return nil
 	}
-	return walk(root)
+	return refs, walk(root)
 }
 
 func normalizeTemplate(t FunctionTemplate) FunctionTemplate {
+	t.ID = strings.TrimSpace(t.ID)
 	t.Name = strings.TrimSpace(t.Name)
 	t.PackagePath = strings.TrimSpace(t.PackagePath)
-	t.Member = strings.TrimSpace(t.Member)
-	if t.Kind == TemplatePackageFunc && t.PackageMode == "" {
-		t.PackageMode = RuntimePackage
-	}
-	for i := range t.Imports {
-		t.Imports[i].Path = strings.TrimSpace(t.Imports[i].Path)
-		t.Imports[i].AliasHint = strings.TrimSpace(t.Imports[i].AliasHint)
-	}
 	return t
+}
+
+func templateID(t FunctionTemplate) string {
+	if t.ID != "" {
+		return t.ID
+	}
+	if t.PackagePath != "" {
+		if t.Name != "" {
+			return t.PackagePath + "." + t.Name
+		}
+		return t.PackagePath
+	}
+	if t.Name != "" {
+		return "global." + t.Name
+	}
+	return "<unnamed>"
+}
+
+func validatePackagePath(path string) error {
+	switch {
+	case path == "":
+		return errors.New("empty path")
+	case strings.HasPrefix(path, "/"):
+		return errors.New("absolute path is not allowed")
+	case strings.HasSuffix(path, "/"):
+		return errors.New("trailing slash is not allowed")
+	case strings.Contains(path, "//"):
+		return errors.New("empty path segment is not allowed")
+	case strings.Contains(path, ".."):
+		return errors.New("relative path segments are not allowed")
+	}
+	for _, r := range path {
+		if r <= ' ' {
+			return errors.New("whitespace is not allowed")
+		}
+	}
+	return nil
 }
 
 func validTemplateIdent(name string) bool {
@@ -377,10 +376,21 @@ func sameRuntimeFuncSig(a, b *runtime.RuntimeFuncSig) bool {
 
 func cloneTemplate(t FunctionTemplate) FunctionTemplate {
 	t.SourceSig = runtime.CloneRuntimeFuncSig(t.SourceSig)
-	t.Imports = append([]TemplateImport(nil), t.Imports...)
 	return t
 }
 
-func packageKey(path, member string) string {
-	return path + "\x00" + member
+func cloneRegisteredTemplate(t registeredTemplate) registeredTemplate {
+	refs := t.pkgRefs
+	t.FunctionTemplate = cloneTemplate(t.FunctionTemplate)
+	if refs != nil {
+		t.pkgRefs = make(map[string]struct{}, len(t.pkgRefs))
+		for path := range refs {
+			t.pkgRefs[path] = struct{}{}
+		}
+	}
+	return t
+}
+
+func packageKey(path, name string) string {
+	return path + "\x00" + name
 }

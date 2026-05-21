@@ -174,7 +174,7 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		return artifact, semanticCtx, err
 	}
 
-	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates)
+	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates, templatePlan)
 	if err != nil {
 		return artifact, semanticCtx, err
 	}

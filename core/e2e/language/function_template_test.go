@@ -111,13 +111,9 @@ func TestCompileOnlyPackageTemplateIsRemovedBeforeBytecode(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "aaa.BBB",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "aaa",
-		Member:      "BBB",
-		PackageMode: calltemplate.CompileOnlyPackage,
+		Name:        "BBB",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
-		BodyKind:    calltemplate.TemplateExpr,
-		Imports:     []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 		Body:        `{{ pkg "fmt" }}.Println({{ args }})`,
 	})
 	if err != nil {
@@ -163,13 +159,9 @@ func TestStatementTemplateCanExpandToMultipleStatements(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Line",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Line",
-		PackageMode: calltemplate.CompileOnlyPackage,
+		Name:        "Line",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:    calltemplate.TemplateStmt,
-		Imports:     []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 		Body: `{{ pkg "fmt" }}.Println("trace")
 {{ pkg "fmt" }}.Println({{ arg 0 }})`,
 	})
@@ -197,27 +189,132 @@ func main() {
 	}
 }
 
+func TestTemplateBodyShapeIsInferredFromRenderedContext(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "custom.twice",
+		Name:      "twice",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecInt64),
+		Body:      `{{ arg 0 }} + {{ arg 0 }}`,
+	}); err != nil {
+		t.Fatalf("register expression template failed: %v", err)
+	}
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:          "trace.Store",
+		PackagePath: "trace",
+		Name:        "Store",
+		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
+		Body: `{{ fresh "value" }} := {{ arg 0 }}
+{{ pkg "fmt" }}.Println({{ fresh "value" }})`,
+	}); err != nil {
+		t.Fatalf("register statement template failed: %v", err)
+	}
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+func main() {
+	v := twice(21)
+	println(v)
+	trace.Store("stmt")
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	recorder := &templateOutputRecorder{}
+	if err := prog.Execute(fmtlib.WithOutputter(context.Background(), recorder)); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got, want := recorder.out.String(), "42\nstmt\n"; got != want {
+		t.Fatalf("unexpected output %q, want %q", got, want)
+	}
+}
+
+func TestTemplateStatementBodyRequiresVoidSignature(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "custom.badStmt",
+		Name:      "badStmt",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecInt64),
+		Body:      `{{ fresh "value" }} := {{ arg 0 }}`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	_, err := executor.CompileGoCode(`
+package main
+
+func main() {
+	badStmt(1)
+}
+`)
+	if err == nil || !strings.Contains(err.Error(), "renders statements and requires Void source signature") {
+		t.Fatalf("expected non-void statement template error, got %v", err)
+	}
+}
+
+func TestTemplateExpressionContextRejectsStatementBody(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "custom.valueFromStmt",
+		Name:      "valueFromStmt",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecInt64),
+		Body: `{{ fresh "value" }} := {{ arg 0 }}
+{{ fresh "value" }}`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	_, err := executor.CompileGoCode(`
+package main
+
+func main() {
+	v := valueFromStmt(1)
+	_ = v
+}
+`)
+	if err == nil || !strings.Contains(err.Error(), "expand call template custom.valueFromStmt as expression") {
+		t.Fatalf("expected expression-context statement template error, got %v", err)
+	}
+}
+
+func TestTemplateInGoDeferMustExpandToCallExpression(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "custom.deferValue",
+		Name:      "deferValue",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
+		Body:      `{{ arg 0 }}`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	_, err := executor.CompileGoCode(`
+package main
+
+func main() {
+	defer deferValue(1)
+}
+`)
+	if err == nil || !strings.Contains(err.Error(), "go/defer call template must expand to a call expression") {
+		t.Fatalf("expected go/defer call-only template error, got %v", err)
+	}
+}
+
 func TestTemplateExpansionIsFixedPoint(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "custom.note",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "note",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:  calltemplate.TemplateExpr,
 		Body:      `println({{ arg 0 }})`,
 	}); err != nil {
 		t.Fatalf("register note template failed: %v", err)
 	}
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Inner",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Inner",
-		PackageMode: calltemplate.CompileOnlyPackage,
+		Name:        "Inner",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:    calltemplate.TemplateStmt,
-		Imports:     []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 		Body: `{{ pkg "fmt" }}.Println("inner")
 {{ pkg "fmt" }}.Println({{ arg 0 }})`,
 	}); err != nil {
@@ -225,13 +322,9 @@ func TestTemplateExpansionIsFixedPoint(t *testing.T) {
 	}
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Outer",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Outer",
-		PackageMode: calltemplate.CompileOnlyPackage,
+		Name:        "Outer",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:    calltemplate.TemplateStmt,
-		Imports:     []calltemplate.TemplateImport{{Path: "trace", AliasHint: "trace"}},
 		Body:        `{{ pkg "trace" }}.Inner({{ arg 0 }})`,
 	}); err != nil {
 		t.Fatalf("register outer template failed: %v", err)
@@ -263,10 +356,8 @@ func TestRecursiveTemplateExpansionIsRejected(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "custom.loop",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "loop",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
-		BodyKind:  calltemplate.TemplateExpr,
 		Body:      `loop({{ args }})`,
 	}); err != nil {
 		t.Fatalf("register loop template failed: %v", err)
@@ -289,10 +380,8 @@ func TestTemplateRegistrationRejectsRealSymbolConflicts(t *testing.T) {
 			executor := engine.NewMiniExecutor()
 			err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 				ID:        "bad." + name,
-				Kind:      calltemplate.TemplateGlobalFunc,
 				Name:      name,
 				SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny),
-				BodyKind:  calltemplate.TemplateExpr,
 				Body:      `0`,
 			})
 			if err == nil {
@@ -302,15 +391,12 @@ func TestTemplateRegistrationRejectsRealSymbolConflicts(t *testing.T) {
 	}
 }
 
-func TestTemplatePlanRejectsMissingRuntimePackages(t *testing.T) {
+func TestTemplatePlanRejectsMissingPackagesAndMembers(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "bad.missing",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "badMissing",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:  calltemplate.TemplateExpr,
-		Imports:   []calltemplate.TemplateImport{{Path: "missing/pkg", AliasHint: "missing"}},
 		Body:      `{{ pkg "missing/pkg" }}.Do()`,
 	})
 	if err != nil {
@@ -327,76 +413,55 @@ func main() {
 		t.Fatalf("expected missing runtime import compile error, got %v", err)
 	}
 
+	executor = engine.NewMiniExecutor()
+	registerTemplateModule(t, executor, "trace", `
+package trace
+
+func Other() {}
+`)
 	err = executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
-		ID:          "missing.Line",
-		Kind:        calltemplate.TemplatePackageFunc,
-		PackagePath: "missing",
-		Member:      "Line",
-		PackageMode: calltemplate.RuntimePackage,
+		ID:          "trace.Line",
+		PackagePath: "trace",
+		Name:        "Line",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:    calltemplate.TemplateExpr,
-		Body:        `println()`,
+		Body:        `{{ pkg "fmt" }}.Println()`,
 	})
 	if err != nil {
-		t.Fatalf("register missing runtime package template failed: %v", err)
+		t.Fatalf("register missing member template failed: %v", err)
 	}
 	_, err = executor.CompileGoCode(`
 package main
 
-import "missing"
+import "trace"
 
 func main() {
-	missing.Line()
+	trace.Line()
 }
 `)
-	if err == nil || !strings.Contains(err.Error(), "references missing package missing") {
-		t.Fatalf("expected missing runtime package compile error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "references missing package member trace.Line") {
+		t.Fatalf("expected missing package member compile error, got %v", err)
 	}
 }
 
-func TestTemplateRegistrationRejectsInvalidAliasHint(t *testing.T) {
+func TestTemplateRegistrationRejectsInvalidPkgReference(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
-		ID:        "bad.alias",
-		Kind:      calltemplate.TemplateGlobalFunc,
-		Name:      "badAlias",
+		ID:        "bad.pkg.dynamic",
+		Name:      "badPkgDynamic",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:  calltemplate.TemplateExpr,
-		Imports:   []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "for"}},
-		Body:      `{{ pkg "fmt" }}.Println()`,
+		Body:      `{{ pkg (print "fmt") }}.Println()`,
 	})
 	if err == nil {
-		t.Fatal("expected invalid alias hint registration error")
+		t.Fatal("expected dynamic pkg reference registration error")
 	}
-}
-
-func TestTemplateRegistrationRejectsMixedPackageModes(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	registerTemplateModule(t, executor, "trace", `package trace`)
-	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
-		ID:          "trace.Runtime",
-		Kind:        calltemplate.TemplatePackageFunc,
-		PackagePath: "trace",
-		Member:      "Runtime",
-		PackageMode: calltemplate.RuntimePackage,
-		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:    calltemplate.TemplateExpr,
-		Body:        `println()`,
-	}); err != nil {
-		t.Fatalf("register runtime package template failed: %v", err)
-	}
-	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
-		ID:          "trace.CompileOnly",
-		Kind:        calltemplate.TemplatePackageFunc,
-		PackagePath: "trace",
-		Member:      "CompileOnly",
-		PackageMode: calltemplate.CompileOnlyPackage,
-		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:    calltemplate.TemplateExpr,
-		Body:        `println()`,
+	err = executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "bad.pkg.empty",
+		Name:      "badPkgEmpty",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
+		Body:      `{{ pkg "" }}.Println()`,
 	})
 	if err == nil {
-		t.Fatal("expected mixed package mode registration error")
+		t.Fatal("expected empty pkg reference registration error")
 	}
 }
 
@@ -409,16 +474,13 @@ func Real(v int64) {}
 `)
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Real",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Real",
-		PackageMode: calltemplate.RuntimePackage,
+		Name:        "Real",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString),
-		BodyKind:    calltemplate.TemplateExpr,
 		Body:        `println({{ arg 0 }})`,
 	})
 	if err != nil {
-		t.Fatalf("register runtime package template failed: %v", err)
+		t.Fatalf("register package template failed: %v", err)
 	}
 	_, err = executor.CompileGoCode(`
 package main
@@ -438,13 +500,9 @@ func TestCompileOnlyResidualPackageUsageIsRejected(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Line",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Line",
-		PackageMode: calltemplate.CompileOnlyPackage,
+		Name:        "Line",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:    calltemplate.TemplateExpr,
-		Imports:     []calltemplate.TemplateImport{{Path: "trace", AliasHint: "trace"}},
 		Body:        `{{ pkg "trace" }}.Other({{ arg 0 }})`,
 	}); err != nil {
 		t.Fatalf("register compile-only template failed: %v", err)
@@ -472,12 +530,9 @@ func Line(v string) {}
 `)
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Line",
-		Kind:        calltemplate.TemplatePackageFunc,
 		PackagePath: "trace",
-		Member:      "Line",
-		PackageMode: calltemplate.RuntimePackage,
+		Name:        "Line",
 		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString),
-		BodyKind:    calltemplate.TemplateExpr,
 		Body:        `println("template")`,
 	}); err != nil {
 		t.Fatalf("register template failed: %v", err)
@@ -566,10 +621,8 @@ func TestTemplateBodyRejectsDataObjectAccess(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "bad.data",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "badData",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:  calltemplate.TemplateExpr,
 		Body:      `println({{ .Args }})`,
 	})
 	if err == nil {
@@ -581,11 +634,8 @@ func TestCustomGlobalTemplateNameIsReserved(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "custom.note",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "note",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny),
-		BodyKind:  calltemplate.TemplateExpr,
-		Imports:   []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 		Body:      `{{ pkg "fmt" }}.Println({{ arg 0 }})`,
 	})
 	if err != nil {
@@ -618,10 +668,8 @@ func TestRealSymbolCannotBeRegisteredAfterGlobalTemplate(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "custom.later",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "later",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:  calltemplate.TemplateExpr,
 		Body:      `println()`,
 	}); err != nil {
 		t.Fatalf("register template failed: %v", err)
@@ -645,10 +693,8 @@ func TestCompilerRejectsDirectTemplateSchemaConflict(t *testing.T) {
 	registry := calltemplate.NewRegistry()
 	if err := registry.Register(calltemplate.FunctionTemplate{
 		ID:        "custom.foo",
-		Kind:      calltemplate.TemplateGlobalFunc,
 		Name:      "foo",
 		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		BodyKind:  calltemplate.TemplateExpr,
 		Body:      `println()`,
 	}); err != nil {
 		t.Fatalf("register template failed: %v", err)

@@ -42,20 +42,14 @@ func fmtTemplates() []calltemplate.FunctionTemplate {
 	return []calltemplate.FunctionTemplate{
 		{
 			ID:        "builtin.print",
-			Kind:      calltemplate.TemplateGlobalFunc,
 			Name:      "print",
 			SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
-			BodyKind:  calltemplate.TemplateExpr,
-			Imports:   []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 			Body:      `{{ pkg "fmt" }}.Print({{ args }})`,
 		},
 		{
 			ID:        "builtin.println",
-			Kind:      calltemplate.TemplateGlobalFunc,
 			Name:      "println",
 			SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
-			BodyKind:  calltemplate.TemplateExpr,
-			Imports:   []calltemplate.TemplateImport{{Path: "fmt", AliasHint: "fmt"}},
 			Body:      `{{ pkg "fmt" }}.Println({{ args }})`,
 		},
 	}

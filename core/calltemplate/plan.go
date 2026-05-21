@@ -2,7 +2,6 @@ package calltemplate
 
 import (
 	"fmt"
-	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -36,42 +35,45 @@ func BuildPlan(registry *Registry, opts PlanOptions) (*Plan, error) {
 			return nil, fmt.Errorf("global call template %s conflicts with existing symbol %s", tpl.ID, name)
 		}
 	}
+	packageExistsCache := make(map[string]bool)
 	for _, tpl := range registry.packages {
-		if tpl.PackageMode == CompileOnlyPackage {
-			plan.compileOnlyPaths[tpl.PackagePath] = struct{}{}
-		}
-	}
-	for _, tpl := range registry.packages {
-		if tpl.PackageMode != RuntimePackage {
-			continue
-		}
-		exists, err := packageExists(tpl.PackagePath, opts)
-		if err != nil {
-			return nil, fmt.Errorf("check package %s for call template %s: %w", tpl.PackagePath, tpl.ID, err)
+		exists, ok := packageExistsCache[tpl.PackagePath]
+		if !ok {
+			got, err := packageExists(tpl.PackagePath, opts)
+			if err != nil {
+				return nil, fmt.Errorf("check package %s for call template %s: %w", tpl.PackagePath, tpl.ID, err)
+			}
+			exists = got
+			packageExistsCache[tpl.PackagePath] = exists
 		}
 		if !exists {
-			return nil, fmt.Errorf("call template %s references missing package %s", tpl.ID, tpl.PackagePath)
+			plan.compileOnlyPaths[tpl.PackagePath] = struct{}{}
+			continue
 		}
-		actual, ok, err := packageMemberSig(tpl.PackagePath, tpl.Member, opts)
+		actual, ok, err := packageMemberSig(tpl.PackagePath, tpl.Name, opts)
 		if err != nil {
-			return nil, fmt.Errorf("check package member %s.%s for call template %s: %w", tpl.PackagePath, tpl.Member, tpl.ID, err)
+			return nil, fmt.Errorf("check package member %s.%s for call template %s: %w", tpl.PackagePath, tpl.Name, tpl.ID, err)
 		}
 		if !ok {
-			return nil, fmt.Errorf("call template %s references missing package member %s.%s", tpl.ID, tpl.PackagePath, tpl.Member)
+			return nil, fmt.Errorf("call template %s references missing package member %s.%s", tpl.ID, tpl.PackagePath, tpl.Name)
 		}
 		if !sameRuntimeFuncSig(actual, tpl.SourceSig) {
-			return nil, fmt.Errorf("call template %s source signature %s does not match existing package member %s.%s signature %s", tpl.ID, tpl.SourceSig.SignatureString(), tpl.PackagePath, tpl.Member, actual.SignatureString())
+			return nil, fmt.Errorf("call template %s source signature %s does not match existing package member %s.%s signature %s", tpl.ID, tpl.SourceSig.SignatureString(), tpl.PackagePath, tpl.Name, actual.SignatureString())
 		}
 	}
 	for _, tpl := range allTemplates(registry) {
-		for _, imp := range tpl.Imports {
-			path := strings.TrimSpace(imp.Path)
+		for path := range tpl.pkgRefs {
 			if _, compileOnly := plan.compileOnlyPaths[path]; compileOnly {
 				continue
 			}
-			exists, err := packageExists(path, opts)
-			if err != nil {
-				return nil, fmt.Errorf("check import %s for call template %s: %w", path, tpl.ID, err)
+			exists, ok := packageExistsCache[path]
+			if !ok {
+				got, err := packageExists(path, opts)
+				if err != nil {
+					return nil, fmt.Errorf("check package %s for call template %s: %w", path, tpl.ID, err)
+				}
+				exists = got
+				packageExistsCache[path] = exists
 			}
 			if !exists {
 				return nil, fmt.Errorf("call template %s references missing package %s", tpl.ID, path)
@@ -82,7 +84,7 @@ func BuildPlan(registry *Registry, opts PlanOptions) (*Plan, error) {
 		plan.funcSchemas[ast.Ident(name)] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
 	}
 	for _, tpl := range registry.packages {
-		plan.funcSchemas[ast.Ident(tpl.PackagePath+"."+tpl.Member)] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
+		plan.funcSchemas[ast.Ident(tpl.PackagePath+"."+tpl.Name)] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
 	}
 	return plan, nil
 }
@@ -98,23 +100,12 @@ func (p *Plan) FuncSchemas() map[ast.Ident]*runtime.RuntimeFuncSig {
 	return out
 }
 
-func (p *Plan) CompileOnlyPackage(path string) bool {
+func (p *Plan) compileOnlyPackage(path string) bool {
 	if p == nil {
 		return false
 	}
 	_, ok := p.compileOnlyPaths[path]
 	return ok
-}
-
-func (p *Plan) CompileOnlyPackages() map[string]struct{} {
-	if p == nil || len(p.compileOnlyPaths) == 0 {
-		return nil
-	}
-	out := make(map[string]struct{}, len(p.compileOnlyPaths))
-	for path := range p.compileOnlyPaths {
-		out[path] = struct{}{}
-	}
-	return out
 }
 
 func realGlobalSymbolExists(name string, opts PlanOptions) bool {
@@ -140,23 +131,23 @@ func packageExists(path string, opts PlanOptions) (bool, error) {
 	return false, nil
 }
 
-func packageMemberSig(path, member string, opts PlanOptions) (*runtime.RuntimeFuncSig, bool, error) {
+func packageMemberSig(path, name string, opts PlanOptions) (*runtime.RuntimeFuncSig, bool, error) {
 	if opts.PackageMemberSig != nil {
-		return opts.PackageMemberSig(path, member)
+		return opts.PackageMemberSig(path, name)
 	}
 	return nil, false, nil
 }
 
-func allTemplates(registry *Registry) []FunctionTemplate {
+func allTemplates(registry *Registry) []registeredTemplate {
 	if registry == nil {
 		return nil
 	}
-	out := make([]FunctionTemplate, 0, len(registry.globals)+len(registry.packages))
+	out := make([]registeredTemplate, 0, len(registry.globals)+len(registry.packages))
 	for _, tpl := range registry.globals {
-		out = append(out, tpl)
+		out = append(out, cloneRegisteredTemplate(tpl))
 	}
 	for _, tpl := range registry.packages {
-		out = append(out, tpl)
+		out = append(out, cloneRegisteredTemplate(tpl))
 	}
 	return out
 }

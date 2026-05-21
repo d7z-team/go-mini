@@ -15,7 +15,7 @@
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - 调用模板是 compiler 阶段能力：模板注册只暴露 schema 给前端校验和 LSP 补全，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
-- 模板函数支持全局保留名、运行时包成员和编译期虚拟包成员三类入口；真实包/member 与真实符号冲突由 compiler 模板计划统一校验，编译期虚拟包不需要 dummy module，fixed-point 展开后必须从 AST import、artifact imports 与 bytecode 中完全移除。
+- 模板函数支持全局保留名和包成员入口；包成员模式由 compiler 模板计划推导，真实包/member 必须校验签名一致，不存在的包作为编译期 facade 处理且不需要 dummy module，fixed-point 展开后必须从 AST import、artifact imports 与 bytecode 中完全移除。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得引入 Go parser/AST 或 Mini AST converter。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
