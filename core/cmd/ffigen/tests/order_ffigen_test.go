@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/cmd/ffigen/tests/ordertest"
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/cmd/ffigen/tests/ordertest"
 )
 
 func TestOrderFFIGen(t *testing.T) {

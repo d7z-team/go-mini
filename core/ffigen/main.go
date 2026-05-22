@@ -22,6 +22,7 @@ type Generator struct {
 	knownImports map[string]string
 	moduleCache  map[string]string
 	packagePath  string
+	packageDir   string
 	modulePath   string
 	moduleDir    string
 }

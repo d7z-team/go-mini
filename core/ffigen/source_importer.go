@@ -18,6 +18,7 @@ import (
 type sourceImporter struct {
 	fallback   types.Importer
 	cache      map[string]*types.Package
+	baseDir    string
 	modulePath string
 	moduleDir  string
 }
@@ -26,6 +27,7 @@ func (g *Generator) newSourceImporter() types.Importer {
 	return &sourceImporter{
 		fallback:   importer.Default(),
 		cache:      make(map[string]*types.Package),
+		baseDir:    g.packageDir,
 		modulePath: g.modulePath,
 		moduleDir:  g.moduleDir,
 	}
@@ -45,8 +47,14 @@ func (i *sourceImporter) Import(path string) (*types.Package, error) {
 	pkg, err := i.fallback.Import(path)
 	if err == nil {
 		i.cache[path] = pkg
+		return pkg, nil
 	}
-	return pkg, err
+	pkg, listErr := i.importFromGoList(path)
+	if listErr == nil {
+		i.cache[path] = pkg
+		return pkg, nil
+	}
+	return nil, err
 }
 
 func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
@@ -57,6 +65,26 @@ func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
 	if rel != "" {
 		dir = filepath.Join(i.moduleDir, filepath.FromSlash(rel))
 	}
+	return i.importFromDir(path, dir)
+}
+
+func (i *sourceImporter) importFromGoList(path string) (*types.Package, error) {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", path)
+	if i.baseDir != "" {
+		cmd.Dir = i.baseDir
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" {
+		return nil, fmt.Errorf("go list returned empty dir for import %s", path)
+	}
+	return i.importFromDir(path, dir)
+}
+
+func (i *sourceImporter) importFromDir(path, dir string) (*types.Package, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err

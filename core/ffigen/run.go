@@ -123,13 +123,18 @@ func (g *Generator) runFileMode(args []string) error {
 }
 
 func (g *Generator) initPackagePath(dir string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}}|{{if .Module}}{{.Module.Path}}|{{.Module.Dir}}{{end}}")
-	cmd.Dir = dir
+	cmd.Dir = absDir
 	out, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("deriving import path in %s: %w", dir, err)
 	}
 	parts := strings.Split(strings.TrimSpace(string(out)), "|")
+	g.packageDir = absDir
 	g.packagePath = parts[0]
 	if g.packagePath == "" || g.packagePath == "." {
 		return errors.New("derived import path is empty or invalid")
