@@ -33,12 +33,12 @@ $(FFIGEN_BIN): $(GO_SOURCES)
 $(LSP_SERVER_BIN): $(GO_SOURCES)
 	@echo "Building lsp-server..."
 	@mkdir -p bin
-	@go build -o $(LSP_SERVER_BIN) cmd/lsp-server/main.go
+	@go build -o $(LSP_SERVER_BIN) ./examples/cmd/lsp-server
 
 $(EXEC_BIN): $(GO_SOURCES)
 	@echo "Building mini-exec..."
 	@mkdir -p bin
-	@go build -o $(EXEC_BIN) cmd/exec/main.go
+	@go build -o $(EXEC_BIN) ./examples/cmd/exec
 
 package-vsix: $(LSP_SERVER_BIN) $(EXEC_BIN)
 	@echo "Packaging VSCode extension..."
