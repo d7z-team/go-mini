@@ -44,11 +44,13 @@ func (p *stubProgram) GetReferencesAtFile(file string, line, col int, includeDec
 }
 
 type stubAnalyzer struct {
-	program ProgramView
-	errs    []error
+	program     ProgramView
+	errs        []error
+	lastSources map[string]string
 }
 
-func (s *stubAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt) (ProgramView, []error) {
+func (s *stubAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (ProgramView, []error) {
+	s.lastSources = sources
 	return s.program, s.errs
 }
 
@@ -121,6 +123,20 @@ func TestLSPServerDoesNotLeakAcrossDirectories(t *testing.T) {
 		if item.Label == "sharedA" || item.Label == "FromA" {
 			t.Fatalf("unexpected cross-directory symbol leak: %+v", items)
 		}
+	}
+}
+
+func TestLSPServerPassesFileSourcesToAnalyzer(t *testing.T) {
+	analyzer := &stubAnalyzer{program: &stubProgram{}}
+	server := NewLSPServer(analyzer)
+	uri := "file:///workspace/a/main.go"
+	code := "package main\nfunc main() {}\n"
+
+	if _, err := server.UpdateSession(uri, code); err != nil {
+		t.Fatalf("UpdateSession failed: %v", err)
+	}
+	if got := analyzer.lastSources[uri]; got != code {
+		t.Fatalf("expected analyzer source %q, got %q in %#v", code, got, analyzer.lastSources)
 	}
 }
 

@@ -57,10 +57,11 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 	e.applyExecutorConfig(executor)
 
 	return &MiniProgram{
-		Source:   compiled.Source,
-		Program:  compiled.Program,
-		Compiled: compiled,
-		executor: executor,
+		Source:           compiled.Source,
+		Program:          compiled.Program,
+		Compiled:         compiled,
+		TemplatePreviews: compiled.TemplatePreviews,
+		executor:         executor,
 	}, nil
 }
 
@@ -146,17 +147,26 @@ func (e *MiniExecutor) NewMiniProgramByGoFileTolerant(filename, code string) (*M
 	return prog, errs
 }
 
-func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt) (*MiniProgram, []error) {
+// AnalyzeProgramTolerant compiles an AST in analysis mode and returns collected
+// diagnostics without treating the result as a runtime loading artifact.
+//
+// The sources map is optional. When provided, it enables source-based artifacts
+// such as call template hover previews.
+func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (*MiniProgram, []error) {
 	var errs []error
-	compiled, _, err := e.newCompiler().CompileProgram("ast", "", program, true)
+	compiled, _, err := e.newCompiler().CompileProgramWithSources("ast", "", program, true, sources)
 	if err != nil {
 		errs = append(errs, err)
 	}
-	return &MiniProgram{
+	res := &MiniProgram{
 		Program:  program,
 		Compiled: compiled,
 		executor: &runtime.Executor{},
-	}, errs
+	}
+	if compiled != nil {
+		res.TemplatePreviews = compiled.TemplatePreviews
+	}
+	return res, errs
 }
 
 func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bool) (*MiniProgram, []error, error) {
@@ -175,9 +185,10 @@ func (e *MiniExecutor) newMiniProgramByGoCode(filename, code string, tolerant bo
 
 	if tolerant {
 		res = &MiniProgram{
-			Program:  compiled.Program,
-			Compiled: compiled,
-			executor: &runtime.Executor{},
+			Program:          compiled.Program,
+			Compiled:         compiled,
+			TemplatePreviews: compiled.TemplatePreviews,
+			executor:         &runtime.Executor{},
 		}
 		res.Source = code
 		return res, errs, nil

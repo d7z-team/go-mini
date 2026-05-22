@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // TestLSPEnhancedCasing 验证成员补全的大小写是否正确 (Go 规范)
@@ -167,4 +169,101 @@ func main() {
 			t.Fatalf("registered FFI import should be accepted, got: %v", err)
 		}
 	}
+}
+
+func TestLSPTemplateHoverShowsFacadeAsImportStyle(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	if err := testExecutor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:          "audit.Log",
+		PackagePath: "audit",
+		Name:        "Log",
+		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
+		Body:        `{{ pkg "fmt" }}.Println({{ args }})`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	sourceSnippet := `package main
+import a "audit"
+
+func main() {
+	a.Log("created", 1001)
+}`
+
+	testProgram, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", errs)
+	}
+
+	hover := hoverMarkdownAtSubstring(t, testProgram, sourceSnippet, "a.Log")
+	for _, want := range []string{
+		"template audit.Log",
+		"import \"fmt\"",
+		`fmt.Println("created", 1001)`,
+	} {
+		if !strings.Contains(hover, want) {
+			t.Fatalf("hover markdown missing %q:\n%s", want, hover)
+		}
+	}
+	for _, forbidden := range []string{"__gomini_tpl_", "pkg_fmt", "<arg"} {
+		if strings.Contains(hover, forbidden) {
+			t.Fatalf("hover markdown should not expose %q:\n%s", forbidden, hover)
+		}
+	}
+}
+
+func TestLSPTemplateHoverExpandsNestedTemplatesToFinalRender(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	if err := testExecutor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "trace.value",
+		Name:      "traceValue",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
+		Body: `println("first", {{ args }})
+println("second", {{ args }})`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	sourceSnippet := `package main
+func main() {
+	count := 7
+	traceValue(count+1)
+}`
+
+	testProgram, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected diagnostics: %v", errs)
+	}
+
+	hover := hoverMarkdownAtSubstring(t, testProgram, sourceSnippet, "traceValue")
+	for _, want := range []string{
+		"template trace.value",
+		`fmt.Println("first", count+1)`,
+		`fmt.Println("second", count+1)`,
+	} {
+		if !strings.Contains(hover, want) {
+			t.Fatalf("hover markdown missing %q:\n%s", want, hover)
+		}
+	}
+	if strings.Contains(hover, "println(") || strings.Contains(hover, "__gomini_tpl_") {
+		t.Fatalf("hover markdown should show final display render only:\n%s", hover)
+	}
+}
+
+func hoverMarkdownAtSubstring(t *testing.T, program *engine.MiniProgram, source, needle string) string {
+	t.Helper()
+	index := strings.Index(source, needle)
+	if index < 0 {
+		t.Fatalf("source does not contain %q", needle)
+	}
+	prefix := source[:index]
+	line := strings.Count(prefix, "\n") + 1
+	lastNewline := strings.LastIndex(prefix, "\n")
+	col := index + 1
+	if lastNewline >= 0 {
+		col = index - lastNewline
+	}
+	hover := program.GetHoverAt(line, col)
+	if hover == nil || hover.Markdown == "" {
+		t.Fatalf("expected template hover at %d:%d for %q, got %#v", line, col, needle, hover)
+	}
+	return hover.Markdown
 }

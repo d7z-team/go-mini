@@ -34,6 +34,8 @@ type Artifact struct {
 	Program         *ast.ProgramStmt
 	GlobalInitOrder []string
 	Bytecode        *bytecode.Program
+	// TemplatePreviews contains source-based render previews for LSP hover.
+	TemplatePreviews []calltemplate.TemplatePreview
 	// ImportedPrograms contains AST modules resolved during compilation; callers
 	// can compile them into prepared modules before runtime execution starts.
 	ImportedPrograms map[string]*ast.ProgramStmt
@@ -109,7 +111,11 @@ func (c *Compiler) compileSources(files []SourceFile, source string, tolerant bo
 	if err != nil {
 		return nil, errs, nil, err
 	}
-	artifact, sem, compileErr := c.CompileProgram(files[0].Filename, "", program, tolerant)
+	sources := make(map[string]string, len(files))
+	for _, file := range files {
+		sources[file.Filename] = file.Code
+	}
+	artifact, sem, compileErr := c.CompileProgramWithSources(files[0].Filename, "", program, tolerant, sources)
 	if source != "" {
 		artifact.Source = source
 	}
@@ -117,6 +123,12 @@ func (c *Compiler) compileSources(files []SourceFile, source string, tolerant bo
 }
 
 func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramStmt, tolerant bool) (*Artifact, *ast.SemanticContext, error) {
+	return c.CompileProgramWithSources(filename, source, program, tolerant, nil)
+}
+
+// CompileProgramWithSources compiles an existing AST and uses sources only for
+// source-based analysis artifacts such as template previews.
+func (c *Compiler) CompileProgramWithSources(filename, source string, program *ast.ProgramStmt, tolerant bool, sources map[string]string) (*Artifact, *ast.SemanticContext, error) {
 	if program == nil {
 		return nil, nil, errors.New("invalid program")
 	}
@@ -177,10 +189,14 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 		return artifact, semanticCtx, err
 	}
 
-	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates, templatePlan)
+	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates, templatePlan, calltemplate.ExpandOptions{
+		CollectPreview: len(sources) > 0,
+		SourceResolver: calltemplate.SourceResolverFromMap(sources),
+	})
 	if err != nil {
 		return artifact, semanticCtx, err
 	}
+	artifact.TemplatePreviews = append([]calltemplate.TemplatePreview(nil), expanded.Previews...)
 	if err := calltemplate.AssertNoResidualTemplateRefs(artifact.Program, c.cfg.Templates); err != nil {
 		return artifact, semanticCtx, err
 	}

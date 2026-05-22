@@ -25,7 +25,8 @@ type ProgramView interface {
 }
 
 type Analyzer interface {
-	AnalyzeProgramTolerant(program *ast.ProgramStmt) (ProgramView, []error)
+	// AnalyzeProgramTolerant analyzes the merged AST and optional source map for LSP.
+	AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (ProgramView, []error)
 }
 
 type LSPServer struct {
@@ -224,7 +225,7 @@ func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, 
 		return finalizeDiagnostics(pkg, diagnostics), nil
 	}
 
-	prog, errs := s.executor.AnalyzeProgramTolerant(combined)
+	prog, errs := s.executor.AnalyzeProgramTolerant(combined, codeByURI)
 	for _, err := range errs {
 		appendAnalysisDiagnostics(diagnostics, codeByURI, err)
 	}
@@ -571,10 +572,14 @@ func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
 	if info == nil {
 		return nil
 	}
+	value := info.Markdown
+	if value == "" {
+		value = fmt.Sprintf("```go\n%s\n```\n%s", info.Signature, info.Doc)
+	}
 	return &Hover{
 		Contents: MarkupContent{
 			Kind:  "markdown",
-			Value: fmt.Sprintf("```go\n%s\n```\n%s", info.Signature, info.Doc),
+			Value: value,
 		},
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -25,6 +26,44 @@ type ExpandedExpr struct {
 	SourceSig *runtime.RuntimeFuncSig
 }
 
+// SourceResolver returns the original source text covered by a source position.
+// It is used only for human-readable template previews; the compiler expansion
+// still uses AST placeholders.
+type SourceResolver func(pos *ast.Position) (string, bool)
+
+// TemplatePreview describes the human-readable expansion shown by LSP hover.
+type TemplatePreview struct {
+	// Range is the original source range of the template call.
+	Range ast.Position
+	// TemplateID names the template matched at the hovered call site.
+	TemplateID string
+	// Signature is the source-visible function signature.
+	Signature string
+	// Imports lists real packages referenced by the rendered preview.
+	Imports []string
+	// Final is the fixed-point render with nested templates expanded for display.
+	Final string
+	// Steps records intermediate renders used to derive Final.
+	Steps []TemplatePreviewStep
+}
+
+// TemplatePreviewStep records one template render in a fixed-point preview.
+type TemplatePreviewStep struct {
+	// TemplateID names the template rendered in this step.
+	TemplateID string
+	// Rendered is the human-readable render produced by this step.
+	Rendered string
+}
+
+// ExpandOptions controls optional analysis artifacts collected during template
+// expansion.
+type ExpandOptions struct {
+	// SourceResolver resolves original source slices for template arguments.
+	SourceResolver SourceResolver
+	// CollectPreview enables LSP preview collection.
+	CollectPreview bool
+}
+
 const maxTemplateExpansionDepth = 64
 
 // ExpandResult describes the AST changes made by ExpandProgram.
@@ -33,6 +72,8 @@ type ExpandResult struct {
 	Changed bool
 	// Exprs are expanded expressions that still need return-type verification.
 	Exprs []ExpandedExpr
+	// Previews are source-based, human-readable template render previews for LSP.
+	Previews []TemplatePreview
 	// RemovedCompileOnlyPaths are template-only imports removed from the program.
 	RemovedCompileOnlyPaths map[string]struct{}
 	// RemovedCompileOnlyAliases maps removed import aliases to their package path.
@@ -205,7 +246,7 @@ func (v *residualTemplateVisitor) Visit(node ast.Node) ast.Visitor {
 // visible. The compiler reruns semantic checking without template schemas after
 // a changed result so rendered code cannot retain compiler-only template
 // symbols.
-func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan) (*ExpandResult, error) {
+func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan, opts ExpandOptions) (*ExpandResult, error) {
 	if program == nil || registry == nil {
 		return &ExpandResult{}, nil
 	}
@@ -216,6 +257,7 @@ func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan) (*E
 		result:         &ExpandResult{},
 		syntheticUsed:  make(map[string]string),
 		syntheticNames: make(map[string]struct{}),
+		opts:           opts,
 	}
 	for name, expr := range program.Variables {
 		next, err := exp.expandExpr(expr)
@@ -253,18 +295,22 @@ type expander struct {
 	syntheticUsed  map[string]string
 	syntheticNames map[string]struct{}
 	stack          []string
+	opts           ExpandOptions
 }
 
 type renderArg struct {
 	Index       int
 	Placeholder string
 	CallValue   string
-	Type        string
+	Display     string
+	DisplayCall string
 }
 
 type renderedCall struct {
-	Code string
-	Args map[string]ast.Expr
+	Code           string
+	Display        string
+	DisplayImports []string
+	Args           map[string]ast.Expr
 }
 
 func (e *expander) expandStmtList(in []ast.Stmt) ([]ast.Stmt, error) {
@@ -539,6 +585,7 @@ func (e *expander) expandCallAsStmt(call *ast.CallExprStmt) ([]ast.Stmt, error) 
 	if err != nil {
 		return nil, err
 	}
+	e.recordPreview(tpl, call, rendered)
 	expr, err := gofrontend.NewConverter().ConvertExprSource(rendered.Code)
 	if err == nil {
 		e.result.Changed = true
@@ -616,6 +663,7 @@ func (e *expander) expandExpr(expr ast.Expr) (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
+		e.recordPreview(tpl, call, rendered)
 		next, err := gofrontend.NewConverter().ConvertExprSource(rendered.Code)
 		if err != nil {
 			return nil, fmt.Errorf("expand call template %s as expression: %w", tpl.ID, err)
@@ -763,22 +811,9 @@ func (e *expander) matchCall(call *ast.CallExprStmt) (registeredTemplate, bool) 
 }
 
 func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (renderedCall, error) {
-	args := make([]renderArg, 0, len(call.Args))
-	for i, arg := range call.Args {
-		name := e.syntheticIdent(fmt.Sprintf("arg_%d", i))
-		callValue := name
-		if call.Ellipsis && i == len(call.Args)-1 {
-			callValue += "..."
-		}
-		args = append(args, renderArg{
-			Index:       i,
-			Placeholder: name,
-			CallValue:   callValue,
-			Type:        string(arg.GetBase().Type),
-		})
-	}
+	args := e.renderArgs(call, e.syntheticIdent, e.opts.SourceResolver)
 	freshNames := make(map[string]string)
-	tplParsed, err := template.New(tpl.ID).Funcs(template.FuncMap{
+	code, err := executeTemplate(tpl.ID, tpl.Body, template.FuncMap{
 		"pkg": func(importPath string) (string, error) {
 			importPath = strings.TrimSpace(importPath)
 			_, ok := tpl.pkgRefs[importPath]
@@ -791,16 +826,10 @@ func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (r
 			return e.importAlias(importPath)
 		},
 		"arg": func(index int) (string, error) {
-			if index < 0 || index >= len(args) {
-				return "", fmt.Errorf("template %s argument index %d out of range", tpl.ID, index)
-			}
-			return args[index].Placeholder, nil
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.Placeholder })
 		},
 		"callArg": func(index int) (string, error) {
-			if index < 0 || index >= len(args) {
-				return "", fmt.Errorf("template %s argument index %d out of range", tpl.ID, index)
-			}
-			return args[index].CallValue, nil
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.CallValue })
 		},
 		"args": func() string {
 			parts := make([]string, len(args))
@@ -823,19 +852,437 @@ func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (r
 			freshNames[name] = got
 			return got
 		},
-	}).Parse(tpl.Body)
+	})
 	if err != nil {
-		return renderedCall{}, fmt.Errorf("parse call template %s: %w", tpl.ID, err)
+		return renderedCall{}, err
 	}
-	var buf bytes.Buffer
-	if err := tplParsed.Execute(&buf, nil); err != nil {
-		return renderedCall{}, fmt.Errorf("render call template %s: %w", tpl.ID, err)
+	display, imports, err := renderDisplayTemplate(tpl, args, call.Ellipsis)
+	if err != nil {
+		return renderedCall{}, err
 	}
 	argMap := make(map[string]ast.Expr, len(args))
 	for _, arg := range args {
 		argMap[arg.Placeholder] = call.Args[arg.Index]
 	}
-	return renderedCall{Code: strings.TrimSpace(buf.String()), Args: argMap}, nil
+	return renderedCall{Code: code, Display: display, DisplayImports: imports, Args: argMap}, nil
+}
+
+func (e *expander) renderArgs(call *ast.CallExprStmt, alloc func(string) string, resolver SourceResolver) []renderArg {
+	args := make([]renderArg, 0, len(call.Args))
+	for i, arg := range call.Args {
+		name := alloc(fmt.Sprintf("arg_%d", i))
+		callValue := name
+		display := displayArgSource(arg, i, resolver)
+		displayCall := display
+		if call.Ellipsis && i == len(call.Args)-1 {
+			callValue += "..."
+			displayCall += "..."
+		}
+		args = append(args, renderArg{
+			Index:       i,
+			Placeholder: name,
+			CallValue:   callValue,
+			Display:     display,
+			DisplayCall: displayCall,
+		})
+	}
+	return args
+}
+
+func displayArgSource(arg ast.Expr, index int, resolver SourceResolver) string {
+	if resolver != nil && arg != nil && arg.GetBase() != nil {
+		if text, ok := resolver(arg.GetBase().Loc); ok {
+			if text = strings.TrimSpace(text); text != "" {
+				return text
+			}
+		}
+	}
+	return fmt.Sprintf("<arg%d>", index)
+}
+
+func renderDisplayTemplate(tpl registeredTemplate, args []renderArg, ellipsis bool) (string, []string, error) {
+	imports := make([]string, 0)
+	seenImports := make(map[string]struct{})
+	freshNames := make(map[string]string)
+	display, err := executeTemplate(tpl.ID, tpl.Body, template.FuncMap{
+		"pkg": func(importPath string) (string, error) {
+			importPath = strings.TrimSpace(importPath)
+			if _, ok := tpl.pkgRefs[importPath]; !ok {
+				return "", fmt.Errorf("template %s uses undeclared package %s", tpl.ID, importPath)
+			}
+			if _, ok := seenImports[importPath]; !ok {
+				seenImports[importPath] = struct{}{}
+				imports = append(imports, importPath)
+			}
+			return displayPackageAlias(importPath), nil
+		},
+		"arg": func(index int) (string, error) {
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.Display })
+		},
+		"callArg": func(index int) (string, error) {
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.DisplayCall })
+		},
+		"args": func() string {
+			parts := make([]string, len(args))
+			for i, arg := range args {
+				parts[i] = arg.DisplayCall
+			}
+			return strings.Join(parts, ", ")
+		},
+		"argc": func() int {
+			return len(args)
+		},
+		"ellipsis": func() bool {
+			return ellipsis
+		},
+		"fresh": func(name string) string {
+			if got, ok := freshNames[name]; ok {
+				return got
+			}
+			got := "tmp_" + sanitizeIdentSeed(name)
+			freshNames[name] = got
+			return got
+		},
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return display, imports, nil
+}
+
+func templateArg(templateID string, args []renderArg, index int, selectValue func(renderArg) string) (string, error) {
+	if index < 0 || index >= len(args) {
+		return "", fmt.Errorf("template %s argument index %d out of range", templateID, index)
+	}
+	return selectValue(args[index]), nil
+}
+
+func executeTemplate(id, body string, funcs template.FuncMap) (string, error) {
+	tplParsed, err := template.New(id).Funcs(funcs).Parse(body)
+	if err != nil {
+		return "", fmt.Errorf("parse call template %s: %w", id, err)
+	}
+	var buf bytes.Buffer
+	if err := tplParsed.Execute(&buf, nil); err != nil {
+		return "", fmt.Errorf("render call template %s: %w", id, err)
+	}
+	return strings.TrimSpace(buf.String()), nil
+}
+
+func displayPackageAlias(importPath string) string {
+	return sanitizeIdentSeed(path.Base(strings.TrimSpace(importPath)))
+}
+
+func (e *expander) recordPreview(tpl registeredTemplate, call *ast.CallExprStmt, rendered renderedCall) {
+	if !e.opts.CollectPreview {
+		return
+	}
+	preview := TemplatePreview{
+		TemplateID: tpl.ID,
+		Imports:    append([]string(nil), rendered.DisplayImports...),
+		Final:      rendered.Display,
+		Steps:      []TemplatePreviewStep{{TemplateID: tpl.ID, Rendered: rendered.Display}},
+	}
+	if tpl.SourceSig != nil {
+		preview.Signature = tpl.SourceSig.SignatureString()
+	}
+	if call != nil && call.GetBase() != nil && call.GetBase().Loc != nil {
+		preview.Range = *call.GetBase().Loc
+	}
+	preview.Final, preview.Imports, preview.Steps = e.expandPreviewDisplay(preview.Final, preview.Imports, preview.Steps, 1)
+	e.result.Previews = append(e.result.Previews, preview)
+}
+
+func (e *expander) expandPreviewDisplay(code string, imports []string, steps []TemplatePreviewStep, depth int) (string, []string, []TemplatePreviewStep) {
+	if depth >= maxTemplateExpansionDepth {
+		return code, imports, steps
+	}
+	replacements := e.previewTemplateReplacements(code)
+	if len(replacements) == 0 {
+		return code, imports, steps
+	}
+	for _, replacement := range replacements {
+		imports = mergePreviewImports(imports, replacement.Imports)
+		steps = append(steps, TemplatePreviewStep{TemplateID: replacement.TemplateID, Rendered: replacement.Display})
+	}
+	for i := len(replacements) - 1; i >= 0; i-- {
+		replacement := replacements[i]
+		code = code[:replacement.Start] + replacement.Display + code[replacement.End:]
+	}
+	return e.expandPreviewDisplay(code, imports, steps, depth+1)
+}
+
+func (e *expander) renderPreviewCall(tpl registeredTemplate, call *ast.CallExprStmt, resolver SourceResolver) (string, []string, error) {
+	args := e.renderArgs(call, func(seed string) string { return seed }, resolver)
+	return renderDisplayTemplate(tpl, args, call.Ellipsis)
+}
+
+type previewReplacement struct {
+	Start      int
+	End        int
+	TemplateID string
+	Display    string
+	Imports    []string
+}
+
+type previewCallVisitor struct {
+	visit func(*ast.CallExprStmt)
+}
+
+func (v previewCallVisitor) Visit(node ast.Node) ast.Visitor {
+	if call, ok := node.(*ast.CallExprStmt); ok && v.visit != nil {
+		v.visit(call)
+	}
+	return v
+}
+
+func (e *expander) previewTemplateReplacements(code string) []previewReplacement {
+	expr, err := gofrontend.NewConverter().ConvertExprSource(code)
+	if err == nil {
+		return e.previewTemplateReplacementsFromRoots(code, []ast.Node{expr}, 0)
+	}
+	stmts, err := gofrontend.NewConverter().ConvertStmtsSource(code)
+	if err != nil || len(stmts) == 0 {
+		return nil
+	}
+	roots := make([]ast.Node, 0, len(stmts))
+	for _, stmt := range stmts {
+		if stmt != nil {
+			roots = append(roots, stmt)
+		}
+	}
+	return e.previewTemplateReplacementsFromRoots(code, roots, 2)
+}
+
+func (e *expander) previewTemplateReplacementsFromRoots(code string, roots []ast.Node, lineOffset int) []previewReplacement {
+	resolver := sourceResolverFromTextOffset(code, lineOffset)
+	var replacements []previewReplacement
+	visitor := previewCallVisitor{visit: func(call *ast.CallExprStmt) {
+		tpl, ok := e.matchPreviewCall(call)
+		if !ok || call == nil || call.GetBase() == nil {
+			return
+		}
+		start, end, ok := sourceOffsets(code, call.GetBase().Loc, lineOffset)
+		if !ok || start < 0 || end <= start || end > len(code) {
+			return
+		}
+		display, imports, err := e.renderPreviewCall(tpl, call, resolver)
+		if err != nil || strings.TrimSpace(display) == "" {
+			return
+		}
+		replacements = append(replacements, previewReplacement{
+			Start:      start,
+			End:        end,
+			TemplateID: tpl.ID,
+			Display:    display,
+			Imports:    imports,
+		})
+	}}
+	for _, root := range roots {
+		ast.Walk(visitor, root)
+	}
+	if len(replacements) < 2 {
+		return replacements
+	}
+	sort.Slice(replacements, func(i, j int) bool {
+		if replacements[i].Start == replacements[j].Start {
+			return replacements[i].End > replacements[j].End
+		}
+		return replacements[i].Start < replacements[j].Start
+	})
+	selected := replacements[:0]
+	coveredEnd := -1
+	for _, replacement := range replacements {
+		if replacement.Start < coveredEnd {
+			continue
+		}
+		selected = append(selected, replacement)
+		coveredEnd = replacement.End
+	}
+	return selected
+}
+
+func (e *expander) matchPreviewCall(call *ast.CallExprStmt) (registeredTemplate, bool) {
+	switch fn := call.Func.(type) {
+	case *ast.IdentifierExpr:
+		return e.registry.global(string(fn.Name))
+	case *ast.ConstRefExpr:
+		return e.registry.global(string(fn.Name))
+	case *ast.MemberExpr:
+		id, ok := fn.Object.(*ast.IdentifierExpr)
+		if !ok {
+			return registeredTemplate{}, false
+		}
+		if tpl, ok := e.registry.packageMember(string(id.Name), string(fn.Property)); ok {
+			return tpl, true
+		}
+		for _, tpl := range e.registry.packages {
+			if tpl.Name == string(fn.Property) && displayPackageAlias(tpl.PackagePath) == string(id.Name) {
+				return cloneRegisteredTemplate(tpl), true
+			}
+		}
+	}
+	return registeredTemplate{}, false
+}
+
+func mergePreviewImports(base, extra []string) []string {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	out := make([]string, 0, len(base)+len(extra))
+	for _, item := range base {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	for _, item := range extra {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+// SourceResolverFromMap returns a source resolver backed by file contents.
+func SourceResolverFromMap(sources map[string]string) SourceResolver {
+	if len(sources) == 0 {
+		return nil
+	}
+	return func(pos *ast.Position) (string, bool) {
+		if pos == nil {
+			return "", false
+		}
+		if pos.F != "" {
+			if code, ok := sources[pos.F]; ok {
+				return sourceAtPosition(code, pos)
+			}
+		}
+		if len(sources) == 1 {
+			for _, code := range sources {
+				return sourceAtPosition(code, pos)
+			}
+		}
+		return "", false
+	}
+}
+
+// SourceResolverFromText returns a source resolver for generated preview text.
+func SourceResolverFromText(code string) SourceResolver {
+	return sourceResolverFromTextOffset(code, 0)
+}
+
+func sourceResolverFromTextOffset(code string, lineOffset int) SourceResolver {
+	return func(pos *ast.Position) (string, bool) {
+		start, end, ok := sourceOffsets(code, pos, lineOffset)
+		if !ok {
+			return "", false
+		}
+		return code[start:end], true
+	}
+}
+
+func sourceAtPosition(code string, pos *ast.Position) (string, bool) {
+	start, end, ok := sourceOffsets(code, pos, 0)
+	if !ok {
+		return "", false
+	}
+	return code[start:end], true
+}
+
+func sourceOffsets(code string, pos *ast.Position, lineOffset int) (int, int, bool) {
+	if pos == nil || pos.L <= lineOffset || pos.C <= 0 || code == "" {
+		return 0, 0, false
+	}
+	lines := strings.Split(code, "\n")
+	startLine := pos.L - lineOffset - 1
+	endLine := pos.EL - lineOffset - 1
+	if pos.EL <= 0 {
+		endLine = startLine
+	}
+	if startLine < 0 || startLine >= len(lines) || endLine < startLine || endLine >= len(lines) {
+		return 0, 0, false
+	}
+	startCol := pos.C - 1
+	if startCol < 0 || startCol > len(lines[startLine]) {
+		return 0, 0, false
+	}
+	endCol := pos.EC - 1
+	if pos.EC <= 0 {
+		endCol = len(lines[endLine])
+	}
+	if endCol < 0 {
+		return 0, 0, false
+	}
+	if endCol > len(lines[endLine]) {
+		endCol = len(lines[endLine])
+	}
+	if startLine == endLine && endCol < startCol {
+		return 0, 0, false
+	}
+	return startOffset(lines, startLine, startCol), startOffset(lines, endLine, endCol), true
+}
+
+func startOffset(lines []string, lineIndex, col int) int {
+	offset := 0
+	for i := 0; i < lineIndex; i++ {
+		offset += len(lines[i]) + 1
+	}
+	return offset + col
+}
+
+// Contains reports whether a 1-based file position is inside the preview range.
+func (p TemplatePreview) Contains(file string, line, col int) bool {
+	loc := p.Range
+	if file != "" && loc.F != "" && file != loc.F {
+		return false
+	}
+	if line < loc.L || line == loc.L && col < loc.C {
+		return false
+	}
+	endLine := loc.EL
+	endCol := loc.EC
+	if endLine <= 0 {
+		endLine = loc.L
+		endCol = loc.C + 1
+	}
+	if line > endLine || line == endLine && col >= endCol {
+		return false
+	}
+	return true
+}
+
+// Markdown renders the preview as LSP markdown content.
+func (p TemplatePreview) Markdown() string {
+	var b strings.Builder
+	b.WriteString("template ")
+	b.WriteString(p.TemplateID)
+	if strings.TrimSpace(p.Signature) != "" {
+		b.WriteByte('\n')
+		b.WriteString(p.Signature)
+	}
+	b.WriteString("\n\nrenders to:\n\n```go\n")
+	for _, importPath := range p.Imports {
+		b.WriteString("import ")
+		fmt.Fprintf(&b, "%q", importPath)
+		b.WriteByte('\n')
+	}
+	if len(p.Imports) > 0 && strings.TrimSpace(p.Final) != "" {
+		b.WriteByte('\n')
+	}
+	b.WriteString(p.Final)
+	b.WriteString("\n```")
+	return b.String()
 }
 
 func (e *expander) importAlias(importPath string) (string, error) {

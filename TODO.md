@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-21
+更新时间: 2026-05-22
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -14,7 +14,7 @@
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
-- 调用模板是 compiler 阶段能力：模板注册只暴露 schema 给前端校验和 LSP 补全，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
+- 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
 - 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 必须校验签名一致，不存在的包作为编译期 facade 处理且不需要 dummy module，fixed-point 展开后必须从 AST import、artifact imports 与 bytecode 中完全移除，并由最终无模板语义检查兜底。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得引入 Go parser/AST 或 Mini AST converter。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。

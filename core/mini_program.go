@@ -8,6 +8,7 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -17,7 +18,9 @@ type MiniProgram struct {
 	Source   string
 	Program  *ast.ProgramStmt
 	Compiled *compiler.Artifact
-	executor *runtime.Executor
+	// TemplatePreviews contains source-based call template render previews used by LSP hover.
+	TemplatePreviews []calltemplate.TemplatePreview
+	executor         *runtime.Executor
 
 	// LSP / Debugger 支撑
 	parentMap map[ast.Node]ast.Node
@@ -111,6 +114,11 @@ func (p *MiniProgram) GetHoverAt(line, col int) *ast.HoverInfo {
 
 // GetHoverAtFile 获取指定文件位置符号的悬浮信息
 func (p *MiniProgram) GetHoverAtFile(file string, line, col int) *ast.HoverInfo {
+	for _, preview := range p.TemplatePreviews {
+		if preview.Contains(file, line, col) {
+			return &ast.HoverInfo{Markdown: preview.Markdown()}
+		}
+	}
 	node := p.GetNodeAtFile(file, line, col)
 	if node == nil {
 		return nil

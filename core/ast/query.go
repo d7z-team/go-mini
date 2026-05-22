@@ -716,6 +716,8 @@ type HoverInfo struct {
 	Type      GoMiniType `json:"type"`
 	Signature string     `json:"signature,omitempty"`
 	Doc       string     `json:"doc,omitempty"`
+	// Markdown, when set, is returned directly by LSP hover.
+	Markdown string `json:"markdown,omitempty"`
 }
 
 // FindHoverInfo 获取符号的悬浮提示信息

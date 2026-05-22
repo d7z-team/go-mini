@@ -11,8 +11,8 @@ type lspAnalyzerAdapter struct {
 	executor *MiniExecutor
 }
 
-func (a lspAnalyzerAdapter) AnalyzeProgramTolerant(program *ast.ProgramStmt) (lspserv.ProgramView, []error) {
-	return a.executor.AnalyzeProgramTolerant(program)
+func (a lspAnalyzerAdapter) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (lspserv.ProgramView, []error) {
+	return a.executor.AnalyzeProgramTolerant(program, sources)
 }
 
 func (e *MiniExecutor) StartStdLspServer() error {

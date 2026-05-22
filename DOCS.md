@@ -172,14 +172,14 @@ bytecode JSON 装载执行只依赖 `Executable`。如果 payload 缺少 executa
 如果你需要 tolerant 语义分析、LSP 或调试辅助信息，而不是直接执行 AST：
 
 ```go
-program, diags := executor.AnalyzeProgramTolerant(astProgram)
+program, diags := executor.AnalyzeProgramTolerant(astProgram, nil)
 if len(diags) > 0 {
     // 处理诊断
 }
 _ = program
 ```
 
-`AnalyzeProgramTolerant(...)` 只用于分析边界，不是运行时装载口。执行仍应先编译成 `Artifact` 或 bytecode。
+`AnalyzeProgramTolerant(...)` 只用于分析边界，不是运行时装载口。执行仍应先编译成 `Artifact` 或 bytecode。第二个参数可以传入 `map[uri]source`，用于 LSP 模板 hover 这类必须保留源码切片的展示；不需要源码展示时传 `nil`。
 
 ### 2.7 调用模板
 
@@ -250,6 +250,8 @@ func main() {
 - `fresh "name"`：生成稳定且不会撞用户代码的临时标识符。
 
 模板不再单独声明 imports。`pkg` 包存在性在模板实际渲染时校验，因此未使用的模板不会污染无关编译。模板参数以 AST 占位符方式回填，不允许通过 `.Args` 等模板数据对象访问参数，也不把参数重新格式化为 Go 源码。模板展开是 fixed-point：模板生成的代码如果继续调用模板，会递归展开直到只剩真实代码；递归模板链会在编译期报错。模板体形态由使用位置和渲染结果推导：表达式位置必须渲染成表达式；语句列表位置先按表达式解析，失败且源码签名返回 `Void` 时再按语句列表解析；`defer` / `go` 中的模板必须最终展开为单个 call expression。
+
+LSP hover 会展示模板的最终渲染视图。展示参数来自调用点源码切片，`pkg` 以 `import "fmt"` 和 `fmt.Println(...)` 这类用户可读形式显示，不暴露 `__gomini_tpl_` 内部 alias；这只是 IDE 展示，实际 compiler 仍使用卫生 alias 和 AST 占位符完成展开。
 
 模板注册会拒绝覆盖真实内置函数、FFI 函数、常量、结构体和接口；源码也不能声明全局模板同名标识符。`__gomini_tpl_` 前缀保留给模板展开器，用户源码不能声明该前缀。
 
