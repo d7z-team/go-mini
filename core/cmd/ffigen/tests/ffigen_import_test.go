@@ -7,7 +7,7 @@ import (
 )
 
 func TestFFIGenCrossPackageImport(t *testing.T) {
-	content, err := os.ReadFile("../../../cmd/ffigen/tests/importtest/ffigen.go")
+	content, err := os.ReadFile("importtest/ffigen.go")
 	if err != nil {
 		t.Fatalf("Failed to read generated FFI file: %v", err)
 	}

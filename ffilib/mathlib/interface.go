@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg mathlib -out math_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg mathlib -out math_ffigen.go interface.go
 package mathlib
 
 // ffigen:module math

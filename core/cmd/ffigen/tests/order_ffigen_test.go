@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/cmd/ffigen/tests/ordertest"
+	"gopkg.d7z.net/go-mini/core/cmd/ffigen/tests/ordertest"
 	engine "gopkg.d7z.net/go-mini/core"
 )
 

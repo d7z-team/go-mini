@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg md5lib -out md5_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg md5lib -out md5_ffigen.go interface.go
 package md5lib
 
 import (

@@ -28,7 +28,7 @@ build-all: $(FFIGEN_BIN) $(LSP_SERVER_BIN) $(EXEC_BIN)
 $(FFIGEN_BIN): $(GO_SOURCES)
 	@echo "Building ffigen tool..."
 	@mkdir -p bin
-	@go build -o $(FFIGEN_BIN) ./cmd/ffigen
+	@go build -o $(FFIGEN_BIN) ./core/cmd/ffigen
 
 $(LSP_SERVER_BIN): $(GO_SOURCES)
 	@echo "Building lsp-server..."

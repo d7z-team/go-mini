@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg regexplib -out regexp_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg regexplib -out regexp_ffigen.go interface.go
 package regexplib
 
 // Regexp 接口定义了正则表达式操作

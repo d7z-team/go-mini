@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out ffi_robustness_ffigen_test.go robustness_test.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg tests -out ffi_robustness_ffigen_test.go robustness_test.go
 package tests
 
 import (

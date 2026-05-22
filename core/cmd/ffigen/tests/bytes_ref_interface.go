@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg tests -out bytes_ref_ffigen_test.go bytes_ref_interface.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg tests -out bytes_ref_ffigen_test.go bytes_ref_interface.go
 package tests
 
 import (

@@ -14,7 +14,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 	}{
 		{
 			name: "StdlibSchemaOnlyRegistration",
-			path: "../../../ffilib/iolib/io_ffigen.go",
+			path: "../../../../ffilib/iolib/io_ffigen.go",
 			patterns: []string{
 				"registrar, ok := executor.(interface {",
 				"registrar.RegisterFFISchema(",
@@ -23,7 +23,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 		},
 		{
 			name: "ServiceSchemaOnlyRegistration",
-			path: "../../../core/e2e/canonicaltest/canonical_type_ffigen.go",
+			path: "../../../e2e/canonicaltest/canonical_type_ffigen.go",
 			patterns: []string{
 				"registrar.RegisterFFISchema(",
 				"panic(\"ffigen: executor does not support schema FFI registration\")",
@@ -31,7 +31,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 		},
 		{
 			name: "StructDirectSchemaRegistration",
-			path: "../../../core/e2e/structtest/ffigen.go",
+			path: "../../../e2e/structtest/ffigen.go",
 			patterns: []string{
 				"RegisterStructSchema(",
 				"registrar.RegisterStructSchema(",
@@ -40,7 +40,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 		},
 		{
 			name: "BusinessServiceSchemaGeneration",
-			path: "../../../cmd/ffigen/tests/ordertest/order_ffigen.go",
+			path: "ordertest/order_ffigen.go",
 			patterns: []string{
 				"var OrderService_FFI_Schemas = []struct {",
 				"HostRef<order.Order>",
@@ -50,7 +50,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 		},
 		{
 			name: "CrossPackageImportGeneration",
-			path: "../../../cmd/ffigen/tests/importtest/ffigen.go",
+			path: "importtest/ffigen.go",
 			patterns: []string{
 				"\"time\"",
 				"Sleep(ctx context.Context, d time.Duration) error",
@@ -82,7 +82,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 }
 
 func TestFFIGenHostRefIsOpaqueHandleContract(t *testing.T) {
-	content, err := os.ReadFile("../../../core/e2e/structtest/ffigen.go")
+	content, err := os.ReadFile("../../../e2e/structtest/ffigen.go")
 	if err != nil {
 		t.Fatalf("read generated struct sample: %v", err)
 	}
