@@ -13,7 +13,7 @@ GO_TEST_TIMEOUT ?= 180s
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 
-.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix examples
+.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen tidy clean package-vsix examples
 
 build: build-all
 
@@ -57,7 +57,14 @@ examples: $(EXEC_BIN)
 
 gen:
 	@echo "Generating FFI code with go generate..."
-	@go generate ./...
+	@cd core && go generate ./...
+	@cd ffilib && go generate ./...
+	@cd examples && go generate ./...
+
+tidy:
+	@cd core && go mod tidy
+	@cd ffilib && go mod tidy
+	@cd examples && go mod tidy
 
 clean:
 	rm -rf bin
@@ -66,15 +73,21 @@ fmt: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" fmt -c .golangci.yml
 	@find . -name "*.mgo" -not -path "./vendor/*" -not -path "./bin/*" -exec gofmt -w {} +
-	@go mod tidy
+	@$(MAKE) tidy
 
 lint: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
-	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml
+	cd core && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./... && \
+	cd ../ffilib && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./... && \
+	cd ../examples && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./...
 
 lint-fix: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
-	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
+	cd core && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./... --fix && \
+	cd ../ffilib && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./... --fix && \
+	cd ../examples && "$(GOPATH)/bin/golangci-lint" run -c ../.golangci.yml ./... --fix
 
 test: gen
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -v -coverprofile=coverage.txt ./...
+	@cd core && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...
+	@cd ffilib && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...
+	@cd examples && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...

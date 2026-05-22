@@ -15,8 +15,7 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 ## Install
 
 ```bash
-go install gopkg.d7z.net/go-mini/cmd/exec@latest
-go install gopkg.d7z.net/go-mini/cmd/ffigen@latest
+go install gopkg.d7z.net/go-mini/core/cmd/ffigen@latest
 ```
 
 ## CLI
@@ -24,19 +23,19 @@ go install gopkg.d7z.net/go-mini/cmd/ffigen@latest
 Run a script:
 
 ```bash
-go run ./cmd/exec -run script.mgo
+go run ./examples/cmd/exec -run script.mgo
 ```
 
 Compile to bytecode:
 
 ```bash
-go run ./cmd/exec -o script.json script.mgo
+go run ./examples/cmd/exec -o script.json script.mgo
 ```
 
 Run bytecode:
 
 ```bash
-go run ./cmd/exec -bytecode script.json
+go run ./examples/cmd/exec -bytecode script.json
 ```
 
 ## Embedding
@@ -76,7 +75,7 @@ func main() {
 Generate bindings from Go interfaces:
 
 ```bash
-go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
+go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
 For examples and runtime integration details, see [DOCS.md](./DOCS.md).
@@ -90,8 +89,8 @@ make lint test
 Useful focused checks:
 
 ```bash
-GOCACHE=/tmp/go-build-cache go test -timeout 180s ./core/runtime
-GOCACHE=/tmp/go-build-cache go test -timeout 180s ./...
+GOCACHE=/tmp/go-build-cache bash -lc 'cd core && go test -timeout 180s ./runtime ./runtime/tests'
+GOCACHE=/tmp/go-build-cache bash -lc 'cd ffilib && go test -timeout 180s ./...'
 ```
 
 ## Documentation

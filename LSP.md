@@ -16,22 +16,22 @@ LSP 展示的函数签名和类型文本使用项目统一的 canonical type ren
 
 Go-Mini 提供两类常见接入方式：
 
-- `stdio`：给 VSCode、Neovim 等标准 LSP 客户端使用，直接启动 `cmd/lsp-server`。
+- `stdio`：给 VSCode、Neovim 等标准 LSP 客户端使用，直接启动 `examples/cmd/lsp-server`。
 - HTTP / RPC：给 Web IDE、Serverless 或自定义后端使用，直接封装 `core/lspserv`。
 
 ### stdio LSP
 
-`cmd/lsp-server` 通过标准输入/输出处理 JSON-RPC LSP 消息：
+`examples/cmd/lsp-server` 通过标准输入/输出处理 JSON-RPC LSP 消息：
 
 ```bash
-go run ./cmd/lsp-server
+go run ./examples/cmd/lsp-server
 ```
 
 编辑器插件只需要把该命令配置为 language server command。服务端支持 initialize、didOpen、didChange、didClose、completion、hover、definition、references、shutdown 和 exit。
 
 ### HTTP / RPC API
 
-如果你在 Web IDE 或服务端集成，不必启动 `cmd/lsp-server`。推荐在自己的 HTTP / RPC handler 中复用同一个 `LSPServer`：
+如果你在 Web IDE 或服务端集成，不必启动 `examples/cmd/lsp-server`。推荐在自己的 HTTP / RPC handler 中复用同一个 `LSPServer`：
 
 ```go
 executor := engine.NewMiniExecutor()
@@ -142,6 +142,6 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 
 ## 7. 当前 IDE 能力
 
-`cmd/lsp-server` 支持标准 stdio JSON-RPC 生命周期，包括 initialize、didOpen、didChange、didClose、shutdown 和 exit。
+`examples/cmd/lsp-server` 支持标准 stdio JSON-RPC 生命周期，包括 initialize、didOpen、didChange、didClose、shutdown 和 exit。
 
 导航与悬浮覆盖局部变量、全局变量、函数、方法、结构体字段、import 别名、常量、类型别名、结构体和接口声明。references 会按客户端传入的 `includeDeclaration` 决定是否返回声明位置。

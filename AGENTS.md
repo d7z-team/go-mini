@@ -25,6 +25,19 @@
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。
 - 手写 AST / JSON AST 若出现非 canonical type，必须直接编译错误，不做兼容修复。
 
+## 多模块规则
+
+- 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
+- `core` module path 为 `gopkg.d7z.net/go-mini/core`。
+- `ffilib` module path 为 `gopkg.d7z.net/go-mini/ffilib`。
+- `examples` module path 为 `gopkg.d7z.net/go-mini/examples`。
+- `ffilib` 可以依赖 `core`，但 `core` 不得依赖 `ffilib`。
+- 开发使用 `go.work` 解析本地模块；依赖模块可使用 `v0.0.0` 加本地 `replace` 保持 `go mod tidy`、`go generate`、`go test` 可在模块目录内独立运行。
+- `ffilib` 中声明的 `core` 版本只表示最低兼容版本，不要求与 `ffilib` 版本一致。
+- 多模块结构调整时，各模块改动应拆成独立提交；不要把 core、ffilib、examples 和文档全部混进一个提交。
+- 不手写 `go.sum`，只通过 `go mod tidy`、`go test`、`go generate` 自然维护。
+- 正确性以本地 `go generate` / `go test` 通过和边界扫描为准。
+
 ## 协作规则
 
 - 改动前先读 `TODO.md`。
