@@ -6,3 +6,4 @@ vscode-ext/node_modules/
 *.vsix
 *.txt
 .codex
+report

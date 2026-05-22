@@ -51,11 +51,15 @@ func (e *Executor) Disassemble() (res string) {
 	for _, k := range keys {
 		f := e.functions[k]
 		sig := FuncType(nil, SpecVoid, false).String()
+		var bodyTasks []Task
 		if f != nil && f.FunctionSig != nil {
 			sig = string(f.FunctionSig.Spec)
 		}
+		if f != nil {
+			bodyTasks = f.BodyTasks
+		}
 		fmt.Fprintf(&sb, "fn.%s: ; signature %s\n", k, sig)
-		e.disassembleTasks(&sb, "  ", f.BodyTasks)
+		e.disassembleTasks(&sb, "  ", bodyTasks)
 		sb.WriteString("\n")
 	}
 

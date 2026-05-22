@@ -327,7 +327,8 @@ func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, codeByURI ma
 	if err == nil {
 		return
 	}
-	if astErr, ok := err.(*ast.MiniAstError); ok {
+	var astErr *ast.MiniAstError
+	if errors.As(err, &astErr) {
 		for _, log := range astErr.Logs {
 			if log.Node == nil || log.Node.GetBase() == nil {
 				continue

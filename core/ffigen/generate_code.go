@@ -607,9 +607,6 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
 		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec); RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) })\n")
 		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		if !isStruct && meta.interfaceMarked {
-			fmt.Fprintf(&sb, "\tRegister%sSchema(registrar)\n", name)
-		}
 		fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
 		fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
 		fmt.Fprintf(&sb, "\t}\n")

@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"errors"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -26,7 +27,8 @@ func main() {
 		t.Fatal("expected program")
 	}
 	for _, err := range errs {
-		if _, ok := err.(*ast.MiniAstError); ok {
+		var astErr *ast.MiniAstError
+		if errors.As(err, &astErr) {
 			t.Fatalf("unexpected semantic error: %v", err)
 		}
 	}

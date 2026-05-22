@@ -15,6 +15,9 @@ type referencedStructSet struct {
 
 func (g *Generator) collectReferencedStructSet(iface *ast.InterfaceType, structs map[string]*ast.StructType, ownedStructs map[string]bool, currentOwned string) referencedStructSet {
 	res := referencedStructSet{ownership: make(map[string]string)}
+	if iface == nil {
+		return res
+	}
 	seen := make(map[string]bool)
 	var visitType func(string, bool)
 	visitType = func(typeName string, asHostRef bool) {

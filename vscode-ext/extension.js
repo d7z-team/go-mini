@@ -137,6 +137,12 @@ function getOutputChannel() {
     return outputChannel;
 }
 
+function reportAsyncError(action, err) {
+    const message = err && err.message ? err.message : String(err);
+    getOutputChannel().appendLine(`[${action} error] ${message}`);
+    vscode.window.showErrorMessage(`Go-Mini ${action} failed: ${message}`);
+}
+
 function executeCommand({ title, command, args, cwd }) {
     const channel = getOutputChannel();
     channel.clear();
@@ -276,12 +282,12 @@ function activate(context) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('go-mini.lsp.path')) {
-                restartServer(context);
+                restartServer(context).catch(err => reportAsyncError('restart language server', err));
             }
         })
     );
 
-    startClient(context);
+    startClient(context).catch(err => reportAsyncError('start language server', err));
 }
 
 function deactivate() {

@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"errors"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -33,7 +34,8 @@ func main() {
 
 	// 验证是否有语义错误 (排除语法错误)
 	for _, parseErr := range parseErrs {
-		if _, ok := parseErr.(*ast.MiniAstError); ok {
+		var astErr *ast.MiniAstError
+		if errors.As(parseErr, &astErr) {
 			t.Errorf("Unexpected semantic error: %v", parseErr)
 		}
 	}
