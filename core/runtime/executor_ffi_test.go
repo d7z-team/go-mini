@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -194,6 +195,45 @@ func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
 	}()
 
 	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
+}
+
+func TestTryRegisterStructSchemaNilClearsCanonicalIndex(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+	}
+	schema := MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }")
+	if err := exec.TryRegisterStructSchema("demo.Type", schema); err != nil {
+		t.Fatalf("register struct schema failed: %v", err)
+	}
+	if err := exec.TryRegisterStructSchema("demo.Type", nil); err != nil {
+		t.Fatalf("clear struct schema failed: %v", err)
+	}
+
+	if resolved, ok := exec.lookupStructSchema(MustParseRuntimeType("demo.Type")); ok || resolved != nil {
+		t.Fatalf("expected struct schema canonical index to be cleared, got %#v", resolved)
+	}
+}
+
+func TestTryRegisterRouteReportsParamModeConflict(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+		routes:   make(map[string]FFIRoute),
+	}
+	if err := exec.TryRegisterRoute("demo.Mutate", FFIRoute{
+		Name:    "demo.Mutate",
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamInOutBytes),
+	}); err != nil {
+		t.Fatalf("register route failed: %v", err)
+	}
+
+	err := exec.TryRegisterRoute("demo.Mutate", FFIRoute{
+		Name:    "demo.Mutate",
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamIn),
+	})
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "route" {
+		t.Fatalf("expected route conflict error, got %T %v", err, err)
+	}
 }
 
 type copyBackFFIBridge struct {

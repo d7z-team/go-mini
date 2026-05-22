@@ -33,7 +33,9 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	if err != nil {
 		return nil, err
 	}
-	e.applyExecutorConfig(executor)
+	if err := e.applyExecutorConfig(executor); err != nil {
+		return nil, err
+	}
 
 	session := executor.NewSession(ctx, "eval")
 	defer executor.CleanupSession(session)
@@ -133,7 +135,9 @@ func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	if err != nil {
 		return nil, err
 	}
-	e.applyExecutorConfig(executor)
+	if err := e.applyExecutorConfig(executor); err != nil {
+		return nil, err
+	}
 
 	session := executor.NewSession(ctx, "loader")
 	defer executor.CleanupSession(session)

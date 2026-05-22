@@ -54,7 +54,9 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*MiniP
 	if err != nil {
 		return nil, err
 	}
-	e.applyExecutorConfig(executor)
+	if err := e.applyExecutorConfig(executor); err != nil {
+		return nil, err
+	}
 
 	return &MiniProgram{
 		Source:           compiled.Source,

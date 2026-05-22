@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -54,6 +55,17 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	}
 	if got := schema.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
 		t.Fatalf("unexpected exported interface spec: %s", got)
+	}
+}
+
+func TestMiniExecutorRuntimeExecutorReturnsErrorAPI(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	runtimeExec, err := exec.RuntimeExecutor()
+	if err != nil {
+		t.Fatalf("runtime executor failed: %v", err)
+	}
+	if runtimeExec == nil {
+		t.Fatal("expected runtime executor")
 	}
 }
 
@@ -270,6 +282,21 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 	}()
 
 	exec.RegisterFFISchema("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+}
+
+func TestMiniExecutorTryRegisterReportsSchemaConflict(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	if err := exec.TryRegisterFFISchema("demo.Mutate", nil, 1,
+		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), ""); err != nil {
+		t.Fatalf("register schema failed: %v", err)
+	}
+
+	err := exec.TryRegisterFFISchema("demo.Mutate", nil, 1,
+		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), "")
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "route" {
+		t.Fatalf("expected route schema conflict error, got %T %v", err, err)
+	}
 }
 
 func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {

@@ -12,6 +12,43 @@ type builder struct {
 	consts    map[string]string
 	globals   map[string]struct{}
 	functions map[string]struct{}
+	err       error
+}
+
+// Error reports an AST node that cannot be represented in executable
+// bytecode. It is returned before runtime construction so embedders can handle
+// malformed hand-written ASTs without process-level panics.
+type Error struct {
+	Op       string
+	NodeType string
+	Meta     string
+	ID       string
+	File     string
+	Line     int
+	Col      int
+	Err      error
+}
+
+func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
+	loc := ""
+	if e.File != "" || e.Line > 0 || e.Col > 0 {
+		loc = fmt.Sprintf(" at %s:%d:%d", e.File, e.Line, e.Col)
+	}
+	detail := ""
+	if e.Err != nil {
+		detail = ": " + e.Err.Error()
+	}
+	return fmt.Sprintf("lowering %s failed for %s(meta=%s id=%s)%s%s", e.Op, e.NodeType, e.Meta, e.ID, loc, detail)
+}
+
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 func newBuilder(constants map[string]string, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
@@ -117,6 +154,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 			planStmt = &ast.GenDeclStmt{BaseNode: ast.BaseNode{Meta: "decl"}, Bindings: bindings, Values: group.Values}
 		}
 		initPlan := b.tasksForStmtInScope(planStmt, nil, rootScope)
+		if b.err != nil {
+			return nil, b.err
+		}
 		prepared.GlobalInitGroups = append(prepared.GlobalInitGroups, &runtime.PreparedGlobalInit{
 			Names:    identSliceToStrings(group.Names),
 			InitPlan: initPlan,
@@ -132,21 +172,27 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 				name := string(binding.Name)
 				prepared.Globals[name] = &runtime.PreparedGlobal{
 					Name:    name,
-					Kind:    runtime.MustParseRuntimeType(binding.Kind),
+					Kind:    b.runtimeType(binding.Kind, group.Decl, "global declaration"),
 					HasInit: len(group.Decl.Values) > 0,
 				}
+			}
+			if b.err != nil {
+				return nil, b.err
 			}
 			continue
 		}
 		for _, ident := range group.Names {
 			expr := program.Variables[ident]
-			kind := runtime.MustParseRuntimeType(runtime.SpecAny)
+			kind := fallbackAnyType
 			var initPlan []runtime.Task
 			if expr != nil {
 				if !expr.GetBase().Type.IsEmpty() {
-					kind = runtime.MustParseRuntimeType(expr.GetBase().Type)
+					kind = b.runtimeType(expr.GetBase().Type, expr, "global initializer")
 				}
 				initPlan = b.tasksForExprInScope(expr, rootScope)
+				if b.err != nil {
+					return nil, b.err
+				}
 			}
 			name := string(ident)
 			prepared.Globals[name] = &runtime.PreparedGlobal{
@@ -160,7 +206,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 	for ident := range program.Variables {
 		name := string(ident)
 		if _, ok := prepared.Globals[name]; !ok {
-			prepared.Globals[name] = &runtime.PreparedGlobal{Name: name, Kind: runtime.MustParseRuntimeType(runtime.SpecAny)}
+			prepared.Globals[name] = &runtime.PreparedGlobal{Name: name, Kind: fallbackAnyType}
 		}
 	}
 	for ident, fn := range program.Functions {
@@ -189,6 +235,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 			FunctionSig: sig,
 			BodyTasks:   b.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}
+		if b.err != nil {
+			return nil, b.err
+		}
 	}
 	mainStmts := make([]ast.Stmt, 0, len(program.Main))
 	for _, stmt := range program.Main {
@@ -199,6 +248,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		mainStmts = append(mainStmts, stmt)
 	}
 	prepared.MainTasks = b.buildStmtPlanWithScope(mainStmts, rootScope)
+	if b.err != nil {
+		return nil, b.err
+	}
 	if err := runtime.ValidatePreparedProgram(prepared); err != nil {
 		return nil, err
 	}

@@ -179,6 +179,30 @@ func TestCompileProgramSupportsValidatedAST(t *testing.T) {
 	}
 }
 
+func TestCompileProgramRejectsNonCanonicalHandwrittenAST(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	_, err := testExecutor.CompileProgram(&ast.ProgramStmt{
+		BaseNode:   ast.BaseNode{ID: "test"},
+		Package:    "main",
+		Constants:  map[string]string{},
+		Variables:  map[ast.Ident]ast.Expr{},
+		Types:      map[ast.Ident]ast.GoMiniType{},
+		Structs:    map[ast.Ident]*ast.StructStmt{},
+		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		Functions:  map[ast.Ident]*ast.FunctionStmt{},
+		Main: []ast.Stmt{&ast.GenDeclStmt{
+			BaseNode: ast.BaseNode{ID: "decl", Meta: "decl"},
+			Bindings: []ast.VarBinding{{
+				Name: "items",
+				Kind: "[]Int64",
+			}},
+		}},
+	})
+	if err == nil {
+		t.Fatal("expected non-canonical handwritten AST type to be rejected")
+	}
+}
+
 func TestValidatedASTRejectsAssignmentWithoutKind(t *testing.T) {
 	program := &ast.ProgramStmt{
 		BaseNode:   ast.BaseNode{ID: "test"},

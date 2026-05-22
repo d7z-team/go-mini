@@ -112,7 +112,7 @@ func (p *Plan) validateTemplateUse(tpl registeredTemplate) error {
 	if !ok {
 		return fmt.Errorf("call template %s references missing package member %s.%s", tpl.ID, tpl.PackagePath, tpl.Name)
 	}
-	if !sameRuntimeFuncSig(actual, tpl.SourceSig) {
+	if !runtime.SameRuntimeFuncSchema(actual, tpl.SourceSig) {
 		return fmt.Errorf("call template %s source signature %s does not match existing package member %s.%s signature %s", tpl.ID, tpl.SourceSig.SignatureString(), tpl.PackagePath, tpl.Name, actual.SignatureString())
 	}
 	return nil

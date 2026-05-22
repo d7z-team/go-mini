@@ -32,7 +32,7 @@
 - `ffilib` module path 为 `gopkg.d7z.net/go-mini/ffilib`。
 - `examples` module path 为 `gopkg.d7z.net/go-mini/examples`。
 - `ffilib` 可以依赖 `core`，但 `core` 不得依赖 `ffilib`。
-- 开发使用 `go.work` 解析本地模块；依赖模块可使用 `v0.0.0` 加本地 `replace` 保持 `go mod tidy`、`go generate`、`go test` 可在模块目录内独立运行。
+- 开发使用 `go.work` 解析本地模块；各模块 `go.mod` 中的依赖版本表示发布兼容基线，不通过本地 `replace` 固化仓库内模块关系。
 - `ffilib` 中声明的 `core` 版本只表示最低兼容版本，不要求与 `ffilib` 版本一致。
 - 多模块结构调整时，各模块改动应拆成独立提交；不要把 core、ffilib、examples 和文档全部混进一个提交。
 - 不手写 `go.sum`，只通过 `go mod tidy`、`go test`、`go generate` 自然维护。

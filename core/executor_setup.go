@@ -49,12 +49,14 @@ func NewMiniExecutor() *MiniExecutor {
 func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
-		defer e.mu.RUnlock()
-		if astNode, ok := e.moduleSources[path]; ok {
+		astNode, ok := e.moduleSources[path]
+		loader := e.astModuleLoader
+		e.mu.RUnlock()
+		if ok {
 			return astNode, nil
 		}
-		if e.astModuleLoader != nil {
-			return e.astModuleLoader(path)
+		if loader != nil {
+			return loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
@@ -72,26 +74,33 @@ func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedPr
 	}
 }
 
-func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) {
+func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 	if executor == nil {
-		return
+		return nil
 	}
 	executor.ModulePlanLoader = e.modulePlanLoader()
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	for name, route := range e.routes {
-		executor.RegisterRoute(name, route)
+		if err := executor.TryRegisterRoute(name, route); err != nil {
+			return err
+		}
 	}
 	for name, spec := range e.structsMeta {
-		executor.RegisterStructSchema(string(name), spec)
+		if err := executor.TryRegisterStructSchema(string(name), spec); err != nil {
+			return err
+		}
 	}
 	for name, spec := range e.interfacesMeta {
-		executor.RegisterInterfaceSchema(string(name), spec)
+		if err := executor.TryRegisterInterfaceSchema(string(name), spec); err != nil {
+			return err
+		}
 	}
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
 	}
+	return nil
 }
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {

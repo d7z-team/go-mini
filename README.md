@@ -84,7 +84,7 @@ For examples and runtime integration details, see [DOCS.md](./DOCS.md).
 ## Development
 
 ```bash
-make lint test
+make lint test examples
 ```
 
 Useful focused checks:
@@ -92,6 +92,7 @@ Useful focused checks:
 ```bash
 GOCACHE=/tmp/go-build-cache bash -lc 'cd core && go test -timeout 180s ./runtime ./runtime/tests'
 GOCACHE=/tmp/go-build-cache bash -lc 'cd ffilib && go test -timeout 180s ./...'
+timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 ```
 
 ## Documentation

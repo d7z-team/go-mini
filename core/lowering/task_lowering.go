@@ -26,6 +26,8 @@ var builtinSymbols = map[string]struct{}{
 	"require": {},
 }
 
+var fallbackAnyType = runtime.RuntimeType{Kind: runtime.RuntimeTypeAny, Raw: runtime.SpecAny}
+
 type loweringFuncState struct {
 	nextLocal   int
 	nextUpvalue int
@@ -189,6 +191,37 @@ func (b *builder) setSource(tasks []runtime.Task, node ast.Node) []runtime.Task 
 	return tasks
 }
 
+func (b *builder) fail(op string, node ast.Node, err error) {
+	if b.err != nil {
+		return
+	}
+	lowerErr := &Error{Op: op, NodeType: fmt.Sprintf("%T", node), Err: err}
+	if !isNilNode(node) {
+		base := node.GetBase()
+		lowerErr.Meta = base.Meta
+		lowerErr.ID = base.ID
+		if base.Loc != nil {
+			lowerErr.File = base.Loc.F
+			lowerErr.Line = base.Loc.L
+			lowerErr.Col = base.Loc.C
+		}
+	}
+	b.err = lowerErr
+}
+
+func (b *builder) unsupported(op string, node ast.Node) {
+	b.fail(op, node, fmt.Errorf("runtime lowering missing for %s %T", op, node))
+}
+
+func (b *builder) runtimeType(spec ast.GoMiniType, node ast.Node, op string) runtime.RuntimeType {
+	parsed, err := runtime.ParseRuntimeType(spec)
+	if err != nil {
+		b.fail(op, node, fmt.Errorf("invalid canonical type %q: %w", spec, err))
+		return fallbackAnyType
+	}
+	return parsed
+}
+
 func isNilNode(node ast.Node) bool {
 	if node == nil {
 		return true
@@ -244,12 +277,18 @@ func (b *builder) buildStmtPlanWithScope(stmts []ast.Stmt, scope *loweringScope)
 	}
 	plan := make([]runtime.Task, 0)
 	for _, stmt := range stmts {
+		if b.err != nil {
+			return nil
+		}
 		plan = append(b.tasksForStmtInScope(stmt, nil, scope), plan...)
 	}
 	return plan
 }
 
 func (b *builder) tasksForStmtInScope(stmt ast.Stmt, data interface{}, scope *loweringScope) []runtime.Task {
+	if b.err != nil {
+		return nil
+	}
 	if tasks, ok := b.lowerStmtTasks(stmt, data, scope); ok {
 		res := b.setSource(tasks, stmt)
 		// Prepend runtime.OpLineStep for debugging
@@ -260,21 +299,30 @@ func (b *builder) tasksForStmtInScope(stmt ast.Stmt, data interface{}, scope *lo
 		}
 		return res
 	}
-	panic(fmt.Sprintf("runtime lowering missing for stmt %T", stmt))
+	b.unsupported("stmt", stmt)
+	return nil
 }
 
 func (b *builder) tasksForExprInScope(expr ast.Expr, scope *loweringScope) []runtime.Task {
+	if b.err != nil {
+		return nil
+	}
 	if tasks, ok := b.lowerExprTasks(expr, scope); ok {
 		return b.setSource(tasks, expr)
 	}
-	panic(fmt.Sprintf("runtime lowering missing for expr %T", expr))
+	b.unsupported("expr", expr)
+	return nil
 }
 
 func (b *builder) tasksForLHSInScope(expr ast.Expr, scope *loweringScope) []runtime.Task {
+	if b.err != nil {
+		return nil
+	}
 	if tasks, ok := b.lowerLHSTasks(expr, scope); ok {
 		return b.setSource(tasks, expr)
 	}
-	panic(fmt.Sprintf("runtime lowering missing for lhs %T", expr))
+	b.unsupported("lhs", expr)
+	return nil
 }
 
 func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *loweringScope) ([]runtime.Task, bool) {
@@ -331,7 +379,7 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 			}
 			data.Bindings = append(data.Bindings, runtime.DeclareVarData{
 				Name: name,
-				Kind: runtime.MustParseRuntimeType(binding.Kind),
+				Kind: b.runtimeType(binding.Kind, n, "declaration"),
 				Sym:  sym,
 			})
 		}
@@ -538,18 +586,18 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 				valueSym = scope.resolveOrImplicit(string(n.Value))
 			}
 		}
-		keyType := runtime.MustParseRuntimeType(runtime.SpecInt64)
-		valType := runtime.MustParseRuntimeType(runtime.SpecAny)
+		keyType := b.runtimeType(ast.GoMiniType(runtime.SpecInt64), n, "range key type")
+		valType := fallbackAnyType
 		if n.X != nil {
 			objType := n.X.GetBase().Type
 			if objType.IsMap() {
 				if keyT, valueT, ok := objType.GetMapKeyValueTypes(); ok {
-					keyType = runtime.MustParseRuntimeType(keyT)
-					valType = runtime.MustParseRuntimeType(valueT)
+					keyType = b.runtimeType(keyT, n.X, "range map key type")
+					valType = b.runtimeType(valueT, n.X, "range map value type")
 				}
 			} else if objType.IsArray() {
 				if elemT, ok := objType.ReadArrayItemType(); ok {
-					valType = runtime.MustParseRuntimeType(elemT)
+					valType = b.runtimeType(elemT, n.X, "range array item type")
 				}
 			}
 		}
@@ -701,11 +749,11 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 				if n.IsType {
 					var targetType runtime.RuntimeType
 					if id, ok := expr.(*ast.IdentifierExpr); ok {
-						targetType = runtime.MustParseRuntimeType(ast.GoMiniType(id.Name))
+						targetType = b.runtimeType(ast.GoMiniType(id.Name), expr, "type switch case")
 					} else if ref, ok := expr.(*ast.ConstRefExpr); ok {
-						targetType = runtime.MustParseRuntimeType(ast.GoMiniType(ref.Name))
+						targetType = b.runtimeType(ast.GoMiniType(ref.Name), expr, "type switch case")
 					} else {
-						targetType = runtime.MustParseRuntimeType(expr.GetBase().Type)
+						targetType = b.runtimeType(expr.GetBase().Type, expr, "type switch case")
 					}
 					caseData.TypeNames = append(caseData.TypeNames, targetType)
 				} else {
@@ -821,7 +869,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		}
 		out := []runtime.Task{{Op: runtime.OpIndex, Data: &runtime.IndexData{
 			Multi:      n.Multi,
-			ResultType: runtime.MustParseRuntimeType(resultType),
+			ResultType: b.runtimeType(resultType, n, "index result type"),
 		}}}
 		out = append(out, b.tasksForExprInScope(n.Index, scope)...)
 		out = append(out, b.tasksForExprInScope(n.Object, scope)...)
@@ -842,9 +890,9 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 			resultType = ast.GoMiniType(runtime.SpecAny)
 		}
 		out := []runtime.Task{{Op: runtime.OpAssert, Data: &runtime.AssertData{
-			TargetType: runtime.MustParseRuntimeType(n.Type),
+			TargetType: b.runtimeType(n.Type, n, "type assertion target"),
 			Multi:      n.Multi,
-			ResultType: runtime.MustParseRuntimeType(resultType),
+			ResultType: b.runtimeType(resultType, n, "type assertion result"),
 		}}}
 		out = append(out, b.tasksForExprInScope(n.X, scope)...)
 		return out, true
@@ -854,7 +902,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		}
 		entries := make([]runtime.CompositeEntryData, len(n.Values))
 		out := []runtime.Task{{Op: runtime.OpComposite, Data: &runtime.CompositeData{
-			Type:    runtime.MustParseRuntimeType(n.Type),
+			Type:    b.runtimeType(n.Type, n, "composite type"),
 			Entries: entries,
 		}}}
 		for i := len(n.Values) - 1; i >= 0; i-- {

@@ -9,11 +9,12 @@ LSP_SERVER_BIN  := ./bin/lsp-server
 EXEC_BIN        := ./bin/mini-exec
 GO_TEST         := go test
 GO_TEST_TIMEOUT ?= 180s
+EXAMPLE_TIMEOUT ?= 30s
 
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 
-.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen tidy clean package-vsix examples
+.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test coverage gen tidy clean package-vsix examples
 
 build: build-all
 
@@ -52,7 +53,7 @@ examples: $(EXEC_BIN)
 	@echo "Running example scripts..."
 	@find examples -type f -name "*.mgo" | sort | while read -r file; do \
 		echo "==> $$file"; \
-		$(EXEC_BIN) -run "$$file" || exit 1; \
+		timeout $(EXAMPLE_TIMEOUT) $(EXEC_BIN) -run "$$file" || exit 1; \
 	done
 
 gen:
@@ -91,3 +92,12 @@ test: gen
 	@cd core && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...
 	@cd ffilib && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...
 	@cd examples && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./...
+
+coverage: gen
+	@rm -f coverage.txt coverage-core.out coverage-ffilib.out coverage-examples.out
+	@cd core && packages="$$(go list ./... | grep -v '/cmd/ffigen/tests$$')" && coverpkg="$$(printf '%s\n' "$$packages" | paste -sd, -)" && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -coverpkg="$$coverpkg" -coverprofile=../coverage-core.out $$packages
+	@cd ffilib && coverpkg="$$(go list ./... | paste -sd, -)" && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -coverpkg="$$coverpkg" -coverprofile=../coverage-ffilib.out ./...
+	@cd examples && coverpkg="$$(go list ./... | paste -sd, -)" && $(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -coverpkg="$$coverpkg" -coverprofile=../coverage-examples.out ./...
+	@echo "mode: set" > coverage.txt
+	@for file in coverage-core.out coverage-ffilib.out coverage-examples.out; do tail -n +2 "$$file" >> coverage.txt; done
+	@rm -f coverage-core.out coverage-ffilib.out coverage-examples.out

@@ -6,61 +6,97 @@ import (
 )
 
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
+	if err := e.TryRegisterRoute(name, route); err != nil {
+		panic(err)
+	}
+}
+
+func (e *Executor) TryRegisterRoute(name string, route FFIRoute) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if existing, ok := e.routes[name]; ok {
-		ensureCompatibleRuntimeRoute(name, existing, route)
+		if err := CheckRouteCompatible(name, existing, route); err != nil {
+			return err
+		}
 	}
 	e.routes[name] = route
+	return nil
 }
 
 func (e *Executor) RegisterStructSchema(name string, spec *RuntimeStructSpec) {
+	if err := e.TryRegisterStructSchema(name, spec); err != nil {
+		panic(err)
+	}
+}
+
+func (e *Executor) TryRegisterStructSchema(name string, spec *RuntimeStructSpec) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if spec == nil {
-		delete(e.metadata.structsByName, name)
-		return
+		e.metadata.registerStructSchema(name, nil)
+		return nil
 	}
 	if existing, ok := e.metadata.structsByName[name]; ok {
-		merged, ok := mergeRuntimeStructSchema(existing, spec)
-		if !ok {
-			panic(fmt.Sprintf("ffi struct schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+		merged, err := MergeStructSchema(name, existing, spec)
+		if err != nil {
+			return err
 		}
 		spec = merged
 	}
 	e.metadata.registerStructSchema(name, spec)
+	return nil
 }
 
 func (e *Executor) RegisterInterfaceSchema(name string, spec *RuntimeInterfaceSpec) {
+	if err := e.TryRegisterInterfaceSchema(name, spec); err != nil {
+		panic(err)
+	}
+}
+
+func (e *Executor) TryRegisterInterfaceSchema(name string, spec *RuntimeInterfaceSpec) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if spec == nil {
 		e.metadata.registerInterfaceSpec(name, nil)
-		return
+		return nil
 	}
-	if existing, ok := e.metadata.interfacesByName[name]; ok && existing != nil && existing.Spec != spec.Spec {
-		panic(fmt.Sprintf("ffi interface schema conflict for %s: existing=%s new=%s", name, existing.Spec, spec.Spec))
+	if existing, ok := e.metadata.interfacesByName[name]; ok {
+		if err := CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
+			return err
+		}
 	}
 	e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
+	return nil
 }
 
-func ensureCompatibleRuntimeRoute(name string, existing, next FFIRoute) {
+type SchemaConflictError struct {
+	Kind     string
+	Name     string
+	Existing string
+	New      string
+}
+
+func (e *SchemaConflictError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("ffi %s conflict for %s: existing=%s new=%s", e.Kind, e.Name, e.Existing, e.New)
+}
+
+func CheckRouteCompatible(name string, existing, next FFIRoute) error {
 	if existing.Name != next.Name ||
 		existing.MethodID != next.MethodID ||
 		existing.Doc != next.Doc ||
-		!sameRuntimeFuncSchema(existing.FuncSig, next.FuncSig) ||
+		!SameRuntimeFuncSchema(existing.FuncSig, next.FuncSig) ||
 		!sameRuntimeBridge(existing.Bridge, next.Bridge) {
-		panic(fmt.Sprintf(
-			"ffi route conflict for %s: existing(method=%d sig=%s bridge=%s) new(method=%d sig=%s bridge=%s)",
-			name,
-			existing.MethodID,
-			runtimeRouteSignature(existing),
-			runtimeBridgeIdentity(existing.Bridge),
-			next.MethodID,
-			runtimeRouteSignature(next),
-			runtimeBridgeIdentity(next.Bridge),
-		))
+		return &SchemaConflictError{
+			Kind:     "route",
+			Name:     name,
+			Existing: fmt.Sprintf("method=%d sig=%s bridge=%s", existing.MethodID, runtimeRouteSignature(existing), runtimeBridgeIdentity(existing.Bridge)),
+			New:      fmt.Sprintf("method=%d sig=%s bridge=%s", next.MethodID, runtimeRouteSignature(next), runtimeBridgeIdentity(next.Bridge)),
+		}
 	}
+	return nil
 }
 
 func runtimeRouteSignature(route FFIRoute) string {
@@ -70,7 +106,7 @@ func runtimeRouteSignature(route FFIRoute) string {
 	return ""
 }
 
-func sameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
+func SameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
 	switch {
 	case a == nil || b == nil:
 		return a == b
@@ -87,7 +123,7 @@ func sameRuntimeFuncSchema(a, b *RuntimeFuncSig) bool {
 	}
 }
 
-func sameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
+func SameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
 	switch {
 	case a == nil || b == nil:
 		return a == b
@@ -96,14 +132,48 @@ func sameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
 	}
 }
 
-func mergeRuntimeStructSchema(existing, next *RuntimeStructSpec) (*RuntimeStructSpec, bool) {
+func MergeStructSchema(name string, existing, next *RuntimeStructSpec) (*RuntimeStructSpec, error) {
 	switch {
 	case existing == nil || next == nil:
-		return next, existing == next
-	case sameRuntimeStructSchema(existing, next):
-		return existing, true
+		if existing == next {
+			return next, nil
+		}
+	case SameRuntimeStructSchema(existing, next):
+		return existing, nil
 	}
-	return nil, false
+	return nil, &SchemaConflictError{
+		Kind:     "struct schema",
+		Name:     name,
+		Existing: runtimeStructSignature(existing),
+		New:      runtimeStructSignature(next),
+	}
+}
+
+func CheckInterfaceSchemaCompatible(name string, existing, next *RuntimeInterfaceSpec) error {
+	if existing == nil || next == nil {
+		if existing == next {
+			return nil
+		}
+		return &SchemaConflictError{Kind: "interface schema", Name: name, Existing: runtimeInterfaceSignature(existing), New: runtimeInterfaceSignature(next)}
+	}
+	if existing.Spec == next.Spec {
+		return nil
+	}
+	return &SchemaConflictError{Kind: "interface schema", Name: name, Existing: string(existing.Spec), New: string(next.Spec)}
+}
+
+func runtimeStructSignature(spec *RuntimeStructSpec) string {
+	if spec == nil {
+		return "<nil>"
+	}
+	return string(spec.Spec)
+}
+
+func runtimeInterfaceSignature(spec *RuntimeInterfaceSpec) string {
+	if spec == nil {
+		return "<nil>"
+	}
+	return string(spec.Spec)
 }
 
 func sameRuntimeBridge(a, b any) bool {

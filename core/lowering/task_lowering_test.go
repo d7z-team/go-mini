@@ -1,6 +1,7 @@
 package lowering
 
 import (
+	"errors"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -187,6 +188,43 @@ func TestFuncLitClosureCarriesLoweredBodyTasks(t *testing.T) {
 	})
 	if closure == nil || len(closure.BodyTasks) == 0 {
 		t.Fatalf("expected lowered closure body tasks, got %+v", prepared.MainTasks)
+	}
+}
+
+func TestPrepareProgramReturnsErrorForUnsupportedStmt(t *testing.T) {
+	program := emptyProgram()
+	program.Main = []ast.Stmt{&ast.BadStmt{
+		BaseNode: ast.BaseNode{ID: "bad", Meta: "bad_stmt", Loc: &ast.Position{F: "bad.mgo", L: 3, C: 2}},
+		RawText:  "}",
+	}}
+
+	_, err := PrepareProgram(program)
+	var loweringErr *Error
+	if !errors.As(err, &loweringErr) {
+		t.Fatalf("expected lowering error, got %T %v", err, err)
+	}
+	if loweringErr.Op != "stmt" || loweringErr.Line != 3 || loweringErr.Col != 2 {
+		t.Fatalf("unexpected lowering error metadata: %+v", loweringErr)
+	}
+}
+
+func TestPrepareProgramReturnsErrorForInvalidCanonicalType(t *testing.T) {
+	program := emptyProgram()
+	program.Main = []ast.Stmt{&ast.GenDeclStmt{
+		BaseNode: ast.BaseNode{ID: "decl", Meta: "decl", Loc: &ast.Position{F: "bad.mgo", L: 4, C: 1}},
+		Bindings: []ast.VarBinding{{
+			Name: "items",
+			Kind: "[]Int64",
+		}},
+	}}
+
+	_, err := PrepareProgram(program)
+	var loweringErr *Error
+	if !errors.As(err, &loweringErr) {
+		t.Fatalf("expected lowering error, got %T %v", err, err)
+	}
+	if loweringErr.Op != "declaration" {
+		t.Fatalf("unexpected lowering op: %+v", loweringErr)
 	}
 }
 

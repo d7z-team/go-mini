@@ -9,11 +9,13 @@
 - 执行主路径以 `PreparedProgram` / `go-mini-bytecode` 为唯一装载工件，非调试运行不依赖 AST 节点。
 - `core/gofrontend` 是 Go source / Go AST -> Mini AST 的唯一前端转换包；Go 风格类型必须在这里立即规范化。
 - `core/lowering` 是唯一 Mini AST -> `runtime.PreparedProgram` 边界；compiler 调用 `lowering.PrepareProgram`，runtime 包和依赖图不再引入 `core/ast`。
+- `core/lowering` 对不支持的 AST 节点与非法 canonical type 返回 lowering error，不以 panic 作为主错误通道。
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
 - `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow 校验，非法 executable bytecode 必须在执行前拒绝。
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
+- FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则。
 - 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
 - 顶层 `ffilib` 继续承载完整标准库 FFI 装配，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；core 纯库不需要外层手动重复装配。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
@@ -84,6 +86,12 @@ GOCACHE=/tmp/go-build-cache bash -lc 'cd examples && go test -timeout 180s ./...
 ```bash
 timeout 180s env GOCACHE=/tmp/go-build-cache make gen
 timeout 180s env GOCACHE=/tmp/go-build-cache make test
+```
+
+覆盖率报告使用跨包覆盖口径：
+
+```bash
+timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 ```
 
 ## 架构约束

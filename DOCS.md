@@ -4,9 +4,10 @@
 
 - 编译阶段生成稳定 `go-mini-bytecode`
 - `core/gofrontend` 负责 Go source / Go AST 到 Mini AST 的前端转换
-- `core/lowering` 负责 AST 到 `PreparedProgram` 的唯一转换
+- `core/lowering` 负责 AST 到 `PreparedProgram` 的唯一转换，并把不支持的 AST / 非 canonical type 报为编译错误
 - 运行时执行 lowered task plan / prepared program
 - FFI 通过 `ffigen` 生成 schema-only 桥接代码
+- FFI schema 冲突判断由 runtime 统一实现，compiler 与 runtime 注册路径共享同一套兼容性规则
 - 调用模板在 compiler 阶段展开成真实代码，bytecode / runtime 不保留模板执行逻辑
 - 执行入口统一落在 `Artifact` / bytecode，runtime 只消费 prepared executable，AST 只保留在编译、分析和调试边界
 - canonical type 文本由 `core/typespec` 统一实现；AST 前端通过 `core/ast/ast_types.go` 使用，runtime/VM 通过 `core/runtime/schema.go` 使用

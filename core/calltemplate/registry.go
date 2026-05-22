@@ -381,15 +381,6 @@ func validTemplateIdent(name string) bool {
 	return token.IsIdentifier(name) && !token.Lookup(name).IsKeyword() && name != "_" && !strings.HasPrefix(name, InternalNamePrefix)
 }
 
-func sameRuntimeFuncSig(a, b *runtime.RuntimeFuncSig) bool {
-	switch {
-	case a == nil || b == nil:
-		return a == b
-	default:
-		return a.Spec == b.Spec
-	}
-}
-
 func cloneTemplate(t FunctionTemplate) FunctionTemplate {
 	t.SourceSig = runtime.CloneRuntimeFuncSig(t.SourceSig)
 	return t

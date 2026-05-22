@@ -3,13 +3,25 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - '**.go'
-      - 'go.mod'
+      - '**/*.go'
+      - '**/*.mgo'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'go.work'
+      - 'Makefile'
+      - '.golangci.yml'
+      - '.github/workflows/go-test.yml'
   pull_request:
     branches: [ "main" ]
     paths:
-      - '**.go'
-      - 'go.mod'
+      - '**/*.go'
+      - '**/*.mgo'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'go.work'
+      - 'Makefile'
+      - '.golangci.yml'
+      - '.github/workflows/go-test.yml'
 
 jobs:
   test:
@@ -28,7 +40,7 @@ jobs:
         run: go mod download
 
       - name: Run tests with coverage
-        run: make lint test examples
+        run: make lint test examples coverage
 
       - uses: codecov/codecov-action@v5
         name: Upload coverage reports to Codecov
