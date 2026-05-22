@@ -14,21 +14,33 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+// ExpandedExpr records an expression produced by a call template expansion so
+// the compiler can verify the rendered expression still matches SourceSig.
 type ExpandedExpr struct {
+	// TemplateID names the template that produced Expr.
 	TemplateID string
-	Expr       ast.Expr
-	SourceSig  *runtime.RuntimeFuncSig
+	// Expr is the rendered expression after the post-expansion semantic check.
+	Expr ast.Expr
+	// SourceSig is the template signature visible before expansion.
+	SourceSig *runtime.RuntimeFuncSig
 }
 
 const maxTemplateExpansionDepth = 64
 
+// ExpandResult describes the AST changes made by ExpandProgram.
 type ExpandResult struct {
-	Changed                   bool
-	Exprs                     []ExpandedExpr
-	RemovedCompileOnlyPaths   map[string]struct{}
+	// Changed reports whether expansion mutated the program.
+	Changed bool
+	// Exprs are expanded expressions that still need return-type verification.
+	Exprs []ExpandedExpr
+	// RemovedCompileOnlyPaths are template-only imports removed from the program.
+	RemovedCompileOnlyPaths map[string]struct{}
+	// RemovedCompileOnlyAliases maps removed import aliases to their package path.
 	RemovedCompileOnlyAliases map[ast.Ident]string
 }
 
+// CheckTypes verifies that expanded expressions match their template return
+// types after the compiler has rerun semantic checking without template schemas.
 func (r *ExpandResult) CheckTypes() error {
 	if r == nil {
 		return nil
@@ -52,6 +64,8 @@ func (r *ExpandResult) CheckTypes() error {
 	return nil
 }
 
+// ValidateReservedDeclarations rejects source declarations that would collide
+// with global template names or compiler-generated template identifiers.
 func ValidateReservedDeclarations(program *ast.ProgramStmt, registry *Registry) error {
 	if program == nil {
 		return nil
@@ -119,6 +133,78 @@ func ValidateReservedDeclarations(program *ast.ProgramStmt, registry *Registry) 
 	return nil
 }
 
+// AssertNoCompileOnlyArtifacts rejects compile-only imports that survived into
+// executable compilation.
+func AssertNoCompileOnlyArtifacts(program *ast.ProgramStmt) error {
+	if program == nil {
+		return nil
+	}
+	for _, imp := range program.Imports {
+		if imp.CompileOnly {
+			alias := imp.Alias
+			if alias == "" {
+				alias = path.Base(imp.Path)
+			}
+			return fmt.Errorf("compile-only template import %s (%s) reached executable compilation", alias, imp.Path)
+		}
+	}
+	return nil
+}
+
+// AssertNoResidualTemplateRefs rejects template symbols that still appear as
+// runtime values after expansion.
+//
+// Package-member residual detection relies on package resolution metadata from
+// the initial semantic check, so callers should use it in the same compiler
+// sequence as ExpandProgram.
+func AssertNoResidualTemplateRefs(program *ast.ProgramStmt, registry *Registry) error {
+	if program == nil || registry == nil {
+		return nil
+	}
+	visitor := &residualTemplateVisitor{
+		registry: registry,
+	}
+	ast.Walk(visitor, program)
+	return visitor.err
+}
+
+type residualTemplateVisitor struct {
+	registry *Registry
+	err      error
+}
+
+func (v *residualTemplateVisitor) Visit(node ast.Node) ast.Visitor {
+	if v.err != nil {
+		return nil
+	}
+	switch n := node.(type) {
+	case *ast.IdentifierExpr:
+		if tpl, ok := v.registry.global(string(n.Name)); ok {
+			v.err = fmt.Errorf("call template %s remains as runtime identifier %s", tpl.ID, n.Name)
+			return nil
+		}
+	case *ast.ConstRefExpr:
+		if tpl, ok := v.registry.global(string(n.Name)); ok {
+			v.err = fmt.Errorf("call template %s remains as runtime constant reference %s", tpl.ID, n.Name)
+			return nil
+		}
+	case *ast.MemberExpr:
+		if n.ResolvedPackageMember && n.ResolvedPackagePath != "" {
+			if tpl, ok := v.registry.packageMember(n.ResolvedPackagePath, string(n.Property)); ok {
+				v.err = fmt.Errorf("call template %s remains as runtime package member %s.%s", tpl.ID, n.ResolvedPackagePath, n.Property)
+				return nil
+			}
+		}
+	}
+	return v
+}
+
+// ExpandProgram rewrites template call sites in program in place.
+//
+// The program should already have passed semantic checking with Plan.FuncSchemas
+// visible. The compiler reruns semantic checking without template schemas after
+// a changed result so rendered code cannot retain compiler-only template
+// symbols.
 func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan) (*ExpandResult, error) {
 	if program == nil || registry == nil {
 		return &ExpandResult{}, nil
@@ -152,11 +238,7 @@ func ExpandProgram(program *ast.ProgramStmt, registry *Registry, plan *Plan) (*E
 		return nil, err
 	}
 	program.Main = main
-	changed, err := exp.removeCompileOnlyImports()
-	if err != nil {
-		return nil, err
-	}
-	if changed {
+	if exp.removeCompileOnlyImports() {
 		exp.result.Changed = true
 	}
 	program.SyncTopLevelDeclVariables()
@@ -446,6 +528,9 @@ func (e *expander) expandCallAsStmt(call *ast.CallExprStmt) ([]ast.Stmt, error) 
 	if !ok {
 		return []ast.Stmt{call}, nil
 	}
+	if err := e.plan.validateTemplateUse(tpl); err != nil {
+		return nil, err
+	}
 	if err := e.enterTemplate(tpl.ID); err != nil {
 		return nil, err
 	}
@@ -519,6 +604,9 @@ func (e *expander) expandExpr(expr ast.Expr) (ast.Expr, error) {
 		tpl, ok := e.matchCall(call)
 		if !ok {
 			return call, nil
+		}
+		if err := e.plan.validateTemplateUse(tpl); err != nil {
+			return nil, err
 		}
 		if err := e.enterTemplate(tpl.ID); err != nil {
 			return nil, err
@@ -697,6 +785,9 @@ func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (r
 			if !ok {
 				return "", fmt.Errorf("template %s uses undeclared package %s", tpl.ID, importPath)
 			}
+			if err := e.plan.ensureRenderPackage(tpl.ID, importPath); err != nil {
+				return "", err
+			}
 			return e.importAlias(importPath)
 		},
 		"arg": func(index int) (string, error) {
@@ -861,9 +952,9 @@ func (e *expander) leaveTemplate() {
 	}
 }
 
-func (e *expander) removeCompileOnlyImports() (bool, error) {
+func (e *expander) removeCompileOnlyImports() bool {
 	if e.program == nil || len(e.program.Imports) == 0 {
-		return false, nil
+		return false
 	}
 	removeAlias := make(map[ast.Ident]string)
 	removePath := make(map[string]struct{})
@@ -881,14 +972,7 @@ func (e *expander) removeCompileOnlyImports() (bool, error) {
 		removePath[imp.Path] = struct{}{}
 	}
 	if len(removeAlias) == 0 {
-		return false, nil
-	}
-	aliasSet := make(map[ast.Ident]struct{}, len(removeAlias))
-	for alias := range removeAlias {
-		aliasSet[alias] = struct{}{}
-	}
-	if err := e.checkCompileOnlyResiduals(aliasSet); err != nil {
-		return false, err
+		return false
 	}
 	e.program.Imports = imports
 	for alias, importPath := range removeAlias {
@@ -908,33 +992,7 @@ func (e *expander) removeCompileOnlyImports() (bool, error) {
 	}
 	e.result.RemovedCompileOnlyPaths = removePath
 	e.result.RemovedCompileOnlyAliases = removeAlias
-	return true, nil
-}
-
-func (e *expander) checkCompileOnlyResiduals(removeAlias map[ast.Ident]struct{}) error {
-	for name, expr := range e.program.Variables {
-		if _, removingImport := removeAlias[name]; removingImport {
-			if _, ok := expr.(*ast.ImportExpr); ok {
-				continue
-			}
-		}
-		if alias := firstResidualAliasExpr(expr, removeAlias); alias != "" {
-			return fmt.Errorf("compile-only template package alias %s still has residual expression usage after expansion", alias)
-		}
-	}
-	for _, fn := range e.program.Functions {
-		if fn != nil {
-			if alias := firstResidualAliasStmt(fn.Body, removeAlias); alias != "" {
-				return fmt.Errorf("compile-only template package alias %s still has residual function usage after expansion", alias)
-			}
-		}
-	}
-	for _, stmt := range e.program.Main {
-		if alias := firstResidualAliasStmt(stmt, removeAlias); alias != "" {
-			return fmt.Errorf("compile-only template package alias %s still has residual statement usage after expansion", alias)
-		}
-	}
-	return nil
+	return true
 }
 
 func replacePlaceholdersExpr(expr ast.Expr, args map[string]ast.Expr) (ast.Expr, error) {
@@ -1236,7 +1294,7 @@ func cloneExpr(expr ast.Expr) (ast.Expr, error) {
 		return &ast.CallExprStmt{BaseNode: cloneBase(n.BaseNode), Func: fn, Args: args, Ellipsis: n.Ellipsis}, nil
 	case *ast.MemberExpr:
 		obj, err := cloneExpr(n.Object)
-		return &ast.MemberExpr{BaseNode: cloneBase(n.BaseNode), Object: obj, Property: n.Property, ResolvedPackagePath: n.ResolvedPackagePath, ResolvedPackageMember: n.ResolvedPackageMember}, err
+		return &ast.MemberExpr{BaseNode: cloneBase(n.BaseNode), Object: obj, Property: n.Property}, err
 	case *ast.IndexExpr:
 		obj, err := cloneExpr(n.Object)
 		if err != nil {
@@ -1528,180 +1586,6 @@ func cloneIdentPositionMap(in map[ast.Ident]*ast.Position) map[ast.Ident]*ast.Po
 		out[k] = &pos
 	}
 	return out
-}
-
-func firstResidualAliasStmt(stmt ast.Stmt, aliases map[ast.Ident]struct{}) string {
-	if isNilInterface(stmt) {
-		return ""
-	}
-	switch n := stmt.(type) {
-	case *ast.BlockStmt:
-		for _, child := range n.Children {
-			if alias := firstResidualAliasStmt(child, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.FunctionStmt:
-		return firstResidualAliasStmt(n.Body, aliases)
-	case *ast.GenDeclStmt:
-		for _, expr := range n.Values {
-			if alias := firstResidualAliasExpr(expr, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.AssignmentStmt:
-		if alias := firstResidualAliasExpr(n.LHS, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasExpr(n.Value, aliases)
-	case *ast.MultiAssignmentStmt:
-		for _, expr := range n.LHS {
-			if alias := firstResidualAliasExpr(expr, aliases); alias != "" {
-				return alias
-			}
-		}
-		for _, expr := range n.Values {
-			if alias := firstResidualAliasExpr(expr, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.ReturnStmt:
-		for _, expr := range n.Results {
-			if alias := firstResidualAliasExpr(expr, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.CallExprStmt:
-		return firstResidualAliasExpr(n, aliases)
-	case *ast.ExpressionStmt:
-		return firstResidualAliasExpr(n.X, aliases)
-	case *ast.IncDecStmt:
-		return firstResidualAliasExpr(n.Operand, aliases)
-	case *ast.IfStmt:
-		if alias := firstResidualAliasExpr(n.Cond, aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasStmt(asStmt(n.Body), aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasStmt(asStmt(n.ElseBody), aliases)
-	case *ast.ForStmt:
-		if alias := firstResidualAliasStmt(asStmt(n.Init), aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasExpr(n.Cond, aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasStmt(asStmt(n.Update), aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasStmt(asStmt(n.Body), aliases)
-	case *ast.RangeStmt:
-		if alias := firstResidualAliasExpr(n.X, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasStmt(n.Body, aliases)
-	case *ast.SwitchStmt:
-		if alias := firstResidualAliasStmt(n.Init, aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasStmt(n.Assign, aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasExpr(n.Tag, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasStmt(n.Body, aliases)
-	case *ast.CaseClause:
-		for _, expr := range n.List {
-			if alias := firstResidualAliasExpr(expr, aliases); alias != "" {
-				return alias
-			}
-		}
-		for _, child := range n.Body {
-			if alias := firstResidualAliasStmt(child, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.TryStmt:
-		if alias := firstResidualAliasStmt(asStmt(n.Body), aliases); alias != "" {
-			return alias
-		}
-		if n.Catch != nil {
-			if alias := firstResidualAliasStmt(n.Catch.Body, aliases); alias != "" {
-				return alias
-			}
-		}
-		return firstResidualAliasStmt(asStmt(n.Finally), aliases)
-	case *ast.DeferStmt:
-		return firstResidualAliasExpr(n.Call, aliases)
-	case *ast.GoStmt:
-		return firstResidualAliasExpr(n.Call, aliases)
-	}
-	return ""
-}
-
-func firstResidualAliasExpr(expr ast.Expr, aliases map[ast.Ident]struct{}) string {
-	if isNilInterface(expr) {
-		return ""
-	}
-	switch n := expr.(type) {
-	case *ast.IdentifierExpr:
-		if _, ok := aliases[n.Name]; ok {
-			return string(n.Name)
-		}
-	case *ast.ConstRefExpr:
-		if _, ok := aliases[n.Name]; ok {
-			return string(n.Name)
-		}
-	case *ast.CallExprStmt:
-		if alias := firstResidualAliasExpr(n.Func, aliases); alias != "" {
-			return alias
-		}
-		for _, arg := range n.Args {
-			if alias := firstResidualAliasExpr(arg, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.UnaryExpr:
-		return firstResidualAliasExpr(n.Operand, aliases)
-	case *ast.BinaryExpr:
-		if alias := firstResidualAliasExpr(n.Left, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasExpr(n.Right, aliases)
-	case *ast.MemberExpr:
-		return firstResidualAliasExpr(n.Object, aliases)
-	case *ast.IndexExpr:
-		if alias := firstResidualAliasExpr(n.Object, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasExpr(n.Index, aliases)
-	case *ast.SliceExpr:
-		if alias := firstResidualAliasExpr(n.X, aliases); alias != "" {
-			return alias
-		}
-		if alias := firstResidualAliasExpr(n.Low, aliases); alias != "" {
-			return alias
-		}
-		return firstResidualAliasExpr(n.High, aliases)
-	case *ast.StarExpr:
-		return firstResidualAliasExpr(n.X, aliases)
-	case *ast.TypeAssertExpr:
-		return firstResidualAliasExpr(n.X, aliases)
-	case *ast.CompositeExpr:
-		for _, elem := range n.Values {
-			if alias := firstResidualAliasExpr(elem.Key, aliases); alias != "" {
-				return alias
-			}
-			if alias := firstResidualAliasExpr(elem.Value, aliases); alias != "" {
-				return alias
-			}
-		}
-	case *ast.FuncLitExpr:
-		return firstResidualAliasStmt(n.Body, aliases)
-	}
-	return ""
 }
 
 func validateReservedFunction(fn *ast.FunctionStmt, check func(ast.Ident, string) error) error {

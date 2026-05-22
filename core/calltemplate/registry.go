@@ -8,18 +8,33 @@ import (
 	"text/template"
 	"text/template/parse"
 
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+// InternalNamePrefix is reserved for identifiers synthesized during call
+// template expansion.
 const InternalNamePrefix = "__gomini_tpl_"
 
+// FunctionTemplate describes a compiler-only call template.
+//
+// A template with an empty PackagePath is invoked as a global function. A
+// template with a PackagePath is invoked as a package member, and the compiler
+// validates the real package member lazily when the template is actually used.
 type FunctionTemplate struct {
-	ID          string
+	// ID is a stable diagnostic name. It is derived from PackagePath and Name
+	// when left empty.
+	ID string
+	// PackagePath is the VM-visible package path for a package-member template.
+	// Empty means the template is global.
 	PackagePath string
-	Name        string
-	SourceSig   *runtime.RuntimeFuncSig
-	Body        string
+	// Name is the source-visible global function or package member name.
+	Name string
+	// SourceSig is the signature exposed to the first semantic check before the
+	// template is expanded.
+	SourceSig *runtime.RuntimeFuncSig
+	// Body is a Go text/template fragment rendered to Mini source and parsed
+	// back into AST during compiler expansion.
+	Body string
 }
 
 type registeredTemplate struct {
@@ -27,11 +42,16 @@ type registeredTemplate struct {
 	pkgRefs map[string]struct{}
 }
 
+// Registry stores compiler-only call templates.
+//
+// Registry methods return cloned data so callers cannot mutate registered
+// templates after validation.
 type Registry struct {
 	globals  map[string]registeredTemplate
 	packages map[string]registeredTemplate
 }
 
+// NewRegistry creates an empty call template registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		globals:  make(map[string]registeredTemplate),
@@ -39,6 +59,7 @@ func NewRegistry() *Registry {
 	}
 }
 
+// Clone returns a deep copy of the registry.
 func (r *Registry) Clone() *Registry {
 	if r == nil {
 		return nil
@@ -53,6 +74,11 @@ func (r *Registry) Clone() *Registry {
 	return out
 }
 
+// Register validates and adds a call template.
+//
+// Global templates reserve their source-visible name immediately. Package
+// templates reserve their package-member template signature but defer real
+// package existence and signature checks until the template is used.
 func (r *Registry) Register(t FunctionTemplate) error {
 	if r == nil {
 		return errors.New("nil template registry")
@@ -77,6 +103,7 @@ func (r *Registry) Register(t FunctionTemplate) error {
 	return nil
 }
 
+// Global returns a global call template by source-visible name.
 func (r *Registry) Global(name string) (FunctionTemplate, bool) {
 	rt, ok := r.global(name)
 	if !ok {
@@ -85,6 +112,8 @@ func (r *Registry) Global(name string) (FunctionTemplate, bool) {
 	return cloneTemplate(rt.FunctionTemplate), true
 }
 
+// PackageMember returns a package-member call template by package path and
+// member name.
 func (r *Registry) PackageMember(path, name string) (FunctionTemplate, bool) {
 	rt, ok := r.packageMember(path, name)
 	if !ok {
@@ -109,6 +138,7 @@ func (r *Registry) packageMember(path, name string) (registeredTemplate, bool) {
 	return cloneRegisteredTemplate(t), ok
 }
 
+// Globals returns all global call templates keyed by source-visible name.
 func (r *Registry) Globals() map[string]FunctionTemplate {
 	if r == nil || len(r.globals) == 0 {
 		return nil
@@ -120,6 +150,8 @@ func (r *Registry) Globals() map[string]FunctionTemplate {
 	return out
 }
 
+// PackageTemplates returns all package-member call templates keyed by
+// "<package path>.<member name>".
 func (r *Registry) PackageTemplates() map[string]FunctionTemplate {
 	if r == nil || len(r.packages) == 0 {
 		return nil
@@ -131,24 +163,7 @@ func (r *Registry) PackageTemplates() map[string]FunctionTemplate {
 	return out
 }
 
-func (r *Registry) FuncSchemas() map[ast.Ident]*runtime.RuntimeFuncSig {
-	if r == nil || (len(r.globals) == 0 && len(r.packages) == 0) {
-		return nil
-	}
-	out := make(map[ast.Ident]*runtime.RuntimeFuncSig, len(r.globals)+len(r.packages))
-	for name, t := range r.globals {
-		out[ast.Ident(name)] = runtime.CloneRuntimeFuncSig(t.SourceSig)
-	}
-	for _, t := range r.packages {
-		out[ast.Ident(t.PackagePath+"."+t.Name)] = runtime.CloneRuntimeFuncSig(t.SourceSig)
-	}
-	return out
-}
-
-func (r *Registry) GlobalTemplate(name string) (FunctionTemplate, bool) {
-	return r.Global(name)
-}
-
+// ReservedNames returns global names that cannot be declared by user code.
 func (r *Registry) ReservedNames() map[string]struct{} {
 	if r == nil {
 		return nil
@@ -160,6 +175,7 @@ func (r *Registry) ReservedNames() map[string]struct{} {
 	return out
 }
 
+// CompletionSchemas returns global template signatures for editor metadata.
 func (r *Registry) CompletionSchemas() map[string]string {
 	if r == nil {
 		return nil

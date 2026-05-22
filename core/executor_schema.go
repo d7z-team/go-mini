@@ -29,6 +29,10 @@ func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, me
 	e.registerFFISchemaLocked(name, bridge, methodID, sig, doc)
 }
 
+// RegisterFunctionTemplate registers a compiler-only call template.
+//
+// Templates participate in semantic checking and are expanded before bytecode
+// generation. They do not register runtime FFI routes.
 func (e *MiniExecutor) RegisterFunctionTemplate(tpl calltemplate.FunctionTemplate) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -226,7 +230,7 @@ func (e *MiniExecutor) mustNotConflictGlobalTemplateLocked(name, kind string) {
 	if e.templates == nil {
 		return
 	}
-	if tpl, ok := e.templates.GlobalTemplate(name); ok {
+	if tpl, ok := e.templates.Global(name); ok {
 		panic(fmt.Sprintf("%s %s conflicts with global call template %s", kind, name, tpl.ID))
 	}
 }

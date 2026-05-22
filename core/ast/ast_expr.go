@@ -504,6 +504,8 @@ func (m *MemberExpr) GetBase() *BaseNode { return &m.BaseNode }
 func (m *MemberExpr) exprNode()          {}
 
 func (m *MemberExpr) Check(ctx *SemanticContext) error {
+	m.ResolvedPackagePath = ""
+	m.ResolvedPackageMember = false
 	if m.Object == nil {
 		return errors.New("成员访问缺少对象表达式")
 	}

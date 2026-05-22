@@ -18,7 +18,10 @@ type Config struct {
 	InterfaceSchemas map[ast.Ident]*runtime.RuntimeInterfaceSpec
 	Constants        map[string]string
 	MaxTypeDepth     int
-	Templates        *calltemplate.Registry
+	// Templates contains compiler-only call templates. The compiler exposes
+	// their signatures during the first semantic check, expands matching calls,
+	// and rejects any residual template artifacts before bytecode generation.
+	Templates *calltemplate.Registry
 }
 
 type Compiler struct {
@@ -178,6 +181,9 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	if err != nil {
 		return artifact, semanticCtx, err
 	}
+	if err := calltemplate.AssertNoResidualTemplateRefs(artifact.Program, c.cfg.Templates); err != nil {
+		return artifact, semanticCtx, err
+	}
 
 	activeValidator := validator
 	if expanded.Changed {
@@ -190,6 +196,11 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
 			return artifact, semanticCtx, err
 		}
+	}
+	if err := calltemplate.AssertNoCompileOnlyArtifacts(artifact.Program); err != nil {
+		return artifact, semanticCtx, err
+	}
+	if expanded.Changed {
 		if err := expanded.CheckTypes(); err != nil {
 			return artifact, semanticCtx, err
 		}
@@ -235,10 +246,7 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 			continue
 		}
 		spec := ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
-		if existing, ok := res[k]; ok {
-			if existing.Type != spec.Type {
-				return nil, errors.New("call template schema conflicts with external symbol " + string(k))
-			}
+		if _, ok := res[k]; ok {
 			continue
 		}
 		res[k] = spec

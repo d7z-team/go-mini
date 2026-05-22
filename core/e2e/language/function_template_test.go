@@ -443,6 +443,28 @@ func main() {
 	}
 }
 
+func TestUnusedInvalidTemplateDoesNotAffectCompilation(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "bad.unused",
+		Name:      "badUnused",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
+		Body:      `{{ pkg "missing/pkg" }}.Do()`,
+	})
+	if err != nil {
+		t.Fatalf("register unused template failed: %v", err)
+	}
+	if _, err := executor.CompileGoCode(`
+package main
+
+func main() {
+	println("ok")
+}
+`); err != nil {
+		t.Fatalf("unused invalid template should not fail compilation: %v", err)
+	}
+}
+
 func TestTemplateRegistrationRejectsInvalidPkgReference(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
@@ -488,7 +510,7 @@ package main
 import "trace"
 
 func main() {
-	trace.Real("bad")
+	trace.Real(1)
 }
 `)
 	if err == nil || !strings.Contains(err.Error(), "does not match existing package member trace.Real") {
@@ -516,8 +538,48 @@ func main() {
 	trace.Line("x")
 }
 `)
-	if err == nil || !strings.Contains(err.Error(), "compile-only template package alias") {
+	if err == nil {
 		t.Fatalf("expected compile-only residual error, got %v", err)
+	}
+}
+
+func TestCompileOnlyPackageTemplateDoesNotRejectShadowedLocalAlias(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:          "trace.Line",
+		PackagePath: "trace",
+		Name:        "Line",
+		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString),
+		Body:        `println("template", {{ arg 0 }})`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+type Local struct{}
+
+func (l Local) Line(v string) {
+	println("local", v)
+}
+
+func main() {
+	trace.Line("facade")
+	trace := Local{}
+	trace.Line("value")
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	recorder := &templateOutputRecorder{}
+	if err := prog.Execute(fmtlib.WithOutputter(context.Background(), recorder)); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got, want := recorder.out.String(), "template facade\nlocal value\n"; got != want {
+		t.Fatalf("unexpected output %q, want %q", got, want)
 	}
 }
 
@@ -614,6 +676,63 @@ func main() {
 `)
 	if err == nil {
 		t.Fatal("expected internal template prefix declaration error")
+	}
+}
+
+func TestTemplateNameCannotBeUsedAsRuntimeValue(t *testing.T) {
+	cases := []struct {
+		name string
+		code string
+	}{
+		{"local assignment", `package main
+func main() {
+	f := println
+	_ = f
+}`},
+		{"global assignment", `package main
+var f = println
+func main() {
+	_ = f
+}`},
+		{"composite literal", `package main
+func main() {
+	_ = []any{println}
+}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			executor := engine.NewMiniExecutor()
+			_, err := executor.NewRuntimeByGoCode(tc.code)
+			if err == nil {
+				t.Fatal("expected template value usage to be rejected")
+			}
+		})
+	}
+}
+
+func TestPackageTemplateNameCannotBeUsedAsRuntimeValue(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:          "trace.Line",
+		PackagePath: "trace",
+		Name:        "Line",
+		SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
+		Body:        `println()`,
+	}); err != nil {
+		t.Fatalf("register template failed: %v", err)
+	}
+	_, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+func main() {
+	f := trace.Line
+	_ = f
+}
+`)
+	if err == nil {
+		t.Fatal("expected package template value usage to be rejected")
 	}
 }
 

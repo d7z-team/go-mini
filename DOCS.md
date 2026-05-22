@@ -185,12 +185,71 @@ _ = program
 
 调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用，例如默认的 `print(...)` / `println(...)` 会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
 
+最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名：
+
+```go
+executor := engine.NewMiniExecutor()
+
+err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+    ID:        "demo.trace",
+    Name:      "trace",
+    SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
+    Body:      `{{ pkg "fmt" }}.Println({{ args }})`,
+})
+if err != nil {
+    panic(err)
+}
+
+program, err := executor.NewRuntimeByGoCode(`
+package main
+
+func main() {
+    trace("user", 7)
+}
+`)
+```
+
+也可以注册包成员模板，把不存在的包当作 compile-only facade 使用：
+
+```go
+err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+    ID:          "audit.Log",
+    PackagePath: "audit",
+    Name:        "Log",
+    SourceSig:   runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
+    Body:        `{{ pkg "fmt" }}.Println({{ args }})`,
+})
+```
+
+脚本中按包成员调用即可：
+
+```go
+package main
+
+import "audit"
+
+func main() {
+    audit.Log("created", 1001)
+}
+```
+
+如果 `audit` 没有真实模块，compiler 只把它用于识别模板调用；模板展开后该 import 会从可执行产物里移除。如果 `audit` 是真实包，则实际使用 `audit.Log(...)` 时会校验真实成员签名和 `SourceSig` 一致。
+
 模板入口有两类：
 
 - 全局函数模板：例如 `println(...)`，可以在任意位置调用；源码中不能声明同名函数、变量、参数或 import alias。
-- 包成员模板：例如 `aaa.BBB(...)`，调用会在展开后替换成模板生成的真实代码；如果 `PackagePath` 对应真实包，compiler 会校验真实成员签名一致，如果包不存在则推导为 compile-only facade，展开后确认无残留引用再移除 import。
+- 包成员模板：例如 `aaa.BBB(...)`，调用会在展开后替换成模板生成的真实代码；实际使用模板时，如果 `PackagePath` 对应真实包，compiler 会校验真实成员签名一致，如果包不存在则推导为 compile-only facade，展开后移除对应 import，并由最终无模板语义检查确认没有残留依赖。
 
-模板体使用 Go `text/template` 渲染。可使用 `pkg "fmt"` 取得卫生的内部包 alias，使用 `args` / `arg` / `callArg` 处理普通与可变参数，使用 `fresh` 生成临时标识符。`pkg` 只能接收精确的完整包路径字符串字面量，模板不再单独声明 imports。模板参数以 AST 占位符方式回填，不允许通过 `.Args` 等模板数据对象访问参数，也不把参数重新格式化为 Go 源码。模板展开是 fixed-point：模板生成的代码如果继续调用模板，会递归展开直到只剩真实代码；递归模板链会在编译期报错。模板体形态由使用位置和渲染结果推导：表达式位置必须渲染成表达式；语句列表位置先按表达式解析，失败且源码签名返回 `Void` 时再按语句列表解析；`defer` / `go` 中的模板必须最终展开为单个 call expression。
+模板体使用 Go `text/template` 渲染，常用 helper：
+
+- `pkg "fmt"`：取得卫生的内部包 alias，并自动加入真实 import；参数必须是精确的完整包路径字符串字面量。
+- `args`：展开全部调用参数，适合转发可变参数。
+- `arg 0`：展开第 0 个参数占位符，不附带 `...`。
+- `callArg 0`：展开第 0 个参数占位符；如果它是可变参数调用的最后一个参数，会保留 `...`。
+- `argc` / `ellipsis`：读取参数数量和调用点是否使用 `...`。
+- `fresh "name"`：生成稳定且不会撞用户代码的临时标识符。
+
+模板不再单独声明 imports。`pkg` 包存在性在模板实际渲染时校验，因此未使用的模板不会污染无关编译。模板参数以 AST 占位符方式回填，不允许通过 `.Args` 等模板数据对象访问参数，也不把参数重新格式化为 Go 源码。模板展开是 fixed-point：模板生成的代码如果继续调用模板，会递归展开直到只剩真实代码；递归模板链会在编译期报错。模板体形态由使用位置和渲染结果推导：表达式位置必须渲染成表达式；语句列表位置先按表达式解析，失败且源码签名返回 `Void` 时再按语句列表解析；`defer` / `go` 中的模板必须最终展开为单个 call expression。
 
 模板注册会拒绝覆盖真实内置函数、FFI 函数、常量、结构体和接口；源码也不能声明全局模板同名标识符。`__gomini_tpl_` 前缀保留给模板展开器，用户源码不能声明该前缀。
 
