@@ -18,6 +18,7 @@
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则。
 - 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
 - 顶层 `ffilib` 继续承载完整标准库 FFI 装配，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；core 纯库不需要外层手动重复装配。
+- `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
 - 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 必须校验签名一致，不存在的包作为编译期 facade 处理且不需要 dummy module，fixed-point 展开后必须从 AST import、artifact imports 与 bytecode 中完全移除，并由最终无模板语义检查兜底。

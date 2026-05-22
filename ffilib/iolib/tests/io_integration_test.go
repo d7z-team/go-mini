@@ -5,130 +5,119 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/ffilib/internal/testutil"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
+	"gopkg.d7z.net/go-mini/ffilib"
+	"gopkg.d7z.net/go-mini/ffilib/iolib"
 )
 
-func TestReadAllBytes(t *testing.T) {
-	testutil.Run(t, `
-package main
-import "io"
+func TestIO(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "io.txt")
+	secondPath := filepath.Join(dir, "io-second.txt")
 
-func main() {
-	data, err := io.ReadAll([]byte("bytes"))
-	if err != nil || string(data) != "bytes" {
-		panic("io.ReadAll failed")
-	}
+	testutil.RunCases(t, []testutil.MethodSchema{
+		testutil.FFISchema("io", iolib.IO_FFI_Schemas),
+		testutil.FFISchema("io.File", iolib.File_FFI_Schemas),
+	}, []testutil.Case{
+		{
+			Name:    "module-and-file-operations",
+			Imports: []string{"io", "os"},
+			Body: fmt.Sprintf(`
+f, err := os.Create(%q)
+if err != nil {
+	panic(err)
 }
-`)
+n, err := f.Write([]byte("hello world"))
+if err != nil {
+	panic(err)
 }
-
-func TestWriteStringAndSeek(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "io.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "io"
-import "os"
-
-func main() {
-	f, err := os.Create(%q)
-	if err != nil { panic(err) }
-	if _, err = io.WriteString(f, "hello"); err != nil { panic(err) }
-	if _, err = f.Seek(0, io.SeekStart); err != nil { panic(err) }
-	data, err := io.ReadAll(f)
-	if err != nil || string(data) != "hello" { panic("readback failed") }
-	if err = f.Close(); err != nil { panic(err) }
+if _, err = f.WriteAt([]byte("MINI"), 6); err != nil {
+	panic(err)
 }
-`, path))
+if _, err = f.Seek(0, io.SeekStart); err != nil {
+	panic(err)
 }
-
-func TestFileReadCopyBack(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "read.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "os"
-
-func main() {
-	f, err := os.Create(%q)
-	if err != nil { panic(err) }
-	if _, err = f.Write([]byte("hello world")); err != nil { panic(err) }
-	if _, err = f.Seek(0, 0); err != nil { panic(err) }
-
-	buf := []byte(".....")
-	n, err := f.Read(buf)
-	if err != nil { panic(err) }
-	if n != 5 { panic("read length mismatch") }
-	if string(buf) != "hello" { panic("read copy-back mismatch") }
-	if err = f.Close(); err != nil { panic(err) }
+buf := []byte(".....")
+readN, err := f.Read(buf)
+if err != nil {
+	panic(err)
 }
-`, path))
+atBuf := []byte("....")
+readAtN, err := f.ReadAt(atBuf, 6)
+if err != nil {
+	panic(err)
+}
+if err = f.Truncate(10); err != nil {
+	panic(err)
+}
+if err = f.Sync(); err != nil {
+	panic(err)
+}
+if err = f.Close(); err != nil {
+	panic(err)
 }
 
-func TestFileReadAtCopyBack(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "readat.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "os"
-
-func main() {
-	f, err := os.Create(%q)
-	if err != nil { panic(err) }
-	if _, err = f.Write([]byte("hello world")); err != nil { panic(err) }
-
-	buf := []byte(".....")
-	n, err := f.ReadAt(buf, 6)
-	if err != nil { panic(err) }
-	if n != 5 { panic("readAt length mismatch") }
-	if string(buf) != "world" { panic("readAt copy-back mismatch") }
-	if err = f.Close(); err != nil { panic(err) }
+src, err := os.Open(%q)
+if err != nil {
+	panic(err)
 }
-`, path))
+all, err := io.ReadAll(src)
+if err != nil {
+	panic(err)
+}
+if err = src.Close(); err != nil {
+	panic(err)
 }
 
-func TestIOReaderInterface(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "reader.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "io"
-import "os"
-
-func main() {
-	f, err := os.Create(%q)
-	if err != nil { panic(err) }
-	if _, err = f.Write([]byte("hello world")); err != nil { panic(err) }
-	if _, err = f.Seek(0, io.SeekStart); err != nil { panic(err) }
-
-	var r io.Reader = f
-	buf := []byte(".....")
-	n, err := r.Read(buf)
-	if err != nil { panic(err) }
-	if n != 5 { panic("reader length mismatch") }
-	if string(buf) != "hello" { panic("reader copy-back mismatch") }
-	if err = f.Close(); err != nil { panic(err) }
+dst, err := os.Create(%q)
+if err != nil {
+	panic(err)
 }
-`, path))
+copied, err := io.Copy(dst, []byte("copy"))
+if err != nil {
+	panic(err)
+}
+written, err := io.WriteString(dst, "!")
+if err != nil {
+	panic(err)
+}
+fileWritten, err := dst.WriteString("?")
+if err != nil {
+	panic(err)
+}
+nativeWritten, err := dst.WriteNative([]byte("."))
+if err != nil {
+	panic(err)
+}
+name := dst.Name()
+if err = dst.Close(); err != nil {
+	panic(err)
 }
 
-func TestIOWriterInterface(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "writer.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "io"
-import "os"
-
-func main() {
-	f, err := os.Create(%q)
-	if err != nil { panic(err) }
-
-	var w io.Writer = f
-	n, err := w.Write([]byte("hello"))
-	if err != nil { panic(err) }
-	if n != 5 { panic("writer length mismatch") }
-
-	if _, err = f.Seek(0, io.SeekStart); err != nil { panic(err) }
-	data, err := io.ReadAll(f)
-	if err != nil { panic(err) }
-	if string(data) != "hello" { panic("writer content mismatch") }
-	if err = f.Close(); err != nil { panic(err) }
-}
-`, path))
+test.OutInt(n)
+test.Out("|")
+test.OutInt(readN)
+test.Out("|")
+test.OutBytes(buf)
+test.Out("|")
+test.OutInt(readAtN)
+test.Out("|")
+test.OutBytes(atBuf)
+test.Out("|")
+test.OutBytes(all)
+test.Out("|")
+test.OutInt(copied)
+test.Out("|")
+test.OutInt(written)
+test.Out("|")
+test.OutInt(fileWritten)
+test.Out("|")
+test.OutInt(nativeWritten)
+test.Out("|")
+test.OutBool(name != "")
+`, filePath, filePath, secondPath),
+			Want:   "11|5|hello|4|MINI|hello MINI|4|1|1|1|true",
+			Covers: []string{"ReadAll", "Copy", "WriteString", "Write", "Read", "WriteAt", "ReadAt", "Seek", "Close", "Sync", "Truncate", "Name", "WriteNative"},
+		},
+	}, testutil.WithRegister(ffilib.RegisterAll))
 }

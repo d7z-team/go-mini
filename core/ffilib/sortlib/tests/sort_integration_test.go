@@ -3,8 +3,8 @@ package sortlib_test
 import (
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ffilib/internal/testutil"
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
 func TestSort(t *testing.T) {

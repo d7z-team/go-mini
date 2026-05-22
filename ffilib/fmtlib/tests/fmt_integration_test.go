@@ -1,47 +1,28 @@
 package fmtlib_test
 
 import (
-	"context"
-	"strings"
 	"testing"
 
-	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 	"gopkg.d7z.net/go-mini/ffilib"
 	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 )
 
-type testOutputter struct {
-	sb strings.Builder
-}
-
-func (o *testOutputter) Print(_ context.Context, s string) {
-	o.sb.WriteString(s)
-}
-
-func TestFmtOutputter(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	ffilib.RegisterAll(executor)
-
-	prog, err := executor.NewRuntimeByGoCode(`
-package main
-import "fmt"
-
-func main() {
-	fmt.Print("hello")
-	fmt.Println(" world")
-}
-`)
-	if err != nil {
-		t.Fatalf("compile failed: %v", err)
-	}
-
-	output := &testOutputter{}
-	ctx := fmtlib.WithOutputter(context.Background(), output)
-	if err := prog.Execute(ctx); err != nil {
-		t.Fatalf("execute failed: %v", err)
-	}
-
-	if got := output.sb.String(); !strings.Contains(got, "hello world") {
-		t.Fatalf("unexpected output %q", got)
-	}
+func TestFmt(t *testing.T) {
+	testutil.RunCases(t, []testutil.MethodSchema{
+		testutil.FFISchema("fmt", fmtlib.Fmt_FFI_Schemas),
+	}, []testutil.Case{
+		{
+			Name:    "print-and-format",
+			Imports: []string{"fmt"},
+			Body: `
+fmt.Print("")
+fmt.Println("")
+fmt.Printf("%s", "")
+test.Out(fmt.Sprintf("%s-%d", "mini", 7))
+`,
+			Want:   "mini-7",
+			Covers: []string{"Print", "Println", "Printf", "Sprintf"},
+		},
+	}, testutil.WithRegister(ffilib.RegisterAll))
 }

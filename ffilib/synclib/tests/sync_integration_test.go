@@ -1,112 +1,88 @@
 package synclib_test
 
 import (
-	"context"
-	"strings"
 	"testing"
-	"time"
 
-	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 	"gopkg.d7z.net/go-mini/ffilib"
-	"gopkg.d7z.net/go-mini/ffilib/internal/testutil"
+	"gopkg.d7z.net/go-mini/ffilib/synclib"
 )
 
-func TestWaitGroupSynchronizesExecutionContexts(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	prog := testutil.Program(t, `
-package main
-import "sync"
-import "time"
-
+func TestWaitGroup(t *testing.T) {
+	testutil.RunCases(t, []testutil.MethodSchema{
+		testutil.FFISchema("sync", synclib.Module_FFI_Schemas),
+		testutil.FFISchema("sync.WaitGroup", synclib.WaitGroup_FFI_Schemas),
+	}, []testutil.Case{
+		{
+			Name:    "synchronizes-execution-contexts",
+			Imports: []string{"sync", "time"},
+			Decls: `
 func worker(wg *sync.WaitGroup, dst []int, idx int, value int) {
 	dst[idx] = value
 	wg.Done()
 }
+`,
+			Body: `
+wg := sync.NewWaitGroup()
+values := []int{0, 0, 0}
+wg.Add(3)
 
-func main() {
-	wg := sync.NewWaitGroup()
-	values := []int{0, 0, 0}
-	wg.Add(3)
+go worker(wg, values, 0, 11)
+go worker(wg, values, 1, 22)
+go worker(wg, values, 2, 33)
 
-	go worker(wg, values, 0, 11)
-	go worker(wg, values, 1, 22)
-	go worker(wg, values, 2, 33)
+wg.Wait()
+sum := values[0] + values[1] + values[2]
 
-	wg.Wait()
+gate := sync.NewWaitGroup()
+ready := sync.NewWaitGroup()
+released := sync.NewWaitGroup()
+observed := 0
 
-	sum := values[0] + values[1] + values[2]
-	if sum != 66 {
-		panic("waitgroup did not observe child updates")
-	}
+gate.Add(1)
+ready.Add(2)
+released.Add(2)
 
-	gate := sync.NewWaitGroup()
-	ready := sync.NewWaitGroup()
-	released := sync.NewWaitGroup()
-	observed := 0
+go func() {
+	ready.Done()
+	gate.Wait()
+	observed = observed + 1
+	released.Done()
+}()
+go func() {
+	ready.Done()
+	gate.Wait()
+	observed = observed + 10
+	released.Done()
+}()
 
-	gate.Add(1)
-	ready.Add(2)
-	released.Add(2)
+ready.Wait()
+gate.Done()
+released.Wait()
 
-	go func() {
-		ready.Done()
-		gate.Wait()
-		observed = observed + 1
-		released.Done()
-	}()
-	go func() {
-		ready.Done()
-		gate.Wait()
-		observed = observed + 10
-		released.Done()
-	}()
-
-	ready.Wait()
-	gate.Done()
-	released.Wait()
-	if observed != 11 {
-		panic("waitgroup did not release all waiters")
-	}
-
-	wg.Add(1)
-	go func() {
-		time.Sleep(1000000)
-		values[0] = 100
-		wg.Done()
-	}()
-	wg.Wait()
-	if values[0] != 100 {
-		panic("wait after reuse failed")
-	}
-}
-`)
-	if err := prog.Execute(ctx); err != nil {
-		t.Fatalf("execute failed: %v", err)
-	}
-}
-
-func TestWaitGroupNegativeCounterPanics(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	ffilib.RegisterAll(executor)
-	prog, err := executor.NewRuntimeByGoCode(`
-package main
-import "sync"
-
-func main() {
-	wg := sync.NewWaitGroup()
+wg.Add(1)
+go func() {
+	time.Sleep(1000000)
+	values[0] = 100
 	wg.Done()
-}
-`)
-	if err != nil {
-		t.Fatalf("compile failed: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+}()
+wg.Wait()
 
-	err = prog.Execute(ctx)
-	if err == nil || !strings.Contains(err.Error(), "negative WaitGroup counter") {
-		t.Fatalf("expected negative counter panic, got %v", err)
-	}
+test.OutInt(sum)
+test.Out("|")
+test.OutInt(observed)
+test.Out("|")
+test.OutInt(values[0])
+`,
+			Want:   "66|11|100",
+			Covers: []string{"NewWaitGroup", "Add", "Done", "Wait"},
+		},
+		{
+			Name:       "negative-counter-panics",
+			Imports:    []string{"sync"},
+			Body:       "wg := sync.NewWaitGroup()\nwg.Done()\n",
+			WantRunErr: "negative WaitGroup counter",
+			Covers:     []string{"NewWaitGroup", "Done"},
+		},
+	}, testutil.WithRegister(ffilib.RegisterAll))
 }

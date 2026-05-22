@@ -31,6 +31,18 @@ type Harness struct {
 	output   *recorder
 }
 
+type Option func(*config)
+
+type config struct {
+	register any
+}
+
+func WithRegister(register any) Option {
+	return func(cfg *config) {
+		cfg.register = register
+	}
+}
+
 type ExprCase struct {
 	Name           string
 	Imports        []string
@@ -71,20 +83,29 @@ type MethodSchema struct {
 	Methods []string
 }
 
-func NewExecutor(tb testing.TB) *engine.MiniExecutor {
+func NewExecutor(tb testing.TB, opts ...Option) *engine.MiniExecutor {
 	tb.Helper()
-	return NewHarness(tb).Executor
+	return NewHarness(tb, opts...).Executor
 }
 
-func NewHarness(tb testing.TB) *Harness {
+func NewHarness(tb testing.TB, opts ...Option) *Harness {
 	tb.Helper()
+	cfg := config{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
 	executor := engine.NewMiniExecutor()
+	if cfg.register != nil {
+		callRegister(cfg.register, executor)
+	}
 	out := &recorder{}
 	registerTestModule(executor, out)
 	return &Harness{Executor: executor, output: out}
 }
 
-func ExpectExpr(tb testing.TB, tc ExprCase) {
+func ExpectExpr(tb testing.TB, tc ExprCase, opts ...Option) {
 	tb.Helper()
 	runCase(tb, Case{
 		Name:           tc.Name,
@@ -95,10 +116,10 @@ func ExpectExpr(tb testing.TB, tc ExprCase) {
 		WantCompileErr: tc.WantCompileErr,
 		WantRunErr:     tc.WantRunErr,
 		Covers:         tc.Covers,
-	})
+	}, opts...)
 }
 
-func ExpectBlock(tb testing.TB, tc BlockCase) {
+func ExpectBlock(tb testing.TB, tc BlockCase, opts ...Option) {
 	tb.Helper()
 	runCase(tb, Case{
 		Name:           tc.Name,
@@ -109,7 +130,7 @@ func ExpectBlock(tb testing.TB, tc BlockCase) {
 		WantCompileErr: tc.WantCompileErr,
 		WantRunErr:     tc.WantRunErr,
 		Covers:         tc.Covers,
-	})
+	}, opts...)
 }
 
 func ExpectCompileError(tb testing.TB, tc BlockCase) {
@@ -121,7 +142,7 @@ func ExpectCompileError(tb testing.TB, tc BlockCase) {
 	ExpectBlock(tb, tc)
 }
 
-func RunCases(t *testing.T, schemas []MethodSchema, cases []Case) {
+func RunCases(t *testing.T, schemas []MethodSchema, cases []Case, opts ...Option) {
 	t.Helper()
 	for _, tc := range cases {
 		tc := tc
@@ -130,7 +151,7 @@ func RunCases(t *testing.T, schemas []MethodSchema, cases []Case) {
 			name = "case"
 		}
 		t.Run(name, func(t *testing.T) {
-			runCase(t, tc)
+			runCase(t, tc, opts...)
 		})
 	}
 	verifyCoverage(t, schemas, cases)
@@ -158,9 +179,26 @@ func FFISchema(name string, generated any) MethodSchema {
 	return Schema(name, methods...)
 }
 
-func runCase(tb testing.TB, tc Case) {
+func callRegister(register any, executor *engine.MiniExecutor) {
+	fn := reflect.ValueOf(register)
+	if fn.Kind() != reflect.Func {
+		panic(fmt.Sprintf("testutil.WithRegister: got %T, want function", register))
+	}
+	fnType := fn.Type()
+	if fnType.NumIn() != 1 || fnType.NumOut() != 0 {
+		panic(fmt.Sprintf("testutil.WithRegister: got %s, want func(executor)", fnType))
+	}
+	executorValue := reflect.ValueOf(executor)
+	paramType := fnType.In(0)
+	if !executorValue.Type().AssignableTo(paramType) && !(paramType.Kind() == reflect.Interface && executorValue.Type().Implements(paramType)) {
+		panic(fmt.Sprintf("testutil.WithRegister: %s cannot accept %s", fnType, executorValue.Type()))
+	}
+	fn.Call([]reflect.Value{executorValue})
+}
+
+func runCase(tb testing.TB, tc Case, opts ...Option) {
 	tb.Helper()
-	h := NewHarness(tb)
+	h := NewHarness(tb, opts...)
 	code := buildProgram(tc)
 	prog, err := h.Executor.NewRuntimeByGoCode(code)
 	if tc.WantCompileErr != "" {

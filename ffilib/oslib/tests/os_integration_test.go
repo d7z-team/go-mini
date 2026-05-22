@@ -5,37 +5,75 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gopkg.d7z.net/go-mini/ffilib/internal/testutil"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
+	"gopkg.d7z.net/go-mini/ffilib"
+	"gopkg.d7z.net/go-mini/ffilib/oslib"
 )
 
 func TestFileLifecycle(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "os.txt")
-	testutil.Run(t, fmt.Sprintf(`
-package main
-import "os"
-
-func main() {
-	if err := os.WriteFile(%q, []byte("hello")); err != nil { panic(err) }
-	data, err := os.ReadFile(%q)
-	if err != nil || string(data) != "hello" { panic("ReadFile failed") }
-	if err := os.Remove(%q); err != nil { panic(err) }
-}
-`, path, path, path))
-}
-
-func TestGetenvAndConstants(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "os.txt")
+	createdPath := filepath.Join(dir, "created.txt")
+	openFilePath := filepath.Join(dir, "openfile.txt")
 	t.Setenv("GO_MINI_TEST", "rocks")
-	testutil.Run(t, `
-package main
-import "os"
-
-func main() {
-	if os.Getenv("GO_MINI_TEST") != "rocks" {
-		panic("Getenv failed")
-	}
-	if (os.O_CREATE | os.O_RDWR) == 0 {
-		panic("os constants missing")
-	}
+	testutil.RunCases(t, []testutil.MethodSchema{
+		testutil.FFISchema("os", oslib.OS_FFI_Schemas),
+	}, []testutil.Case{
+		{
+			Name:    "files-env-and-constants",
+			Imports: []string{"os", "io"},
+			Body: fmt.Sprintf(`
+if err := os.WriteFile(%q, []byte("hello")); err != nil {
+	panic(err)
 }
-`)
+data, err := os.ReadFile(%q)
+if err != nil {
+	panic(err)
+}
+f, err := os.Open(%q)
+if err != nil {
+	panic(err)
+}
+opened, err := io.ReadAll(f)
+if err != nil {
+	panic(err)
+}
+if err = f.Close(); err != nil {
+	panic(err)
+}
+created, err := os.Create(%q)
+if err != nil {
+	panic(err)
+}
+if err = created.Close(); err != nil {
+	panic(err)
+}
+openedFile, err := os.OpenFile(%q, os.O_CREATE|os.O_RDWR, 0644)
+if err != nil {
+	panic(err)
+}
+if err = openedFile.Close(); err != nil {
+	panic(err)
+}
+if err := os.Remove(%q); err != nil {
+	panic(err)
+}
+if err := os.Remove(%q); err != nil {
+	panic(err)
+}
+if err := os.Remove(%q); err != nil {
+	panic(err)
+}
+test.OutBytes(data)
+test.Out("|")
+test.OutBytes(opened)
+test.Out("|")
+test.Out(os.Getenv("GO_MINI_TEST"))
+test.Out("|")
+test.OutBool((os.O_CREATE | os.O_RDWR) != 0)
+`, path, path, path, createdPath, openFilePath, path, createdPath, openFilePath),
+			Want:   "hello|hello|rocks|true",
+			Covers: []string{"Open", "Create", "OpenFile", "ReadFile", "WriteFile", "Remove", "Getenv"},
+		},
+	}, testutil.WithRegister(ffilib.RegisterAll))
 }

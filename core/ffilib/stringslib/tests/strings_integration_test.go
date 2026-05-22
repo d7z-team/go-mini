@@ -3,8 +3,8 @@ package stringslib_test
 import (
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ffilib/internal/testutil"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
 func TestStrings(t *testing.T) {

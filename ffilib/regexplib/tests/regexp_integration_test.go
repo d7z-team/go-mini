@@ -3,77 +3,102 @@ package regexplib_test
 import (
 	"testing"
 
-	"gopkg.d7z.net/go-mini/ffilib/internal/testutil"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
+	"gopkg.d7z.net/go-mini/ffilib"
+	"gopkg.d7z.net/go-mini/ffilib/regexplib"
 )
 
-func TestMatchString(t *testing.T) {
-	testutil.Run(t, `
-package main
-import "regexp"
-
-func main() {
-	ok, err := regexp.MatchString("a.c", "abc")
-	if err != nil || !ok {
-		panic("regexp.MatchString failed")
-	}
+func TestRegexp(t *testing.T) {
+	testutil.RunCases(t, []testutil.MethodSchema{
+		testutil.FFISchema("regexp", regexplib.Regexp_FFI_Schemas),
+	}, []testutil.Case{
+		{
+			Name:    "matching-and-search",
+			Imports: []string{"regexp"},
+			Body: `
+bytesOK, err := regexp.Match("a.c", []byte("abc"))
+if err != nil {
+	panic(err)
 }
-`)
+stringOK, err := regexp.MatchString("a.c", "abc")
+if err != nil {
+	panic(err)
 }
-
-func TestRegexpStringHelpers(t *testing.T) {
-	testutil.Run(t, `
-package main
-import "regexp"
-
-func main() {
-	matches, err := regexp.FindAllString("[a-z]+", "a1 bb22 ccc", -1)
-	if err != nil || len(matches) != 3 || matches[0] != "a" || matches[2] != "ccc" {
-		panic("regexp.FindAllString failed")
-	}
-
-	idx, err := regexp.FindStringIndex("[0-9]+", "abc123")
-	if err != nil || len(idx) != 2 || idx[0] != 3 || idx[1] != 6 {
-		panic("regexp.FindStringIndex failed")
-	}
-
-	subIdx, err := regexp.FindStringSubmatchIndex("([a-z]+)([0-9]+)", "abc123")
-	if err != nil || len(subIdx) != 6 || subIdx[2] != 0 || subIdx[5] != 6 {
-		panic("regexp.FindStringSubmatchIndex failed")
-	}
-
-	groups, err := regexp.FindAllStringSubmatch("([a-z]+)([0-9]+)", "a1 bb22", -1)
-	if err != nil || len(groups) != 2 || len(groups[1]) != 3 || groups[1][1] != "bb" || groups[1][2] != "22" {
-		panic("regexp.FindAllStringSubmatch failed")
-	}
-
-	replaced, err := regexp.ReplaceAllString("[0-9]+", "a1b22", "#")
-	if err != nil || replaced != "a#b#" {
-		panic("regexp.ReplaceAllString failed")
-	}
-
-	literal, err := regexp.ReplaceAllLiteralString("[0-9]+", "a1", "$x")
-	if err != nil || literal != "a$x" {
-		panic("regexp.ReplaceAllLiteralString failed")
-	}
-
-	parts, err := regexp.Split("[,;]", "a,b;c", -1)
-	if err != nil || len(parts) != 3 || parts[1] != "b" {
-		panic("regexp.Split failed")
-	}
+all, err := regexp.FindAllString("[a-z]+", "a1 bb22 ccc", -1)
+if err != nil {
+	panic(err)
 }
-`)
+idx, err := regexp.FindStringIndex("[0-9]+", "abc123")
+if err != nil {
+	panic(err)
 }
-
-func TestRegexpInvalidPatternReturnsError(t *testing.T) {
-	testutil.Run(t, `
-package main
-import "regexp"
-
-func main() {
-	_, err := regexp.FindAllString("[", "abc", -1)
-	if err == nil {
-		panic("expected regexp error")
-	}
+subIdx, err := regexp.FindStringSubmatchIndex("([a-z]+)([0-9]+)", "abc123")
+if err != nil {
+	panic(err)
 }
-`)
+submatch := regexp.FindStringSubmatch("([a-z]+)([0-9]+)", "abc123")
+groups, err := regexp.FindAllStringSubmatch("([a-z]+)([0-9]+)", "a1 bb22", -1)
+if err != nil {
+	panic(err)
+}
+test.OutBool(bytesOK)
+test.Out("|")
+test.OutBool(stringOK)
+test.Out("|")
+test.Out(regexp.QuoteMeta("a+b"))
+test.Out("|")
+test.Out(regexp.FindString("[0-9]+", "abc123"))
+test.Out("|")
+test.Out(all[0])
+test.Out(",")
+test.Out(all[2])
+test.Out("|")
+test.OutInt(idx[0])
+test.Out(",")
+test.OutInt(idx[1])
+test.Out("|")
+test.OutInt(subIdx[2])
+test.Out(",")
+test.OutInt(subIdx[5])
+test.Out("|")
+test.Out(submatch[1])
+test.Out(",")
+test.Out(submatch[2])
+test.Out("|")
+test.Out(groups[1][1])
+test.Out(",")
+test.Out(groups[1][2])
+`,
+			Want:   `true|true|a\+b|123|a,ccc|3,6|0,6|abc,123|bb,22`,
+			Covers: []string{"Match", "MatchString", "QuoteMeta", "FindString", "FindAllString", "FindStringIndex", "FindStringSubmatchIndex", "FindStringSubmatch", "FindAllStringSubmatch"},
+		},
+		{
+			Name:    "replace-split-and-error",
+			Imports: []string{"regexp"},
+			Body: `
+replaced, err := regexp.ReplaceAllString("[0-9]+", "a1b22", "#")
+if err != nil {
+	panic(err)
+}
+literal, err := regexp.ReplaceAllLiteralString("[0-9]+", "a1", "$x")
+if err != nil {
+	panic(err)
+}
+parts, err := regexp.Split("[,;]", "a,b;c", -1)
+if err != nil {
+	panic(err)
+}
+_, err = regexp.FindAllString("[", "abc", -1)
+test.Out(replaced)
+test.Out("|")
+test.Out(literal)
+test.Out("|")
+test.Out(parts[1])
+test.Out("|")
+test.OutBool(err != nil)
+`,
+			Want:   "a#b#|a$x|b|true",
+			Covers: []string{"ReplaceAllString", "ReplaceAllLiteralString", "Split", "FindAllString"},
+		},
+	}, testutil.WithRegister(ffilib.RegisterAll))
 }

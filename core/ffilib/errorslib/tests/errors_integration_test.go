@@ -3,7 +3,7 @@ package errorslib_test
 import (
 	"testing"
 
-	"gopkg.d7z.net/go-mini/core/ffilib/internal/testutil"
+	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
 func TestNewAndIs(t *testing.T) {
