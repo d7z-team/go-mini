@@ -10,13 +10,11 @@ import (
 
 func TestOrderFFIGen(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 	impl := ordertest.NewOrderImpl()
 	ordertest.RegisterOrderService(executor, impl, executor.HandleRegistry())
 	code := `
 	package main
 	import "order"
-	import "fmt"
 
 	func main() {
 		// 1. 创建订单
@@ -44,8 +42,6 @@ func TestOrderFFIGen(t *testing.T) {
 		if err2 == nil {
 			panic("should have caught error for closed order")
 		}
-		
-		fmt.Println("Complex Business Object Verified, Total:", total)
 	}
 	`
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 )
 
 func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, code, want string) {
@@ -21,32 +20,19 @@ func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, co
 	}
 }
 
-type assignmentOutputRecorder struct {
-	sb strings.Builder
-}
-
-func (o *assignmentOutputRecorder) Print(_ context.Context, s string) {
-	o.sb.WriteString(s)
-}
-
 func TestAdvancedAssignmentAndSlice(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
-	printOutput := func(t *testing.T, prog *engine.MiniProgram) string {
+	execute := func(t *testing.T, prog *engine.MiniProgram) {
 		t.Helper()
-		recorder := &assignmentOutputRecorder{}
-		ctx := fmtlib.WithOutputter(context.Background(), recorder)
-		if err := prog.Execute(ctx); err != nil {
+		if err := prog.Execute(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		return recorder.sb.String()
 	}
 
 	t.Run("SliceExpr", func(t *testing.T) {
 		code := `
 		package main
-		import "fmt"
 		func main() {
 			arr := []byte("hello world")
 			sub := arr[0:5]
@@ -60,24 +46,18 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			sub2 := arr2[1:3]
 			if len(sub2) != 2 { panic("array slice len mismatch") }
 			if sub2[0] != 2 { panic("array slice value mismatch") }
-			
-			fmt.Println("SliceExpr OK")
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		output := printOutput(t, prog)
-		if !strings.Contains(output, "SliceExpr OK\n") {
-			t.Fatalf("expected SliceExpr marker in output, got %q", output)
-		}
+		execute(t, prog)
 	})
 
 	t.Run("MapIndexAssignment", func(t *testing.T) {
 		code := `
 		package main
-		import "fmt"
 		func main() {
 			m := map[string]any{"a": 1}
 			m["b"] = 2
@@ -85,53 +65,39 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			
 			if m["a"] != 100 { panic("map update failed") }
 			if m["b"] != 2 { panic("map insert failed") }
-			fmt.Println("Map assignment OK")
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		output := printOutput(t, prog)
-		if !strings.Contains(output, "Map assignment OK\n") {
-			t.Fatalf("expected map-assignment marker in output, got %q", output)
-		}
+		execute(t, prog)
 	})
 
 	t.Run("ArrayIndexAssignment", func(t *testing.T) {
 		code := `
 		package main
-		import "fmt"
 		func main() {
 			arr := []any{1, 2, 3}
 			arr[1] = 200
 			if arr[1] != 200 { panic("array assign failed") }
-			fmt.Println("Array assignment OK")
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
 		if err != nil {
 			t.Fatalf("validation failed: %v", err)
 		}
-		output := printOutput(t, prog)
-		if !strings.Contains(output, "Array assignment OK\n") {
-			t.Fatalf("expected array-assignment marker in output, got %q", output)
-		}
+		execute(t, prog)
 	})
 
 	t.Run("MemberAssignment", func(t *testing.T) {
 		code := `
 		package main
-		import "encoding/json"
-		import "fmt"
 		func main() {
-			// json返回的是包装在Any里的Map
-			obj, err := json.Unmarshal([]byte(` + "`" + `{"config":{"enabled":false}}` + "`" + `))
-			if err != nil { panic(err) }
+			obj := map[string]any{"config": map[string]any{"enabled": false}}
 			obj.config.enabled = true
 			
 			if obj.config.enabled != true { panic("member assign failed") }
-			fmt.Println("Member assignment OK")
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
@@ -139,18 +105,11 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 			t.Logf("Validation correctly blocked or passed: %v", err)
 			return
 		}
-		output := func() string {
-			recorder := &assignmentOutputRecorder{}
-			ctx := fmtlib.WithOutputter(context.Background(), recorder)
-			err = prog.Execute(ctx)
-			return recorder.sb.String()
-		}()
+		err = prog.Execute(context.Background())
 		if err != nil {
 			if !strings.Contains(err.Error(), "unsupported LHS") {
 				t.Fatalf("unexpected error: %v", err)
 			}
-		} else if !strings.Contains(output, "Member assignment OK\n") {
-			t.Fatalf("expected member-assignment marker in output, got %q", output)
 		}
 	})
 

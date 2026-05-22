@@ -9,7 +9,6 @@ import (
 
 func TestTypeSwitch(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	t.Run("BasicTypes", func(t *testing.T) {
 		code := `

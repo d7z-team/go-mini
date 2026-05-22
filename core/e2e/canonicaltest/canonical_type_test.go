@@ -30,7 +30,6 @@ func (i *BImpl) Hello(t *b_other.Type) string { return "Hello B: " + string(rune
 
 func TestCanonicalTypeSystem(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	impl := &CanonicalTestImpl{}
 	registry := executor.HandleRegistry()
@@ -71,7 +70,6 @@ func TestCanonicalTypeSystem(t *testing.T) {
 
 func TestCanonicalTypeInterfaceAcrossPaths(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	impl := &CanonicalTestImpl{}
 	registry := executor.HandleRegistry()

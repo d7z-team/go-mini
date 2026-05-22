@@ -19,6 +19,9 @@ func TestCanonicalTypesAreBuiltThroughTypeHelpers(t *testing.T) {
 	var violations []string
 	err := filepath.WalkDir(filepath.Join(repoRoot, "core"), func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if entry.IsDir() {
@@ -39,6 +42,9 @@ func TestCanonicalTypesAreBuiltThroughTypeHelpers(t *testing.T) {
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
 			return err
 		}
 		if forbidden.Match(data) {

@@ -9,15 +9,11 @@ import (
 
 func TestFFIModule(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	code := `
 	package main
-	
-	import "fmt"
 
 	func main() {
-		fmt.Println("Hello from dynamic FFI module!")
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

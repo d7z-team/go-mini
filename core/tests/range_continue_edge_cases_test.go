@@ -12,7 +12,6 @@ func TestRangeContinueMultipleNestedBlocks(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
 
@@ -52,7 +51,6 @@ func main() {
 		}
 	}
 
-	fmt.Println(trace)
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -60,10 +58,11 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
+	snapshot := executeAndSnapshot(t, prog)
 	expected := "row-1|continue-1|row-2|continue-2|row-3|keep-3|block1-3|block2-3|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }
 
@@ -73,7 +72,6 @@ func TestForContinueWithNestedBlocks(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
 
@@ -102,7 +100,6 @@ func main() {
 		}
 	}
 
-	fmt.Println(trace)
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -110,10 +107,11 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
+	snapshot := executeAndSnapshot(t, prog)
 	expected := "skip-1|skip-2|keep-3|block-3|keep-4|block-4|keep-5|block-5|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }
 
@@ -123,9 +121,9 @@ func TestRangeBreakWithNestedBlocks(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
+var finalRowScan Int64 = 0
 
 func mark(s string) {
 	trace = trace + s + "|"
@@ -153,9 +151,7 @@ func main() {
 			}
 		}
 	}
-
-	fmt.Println("rowScan=", rowScan)
-	fmt.Println(trace)
+	finalRowScan = rowScan
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -163,10 +159,15 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
-	expected := "rowScan= 2\npage-loop|row-1|block-1|row-2|break-2|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	snapshot := executeAndSnapshot(t, prog)
+	rowScan, ok := snapshot.LoadGlobal("finalRowScan")
+	if !ok || rowScan == nil || rowScan.I64 != 2 {
+		t.Fatalf("unexpected finalRowScan: %#v", rowScan)
+	}
+	expected := "page-loop|row-1|block-1|row-2|break-2|\n"
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }
 
@@ -176,9 +177,9 @@ func TestForBreakWithNestedBlocks(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
+var finalOuter Int64 = 0
 
 func mark(s string) {
 	trace = trace + s + "|"
@@ -200,9 +201,7 @@ func main() {
 			mark("block-" + string(outer))
 		}
 	}
-
-	fmt.Println("outer=", outer)
-	fmt.Println(trace)
+	finalOuter = outer
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -210,9 +209,14 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
-	expected := "outer= 4\nkeep-1|block-1|keep-2|block-2|keep-3|block-3|break-4|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	snapshot := executeAndSnapshot(t, prog)
+	outer, ok := snapshot.LoadGlobal("finalOuter")
+	if !ok || outer == nil || outer.I64 != 4 {
+		t.Fatalf("unexpected finalOuter: %#v", outer)
+	}
+	expected := "keep-1|block-1|keep-2|block-2|keep-3|block-3|break-4|\n"
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }

@@ -12,27 +12,33 @@ import (
 
 func TestMultiAssignment(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	t.Run("ResultDestructuring", func(t *testing.T) {
 		code := `
 		package main
-		import "encoding/json"
+
+		func decode(ok Bool) (Any, String) {
+			if !ok {
+				return nil, "decode failed"
+			}
+			return map[string]any{"age": 25}, ""
+		}
+
 		func main() {
 			// 1. Test Result destructuring (val, err)
-			// Use backticks for raw string to avoid escape hell
-			v, err := json.Unmarshal([]byte(` + "`" + `{"age": 25}` + "`" + `))
-			if err != nil {
-				panic("Unmarshal failed: " + err.Error())
+			v, err := decode(true)
+			if err != "" {
+				panic("decode failed")
 			}
 			
 			if v.age != 25 {
 				panic("Value mismatch")
 			}
 
-			// 2. Test failed Unmarshal
-			v2, err2 := json.Unmarshal([]byte("{invalid}"))
-			if err2 == nil {
+			// 2. Test failed decode
+			v2, err2 := decode(false)
+			_ = v2
+			if err2 == "" {
 				panic("Should have failed")
 			}
 		}
@@ -76,14 +82,14 @@ func TestMultiAssignment(t *testing.T) {
 	t.Run("TupleDestructuring", func(t *testing.T) {
 		// Mock a bridge that returns a Tuple
 		bridge := &mockTupleBridge{}
-		executor.RegisterFFISchema("math.DivMod", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
-		executor.DeclareFuncSchema("math.DivMod", runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"))
+		executor.RegisterFFISchema("calc.DivMod", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
+		executor.DeclareFuncSchema("calc.DivMod", runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"))
 
 		code := `
 		package main
-		import "math"
+		import "calc"
 		func main() {
-			q, r := math.DivMod(10, 3)
+			q, r := calc.DivMod(10, 3)
 			if q != 3 || r != 1 {
 				panic("Tuple destructuring failed")
 			}

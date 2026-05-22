@@ -9,12 +9,10 @@ import (
 
 func TestPointerSemantics(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	t.Run("Basic Dereference and Assignment", func(t *testing.T) {
 		code := `
 		package main
-		import "fmt"
 		func main() {
 			p := new(Int64)
 			*p = 123

@@ -22,8 +22,12 @@ func TestDisassemble(t *testing.T) {
 
 	func main() {
 		res := fib(5)
-		println("Fib(5) is:", res)
-		println("Global is:", GlobalVar)
+		if res != 5 {
+			panic("fib mismatch")
+		}
+		if GlobalVar != 100 {
+			panic("global mismatch")
+		}
 	}
 	`
 	testExecutor := engine.NewMiniExecutor()

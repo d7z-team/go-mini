@@ -48,10 +48,13 @@ import (
 	"context"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/ffilib"
 )
 
 func main() {
 	exec := engine.NewMiniExecutor()
+	ffilib.RegisterAll(exec)
+
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 
@@ -73,7 +76,7 @@ func main() {
 Generate bindings from Go interfaces:
 
 ```bash
-go run ./cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
+go run gopkg.d7z.net/go-mini/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
 For examples and runtime integration details, see [DOCS.md](./DOCS.md).

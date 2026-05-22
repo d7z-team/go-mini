@@ -20,7 +20,6 @@ func TestRangeContinueNestedBlockKeepsOuterVars(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
 
@@ -69,8 +68,6 @@ func main() {
 			nextPage = false
 		}
 	}
-
-	fmt.Println(trace)
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -78,10 +75,11 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
+	snapshot := executeAndSnapshot(t, prog)
 	expected := "page-loop|row-1|continue-1|row-2|continue-2|row-3|keep-3|inside-if|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }
 
@@ -92,7 +90,6 @@ func TestRangeContinueNestedBlockKeepsOuterVarsNoOuterFor(t *testing.T) {
 
 	code := `
 package main
-import "fmt"
 
 var trace = ""
 
@@ -133,8 +130,6 @@ func main() {
 			mark("inside-if")
 		}
 	}
-
-	fmt.Println(trace)
 }
 `
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -142,9 +137,10 @@ func main() {
 		t.Fatal(err)
 	}
 
-	output := executeWithCapturedOutput(t, prog)
+	snapshot := executeAndSnapshot(t, prog)
 	expected := "row-1|continue-1|row-2|continue-2|row-3|keep-3|inside-if|\n"
-	if output != expected {
-		t.Errorf("unexpected output:\n  got: %q\n  want: %q", output, expected)
+	trace, ok := snapshot.LoadGlobal("trace")
+	if !ok || trace == nil || trace.Str+"\n" != expected {
+		t.Errorf("unexpected trace:\n  got: %#v\n  want: %q", trace, expected)
 	}
 }

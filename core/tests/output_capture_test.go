@@ -2,28 +2,21 @@ package engine_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-type outputRecorder struct {
-	sb strings.Builder
-}
-
-func (o *outputRecorder) Print(_ context.Context, s string) {
-	o.sb.WriteString(s)
-}
-
-func executeWithCapturedOutput(t *testing.T, prog *engine.MiniProgram) string {
+func executeAndSnapshot(t *testing.T, prog *engine.MiniProgram) *runtime.SharedStateSnapshot {
 	t.Helper()
 
-	recorder := &outputRecorder{}
-	ctx := fmtlib.WithOutputter(context.Background(), recorder)
-	if err := prog.Execute(ctx); err != nil {
+	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	return recorder.sb.String()
+	snapshot := prog.SharedState()
+	if snapshot == nil {
+		t.Fatal("expected shared state snapshot")
+	}
+	return snapshot
 }

@@ -9,9 +9,10 @@ import (
 func TestRangeOuterLocalCounterAcrossAllLoaders(t *testing.T) {
 	const code = `
 package main
-import "fmt"
 
 var trace = ""
+var finalRowScan Int64 = 0
+var finalKept Int64 = 0
 
 func mark(s string) {
 	trace = trace + s + "|"
@@ -31,9 +32,8 @@ func main() {
 		kept = kept + 1
 		mark("keep-" + string(rowScan))
 	}
-	fmt.Println("rowScan=", rowScan)
-	fmt.Println("kept=", kept)
-	fmt.Println(trace)
+	finalRowScan = rowScan
+	finalKept = kept
 }
 `
 
@@ -44,10 +44,18 @@ func main() {
 			if err != nil {
 				t.Fatalf("load failed: %v", err)
 			}
-			output := executeWithCapturedOutput(t, prog)
-			expected := "rowScan= 3\nkept= 1\nrow-1|continue-1|row-2|continue-2|row-3|keep-3|\n"
-			if output != expected {
-				t.Fatalf("unexpected output: %q", output)
+			snapshot := executeAndSnapshot(t, prog)
+			rowScan, ok := snapshot.LoadGlobal("finalRowScan")
+			if !ok || rowScan == nil || rowScan.I64 != 3 {
+				t.Fatalf("unexpected finalRowScan: %#v", rowScan)
+			}
+			kept, ok := snapshot.LoadGlobal("finalKept")
+			if !ok || kept == nil || kept.I64 != 1 {
+				t.Fatalf("unexpected finalKept: %#v", kept)
+			}
+			trace, ok := snapshot.LoadGlobal("trace")
+			if !ok || trace == nil || trace.Str != "row-1|continue-1|row-2|continue-2|row-3|keep-3|" {
+				t.Fatalf("unexpected trace: %#v", trace)
 			}
 		})
 	}

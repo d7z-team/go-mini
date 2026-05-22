@@ -9,6 +9,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/gofrontend"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // TestModuleConsistency 验证跨模块变量修改的强一致性
@@ -81,15 +82,15 @@ func TestModuleConsistency(t *testing.T) {
 // TestReadOnlyModuleProtection 验证 FFI 等虚拟模块的只读属性
 func TestReadOnlyModuleProtection(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
+	executor.DeclareFuncSchema("mock.Print", runtime.MustParseRuntimeFuncSig("function(String) Void"))
 
 	code := `
 	package main
-	import "fmt"
+	import "mock"
 
 	func main() {
 		// 尝试覆盖 FFI 函数，应该报错
-		fmt.Println = 1
+		mock.Print = 1
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

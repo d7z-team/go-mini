@@ -5,25 +5,26 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestImportStrictnessRegression(t *testing.T) {
 	e := engine.NewMiniExecutor()
-	e.InjectStandardLibraries()
+	e.DeclareFuncSchema("mock.Getenv", runtime.MustParseRuntimeFuncSig("function(String) String"))
 
 	t.Run("Missing Import Should Fail", func(t *testing.T) {
 		code := `
 		package main
 		func main() {
-			os.ReadFile("test.txt")
+			mock.ReadFile("test.txt")
 		}
 		`
 		_, err := e.NewRuntimeByGoCode(code)
 		if err == nil {
-			t.Fatal("expected error for missing import 'os', but got none")
+			t.Fatal("expected error for missing import 'mock', but got none")
 		}
 
-		expected := "变量 os 不存在"
+		expected := "变量 mock 不存在"
 		if !strings.Contains(err.Error(), expected) {
 			t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expected)
 		}
@@ -32,17 +33,17 @@ func TestImportStrictnessRegression(t *testing.T) {
 	t.Run("Import Present But Member Missing Should Fail", func(t *testing.T) {
 		code := `
 		package main
-		import "os"
+		import "mock"
 		func main() {
-			os.NonExistentFunc()
+			mock.NonExistentFunc()
 		}
 		`
 		_, err := e.NewRuntimeByGoCode(code)
 		if err == nil {
-			t.Fatal("expected error for missing member in package 'os', but got none")
+			t.Fatal("expected error for missing member in package 'mock', but got none")
 		}
 
-		expected := "包 os 不存在成员 NonExistentFunc"
+		expected := "包 mock 不存在成员 NonExistentFunc"
 		if !strings.Contains(err.Error(), expected) {
 			t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expected)
 		}
@@ -51,10 +52,10 @@ func TestImportStrictnessRegression(t *testing.T) {
 	t.Run("Correct Import Should Pass", func(t *testing.T) {
 		code := `
 		package main
-		import "os"
+		import "mock"
 		func main() {
 			// Just check if it compiles
-			_ = os.Getenv("PATH")
+			_ = mock.Getenv("PATH")
 		}
 		`
 		_, err := e.NewRuntimeByGoCode(code)

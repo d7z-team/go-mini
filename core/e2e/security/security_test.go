@@ -10,7 +10,6 @@ import (
 
 func TestSecurityAndAuditability(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	t.Run("StepLimitEnforcement", func(t *testing.T) {
 		code := `
@@ -44,10 +43,10 @@ func TestSecurityAndAuditability(t *testing.T) {
 	t.Run("TypeConfusionPrevention", func(t *testing.T) {
 		code := `
 		package main
-		import "os"
+		import "hostfs"
 		func main() {
-			// 在封闭架构中，os.Open 返回 (TypeHandle, string)
-			h, err := os.Open("test.txt")
+			// 未注册 hostfs.Open 时应在校验阶段阻断
+			h, err := hostfs.Open("test.txt")
 			// 尝试对 Handle 进行加法运算，应该触发 evalArithmetic 的类型校验
 			bad := h + 1 
 		}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/ffilib"
 )
 
 type execOptions struct {
@@ -33,7 +34,7 @@ func run(args []string) error {
 	}
 
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
+	ffilib.RegisterAll(executor)
 
 	program, err := loadProgram(executor, options)
 	if err != nil {

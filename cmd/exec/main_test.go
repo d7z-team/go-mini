@@ -95,7 +95,6 @@ func TestLoadProgramFromDirectoryLoadsMGOFiles(t *testing.T) {
 
 func TestLoadProgramFromBytecode(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	compiled, err := executor.CompileGoCode(`package main
 func main() {}

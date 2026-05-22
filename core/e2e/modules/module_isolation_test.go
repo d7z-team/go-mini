@@ -207,12 +207,11 @@ func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
 		node, err := converter.ConvertSource("slowmod.mgo", `
 package slowmod
 
-import "time"
-
 var Exported = wait()
 
 func wait() int {
-	time.Sleep(1000000000)
+	for true {
+	}
 	return 1
 }
 `)

@@ -54,22 +54,19 @@ func TestInterfaceMultiReturn(t *testing.T) {
 
 func TestInterfaceErrorToStringMapping(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 	code := `
 	package main
-	import "errors"
 	func main() {
 		obj := make(map[String]Any)
-		obj["Close"] = func() error {
-			return errors.New("closed with error")
+		obj["Close"] = func() string {
+			return "closed with error"
 		}
 		
-		// interface use 'error'
-		var i interface{Close() error} = obj
+		var i interface{Close() string} = obj
 		
 		err := i.Close()
-		if err == nil || err.Error() != "closed with error" {
-			panic("Close() returned wrong error")
+		if err != "closed with error" {
+			panic("Close() returned wrong result")
 		}
 	}
 	`

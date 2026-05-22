@@ -10,17 +10,16 @@ import (
 
 func TestLSPHostFFICompletion(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
-	testExecutor.InjectStandardLibraries()
-	testExecutor.DeclareStructSchema("os.File", runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<os.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<os.File>) Error; }"))
+	testExecutor.DeclareStructSchema("hostfs.File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }"))
 
 	// 模拟返回该结构体的函数
-	testExecutor.DeclareFuncSchema("os.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(HostRef<os.File>, Error)"))
+	testExecutor.DeclareFuncSchema("hostfs.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(HostRef<hostfs.File>, Error)"))
 
 	sourceSnippet := `package main
-import "os"
+import "hostfs"
 
 func main() {
-    f, err := os.Open("test.txt")
+    f, err := hostfs.Open("test.txt")
     if err == nil {
         f.Read(make([]byte, 1024))
         f.Close()
@@ -39,9 +38,9 @@ func main() {
 		}
 	}
 
-	// 2. 验证包成员补全 (os.)
+	// 2. 验证包成员补全 (hostfs.)
 	t.Run("OS_PackageCompletion", func(t *testing.T) {
-		// 光标在 os.Open 的点号之后 (5, 18)
+		// 光标在 hostfs.Open 的点号之后
 		completionItems := testProgram.GetCompletionsAt(5, 18)
 		foundOpen := false
 		for _, item := range completionItems {
@@ -51,7 +50,7 @@ func main() {
 			}
 		}
 		if !foundOpen {
-			t.Error("missing os.Open completion")
+			t.Error("missing hostfs.Open completion")
 			for _, item := range completionItems {
 				t.Logf("- %s (%s)", item.Label, item.Kind)
 			}

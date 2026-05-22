@@ -10,7 +10,6 @@ import (
 
 func TestStructExport(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	registry := executor.HandleRegistry()
 
@@ -23,7 +22,6 @@ func TestStructExport(t *testing.T) {
 	code := `
 	package main
 	import "calc"
-	import "fmt"
 
 	func main() {
 		// 1. Create a calculator via factory
@@ -38,8 +36,6 @@ func TestStructExport(t *testing.T) {
 		
 		base := c.GetBase()
 		if base != 100 { panic("GetBase failed") }
-		
-		fmt.Println("Struct Export Verified: ", v1, v2, base)
 	}
 	`
 
@@ -56,7 +52,6 @@ func TestStructExport(t *testing.T) {
 
 func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	registry := executor.HandleRegistry()
 	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
@@ -105,7 +100,6 @@ func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 
 func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	registry := executor.HandleRegistry()
 	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
@@ -149,7 +143,6 @@ func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 
 func TestFFIStructMethodGroupedParametersE2E(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	registry := executor.HandleRegistry()
 	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)

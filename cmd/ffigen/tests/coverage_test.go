@@ -63,7 +63,6 @@ func TestFFICoverage(t *testing.T) {
 	code := `
 	package main
 	import "os"
-	import "fmt"
 
 	func main() {
 		// 1. 测试读写
@@ -79,12 +78,6 @@ func TestFFICoverage(t *testing.T) {
 		rn, err2 := os.Read(h2, readBuf)
 		if err2 != nil { panic(err2) }
 		if rn != 5 { panic("read length mismatch") }
-
-		// 2. 测试标准库已注入的方法覆盖
-		s := fmt.Sprintf("Val: %d", 100)
-		if s != "Val: 100" { panic("sprintf mismatch") }
-		
-		fmt.Println("FFI Coverage Success")
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

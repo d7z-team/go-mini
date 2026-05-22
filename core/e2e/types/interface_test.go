@@ -42,15 +42,14 @@ func TestInterfaceMap(t *testing.T) {
 
 func TestInterfaceHandle(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	code := `
 	package main
-	import "fmt"
 	
 	func main() {
-		// Module (fmt) as an interface
-		var i interface{Printf(String, Any)} = fmt
+		obj := make(map[String]Any)
+		obj["Printf"] = func(format String, arg Any) {}
+		var i interface{Printf(format String, arg Any)} = obj
 		i.Printf("hello %s\n", "interface")
 	}
 	`
@@ -176,12 +175,9 @@ func TestInterfaceAnyPenetration(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	code := `
 	package main
-	import "encoding/json"
 	
 	func main() {
-		// json.Unmarshal 返回的是 (Any, string)，里面包裹的是真正的脚本 Map (TypeAny -> TypeMap)
-		data, err := json.Unmarshal([]byte(` + "`" + `{"name": "mini", "Read": "captured"}` + "`" + `))
-		if err != nil { panic(err) }
+		data := map[string]any{"name": "mini", "Read": "captured"}
 		
 		// 我们手工给 data (TypeAny) 注入一个方法模拟复杂场景
 		data["Read"] = func() String { return "from nested" }
@@ -193,7 +189,6 @@ func TestInterfaceAnyPenetration(t *testing.T) {
 		}
 	}
 	`
-	executor.InjectStandardLibraries()
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatal(err)

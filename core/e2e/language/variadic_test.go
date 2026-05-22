@@ -2,14 +2,16 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestVariadic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 	code := `
 	package main
 	
@@ -48,18 +50,16 @@ func TestVariadic(t *testing.T) {
 
 func TestFFIVariadicEllipsis(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
-	// fmt.Printf is variadic
+	executor.RegisterFFISchema("mock.Printf", emptyVariadicBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), "")
 	code := `
 	package main
-	import "fmt"
+	import "mock"
 	
 	func main() {
 		args := []Any{"hello %s %d", "world", 42}
-		// fmt.Printf(args[0], args[1:]...)
 		format := args[0].(String)
 		params := args[1:]
-		fmt.Printf(format + "\n", params...)
+		mock.Printf(format + "\n", params...)
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -70,4 +70,18 @@ func TestFFIVariadicEllipsis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+type emptyVariadicBridge struct{}
+
+func (emptyVariadicBridge) Call(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, nil
+}
+
+func (emptyVariadicBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, errors.New("unexpected invoke")
+}
+
+func (emptyVariadicBridge) DestroyHandle(uint32) error {
+	return nil
 }

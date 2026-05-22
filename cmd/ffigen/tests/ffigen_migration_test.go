@@ -14,7 +14,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 	}{
 		{
 			name: "StdlibSchemaOnlyRegistration",
-			path: "../../../core/ffilib/iolib/io_ffigen.go",
+			path: "../../../ffilib/iolib/io_ffigen.go",
 			patterns: []string{
 				"registrar, ok := executor.(interface {",
 				"registrar.RegisterFFISchema(",

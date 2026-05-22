@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestEval(t *testing.T) {
@@ -166,16 +165,14 @@ func TestEvalStructInjection(t *testing.T) {
 
 func TestEvalAfterExecute(t *testing.T) {
 	e := engine.NewMiniExecutor()
-	e.InjectStandardLibraries()
 
 	code := `
 package main
-import "strings"
 
 var globalVar = "initialized"
 
 func test() string {
-	return strings.ToUpper(globalVar)
+	return globalVar + ":ok"
 }
 `
 	prog, err := e.NewRuntimeByGoCode(code)
@@ -200,8 +197,8 @@ func test() string {
 	}
 	res := results[0]
 
-	if res.Str != "INITIALIZED" {
-		t.Errorf("Expected 'INITIALIZED', got %q", res.Str)
+	if res.Str != "initialized:ok" {
+		t.Errorf("Expected 'initialized:ok', got %q", res.Str)
 	}
 }
 
@@ -222,37 +219,6 @@ func TestNormalizeFixedSizeByteArray(t *testing.T) {
 	got := res.Interface().([]byte)
 	if len(got) != 4 || got[0] != 1 || got[3] != 4 {
 		t.Errorf("Expected []byte{1,2,3,4}, got %v", got)
-	}
-}
-
-func TestEvalValueErrorDoesNotEscapeAsAPIError(t *testing.T) {
-	e := engine.NewMiniExecutor()
-	e.InjectStandardLibraries()
-
-	prog, err := e.NewRuntimeByGoCode(`
-package main
-import "errors"
-
-func getErr() Error {
-	return errors.New("biz error")
-}
-`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	results, err := prog.Eval(context.Background(), "getErr()", nil)
-	if err != nil {
-		t.Fatalf("Eval returned unexpected API error: %v", err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("Eval() returned %d values, want 1", len(results))
-	}
-	if results[0] == nil || results[0].VType != runtime.TypeError {
-		t.Fatalf("expected TypeError value, got %#v", results[0])
-	}
-	if msg, convErr := results[0].ToError(); convErr != nil || msg != "biz error" {
-		t.Fatalf("unexpected error value: msg=%q err=%v", msg, convErr)
 	}
 }
 

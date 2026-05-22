@@ -9,11 +9,9 @@ import (
 
 func TestOperators(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	code := `
 	package main
-	import "fmt"
 
 	func main() {
 		// 1. Modulo
@@ -33,8 +31,6 @@ func TestOperators(t *testing.T) {
 
 		// 4. Unary Bitwise NOT
 		if ^1 != -2 { panic("^1") }
-
-		fmt.Println("Operator tests passed")
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

@@ -31,7 +31,6 @@ func (m *MockGeo) SumX(points []RobustPoint) int64 {
 
 func TestRobustness(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries()
 
 	// 注册一个处理数组+结构体的 FFI
 	mock := &MockGeo{}
@@ -39,7 +38,6 @@ func TestRobustness(t *testing.T) {
 
 	code := `
 	package main
-	import "fmt"
 	import "e2e"
 
 	func main() {
@@ -63,8 +61,6 @@ func TestRobustness(t *testing.T) {
 		// 3. 测试 nil 安全比较
 		unknown := nil
 		if unknown != nil { panic("any should be nil") }
-		
-		fmt.Println("Robustness test passed")
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)

@@ -13,8 +13,7 @@ GO_TEST_TIMEOUT ?= 180s
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 
-.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix examples \
-	test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e test-layered
+.PHONY: build build-ffigen build-lsp build-exec build-all fmt lint lint-fix test gen clean package-vsix examples
 
 build: build-all
 
@@ -76,29 +75,6 @@ lint: gen
 lint-fix: gen
 	@(test -f "$(GOPATH)/bin/golangci-lint" || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.0) && \
 	"$(GOPATH)/bin/golangci-lint" run -c .golangci.yml --fix
-
-test-runtime:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/runtime ./core/runtime/tests
-
-test-ffilib:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ffilib/...
-
-test-ast:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ast ./core/ast/tests
-
-test-debugger:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/debugger ./core/debugger/tests
-
-test-core:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core ./core/tests
-
-test-ffigen:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/ffigen ./cmd/ffigen ./cmd/ffigen/tests
-
-test-script-e2e:
-	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) ./core/e2e/...
-
-test-layered: gen test-runtime test-ffilib test-ast test-debugger test-core test-ffigen test-script-e2e
 
 test: gen
 	@$(GO_TEST) -timeout $(GO_TEST_TIMEOUT) -v -coverprofile=coverage.txt ./...

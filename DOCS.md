@@ -15,12 +15,13 @@
 
 ```go
 executor := engine.NewMiniExecutor()
-executor.InjectStandardLibraries()
+ffilib.RegisterAll(executor)
 
 program, err := executor.NewRuntimeByGoCode(`
 package main
+import "fmt"
 func main() {
-    println("hello")
+    fmt.Println("hello")
 }
 `)
 if err != nil {
@@ -30,6 +31,8 @@ if err := program.Execute(context.Background()); err != nil {
     panic(err)
 }
 ```
+
+`core` 只提供核心引擎；标准库 FFI 由顶层 `ffilib` 包装配。若只需要核心语言能力，可以直接使用 `engine.NewMiniExecutor()`，不调用 `ffilib.RegisterAll`。
 
 `NewRuntimeByGoCode` 是便捷入口，内部仍会先 `CompileGoCode(...)`，再从编译产物创建运行时；对外持久化、跨进程传输和正式装载统一推荐使用 bytecode。
 
@@ -183,12 +186,13 @@ _ = program
 
 ### 2.7 调用模板
 
-调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用，例如默认的 `print(...)` / `println(...)` 会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
+调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用。顶层 `ffilib.RegisterAll` 会注册标准库 FFI 和 `print(...)` / `println(...)` 模板，它们会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
 
-最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名：
+自定义模板的最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名。下面示例借用 `ffilib.RegisterAll` 提供 `fmt` 包；如果模板体引用自定义包，需要先注册对应 FFI/schema：
 
 ```go
 executor := engine.NewMiniExecutor()
+ffilib.RegisterAll(executor)
 
 err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
     ID:        "demo.trace",

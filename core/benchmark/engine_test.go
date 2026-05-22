@@ -2,10 +2,13 @@ package benchmark
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // 1. Fibonacci (递归性能测试 - 函数调用开销)
@@ -97,12 +100,12 @@ func BenchmarkFFINative(b *testing.B) {
 
 func BenchmarkFFIMini(b *testing.B) {
 	executor := engine.NewMiniExecutor()
-	executor.InjectStandardLibraries() // 注入 fmtlib
+	executor.RegisterFFISchema("bench.Sprintf", benchBridge{}, 1, runtime.MustParseRuntimeFuncSig("function(String, Int64) String"), "")
 	code := `
 	package main
-	import "fmt"
+	import "bench"
 	func Run() string {
-		return fmt.Sprintf("hello %d", 1)
+		return bench.Sprintf("hello %d", 1)
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -115,6 +118,26 @@ func BenchmarkFFIMini(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = prog.Eval(ctx, "Run()", nil)
 	}
+}
+
+type benchBridge struct{}
+
+func (benchBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
+	format := reader.ReadString()
+	value := reader.ReadVarint()
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	buf.WriteString(fmt.Sprintf(format, value))
+	return append([]byte(nil), buf.Bytes()...), nil
+}
+
+func (benchBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, errors.New("unexpected invoke")
+}
+
+func (benchBridge) DestroyHandle(uint32) error {
+	return nil
 }
 
 // 4. Eval (纯表达式模式开销 - 环境变量注入)

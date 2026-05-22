@@ -8,8 +8,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/ffilib/iolib"
-	"gopkg.d7z.net/go-mini/core/ffilib/oslib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -61,14 +59,6 @@ func (e *MiniExecutor) RegisterConstant(name, val string) {
 	defer e.mu.Unlock()
 	e.mustNotConflictGlobalTemplateLocked(name, "constant")
 	e.constants[name] = val
-}
-
-func (e *MiniExecutor) InjectStandardLibraries() {
-	// 1. Inject os
-	oslib.RegisterOS(e, &oslib.OSHost{}, e.registry)
-
-	// 2. Inject file-backed io handles and methods.
-	iolib.RegisterFile(e, e.registry)
 }
 
 func (e *MiniExecutor) GetExportedConstants() map[string]string {

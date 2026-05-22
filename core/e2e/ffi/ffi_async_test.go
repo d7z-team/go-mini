@@ -144,24 +144,43 @@ func (b *burstAsyncBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 			func(*ffigo.Buffer, ffigo.Void) error { return nil },
 		), nil
 	case 2:
-		buf := ffigo.GetBuffer()
-		defer ffigo.ReleaseBuffer(buf)
-		buf.WriteVarint(b.started.Load())
-		return append([]byte(nil), buf.Bytes()...), nil
+		return ffigo.AsyncValue[int64](
+			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (func(), error) {
+				go done.Complete(b.started.Load(), nil)
+				return nil, nil
+			}),
+			func(buf *ffigo.Buffer, v int64) error {
+				buf.WriteVarint(v)
+				return nil
+			},
+		), nil
 	case 3:
-		b.releaseOnce.Do(func() { close(b.release) })
-		deadline := time.After(2 * time.Second)
-		for b.attempted.Load() < b.target {
-			select {
-			case <-deadline:
-				return nil, fmt.Errorf("timed out waiting for async completion attempts: got %d want %d", b.attempted.Load(), b.target)
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-				time.Sleep(time.Millisecond)
-			}
-		}
-		return nil, nil
+		return ffigo.AsyncValue[ffigo.Void](
+			ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+				b.releaseOnce.Do(func() { close(b.release) })
+				cancelled := make(chan struct{})
+				go func() {
+					deadline := time.After(2 * time.Second)
+					for b.attempted.Load() < b.target {
+						select {
+						case <-deadline:
+							done.Complete(ffigo.Void{}, fmt.Errorf("timed out waiting for async completion attempts: got %d want %d", b.attempted.Load(), b.target))
+							return
+						case <-ctx.Done():
+							done.Complete(ffigo.Void{}, ctx.Err())
+							return
+						case <-cancelled:
+							return
+						default:
+							time.Sleep(time.Millisecond)
+						}
+					}
+					done.Complete(ffigo.Void{}, nil)
+				}()
+				return func() { close(cancelled) }, nil
+			}),
+			func(*ffigo.Buffer, ffigo.Void) error { return nil },
+		), nil
 	default:
 		return nil, fmt.Errorf("unexpected method id %d", req.MethodID)
 	}
@@ -188,7 +207,6 @@ func TestAsyncFFICompletionBurstDoesNotDropTokens(t *testing.T) {
 package main
 
 import "gate"
-import "time"
 
 var done = 0
 
@@ -202,10 +220,8 @@ func main() {
 		go worker()
 	}
 	for gate.Started() < 1200 {
-		time.Sleep(1000000)
 	}
 	gate.Release()
-	time.Sleep(50000000)
 	if done != 1200 {
 		panic("lost async completion")
 	}

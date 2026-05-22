@@ -58,10 +58,10 @@ func registerNestedRangeOuterLoopSchemas(exec *engine.MiniExecutor, bridge *nest
 func TestRangeContinueKeepsOuterLocalAllLoaders(t *testing.T) {
 	const code = `
 package main
-import "fmt"
 import "mock"
 
 var trace = ""
+var finalRowScan Int64 = 0
 
 func mark(s string) {
 	trace = trace + s + "|"
@@ -102,8 +102,7 @@ func main() {
 			nextPage = false
 		}
 	}
-	fmt.Println("rowScan=", rowScan)
-	fmt.Println(trace)
+	finalRowScan = rowScan
 }
 `
 
@@ -117,10 +116,14 @@ func main() {
 			if err != nil {
 				t.Fatalf("load failed: %v", err)
 			}
-			output := executeWithCapturedOutput(t, prog)
-			expected := "rowScan= 3\npage-loop|row-1|continue-1|row-2|continue-2|row-3|keep-3|\n"
-			if output != expected {
-				t.Fatalf("unexpected output: %q", output)
+			snapshot := executeAndSnapshot(t, prog)
+			rowScan, ok := snapshot.LoadGlobal("finalRowScan")
+			if !ok || rowScan == nil || rowScan.I64 != 3 {
+				t.Fatalf("unexpected finalRowScan: %#v", rowScan)
+			}
+			trace, ok := snapshot.LoadGlobal("trace")
+			if !ok || trace == nil || trace.Str != "page-loop|row-1|continue-1|row-2|continue-2|row-3|keep-3|" {
+				t.Fatalf("unexpected trace: %#v", trace)
 			}
 		})
 	}
