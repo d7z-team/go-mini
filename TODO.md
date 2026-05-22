@@ -14,12 +14,13 @@
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
-- 标准库 FFI 已从 `core` 拆到顶层 `ffilib`；`core` 只保留核心引擎与 FFI/schema 注册承载面，标准库装配只通过 `ffilib.RegisterAll`。
+- 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
+- 顶层 `ffilib` 继续承载完整标准库 FFI 装配，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；core 纯库不需要外层手动重复装配。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
 - 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 必须校验签名一致，不存在的包作为编译期 facade 处理且不需要 dummy module，fixed-point 展开后必须从 AST import、artifact imports 与 bytecode 中完全移除，并由最终无模板语义检查兜底。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得引入 Go parser/AST 或 Mini AST converter。
-- `core` 不得 import 或调用 `ffilib`；非 `ffilib` 测试不得依赖标准库 FFI。
+- `core` 不得 import 或调用顶层 `ffilib`；除 `core/ffilib` 纯库测试外，`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试，不依赖顶层标准库装配。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
@@ -90,7 +91,7 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make test
 - 非调试执行主路径不得重新引入 AST 节点依赖。
 - runtime 包及其依赖图不得引入 `core/ast`；AST 相关转换必须停留在 `core/gofrontend`、`core/lowering`、compiler 或分析/调试边界。
 - `core/ffigo` 不得 import `core/ast`、`go/ast`、`go/parser`、`go/scanner`、`go/token`；Go 前端转换只允许在 `core/gofrontend`。
-- `core` 不得 import `ffilib` 或暴露标准库注入入口；标准库 FFI 只能由顶层 `ffilib.RegisterAll` 装配。
+- `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.RegisterAll` 装配。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first。
 - FFI 只走 schema-only，不引入 spec/registrar 双轨。

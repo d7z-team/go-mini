@@ -8,6 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	coreffilib "gopkg.d7z.net/go-mini/core/ffilib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -39,6 +40,8 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("Int64", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("Float64", runtime.MustRuntimeFuncSig(runtime.SpecFloat64, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("require", runtime.MustRuntimeFuncSig(runtime.SpecModule, false, runtime.SpecString))
+
+	coreffilib.RegisterAll(res)
 
 	return res
 }

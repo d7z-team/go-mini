@@ -145,7 +145,7 @@ func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 	}
 }
 
-func TestFFIBytesCopyBackRejectsSliceWindow(t *testing.T) {
+func TestFFIBytesCopyBackUpdatesSliceWindow(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	executor.RegisterFFISchema(
 		"demo.Mutate",
@@ -161,15 +161,20 @@ func TestFFIBytesCopyBackRejectsSliceWindow(t *testing.T) {
 
 	func main() {
 		buf := []byte("abcdef")
-		demo.Mutate(buf[1:4])
+		n := demo.Mutate(buf[1:4])
+		if n != 4 {
+			panic("unexpected len")
+		}
+		if String(buf) != "aBCD!ef" {
+			panic("slice copy-back failed")
+		}
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = prog.Execute(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "does not support slice/window left values") {
-		t.Fatalf("expected slice/window error, got %v", err)
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

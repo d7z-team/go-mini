@@ -295,7 +295,7 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	}
 }
 
-func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
+func TestEvalFFICopyBackDiscardsNonAssignableArgument(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 	route := FFIRoute{
@@ -304,8 +304,11 @@ func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
 	}
 
-	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
-	if err == nil || !strings.Contains(err.Error(), "assignable left value") {
-		t.Fatalf("expected assignable left value error, got %v", err)
+	res, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
+	if err != nil {
+		t.Fatalf("evalFFI failed: %v", err)
+	}
+	if res == nil || res.VType != TypeBytes || string(res.B) != "ret" {
+		t.Fatalf("unexpected ffi return: %#v", res)
 	}
 }

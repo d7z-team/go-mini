@@ -59,22 +59,6 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		}
 	}
 
-	// 硬编码拦截内置扩展路由
-	if route.MethodID == 999999999 && route.Name == "errors.Is" {
-		if len(args) == 2 {
-			errVar := args[0]
-			targetHandle := args[1]
-			match := false
-			if errVar != nil && errVar.VType == TypeError {
-				if errObj, ok := errVar.Ref.(*VMError); ok {
-					hVal, _ := targetHandle.ToHandle()
-					match = errObj.Handle == hVal
-				}
-			}
-			return NewBool(match), nil
-		}
-	}
-
 	ownedArgs := append([]byte(nil), buf.Bytes()...)
 	var ret ffigo.FFIReturn
 	err = nil

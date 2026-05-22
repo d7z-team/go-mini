@@ -13,8 +13,8 @@
 
 仓库采用多模块布局：
 
-- `gopkg.d7z.net/go-mini/core`: 核心引擎、compiler、runtime、LSP core、FFI wire 和 `core/cmd/ffigen`
-- `gopkg.d7z.net/go-mini/ffilib`: 标准库 FFI 装配与标准库模块
+- `gopkg.d7z.net/go-mini/core`: 核心引擎、compiler、runtime、LSP core、FFI wire、`core/cmd/ffigen` 和纯原生类型 `core/ffilib` 标准库子集
+- `gopkg.d7z.net/go-mini/ffilib`: 完整标准库 FFI 装配，以及 io/os/time/fmt/image 等外层标准库模块
 - `gopkg.d7z.net/go-mini/examples`: 示例脚本和 `examples/cmd/exec`、`examples/cmd/lsp-server`
 
 日常开发通过 root `go.work` 联动本地模块；`ffilib` 的 `core` 依赖版本只表示最低兼容版本，实际项目可同时依赖更高版本的 `core`。
@@ -40,7 +40,7 @@ if err := program.Execute(context.Background()); err != nil {
 }
 ```
 
-`core` 只提供核心引擎；标准库 FFI 由顶层 `ffilib` 包装配。若只需要核心语言能力，可以直接使用 `engine.NewMiniExecutor()`，不调用 `ffilib.RegisterAll`。
+`core` 默认提供核心引擎，以及 `errors`、`strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/fmt/image 等完整标准库 FFI，再调用顶层 `ffilib.RegisterAll`。
 
 `NewRuntimeByGoCode` 是便捷入口，内部仍会先 `CompileGoCode(...)`，再从编译产物创建运行时；对外持久化、跨进程传输和正式装载统一推荐使用 bytecode。
 

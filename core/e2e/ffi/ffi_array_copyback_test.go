@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -84,7 +83,7 @@ func TestFFIArrayCopyBackUpdatesWholeArray(t *testing.T) {
 	}
 }
 
-func TestFFIArrayCopyBackRejectsSliceWindow(t *testing.T) {
+func TestFFIArrayCopyBackUpdatesSliceWindow(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	executor.RegisterFFISchema(
 		"demo.Rewrite",
@@ -100,15 +99,23 @@ func TestFFIArrayCopyBackRejectsSliceWindow(t *testing.T) {
 
 	func main() {
 		arr := []int64{1, 2, 3, 4}
-		demo.Rewrite(arr[1:3])
+		n := demo.Rewrite(arr[1:3])
+		if n != 3 {
+			panic("unexpected len")
+		}
+		if len(arr) != 5 {
+			panic("slice copy-back length failed")
+		}
+		if arr[0] != 1 || arr[1] != 20 || arr[2] != 30 || arr[3] != 99 || arr[4] != 4 {
+			panic("slice copy-back failed")
+		}
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = prog.Execute(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "does not support slice/window left values") {
-		t.Fatalf("expected slice/window error, got %v", err)
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

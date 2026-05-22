@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"strings"
 	"testing"
 )
 
@@ -117,7 +116,7 @@ func TestEvalFFICopyBackWritesWholeArrayBackToCaller(t *testing.T) {
 	}
 }
 
-func TestEvalFFICopyBackRejectsSliceWindowArgument(t *testing.T) {
+func TestEvalFFICopyBackWritesSliceWindowArgument(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
@@ -146,7 +145,11 @@ func TestEvalFFICopyBackRejectsSliceWindowArgument(t *testing.T) {
 	}, []LHSValue{
 		&LHSSlice{Obj: arr, Low: NewInt(0), High: NewInt(2)},
 	})
-	if err == nil || !strings.Contains(err.Error(), "does not support slice/window left values") {
-		t.Fatalf("expected slice/window error, got %v", err)
+	if err != nil {
+		t.Fatalf("evalFFI failed: %v", err)
+	}
+	items := arr.Ref.(*VMArray).Snapshot()
+	if len(items) != 3 || items[0].I64 != 9 || items[1].I64 != 3 || items[2].I64 != 4 {
+		t.Fatalf("unexpected slice copy-back result: %#v", items)
 	}
 }

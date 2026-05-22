@@ -28,13 +28,17 @@ func NewSortProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Sort {
 	return &SortProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *SortProxy) Ints(x []int64) []int64 {
+func (__p *SortProxy) Ints(x *ffigo.ArrayRef[int64]) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteVarint(int64(item))
+	if x == nil {
+		wireBuf.WriteUvarint(0)
+	} else {
+		wireBuf.WriteUvarint(uint64(len(x.Value)))
+		for _, item := range x.Value {
+			wireBuf.WriteVarint(int64(item))
+		}
 	}
 
 	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Ints, Args: append([]byte(nil), wireBuf.Bytes()...)})
@@ -45,25 +49,38 @@ func (__p *SortProxy) Ints(x []int64) []int64 {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 []int64
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]int64, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
+	copyBackCount := int(retBuf.ReadUvarint())
+	if copyBackCount != 1 {
+		panic(fmt.Sprintf("ffigen: Sort.Ints copy-back mismatch: %d", copyBackCount))
+	}
+	if x == nil {
+		panic("ffigen: nil ArrayRef passed to Sort.Ints")
+	}
+	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
+	var copyBack_x []int64
+	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
+	copyBack_x = make([]int64, l_copyBack_x)
+	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
 		{
-			tmp := retBuf.ReadVarint()
-			v_0[i_v_0] = int64(tmp)
+			tmp := copyBackBuf_x.ReadVarint()
+			copyBack_x[i_copyBack_x] = int64(tmp)
 		}
 	}
-	return v_0
+	x.Value = copyBack_x
+	return
 }
 
-func (__p *SortProxy) Float64s(x []float64) []float64 {
+func (__p *SortProxy) Float64s(x *ffigo.ArrayRef[float64]) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteFloat64(float64(item))
+	if x == nil {
+		wireBuf.WriteUvarint(0)
+	} else {
+		wireBuf.WriteUvarint(uint64(len(x.Value)))
+		for _, item := range x.Value {
+			wireBuf.WriteFloat64(float64(item))
+		}
 	}
 
 	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Float64s, Args: append([]byte(nil), wireBuf.Bytes()...)})
@@ -74,22 +91,35 @@ func (__p *SortProxy) Float64s(x []float64) []float64 {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 []float64
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]float64, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = float64(retBuf.ReadFloat64())
+	copyBackCount := int(retBuf.ReadUvarint())
+	if copyBackCount != 1 {
+		panic(fmt.Sprintf("ffigen: Sort.Float64s copy-back mismatch: %d", copyBackCount))
 	}
-	return v_0
+	if x == nil {
+		panic("ffigen: nil ArrayRef passed to Sort.Float64s")
+	}
+	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
+	var copyBack_x []float64
+	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
+	copyBack_x = make([]float64, l_copyBack_x)
+	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
+		copyBack_x[i_copyBack_x] = float64(copyBackBuf_x.ReadFloat64())
+	}
+	x.Value = copyBack_x
+	return
 }
 
-func (__p *SortProxy) Strings(x []string) []string {
+func (__p *SortProxy) Strings(x *ffigo.ArrayRef[string]) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteString(string(item))
+	if x == nil {
+		wireBuf.WriteUvarint(0)
+	} else {
+		wireBuf.WriteUvarint(uint64(len(x.Value)))
+		for _, item := range x.Value {
+			wireBuf.WriteString(string(item))
+		}
 	}
 
 	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Strings, Args: append([]byte(nil), wireBuf.Bytes()...)})
@@ -100,13 +130,22 @@ func (__p *SortProxy) Strings(x []string) []string {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 []string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]string, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = string(retBuf.ReadString())
+	copyBackCount := int(retBuf.ReadUvarint())
+	if copyBackCount != 1 {
+		panic(fmt.Sprintf("ffigen: Sort.Strings copy-back mismatch: %d", copyBackCount))
 	}
-	return v_0
+	if x == nil {
+		panic("ffigen: nil ArrayRef passed to Sort.Strings")
+	}
+	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
+	var copyBack_x []string
+	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
+	copyBack_x = make([]string, l_copyBack_x)
+	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
+		copyBack_x[i_copyBack_x] = string(copyBackBuf_x.ReadString())
+	}
+	x.Value = copyBack_x
+	return
 }
 
 func (__p *SortProxy) IntsAreSorted(x []int64) bool {
@@ -196,49 +235,73 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case MethodID_Sort_Ints:
-		var x []int64
-		l_x := int(reqBuf.ReadUvarint())
-		x = make([]int64, l_x)
-		for i_x := 0; i_x < l_x; i_x++ {
+		var x *ffigo.ArrayRef[int64]
+		var xValue []int64
+		l_xValue := int(reqBuf.ReadUvarint())
+		xValue = make([]int64, l_xValue)
+		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
 			{
 				tmp := reqBuf.ReadVarint()
-				x[i_x] = int64(tmp)
+				xValue[i_xValue] = int64(tmp)
 			}
 		}
-		r0 := impl.Ints(x)
+		x = &ffigo.ArrayRef[int64]{Value: xValue}
+		impl.Ints(x)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(len(r0)))
-		for _, item := range r0 {
-			resBuf.WriteVarint(int64(item))
+		resBuf.WriteUvarint(uint64(1))
+		copyBackBuf_x := ffigo.GetBuffer()
+		if x != nil {
+			copyBackBuf_x.WriteUvarint(uint64(len(x.Value)))
+			for _, item := range x.Value {
+				copyBackBuf_x.WriteVarint(int64(item))
+			}
 		}
+		resBuf.WriteBytes(copyBackBuf_x.Bytes())
+		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
 	case MethodID_Sort_Float64s:
-		var x []float64
-		l_x := int(reqBuf.ReadUvarint())
-		x = make([]float64, l_x)
-		for i_x := 0; i_x < l_x; i_x++ {
-			x[i_x] = float64(reqBuf.ReadFloat64())
+		var x *ffigo.ArrayRef[float64]
+		var xValue []float64
+		l_xValue := int(reqBuf.ReadUvarint())
+		xValue = make([]float64, l_xValue)
+		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
+			xValue[i_xValue] = float64(reqBuf.ReadFloat64())
 		}
-		r0 := impl.Float64s(x)
+		x = &ffigo.ArrayRef[float64]{Value: xValue}
+		impl.Float64s(x)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(len(r0)))
-		for _, item := range r0 {
-			resBuf.WriteFloat64(float64(item))
+		resBuf.WriteUvarint(uint64(1))
+		copyBackBuf_x := ffigo.GetBuffer()
+		if x != nil {
+			copyBackBuf_x.WriteUvarint(uint64(len(x.Value)))
+			for _, item := range x.Value {
+				copyBackBuf_x.WriteFloat64(float64(item))
+			}
 		}
+		resBuf.WriteBytes(copyBackBuf_x.Bytes())
+		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
 	case MethodID_Sort_Strings:
-		var x []string
-		l_x := int(reqBuf.ReadUvarint())
-		x = make([]string, l_x)
-		for i_x := 0; i_x < l_x; i_x++ {
-			x[i_x] = string(reqBuf.ReadString())
+		var x *ffigo.ArrayRef[string]
+		var xValue []string
+		l_xValue := int(reqBuf.ReadUvarint())
+		xValue = make([]string, l_xValue)
+		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
+			xValue[i_xValue] = string(reqBuf.ReadString())
 		}
-		r0 := impl.Strings(x)
+		x = &ffigo.ArrayRef[string]{Value: xValue}
+		impl.Strings(x)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(len(r0)))
-		for _, item := range r0 {
-			resBuf.WriteString(string(item))
+		resBuf.WriteUvarint(uint64(1))
+		copyBackBuf_x := ffigo.GetBuffer()
+		if x != nil {
+			copyBackBuf_x.WriteUvarint(uint64(len(x.Value)))
+			for _, item := range x.Value {
+				copyBackBuf_x.WriteString(string(item))
+			}
 		}
+		resBuf.WriteBytes(copyBackBuf_x.Bytes())
+		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
 	case MethodID_Sort_IntsAreSorted:
 		var x []int64
@@ -287,9 +350,9 @@ var Sort_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Array<Int64>", runtime.FFIParamIn), ""},
-	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Array<Float64>", runtime.FFIParamIn), ""},
-	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Array<String>", runtime.FFIParamIn), ""},
+	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Void", runtime.FFIParamInOutArray), ""},
+	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Void", runtime.FFIParamInOutArray), ""},
+	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Void", runtime.FFIParamInOutArray), ""},
 	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Bool", runtime.FFIParamIn), ""},
 	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Bool", runtime.FFIParamIn), ""},
 	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Bool", runtime.FFIParamIn), ""},

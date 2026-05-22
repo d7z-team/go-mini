@@ -47,16 +47,17 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 		if idx >= len(args) {
 			return nil, fmt.Errorf("missing argument for inout parameter %d", idx)
 		}
-		if idx >= len(argLHS) || argLHS[idx] == nil {
-			return nil, fmt.Errorf("inout argument %d requires an assignable left value", idx)
+		var lhs LHSValue
+		if idx < len(argLHS) {
+			lhs = argLHS[idx]
 		}
-		switch argLHS[idx].(type) {
-		case *LHSSlice:
-			return nil, fmt.Errorf("inout argument %d does not support slice/window left values", idx)
-		}
-		current, err := e.loadAddress(session, argLHS[idx])
-		if err != nil {
-			return nil, err
+		current := args[idx]
+		if lhs != nil {
+			loaded, err := e.loadAddress(session, lhs)
+			if err != nil {
+				return nil, err
+			}
+			current = loaded
 		}
 		current = e.unwrapValue(current)
 		mode := sig.ParamModes[idx]
@@ -73,7 +74,7 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 			return nil, fmt.Errorf("unsupported inout parameter mode %d", mode)
 		}
 		target := ffiCopyBackTarget{
-			LHS:      argLHS[idx],
+			LHS:      lhs,
 			Type:     current.RuntimeType(),
 			WireType: sig.ParamTypes[idx],
 			Mode:     mode,
@@ -84,6 +85,15 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 }
 
 func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridge, target ffiCopyBackTarget, reader *ffigo.Reader) error {
+	if target.LHS == nil {
+		switch target.Mode {
+		case FFIParamInOutBytes, FFIParamInOutArray:
+			reader.ReadBytes()
+			return nil
+		default:
+			return fmt.Errorf("unsupported inout parameter mode %d", target.Mode)
+		}
+	}
 	switch target.Mode {
 	case FFIParamInOutBytes:
 		next := NewBytes(reader.ReadBytes())
