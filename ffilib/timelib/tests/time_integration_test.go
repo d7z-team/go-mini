@@ -77,5 +77,5 @@ test.OutBool(time.Second > 0)
 			Want:   "true|true|true|2024|1|2|3|4|5|123000000|1700000000|true|true|true|2024-01-02|true|true|true|true|true|true|true",
 			Covers: []string{"Now", "Unix", "Sleep", "Since", "Until", "Parse", "ParseDuration", "Year", "Month", "Day", "Hour", "Minute", "Second", "Nanosecond", "UnixMilli", "UnixMicro", "UnixNano", "Format", "Add", "Sub", "IsZero", "Before", "After", "Equal", "String"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

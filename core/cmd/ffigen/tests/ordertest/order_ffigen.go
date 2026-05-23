@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", runtime.StructOwnershipHostOpaque, "struct { New function(String) tuple(HostRef<order.Order>, Error); AddItem function(HostRef<order.Order>, String, Float64) Error; GetTotal function(HostRef<order.Order>) tuple(Float64, Error); Close function(HostRef<order.Order>) Error; }")
@@ -359,22 +360,18 @@ func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterOrderService(executor interface{ RegisterConstant(string, string) }, impl OrderService, registry *ffigo.HandleRegistry) {
-	bridge := &OrderService_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceOrderService(impl OrderService) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("order", "New", "order.New", OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
+	schema.AddStruct("order.Order", order_Order_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &OrderService_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("order", "New", runtime.FFIRoute{Name: "order.New", Bridge: bridge, MethodID: OrderService_FFI_Schemas[0].MethodID, FuncSig: OrderService_FFI_Schemas[0].Sig, Doc: OrderService_FFI_Schemas[0].Doc})
+		bound.Routes["order.Order.AddItem"] = runtime.FFIRoute{Name: "order.Order.AddItem", Bridge: bridge, MethodID: OrderService_FFI_Schemas[1].MethodID, FuncSig: OrderService_FFI_Schemas[1].Sig, Doc: OrderService_FFI_Schemas[1].Doc}
+		bound.Routes["order.Order.GetTotal"] = runtime.FFIRoute{Name: "order.Order.GetTotal", Bridge: bridge, MethodID: OrderService_FFI_Schemas[2].MethodID, FuncSig: OrderService_FFI_Schemas[2].Sig, Doc: OrderService_FFI_Schemas[2].Doc}
+		bound.Routes["order.Order.Close"] = runtime.FFIRoute{Name: "order.Order.Close", Bridge: bridge, MethodID: OrderService_FFI_Schemas[3].MethodID, FuncSig: OrderService_FFI_Schemas[3].Sig, Doc: OrderService_FFI_Schemas[3].Doc}
+		bound.AddStruct("order.Order", order_Order_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("order.New", bridge, OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("order.Order.AddItem", bridge, OrderService_FFI_Schemas[1].MethodID, OrderService_FFI_Schemas[1].Sig, OrderService_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("order.Order.GetTotal", bridge, OrderService_FFI_Schemas[2].MethodID, OrderService_FFI_Schemas[2].Sig, OrderService_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("order.Order.Close", bridge, OrderService_FFI_Schemas[3].MethodID, OrderService_FFI_Schemas[3].Sig, OrderService_FFI_Schemas[3].Doc)
-	registerStructSchema("order.Order", order_Order_FFI_StructSchema)
 }

@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Calculator", runtime.StructOwnershipHostOpaque, "struct { Add function(HostRef<calc.Calculator>, Int64) Int64; Multiply function(HostRef<calc.Calculator>, Int64, Int64) Int64; GetBase function(HostRef<calc.Calculator>) Int64; }")
@@ -133,23 +134,18 @@ func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterCalculator(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &Calculator_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceCalculator() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("calc.Calculator", calc_Calculator_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Calculator_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["calc.Calculator.Add"] = runtime.FFIRoute{Name: "calc.Calculator.Add", Bridge: bridge, MethodID: Calculator_FFI_Schemas[0].MethodID, FuncSig: Calculator_FFI_Schemas[0].Sig, Doc: Calculator_FFI_Schemas[0].Doc}
+		bound.Routes["calc.Calculator.Multiply"] = runtime.FFIRoute{Name: "calc.Calculator.Multiply", Bridge: bridge, MethodID: Calculator_FFI_Schemas[1].MethodID, FuncSig: Calculator_FFI_Schemas[1].Sig, Doc: Calculator_FFI_Schemas[1].Doc}
+		bound.Routes["calc.Calculator.GetBase"] = runtime.FFIRoute{Name: "calc.Calculator.GetBase", Bridge: bridge, MethodID: Calculator_FFI_Schemas[2].MethodID, FuncSig: Calculator_FFI_Schemas[2].Sig, Doc: Calculator_FFI_Schemas[2].Doc}
+		bound.AddStruct("calc.Calculator", calc_Calculator_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("calc.Calculator.Add", bridge, Calculator_FFI_Schemas[0].MethodID, Calculator_FFI_Schemas[0].Sig, Calculator_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("calc.Calculator.Multiply", bridge, Calculator_FFI_Schemas[1].MethodID, Calculator_FFI_Schemas[1].Sig, Calculator_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("calc.Calculator.GetBase", bridge, Calculator_FFI_Schemas[2].MethodID, Calculator_FFI_Schemas[2].Sig, Calculator_FFI_Schemas[2].Doc)
-	registerStructSchema("calc.Calculator", calc_Calculator_FFI_StructSchema)
 }
 
 const (
@@ -259,22 +255,17 @@ func (b *Table_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterTable(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &Table_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceTable() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("calc.Table", calc_Table_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Table_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["calc.Table.SetString"] = runtime.FFIRoute{Name: "calc.Table.SetString", Bridge: bridge, MethodID: Table_FFI_Schemas[0].MethodID, FuncSig: Table_FFI_Schemas[0].Sig, Doc: Table_FFI_Schemas[0].Doc}
+		bound.Routes["calc.Table.GetString"] = runtime.FFIRoute{Name: "calc.Table.GetString", Bridge: bridge, MethodID: Table_FFI_Schemas[1].MethodID, FuncSig: Table_FFI_Schemas[1].Sig, Doc: Table_FFI_Schemas[1].Doc}
+		bound.AddStruct("calc.Table", calc_Table_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("calc.Table.SetString", bridge, Table_FFI_Schemas[0].MethodID, Table_FFI_Schemas[0].Sig, Table_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("calc.Table.GetString", bridge, Table_FFI_Schemas[1].MethodID, Table_FFI_Schemas[1].Sig, Table_FFI_Schemas[1].Doc)
-	registerStructSchema("calc.Table", calc_Table_FFI_StructSchema)
 }
 
 const (
@@ -360,16 +351,13 @@ func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFactory(executor interface{ RegisterConstant(string, string) }, impl *Factory, registry *ffigo.HandleRegistry) {
-	bridge := &Factory_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceFactory(impl *Factory) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Factory_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["calc.New"] = runtime.FFIRoute{Name: "calc.New", Bridge: bridge, MethodID: Factory_FFI_Schemas[0].MethodID, FuncSig: Factory_FFI_Schemas[0].Sig, Doc: Factory_FFI_Schemas[0].Doc}
+		bound.Routes["calc.NewTable"] = runtime.FFIRoute{Name: "calc.NewTable", Bridge: bridge, MethodID: Factory_FFI_Schemas[1].MethodID, FuncSig: Factory_FFI_Schemas[1].Sig, Doc: Factory_FFI_Schemas[1].Doc}
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("calc.New", bridge, Factory_FFI_Schemas[0].MethodID, Factory_FFI_Schemas[0].Sig, Factory_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("calc.NewTable", bridge, Factory_FFI_Schemas[1].MethodID, Factory_FFI_Schemas[1].Sig, Factory_FFI_Schemas[1].Doc)
 }

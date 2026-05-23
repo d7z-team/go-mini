@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var image_Image_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("image.Image", runtime.StructOwnershipHostOpaque, "struct { Bounds function(HostRef<image.Image>) tuple(Int64, Int64, Int64, Int64); Size function(HostRef<image.Image>) tuple(Int64, Int64); Width function(HostRef<image.Image>) Int64; Height function(HostRef<image.Image>) Int64; At function(HostRef<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64); Set function(HostRef<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void; Fill function(HostRef<image.Image>, Int64, Int64, Int64, Int64) Void; Clear function(HostRef<image.Image>) Void; Clone function(HostRef<image.Image>) HostRef<image.Image>; SubImage function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error); Draw function(HostRef<image.Image>, HostRef<image.Image>, Int64, Int64) Void; Resize function(HostRef<image.Image>, Int64, Int64) tuple(HostRef<image.Image>, Error); Crop function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error); EncodePNG function(HostRef<image.Image>) tuple(TypeBytes, Error); EncodeJPEG function(HostRef<image.Image>, Int64) tuple(TypeBytes, Error); }")
@@ -194,18 +195,17 @@ func (b *ImageLib_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterImageLib(executor interface{ RegisterConstant(string, string) }, impl ImageLib, registry *ffigo.HandleRegistry) {
-	bridge := &ImageLib_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceImageLib(impl ImageLib) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("image", "Decode", "image.Decode", ImageLib_FFI_Schemas[0].MethodID, ImageLib_FFI_Schemas[0].Sig, ImageLib_FFI_Schemas[0].Doc)
+	schema.AddFunc("image", "NewRGBA", "image.NewRGBA", ImageLib_FFI_Schemas[1].MethodID, ImageLib_FFI_Schemas[1].Sig, ImageLib_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &ImageLib_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("image", "Decode", runtime.FFIRoute{Name: "image.Decode", Bridge: bridge, MethodID: ImageLib_FFI_Schemas[0].MethodID, FuncSig: ImageLib_FFI_Schemas[0].Sig, Doc: ImageLib_FFI_Schemas[0].Doc})
+		bound.AddRoute("image", "NewRGBA", runtime.FFIRoute{Name: "image.NewRGBA", Bridge: bridge, MethodID: ImageLib_FFI_Schemas[1].MethodID, FuncSig: ImageLib_FFI_Schemas[1].Sig, Doc: ImageLib_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("image.Decode", bridge, ImageLib_FFI_Schemas[0].MethodID, ImageLib_FFI_Schemas[0].Sig, ImageLib_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("image.NewRGBA", bridge, ImageLib_FFI_Schemas[1].MethodID, ImageLib_FFI_Schemas[1].Sig, ImageLib_FFI_Schemas[1].Doc)
 }
 
 const (
@@ -730,33 +730,28 @@ func (b *Image_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterImage(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &Image_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceImage() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("image.Image", image_Image_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Image_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["image.Image.Bounds"] = runtime.FFIRoute{Name: "image.Image.Bounds", Bridge: bridge, MethodID: Image_FFI_Schemas[0].MethodID, FuncSig: Image_FFI_Schemas[0].Sig, Doc: Image_FFI_Schemas[0].Doc}
+		bound.Routes["image.Image.Size"] = runtime.FFIRoute{Name: "image.Image.Size", Bridge: bridge, MethodID: Image_FFI_Schemas[1].MethodID, FuncSig: Image_FFI_Schemas[1].Sig, Doc: Image_FFI_Schemas[1].Doc}
+		bound.Routes["image.Image.Width"] = runtime.FFIRoute{Name: "image.Image.Width", Bridge: bridge, MethodID: Image_FFI_Schemas[2].MethodID, FuncSig: Image_FFI_Schemas[2].Sig, Doc: Image_FFI_Schemas[2].Doc}
+		bound.Routes["image.Image.Height"] = runtime.FFIRoute{Name: "image.Image.Height", Bridge: bridge, MethodID: Image_FFI_Schemas[3].MethodID, FuncSig: Image_FFI_Schemas[3].Sig, Doc: Image_FFI_Schemas[3].Doc}
+		bound.Routes["image.Image.At"] = runtime.FFIRoute{Name: "image.Image.At", Bridge: bridge, MethodID: Image_FFI_Schemas[4].MethodID, FuncSig: Image_FFI_Schemas[4].Sig, Doc: Image_FFI_Schemas[4].Doc}
+		bound.Routes["image.Image.Set"] = runtime.FFIRoute{Name: "image.Image.Set", Bridge: bridge, MethodID: Image_FFI_Schemas[5].MethodID, FuncSig: Image_FFI_Schemas[5].Sig, Doc: Image_FFI_Schemas[5].Doc}
+		bound.Routes["image.Image.Fill"] = runtime.FFIRoute{Name: "image.Image.Fill", Bridge: bridge, MethodID: Image_FFI_Schemas[6].MethodID, FuncSig: Image_FFI_Schemas[6].Sig, Doc: Image_FFI_Schemas[6].Doc}
+		bound.Routes["image.Image.Clear"] = runtime.FFIRoute{Name: "image.Image.Clear", Bridge: bridge, MethodID: Image_FFI_Schemas[7].MethodID, FuncSig: Image_FFI_Schemas[7].Sig, Doc: Image_FFI_Schemas[7].Doc}
+		bound.Routes["image.Image.Clone"] = runtime.FFIRoute{Name: "image.Image.Clone", Bridge: bridge, MethodID: Image_FFI_Schemas[8].MethodID, FuncSig: Image_FFI_Schemas[8].Sig, Doc: Image_FFI_Schemas[8].Doc}
+		bound.Routes["image.Image.SubImage"] = runtime.FFIRoute{Name: "image.Image.SubImage", Bridge: bridge, MethodID: Image_FFI_Schemas[9].MethodID, FuncSig: Image_FFI_Schemas[9].Sig, Doc: Image_FFI_Schemas[9].Doc}
+		bound.Routes["image.Image.Draw"] = runtime.FFIRoute{Name: "image.Image.Draw", Bridge: bridge, MethodID: Image_FFI_Schemas[10].MethodID, FuncSig: Image_FFI_Schemas[10].Sig, Doc: Image_FFI_Schemas[10].Doc}
+		bound.Routes["image.Image.Resize"] = runtime.FFIRoute{Name: "image.Image.Resize", Bridge: bridge, MethodID: Image_FFI_Schemas[11].MethodID, FuncSig: Image_FFI_Schemas[11].Sig, Doc: Image_FFI_Schemas[11].Doc}
+		bound.Routes["image.Image.Crop"] = runtime.FFIRoute{Name: "image.Image.Crop", Bridge: bridge, MethodID: Image_FFI_Schemas[12].MethodID, FuncSig: Image_FFI_Schemas[12].Sig, Doc: Image_FFI_Schemas[12].Doc}
+		bound.Routes["image.Image.EncodePNG"] = runtime.FFIRoute{Name: "image.Image.EncodePNG", Bridge: bridge, MethodID: Image_FFI_Schemas[13].MethodID, FuncSig: Image_FFI_Schemas[13].Sig, Doc: Image_FFI_Schemas[13].Doc}
+		bound.Routes["image.Image.EncodeJPEG"] = runtime.FFIRoute{Name: "image.Image.EncodeJPEG", Bridge: bridge, MethodID: Image_FFI_Schemas[14].MethodID, FuncSig: Image_FFI_Schemas[14].Sig, Doc: Image_FFI_Schemas[14].Doc}
+		bound.AddStruct("image.Image", image_Image_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("image.Image.Bounds", bridge, Image_FFI_Schemas[0].MethodID, Image_FFI_Schemas[0].Sig, Image_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("image.Image.Size", bridge, Image_FFI_Schemas[1].MethodID, Image_FFI_Schemas[1].Sig, Image_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("image.Image.Width", bridge, Image_FFI_Schemas[2].MethodID, Image_FFI_Schemas[2].Sig, Image_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("image.Image.Height", bridge, Image_FFI_Schemas[3].MethodID, Image_FFI_Schemas[3].Sig, Image_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("image.Image.At", bridge, Image_FFI_Schemas[4].MethodID, Image_FFI_Schemas[4].Sig, Image_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("image.Image.Set", bridge, Image_FFI_Schemas[5].MethodID, Image_FFI_Schemas[5].Sig, Image_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("image.Image.Fill", bridge, Image_FFI_Schemas[6].MethodID, Image_FFI_Schemas[6].Sig, Image_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("image.Image.Clear", bridge, Image_FFI_Schemas[7].MethodID, Image_FFI_Schemas[7].Sig, Image_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("image.Image.Clone", bridge, Image_FFI_Schemas[8].MethodID, Image_FFI_Schemas[8].Sig, Image_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("image.Image.SubImage", bridge, Image_FFI_Schemas[9].MethodID, Image_FFI_Schemas[9].Sig, Image_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("image.Image.Draw", bridge, Image_FFI_Schemas[10].MethodID, Image_FFI_Schemas[10].Sig, Image_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("image.Image.Resize", bridge, Image_FFI_Schemas[11].MethodID, Image_FFI_Schemas[11].Sig, Image_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("image.Image.Crop", bridge, Image_FFI_Schemas[12].MethodID, Image_FFI_Schemas[12].Sig, Image_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("image.Image.EncodePNG", bridge, Image_FFI_Schemas[13].MethodID, Image_FFI_Schemas[13].Sig, Image_FFI_Schemas[13].Doc)
-	registrar.RegisterFFISchema("image.Image.EncodeJPEG", bridge, Image_FFI_Schemas[14].MethodID, Image_FFI_Schemas[14].Sig, Image_FFI_Schemas[14].Doc)
-	registerStructSchema("image.Image", image_Image_FFI_StructSchema)
 }

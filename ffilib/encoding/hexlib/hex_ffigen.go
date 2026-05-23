@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -186,17 +187,17 @@ func (b *Hex_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterHex(executor interface{ RegisterConstant(string, string) }, impl Hex, registry *ffigo.HandleRegistry) {
-	bridge := &Hex_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceHex(impl Hex) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("encoding/hex", "EncodeToString", "encoding/hex.EncodeToString", Hex_FFI_Schemas[0].MethodID, Hex_FFI_Schemas[0].Sig, Hex_FFI_Schemas[0].Doc)
+	schema.AddFunc("encoding/hex", "DecodeString", "encoding/hex.DecodeString", Hex_FFI_Schemas[1].MethodID, Hex_FFI_Schemas[1].Sig, Hex_FFI_Schemas[1].Doc)
+	schema.AddFunc("encoding/hex", "Dump", "encoding/hex.Dump", Hex_FFI_Schemas[2].MethodID, Hex_FFI_Schemas[2].Sig, Hex_FFI_Schemas[2].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Hex_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("encoding/hex", "EncodeToString", runtime.FFIRoute{Name: "encoding/hex.EncodeToString", Bridge: bridge, MethodID: Hex_FFI_Schemas[0].MethodID, FuncSig: Hex_FFI_Schemas[0].Sig, Doc: Hex_FFI_Schemas[0].Doc})
+		bound.AddRoute("encoding/hex", "DecodeString", runtime.FFIRoute{Name: "encoding/hex.DecodeString", Bridge: bridge, MethodID: Hex_FFI_Schemas[1].MethodID, FuncSig: Hex_FFI_Schemas[1].Sig, Doc: Hex_FFI_Schemas[1].Doc})
+		bound.AddRoute("encoding/hex", "Dump", runtime.FFIRoute{Name: "encoding/hex.Dump", Bridge: bridge, MethodID: Hex_FFI_Schemas[2].MethodID, FuncSig: Hex_FFI_Schemas[2].Sig, Doc: Hex_FFI_Schemas[2].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("encoding/hex.EncodeToString", bridge, Hex_FFI_Schemas[0].MethodID, Hex_FFI_Schemas[0].Sig, Hex_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("encoding/hex.DecodeString", bridge, Hex_FFI_Schemas[1].MethodID, Hex_FFI_Schemas[1].Sig, Hex_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("encoding/hex.Dump", bridge, Hex_FFI_Schemas[2].MethodID, Hex_FFI_Schemas[2].Sig, Hex_FFI_Schemas[2].Doc)
 }

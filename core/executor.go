@@ -21,6 +21,10 @@ type MiniExecutor struct {
 	moduleSources  map[string]*ast.ProgramStmt
 	modules        map[string]*runtime.PreparedProgram
 	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
+	valueSchemas   map[ast.Ident]*runtime.ValueSpec
+	packageValues  map[string]*runtime.BoundPackageValue
+	surfaceSchema  *runtime.FFISurfaceSchema
+	boundSurface   *runtime.BoundFFISurface
 	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
 	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
 	templates      *calltemplate.Registry
@@ -35,9 +39,11 @@ func SourceFileExt() string {
 }
 
 type ExportedSchemaSnapshot struct {
-	Funcs      map[ast.Ident]*runtime.RuntimeFuncSig
-	Structs    map[ast.Ident]*runtime.RuntimeStructSpec
-	Interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	Funcs           map[ast.Ident]*runtime.RuntimeFuncSig
+	RegisteredFuncs map[ast.Ident]bool
+	Values          map[ast.Ident]*runtime.ValueSpec
+	Structs         map[ast.Ident]*runtime.RuntimeStructSpec
+	Interfaces      map[ast.Ident]*runtime.RuntimeInterfaceSpec
 }
 
 func (e *MiniExecutor) SetMaxTypeDepth(depth int) {

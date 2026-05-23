@@ -1,6 +1,11 @@
 package ffigen
 
-import "go/ast"
+import (
+	"bytes"
+	"go/ast"
+	"go/format"
+	"go/token"
+)
 
 func findMethodsForStruct(files []*ast.File, structName string) []*ast.FuncDecl {
 	var res []*ast.FuncDecl
@@ -74,6 +79,10 @@ func exprToString(expr ast.Expr) string {
 	case *ast.BinaryExpr:
 		return exprToString(t.X) + " " + t.Op.String() + " " + exprToString(t.Y)
 	default:
-		return ""
+		var buf bytes.Buffer
+		if err := format.Node(&buf, token.NewFileSet(), expr); err != nil {
+			return ""
+		}
+		return buf.String()
 	}
 }

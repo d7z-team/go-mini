@@ -83,5 +83,5 @@ test.OutBool(nonZero)
 			Want:   "true|true|true|true|true|true|true|true|true|true|true|true|true|6|true",
 			Covers: []string{"Seed", "Float32", "Float64", "ExpFloat64", "Int", "Int31", "Int31n", "Int63", "Int63n", "NormFloat64", "Uint32", "Uint64", "Perm", "Read", "Intn"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

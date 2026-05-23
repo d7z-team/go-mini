@@ -61,7 +61,9 @@ func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[in
 func TestIntKeyMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &IntMapHost{}
-	RegisterMapTestLibrary(executor, "ffigen_test", host, nil)
+	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

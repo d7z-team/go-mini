@@ -119,15 +119,15 @@ func TestCircularDependency(t *testing.T) {
 func TestNestedFFIPath(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	// 模拟注册一个嵌套路径的 FFI
-	executor.RegisterFFISchema("net.http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
+	// 模拟注册一个嵌套路径的 FFI；FFI route 使用 canonical import path。
+	executor.RegisterFFISchema("net/http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
 	code := `
 	package main
 	import "net/http"
 
 	func main() {
-		// 虽然导入的是 net/http，但应能匹配到 net.http.Get
+		// 导入路径和 FFI route 都保持 canonical slash path。
 		res := http.Get("url")
 	}
 	`

@@ -53,7 +53,9 @@ import (
 
 func main() {
 	exec := engine.NewMiniExecutor()
-	ffilib.RegisterAll(exec)
+	if err := exec.UseSurface(ffilib.Surface()); err != nil {
+		panic(err)
+	}
 
 	prog, err := exec.NewRuntimeByGoCode(`
 package main

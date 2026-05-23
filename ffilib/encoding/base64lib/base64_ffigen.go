@@ -3,36 +3,37 @@ package base64lib
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 )
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
+
+var encoding_base64_Encoding_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("encoding/base64.Encoding", runtime.StructOwnershipHostOpaque, "struct { Encode function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) Void; Decode function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(Int64, Error); EncodeToString function(HostRef<encoding/base64.Encoding>, TypeBytes) String; DecodeString function(HostRef<encoding/base64.Encoding>, String) tuple(TypeBytes, Error); AppendEncode function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) TypeBytes; AppendDecode function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(TypeBytes, Error); EncodedLen function(HostRef<encoding/base64.Encoding>, Int64) Int64; DecodedLen function(HostRef<encoding/base64.Encoding>, Int64) Int64; WithPadding function(HostRef<encoding/base64.Encoding>, Int64) HostRef<encoding/base64.Encoding>; Strict function(HostRef<encoding/base64.Encoding>) HostRef<encoding/base64.Encoding>; }")
 
 const (
-	MethodID_Base64_EncodeToString    = 1
-	MethodID_Base64_DecodeString      = 2
-	MethodID_Base64_URLEncodeToString = 3
-	MethodID_Base64_URLDecodeString   = 4
+	MethodID_Module_NewEncoding = 1
 )
 
-type Base64Proxy struct {
+type ModuleProxy struct {
 	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
 }
 
-func NewBase64Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Base64 {
-	return &Base64Proxy{bridge: bridge, registry: registry}
+func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Module {
+	return &ModuleProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *Base64Proxy) EncodeToString(src []byte) string {
+func (__p *ModuleProxy) NewEncoding(encoder string) *Encoding {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteBytes(src)
+	wireBuf.WriteString(string(encoder))
 
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_EncodeToString, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_NewEncoding, Args: append([]byte(nil), wireBuf.Bytes()...)})
 	retData, syncErr := ffigo.SyncBytes(__ret)
 	if err == nil {
 		err = syncErr
@@ -40,164 +41,38 @@ func (__p *Base64Proxy) EncodeToString(src []byte) string {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *Base64Proxy) DecodeString(s string) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_DecodeString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
+	var v_0 *Encoding
+	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+	if id := uint32(retBuf.ReadUvarint()); id != 0 {
+		if __p.registry != nil {
+			if obj, ok := __p.registry.GetTyped(id, "encoding/base64.Encoding"); ok {
+				v_0 = obj.(*Encoding)
 			}
 		}
 	}
-	return v_0, err_1
-}
-
-func (__p *Base64Proxy) URLEncodeToString(src []byte) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(src)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_URLEncodeToString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
 	return v_0
 }
 
-func (__p *Base64Proxy) URLDecodeString(s string) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Base64_URLDecodeString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
-		case "EncodeToString":
-			methodID = MethodID_Base64_EncodeToString
-		case "DecodeString":
-			methodID = MethodID_Base64_DecodeString
-		case "URLEncodeToString":
-			methodID = MethodID_Base64_URLEncodeToString
-		case "URLDecodeString":
-			methodID = MethodID_Base64_URLDecodeString
+		case "NewEncoding":
+			methodID = MethodID_Module_NewEncoding
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Base64_EncodeToString:
-		var src []byte
-		src = reqBuf.ReadBytes()
-		r0 := impl.EncodeToString(src)
+	case MethodID_Module_NewEncoding:
+		var encoder string
+		encoder = string(reqBuf.ReadString())
+		r0 := impl.NewEncoding(encoder)
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Base64_DecodeString:
-		var s string
-		s = string(reqBuf.ReadString())
-		r0, err := impl.DecodeString(s)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBytes(r0)
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteRawError("", 0)
-		}
-		return resBuf.Bytes(), nil
-	case MethodID_Base64_URLEncodeToString:
-		var src []byte
-		src = reqBuf.ReadBytes()
-		r0 := impl.URLEncodeToString(src)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteString(string(r0))
-		return resBuf.Bytes(), nil
-	case MethodID_Base64_URLDecodeString:
-		var s string
-		s = string(reqBuf.ReadString())
-		r0, err := impl.URLDecodeString(s)
-		resBuf := ffigo.GetBuffer()
-		resBuf.WriteBytes(r0)
-		if err != nil {
-			if registry != nil {
-				resBuf.WriteRawError(err.Error(), registry.Register(err))
-			} else {
-				resBuf.WriteRawError(err.Error(), 0)
-			}
-		} else {
-			resBuf.WriteRawError("", 0)
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "encoding/base64.Encoding")))
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -205,56 +80,422 @@ func Base64HostRouter(ctx context.Context, impl Base64, registry *ffigo.HandleRe
 	}
 }
 
-var Base64_FFI_Schemas = []struct {
+var Module_FFI_Schemas = []struct {
 	Name     string
 	MethodID uint32
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
-	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
-	{"URLEncodeToString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
-	{"URLDecodeString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
+	{"NewEncoding", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn), ""},
 }
 
-type Base64_Bridge struct {
-	Impl     Base64
+type Module_Bridge struct {
+	Impl     Module
 	Registry *ffigo.HandleRegistry
 }
 
-func (b *Base64_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+func (b *Module_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	if req == nil {
 		return nil, fmt.Errorf("ffigen: missing FFI request")
 	}
-	return Base64HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
 }
 
-func (b *Base64_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+func (b *Module_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	if req == nil {
 		return nil, fmt.Errorf("ffigen: missing FFI request")
 	}
-	return Base64HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
+	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
 }
 
-func (b *Base64_Bridge) DestroyHandle(handle uint32) error {
+func (b *Module_Bridge) DestroyHandle(handle uint32) error {
 	if b.Registry != nil {
 		b.Registry.Remove(handle)
 	}
 	return nil
 }
 
-func RegisterBase64(executor interface{ RegisterConstant(string, string) }, impl Base64, registry *ffigo.HandleRegistry) {
-	bridge := &Base64_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceModule(impl Module) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("encoding/base64", "NewEncoding", "encoding/base64.NewEncoding", Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	schema.AddConst("encoding/base64", "NoPadding", ffigo.ToConstantString(base64.NoPadding))
+	schema.AddConst("encoding/base64", "StdPadding", ffigo.ToConstantString(base64.StdPadding))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Module_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("encoding/base64", "NewEncoding", runtime.FFIRoute{Name: "encoding/base64.NewEncoding", Bridge: bridge, MethodID: Module_FFI_Schemas[0].MethodID, FuncSig: Module_FFI_Schemas[0].Sig, Doc: Module_FFI_Schemas[0].Doc})
+		bound.AddConst("encoding/base64", "NoPadding", ffigo.ToConstantString(base64.NoPadding))
+		bound.AddConst("encoding/base64", "StdPadding", ffigo.ToConstantString(base64.StdPadding))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
+}
+
+const (
+	MethodID_Encoding_Encode         = 1
+	MethodID_Encoding_Decode         = 2
+	MethodID_Encoding_EncodeToString = 3
+	MethodID_Encoding_DecodeString   = 4
+	MethodID_Encoding_AppendEncode   = 5
+	MethodID_Encoding_AppendDecode   = 6
+	MethodID_Encoding_EncodedLen     = 7
+	MethodID_Encoding_DecodedLen     = 8
+	MethodID_Encoding_WithPadding    = 9
+	MethodID_Encoding_Strict         = 10
+)
+
+func EncodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+	if methodID == 0 && methodName != "" {
+		switch methodName {
+		case "Encode":
+			methodID = MethodID_Encoding_Encode
+		case "Decode":
+			methodID = MethodID_Encoding_Decode
+		case "EncodeToString":
+			methodID = MethodID_Encoding_EncodeToString
+		case "DecodeString":
+			methodID = MethodID_Encoding_DecodeString
+		case "AppendEncode":
+			methodID = MethodID_Encoding_AppendEncode
+		case "AppendDecode":
+			methodID = MethodID_Encoding_AppendDecode
+		case "EncodedLen":
+			methodID = MethodID_Encoding_EncodedLen
+		case "DecodedLen":
+			methodID = MethodID_Encoding_DecodedLen
+		case "WithPadding":
+			methodID = MethodID_Encoding_WithPadding
+		case "Strict":
+			methodID = MethodID_Encoding_Strict
+		}
 	}
-	registrar.RegisterFFISchema("encoding/base64.EncodeToString", bridge, Base64_FFI_Schemas[0].MethodID, Base64_FFI_Schemas[0].Sig, Base64_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("encoding/base64.DecodeString", bridge, Base64_FFI_Schemas[1].MethodID, Base64_FFI_Schemas[1].Sig, Base64_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("encoding/base64.URLEncodeToString", bridge, Base64_FFI_Schemas[2].MethodID, Base64_FFI_Schemas[2].Sig, Base64_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("encoding/base64.URLDecodeString", bridge, Base64_FFI_Schemas[3].MethodID, Base64_FFI_Schemas[3].Sig, Base64_FFI_Schemas[3].Doc)
+
+	reqBuf := ffigo.NewReader(args)
+	switch methodID {
+	case MethodID_Encoding_Encode:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var dst *ffigo.BytesRef
+		dst = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		var src []byte
+		src = reqBuf.ReadBytes()
+		__recv.Encode(dst, src)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(1))
+		if dst == nil {
+			resBuf.WriteBytes(nil)
+		} else {
+			resBuf.WriteBytes(dst.Value)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_Decode:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var dst *ffigo.BytesRef
+		dst = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		var src []byte
+		src = reqBuf.ReadBytes()
+		r0, err := __recv.Decode(dst, src)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteUvarint(uint64(1))
+		if dst == nil {
+			resBuf.WriteBytes(nil)
+		} else {
+			resBuf.WriteBytes(dst.Value)
+		}
+		resBuf.WriteVarint(int64(r0))
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_EncodeToString:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var src []byte
+		src = reqBuf.ReadBytes()
+		r0 := __recv.EncodeToString(src)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteString(string(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_DecodeString:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var s string
+		s = string(reqBuf.ReadString())
+		r0, err := __recv.DecodeString(s)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBytes(r0)
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_AppendEncode:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var dst []byte
+		dst = reqBuf.ReadBytes()
+		var src []byte
+		src = reqBuf.ReadBytes()
+		r0 := __recv.AppendEncode(dst, src)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBytes(r0)
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_AppendDecode:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var dst []byte
+		dst = reqBuf.ReadBytes()
+		var src []byte
+		src = reqBuf.ReadBytes()
+		r0, err := __recv.AppendDecode(dst, src)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBytes(r0)
+		if err != nil {
+			if registry != nil {
+				resBuf.WriteRawError(err.Error(), registry.Register(err))
+			} else {
+				resBuf.WriteRawError(err.Error(), 0)
+			}
+		} else {
+			resBuf.WriteRawError("", 0)
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_EncodedLen:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var n int64
+		{
+			tmp := reqBuf.ReadVarint()
+			n = int64(tmp)
+		}
+		r0 := __recv.EncodedLen(n)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_DecodedLen:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var n int64
+		{
+			tmp := reqBuf.ReadVarint()
+			n = int64(tmp)
+		}
+		r0 := __recv.DecodedLen(n)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteVarint(int64(r0))
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_WithPadding:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		var padding int64
+		{
+			tmp := reqBuf.ReadVarint()
+			padding = int64(tmp)
+		}
+		r0 := __recv.WithPadding(padding)
+		resBuf := ffigo.GetBuffer()
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "encoding/base64.Encoding")))
+		}
+		return resBuf.Bytes(), nil
+	case MethodID_Encoding_Strict:
+		var __recv *Encoding
+		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
+		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
+				__recv = obj.(*Encoding)
+			} else {
+				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
+			}
+		}
+		r0 := __recv.Strict()
+		resBuf := ffigo.GetBuffer()
+		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
+		if r0 == nil {
+			resBuf.WriteUvarint(0)
+		} else {
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "encoding/base64.Encoding")))
+		}
+		return resBuf.Bytes(), nil
+	default:
+		return nil, fmt.Errorf("unknown method ID %d", methodID)
+	}
+}
+
+var Encoding_FFI_Schemas = []struct {
+	Name     string
+	MethodID uint32
+	Sig      *runtime.RuntimeFuncSig
+	Doc      string
+}{
+	{"Encode", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) Void", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), ""},
+	{"Decode", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), ""},
+	{"EncodeToString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"DecodeString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, String) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"AppendEncode", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"AppendDecode", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"EncodedLen", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"DecodedLen", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"WithPadding", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
+	{"Strict", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn), ""},
+}
+
+type Encoding_Bridge struct {
+	Impl     *Encoding
+	Registry *ffigo.HandleRegistry
+}
+
+func (b *Encoding_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return EncodingHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
+}
+
+func (b *Encoding_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, fmt.Errorf("ffigen: missing FFI request")
+	}
+	return EncodingHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
+}
+
+func (b *Encoding_Bridge) DestroyHandle(handle uint32) error {
+	if b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}
+
+func SurfaceEncoding() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("encoding/base64.Encoding", encoding_base64_Encoding_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Encoding_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["encoding/base64.Encoding.Encode"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.Encode", Bridge: bridge, MethodID: Encoding_FFI_Schemas[0].MethodID, FuncSig: Encoding_FFI_Schemas[0].Sig, Doc: Encoding_FFI_Schemas[0].Doc}
+		bound.Routes["encoding/base64.Encoding.Decode"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.Decode", Bridge: bridge, MethodID: Encoding_FFI_Schemas[1].MethodID, FuncSig: Encoding_FFI_Schemas[1].Sig, Doc: Encoding_FFI_Schemas[1].Doc}
+		bound.Routes["encoding/base64.Encoding.EncodeToString"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.EncodeToString", Bridge: bridge, MethodID: Encoding_FFI_Schemas[2].MethodID, FuncSig: Encoding_FFI_Schemas[2].Sig, Doc: Encoding_FFI_Schemas[2].Doc}
+		bound.Routes["encoding/base64.Encoding.DecodeString"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.DecodeString", Bridge: bridge, MethodID: Encoding_FFI_Schemas[3].MethodID, FuncSig: Encoding_FFI_Schemas[3].Sig, Doc: Encoding_FFI_Schemas[3].Doc}
+		bound.Routes["encoding/base64.Encoding.AppendEncode"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.AppendEncode", Bridge: bridge, MethodID: Encoding_FFI_Schemas[4].MethodID, FuncSig: Encoding_FFI_Schemas[4].Sig, Doc: Encoding_FFI_Schemas[4].Doc}
+		bound.Routes["encoding/base64.Encoding.AppendDecode"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.AppendDecode", Bridge: bridge, MethodID: Encoding_FFI_Schemas[5].MethodID, FuncSig: Encoding_FFI_Schemas[5].Sig, Doc: Encoding_FFI_Schemas[5].Doc}
+		bound.Routes["encoding/base64.Encoding.EncodedLen"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.EncodedLen", Bridge: bridge, MethodID: Encoding_FFI_Schemas[6].MethodID, FuncSig: Encoding_FFI_Schemas[6].Sig, Doc: Encoding_FFI_Schemas[6].Doc}
+		bound.Routes["encoding/base64.Encoding.DecodedLen"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.DecodedLen", Bridge: bridge, MethodID: Encoding_FFI_Schemas[7].MethodID, FuncSig: Encoding_FFI_Schemas[7].Sig, Doc: Encoding_FFI_Schemas[7].Doc}
+		bound.Routes["encoding/base64.Encoding.WithPadding"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.WithPadding", Bridge: bridge, MethodID: Encoding_FFI_Schemas[8].MethodID, FuncSig: Encoding_FFI_Schemas[8].Sig, Doc: Encoding_FFI_Schemas[8].Doc}
+		bound.Routes["encoding/base64.Encoding.Strict"] = runtime.FFIRoute{Name: "encoding/base64.Encoding.Strict", Bridge: bridge, MethodID: Encoding_FFI_Schemas[9].MethodID, FuncSig: Encoding_FFI_Schemas[9].Sig, Doc: Encoding_FFI_Schemas[9].Doc}
+		bound.AddStruct("encoding/base64.Encoding", encoding_base64_Encoding_FFI_StructSchema)
+		return bound, nil
+	})
+}
+
+func SurfaceGlobals() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	spec0 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
+	schema.AddValue("encoding/base64", "RawStdEncoding", spec0)
+	spec1 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
+	schema.AddValue("encoding/base64", "RawURLEncoding", spec1)
+	spec2 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
+	schema.AddValue("encoding/base64", "StdEncoding", spec2)
+	spec3 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
+	schema.AddValue("encoding/base64", "URLEncoding", spec3)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bound := runtime.NewBoundFFISurface(schema)
+		value0, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec("encoding/base64.Encoding"), Value: RawStdEncoding, Bridge: &Encoding_Bridge{Registry: ctx.Registry}}).Bind(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bound.AddPackageValue("encoding/base64", "RawStdEncoding", spec0, value0)
+		value1, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec("encoding/base64.Encoding"), Value: RawURLEncoding, Bridge: &Encoding_Bridge{Registry: ctx.Registry}}).Bind(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bound.AddPackageValue("encoding/base64", "RawURLEncoding", spec1, value1)
+		value2, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec("encoding/base64.Encoding"), Value: StdEncoding, Bridge: &Encoding_Bridge{Registry: ctx.Registry}}).Bind(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bound.AddPackageValue("encoding/base64", "StdEncoding", spec2, value2)
+		value3, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec("encoding/base64.Encoding"), Value: URLEncoding, Bridge: &Encoding_Bridge{Registry: ctx.Registry}}).Bind(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bound.AddPackageValue("encoding/base64", "URLEncoding", spec3, value3)
+		return bound, nil
+	})
 }

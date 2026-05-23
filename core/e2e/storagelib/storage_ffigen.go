@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -131,16 +132,15 @@ func (b *StorageAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStorageAPI(executor interface{ RegisterConstant(string, string) }, impl StorageAPI, registry *ffigo.HandleRegistry) {
-	bridge := &StorageAPI_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceStorageAPI(impl StorageAPI) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("storage", "SetCapacity", "storage.SetCapacity", StorageAPI_FFI_Schemas[0].MethodID, StorageAPI_FFI_Schemas[0].Sig, StorageAPI_FFI_Schemas[0].Doc)
+	schema.AddFunc("storage", "GetStatus", "storage.GetStatus", StorageAPI_FFI_Schemas[1].MethodID, StorageAPI_FFI_Schemas[1].Sig, StorageAPI_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &StorageAPI_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("storage", "SetCapacity", runtime.FFIRoute{Name: "storage.SetCapacity", Bridge: bridge, MethodID: StorageAPI_FFI_Schemas[0].MethodID, FuncSig: StorageAPI_FFI_Schemas[0].Sig, Doc: StorageAPI_FFI_Schemas[0].Doc})
+		bound.AddRoute("storage", "GetStatus", runtime.FFIRoute{Name: "storage.GetStatus", Bridge: bridge, MethodID: StorageAPI_FFI_Schemas[1].MethodID, FuncSig: StorageAPI_FFI_Schemas[1].Sig, Doc: StorageAPI_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("storage.SetCapacity", bridge, StorageAPI_FFI_Schemas[0].MethodID, StorageAPI_FFI_Schemas[0].Sig, StorageAPI_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("storage.GetStatus", bridge, StorageAPI_FFI_Schemas[1].MethodID, StorageAPI_FFI_Schemas[1].Sig, StorageAPI_FFI_Schemas[1].Doc)
 }

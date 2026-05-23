@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 func (e *Executor) RegisterRoute(name string, route FFIRoute) {
@@ -20,6 +22,21 @@ func (e *Executor) TryRegisterRoute(name string, route FFIRoute) error {
 		}
 	}
 	e.routes[name] = route
+	if pkg, member := SplitExternalName(name); pkg != "" && member != "" && !strings.Contains(member, ".") {
+		typ := RuntimeType{}
+		if route.FuncSig != nil {
+			if parsed, err := ParseRuntimeType(route.FuncSig.Spec); err == nil {
+				typ = parsed
+			}
+		}
+		e.registerBoundPackageMemberLocked(pkg, &BoundFFIMember{
+			Name:      member,
+			Kind:      FFIMemberFunc,
+			Type:      typ,
+			ReadOnly:  true,
+			RouteName: name,
+		})
+	}
 	return nil
 }
 
@@ -200,4 +217,50 @@ func (e *Executor) RegisterConstant(name, val string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.consts[name] = val
+	if pkg, member := SplitExternalName(name); pkg != "" && member != "" && !strings.Contains(member, ".") {
+		e.registerBoundPackageMemberLocked(pkg, &BoundFFIMember{
+			Name:       member,
+			Kind:       FFIMemberConst,
+			ReadOnly:   true,
+			ConstValue: val,
+		})
+	}
+}
+
+func (e *Executor) TryRegisterPackageValue(name string, spec *ValueSpec, value *Var) error {
+	if name == "" {
+		return errors.New("package value missing name")
+	}
+	if spec == nil {
+		return errors.New("package value missing schema")
+	}
+	if value == nil {
+		return errors.New("package value missing value")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.packageValues == nil {
+		e.packageValues = make(map[string]*BoundPackageValue)
+	}
+	if existing, ok := e.packageValues[name]; ok && existing != nil && existing.Spec != nil {
+		if existing.Spec.Type.Raw != spec.Type.Raw {
+			return &SchemaConflictError{
+				Kind:     "package value",
+				Name:     name,
+				Existing: existing.Spec.Type.Raw.String(),
+				New:      spec.Type.Raw.String(),
+			}
+		}
+	}
+	e.packageValues[name] = &BoundPackageValue{Name: name, Spec: spec, Value: value}
+	if pkg, member := SplitExternalName(name); pkg != "" && member != "" && !strings.Contains(member, ".") {
+		e.registerBoundPackageMemberLocked(pkg, &BoundFFIMember{
+			Name:     member,
+			Kind:     FFIMemberValue,
+			Type:     spec.Type,
+			ReadOnly: spec.ReadOnly,
+			Value:    value,
+		})
+	}
+	return nil
 }

@@ -39,5 +39,5 @@ test.OutBytes(data)
 `, path, path, path),
 			Want: "Hello Method Value",
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

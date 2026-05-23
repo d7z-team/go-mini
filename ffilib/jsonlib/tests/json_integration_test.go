@@ -58,5 +58,5 @@ test.OutBool(obj.Meta.Active)
 			Want:   "mini|true",
 			Covers: []string{"Marshal", "Unmarshal"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

@@ -116,5 +116,5 @@ test.OutBool(len(jpegData) > 0)
 			Want:   "4|3|4,3|0,0,4,3|255,0,0,255|0,0,0,0|2,2,2|0,255,0,255|png|4|true|true",
 			Covers: []string{"Decode", "NewRGBA", "Bounds", "Size", "Width", "Height", "At", "Set", "Fill", "Clear", "Clone", "SubImage", "Draw", "Resize", "Crop", "EncodePNG", "EncodeJPEG"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

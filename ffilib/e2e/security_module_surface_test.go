@@ -35,7 +35,7 @@ func TestDefaultImageModuleIsAllowed(t *testing.T) {
 	}
 }
 
-func TestRegisterAllEnablesFileSystemSurface(t *testing.T) {
+func TestSurfaceEnablesFileSystemSurface(t *testing.T) {
 	e := newStdExecutor()
 
 	code := `package main
@@ -45,6 +45,6 @@ func TestRegisterAllEnablesFileSystemSurface(t *testing.T) {
 			_, _ = f, err
 		}`
 	if _, err := e.NewRuntimeByGoCode(code); err != nil {
-		t.Fatalf("expected RegisterAll to enable os/io file surface, got: %v", err)
+		t.Fatalf("expected ffilib.Surface to enable os/io file surface, got: %v", err)
 	}
 }

@@ -64,12 +64,7 @@ func isIgnorableTypeCheckMessage(msg string, imports map[string]string) bool {
 	return ok
 }
 
-func (g *Generator) generatePackageOutput(outputPath string, data packageData) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("ffigen generation failed: %v", r)
-		}
-	}()
+func (g *Generator) generatePackageOutput(outputPath string, data packageData) error {
 	schemas := newSchemaRegistry()
 
 	var generated []string
@@ -94,6 +89,7 @@ func (g *Generator) generatePackageOutput(outputPath string, data packageData) (
 		"strings": "strings",
 		"ffigo":   "gopkg.d7z.net/go-mini/core/ffigo",
 		"runtime": "gopkg.d7z.net/go-mini/core/runtime",
+		"surface": "gopkg.d7z.net/go-mini/core/surface",
 	}
 	for _, path := range stdPackages {
 		fmt.Fprintf(&sb, "\t\"%s\"\n", path)
@@ -111,6 +107,10 @@ func (g *Generator) generatePackageOutput(outputPath string, data packageData) (
 	sb.WriteString(")\n\n")
 	sb.WriteString(schemaDefs.String())
 	sb.WriteString(strings.Join(generated, "\n"))
+	if globals := g.generateGlobalsCode(data.globals); globals != "" {
+		sb.WriteString("\n")
+		sb.WriteString(globals)
+	}
 	return writeFormattedSource(outputPath, sb.String())
 }
 

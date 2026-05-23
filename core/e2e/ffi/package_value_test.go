@@ -1,0 +1,189 @@
+package tests
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
+)
+
+type packageValueCounter struct {
+	value int64
+}
+
+type packageValueBridge struct {
+	registry   *ffigo.HandleRegistry
+	seen       []int64
+	lastHandle uint32
+}
+
+func (b *packageValueBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	if req == nil {
+		return nil, errors.New("missing request")
+	}
+	reader := ffigo.NewReader(req.Args)
+	switch req.MethodID {
+	case 1:
+		id := uint32(reader.ReadUvarint())
+		b.lastHandle = id
+		obj, err := b.registry.GetTypedWithAudit(id, "mock.Counter")
+		if err != nil {
+			return nil, err
+		}
+		counter, ok := obj.(*packageValueCounter)
+		if !ok {
+			return nil, fmt.Errorf("unexpected counter object %T", obj)
+		}
+		buf := ffigo.GetBuffer()
+		buf.WriteVarint(counter.value)
+		return buf.Bytes(), nil
+	case 2:
+		b.seen = append(b.seen, reader.ReadVarint())
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unknown method %d", req.MethodID)
+	}
+}
+
+func (b *packageValueBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
+}
+
+func (b *packageValueBridge) DestroyHandle(handle uint32) error {
+	if b.registry != nil {
+		b.registry.Remove(handle)
+	}
+	return nil
+}
+
+func TestFFIPackageHostRefValue(t *testing.T) {
+	executor, bridge := newPackageValueExecutor(t)
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "mock"
+
+func main() {
+	mock.Assert(mock.Default.Value())
+	c := mock.Default
+	mock.Assert(c.Value())
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := prog.Execute(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(bridge.seen) != "[42 42]" {
+		t.Fatalf("unexpected package HostRef values: %v", bridge.seen)
+	}
+	if bridge.lastHandle == 0 {
+		t.Fatal("package HostRef handle was not observed")
+	}
+	if err := bridge.DestroyHandle(bridge.lastHandle); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executor.HandleRegistry().GetTypedWithAudit(bridge.lastHandle, "mock.Counter"); err != nil {
+		t.Fatalf("pinned package value was removed: %v", err)
+	}
+}
+
+func TestFFIPackageValueIsReadOnly(t *testing.T) {
+	executor, _ := newPackageValueExecutor(t)
+	_, err := executor.CompileGoCode(`
+package main
+
+import "mock"
+
+func main() {
+	mock.Default = mock.Default
+}
+`)
+	if err == nil {
+		t.Fatal("expected read-only package value assignment to fail")
+	}
+	if !strings.Contains(err.Error(), "read-only external symbol") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBytecodeRequiresRegisteredPackageValueSurface(t *testing.T) {
+	executor, _ := newPackageValueExecutor(t)
+	compiled, err := executor.CompileGoCode(`
+package main
+
+import "mock"
+
+func main() {
+	mock.Assert(mock.Default.Value())
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil || len(compiled.Bytecode.Executable.ExternalRequirements) == 0 {
+		t.Fatal("compiled bytecode missing external requirements")
+	}
+	payload, err := compiled.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loader := engine.NewMiniExecutor()
+	_, err = loader.NewRuntimeByBytecodeJSON(payload)
+	if err == nil {
+		t.Fatal("expected bytecode load to reject missing external surface")
+	}
+	if !strings.Contains(err.Error(), "missing external FFI") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	partial := engine.NewMiniExecutor()
+	partialBridge := &packageValueBridge{registry: partial.HandleRegistry()}
+	registerMockCounterSurface(partial, partialBridge, false)
+	_, err = partial.NewRuntimeByBytecodeJSON(payload)
+	if err == nil {
+		t.Fatal("expected bytecode load to reject missing external method route")
+	}
+	if !strings.Contains(err.Error(), "missing external FFI function mock.Counter.Value") {
+		t.Fatalf("unexpected method route error: %v", err)
+	}
+}
+
+func newPackageValueExecutor(t *testing.T) (*engine.MiniExecutor, *packageValueBridge) {
+	t.Helper()
+	executor := engine.NewMiniExecutor()
+	bridge := &packageValueBridge{registry: executor.HandleRegistry()}
+	registerMockCounterSurface(executor, bridge, true)
+	return executor, bridge
+}
+
+func registerMockCounterSurface(executor *engine.MiniExecutor, bridge *packageValueBridge, withValueMethod bool) {
+	counterType := miniruntime.TypeSpec("mock.Counter")
+	hostRefType := miniruntime.MustParseRuntimeType(miniruntime.HostRefType(counterType))
+
+	executor.RegisterStructSchema("mock.Counter", miniruntime.MustParseRuntimeStructSpec(
+		"mock.Counter",
+		miniruntime.StructOwnershipHostOpaque,
+		"struct { Value function(HostRef<mock.Counter>) Int64; }",
+	))
+	if withValueMethod {
+		executor.RegisterFFISchema("mock.Counter.Value", bridge, 1, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Counter>) Int64"), "")
+	}
+	executor.RegisterFFISchema("mock.Assert", bridge, 2, miniruntime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	executor.RegisterPackageValue("mock.Default", &miniruntime.ValueSpec{Type: hostRefType, ReadOnly: true}, miniruntime.StaticHostRefProvider{
+		ElementType: counterType,
+		Value:       &packageValueCounter{value: 42},
+		Bridge:      bridge,
+	})
+}

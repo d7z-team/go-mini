@@ -29,8 +29,9 @@ func TestUnnamedParams(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	logger := &mockLogger{}
 
-	// Register generated Logger FFI
-	RegisterLogger(executor, logger, nil)
+	if err := executor.UseSurface(SurfaceLogger(logger)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

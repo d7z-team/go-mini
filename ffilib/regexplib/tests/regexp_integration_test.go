@@ -100,5 +100,5 @@ test.OutBool(err != nil)
 			Want:   "a#b#|a$x|b|true",
 			Covers: []string{"ReplaceAllString", "ReplaceAllLiteralString", "Split", "FindAllString"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

@@ -29,5 +29,5 @@ test.Out(hex.Dump([]byte("abc")))
 			Want:   "616263|abc|00000000  61 62 63                                          |abc|\n",
 			Covers: []string{"EncodeToString", "DecodeString", "Dump"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -196,17 +197,17 @@ func (b *URL_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterURL(executor interface{ RegisterConstant(string, string) }, impl URL, registry *ffigo.HandleRegistry) {
-	bridge := &URL_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceURL(impl URL) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("net/url", "QueryEscape", "net/url.QueryEscape", URL_FFI_Schemas[0].MethodID, URL_FFI_Schemas[0].Sig, URL_FFI_Schemas[0].Doc)
+	schema.AddFunc("net/url", "QueryUnescape", "net/url.QueryUnescape", URL_FFI_Schemas[1].MethodID, URL_FFI_Schemas[1].Sig, URL_FFI_Schemas[1].Doc)
+	schema.AddFunc("net/url", "JoinPath", "net/url.JoinPath", URL_FFI_Schemas[2].MethodID, URL_FFI_Schemas[2].Sig, URL_FFI_Schemas[2].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &URL_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("net/url", "QueryEscape", runtime.FFIRoute{Name: "net/url.QueryEscape", Bridge: bridge, MethodID: URL_FFI_Schemas[0].MethodID, FuncSig: URL_FFI_Schemas[0].Sig, Doc: URL_FFI_Schemas[0].Doc})
+		bound.AddRoute("net/url", "QueryUnescape", runtime.FFIRoute{Name: "net/url.QueryUnescape", Bridge: bridge, MethodID: URL_FFI_Schemas[1].MethodID, FuncSig: URL_FFI_Schemas[1].Sig, Doc: URL_FFI_Schemas[1].Doc})
+		bound.AddRoute("net/url", "JoinPath", runtime.FFIRoute{Name: "net/url.JoinPath", Bridge: bridge, MethodID: URL_FFI_Schemas[2].MethodID, FuncSig: URL_FFI_Schemas[2].Sig, Doc: URL_FFI_Schemas[2].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("net/url.QueryEscape", bridge, URL_FFI_Schemas[0].MethodID, URL_FFI_Schemas[0].Sig, URL_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("net/url.QueryUnescape", bridge, URL_FFI_Schemas[1].MethodID, URL_FFI_Schemas[1].Sig, URL_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("net/url.JoinPath", bridge, URL_FFI_Schemas[2].MethodID, URL_FFI_Schemas[2].Sig, URL_FFI_Schemas[2].Doc)
 }

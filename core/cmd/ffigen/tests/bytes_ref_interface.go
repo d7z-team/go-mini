@@ -27,7 +27,9 @@ func (h *BytesRefHost) Mutate(buf *ffigo.BytesRef) int64 {
 
 func TestGeneratedBytesRefCopyBack(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	RegisterBytesRefAPI(executor, &BytesRefHost{}, executor.HandleRegistry())
+	if err := executor.UseSurface(SurfaceBytesRefAPI(&BytesRefHost{})); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

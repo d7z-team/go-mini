@@ -26,7 +26,9 @@ func (m *ContextMockImpl) WithoutContext(val string) string {
 func TestFFIContextData(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &ContextMockImpl{}
-	RegisterContextMock(executor, mock, nil)
+	if err := executor.UseSurface(SurfaceContextMock(mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

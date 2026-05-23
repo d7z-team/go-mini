@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 type ModuleHost struct{}
@@ -84,14 +83,4 @@ func (w *WaitGroup) Wait() ffigo.Async[ffigo.Void] {
 			w.mu.Unlock()
 		}, nil
 	})
-}
-
-func RegisterSyncAll(executor interface {
-	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-	RegisterConstant(string, string)
-}, impl Module, registry *ffigo.HandleRegistry,
-) {
-	RegisterModule(executor, impl, registry)
-	RegisterWaitGroup(executor, registry)
 }

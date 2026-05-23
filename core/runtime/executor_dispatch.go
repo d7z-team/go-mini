@@ -1190,42 +1190,29 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 
-		// Fallback to FFI
-		ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
-		found := false
-		prefix1 := path + "."
-		prefix2 := strings.ReplaceAll(path, "/", ".") + "."
-		for name, route := range e.routes {
-			if strings.HasPrefix(name, prefix1) || strings.HasPrefix(name, prefix2) {
-				found = true
-				var methodName string
-				if strings.HasPrefix(name, prefix1) {
-					methodName = strings.TrimPrefix(name, prefix1)
-				} else {
-					methodName = strings.TrimPrefix(name, prefix2)
+		if pkg, ok := e.lookupFFIPackage(path); ok {
+			ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
+			for _, member := range sortedBoundPackageMembers(pkg) {
+				if member == nil {
+					continue
 				}
-				ffiMod.Store(methodName, &Var{
-					VType: TypeAny,
-					Str:   name,
-					Ref:   route,
-				})
-			}
-		}
-
-		for name, val := range e.consts {
-			if strings.HasPrefix(name, prefix1) || strings.HasPrefix(name, prefix2) {
-				found = true
-				var constName string
-				if strings.HasPrefix(name, prefix1) {
-					constName = strings.TrimPrefix(name, prefix1)
-				} else {
-					constName = strings.TrimPrefix(name, prefix2)
+				switch member.Kind {
+				case FFIMemberFunc:
+					if route, ok := e.routes[member.RouteName]; ok {
+						ffiMod.Store(member.Name, &Var{
+							VType: TypeAny,
+							Str:   member.RouteName,
+							Ref:   route,
+						})
+					}
+				case FFIMemberConst:
+					ffiMod.Store(member.Name, e.evalLiteralToVar(member.ConstValue))
+				case FFIMemberValue:
+					if member.Value != nil {
+						ffiMod.Store(member.Name, cloneVarForAssign(member.Value))
+					}
 				}
-				ffiMod.Store(constName, e.evalLiteralToVar(val))
 			}
-		}
-
-		if found {
 			res := &Var{VType: TypeModule, Ref: ffiMod}
 			waiters := session.Shared.finishModuleLoad(path, res)
 			session.ValueStack.Push(res)

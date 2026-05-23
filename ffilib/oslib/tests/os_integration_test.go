@@ -75,5 +75,5 @@ test.OutBool((os.O_CREATE | os.O_RDWR) != 0)
 			Want:   "hello|hello|rocks|true",
 			Covers: []string{"Open", "Create", "OpenFile", "ReadFile", "WriteFile", "Remove", "Getenv"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

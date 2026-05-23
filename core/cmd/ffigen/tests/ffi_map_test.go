@@ -33,7 +33,9 @@ func TestFFIMap(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	host := &MapTestHost{}
 
-	RegisterMapTestLibrary(executor, "ffigen_test", host, nil)
+	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

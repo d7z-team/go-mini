@@ -47,17 +47,17 @@ type BrowserModule interface {
 	if strings.Count(code, "var browser_Page_FFI_StructSchema = ") != 1 {
 		t.Fatalf("expected browser.Page schema to be emitted once, got %d", strings.Count(code, "var browser_Page_FFI_StructSchema = "))
 	}
-	if strings.Count(code, `registerStructSchema("browser.Page",`) != 1 {
-		t.Fatalf("expected browser.Page to be registered once by its owned target, got %d", strings.Count(code, `registerStructSchema("browser.Page",`))
-	}
-	if !strings.Contains(code, "func RegisterBrowserModule(") {
+	if !strings.Contains(code, "func SurfaceBrowserModule(") {
 		t.Fatalf("expected module target to be generated")
 	}
-	if !strings.Contains(code, "func RegisterPage(") {
+	if !strings.Contains(code, "func SurfacePage(") {
 		t.Fatalf("expected owned struct target to be generated")
 	}
-	if !strings.Contains(code, `registrar.RegisterFFISchema("browser.Page.Title"`) {
+	if !strings.Contains(code, `bound.Routes["browser.Page.Title"]`) {
 		t.Fatalf("expected owned struct methods to use dotted method routes")
+	}
+	if strings.Contains(code, "func RegisterBrowserModule(") || strings.Contains(code, "func RegisterPage(") {
+		t.Fatalf("generated code should not expose legacy RegisterXxx helpers")
 	}
 }
 
@@ -84,8 +84,26 @@ type DemoModule interface {
 	if err != nil {
 		t.Fatalf("read generated output: %v", err)
 	}
-	if !strings.Contains(string(content), "func RegisterDemoModule(") {
-		t.Fatalf("expected generated module registration, got:\n%s", string(content))
+	if !strings.Contains(string(content), "func SurfaceDemoModule(") {
+		t.Fatalf("expected generated module surface, got:\n%s", string(content))
+	}
+}
+
+func TestRunReturnsErrorForInvalidGlobalDirective(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "bad_global.go", `package pkgmode
+
+// ffigen:global demo Singleton
+var Singleton = 1
+`)
+
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      filepath.Join(workspace, "bad_global_ffigen.go"),
+		Args:        []string{filepath.Join(workspace, "bad_global.go")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "ffigen:global requires") {
+		t.Fatalf("expected invalid global directive error, got %v", err)
 	}
 }
 
@@ -148,10 +166,10 @@ type BetaModule interface {
 	}
 	codeA := string(contentA)
 	codeB := string(contentB)
-	if !strings.Contains(codeA, "func RegisterAlphaModule(") || strings.Contains(codeA, "RegisterBetaModule") {
+	if !strings.Contains(codeA, "func SurfaceAlphaModule(") || strings.Contains(codeA, "SurfaceBetaModule") {
 		t.Fatalf("alpha output was contaminated:\n%s", codeA)
 	}
-	if !strings.Contains(codeB, "func RegisterBetaModule(") || strings.Contains(codeB, "RegisterAlphaModule") {
+	if !strings.Contains(codeB, "func SurfaceBetaModule(") || strings.Contains(codeB, "SurfaceAlphaModule") {
 		t.Fatalf("beta output was contaminated:\n%s", codeB)
 	}
 }
@@ -534,8 +552,11 @@ type OrderService interface {
 	if count := strings.Count(code, "var order_Order_FFI_StructSchema = "); count != 1 {
 		t.Fatalf("expected one shared struct schema, got %d\n%s", count, code)
 	}
-	if count := strings.Count(code, `registerStructSchema("order.Order",`); count != 1 {
-		t.Fatalf("expected one shared struct registration, got %d\n%s", count, code)
+	if count := strings.Count(code, `schema.AddStruct("order.Order",`); count != 1 {
+		t.Fatalf("expected one shared struct schema binding, got %d\n%s", count, code)
+	}
+	if count := strings.Count(code, `bound.AddStruct("order.Order",`); count != 1 {
+		t.Fatalf("expected one shared bound struct binding, got %d\n%s", count, code)
 	}
 }
 
@@ -635,8 +656,8 @@ type ReadWriter interface {
 	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
 		t.Fatalf("expected flattened ReadWriter interface schema, got:\n%s", code)
 	}
-	if !strings.Contains(code, "func RegisterReadWriterSchema(") {
-		t.Fatalf("expected schema registration helper for interface target")
+	if !strings.Contains(code, "func SurfaceReadWriterSchema(") {
+		t.Fatalf("expected schema surface helper for interface target")
 	}
 }
 

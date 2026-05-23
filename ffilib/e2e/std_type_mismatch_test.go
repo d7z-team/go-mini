@@ -23,5 +23,5 @@ func printTime(t *time.Time) string {
 			Expr: `printTime(time.Now())`,
 			Want: "ok",
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

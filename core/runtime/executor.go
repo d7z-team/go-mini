@@ -21,7 +21,10 @@ type Executor struct {
 	globalInitGroups []*RuntimeGlobalInit
 	importAliases    map[string]string
 
-	routes map[string]FFIRoute
+	routes               map[string]FFIRoute
+	packageValues        map[string]*BoundPackageValue
+	ffiPackages          map[string]*BoundFFIPackage
+	externalRequirements []ExternalRequirement
 
 	ModulePlanLoader func(path string) (*PreparedProgram, error)
 
@@ -107,17 +110,20 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		return nil, err
 	}
 	result := &Executor{
-		globalInitOrder:  append([]string(nil), prepared.GlobalInitOrder...),
-		globalInitGroups: cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
-		importAliases:    make(map[string]string, len(prepared.ImportAliases)),
-		metadata:         newRuntimeMetadataRegistry(),
-		globals:          make(map[string]*RuntimeGlobal),
-		functions:        make(map[string]*RuntimeFunction),
-		consts:           make(map[string]string),
-		routes:           make(map[string]FFIRoute),
-		interfaceCache:   make(map[TypeSpec]*RuntimeInterfaceSpec),
-		shared:           NewSharedState(),
-		scheduler:        NewExecutionContextScheduler(),
+		globalInitOrder:      append([]string(nil), prepared.GlobalInitOrder...),
+		globalInitGroups:     cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
+		importAliases:        make(map[string]string, len(prepared.ImportAliases)),
+		metadata:             newRuntimeMetadataRegistry(),
+		globals:              make(map[string]*RuntimeGlobal),
+		functions:            make(map[string]*RuntimeFunction),
+		consts:               make(map[string]string),
+		routes:               make(map[string]FFIRoute),
+		packageValues:        make(map[string]*BoundPackageValue),
+		ffiPackages:          make(map[string]*BoundFFIPackage),
+		externalRequirements: append([]ExternalRequirement(nil), prepared.ExternalRequirements...),
+		interfaceCache:       make(map[TypeSpec]*RuntimeInterfaceSpec),
+		shared:               NewSharedState(),
+		scheduler:            NewExecutionContextScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -132,6 +138,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneStringMap(prepared.Constants)
+	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
 	for name, typeInfo := range prepared.NamedTypes {
 		e.metadata.registerNamedType(name, typeInfo)
 	}

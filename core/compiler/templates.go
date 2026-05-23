@@ -9,26 +9,35 @@ import (
 )
 
 func (c *Compiler) buildTemplatePlan(imported map[string]*ast.ProgramStmt) (*calltemplate.Plan, error) {
+	funcs, values, structs, interfaces, constants := c.externalSchemaMaps()
 	return calltemplate.BuildPlan(c.cfg.Templates, calltemplate.PlanOptions{
-		FuncSchemas:      c.cfg.FuncSchemas,
-		StructSchemas:    c.cfg.StructSchemas,
-		InterfaceSchemas: c.cfg.InterfaceSchemas,
-		Constants:        c.cfg.Constants,
+		FuncSchemas:      funcs,
+		StructSchemas:    structs,
+		InterfaceSchemas: interfaces,
+		Constants:        constants,
 		PackageExists: func(path string) (bool, error) {
-			return c.templatePackageExists(path, imported)
+			return c.templatePackageExists(path, values, funcs, structs, interfaces, constants, imported)
 		},
 		PackageMemberSig: func(path, member string) (*runtime.RuntimeFuncSig, bool, error) {
-			return c.templatePackageMemberSig(path, member, imported)
+			return c.templatePackageMemberSig(path, member, funcs, imported)
 		},
 	})
 }
 
-func (c *Compiler) templatePackageExists(path string, imported map[string]*ast.ProgramStmt) (bool, error) {
+func (c *Compiler) templatePackageExists(
+	path string,
+	values map[ast.Ident]*runtime.ValueSpec,
+	funcs map[ast.Ident]*runtime.RuntimeFuncSig,
+	structs map[ast.Ident]*runtime.RuntimeStructSpec,
+	interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec,
+	constants map[string]string,
+	imported map[string]*ast.ProgramStmt,
+) (bool, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return false, nil
 	}
-	if externalPackageExists(path, c.cfg.FuncSchemas, c.cfg.StructSchemas, c.cfg.InterfaceSchemas, c.cfg.Constants) {
+	if externalPackageExists(path, funcs, values, structs, interfaces, constants) {
 		return true, nil
 	}
 	if _, ok := imported[path]; ok {
@@ -41,9 +50,9 @@ func (c *Compiler) templatePackageExists(path string, imported map[string]*ast.P
 	return false, nil
 }
 
-func (c *Compiler) templatePackageMemberSig(path, member string, imported map[string]*ast.ProgramStmt) (*runtime.RuntimeFuncSig, bool, error) {
+func (c *Compiler) templatePackageMemberSig(path, member string, funcs map[ast.Ident]*runtime.RuntimeFuncSig, imported map[string]*ast.ProgramStmt) (*runtime.RuntimeFuncSig, bool, error) {
 	for _, name := range packageMemberNames(path, member) {
-		if sig, ok := c.cfg.FuncSchemas[ast.Ident(name)]; ok && sig != nil {
+		if sig, ok := funcs[ast.Ident(name)]; ok && sig != nil {
 			return runtime.CloneRuntimeFuncSig(sig), true, nil
 		}
 	}
@@ -82,12 +91,18 @@ func (c *Compiler) loadTemplateModule(path string, imported map[string]*ast.Prog
 func externalPackageExists(
 	path string,
 	funcs map[ast.Ident]*runtime.RuntimeFuncSig,
+	values map[ast.Ident]*runtime.ValueSpec,
 	structs map[ast.Ident]*runtime.RuntimeStructSpec,
 	interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec,
 	constants map[string]string,
 ) bool {
 	for _, prefix := range packagePrefixes(path) {
 		for name := range funcs {
+			if strings.HasPrefix(string(name), prefix) {
+				return true
+			}
+		}
+		for name := range values {
 			if strings.HasPrefix(string(name), prefix) {
 				return true
 			}

@@ -85,5 +85,5 @@ test.Out("ok")
 `, leakPath, leakPath),
 			Want: "ok",
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

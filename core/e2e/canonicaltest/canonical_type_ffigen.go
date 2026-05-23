@@ -10,6 +10,7 @@ import (
 	b_other "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.Type", runtime.StructOwnershipHostOpaque, "struct { Hello function(HostRef<a_other.Type>) String; }")
@@ -162,18 +163,17 @@ func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterTestCanonicalService(executor interface{ RegisterConstant(string, string) }, impl TestCanonicalService, registry *ffigo.HandleRegistry) {
-	bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceTestCanonicalService(impl TestCanonicalService) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("test_canonical", "NewA", "test_canonical.NewA", TestCanonicalService_FFI_Schemas[0].MethodID, TestCanonicalService_FFI_Schemas[0].Sig, TestCanonicalService_FFI_Schemas[0].Doc)
+	schema.AddFunc("test_canonical", "NewB", "test_canonical.NewB", TestCanonicalService_FFI_Schemas[1].MethodID, TestCanonicalService_FFI_Schemas[1].Sig, TestCanonicalService_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("test_canonical", "NewA", runtime.FFIRoute{Name: "test_canonical.NewA", Bridge: bridge, MethodID: TestCanonicalService_FFI_Schemas[0].MethodID, FuncSig: TestCanonicalService_FFI_Schemas[0].Sig, Doc: TestCanonicalService_FFI_Schemas[0].Doc})
+		bound.AddRoute("test_canonical", "NewB", runtime.FFIRoute{Name: "test_canonical.NewB", Bridge: bridge, MethodID: TestCanonicalService_FFI_Schemas[1].MethodID, FuncSig: TestCanonicalService_FFI_Schemas[1].Sig, Doc: TestCanonicalService_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("test_canonical.NewA", bridge, TestCanonicalService_FFI_Schemas[0].MethodID, TestCanonicalService_FFI_Schemas[0].Sig, TestCanonicalService_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("test_canonical.NewB", bridge, TestCanonicalService_FFI_Schemas[1].MethodID, TestCanonicalService_FFI_Schemas[1].Sig, TestCanonicalService_FFI_Schemas[1].Doc)
 }
 
 const (
@@ -281,21 +281,16 @@ func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterATypeService(executor interface{ RegisterConstant(string, string) }, impl ATypeService, registry *ffigo.HandleRegistry) {
-	bridge := &ATypeService_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceATypeService(impl ATypeService) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("a_other.Type", a_other_Type_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &ATypeService_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["a_other.Type.Hello"] = runtime.FFIRoute{Name: "a_other.Type.Hello", Bridge: bridge, MethodID: ATypeService_FFI_Schemas[0].MethodID, FuncSig: ATypeService_FFI_Schemas[0].Sig, Doc: ATypeService_FFI_Schemas[0].Doc}
+		bound.AddStruct("a_other.Type", a_other_Type_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("a_other.Type.Hello", bridge, ATypeService_FFI_Schemas[0].MethodID, ATypeService_FFI_Schemas[0].Sig, ATypeService_FFI_Schemas[0].Doc)
-	registerStructSchema("a_other.Type", a_other_Type_FFI_StructSchema)
 }
 
 const (
@@ -403,19 +398,14 @@ func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBTypeService(executor interface{ RegisterConstant(string, string) }, impl BTypeService, registry *ffigo.HandleRegistry) {
-	bridge := &BTypeService_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceBTypeService(impl BTypeService) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("b_other.Type", b_other_Type_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &BTypeService_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["b_other.Type.Hello"] = runtime.FFIRoute{Name: "b_other.Type.Hello", Bridge: bridge, MethodID: BTypeService_FFI_Schemas[0].MethodID, FuncSig: BTypeService_FFI_Schemas[0].Sig, Doc: BTypeService_FFI_Schemas[0].Doc}
+		bound.AddStruct("b_other.Type", b_other_Type_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("b_other.Type.Hello", bridge, BTypeService_FFI_Schemas[0].MethodID, BTypeService_FFI_Schemas[0].Sig, BTypeService_FFI_Schemas[0].Doc)
-	registerStructSchema("b_other.Type", b_other_Type_FFI_StructSchema)
 }

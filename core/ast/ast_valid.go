@@ -29,6 +29,7 @@ type ValidRoot struct {
 	Package          string
 	Imports          map[string]string
 	vars             map[Ident]GoMiniType
+	readOnlyVars     map[Ident]bool
 	ModuleLoader     func(path string) (*ProgramStmt, error)
 	Imported         map[string]bool
 	ImportedRoots    map[string]*ValidRoot
@@ -58,6 +59,7 @@ const (
 type ExternalTypeSpec struct {
 	Type      GoMiniType
 	Ownership StructOwnership
+	ReadOnly  bool
 }
 
 func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
@@ -104,6 +106,7 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 			Path:             pkgName, // 默认为包名
 			Imports:          imports,
 			vars:             make(map[Ident]GoMiniType),
+			readOnlyVars:     make(map[Ident]bool),
 			Imported:         make(map[string]bool),
 			ImportedRoots:    make(map[string]*ValidRoot),
 			Discovered:       make(map[Ident]string),
@@ -137,6 +140,9 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 	for ident, spec := range externalTypes {
 		t := spec.Type
 		v.root.vars[ident] = t
+		if spec.ReadOnly {
+			v.root.readOnlyVars[ident] = true
+		}
 		sIdent := string(ident)
 		if idx := strings.Index(sIdent, "."); idx != -1 {
 			pkgPath := sIdent[:idx]
@@ -607,7 +613,25 @@ func (c *ValidContext) AddVariable(name Ident, oType GoMiniType) {
 	c.vars[name] = oType
 	if c.parent == nil {
 		c.root.vars[name] = oType
+		delete(c.root.readOnlyVars, name)
 	}
+}
+
+func (c *ValidContext) IsReadOnlyVariable(variable Ident) bool {
+	if c == nil || c.root == nil {
+		return false
+	}
+	if c.root.readOnlyVars[variable] {
+		return true
+	}
+	s := string(variable)
+	if strings.Contains(s, "/") {
+		return c.root.readOnlyVars[Ident(strings.ReplaceAll(s, "/", "."))]
+	}
+	if strings.Contains(s, ".") {
+		return c.root.readOnlyVars[Ident(strings.ReplaceAll(s, ".", "/"))]
+	}
+	return false
 }
 
 func (c *ValidContext) CheckScope(targetMeta string) (Node, bool) {

@@ -24,5 +24,5 @@ test.Out(fmt.Sprintf("%s-%d", "mini", 7))
 			Want:   "mini-7",
 			Covers: []string{"Print", "Println", "Printf", "Sprintf"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

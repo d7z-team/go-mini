@@ -96,6 +96,7 @@ type packageData struct {
 	structs       map[string]*ast.StructType
 	interfaces    map[string]*ast.InterfaceType
 	constants     map[string]string
+	globals       []globalValue
 	ownedStructs  map[string]bool
 }
 
@@ -126,6 +127,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 	structs := make(map[string]*ast.StructType)
 	interfaces := make(map[string]*ast.InterfaceType)
 	globalConsts := make(map[string]string)
+	var globals []globalValue
 
 	for _, node := range allFiles {
 		for _, imp := range node.Imports {
@@ -152,12 +154,19 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 					}
 				}
 				if valSpec, ok := spec.(*ast.ValueSpec); ok {
-					for i, name := range valSpec.Names {
-						if !name.IsExported() || i >= len(valSpec.Values) {
-							continue
-						}
-						if val := exprToString(valSpec.Values[i]); val != "" {
-							globalConsts[name.Name] = val
+					if meta, ok := parseGlobalMeta(valSpec.Doc); ok {
+						globals = appendGlobalValue(globals, gd.Tok, valSpec, meta)
+					} else if meta, ok := parseGlobalMeta(gd.Doc); ok {
+						globals = appendGlobalValue(globals, gd.Tok, valSpec, meta)
+					}
+					if gd.Tok == token.CONST {
+						for i, name := range valSpec.Names {
+							if !name.IsExported() || i >= len(valSpec.Values) {
+								continue
+							}
+							if val := exprToString(valSpec.Values[i]); val != "" {
+								globalConsts[name.Name] = val
+							}
 						}
 					}
 				}
@@ -231,6 +240,19 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 		structs:       structs,
 		interfaces:    interfaces,
 		constants:     globalConsts,
+		globals:       globals,
 		ownedStructs:  ownedStructs,
 	}
+}
+
+func appendGlobalValue(globals []globalValue, tok token.Token, spec *ast.ValueSpec, meta globalMeta) []globalValue {
+	if tok != token.VAR {
+		panic("ffigen:global requires a var declaration")
+	}
+	for _, name := range spec.Names {
+		if name.Name == meta.Name {
+			return append(globals, globalValue{meta: meta, variable: name.Name})
+		}
+	}
+	panic("ffigen:global name must match the declared variable")
 }

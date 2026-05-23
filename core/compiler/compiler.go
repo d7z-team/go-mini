@@ -13,7 +13,10 @@ import (
 
 type Config struct {
 	ModuleLoader     func(path string) (*ast.ProgramStmt, error)
+	Surface          *runtime.FFISurfaceSchema
 	FuncSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
+	RegisteredFuncs  map[ast.Ident]bool
+	ValueSchemas     map[ast.Ident]*runtime.ValueSpec
 	StructSchemas    map[ast.Ident]*runtime.RuntimeStructSpec
 	InterfaceSchemas map[ast.Ident]*runtime.RuntimeInterfaceSpec
 	Constants        map[string]string
@@ -233,6 +236,9 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 	if err != nil {
 		return artifact, semanticCtx, err
 	}
+	if bytecodeProgram != nil && bytecodeProgram.Executable != nil {
+		bytecodeProgram.Executable.ExternalRequirements = c.externalRequirements(artifact.Program)
+	}
 	artifact.Bytecode = bytecodeProgram
 	if kept := pruneImportedPrograms(importedPrograms, artifact.Program); len(kept) > 0 {
 		artifact.ImportedPrograms = kept
@@ -241,21 +247,28 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 }
 
 func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.Plan) (map[ast.Ident]ast.ExternalTypeSpec, error) {
+	funcSchemas, valueSchemas, structSchemas, interfaceSchemas, _ := c.externalSchemaMaps()
 	templateFuncs := map[ast.Ident]*runtime.RuntimeFuncSig(nil)
 	if includeTemplates && plan != nil {
 		templateFuncs = plan.FuncSchemas()
 	}
-	size := len(c.cfg.FuncSchemas) + len(c.cfg.StructSchemas) + len(c.cfg.InterfaceSchemas) + len(templateFuncs)
+	size := len(funcSchemas) + len(valueSchemas) + len(structSchemas) + len(interfaceSchemas) + len(templateFuncs)
 	if size == 0 {
 		return nil, nil
 	}
 
 	res := make(map[ast.Ident]ast.ExternalTypeSpec, size)
-	for k, v := range c.cfg.FuncSchemas {
+	for k, v := range funcSchemas {
 		if v == nil {
 			continue
 		}
 		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ast.StructOwnershipVMValue}
+	}
+	for k, v := range valueSchemas {
+		if v == nil {
+			continue
+		}
+		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Type.Raw), Ownership: ast.StructOwnershipVMValue, ReadOnly: v.ReadOnly}
 	}
 	for k, v := range templateFuncs {
 		if v == nil {
@@ -267,7 +280,7 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 		}
 		res[k] = spec
 	}
-	for k, v := range c.cfg.StructSchemas {
+	for k, v := range structSchemas {
 		if v == nil {
 			continue
 		}
@@ -280,7 +293,7 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 		}
 		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ownership}
 	}
-	for k, v := range c.cfg.InterfaceSchemas {
+	for k, v := range interfaceSchemas {
 		if v == nil {
 			continue
 		}

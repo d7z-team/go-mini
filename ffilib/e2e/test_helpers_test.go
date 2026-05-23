@@ -7,6 +7,8 @@ import (
 
 func newStdExecutor() *engine.MiniExecutor {
 	executor := engine.NewMiniExecutor()
-	ffilib.RegisterAll(executor)
+	if err := executor.UseSurface(ffilib.Surface()); err != nil {
+		panic(err)
+	}
 	return executor
 }

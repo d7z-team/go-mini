@@ -84,5 +84,5 @@ test.OutInt(values[0])
 			WantRunErr: "negative WaitGroup counter",
 			Covers:     []string{"NewWaitGroup", "Done"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

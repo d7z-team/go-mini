@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type NativeMockImpl struct {
@@ -36,10 +35,9 @@ func (m *NativeMockImpl) SetPtr(s *NativeHandle) int64 {
 func TestNativeObjectInjection(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &NativeMockImpl{}
-	registry := ffigo.NewHandleRegistry()
-
-	// 使用生成的注册函数
-	RegisterNativeMock(executor, mock, registry)
+	if err := executor.UseSurface(SurfaceNativeMock(mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

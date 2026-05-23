@@ -49,7 +49,9 @@ func TestFFIHandle(t *testing.T) {
 	mock := &HandleMockOS{}
 	registry := ffigo.NewHandleRegistry()
 
-	RegisterMockOS(executor, mock, registry)
+	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

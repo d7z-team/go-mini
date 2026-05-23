@@ -24,7 +24,9 @@
 
 ```go
 executor := engine.NewMiniExecutor()
-ffilib.RegisterAll(executor)
+if err := executor.UseSurface(ffilib.Surface()); err != nil {
+    panic(err)
+}
 
 program, err := executor.NewRuntimeByGoCode(`
 package main
@@ -41,7 +43,7 @@ if err := program.Execute(context.Background()); err != nil {
 }
 ```
 
-`core` 默认提供核心引擎，以及 `errors`、`strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/fmt/image 等完整标准库 FFI，再调用顶层 `ffilib.RegisterAll`。
+`core` 默认提供核心引擎，以及 `errors`、`strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/fmt/image 等完整标准库 FFI，再通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface。
 
 `NewRuntimeByGoCode` 是便捷入口，内部仍会先 `CompileGoCode(...)`，再从编译产物创建运行时；对外持久化、跨进程传输和正式装载统一推荐使用 bytecode。
 
@@ -195,13 +197,15 @@ _ = program
 
 ### 2.7 调用模板
 
-调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用。顶层 `ffilib.RegisterAll` 会注册标准库 FFI 和 `print(...)` / `println(...)` 模板，它们会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
+调用模板用于把源码中的虚拟函数调用在 compiler 首次语义检查后、AST 优化前展开成真实代码调用。顶层 `ffilib.Surface()` 会注册标准库 FFI 和 `print(...)` / `println(...)` 模板，它们会展开为 `fmt.Print(...)` / `fmt.Println(...)`。模板只参与编译期校验、补全和 AST 展开；展开完成后，lowering、bytecode 和 runtime 只看到真实函数调用。
 
-自定义模板的最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名。下面示例借用 `ffilib.RegisterAll` 提供 `fmt` 包；如果模板体引用自定义包，需要先注册对应 FFI/schema：
+自定义模板的最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名。下面示例借用 `ffilib.Surface()` 提供 `fmt` 包；如果模板体引用自定义包，需要先注册对应 FFI/schema：
 
 ```go
 executor := engine.NewMiniExecutor()
-ffilib.RegisterAll(executor)
+if err := executor.UseSurface(ffilib.Surface()); err != nil {
+    panic(err)
+}
 
 err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
     ID:        "demo.trace",
@@ -501,6 +505,8 @@ type Reader interface {
   只用于 `struct`，表示导出该结构体的方法集。
 - `ffigen:interface`
   只用于命名 `interface`，表示额外导出一个 VM 命名接口 schema。
+- `ffigen:global <package> <name> <canonical-type>`
+  只用于只读包值，当前用于把宿主 opaque singleton 生成为 pinned `HostRef<T>` package value。
 
 ### 5.4 命名规则
 
@@ -526,7 +532,7 @@ type Browser interface {
 - proxy
 - host router
 - bridge
-- `RegisterXxx(...)`
+- `SurfaceXxx(...) *surface.Bundle`
 
 如果输入是文件模式，普通命名 `interface` 也会按历史行为生成完整 FFI target。
 
@@ -543,7 +549,7 @@ type Reader interface {
 这类只生成：
 
 - `RuntimeInterfaceSpec`
-- `RegisterXxxSchema(...)`
+- `SurfaceXxxSchema() *surface.Bundle`
 
 不会生成 proxy/router/bridge。当前主要用于把宿主命名接口暴露给 VM 类型系统，例如 `io.Reader`、`io.Writer`。
 
@@ -562,6 +568,15 @@ type Calculator struct {
 
 这类会生成结构体方法路由和对应 struct schema，不属于 `ffigen:interface`。
 
+#### 只读包值导出
+
+```go
+// ffigen:global encoding/base64 StdEncoding HostRef<encoding/base64.Encoding>
+var StdEncoding = &Encoding{Enc: base64.StdEncoding}
+```
+
+这类会生成 `SurfaceGlobals()`，把包成员写入 `FFISurfaceSchema` 并在 runtime bind 阶段通过 pinned handle 暴露为只读 package value。当前只支持 `HostRef<T>` 形式的宿主 opaque 值。
+
 ### 5.6 Struct ownership
 
 FFI struct schema 有两类 ownership：
@@ -573,15 +588,16 @@ FFI struct schema 有两类 ownership：
 
 `ffigen` 生成 schema 时会把普通值 struct 标记为 `VMValue`，把通过 `HostRef<T>` 暴露的宿主对象标记为 `HostOpaque`。同一个 Go 类型不能同时作为 VM value struct 和 host opaque reference 暴露。
 
-### 5.7 注册
+### 5.7 装配
 
-生成后直接调用 `RegisterXXX`：
+生成后通过 surface bundle 装配：
 
 ```go
 executor := engine.NewMiniExecutor()
-registry := executor.HandleRegistry()
 
-orderlib.RegisterOrderAPI(executor, impl, registry)
+if err := executor.UseSurface(orderlib.SurfaceOrderAPI(impl)); err != nil {
+    panic(err)
+}
 ```
 
 ## 6. Interface

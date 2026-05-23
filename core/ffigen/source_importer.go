@@ -202,6 +202,24 @@ func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
 	return meta
 }
 
+func parseGlobalMeta(doc *ast.CommentGroup) (globalMeta, bool) {
+	if doc == nil {
+		return globalMeta{}, false
+	}
+	for _, comment := range doc.List {
+		text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+		if !strings.HasPrefix(text, "ffigen:global") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(text, "ffigen:global")))
+		if len(fields) != 3 {
+			panic("ffigen:global requires: <package> <name> <canonical-type>")
+		}
+		return globalMeta{PackagePath: fields[0], Name: fields[1], MiniType: fields[2]}, true
+	}
+	return globalMeta{}, false
+}
+
 func (g *Generator) derivePackageDefaultModule(files []*ast.File) string {
 	return deriveModuleFromFiles(g.fset, files)
 }

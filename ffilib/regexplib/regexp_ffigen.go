@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -784,26 +785,35 @@ func (b *Regexp_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterRegexp(executor interface{ RegisterConstant(string, string) }, impl Regexp, registry *ffigo.HandleRegistry) {
-	bridge := &Regexp_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceRegexp(impl Regexp) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("regexp", "Match", "regexp.Match", Regexp_FFI_Schemas[0].MethodID, Regexp_FFI_Schemas[0].Sig, Regexp_FFI_Schemas[0].Doc)
+	schema.AddFunc("regexp", "MatchString", "regexp.MatchString", Regexp_FFI_Schemas[1].MethodID, Regexp_FFI_Schemas[1].Sig, Regexp_FFI_Schemas[1].Doc)
+	schema.AddFunc("regexp", "QuoteMeta", "regexp.QuoteMeta", Regexp_FFI_Schemas[2].MethodID, Regexp_FFI_Schemas[2].Sig, Regexp_FFI_Schemas[2].Doc)
+	schema.AddFunc("regexp", "FindString", "regexp.FindString", Regexp_FFI_Schemas[3].MethodID, Regexp_FFI_Schemas[3].Sig, Regexp_FFI_Schemas[3].Doc)
+	schema.AddFunc("regexp", "FindAllString", "regexp.FindAllString", Regexp_FFI_Schemas[4].MethodID, Regexp_FFI_Schemas[4].Sig, Regexp_FFI_Schemas[4].Doc)
+	schema.AddFunc("regexp", "FindStringIndex", "regexp.FindStringIndex", Regexp_FFI_Schemas[5].MethodID, Regexp_FFI_Schemas[5].Sig, Regexp_FFI_Schemas[5].Doc)
+	schema.AddFunc("regexp", "FindStringSubmatchIndex", "regexp.FindStringSubmatchIndex", Regexp_FFI_Schemas[6].MethodID, Regexp_FFI_Schemas[6].Sig, Regexp_FFI_Schemas[6].Doc)
+	schema.AddFunc("regexp", "FindStringSubmatch", "regexp.FindStringSubmatch", Regexp_FFI_Schemas[7].MethodID, Regexp_FFI_Schemas[7].Sig, Regexp_FFI_Schemas[7].Doc)
+	schema.AddFunc("regexp", "FindAllStringSubmatch", "regexp.FindAllStringSubmatch", Regexp_FFI_Schemas[8].MethodID, Regexp_FFI_Schemas[8].Sig, Regexp_FFI_Schemas[8].Doc)
+	schema.AddFunc("regexp", "ReplaceAllString", "regexp.ReplaceAllString", Regexp_FFI_Schemas[9].MethodID, Regexp_FFI_Schemas[9].Sig, Regexp_FFI_Schemas[9].Doc)
+	schema.AddFunc("regexp", "ReplaceAllLiteralString", "regexp.ReplaceAllLiteralString", Regexp_FFI_Schemas[10].MethodID, Regexp_FFI_Schemas[10].Sig, Regexp_FFI_Schemas[10].Doc)
+	schema.AddFunc("regexp", "Split", "regexp.Split", Regexp_FFI_Schemas[11].MethodID, Regexp_FFI_Schemas[11].Sig, Regexp_FFI_Schemas[11].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Regexp_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("regexp", "Match", runtime.FFIRoute{Name: "regexp.Match", Bridge: bridge, MethodID: Regexp_FFI_Schemas[0].MethodID, FuncSig: Regexp_FFI_Schemas[0].Sig, Doc: Regexp_FFI_Schemas[0].Doc})
+		bound.AddRoute("regexp", "MatchString", runtime.FFIRoute{Name: "regexp.MatchString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[1].MethodID, FuncSig: Regexp_FFI_Schemas[1].Sig, Doc: Regexp_FFI_Schemas[1].Doc})
+		bound.AddRoute("regexp", "QuoteMeta", runtime.FFIRoute{Name: "regexp.QuoteMeta", Bridge: bridge, MethodID: Regexp_FFI_Schemas[2].MethodID, FuncSig: Regexp_FFI_Schemas[2].Sig, Doc: Regexp_FFI_Schemas[2].Doc})
+		bound.AddRoute("regexp", "FindString", runtime.FFIRoute{Name: "regexp.FindString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[3].MethodID, FuncSig: Regexp_FFI_Schemas[3].Sig, Doc: Regexp_FFI_Schemas[3].Doc})
+		bound.AddRoute("regexp", "FindAllString", runtime.FFIRoute{Name: "regexp.FindAllString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[4].MethodID, FuncSig: Regexp_FFI_Schemas[4].Sig, Doc: Regexp_FFI_Schemas[4].Doc})
+		bound.AddRoute("regexp", "FindStringIndex", runtime.FFIRoute{Name: "regexp.FindStringIndex", Bridge: bridge, MethodID: Regexp_FFI_Schemas[5].MethodID, FuncSig: Regexp_FFI_Schemas[5].Sig, Doc: Regexp_FFI_Schemas[5].Doc})
+		bound.AddRoute("regexp", "FindStringSubmatchIndex", runtime.FFIRoute{Name: "regexp.FindStringSubmatchIndex", Bridge: bridge, MethodID: Regexp_FFI_Schemas[6].MethodID, FuncSig: Regexp_FFI_Schemas[6].Sig, Doc: Regexp_FFI_Schemas[6].Doc})
+		bound.AddRoute("regexp", "FindStringSubmatch", runtime.FFIRoute{Name: "regexp.FindStringSubmatch", Bridge: bridge, MethodID: Regexp_FFI_Schemas[7].MethodID, FuncSig: Regexp_FFI_Schemas[7].Sig, Doc: Regexp_FFI_Schemas[7].Doc})
+		bound.AddRoute("regexp", "FindAllStringSubmatch", runtime.FFIRoute{Name: "regexp.FindAllStringSubmatch", Bridge: bridge, MethodID: Regexp_FFI_Schemas[8].MethodID, FuncSig: Regexp_FFI_Schemas[8].Sig, Doc: Regexp_FFI_Schemas[8].Doc})
+		bound.AddRoute("regexp", "ReplaceAllString", runtime.FFIRoute{Name: "regexp.ReplaceAllString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[9].MethodID, FuncSig: Regexp_FFI_Schemas[9].Sig, Doc: Regexp_FFI_Schemas[9].Doc})
+		bound.AddRoute("regexp", "ReplaceAllLiteralString", runtime.FFIRoute{Name: "regexp.ReplaceAllLiteralString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[10].MethodID, FuncSig: Regexp_FFI_Schemas[10].Sig, Doc: Regexp_FFI_Schemas[10].Doc})
+		bound.AddRoute("regexp", "Split", runtime.FFIRoute{Name: "regexp.Split", Bridge: bridge, MethodID: Regexp_FFI_Schemas[11].MethodID, FuncSig: Regexp_FFI_Schemas[11].Sig, Doc: Regexp_FFI_Schemas[11].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("regexp.Match", bridge, Regexp_FFI_Schemas[0].MethodID, Regexp_FFI_Schemas[0].Sig, Regexp_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("regexp.MatchString", bridge, Regexp_FFI_Schemas[1].MethodID, Regexp_FFI_Schemas[1].Sig, Regexp_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("regexp.QuoteMeta", bridge, Regexp_FFI_Schemas[2].MethodID, Regexp_FFI_Schemas[2].Sig, Regexp_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("regexp.FindString", bridge, Regexp_FFI_Schemas[3].MethodID, Regexp_FFI_Schemas[3].Sig, Regexp_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("regexp.FindAllString", bridge, Regexp_FFI_Schemas[4].MethodID, Regexp_FFI_Schemas[4].Sig, Regexp_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("regexp.FindStringIndex", bridge, Regexp_FFI_Schemas[5].MethodID, Regexp_FFI_Schemas[5].Sig, Regexp_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("regexp.FindStringSubmatchIndex", bridge, Regexp_FFI_Schemas[6].MethodID, Regexp_FFI_Schemas[6].Sig, Regexp_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("regexp.FindStringSubmatch", bridge, Regexp_FFI_Schemas[7].MethodID, Regexp_FFI_Schemas[7].Sig, Regexp_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("regexp.FindAllStringSubmatch", bridge, Regexp_FFI_Schemas[8].MethodID, Regexp_FFI_Schemas[8].Sig, Regexp_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("regexp.ReplaceAllString", bridge, Regexp_FFI_Schemas[9].MethodID, Regexp_FFI_Schemas[9].Sig, Regexp_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("regexp.ReplaceAllLiteralString", bridge, Regexp_FFI_Schemas[10].MethodID, Regexp_FFI_Schemas[10].Sig, Regexp_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("regexp.Split", bridge, Regexp_FFI_Schemas[11].MethodID, Regexp_FFI_Schemas[11].Sig, Regexp_FFI_Schemas[11].Doc)
 }

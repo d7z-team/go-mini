@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -120,15 +121,13 @@ func (b *BytesRefAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBytesRefAPI(executor interface{ RegisterConstant(string, string) }, impl BytesRefAPI, registry *ffigo.HandleRegistry) {
-	bridge := &BytesRefAPI_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceBytesRefAPI(impl BytesRefAPI) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("copyback", "Mutate", "copyback.Mutate", BytesRefAPI_FFI_Schemas[0].MethodID, BytesRefAPI_FFI_Schemas[0].Sig, BytesRefAPI_FFI_Schemas[0].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &BytesRefAPI_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("copyback", "Mutate", runtime.FFIRoute{Name: "copyback.Mutate", Bridge: bridge, MethodID: BytesRefAPI_FFI_Schemas[0].MethodID, FuncSig: BytesRefAPI_FFI_Schemas[0].Sig, Doc: BytesRefAPI_FFI_Schemas[0].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("copyback.Mutate", bridge, BytesRefAPI_FFI_Schemas[0].MethodID, BytesRefAPI_FFI_Schemas[0].Sig, BytesRefAPI_FFI_Schemas[0].Doc)
 }

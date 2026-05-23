@@ -16,25 +16,26 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			name: "StdlibSchemaOnlyRegistration",
 			path: "../../../../ffilib/iolib/io_ffigen.go",
 			patterns: []string{
-				"registrar, ok := executor.(interface {",
-				"registrar.RegisterFFISchema(",
-				"registrar.RegisterStructSchema(",
+				"func SurfaceIO(",
+				"schema.AddFunc(",
+				"bound.AddRoute(",
 			},
 		},
 		{
 			name: "ServiceSchemaOnlyRegistration",
 			path: "../../../e2e/canonicaltest/canonical_type_ffigen.go",
 			patterns: []string{
-				"registrar.RegisterFFISchema(",
-				"panic(\"ffigen: executor does not support schema FFI registration\")",
+				"func SurfaceTestCanonicalService(",
+				"schema.AddFunc(",
+				"runtime.NewBoundFFISurface(schema)",
 			},
 		},
 		{
 			name: "StructDirectSchemaRegistration",
 			path: "../../../e2e/structtest/ffigen.go",
 			patterns: []string{
-				"RegisterStructSchema(",
-				"registrar.RegisterStructSchema(",
+				"schema.AddStruct(",
+				"bound.AddStruct(",
 				"HostRef<calc.Calculator>",
 			},
 		},
@@ -44,8 +45,8 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"var OrderService_FFI_Schemas = []struct {",
 				"HostRef<order.Order>",
-				"registrar.RegisterFFISchema(\"order.Order.AddItem\"",
-				"registrar.RegisterFFISchema(",
+				"bound.Routes[\"order.Order.AddItem\"]",
+				"schema.AddFunc(",
 			},
 		},
 		{
@@ -54,7 +55,17 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"\"time\"",
 				"Sleep(ctx context.Context, d time.Duration) error",
-				"runtime.MustParseRuntimeFuncSig(\"function(Int64) Error\")",
+				"runtime.MustParseRuntimeFuncSigWithModes(\"function(Int64) Error\", runtime.FFIParamIn)",
+			},
+		},
+		{
+			name: "GlobalHostRefPackageValues",
+			path: "../../../../ffilib/encoding/base64lib/base64_ffigen.go",
+			patterns: []string{
+				"func SurfaceGlobals() *surface.Bundle",
+				"schema.AddValue(\"encoding/base64\", \"StdEncoding\"",
+				"runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec(\"encoding/base64.Encoding\")",
+				"Value: StdEncoding",
 			},
 		},
 	}
@@ -71,7 +82,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 					t.Fatalf("expected %s to contain %q", tt.path, pattern)
 				}
 			}
-			disallowed := []string{"legacyRegistrar", "RegisterStructSpec(", "RegisterFFI("}
+			disallowed := []string{"legacyRegistrar", "func Register", "RegisterFFISchema(", "RegisterStructSpec(", "RegisterFFI(", "registrar.RegisterFFISchema(", "Value: &Encoding{Enc: base64.StdEncoding}"}
 			for _, pattern := range disallowed {
 				if strings.Contains(code, pattern) {
 					t.Fatalf("expected %s to drop legacy marker %q", tt.path, pattern)

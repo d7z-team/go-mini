@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
@@ -119,21 +120,19 @@ func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockGeometryLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockGeometry, registry *ffigo.HandleRegistry) {
-	bridge := &MockGeometry_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
+func SurfaceMockGeometryLibrary(prefix string, impl MockGeometry) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
 	for _, m := range MockGeometry_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+"."+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
 	}
-	registerStructSchema("RobustPoint", RobustPoint_FFI_StructSchema)
+	schema.AddStruct("RobustPoint", RobustPoint_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &MockGeometry_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		for _, m := range MockGeometry_FFI_Schemas {
+			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		}
+		bound.AddStruct("RobustPoint", RobustPoint_FFI_StructSchema)
+		return bound, nil
+	})
 }

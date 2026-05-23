@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", runtime.StructOwnershipVMValue, "struct { A Point; B Point; }")
@@ -168,22 +169,21 @@ func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockShapeAPILibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MockShapeAPI, registry *ffigo.HandleRegistry) {
-	bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
+func SurfaceMockShapeAPILibrary(prefix string, impl MockShapeAPI) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
 	for _, m := range MockShapeAPI_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+"."+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
 	}
-	registerStructSchema("Rect", Rect_FFI_StructSchema)
-	registerStructSchema("Point", Point_FFI_StructSchema)
+	schema.AddStruct("Rect", Rect_FFI_StructSchema)
+	schema.AddStruct("Point", Point_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		for _, m := range MockShapeAPI_FFI_Schemas {
+			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		}
+		bound.AddStruct("Rect", Rect_FFI_StructSchema)
+		bound.AddStruct("Point", Point_FFI_StructSchema)
+		return bound, nil
+	})
 }

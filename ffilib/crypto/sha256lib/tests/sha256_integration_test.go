@@ -19,5 +19,5 @@ func TestSHA256Sum(t *testing.T) {
 			Want:    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
 			Covers:  []string{"Sum256"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

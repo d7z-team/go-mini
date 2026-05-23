@@ -497,6 +497,7 @@ type MemberExpr struct {
 	Object                Expr   `json:"object"`
 	Property              Ident  `json:"property"`
 	ResolvedPackagePath   string `json:"-"`
+	ResolvedPackageName   Ident  `json:"-"`
 	ResolvedPackageMember bool   `json:"-"`
 }
 
@@ -505,6 +506,7 @@ func (m *MemberExpr) exprNode()          {}
 
 func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	m.ResolvedPackagePath = ""
+	m.ResolvedPackageName = ""
 	m.ResolvedPackageMember = false
 	if m.Object == nil {
 		return errors.New("成员访问缺少对象表达式")
@@ -572,6 +574,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				// 1. 变量/函数
 				if t, ok := srcRoot.vars[Ident(prop)]; ok {
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = Ident(path + "." + prop)
 					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
@@ -579,6 +582,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				// 2. 结构体
 				if _, ok := srcRoot.structs[Ident(prop)]; ok {
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = Ident(path + "." + prop)
 					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(prop) // 或者需要包含包路径?
 					return nil
@@ -586,6 +590,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				// 3. 接口
 				if _, ok := srcRoot.interfaces[Ident(prop)]; ok {
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = Ident(path + "." + prop)
 					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(prop)
 					return nil
@@ -608,6 +613,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				if t, ok := ctx.GetVariable(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = fullPath
 					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
@@ -616,6 +622,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				if fn, ok := ctx.GetFunction(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = fullPath
 					m.ResolvedPackageMember = true
 					m.Type = fn.MiniType()
 					return nil
@@ -624,6 +631,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				if _, ok := ctx.GetStruct(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = fullPath
 					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(fullPath)
 					return nil
@@ -632,6 +640,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				if _, ok := ctx.GetInterface(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = fullPath
 					m.ResolvedPackageMember = true
 					m.Type = GoMiniType(fullPath)
 					return nil

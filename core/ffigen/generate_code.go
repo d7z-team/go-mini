@@ -33,8 +33,14 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	interfaceSchemaVar := interfaceSchemaVarName(displayTypeName(name))
 	if !isStruct && meta.interfaceMarked {
 		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeInterfaceSpec(%q)\n\n", interfaceSchemaVar, interfaceSchemaLiteral)
-		fmt.Fprintf(&sb, "func Register%sSchema(executor interface{ RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) }) {\n", name)
-		fmt.Fprintf(&sb, "\texecutor.RegisterInterfaceSchema(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
+		fmt.Fprintf(&sb, "func Surface%sSchema() *surface.Bundle {\n", name)
+		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
+		fmt.Fprintf(&sb, "\tschema.AddInterface(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
+		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
+		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
+		fmt.Fprintf(&sb, "\t\tbound.AddInterface(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
+		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
+		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n\n")
 	}
 	if !isStruct && meta.interfaceMarked {
@@ -599,18 +605,12 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	}
 
 	if isStruct && methodsPrefix != "" {
-		// Method Set registration for STRUCT: NO 'impl' parameter
 		if schemas == nil {
 			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(%q, runtime.StructOwnershipHostOpaque, %q)\n\n", structSchemaVarName(displayTypeName(name)), displayTypeName(name), g.buildGeneratedStructSchemaLiteral(iface, structs, name, false, true, displayTypeName, funcSpec))
 		}
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {\n", name)
-		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: nil, Registry: registry}\n", name)
-		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec); RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) })\n")
-		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-		fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
-		fmt.Fprintf(&sb, "\t}\n")
-		g.writeGeneratedBoundRegistrations(&sb, "\t", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
+		fmt.Fprintf(&sb, "func Surface%s() *surface.Bundle {\n", name)
+		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
+		g.writeGeneratedSurfaceRoutes(&sb, "\t", "schema", "", "", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
 		for _, structName := range referencedStructs {
 			if structName == name {
 				continue
@@ -619,33 +619,38 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 			if schemas != nil {
 				schemaVar = referencedSchemaVars[structName]
 			}
-			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 		}
 		selfVar := structSchemaVarName(displayTypeName(name))
 		if schemas != nil {
 			selfVar = selfSchemaVar
 		}
-		fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(name), selfVar)
+		fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
+		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
+		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: nil, Registry: ctx.Registry}\n", name)
+		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
+		g.writeGeneratedSurfaceRoutes(&sb, "\t\t", "", "bound", "bridge", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
+		for _, structName := range referencedStructs {
+			if structName == name {
+				continue
+			}
+			schemaVar := structSchemaVarName(displayTypeName(structName))
+			if schemas != nil {
+				schemaVar = referencedSchemaVars[structName]
+			}
+			fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+		}
+		fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
+		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
+		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
 	} else if isModule || methodsPrefix != "" {
-		// Module or Interface-based Methods: REQUIRES 'impl'
 		if methodsPrefix != "" && schemas == nil {
 			fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeStructSpec(%q, runtime.StructOwnershipHostOpaque, %q)\n\n", structSchemaVarName(displayTypeName(methodsPrefix)), displayTypeName(methodsPrefix), g.buildGeneratedStructSchemaLiteral(iface, structs, "", false, true, displayTypeName, funcSpec))
 		}
-		fmt.Fprintf(&sb, "func Register%s(executor interface{ RegisterConstant(string, string) }, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
-		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
-		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec); RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) })\n")
-		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		if !isStruct && meta.interfaceMarked {
-			fmt.Fprintf(&sb, "\tRegister%sSchema(registrar)\n", name)
-		}
-		if methodsPrefix != "" || len(referencedStructs) > 0 {
-			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
-			fmt.Fprintf(&sb, "\t}\n")
-		}
-		g.writeGeneratedBoundRegistrations(&sb, "\t", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
-
+		fmt.Fprintf(&sb, "func Surface%s(impl %s) *surface.Bundle {\n", name, implType)
+		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
+		g.writeGeneratedSurfaceRoutes(&sb, "\t", "schema", "", "", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
 		if isModule && fixedPrefix != "" && len(constants) > 0 {
 			var keys []string
 			for k := range constants {
@@ -653,10 +658,9 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				fmt.Fprintf(&sb, "\texecutor.RegisterConstant(\"%s.%s\", ffigo.ToConstantString(%s))\n", fixedPrefix, k, constants[k])
+				fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", fixedPrefix, k, constants[k])
 			}
 		}
-
 		if methodsPrefix != "" {
 			for _, structName := range referencedStructs {
 				if structName == methodsPrefix {
@@ -666,13 +670,13 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 				if schemas != nil {
 					schemaVar = referencedSchemaVars[structName]
 				}
-				fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+				fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 			}
 			selfVar := structSchemaVarName(displayTypeName(methodsPrefix))
 			if schemas != nil {
 				selfVar = selfSchemaVar
 			}
-			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfVar)
+			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfVar)
 		} else if len(referencedStructs) > 0 {
 			for _, structName := range referencedStructs {
 				if isStruct && structName == name {
@@ -682,32 +686,82 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 				if schemas != nil {
 					schemaVar = referencedSchemaVars[structName]
 				}
-				fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+				fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 			}
 		}
+		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
+		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
+		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
+		g.writeGeneratedSurfaceRoutes(&sb, "\t\t", "", "bound", "bridge", iface, name, fixedPrefix, moduleName, methodsPrefix, isStruct, displayTypeName)
+		if isModule && fixedPrefix != "" && len(constants) > 0 {
+			var keys []string
+			for k := range constants {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(&sb, "\t\tbound.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", fixedPrefix, k, constants[k])
+			}
+		}
+		if methodsPrefix != "" {
+			for _, structName := range referencedStructs {
+				if structName == methodsPrefix {
+					continue
+				}
+				schemaVar := structSchemaVarName(displayTypeName(structName))
+				if schemas != nil {
+					schemaVar = referencedSchemaVars[structName]
+				}
+				fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+			}
+			selfVar := structSchemaVarName(displayTypeName(methodsPrefix))
+			if schemas != nil {
+				selfVar = selfSchemaVar
+			}
+			fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfVar)
+		} else if len(referencedStructs) > 0 {
+			for _, structName := range referencedStructs {
+				if isStruct && structName == name {
+					continue
+				}
+				schemaVar := structSchemaVarName(displayTypeName(structName))
+				if schemas != nil {
+					schemaVar = referencedSchemaVars[structName]
+				}
+				fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+			}
+		}
+		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
+		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
 	} else {
-		// Generic Library registration: Requires 'impl' and explicit prefix
-		fmt.Fprintf(&sb, "func Register%sLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl %s, registry *ffigo.HandleRegistry) {\n", name, implType)
-		fmt.Fprintf(&sb, "\tbridge := &%s_Bridge{Impl: impl, Registry: registry}\n", name)
-		fmt.Fprintf(&sb, "\tregistrar, ok := executor.(interface{ RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string); RegisterStructSchema(string, *runtime.RuntimeStructSpec); RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec) })\n")
-		fmt.Fprintf(&sb, "\tif !ok { panic(\"ffigen: executor does not support schema FFI registration\") }\n")
-		if !isStruct && meta.interfaceMarked {
-			fmt.Fprintf(&sb, "\tRegister%sSchema(registrar)\n", name)
-		}
-		if len(referencedStructs) > 0 {
-			fmt.Fprintf(&sb, "\tregisterStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {\n")
-			fmt.Fprintf(&sb, "\t\tregistrar.RegisterStructSchema(name, spec)\n")
-			fmt.Fprintf(&sb, "\t}\n")
-		}
-		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n\t\tregistrar.RegisterFFISchema(prefix+\".\"+m.Name, bridge, m.MethodID, m.Sig, m.Doc)\n\t}\n", name)
+		fmt.Fprintf(&sb, "func Surface%sLibrary(prefix string, impl %s) *surface.Bundle {\n", name, implType)
+		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
+		fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n", name)
+		fmt.Fprintf(&sb, "\t\tschema.AddFunc(prefix, m.Name, prefix+\".\"+m.Name, m.MethodID, m.Sig, m.Doc)\n")
+		fmt.Fprintf(&sb, "\t}\n")
 		for _, structName := range referencedStructs {
 			schemaVar := structSchemaVarName(displayTypeName(structName))
 			if schemas != nil {
 				schemaVar = referencedSchemaVars[structName]
 			}
-			fmt.Fprintf(&sb, "\tregisterStructSchema(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
 		}
+		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
+		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
+		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
+		fmt.Fprintf(&sb, "\t\tfor _, m := range %s_FFI_Schemas {\n", name)
+		fmt.Fprintf(&sb, "\t\t\tbound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix+\".\"+m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})\n")
+		fmt.Fprintf(&sb, "\t\t}\n")
+		for _, structName := range referencedStructs {
+			schemaVar := structSchemaVarName(displayTypeName(structName))
+			if schemas != nil {
+				schemaVar = referencedSchemaVars[structName]
+			}
+			fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(structName), schemaVar)
+		}
+		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
+		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
 	}
 

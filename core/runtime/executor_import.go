@@ -68,6 +68,26 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	modExecutor.ModulePlanLoader = e.ModulePlanLoader
 	modExecutor.StepLimit = e.StepLimit
 	modExecutor.routes = e.routes
+	modExecutor.packageValues = e.packageValues
+	modExecutor.ffiPackages = e.ffiPackages
+	for name, value := range e.consts {
+		if _, exists := modExecutor.consts[name]; !exists {
+			modExecutor.consts[name] = value
+		}
+	}
+	for name, spec := range e.metadata.structsByName {
+		if _, exists := modExecutor.metadata.structsByName[name]; !exists {
+			modExecutor.metadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
+		}
+	}
+	for name, spec := range e.metadata.interfacesByName {
+		if _, exists := modExecutor.metadata.interfacesByName[name]; !exists {
+			modExecutor.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
+		}
+	}
+	if err := modExecutor.ValidateExternalRequirements(); err != nil {
+		return err
+	}
 	modExecutor.scheduler = e.scheduler
 
 	modSession := modExecutor.NewSession(parent.Context, "global")

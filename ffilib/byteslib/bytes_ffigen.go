@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -551,28 +552,39 @@ func (b *Bytes_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterBytes(executor interface{ RegisterConstant(string, string) }, impl Bytes, registry *ffigo.HandleRegistry) {
-	bridge := &Bytes_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceBytes(impl Bytes) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("bytes", "Contains", "bytes.Contains", Bytes_FFI_Schemas[0].MethodID, Bytes_FFI_Schemas[0].Sig, Bytes_FFI_Schemas[0].Doc)
+	schema.AddFunc("bytes", "Count", "bytes.Count", Bytes_FFI_Schemas[1].MethodID, Bytes_FFI_Schemas[1].Sig, Bytes_FFI_Schemas[1].Doc)
+	schema.AddFunc("bytes", "HasPrefix", "bytes.HasPrefix", Bytes_FFI_Schemas[2].MethodID, Bytes_FFI_Schemas[2].Sig, Bytes_FFI_Schemas[2].Doc)
+	schema.AddFunc("bytes", "HasSuffix", "bytes.HasSuffix", Bytes_FFI_Schemas[3].MethodID, Bytes_FFI_Schemas[3].Sig, Bytes_FFI_Schemas[3].Doc)
+	schema.AddFunc("bytes", "Index", "bytes.Index", Bytes_FFI_Schemas[4].MethodID, Bytes_FFI_Schemas[4].Sig, Bytes_FFI_Schemas[4].Doc)
+	schema.AddFunc("bytes", "LastIndex", "bytes.LastIndex", Bytes_FFI_Schemas[5].MethodID, Bytes_FFI_Schemas[5].Sig, Bytes_FFI_Schemas[5].Doc)
+	schema.AddFunc("bytes", "ToLower", "bytes.ToLower", Bytes_FFI_Schemas[6].MethodID, Bytes_FFI_Schemas[6].Sig, Bytes_FFI_Schemas[6].Doc)
+	schema.AddFunc("bytes", "ToUpper", "bytes.ToUpper", Bytes_FFI_Schemas[7].MethodID, Bytes_FFI_Schemas[7].Sig, Bytes_FFI_Schemas[7].Doc)
+	schema.AddFunc("bytes", "Trim", "bytes.Trim", Bytes_FFI_Schemas[8].MethodID, Bytes_FFI_Schemas[8].Sig, Bytes_FFI_Schemas[8].Doc)
+	schema.AddFunc("bytes", "TrimSpace", "bytes.TrimSpace", Bytes_FFI_Schemas[9].MethodID, Bytes_FFI_Schemas[9].Sig, Bytes_FFI_Schemas[9].Doc)
+	schema.AddFunc("bytes", "Split", "bytes.Split", Bytes_FFI_Schemas[10].MethodID, Bytes_FFI_Schemas[10].Sig, Bytes_FFI_Schemas[10].Doc)
+	schema.AddFunc("bytes", "Join", "bytes.Join", Bytes_FFI_Schemas[11].MethodID, Bytes_FFI_Schemas[11].Sig, Bytes_FFI_Schemas[11].Doc)
+	schema.AddFunc("bytes", "Repeat", "bytes.Repeat", Bytes_FFI_Schemas[12].MethodID, Bytes_FFI_Schemas[12].Sig, Bytes_FFI_Schemas[12].Doc)
+	schema.AddFunc("bytes", "ReplaceAll", "bytes.ReplaceAll", Bytes_FFI_Schemas[13].MethodID, Bytes_FFI_Schemas[13].Sig, Bytes_FFI_Schemas[13].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Bytes_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("bytes", "Contains", runtime.FFIRoute{Name: "bytes.Contains", Bridge: bridge, MethodID: Bytes_FFI_Schemas[0].MethodID, FuncSig: Bytes_FFI_Schemas[0].Sig, Doc: Bytes_FFI_Schemas[0].Doc})
+		bound.AddRoute("bytes", "Count", runtime.FFIRoute{Name: "bytes.Count", Bridge: bridge, MethodID: Bytes_FFI_Schemas[1].MethodID, FuncSig: Bytes_FFI_Schemas[1].Sig, Doc: Bytes_FFI_Schemas[1].Doc})
+		bound.AddRoute("bytes", "HasPrefix", runtime.FFIRoute{Name: "bytes.HasPrefix", Bridge: bridge, MethodID: Bytes_FFI_Schemas[2].MethodID, FuncSig: Bytes_FFI_Schemas[2].Sig, Doc: Bytes_FFI_Schemas[2].Doc})
+		bound.AddRoute("bytes", "HasSuffix", runtime.FFIRoute{Name: "bytes.HasSuffix", Bridge: bridge, MethodID: Bytes_FFI_Schemas[3].MethodID, FuncSig: Bytes_FFI_Schemas[3].Sig, Doc: Bytes_FFI_Schemas[3].Doc})
+		bound.AddRoute("bytes", "Index", runtime.FFIRoute{Name: "bytes.Index", Bridge: bridge, MethodID: Bytes_FFI_Schemas[4].MethodID, FuncSig: Bytes_FFI_Schemas[4].Sig, Doc: Bytes_FFI_Schemas[4].Doc})
+		bound.AddRoute("bytes", "LastIndex", runtime.FFIRoute{Name: "bytes.LastIndex", Bridge: bridge, MethodID: Bytes_FFI_Schemas[5].MethodID, FuncSig: Bytes_FFI_Schemas[5].Sig, Doc: Bytes_FFI_Schemas[5].Doc})
+		bound.AddRoute("bytes", "ToLower", runtime.FFIRoute{Name: "bytes.ToLower", Bridge: bridge, MethodID: Bytes_FFI_Schemas[6].MethodID, FuncSig: Bytes_FFI_Schemas[6].Sig, Doc: Bytes_FFI_Schemas[6].Doc})
+		bound.AddRoute("bytes", "ToUpper", runtime.FFIRoute{Name: "bytes.ToUpper", Bridge: bridge, MethodID: Bytes_FFI_Schemas[7].MethodID, FuncSig: Bytes_FFI_Schemas[7].Sig, Doc: Bytes_FFI_Schemas[7].Doc})
+		bound.AddRoute("bytes", "Trim", runtime.FFIRoute{Name: "bytes.Trim", Bridge: bridge, MethodID: Bytes_FFI_Schemas[8].MethodID, FuncSig: Bytes_FFI_Schemas[8].Sig, Doc: Bytes_FFI_Schemas[8].Doc})
+		bound.AddRoute("bytes", "TrimSpace", runtime.FFIRoute{Name: "bytes.TrimSpace", Bridge: bridge, MethodID: Bytes_FFI_Schemas[9].MethodID, FuncSig: Bytes_FFI_Schemas[9].Sig, Doc: Bytes_FFI_Schemas[9].Doc})
+		bound.AddRoute("bytes", "Split", runtime.FFIRoute{Name: "bytes.Split", Bridge: bridge, MethodID: Bytes_FFI_Schemas[10].MethodID, FuncSig: Bytes_FFI_Schemas[10].Sig, Doc: Bytes_FFI_Schemas[10].Doc})
+		bound.AddRoute("bytes", "Join", runtime.FFIRoute{Name: "bytes.Join", Bridge: bridge, MethodID: Bytes_FFI_Schemas[11].MethodID, FuncSig: Bytes_FFI_Schemas[11].Sig, Doc: Bytes_FFI_Schemas[11].Doc})
+		bound.AddRoute("bytes", "Repeat", runtime.FFIRoute{Name: "bytes.Repeat", Bridge: bridge, MethodID: Bytes_FFI_Schemas[12].MethodID, FuncSig: Bytes_FFI_Schemas[12].Sig, Doc: Bytes_FFI_Schemas[12].Doc})
+		bound.AddRoute("bytes", "ReplaceAll", runtime.FFIRoute{Name: "bytes.ReplaceAll", Bridge: bridge, MethodID: Bytes_FFI_Schemas[13].MethodID, FuncSig: Bytes_FFI_Schemas[13].Sig, Doc: Bytes_FFI_Schemas[13].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("bytes.Contains", bridge, Bytes_FFI_Schemas[0].MethodID, Bytes_FFI_Schemas[0].Sig, Bytes_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("bytes.Count", bridge, Bytes_FFI_Schemas[1].MethodID, Bytes_FFI_Schemas[1].Sig, Bytes_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("bytes.HasPrefix", bridge, Bytes_FFI_Schemas[2].MethodID, Bytes_FFI_Schemas[2].Sig, Bytes_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("bytes.HasSuffix", bridge, Bytes_FFI_Schemas[3].MethodID, Bytes_FFI_Schemas[3].Sig, Bytes_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("bytes.Index", bridge, Bytes_FFI_Schemas[4].MethodID, Bytes_FFI_Schemas[4].Sig, Bytes_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("bytes.LastIndex", bridge, Bytes_FFI_Schemas[5].MethodID, Bytes_FFI_Schemas[5].Sig, Bytes_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("bytes.ToLower", bridge, Bytes_FFI_Schemas[6].MethodID, Bytes_FFI_Schemas[6].Sig, Bytes_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("bytes.ToUpper", bridge, Bytes_FFI_Schemas[7].MethodID, Bytes_FFI_Schemas[7].Sig, Bytes_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("bytes.Trim", bridge, Bytes_FFI_Schemas[8].MethodID, Bytes_FFI_Schemas[8].Sig, Bytes_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("bytes.TrimSpace", bridge, Bytes_FFI_Schemas[9].MethodID, Bytes_FFI_Schemas[9].Sig, Bytes_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("bytes.Split", bridge, Bytes_FFI_Schemas[10].MethodID, Bytes_FFI_Schemas[10].Sig, Bytes_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("bytes.Join", bridge, Bytes_FFI_Schemas[11].MethodID, Bytes_FFI_Schemas[11].Sig, Bytes_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("bytes.Repeat", bridge, Bytes_FFI_Schemas[12].MethodID, Bytes_FFI_Schemas[12].Sig, Bytes_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("bytes.ReplaceAll", bridge, Bytes_FFI_Schemas[13].MethodID, Bytes_FFI_Schemas[13].Sig, Bytes_FFI_Schemas[13].Doc)
 }

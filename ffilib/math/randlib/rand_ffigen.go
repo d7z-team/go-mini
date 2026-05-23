@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -589,29 +590,41 @@ func (b *Rand_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterRand(executor interface{ RegisterConstant(string, string) }, impl Rand, registry *ffigo.HandleRegistry) {
-	bridge := &Rand_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceRand(impl Rand) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("math/rand", "ExpFloat64", "math/rand.ExpFloat64", Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
+	schema.AddFunc("math/rand", "Float32", "math/rand.Float32", Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
+	schema.AddFunc("math/rand", "Float64", "math/rand.Float64", Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
+	schema.AddFunc("math/rand", "Int", "math/rand.Int", Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
+	schema.AddFunc("math/rand", "Int31", "math/rand.Int31", Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
+	schema.AddFunc("math/rand", "Int31n", "math/rand.Int31n", Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
+	schema.AddFunc("math/rand", "Intn", "math/rand.Intn", Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
+	schema.AddFunc("math/rand", "Int63", "math/rand.Int63", Rand_FFI_Schemas[7].MethodID, Rand_FFI_Schemas[7].Sig, Rand_FFI_Schemas[7].Doc)
+	schema.AddFunc("math/rand", "Int63n", "math/rand.Int63n", Rand_FFI_Schemas[8].MethodID, Rand_FFI_Schemas[8].Sig, Rand_FFI_Schemas[8].Doc)
+	schema.AddFunc("math/rand", "NormFloat64", "math/rand.NormFloat64", Rand_FFI_Schemas[9].MethodID, Rand_FFI_Schemas[9].Sig, Rand_FFI_Schemas[9].Doc)
+	schema.AddFunc("math/rand", "Read", "math/rand.Read", Rand_FFI_Schemas[10].MethodID, Rand_FFI_Schemas[10].Sig, Rand_FFI_Schemas[10].Doc)
+	schema.AddFunc("math/rand", "Seed", "math/rand.Seed", Rand_FFI_Schemas[11].MethodID, Rand_FFI_Schemas[11].Sig, Rand_FFI_Schemas[11].Doc)
+	schema.AddFunc("math/rand", "Perm", "math/rand.Perm", Rand_FFI_Schemas[12].MethodID, Rand_FFI_Schemas[12].Sig, Rand_FFI_Schemas[12].Doc)
+	schema.AddFunc("math/rand", "Uint32", "math/rand.Uint32", Rand_FFI_Schemas[13].MethodID, Rand_FFI_Schemas[13].Sig, Rand_FFI_Schemas[13].Doc)
+	schema.AddFunc("math/rand", "Uint64", "math/rand.Uint64", Rand_FFI_Schemas[14].MethodID, Rand_FFI_Schemas[14].Sig, Rand_FFI_Schemas[14].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Rand_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("math/rand", "ExpFloat64", runtime.FFIRoute{Name: "math/rand.ExpFloat64", Bridge: bridge, MethodID: Rand_FFI_Schemas[0].MethodID, FuncSig: Rand_FFI_Schemas[0].Sig, Doc: Rand_FFI_Schemas[0].Doc})
+		bound.AddRoute("math/rand", "Float32", runtime.FFIRoute{Name: "math/rand.Float32", Bridge: bridge, MethodID: Rand_FFI_Schemas[1].MethodID, FuncSig: Rand_FFI_Schemas[1].Sig, Doc: Rand_FFI_Schemas[1].Doc})
+		bound.AddRoute("math/rand", "Float64", runtime.FFIRoute{Name: "math/rand.Float64", Bridge: bridge, MethodID: Rand_FFI_Schemas[2].MethodID, FuncSig: Rand_FFI_Schemas[2].Sig, Doc: Rand_FFI_Schemas[2].Doc})
+		bound.AddRoute("math/rand", "Int", runtime.FFIRoute{Name: "math/rand.Int", Bridge: bridge, MethodID: Rand_FFI_Schemas[3].MethodID, FuncSig: Rand_FFI_Schemas[3].Sig, Doc: Rand_FFI_Schemas[3].Doc})
+		bound.AddRoute("math/rand", "Int31", runtime.FFIRoute{Name: "math/rand.Int31", Bridge: bridge, MethodID: Rand_FFI_Schemas[4].MethodID, FuncSig: Rand_FFI_Schemas[4].Sig, Doc: Rand_FFI_Schemas[4].Doc})
+		bound.AddRoute("math/rand", "Int31n", runtime.FFIRoute{Name: "math/rand.Int31n", Bridge: bridge, MethodID: Rand_FFI_Schemas[5].MethodID, FuncSig: Rand_FFI_Schemas[5].Sig, Doc: Rand_FFI_Schemas[5].Doc})
+		bound.AddRoute("math/rand", "Intn", runtime.FFIRoute{Name: "math/rand.Intn", Bridge: bridge, MethodID: Rand_FFI_Schemas[6].MethodID, FuncSig: Rand_FFI_Schemas[6].Sig, Doc: Rand_FFI_Schemas[6].Doc})
+		bound.AddRoute("math/rand", "Int63", runtime.FFIRoute{Name: "math/rand.Int63", Bridge: bridge, MethodID: Rand_FFI_Schemas[7].MethodID, FuncSig: Rand_FFI_Schemas[7].Sig, Doc: Rand_FFI_Schemas[7].Doc})
+		bound.AddRoute("math/rand", "Int63n", runtime.FFIRoute{Name: "math/rand.Int63n", Bridge: bridge, MethodID: Rand_FFI_Schemas[8].MethodID, FuncSig: Rand_FFI_Schemas[8].Sig, Doc: Rand_FFI_Schemas[8].Doc})
+		bound.AddRoute("math/rand", "NormFloat64", runtime.FFIRoute{Name: "math/rand.NormFloat64", Bridge: bridge, MethodID: Rand_FFI_Schemas[9].MethodID, FuncSig: Rand_FFI_Schemas[9].Sig, Doc: Rand_FFI_Schemas[9].Doc})
+		bound.AddRoute("math/rand", "Read", runtime.FFIRoute{Name: "math/rand.Read", Bridge: bridge, MethodID: Rand_FFI_Schemas[10].MethodID, FuncSig: Rand_FFI_Schemas[10].Sig, Doc: Rand_FFI_Schemas[10].Doc})
+		bound.AddRoute("math/rand", "Seed", runtime.FFIRoute{Name: "math/rand.Seed", Bridge: bridge, MethodID: Rand_FFI_Schemas[11].MethodID, FuncSig: Rand_FFI_Schemas[11].Sig, Doc: Rand_FFI_Schemas[11].Doc})
+		bound.AddRoute("math/rand", "Perm", runtime.FFIRoute{Name: "math/rand.Perm", Bridge: bridge, MethodID: Rand_FFI_Schemas[12].MethodID, FuncSig: Rand_FFI_Schemas[12].Sig, Doc: Rand_FFI_Schemas[12].Doc})
+		bound.AddRoute("math/rand", "Uint32", runtime.FFIRoute{Name: "math/rand.Uint32", Bridge: bridge, MethodID: Rand_FFI_Schemas[13].MethodID, FuncSig: Rand_FFI_Schemas[13].Sig, Doc: Rand_FFI_Schemas[13].Doc})
+		bound.AddRoute("math/rand", "Uint64", runtime.FFIRoute{Name: "math/rand.Uint64", Bridge: bridge, MethodID: Rand_FFI_Schemas[14].MethodID, FuncSig: Rand_FFI_Schemas[14].Sig, Doc: Rand_FFI_Schemas[14].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("math/rand.ExpFloat64", bridge, Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("math/rand.Float32", bridge, Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("math/rand.Float64", bridge, Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("math/rand.Int", bridge, Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("math/rand.Int31", bridge, Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("math/rand.Int31n", bridge, Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("math/rand.Intn", bridge, Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("math/rand.Int63", bridge, Rand_FFI_Schemas[7].MethodID, Rand_FFI_Schemas[7].Sig, Rand_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("math/rand.Int63n", bridge, Rand_FFI_Schemas[8].MethodID, Rand_FFI_Schemas[8].Sig, Rand_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("math/rand.NormFloat64", bridge, Rand_FFI_Schemas[9].MethodID, Rand_FFI_Schemas[9].Sig, Rand_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("math/rand.Read", bridge, Rand_FFI_Schemas[10].MethodID, Rand_FFI_Schemas[10].Sig, Rand_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("math/rand.Seed", bridge, Rand_FFI_Schemas[11].MethodID, Rand_FFI_Schemas[11].Sig, Rand_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("math/rand.Perm", bridge, Rand_FFI_Schemas[12].MethodID, Rand_FFI_Schemas[12].Sig, Rand_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("math/rand.Uint32", bridge, Rand_FFI_Schemas[13].MethodID, Rand_FFI_Schemas[13].Sig, Rand_FFI_Schemas[13].Doc)
-	registrar.RegisterFFISchema("math/rand.Uint64", bridge, Rand_FFI_Schemas[14].MethodID, Rand_FFI_Schemas[14].Sig, Rand_FFI_Schemas[14].Doc)
 }

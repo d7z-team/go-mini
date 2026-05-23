@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var os_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("os.File", runtime.StructOwnershipHostOpaque, "struct {}")
@@ -554,29 +555,33 @@ func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMockOS(executor interface{ RegisterConstant(string, string) }, impl MockOS, registry *ffigo.HandleRegistry) {
-	bridge := &MockOS_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceMockOS(impl MockOS) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("os", "Open", "os.Open", MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
+	schema.AddFunc("os", "Name", "os.Name", MockOS_FFI_Schemas[1].MethodID, MockOS_FFI_Schemas[1].Sig, MockOS_FFI_Schemas[1].Doc)
+	schema.AddFunc("os", "Stat", "os.Stat", MockOS_FFI_Schemas[2].MethodID, MockOS_FFI_Schemas[2].Sig, MockOS_FFI_Schemas[2].Doc)
+	schema.AddFunc("os", "Read", "os.Read", MockOS_FFI_Schemas[3].MethodID, MockOS_FFI_Schemas[3].Sig, MockOS_FFI_Schemas[3].Doc)
+	schema.AddFunc("os", "Write", "os.Write", MockOS_FFI_Schemas[4].MethodID, MockOS_FFI_Schemas[4].Sig, MockOS_FFI_Schemas[4].Doc)
+	schema.AddFunc("os", "Close", "os.Close", MockOS_FFI_Schemas[5].MethodID, MockOS_FFI_Schemas[5].Sig, MockOS_FFI_Schemas[5].Doc)
+	schema.AddFunc("os", "Deep", "os.Deep", MockOS_FFI_Schemas[6].MethodID, MockOS_FFI_Schemas[6].Sig, MockOS_FFI_Schemas[6].Doc)
+	schema.AddStruct("os.File", os_File_FFI_StructSchema)
+	schema.AddStruct("os.FileInfo", os_FileInfo_FFI_StructSchema)
+	schema.AddStruct("os.Nested", os_Nested_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &MockOS_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("os", "Open", runtime.FFIRoute{Name: "os.Open", Bridge: bridge, MethodID: MockOS_FFI_Schemas[0].MethodID, FuncSig: MockOS_FFI_Schemas[0].Sig, Doc: MockOS_FFI_Schemas[0].Doc})
+		bound.AddRoute("os", "Name", runtime.FFIRoute{Name: "os.Name", Bridge: bridge, MethodID: MockOS_FFI_Schemas[1].MethodID, FuncSig: MockOS_FFI_Schemas[1].Sig, Doc: MockOS_FFI_Schemas[1].Doc})
+		bound.AddRoute("os", "Stat", runtime.FFIRoute{Name: "os.Stat", Bridge: bridge, MethodID: MockOS_FFI_Schemas[2].MethodID, FuncSig: MockOS_FFI_Schemas[2].Sig, Doc: MockOS_FFI_Schemas[2].Doc})
+		bound.AddRoute("os", "Read", runtime.FFIRoute{Name: "os.Read", Bridge: bridge, MethodID: MockOS_FFI_Schemas[3].MethodID, FuncSig: MockOS_FFI_Schemas[3].Sig, Doc: MockOS_FFI_Schemas[3].Doc})
+		bound.AddRoute("os", "Write", runtime.FFIRoute{Name: "os.Write", Bridge: bridge, MethodID: MockOS_FFI_Schemas[4].MethodID, FuncSig: MockOS_FFI_Schemas[4].Sig, Doc: MockOS_FFI_Schemas[4].Doc})
+		bound.AddRoute("os", "Close", runtime.FFIRoute{Name: "os.Close", Bridge: bridge, MethodID: MockOS_FFI_Schemas[5].MethodID, FuncSig: MockOS_FFI_Schemas[5].Sig, Doc: MockOS_FFI_Schemas[5].Doc})
+		bound.AddRoute("os", "Deep", runtime.FFIRoute{Name: "os.Deep", Bridge: bridge, MethodID: MockOS_FFI_Schemas[6].MethodID, FuncSig: MockOS_FFI_Schemas[6].Sig, Doc: MockOS_FFI_Schemas[6].Doc})
+		bound.AddStruct("os.File", os_File_FFI_StructSchema)
+		bound.AddStruct("os.FileInfo", os_FileInfo_FFI_StructSchema)
+		bound.AddStruct("os.Nested", os_Nested_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("os.Open", bridge, MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("os.Name", bridge, MockOS_FFI_Schemas[1].MethodID, MockOS_FFI_Schemas[1].Sig, MockOS_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("os.Stat", bridge, MockOS_FFI_Schemas[2].MethodID, MockOS_FFI_Schemas[2].Sig, MockOS_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("os.Read", bridge, MockOS_FFI_Schemas[3].MethodID, MockOS_FFI_Schemas[3].Sig, MockOS_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("os.Write", bridge, MockOS_FFI_Schemas[4].MethodID, MockOS_FFI_Schemas[4].Sig, MockOS_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("os.Close", bridge, MockOS_FFI_Schemas[5].MethodID, MockOS_FFI_Schemas[5].Sig, MockOS_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("os.Deep", bridge, MockOS_FFI_Schemas[6].MethodID, MockOS_FFI_Schemas[6].Sig, MockOS_FFI_Schemas[6].Doc)
-	registerStructSchema("os.File", os_File_FFI_StructSchema)
-	registerStructSchema("os.FileInfo", os_FileInfo_FFI_StructSchema)
-	registerStructSchema("os.Nested", os_Nested_FFI_StructSchema)
 }
 
 const (
@@ -698,18 +703,17 @@ func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterContextMock(executor interface{ RegisterConstant(string, string) }, impl ContextMock, registry *ffigo.HandleRegistry) {
-	bridge := &ContextMock_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceContextMock(impl ContextMock) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("ctx_test", "WithContext", "ctx_test.WithContext", ContextMock_FFI_Schemas[0].MethodID, ContextMock_FFI_Schemas[0].Sig, ContextMock_FFI_Schemas[0].Doc)
+	schema.AddFunc("ctx_test", "WithoutContext", "ctx_test.WithoutContext", ContextMock_FFI_Schemas[1].MethodID, ContextMock_FFI_Schemas[1].Sig, ContextMock_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &ContextMock_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("ctx_test", "WithContext", runtime.FFIRoute{Name: "ctx_test.WithContext", Bridge: bridge, MethodID: ContextMock_FFI_Schemas[0].MethodID, FuncSig: ContextMock_FFI_Schemas[0].Sig, Doc: ContextMock_FFI_Schemas[0].Doc})
+		bound.AddRoute("ctx_test", "WithoutContext", runtime.FFIRoute{Name: "ctx_test.WithoutContext", Bridge: bridge, MethodID: ContextMock_FFI_Schemas[1].MethodID, FuncSig: ContextMock_FFI_Schemas[1].Sig, Doc: ContextMock_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("ctx_test.WithContext", bridge, ContextMock_FFI_Schemas[0].MethodID, ContextMock_FFI_Schemas[0].Sig, ContextMock_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("ctx_test.WithoutContext", bridge, ContextMock_FFI_Schemas[1].MethodID, ContextMock_FFI_Schemas[1].Sig, ContextMock_FFI_Schemas[1].Doc)
 }
 
 const (
@@ -927,25 +931,25 @@ func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterNativeMock(executor interface{ RegisterConstant(string, string) }, impl NativeMock, registry *ffigo.HandleRegistry) {
-	bridge := &NativeMock_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceNativeMock(impl NativeMock) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("native", "GetStruct", "native.GetStruct", NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
+	schema.AddFunc("native", "GetPtr", "native.GetPtr", NativeMock_FFI_Schemas[1].MethodID, NativeMock_FFI_Schemas[1].Sig, NativeMock_FFI_Schemas[1].Doc)
+	schema.AddFunc("native", "SetStruct", "native.SetStruct", NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
+	schema.AddFunc("native", "SetPtr", "native.SetPtr", NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
+	schema.AddStruct("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
+	schema.AddStruct("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &NativeMock_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("native", "GetStruct", runtime.FFIRoute{Name: "native.GetStruct", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[0].MethodID, FuncSig: NativeMock_FFI_Schemas[0].Sig, Doc: NativeMock_FFI_Schemas[0].Doc})
+		bound.AddRoute("native", "GetPtr", runtime.FFIRoute{Name: "native.GetPtr", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[1].MethodID, FuncSig: NativeMock_FFI_Schemas[1].Sig, Doc: NativeMock_FFI_Schemas[1].Doc})
+		bound.AddRoute("native", "SetStruct", runtime.FFIRoute{Name: "native.SetStruct", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[2].MethodID, FuncSig: NativeMock_FFI_Schemas[2].Sig, Doc: NativeMock_FFI_Schemas[2].Doc})
+		bound.AddRoute("native", "SetPtr", runtime.FFIRoute{Name: "native.SetPtr", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[3].MethodID, FuncSig: NativeMock_FFI_Schemas[3].Sig, Doc: NativeMock_FFI_Schemas[3].Doc})
+		bound.AddStruct("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
+		bound.AddStruct("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("native.GetStruct", bridge, NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("native.GetPtr", bridge, NativeMock_FFI_Schemas[1].MethodID, NativeMock_FFI_Schemas[1].Sig, NativeMock_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("native.SetStruct", bridge, NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("native.SetPtr", bridge, NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
-	registerStructSchema("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
-	registerStructSchema("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
 }
 
 const (
@@ -1029,20 +1033,16 @@ func (b *Page_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterPage(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &Page_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfacePage() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("Selector", Selector_FFI_StructSchema)
+	schema.AddStruct("Page", Page_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Page_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["Page.GetByPlaceholder"] = runtime.FFIRoute{Name: "Page.GetByPlaceholder", Bridge: bridge, MethodID: Page_FFI_Schemas[0].MethodID, FuncSig: Page_FFI_Schemas[0].Sig, Doc: Page_FFI_Schemas[0].Doc}
+		bound.AddStruct("Selector", Selector_FFI_StructSchema)
+		bound.AddStruct("Page", Page_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("Page.GetByPlaceholder", bridge, Page_FFI_Schemas[0].MethodID, Page_FFI_Schemas[0].Sig, Page_FFI_Schemas[0].Doc)
-	registerStructSchema("Selector", Selector_FFI_StructSchema)
-	registerStructSchema("Page", Page_FFI_StructSchema)
 }

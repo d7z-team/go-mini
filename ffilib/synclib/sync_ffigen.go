@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var sync_WaitGroup_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("sync.WaitGroup", runtime.StructOwnershipHostOpaque, "struct { Add function(HostRef<sync.WaitGroup>, Int64) Void; Done function(HostRef<sync.WaitGroup>) Void; Wait function(HostRef<sync.WaitGroup>) Void; }")
@@ -108,17 +109,15 @@ func (b *Module_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl Module, registry *ffigo.HandleRegistry) {
-	bridge := &Module_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceModule(impl Module) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("sync", "NewWaitGroup", "sync.NewWaitGroup", Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Module_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("sync", "NewWaitGroup", runtime.FFIRoute{Name: "sync.NewWaitGroup", Bridge: bridge, MethodID: Module_FFI_Schemas[0].MethodID, FuncSig: Module_FFI_Schemas[0].Sig, Doc: Module_FFI_Schemas[0].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("sync.NewWaitGroup", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
 }
 
 const (
@@ -228,21 +227,16 @@ func (b *WaitGroup_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterWaitGroup(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &WaitGroup_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceWaitGroup() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &WaitGroup_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["sync.WaitGroup.Add"] = runtime.FFIRoute{Name: "sync.WaitGroup.Add", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[0].MethodID, FuncSig: WaitGroup_FFI_Schemas[0].Sig, Doc: WaitGroup_FFI_Schemas[0].Doc}
+		bound.Routes["sync.WaitGroup.Done"] = runtime.FFIRoute{Name: "sync.WaitGroup.Done", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[1].MethodID, FuncSig: WaitGroup_FFI_Schemas[1].Sig, Doc: WaitGroup_FFI_Schemas[1].Doc}
+		bound.Routes["sync.WaitGroup.Wait"] = runtime.FFIRoute{Name: "sync.WaitGroup.Wait", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[2].MethodID, FuncSig: WaitGroup_FFI_Schemas[2].Sig, Doc: WaitGroup_FFI_Schemas[2].Doc}
+		bound.AddStruct("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("sync.WaitGroup.Add", bridge, WaitGroup_FFI_Schemas[0].MethodID, WaitGroup_FFI_Schemas[0].Sig, WaitGroup_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("sync.WaitGroup.Done", bridge, WaitGroup_FFI_Schemas[1].MethodID, WaitGroup_FFI_Schemas[1].Sig, WaitGroup_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("sync.WaitGroup.Wait", bridge, WaitGroup_FFI_Schemas[2].MethodID, WaitGroup_FFI_Schemas[2].Sig, WaitGroup_FFI_Schemas[2].Doc)
-	registerStructSchema("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
 }

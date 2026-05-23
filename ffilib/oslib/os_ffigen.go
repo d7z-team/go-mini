@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib/iolib"
 )
 
@@ -488,32 +489,47 @@ func (b *OS_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterOS(executor interface{ RegisterConstant(string, string) }, impl OS, registry *ffigo.HandleRegistry) {
-	bridge := &OS_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceOS(impl OS) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("os", "Open", "os.Open", OS_FFI_Schemas[0].MethodID, OS_FFI_Schemas[0].Sig, OS_FFI_Schemas[0].Doc)
+	schema.AddFunc("os", "Create", "os.Create", OS_FFI_Schemas[1].MethodID, OS_FFI_Schemas[1].Sig, OS_FFI_Schemas[1].Doc)
+	schema.AddFunc("os", "OpenFile", "os.OpenFile", OS_FFI_Schemas[2].MethodID, OS_FFI_Schemas[2].Sig, OS_FFI_Schemas[2].Doc)
+	schema.AddFunc("os", "ReadFile", "os.ReadFile", OS_FFI_Schemas[3].MethodID, OS_FFI_Schemas[3].Sig, OS_FFI_Schemas[3].Doc)
+	schema.AddFunc("os", "WriteFile", "os.WriteFile", OS_FFI_Schemas[4].MethodID, OS_FFI_Schemas[4].Sig, OS_FFI_Schemas[4].Doc)
+	schema.AddFunc("os", "Remove", "os.Remove", OS_FFI_Schemas[5].MethodID, OS_FFI_Schemas[5].Sig, OS_FFI_Schemas[5].Doc)
+	schema.AddFunc("os", "Getenv", "os.Getenv", OS_FFI_Schemas[6].MethodID, OS_FFI_Schemas[6].Sig, OS_FFI_Schemas[6].Doc)
+	schema.AddConst("os", "DevNull", ffigo.ToConstantString(os.DevNull))
+	schema.AddConst("os", "O_APPEND", ffigo.ToConstantString(os.O_APPEND))
+	schema.AddConst("os", "O_CREATE", ffigo.ToConstantString(os.O_CREATE))
+	schema.AddConst("os", "O_EXCL", ffigo.ToConstantString(os.O_EXCL))
+	schema.AddConst("os", "O_RDONLY", ffigo.ToConstantString(os.O_RDONLY))
+	schema.AddConst("os", "O_RDWR", ffigo.ToConstantString(os.O_RDWR))
+	schema.AddConst("os", "O_SYNC", ffigo.ToConstantString(os.O_SYNC))
+	schema.AddConst("os", "O_TRUNC", ffigo.ToConstantString(os.O_TRUNC))
+	schema.AddConst("os", "O_WRONLY", ffigo.ToConstantString(os.O_WRONLY))
+	schema.AddConst("os", "PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
+	schema.AddConst("os", "PathSeparator", ffigo.ToConstantString(os.PathSeparator))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &OS_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("os", "Open", runtime.FFIRoute{Name: "os.Open", Bridge: bridge, MethodID: OS_FFI_Schemas[0].MethodID, FuncSig: OS_FFI_Schemas[0].Sig, Doc: OS_FFI_Schemas[0].Doc})
+		bound.AddRoute("os", "Create", runtime.FFIRoute{Name: "os.Create", Bridge: bridge, MethodID: OS_FFI_Schemas[1].MethodID, FuncSig: OS_FFI_Schemas[1].Sig, Doc: OS_FFI_Schemas[1].Doc})
+		bound.AddRoute("os", "OpenFile", runtime.FFIRoute{Name: "os.OpenFile", Bridge: bridge, MethodID: OS_FFI_Schemas[2].MethodID, FuncSig: OS_FFI_Schemas[2].Sig, Doc: OS_FFI_Schemas[2].Doc})
+		bound.AddRoute("os", "ReadFile", runtime.FFIRoute{Name: "os.ReadFile", Bridge: bridge, MethodID: OS_FFI_Schemas[3].MethodID, FuncSig: OS_FFI_Schemas[3].Sig, Doc: OS_FFI_Schemas[3].Doc})
+		bound.AddRoute("os", "WriteFile", runtime.FFIRoute{Name: "os.WriteFile", Bridge: bridge, MethodID: OS_FFI_Schemas[4].MethodID, FuncSig: OS_FFI_Schemas[4].Sig, Doc: OS_FFI_Schemas[4].Doc})
+		bound.AddRoute("os", "Remove", runtime.FFIRoute{Name: "os.Remove", Bridge: bridge, MethodID: OS_FFI_Schemas[5].MethodID, FuncSig: OS_FFI_Schemas[5].Sig, Doc: OS_FFI_Schemas[5].Doc})
+		bound.AddRoute("os", "Getenv", runtime.FFIRoute{Name: "os.Getenv", Bridge: bridge, MethodID: OS_FFI_Schemas[6].MethodID, FuncSig: OS_FFI_Schemas[6].Sig, Doc: OS_FFI_Schemas[6].Doc})
+		bound.AddConst("os", "DevNull", ffigo.ToConstantString(os.DevNull))
+		bound.AddConst("os", "O_APPEND", ffigo.ToConstantString(os.O_APPEND))
+		bound.AddConst("os", "O_CREATE", ffigo.ToConstantString(os.O_CREATE))
+		bound.AddConst("os", "O_EXCL", ffigo.ToConstantString(os.O_EXCL))
+		bound.AddConst("os", "O_RDONLY", ffigo.ToConstantString(os.O_RDONLY))
+		bound.AddConst("os", "O_RDWR", ffigo.ToConstantString(os.O_RDWR))
+		bound.AddConst("os", "O_SYNC", ffigo.ToConstantString(os.O_SYNC))
+		bound.AddConst("os", "O_TRUNC", ffigo.ToConstantString(os.O_TRUNC))
+		bound.AddConst("os", "O_WRONLY", ffigo.ToConstantString(os.O_WRONLY))
+		bound.AddConst("os", "PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
+		bound.AddConst("os", "PathSeparator", ffigo.ToConstantString(os.PathSeparator))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("os.Open", bridge, OS_FFI_Schemas[0].MethodID, OS_FFI_Schemas[0].Sig, OS_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("os.Create", bridge, OS_FFI_Schemas[1].MethodID, OS_FFI_Schemas[1].Sig, OS_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("os.OpenFile", bridge, OS_FFI_Schemas[2].MethodID, OS_FFI_Schemas[2].Sig, OS_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("os.ReadFile", bridge, OS_FFI_Schemas[3].MethodID, OS_FFI_Schemas[3].Sig, OS_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("os.WriteFile", bridge, OS_FFI_Schemas[4].MethodID, OS_FFI_Schemas[4].Sig, OS_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("os.Remove", bridge, OS_FFI_Schemas[5].MethodID, OS_FFI_Schemas[5].Sig, OS_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("os.Getenv", bridge, OS_FFI_Schemas[6].MethodID, OS_FFI_Schemas[6].Sig, OS_FFI_Schemas[6].Doc)
-	executor.RegisterConstant("os.DevNull", ffigo.ToConstantString(os.DevNull))
-	executor.RegisterConstant("os.O_APPEND", ffigo.ToConstantString(os.O_APPEND))
-	executor.RegisterConstant("os.O_CREATE", ffigo.ToConstantString(os.O_CREATE))
-	executor.RegisterConstant("os.O_EXCL", ffigo.ToConstantString(os.O_EXCL))
-	executor.RegisterConstant("os.O_RDONLY", ffigo.ToConstantString(os.O_RDONLY))
-	executor.RegisterConstant("os.O_RDWR", ffigo.ToConstantString(os.O_RDWR))
-	executor.RegisterConstant("os.O_SYNC", ffigo.ToConstantString(os.O_SYNC))
-	executor.RegisterConstant("os.O_TRUNC", ffigo.ToConstantString(os.O_TRUNC))
-	executor.RegisterConstant("os.O_WRONLY", ffigo.ToConstantString(os.O_WRONLY))
-	executor.RegisterConstant("os.PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
-	executor.RegisterConstant("os.PathSeparator", ffigo.ToConstantString(os.PathSeparator))
 }

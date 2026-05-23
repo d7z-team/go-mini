@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", runtime.StructOwnershipHostOpaque, "struct { Year function(HostRef<time.Time>) Int64; Month function(HostRef<time.Time>) Int64; Day function(HostRef<time.Time>) Int64; Hour function(HostRef<time.Time>) Int64; Minute function(HostRef<time.Time>) Int64; Second function(HostRef<time.Time>) Int64; Nanosecond function(HostRef<time.Time>) Int64; Unix function(HostRef<time.Time>) Int64; UnixMilli function(HostRef<time.Time>) Int64; UnixMicro function(HostRef<time.Time>) Int64; UnixNano function(HostRef<time.Time>) Int64; Format function(HostRef<time.Time>, String) String; Add function(HostRef<time.Time>, Int64) HostRef<time.Time>; Sub function(HostRef<time.Time>, HostRef<time.Time>) Int64; IsZero function(HostRef<time.Time>) Bool; Before function(HostRef<time.Time>, HostRef<time.Time>) Bool; After function(HostRef<time.Time>, HostRef<time.Time>) Bool; Equal function(HostRef<time.Time>, HostRef<time.Time>) Bool; String function(HostRef<time.Time>) String; }")
@@ -411,41 +412,63 @@ func (b *Module_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterModule(executor interface{ RegisterConstant(string, string) }, impl Module, registry *ffigo.HandleRegistry) {
-	bridge := &Module_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceModule(impl Module) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("time", "Now", "time.Now", Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	schema.AddFunc("time", "Unix", "time.Unix", Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
+	schema.AddFunc("time", "Sleep", "time.Sleep", Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
+	schema.AddFunc("time", "Since", "time.Since", Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
+	schema.AddFunc("time", "Until", "time.Until", Module_FFI_Schemas[4].MethodID, Module_FFI_Schemas[4].Sig, Module_FFI_Schemas[4].Doc)
+	schema.AddFunc("time", "Parse", "time.Parse", Module_FFI_Schemas[5].MethodID, Module_FFI_Schemas[5].Sig, Module_FFI_Schemas[5].Doc)
+	schema.AddFunc("time", "ParseDuration", "time.ParseDuration", Module_FFI_Schemas[6].MethodID, Module_FFI_Schemas[6].Sig, Module_FFI_Schemas[6].Doc)
+	schema.AddConst("time", "ANSIC", ffigo.ToConstantString(time.ANSIC))
+	schema.AddConst("time", "Hour", ffigo.ToConstantString(time.Hour))
+	schema.AddConst("time", "Kitchen", ffigo.ToConstantString(time.Kitchen))
+	schema.AddConst("time", "Layout", ffigo.ToConstantString(time.Layout))
+	schema.AddConst("time", "Microsecond", ffigo.ToConstantString(time.Microsecond))
+	schema.AddConst("time", "Millisecond", ffigo.ToConstantString(time.Millisecond))
+	schema.AddConst("time", "Minute", ffigo.ToConstantString(time.Minute))
+	schema.AddConst("time", "Nanosecond", ffigo.ToConstantString(time.Nanosecond))
+	schema.AddConst("time", "RFC1123", ffigo.ToConstantString(time.RFC1123))
+	schema.AddConst("time", "RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
+	schema.AddConst("time", "RFC3339", ffigo.ToConstantString(time.RFC3339))
+	schema.AddConst("time", "RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
+	schema.AddConst("time", "RFC822", ffigo.ToConstantString(time.RFC822))
+	schema.AddConst("time", "RFC822Z", ffigo.ToConstantString(time.RFC822Z))
+	schema.AddConst("time", "RFC850", ffigo.ToConstantString(time.RFC850))
+	schema.AddConst("time", "RubyDate", ffigo.ToConstantString(time.RubyDate))
+	schema.AddConst("time", "Second", ffigo.ToConstantString(time.Second))
+	schema.AddConst("time", "UnixDate", ffigo.ToConstantString(time.UnixDate))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Module_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("time", "Now", runtime.FFIRoute{Name: "time.Now", Bridge: bridge, MethodID: Module_FFI_Schemas[0].MethodID, FuncSig: Module_FFI_Schemas[0].Sig, Doc: Module_FFI_Schemas[0].Doc})
+		bound.AddRoute("time", "Unix", runtime.FFIRoute{Name: "time.Unix", Bridge: bridge, MethodID: Module_FFI_Schemas[1].MethodID, FuncSig: Module_FFI_Schemas[1].Sig, Doc: Module_FFI_Schemas[1].Doc})
+		bound.AddRoute("time", "Sleep", runtime.FFIRoute{Name: "time.Sleep", Bridge: bridge, MethodID: Module_FFI_Schemas[2].MethodID, FuncSig: Module_FFI_Schemas[2].Sig, Doc: Module_FFI_Schemas[2].Doc})
+		bound.AddRoute("time", "Since", runtime.FFIRoute{Name: "time.Since", Bridge: bridge, MethodID: Module_FFI_Schemas[3].MethodID, FuncSig: Module_FFI_Schemas[3].Sig, Doc: Module_FFI_Schemas[3].Doc})
+		bound.AddRoute("time", "Until", runtime.FFIRoute{Name: "time.Until", Bridge: bridge, MethodID: Module_FFI_Schemas[4].MethodID, FuncSig: Module_FFI_Schemas[4].Sig, Doc: Module_FFI_Schemas[4].Doc})
+		bound.AddRoute("time", "Parse", runtime.FFIRoute{Name: "time.Parse", Bridge: bridge, MethodID: Module_FFI_Schemas[5].MethodID, FuncSig: Module_FFI_Schemas[5].Sig, Doc: Module_FFI_Schemas[5].Doc})
+		bound.AddRoute("time", "ParseDuration", runtime.FFIRoute{Name: "time.ParseDuration", Bridge: bridge, MethodID: Module_FFI_Schemas[6].MethodID, FuncSig: Module_FFI_Schemas[6].Sig, Doc: Module_FFI_Schemas[6].Doc})
+		bound.AddConst("time", "ANSIC", ffigo.ToConstantString(time.ANSIC))
+		bound.AddConst("time", "Hour", ffigo.ToConstantString(time.Hour))
+		bound.AddConst("time", "Kitchen", ffigo.ToConstantString(time.Kitchen))
+		bound.AddConst("time", "Layout", ffigo.ToConstantString(time.Layout))
+		bound.AddConst("time", "Microsecond", ffigo.ToConstantString(time.Microsecond))
+		bound.AddConst("time", "Millisecond", ffigo.ToConstantString(time.Millisecond))
+		bound.AddConst("time", "Minute", ffigo.ToConstantString(time.Minute))
+		bound.AddConst("time", "Nanosecond", ffigo.ToConstantString(time.Nanosecond))
+		bound.AddConst("time", "RFC1123", ffigo.ToConstantString(time.RFC1123))
+		bound.AddConst("time", "RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
+		bound.AddConst("time", "RFC3339", ffigo.ToConstantString(time.RFC3339))
+		bound.AddConst("time", "RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
+		bound.AddConst("time", "RFC822", ffigo.ToConstantString(time.RFC822))
+		bound.AddConst("time", "RFC822Z", ffigo.ToConstantString(time.RFC822Z))
+		bound.AddConst("time", "RFC850", ffigo.ToConstantString(time.RFC850))
+		bound.AddConst("time", "RubyDate", ffigo.ToConstantString(time.RubyDate))
+		bound.AddConst("time", "Second", ffigo.ToConstantString(time.Second))
+		bound.AddConst("time", "UnixDate", ffigo.ToConstantString(time.UnixDate))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("time.Now", bridge, Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("time.Unix", bridge, Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("time.Sleep", bridge, Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("time.Since", bridge, Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("time.Until", bridge, Module_FFI_Schemas[4].MethodID, Module_FFI_Schemas[4].Sig, Module_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("time.Parse", bridge, Module_FFI_Schemas[5].MethodID, Module_FFI_Schemas[5].Sig, Module_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("time.ParseDuration", bridge, Module_FFI_Schemas[6].MethodID, Module_FFI_Schemas[6].Sig, Module_FFI_Schemas[6].Doc)
-	executor.RegisterConstant("time.ANSIC", ffigo.ToConstantString(time.ANSIC))
-	executor.RegisterConstant("time.Hour", ffigo.ToConstantString(time.Hour))
-	executor.RegisterConstant("time.Kitchen", ffigo.ToConstantString(time.Kitchen))
-	executor.RegisterConstant("time.Layout", ffigo.ToConstantString(time.Layout))
-	executor.RegisterConstant("time.Microsecond", ffigo.ToConstantString(time.Microsecond))
-	executor.RegisterConstant("time.Millisecond", ffigo.ToConstantString(time.Millisecond))
-	executor.RegisterConstant("time.Minute", ffigo.ToConstantString(time.Minute))
-	executor.RegisterConstant("time.Nanosecond", ffigo.ToConstantString(time.Nanosecond))
-	executor.RegisterConstant("time.RFC1123", ffigo.ToConstantString(time.RFC1123))
-	executor.RegisterConstant("time.RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
-	executor.RegisterConstant("time.RFC3339", ffigo.ToConstantString(time.RFC3339))
-	executor.RegisterConstant("time.RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
-	executor.RegisterConstant("time.RFC822", ffigo.ToConstantString(time.RFC822))
-	executor.RegisterConstant("time.RFC822Z", ffigo.ToConstantString(time.RFC822Z))
-	executor.RegisterConstant("time.RFC850", ffigo.ToConstantString(time.RFC850))
-	executor.RegisterConstant("time.RubyDate", ffigo.ToConstantString(time.RubyDate))
-	executor.RegisterConstant("time.Second", ffigo.ToConstantString(time.Second))
-	executor.RegisterConstant("time.UnixDate", ffigo.ToConstantString(time.UnixDate))
 }
 
 const (
@@ -888,37 +911,32 @@ func (b *Time_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterTime(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &Time_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceTime() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("time.Time", time_Time_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Time_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["time.Time.Year"] = runtime.FFIRoute{Name: "time.Time.Year", Bridge: bridge, MethodID: Time_FFI_Schemas[0].MethodID, FuncSig: Time_FFI_Schemas[0].Sig, Doc: Time_FFI_Schemas[0].Doc}
+		bound.Routes["time.Time.Month"] = runtime.FFIRoute{Name: "time.Time.Month", Bridge: bridge, MethodID: Time_FFI_Schemas[1].MethodID, FuncSig: Time_FFI_Schemas[1].Sig, Doc: Time_FFI_Schemas[1].Doc}
+		bound.Routes["time.Time.Day"] = runtime.FFIRoute{Name: "time.Time.Day", Bridge: bridge, MethodID: Time_FFI_Schemas[2].MethodID, FuncSig: Time_FFI_Schemas[2].Sig, Doc: Time_FFI_Schemas[2].Doc}
+		bound.Routes["time.Time.Hour"] = runtime.FFIRoute{Name: "time.Time.Hour", Bridge: bridge, MethodID: Time_FFI_Schemas[3].MethodID, FuncSig: Time_FFI_Schemas[3].Sig, Doc: Time_FFI_Schemas[3].Doc}
+		bound.Routes["time.Time.Minute"] = runtime.FFIRoute{Name: "time.Time.Minute", Bridge: bridge, MethodID: Time_FFI_Schemas[4].MethodID, FuncSig: Time_FFI_Schemas[4].Sig, Doc: Time_FFI_Schemas[4].Doc}
+		bound.Routes["time.Time.Second"] = runtime.FFIRoute{Name: "time.Time.Second", Bridge: bridge, MethodID: Time_FFI_Schemas[5].MethodID, FuncSig: Time_FFI_Schemas[5].Sig, Doc: Time_FFI_Schemas[5].Doc}
+		bound.Routes["time.Time.Nanosecond"] = runtime.FFIRoute{Name: "time.Time.Nanosecond", Bridge: bridge, MethodID: Time_FFI_Schemas[6].MethodID, FuncSig: Time_FFI_Schemas[6].Sig, Doc: Time_FFI_Schemas[6].Doc}
+		bound.Routes["time.Time.Unix"] = runtime.FFIRoute{Name: "time.Time.Unix", Bridge: bridge, MethodID: Time_FFI_Schemas[7].MethodID, FuncSig: Time_FFI_Schemas[7].Sig, Doc: Time_FFI_Schemas[7].Doc}
+		bound.Routes["time.Time.UnixMilli"] = runtime.FFIRoute{Name: "time.Time.UnixMilli", Bridge: bridge, MethodID: Time_FFI_Schemas[8].MethodID, FuncSig: Time_FFI_Schemas[8].Sig, Doc: Time_FFI_Schemas[8].Doc}
+		bound.Routes["time.Time.UnixMicro"] = runtime.FFIRoute{Name: "time.Time.UnixMicro", Bridge: bridge, MethodID: Time_FFI_Schemas[9].MethodID, FuncSig: Time_FFI_Schemas[9].Sig, Doc: Time_FFI_Schemas[9].Doc}
+		bound.Routes["time.Time.UnixNano"] = runtime.FFIRoute{Name: "time.Time.UnixNano", Bridge: bridge, MethodID: Time_FFI_Schemas[10].MethodID, FuncSig: Time_FFI_Schemas[10].Sig, Doc: Time_FFI_Schemas[10].Doc}
+		bound.Routes["time.Time.Format"] = runtime.FFIRoute{Name: "time.Time.Format", Bridge: bridge, MethodID: Time_FFI_Schemas[11].MethodID, FuncSig: Time_FFI_Schemas[11].Sig, Doc: Time_FFI_Schemas[11].Doc}
+		bound.Routes["time.Time.Add"] = runtime.FFIRoute{Name: "time.Time.Add", Bridge: bridge, MethodID: Time_FFI_Schemas[12].MethodID, FuncSig: Time_FFI_Schemas[12].Sig, Doc: Time_FFI_Schemas[12].Doc}
+		bound.Routes["time.Time.Sub"] = runtime.FFIRoute{Name: "time.Time.Sub", Bridge: bridge, MethodID: Time_FFI_Schemas[13].MethodID, FuncSig: Time_FFI_Schemas[13].Sig, Doc: Time_FFI_Schemas[13].Doc}
+		bound.Routes["time.Time.IsZero"] = runtime.FFIRoute{Name: "time.Time.IsZero", Bridge: bridge, MethodID: Time_FFI_Schemas[14].MethodID, FuncSig: Time_FFI_Schemas[14].Sig, Doc: Time_FFI_Schemas[14].Doc}
+		bound.Routes["time.Time.Before"] = runtime.FFIRoute{Name: "time.Time.Before", Bridge: bridge, MethodID: Time_FFI_Schemas[15].MethodID, FuncSig: Time_FFI_Schemas[15].Sig, Doc: Time_FFI_Schemas[15].Doc}
+		bound.Routes["time.Time.After"] = runtime.FFIRoute{Name: "time.Time.After", Bridge: bridge, MethodID: Time_FFI_Schemas[16].MethodID, FuncSig: Time_FFI_Schemas[16].Sig, Doc: Time_FFI_Schemas[16].Doc}
+		bound.Routes["time.Time.Equal"] = runtime.FFIRoute{Name: "time.Time.Equal", Bridge: bridge, MethodID: Time_FFI_Schemas[17].MethodID, FuncSig: Time_FFI_Schemas[17].Sig, Doc: Time_FFI_Schemas[17].Doc}
+		bound.Routes["time.Time.String"] = runtime.FFIRoute{Name: "time.Time.String", Bridge: bridge, MethodID: Time_FFI_Schemas[18].MethodID, FuncSig: Time_FFI_Schemas[18].Sig, Doc: Time_FFI_Schemas[18].Doc}
+		bound.AddStruct("time.Time", time_Time_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("time.Time.Year", bridge, Time_FFI_Schemas[0].MethodID, Time_FFI_Schemas[0].Sig, Time_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("time.Time.Month", bridge, Time_FFI_Schemas[1].MethodID, Time_FFI_Schemas[1].Sig, Time_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("time.Time.Day", bridge, Time_FFI_Schemas[2].MethodID, Time_FFI_Schemas[2].Sig, Time_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("time.Time.Hour", bridge, Time_FFI_Schemas[3].MethodID, Time_FFI_Schemas[3].Sig, Time_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("time.Time.Minute", bridge, Time_FFI_Schemas[4].MethodID, Time_FFI_Schemas[4].Sig, Time_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("time.Time.Second", bridge, Time_FFI_Schemas[5].MethodID, Time_FFI_Schemas[5].Sig, Time_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("time.Time.Nanosecond", bridge, Time_FFI_Schemas[6].MethodID, Time_FFI_Schemas[6].Sig, Time_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("time.Time.Unix", bridge, Time_FFI_Schemas[7].MethodID, Time_FFI_Schemas[7].Sig, Time_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("time.Time.UnixMilli", bridge, Time_FFI_Schemas[8].MethodID, Time_FFI_Schemas[8].Sig, Time_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("time.Time.UnixMicro", bridge, Time_FFI_Schemas[9].MethodID, Time_FFI_Schemas[9].Sig, Time_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("time.Time.UnixNano", bridge, Time_FFI_Schemas[10].MethodID, Time_FFI_Schemas[10].Sig, Time_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("time.Time.Format", bridge, Time_FFI_Schemas[11].MethodID, Time_FFI_Schemas[11].Sig, Time_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("time.Time.Add", bridge, Time_FFI_Schemas[12].MethodID, Time_FFI_Schemas[12].Sig, Time_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("time.Time.Sub", bridge, Time_FFI_Schemas[13].MethodID, Time_FFI_Schemas[13].Sig, Time_FFI_Schemas[13].Doc)
-	registrar.RegisterFFISchema("time.Time.IsZero", bridge, Time_FFI_Schemas[14].MethodID, Time_FFI_Schemas[14].Sig, Time_FFI_Schemas[14].Doc)
-	registrar.RegisterFFISchema("time.Time.Before", bridge, Time_FFI_Schemas[15].MethodID, Time_FFI_Schemas[15].Sig, Time_FFI_Schemas[15].Doc)
-	registrar.RegisterFFISchema("time.Time.After", bridge, Time_FFI_Schemas[16].MethodID, Time_FFI_Schemas[16].Sig, Time_FFI_Schemas[16].Doc)
-	registrar.RegisterFFISchema("time.Time.Equal", bridge, Time_FFI_Schemas[17].MethodID, Time_FFI_Schemas[17].Sig, Time_FFI_Schemas[17].Doc)
-	registrar.RegisterFFISchema("time.Time.String", bridge, Time_FFI_Schemas[18].MethodID, Time_FFI_Schemas[18].Sig, Time_FFI_Schemas[18].Doc)
-	registerStructSchema("time.Time", time_Time_FFI_StructSchema)
 }

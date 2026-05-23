@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -380,17 +381,17 @@ func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMapTestLibrary(executor interface{ RegisterConstant(string, string) }, prefix string, impl MapTest, registry *ffigo.HandleRegistry) {
-	bridge := &MapTest_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
+func SurfaceMapTestLibrary(prefix string, impl MapTest) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
 	for _, m := range MapTest_FFI_Schemas {
-		registrar.RegisterFFISchema(prefix+"."+m.Name, bridge, m.MethodID, m.Sig, m.Doc)
+		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
 	}
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &MapTest_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		for _, m := range MapTest_FFI_Schemas {
+			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		}
+		return bound, nil
+	})
 }

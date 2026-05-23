@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -656,31 +657,45 @@ func (b *Strings_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStrings(executor interface{ RegisterConstant(string, string) }, impl Strings, registry *ffigo.HandleRegistry) {
-	bridge := &Strings_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceStrings(impl Strings) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("strings", "Contains", "strings.Contains", Strings_FFI_Schemas[0].MethodID, Strings_FFI_Schemas[0].Sig, Strings_FFI_Schemas[0].Doc)
+	schema.AddFunc("strings", "ContainsAny", "strings.ContainsAny", Strings_FFI_Schemas[1].MethodID, Strings_FFI_Schemas[1].Sig, Strings_FFI_Schemas[1].Doc)
+	schema.AddFunc("strings", "Count", "strings.Count", Strings_FFI_Schemas[2].MethodID, Strings_FFI_Schemas[2].Sig, Strings_FFI_Schemas[2].Doc)
+	schema.AddFunc("strings", "HasPrefix", "strings.HasPrefix", Strings_FFI_Schemas[3].MethodID, Strings_FFI_Schemas[3].Sig, Strings_FFI_Schemas[3].Doc)
+	schema.AddFunc("strings", "HasSuffix", "strings.HasSuffix", Strings_FFI_Schemas[4].MethodID, Strings_FFI_Schemas[4].Sig, Strings_FFI_Schemas[4].Doc)
+	schema.AddFunc("strings", "Index", "strings.Index", Strings_FFI_Schemas[5].MethodID, Strings_FFI_Schemas[5].Sig, Strings_FFI_Schemas[5].Doc)
+	schema.AddFunc("strings", "LastIndex", "strings.LastIndex", Strings_FFI_Schemas[6].MethodID, Strings_FFI_Schemas[6].Sig, Strings_FFI_Schemas[6].Doc)
+	schema.AddFunc("strings", "ToLower", "strings.ToLower", Strings_FFI_Schemas[7].MethodID, Strings_FFI_Schemas[7].Sig, Strings_FFI_Schemas[7].Doc)
+	schema.AddFunc("strings", "ToUpper", "strings.ToUpper", Strings_FFI_Schemas[8].MethodID, Strings_FFI_Schemas[8].Sig, Strings_FFI_Schemas[8].Doc)
+	schema.AddFunc("strings", "Trim", "strings.Trim", Strings_FFI_Schemas[9].MethodID, Strings_FFI_Schemas[9].Sig, Strings_FFI_Schemas[9].Doc)
+	schema.AddFunc("strings", "TrimSpace", "strings.TrimSpace", Strings_FFI_Schemas[10].MethodID, Strings_FFI_Schemas[10].Sig, Strings_FFI_Schemas[10].Doc)
+	schema.AddFunc("strings", "TrimPrefix", "strings.TrimPrefix", Strings_FFI_Schemas[11].MethodID, Strings_FFI_Schemas[11].Sig, Strings_FFI_Schemas[11].Doc)
+	schema.AddFunc("strings", "TrimSuffix", "strings.TrimSuffix", Strings_FFI_Schemas[12].MethodID, Strings_FFI_Schemas[12].Sig, Strings_FFI_Schemas[12].Doc)
+	schema.AddFunc("strings", "Replace", "strings.Replace", Strings_FFI_Schemas[13].MethodID, Strings_FFI_Schemas[13].Sig, Strings_FFI_Schemas[13].Doc)
+	schema.AddFunc("strings", "ReplaceAll", "strings.ReplaceAll", Strings_FFI_Schemas[14].MethodID, Strings_FFI_Schemas[14].Sig, Strings_FFI_Schemas[14].Doc)
+	schema.AddFunc("strings", "Split", "strings.Split", Strings_FFI_Schemas[15].MethodID, Strings_FFI_Schemas[15].Sig, Strings_FFI_Schemas[15].Doc)
+	schema.AddFunc("strings", "Join", "strings.Join", Strings_FFI_Schemas[16].MethodID, Strings_FFI_Schemas[16].Sig, Strings_FFI_Schemas[16].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Strings_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("strings", "Contains", runtime.FFIRoute{Name: "strings.Contains", Bridge: bridge, MethodID: Strings_FFI_Schemas[0].MethodID, FuncSig: Strings_FFI_Schemas[0].Sig, Doc: Strings_FFI_Schemas[0].Doc})
+		bound.AddRoute("strings", "ContainsAny", runtime.FFIRoute{Name: "strings.ContainsAny", Bridge: bridge, MethodID: Strings_FFI_Schemas[1].MethodID, FuncSig: Strings_FFI_Schemas[1].Sig, Doc: Strings_FFI_Schemas[1].Doc})
+		bound.AddRoute("strings", "Count", runtime.FFIRoute{Name: "strings.Count", Bridge: bridge, MethodID: Strings_FFI_Schemas[2].MethodID, FuncSig: Strings_FFI_Schemas[2].Sig, Doc: Strings_FFI_Schemas[2].Doc})
+		bound.AddRoute("strings", "HasPrefix", runtime.FFIRoute{Name: "strings.HasPrefix", Bridge: bridge, MethodID: Strings_FFI_Schemas[3].MethodID, FuncSig: Strings_FFI_Schemas[3].Sig, Doc: Strings_FFI_Schemas[3].Doc})
+		bound.AddRoute("strings", "HasSuffix", runtime.FFIRoute{Name: "strings.HasSuffix", Bridge: bridge, MethodID: Strings_FFI_Schemas[4].MethodID, FuncSig: Strings_FFI_Schemas[4].Sig, Doc: Strings_FFI_Schemas[4].Doc})
+		bound.AddRoute("strings", "Index", runtime.FFIRoute{Name: "strings.Index", Bridge: bridge, MethodID: Strings_FFI_Schemas[5].MethodID, FuncSig: Strings_FFI_Schemas[5].Sig, Doc: Strings_FFI_Schemas[5].Doc})
+		bound.AddRoute("strings", "LastIndex", runtime.FFIRoute{Name: "strings.LastIndex", Bridge: bridge, MethodID: Strings_FFI_Schemas[6].MethodID, FuncSig: Strings_FFI_Schemas[6].Sig, Doc: Strings_FFI_Schemas[6].Doc})
+		bound.AddRoute("strings", "ToLower", runtime.FFIRoute{Name: "strings.ToLower", Bridge: bridge, MethodID: Strings_FFI_Schemas[7].MethodID, FuncSig: Strings_FFI_Schemas[7].Sig, Doc: Strings_FFI_Schemas[7].Doc})
+		bound.AddRoute("strings", "ToUpper", runtime.FFIRoute{Name: "strings.ToUpper", Bridge: bridge, MethodID: Strings_FFI_Schemas[8].MethodID, FuncSig: Strings_FFI_Schemas[8].Sig, Doc: Strings_FFI_Schemas[8].Doc})
+		bound.AddRoute("strings", "Trim", runtime.FFIRoute{Name: "strings.Trim", Bridge: bridge, MethodID: Strings_FFI_Schemas[9].MethodID, FuncSig: Strings_FFI_Schemas[9].Sig, Doc: Strings_FFI_Schemas[9].Doc})
+		bound.AddRoute("strings", "TrimSpace", runtime.FFIRoute{Name: "strings.TrimSpace", Bridge: bridge, MethodID: Strings_FFI_Schemas[10].MethodID, FuncSig: Strings_FFI_Schemas[10].Sig, Doc: Strings_FFI_Schemas[10].Doc})
+		bound.AddRoute("strings", "TrimPrefix", runtime.FFIRoute{Name: "strings.TrimPrefix", Bridge: bridge, MethodID: Strings_FFI_Schemas[11].MethodID, FuncSig: Strings_FFI_Schemas[11].Sig, Doc: Strings_FFI_Schemas[11].Doc})
+		bound.AddRoute("strings", "TrimSuffix", runtime.FFIRoute{Name: "strings.TrimSuffix", Bridge: bridge, MethodID: Strings_FFI_Schemas[12].MethodID, FuncSig: Strings_FFI_Schemas[12].Sig, Doc: Strings_FFI_Schemas[12].Doc})
+		bound.AddRoute("strings", "Replace", runtime.FFIRoute{Name: "strings.Replace", Bridge: bridge, MethodID: Strings_FFI_Schemas[13].MethodID, FuncSig: Strings_FFI_Schemas[13].Sig, Doc: Strings_FFI_Schemas[13].Doc})
+		bound.AddRoute("strings", "ReplaceAll", runtime.FFIRoute{Name: "strings.ReplaceAll", Bridge: bridge, MethodID: Strings_FFI_Schemas[14].MethodID, FuncSig: Strings_FFI_Schemas[14].Sig, Doc: Strings_FFI_Schemas[14].Doc})
+		bound.AddRoute("strings", "Split", runtime.FFIRoute{Name: "strings.Split", Bridge: bridge, MethodID: Strings_FFI_Schemas[15].MethodID, FuncSig: Strings_FFI_Schemas[15].Sig, Doc: Strings_FFI_Schemas[15].Doc})
+		bound.AddRoute("strings", "Join", runtime.FFIRoute{Name: "strings.Join", Bridge: bridge, MethodID: Strings_FFI_Schemas[16].MethodID, FuncSig: Strings_FFI_Schemas[16].Sig, Doc: Strings_FFI_Schemas[16].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("strings.Contains", bridge, Strings_FFI_Schemas[0].MethodID, Strings_FFI_Schemas[0].Sig, Strings_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("strings.ContainsAny", bridge, Strings_FFI_Schemas[1].MethodID, Strings_FFI_Schemas[1].Sig, Strings_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("strings.Count", bridge, Strings_FFI_Schemas[2].MethodID, Strings_FFI_Schemas[2].Sig, Strings_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("strings.HasPrefix", bridge, Strings_FFI_Schemas[3].MethodID, Strings_FFI_Schemas[3].Sig, Strings_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("strings.HasSuffix", bridge, Strings_FFI_Schemas[4].MethodID, Strings_FFI_Schemas[4].Sig, Strings_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("strings.Index", bridge, Strings_FFI_Schemas[5].MethodID, Strings_FFI_Schemas[5].Sig, Strings_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("strings.LastIndex", bridge, Strings_FFI_Schemas[6].MethodID, Strings_FFI_Schemas[6].Sig, Strings_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("strings.ToLower", bridge, Strings_FFI_Schemas[7].MethodID, Strings_FFI_Schemas[7].Sig, Strings_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("strings.ToUpper", bridge, Strings_FFI_Schemas[8].MethodID, Strings_FFI_Schemas[8].Sig, Strings_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("strings.Trim", bridge, Strings_FFI_Schemas[9].MethodID, Strings_FFI_Schemas[9].Sig, Strings_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("strings.TrimSpace", bridge, Strings_FFI_Schemas[10].MethodID, Strings_FFI_Schemas[10].Sig, Strings_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("strings.TrimPrefix", bridge, Strings_FFI_Schemas[11].MethodID, Strings_FFI_Schemas[11].Sig, Strings_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("strings.TrimSuffix", bridge, Strings_FFI_Schemas[12].MethodID, Strings_FFI_Schemas[12].Sig, Strings_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("strings.Replace", bridge, Strings_FFI_Schemas[13].MethodID, Strings_FFI_Schemas[13].Sig, Strings_FFI_Schemas[13].Doc)
-	registrar.RegisterFFISchema("strings.ReplaceAll", bridge, Strings_FFI_Schemas[14].MethodID, Strings_FFI_Schemas[14].Sig, Strings_FFI_Schemas[14].Doc)
-	registrar.RegisterFFISchema("strings.Split", bridge, Strings_FFI_Schemas[15].MethodID, Strings_FFI_Schemas[15].Sig, Strings_FFI_Schemas[15].Doc)
-	registrar.RegisterFFISchema("strings.Join", bridge, Strings_FFI_Schemas[16].MethodID, Strings_FFI_Schemas[16].Sig, Strings_FFI_Schemas[16].Doc)
 }

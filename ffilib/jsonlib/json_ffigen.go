@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -205,16 +206,15 @@ func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterJSON(executor interface{ RegisterConstant(string, string) }, impl JSON, registry *ffigo.HandleRegistry) {
-	bridge := &JSON_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceJSON(impl JSON) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("encoding/json", "Marshal", "encoding/json.Marshal", JSON_FFI_Schemas[0].MethodID, JSON_FFI_Schemas[0].Sig, JSON_FFI_Schemas[0].Doc)
+	schema.AddFunc("encoding/json", "Unmarshal", "encoding/json.Unmarshal", JSON_FFI_Schemas[1].MethodID, JSON_FFI_Schemas[1].Sig, JSON_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &JSON_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("encoding/json", "Marshal", runtime.FFIRoute{Name: "encoding/json.Marshal", Bridge: bridge, MethodID: JSON_FFI_Schemas[0].MethodID, FuncSig: JSON_FFI_Schemas[0].Sig, Doc: JSON_FFI_Schemas[0].Doc})
+		bound.AddRoute("encoding/json", "Unmarshal", runtime.FFIRoute{Name: "encoding/json.Unmarshal", Bridge: bridge, MethodID: JSON_FFI_Schemas[1].MethodID, FuncSig: JSON_FFI_Schemas[1].Sig, Doc: JSON_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("encoding/json.Marshal", bridge, JSON_FFI_Schemas[0].MethodID, JSON_FFI_Schemas[0].Sig, JSON_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("encoding/json.Unmarshal", bridge, JSON_FFI_Schemas[1].MethodID, JSON_FFI_Schemas[1].Sig, JSON_FFI_Schemas[1].Doc)
 }

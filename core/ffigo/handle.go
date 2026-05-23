@@ -23,11 +23,18 @@ type HandleRegistry struct {
 }
 
 type handleEntry struct {
-	Object interface{}
-	TypeID string
+	Object    interface{}
+	TypeID    string
+	Lifecycle HandleLifecycle
 }
 
-// ... (ManagedHandle and Release remain unchanged)
+type HandleLifecycle uint8
+
+const (
+	HandleVMOwned HandleLifecycle = iota
+	HandleSurfacePinned
+	HandleBorrowed
+)
 
 // NewHandleRegistry creates a new handle registry.
 func NewHandleRegistry() *HandleRegistry {
@@ -44,6 +51,14 @@ func (r *HandleRegistry) Register(obj interface{}) uint32 {
 }
 
 func (r *HandleRegistry) RegisterTyped(obj interface{}, typeID string) uint32 {
+	return r.registerTyped(obj, typeID, HandleVMOwned)
+}
+
+func (r *HandleRegistry) RegisterPinnedTyped(obj interface{}, typeID string) uint32 {
+	return r.registerTyped(obj, typeID, HandleSurfacePinned)
+}
+
+func (r *HandleRegistry) registerTyped(obj interface{}, typeID string, lifecycle HandleLifecycle) uint32 {
 	if obj == nil {
 		return 0
 	}
@@ -52,7 +67,7 @@ func (r *HandleRegistry) RegisterTyped(obj interface{}, typeID string) uint32 {
 	defer r.mu.Unlock()
 
 	id := atomic.AddUint32(&r.nextID, 1)
-	r.handles[id] = handleEntry{Object: obj, TypeID: typeID}
+	r.handles[id] = handleEntry{Object: obj, TypeID: typeID, Lifecycle: lifecycle}
 	return id
 }
 
@@ -107,7 +122,10 @@ func (r *HandleRegistry) GetTypedWithAudit(id uint32, typeID string) (interface{
 func (r *HandleRegistry) Remove(id uint32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.handles[id]; ok {
+	if entry, ok := r.handles[id]; ok {
+		if entry.Lifecycle != HandleVMOwned {
+			return
+		}
 		delete(r.handles, id)
 		// 维持 100 个审计记录
 		if len(r.recentDeletions) >= 100 {

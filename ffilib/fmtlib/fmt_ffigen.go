@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -287,19 +288,21 @@ func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFmt(executor interface{ RegisterConstant(string, string) }, impl Fmt, registry *ffigo.HandleRegistry) {
-	bridge := &Fmt_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceFmt(impl Fmt) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("fmt", "Print", "fmt.Print", Fmt_FFI_Schemas[0].MethodID, Fmt_FFI_Schemas[0].Sig, Fmt_FFI_Schemas[0].Doc)
+	schema.AddFunc("fmt", "Println", "fmt.Println", Fmt_FFI_Schemas[1].MethodID, Fmt_FFI_Schemas[1].Sig, Fmt_FFI_Schemas[1].Doc)
+	schema.AddFunc("fmt", "Printf", "fmt.Printf", Fmt_FFI_Schemas[2].MethodID, Fmt_FFI_Schemas[2].Sig, Fmt_FFI_Schemas[2].Doc)
+	schema.AddFunc("fmt", "Sprintf", "fmt.Sprintf", Fmt_FFI_Schemas[3].MethodID, Fmt_FFI_Schemas[3].Sig, Fmt_FFI_Schemas[3].Doc)
+	schema.AddConst("fmt", "FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Fmt_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("fmt", "Print", runtime.FFIRoute{Name: "fmt.Print", Bridge: bridge, MethodID: Fmt_FFI_Schemas[0].MethodID, FuncSig: Fmt_FFI_Schemas[0].Sig, Doc: Fmt_FFI_Schemas[0].Doc})
+		bound.AddRoute("fmt", "Println", runtime.FFIRoute{Name: "fmt.Println", Bridge: bridge, MethodID: Fmt_FFI_Schemas[1].MethodID, FuncSig: Fmt_FFI_Schemas[1].Sig, Doc: Fmt_FFI_Schemas[1].Doc})
+		bound.AddRoute("fmt", "Printf", runtime.FFIRoute{Name: "fmt.Printf", Bridge: bridge, MethodID: Fmt_FFI_Schemas[2].MethodID, FuncSig: Fmt_FFI_Schemas[2].Sig, Doc: Fmt_FFI_Schemas[2].Doc})
+		bound.AddRoute("fmt", "Sprintf", runtime.FFIRoute{Name: "fmt.Sprintf", Bridge: bridge, MethodID: Fmt_FFI_Schemas[3].MethodID, FuncSig: Fmt_FFI_Schemas[3].Sig, Doc: Fmt_FFI_Schemas[3].Doc})
+		bound.AddConst("fmt", "FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("fmt.Print", bridge, Fmt_FFI_Schemas[0].MethodID, Fmt_FFI_Schemas[0].Sig, Fmt_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("fmt.Println", bridge, Fmt_FFI_Schemas[1].MethodID, Fmt_FFI_Schemas[1].Sig, Fmt_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("fmt.Printf", bridge, Fmt_FFI_Schemas[2].MethodID, Fmt_FFI_Schemas[2].Sig, Fmt_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("fmt.Sprintf", bridge, Fmt_FFI_Schemas[3].MethodID, Fmt_FFI_Schemas[3].Sig, Fmt_FFI_Schemas[3].Doc)
-	executor.RegisterConstant("fmt.FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
 }

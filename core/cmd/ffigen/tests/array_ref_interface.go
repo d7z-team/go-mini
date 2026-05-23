@@ -31,7 +31,9 @@ func (h *ArrayRefHost) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 
 func TestGeneratedArrayRefCopyBack(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	RegisterArrayRefAPI(executor, &ArrayRefHost{}, executor.HandleRegistry())
+	if err := executor.UseSurface(SurfaceArrayRefAPI(&ArrayRefHost{})); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

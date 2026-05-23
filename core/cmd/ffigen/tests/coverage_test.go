@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 // CoverageMockOS 实现了复杂的 OS 接口用于测试覆盖率
@@ -56,9 +55,9 @@ func TestFFICoverage(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	mock := &CoverageMockOS{}
-	registry := ffigo.NewHandleRegistry()
-
-	RegisterMockOS(executor, mock, registry)
+	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main
@@ -98,8 +97,9 @@ func TestFFICoverage(t *testing.T) {
 func TestFFIErrorPropagation(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &CoverageMockOS{}
-	registry := ffigo.NewHandleRegistry()
-	RegisterMockOS(executor, mock, registry)
+	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

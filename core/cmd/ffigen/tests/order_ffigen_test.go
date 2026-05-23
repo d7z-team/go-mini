@@ -11,7 +11,9 @@ import (
 func TestOrderFFIGen(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	impl := ordertest.NewOrderImpl()
-	ordertest.RegisterOrderService(executor, impl, executor.HandleRegistry())
+	if err := executor.UseSurface(ordertest.SurfaceOrderService(impl)); err != nil {
+		t.Fatal(err)
+	}
 	code := `
 	package main
 	import "order"

@@ -9,24 +9,33 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", runtime.StructOwnershipHostOpaque, "struct { Write function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); Read function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error); Close function(HostRef<io.File>) Error; Sync function(HostRef<io.File>) Error; Truncate function(HostRef<io.File>, Int64) Error; WriteString function(HostRef<io.File>, String) tuple(Int64, Error); Name function(HostRef<io.File>) String; WriteNative function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); }")
 
 var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")
 
-func RegisterReaderSchema(executor interface {
-	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-}) {
-	executor.RegisterInterfaceSchema("io.Reader", io_Reader_FFI_InterfaceSchema)
+func SurfaceReaderSchema() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+		return bound, nil
+	})
 }
 
 var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Write(TypeBytes) tuple(Int64, Error);}")
 
-func RegisterWriterSchema(executor interface {
-	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-}) {
-	executor.RegisterInterfaceSchema("io.Writer", io_Writer_FFI_InterfaceSchema)
+func SurfaceWriterSchema() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+		return bound, nil
+	})
 }
 
 const (
@@ -353,22 +362,25 @@ func (b *IO_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterIO(executor interface{ RegisterConstant(string, string) }, impl IO, registry *ffigo.HandleRegistry) {
-	bridge := &IO_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceIO(impl IO) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("io", "ReadAll", "io.ReadAll", IO_FFI_Schemas[0].MethodID, IO_FFI_Schemas[0].Sig, IO_FFI_Schemas[0].Doc)
+	schema.AddFunc("io", "Copy", "io.Copy", IO_FFI_Schemas[1].MethodID, IO_FFI_Schemas[1].Sig, IO_FFI_Schemas[1].Doc)
+	schema.AddFunc("io", "WriteString", "io.WriteString", IO_FFI_Schemas[2].MethodID, IO_FFI_Schemas[2].Sig, IO_FFI_Schemas[2].Doc)
+	schema.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
+	schema.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
+	schema.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &IO_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("io", "ReadAll", runtime.FFIRoute{Name: "io.ReadAll", Bridge: bridge, MethodID: IO_FFI_Schemas[0].MethodID, FuncSig: IO_FFI_Schemas[0].Sig, Doc: IO_FFI_Schemas[0].Doc})
+		bound.AddRoute("io", "Copy", runtime.FFIRoute{Name: "io.Copy", Bridge: bridge, MethodID: IO_FFI_Schemas[1].MethodID, FuncSig: IO_FFI_Schemas[1].Sig, Doc: IO_FFI_Schemas[1].Doc})
+		bound.AddRoute("io", "WriteString", runtime.FFIRoute{Name: "io.WriteString", Bridge: bridge, MethodID: IO_FFI_Schemas[2].MethodID, FuncSig: IO_FFI_Schemas[2].Sig, Doc: IO_FFI_Schemas[2].Doc})
+		bound.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
+		bound.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
+		bound.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("io.ReadAll", bridge, IO_FFI_Schemas[0].MethodID, IO_FFI_Schemas[0].Sig, IO_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("io.Copy", bridge, IO_FFI_Schemas[1].MethodID, IO_FFI_Schemas[1].Sig, IO_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("io.WriteString", bridge, IO_FFI_Schemas[2].MethodID, IO_FFI_Schemas[2].Sig, IO_FFI_Schemas[2].Doc)
-	executor.RegisterConstant("io.SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
-	executor.RegisterConstant("io.SeekEnd", ffigo.ToConstantString(io.SeekEnd))
-	executor.RegisterConstant("io.SeekStart", ffigo.ToConstantString(io.SeekStart))
 }
 
 const (
@@ -755,29 +767,24 @@ func (b *File_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFile(executor interface{ RegisterConstant(string, string) }, registry *ffigo.HandleRegistry) {
-	bridge := &File_Bridge{Impl: nil, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceFile() *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("io.File", io_File_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &File_Bridge{Impl: nil, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.Routes["io.File.Write"] = runtime.FFIRoute{Name: "io.File.Write", Bridge: bridge, MethodID: File_FFI_Schemas[0].MethodID, FuncSig: File_FFI_Schemas[0].Sig, Doc: File_FFI_Schemas[0].Doc}
+		bound.Routes["io.File.Read"] = runtime.FFIRoute{Name: "io.File.Read", Bridge: bridge, MethodID: File_FFI_Schemas[1].MethodID, FuncSig: File_FFI_Schemas[1].Sig, Doc: File_FFI_Schemas[1].Doc}
+		bound.Routes["io.File.WriteAt"] = runtime.FFIRoute{Name: "io.File.WriteAt", Bridge: bridge, MethodID: File_FFI_Schemas[2].MethodID, FuncSig: File_FFI_Schemas[2].Sig, Doc: File_FFI_Schemas[2].Doc}
+		bound.Routes["io.File.ReadAt"] = runtime.FFIRoute{Name: "io.File.ReadAt", Bridge: bridge, MethodID: File_FFI_Schemas[3].MethodID, FuncSig: File_FFI_Schemas[3].Sig, Doc: File_FFI_Schemas[3].Doc}
+		bound.Routes["io.File.Seek"] = runtime.FFIRoute{Name: "io.File.Seek", Bridge: bridge, MethodID: File_FFI_Schemas[4].MethodID, FuncSig: File_FFI_Schemas[4].Sig, Doc: File_FFI_Schemas[4].Doc}
+		bound.Routes["io.File.Close"] = runtime.FFIRoute{Name: "io.File.Close", Bridge: bridge, MethodID: File_FFI_Schemas[5].MethodID, FuncSig: File_FFI_Schemas[5].Sig, Doc: File_FFI_Schemas[5].Doc}
+		bound.Routes["io.File.Sync"] = runtime.FFIRoute{Name: "io.File.Sync", Bridge: bridge, MethodID: File_FFI_Schemas[6].MethodID, FuncSig: File_FFI_Schemas[6].Sig, Doc: File_FFI_Schemas[6].Doc}
+		bound.Routes["io.File.Truncate"] = runtime.FFIRoute{Name: "io.File.Truncate", Bridge: bridge, MethodID: File_FFI_Schemas[7].MethodID, FuncSig: File_FFI_Schemas[7].Sig, Doc: File_FFI_Schemas[7].Doc}
+		bound.Routes["io.File.WriteString"] = runtime.FFIRoute{Name: "io.File.WriteString", Bridge: bridge, MethodID: File_FFI_Schemas[8].MethodID, FuncSig: File_FFI_Schemas[8].Sig, Doc: File_FFI_Schemas[8].Doc}
+		bound.Routes["io.File.Name"] = runtime.FFIRoute{Name: "io.File.Name", Bridge: bridge, MethodID: File_FFI_Schemas[9].MethodID, FuncSig: File_FFI_Schemas[9].Sig, Doc: File_FFI_Schemas[9].Doc}
+		bound.Routes["io.File.WriteNative"] = runtime.FFIRoute{Name: "io.File.WriteNative", Bridge: bridge, MethodID: File_FFI_Schemas[10].MethodID, FuncSig: File_FFI_Schemas[10].Sig, Doc: File_FFI_Schemas[10].Doc}
+		bound.AddStruct("io.File", io_File_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("io.File.Write", bridge, File_FFI_Schemas[0].MethodID, File_FFI_Schemas[0].Sig, File_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("io.File.Read", bridge, File_FFI_Schemas[1].MethodID, File_FFI_Schemas[1].Sig, File_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("io.File.WriteAt", bridge, File_FFI_Schemas[2].MethodID, File_FFI_Schemas[2].Sig, File_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("io.File.ReadAt", bridge, File_FFI_Schemas[3].MethodID, File_FFI_Schemas[3].Sig, File_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("io.File.Seek", bridge, File_FFI_Schemas[4].MethodID, File_FFI_Schemas[4].Sig, File_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("io.File.Close", bridge, File_FFI_Schemas[5].MethodID, File_FFI_Schemas[5].Sig, File_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("io.File.Sync", bridge, File_FFI_Schemas[6].MethodID, File_FFI_Schemas[6].Sig, File_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("io.File.Truncate", bridge, File_FFI_Schemas[7].MethodID, File_FFI_Schemas[7].Sig, File_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("io.File.WriteString", bridge, File_FFI_Schemas[8].MethodID, File_FFI_Schemas[8].Sig, File_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("io.File.Name", bridge, File_FFI_Schemas[9].MethodID, File_FFI_Schemas[9].Sig, File_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("io.File.WriteNative", bridge, File_FFI_Schemas[10].MethodID, File_FFI_Schemas[10].Sig, File_FFI_Schemas[10].Doc)
-	registerStructSchema("io.File", io_File_FFI_StructSchema)
 }

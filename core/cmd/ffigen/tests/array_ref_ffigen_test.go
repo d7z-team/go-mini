@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -146,15 +147,13 @@ func (b *ArrayRefAPI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterArrayRefAPI(executor interface{ RegisterConstant(string, string) }, impl ArrayRefAPI, registry *ffigo.HandleRegistry) {
-	bridge := &ArrayRefAPI_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceArrayRefAPI(impl ArrayRefAPI) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("copyback", "Rewrite", "copyback.Rewrite", ArrayRefAPI_FFI_Schemas[0].MethodID, ArrayRefAPI_FFI_Schemas[0].Sig, ArrayRefAPI_FFI_Schemas[0].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &ArrayRefAPI_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("copyback", "Rewrite", runtime.FFIRoute{Name: "copyback.Rewrite", Bridge: bridge, MethodID: ArrayRefAPI_FFI_Schemas[0].MethodID, FuncSig: ArrayRefAPI_FFI_Schemas[0].Sig, Doc: ArrayRefAPI_FFI_Schemas[0].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("copyback.Rewrite", bridge, ArrayRefAPI_FFI_Schemas[0].MethodID, ArrayRefAPI_FFI_Schemas[0].Sig, ArrayRefAPI_FFI_Schemas[0].Doc)
 }

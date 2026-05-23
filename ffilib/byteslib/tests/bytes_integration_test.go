@@ -52,5 +52,5 @@ test.OutBytes(bytes.ReplaceAll([]byte("a-a"), []byte("a"), []byte("b")))
 			Want:   "go|GO|go|go|a/b/c|abab|b-b",
 			Covers: []string{"ToLower", "ToUpper", "Trim", "TrimSpace", "Split", "Join", "Repeat", "ReplaceAll"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

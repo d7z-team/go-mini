@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -562,25 +563,33 @@ func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterStrconv(executor interface{ RegisterConstant(string, string) }, impl Strconv, registry *ffigo.HandleRegistry) {
-	bridge := &Strconv_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceStrconv(impl Strconv) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("strconv", "Atoi", "strconv.Atoi", Strconv_FFI_Schemas[0].MethodID, Strconv_FFI_Schemas[0].Sig, Strconv_FFI_Schemas[0].Doc)
+	schema.AddFunc("strconv", "Itoa", "strconv.Itoa", Strconv_FFI_Schemas[1].MethodID, Strconv_FFI_Schemas[1].Sig, Strconv_FFI_Schemas[1].Doc)
+	schema.AddFunc("strconv", "ParseBool", "strconv.ParseBool", Strconv_FFI_Schemas[2].MethodID, Strconv_FFI_Schemas[2].Sig, Strconv_FFI_Schemas[2].Doc)
+	schema.AddFunc("strconv", "ParseFloat", "strconv.ParseFloat", Strconv_FFI_Schemas[3].MethodID, Strconv_FFI_Schemas[3].Sig, Strconv_FFI_Schemas[3].Doc)
+	schema.AddFunc("strconv", "ParseInt", "strconv.ParseInt", Strconv_FFI_Schemas[4].MethodID, Strconv_FFI_Schemas[4].Sig, Strconv_FFI_Schemas[4].Doc)
+	schema.AddFunc("strconv", "FormatBool", "strconv.FormatBool", Strconv_FFI_Schemas[5].MethodID, Strconv_FFI_Schemas[5].Sig, Strconv_FFI_Schemas[5].Doc)
+	schema.AddFunc("strconv", "FormatFloat", "strconv.FormatFloat", Strconv_FFI_Schemas[6].MethodID, Strconv_FFI_Schemas[6].Sig, Strconv_FFI_Schemas[6].Doc)
+	schema.AddFunc("strconv", "FormatInt", "strconv.FormatInt", Strconv_FFI_Schemas[7].MethodID, Strconv_FFI_Schemas[7].Sig, Strconv_FFI_Schemas[7].Doc)
+	schema.AddFunc("strconv", "Quote", "strconv.Quote", Strconv_FFI_Schemas[8].MethodID, Strconv_FFI_Schemas[8].Sig, Strconv_FFI_Schemas[8].Doc)
+	schema.AddFunc("strconv", "Unquote", "strconv.Unquote", Strconv_FFI_Schemas[9].MethodID, Strconv_FFI_Schemas[9].Sig, Strconv_FFI_Schemas[9].Doc)
+	schema.AddConst("strconv", "IntSize", ffigo.ToConstantString(strconv.IntSize))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Strconv_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("strconv", "Atoi", runtime.FFIRoute{Name: "strconv.Atoi", Bridge: bridge, MethodID: Strconv_FFI_Schemas[0].MethodID, FuncSig: Strconv_FFI_Schemas[0].Sig, Doc: Strconv_FFI_Schemas[0].Doc})
+		bound.AddRoute("strconv", "Itoa", runtime.FFIRoute{Name: "strconv.Itoa", Bridge: bridge, MethodID: Strconv_FFI_Schemas[1].MethodID, FuncSig: Strconv_FFI_Schemas[1].Sig, Doc: Strconv_FFI_Schemas[1].Doc})
+		bound.AddRoute("strconv", "ParseBool", runtime.FFIRoute{Name: "strconv.ParseBool", Bridge: bridge, MethodID: Strconv_FFI_Schemas[2].MethodID, FuncSig: Strconv_FFI_Schemas[2].Sig, Doc: Strconv_FFI_Schemas[2].Doc})
+		bound.AddRoute("strconv", "ParseFloat", runtime.FFIRoute{Name: "strconv.ParseFloat", Bridge: bridge, MethodID: Strconv_FFI_Schemas[3].MethodID, FuncSig: Strconv_FFI_Schemas[3].Sig, Doc: Strconv_FFI_Schemas[3].Doc})
+		bound.AddRoute("strconv", "ParseInt", runtime.FFIRoute{Name: "strconv.ParseInt", Bridge: bridge, MethodID: Strconv_FFI_Schemas[4].MethodID, FuncSig: Strconv_FFI_Schemas[4].Sig, Doc: Strconv_FFI_Schemas[4].Doc})
+		bound.AddRoute("strconv", "FormatBool", runtime.FFIRoute{Name: "strconv.FormatBool", Bridge: bridge, MethodID: Strconv_FFI_Schemas[5].MethodID, FuncSig: Strconv_FFI_Schemas[5].Sig, Doc: Strconv_FFI_Schemas[5].Doc})
+		bound.AddRoute("strconv", "FormatFloat", runtime.FFIRoute{Name: "strconv.FormatFloat", Bridge: bridge, MethodID: Strconv_FFI_Schemas[6].MethodID, FuncSig: Strconv_FFI_Schemas[6].Sig, Doc: Strconv_FFI_Schemas[6].Doc})
+		bound.AddRoute("strconv", "FormatInt", runtime.FFIRoute{Name: "strconv.FormatInt", Bridge: bridge, MethodID: Strconv_FFI_Schemas[7].MethodID, FuncSig: Strconv_FFI_Schemas[7].Sig, Doc: Strconv_FFI_Schemas[7].Doc})
+		bound.AddRoute("strconv", "Quote", runtime.FFIRoute{Name: "strconv.Quote", Bridge: bridge, MethodID: Strconv_FFI_Schemas[8].MethodID, FuncSig: Strconv_FFI_Schemas[8].Sig, Doc: Strconv_FFI_Schemas[8].Doc})
+		bound.AddRoute("strconv", "Unquote", runtime.FFIRoute{Name: "strconv.Unquote", Bridge: bridge, MethodID: Strconv_FFI_Schemas[9].MethodID, FuncSig: Strconv_FFI_Schemas[9].Sig, Doc: Strconv_FFI_Schemas[9].Doc})
+		bound.AddConst("strconv", "IntSize", ffigo.ToConstantString(strconv.IntSize))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("strconv.Atoi", bridge, Strconv_FFI_Schemas[0].MethodID, Strconv_FFI_Schemas[0].Sig, Strconv_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("strconv.Itoa", bridge, Strconv_FFI_Schemas[1].MethodID, Strconv_FFI_Schemas[1].Sig, Strconv_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("strconv.ParseBool", bridge, Strconv_FFI_Schemas[2].MethodID, Strconv_FFI_Schemas[2].Sig, Strconv_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("strconv.ParseFloat", bridge, Strconv_FFI_Schemas[3].MethodID, Strconv_FFI_Schemas[3].Sig, Strconv_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("strconv.ParseInt", bridge, Strconv_FFI_Schemas[4].MethodID, Strconv_FFI_Schemas[4].Sig, Strconv_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("strconv.FormatBool", bridge, Strconv_FFI_Schemas[5].MethodID, Strconv_FFI_Schemas[5].Sig, Strconv_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("strconv.FormatFloat", bridge, Strconv_FFI_Schemas[6].MethodID, Strconv_FFI_Schemas[6].Sig, Strconv_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("strconv.FormatInt", bridge, Strconv_FFI_Schemas[7].MethodID, Strconv_FFI_Schemas[7].Sig, Strconv_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("strconv.Quote", bridge, Strconv_FFI_Schemas[8].MethodID, Strconv_FFI_Schemas[8].Sig, Strconv_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("strconv.Unquote", bridge, Strconv_FFI_Schemas[9].MethodID, Strconv_FFI_Schemas[9].Sig, Strconv_FFI_Schemas[9].Doc)
-	executor.RegisterConstant("strconv.IntSize", ffigo.ToConstantString(strconv.IntSize))
 }

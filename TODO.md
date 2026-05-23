@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-22
+更新时间: 2026-05-23
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -16,8 +16,12 @@
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则。
+- Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`，不再按 route/constant 前缀扫描。
+- Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema 与方法 route。
+- `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，不再生成 `RegisterXxx` / `RegisterXxxLibrary` 主入口；生成物直接构造 `FFISurfaceSchema` 和 `BoundFFISurface`，并通过 `ffigen:global` 生成只读 HostRef package value。
+- FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
-- 顶层 `ffilib` 继续承载完整标准库 FFI 装配，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；core 纯库不需要外层手动重复装配。
+- 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
@@ -25,6 +29,7 @@
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得引入 Go parser/AST 或 Mini AST converter。
 - `core` 不得 import 或调用顶层 `ffilib`；除 `core/ffilib` 纯库测试外，`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试，不依赖顶层标准库装配。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
+- `core/surface.Bundle` 只保留声明式 schema、runtime bind 和 compiler-only templates，不再提供 registrar adapter；surface 冲突通过 `Bundle.Err` / `UseSurface` 返回错误。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
 - 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
@@ -100,7 +105,7 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 - 非调试执行主路径不得重新引入 AST 节点依赖。
 - runtime 包及其依赖图不得引入 `core/ast`；AST 相关转换必须停留在 `core/gofrontend`、`core/lowering`、compiler 或分析/调试边界。
 - `core/ffigo` 不得 import `core/ast`、`go/ast`、`go/parser`、`go/scanner`、`go/token`；Go 前端转换只允许在 `core/gofrontend`。
-- `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.RegisterAll` 装配。
+- `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first。
 - FFI 只走 schema-only，不引入 spec/registrar 双轨。

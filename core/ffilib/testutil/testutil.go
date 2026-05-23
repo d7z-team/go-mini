@@ -10,10 +10,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 type OutputKind string
@@ -34,12 +36,14 @@ type Harness struct {
 type Option func(*config)
 
 type config struct {
-	register any
+	surface *surface.Bundle
 }
 
-func WithRegister(register any) Option {
+const caseTimeout = 30 * time.Second
+
+func WithSurface(bundle *surface.Bundle) Option {
 	return func(cfg *config) {
-		cfg.register = register
+		cfg.surface = bundle
 	}
 }
 
@@ -97,11 +101,15 @@ func NewHarness(tb testing.TB, opts ...Option) *Harness {
 		}
 	}
 	executor := engine.NewMiniExecutor()
-	if cfg.register != nil {
-		callRegister(cfg.register, executor)
+	if cfg.surface != nil {
+		if err := executor.UseSurface(cfg.surface); err != nil {
+			tb.Fatal(err)
+		}
 	}
 	out := &recorder{}
-	registerTestModule(executor, out)
+	if err := executor.UseSurface(testSurface(out)); err != nil {
+		tb.Fatal(err)
+	}
 	return &Harness{Executor: executor, output: out}
 }
 
@@ -179,23 +187,6 @@ func FFISchema(name string, generated any) MethodSchema {
 	return Schema(name, methods...)
 }
 
-func callRegister(register any, executor *engine.MiniExecutor) {
-	fn := reflect.ValueOf(register)
-	if fn.Kind() != reflect.Func {
-		panic(fmt.Sprintf("testutil.WithRegister: got %T, want function", register))
-	}
-	fnType := fn.Type()
-	if fnType.NumIn() != 1 || fnType.NumOut() != 0 {
-		panic(fmt.Sprintf("testutil.WithRegister: got %s, want func(executor)", fnType))
-	}
-	executorValue := reflect.ValueOf(executor)
-	paramType := fnType.In(0)
-	if !executorValue.Type().AssignableTo(paramType) && !(paramType.Kind() == reflect.Interface && executorValue.Type().Implements(paramType)) {
-		panic(fmt.Sprintf("testutil.WithRegister: %s cannot accept %s", fnType, executorValue.Type()))
-	}
-	fn.Call([]reflect.Value{executorValue})
-}
-
 func runCase(tb testing.TB, tc Case, opts ...Option) {
 	tb.Helper()
 	h := NewHarness(tb, opts...)
@@ -214,7 +205,9 @@ func runCase(tb testing.TB, tc Case, opts ...Option) {
 		tb.Fatalf("compile failed: %v\n%s", err, code)
 	}
 
-	execErr := prog.Execute(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), caseTimeout)
+	defer cancel()
+	execErr := prog.Execute(ctx)
 	if tc.WantRunErr != "" {
 		if execErr == nil {
 			tb.Fatalf("expected run error containing %q, got nil", tc.WantRunErr)
@@ -367,15 +360,37 @@ const (
 	methodDone
 )
 
-func registerTestModule(executor *engine.MiniExecutor, output *recorder) {
-	bridge := &testBridge{output: output}
-	executor.RegisterFFISchema("test.Out", bridge, methodOut, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString), "")
-	executor.RegisterFFISchema("test.OutLine", bridge, methodOutLine, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString), "")
-	executor.RegisterFFISchema("test.OutBool", bridge, methodOutBool, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBool), "")
-	executor.RegisterFFISchema("test.OutInt", bridge, methodOutInt, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecInt64), "")
-	executor.RegisterFFISchema("test.OutFloat", bridge, methodOutFloat, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecFloat64), "")
-	executor.RegisterFFISchema("test.OutBytes", bridge, methodOutBytes, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBytes), "")
-	executor.RegisterFFISchema("test.Done", bridge, methodDone, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false), "")
+func testSurface(output *recorder) *surface.Bundle {
+	routes := []struct {
+		member   string
+		methodID uint32
+		sig      *runtime.RuntimeFuncSig
+	}{
+		{"Out", methodOut, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString)},
+		{"OutLine", methodOutLine, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString)},
+		{"OutBool", methodOutBool, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBool)},
+		{"OutInt", methodOutInt, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecInt64)},
+		{"OutFloat", methodOutFloat, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecFloat64)},
+		{"OutBytes", methodOutBytes, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBytes)},
+		{"Done", methodDone, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false)},
+	}
+	schema := runtime.NewFFISurfaceSchema()
+	for _, route := range routes {
+		schema.AddFunc("test", route.member, "test."+route.member, route.methodID, route.sig, "")
+	}
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &testBridge{output: output}
+		bound := runtime.NewBoundFFISurface(schema)
+		for _, route := range routes {
+			bound.AddRoute("test", route.member, runtime.FFIRoute{
+				Name:     "test." + route.member,
+				Bridge:   bridge,
+				MethodID: route.methodID,
+				FuncSig:  route.sig,
+			})
+		}
+		return bound, nil
+	})
 }
 
 func (b *testBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

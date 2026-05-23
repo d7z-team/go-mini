@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -100,17 +101,17 @@ func (b *MD5_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMD5(executor interface{ RegisterConstant(string, string) }, impl MD5, registry *ffigo.HandleRegistry) {
-	bridge := &MD5_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceMD5(impl MD5) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("crypto/md5", "Sum", "crypto/md5.Sum", MD5_FFI_Schemas[0].MethodID, MD5_FFI_Schemas[0].Sig, MD5_FFI_Schemas[0].Doc)
+	schema.AddConst("crypto/md5", "BlockSize", ffigo.ToConstantString(md5.BlockSize))
+	schema.AddConst("crypto/md5", "Size", ffigo.ToConstantString(md5.Size))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &MD5_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("crypto/md5", "Sum", runtime.FFIRoute{Name: "crypto/md5.Sum", Bridge: bridge, MethodID: MD5_FFI_Schemas[0].MethodID, FuncSig: MD5_FFI_Schemas[0].Sig, Doc: MD5_FFI_Schemas[0].Doc})
+		bound.AddConst("crypto/md5", "BlockSize", ffigo.ToConstantString(md5.BlockSize))
+		bound.AddConst("crypto/md5", "Size", ffigo.ToConstantString(md5.Size))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("crypto/md5.Sum", bridge, MD5_FFI_Schemas[0].MethodID, MD5_FFI_Schemas[0].Sig, MD5_FFI_Schemas[0].Doc)
-	executor.RegisterConstant("crypto/md5.BlockSize", ffigo.ToConstantString(md5.BlockSize))
-	executor.RegisterConstant("crypto/md5.Size", ffigo.ToConstantString(md5.Size))
 }

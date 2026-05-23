@@ -12,7 +12,9 @@ func TestAdvancedFFIExecution(t *testing.T) {
 	impl := &AdvancedFFIImpl{obj: obj}
 
 	executor := engine.NewMiniExecutor()
-	RegisterAdvancedFFI(executor, impl, executor.HandleRegistry())
+	if err := executor.UseSurface(SurfaceAdvancedFFI(impl)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 		package main

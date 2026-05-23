@@ -19,5 +19,5 @@ func TestMD5Sum(t *testing.T) {
 			Want:    "900150983cd24fb0d6963f7d28e17f72",
 			Covers:  []string{"Sum"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

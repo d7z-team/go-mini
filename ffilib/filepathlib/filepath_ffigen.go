@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -499,26 +500,35 @@ func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterFilepath(executor interface{ RegisterConstant(string, string) }, impl Filepath, registry *ffigo.HandleRegistry) {
-	bridge := &Filepath_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceFilepath(impl Filepath) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("filepath", "Base", "filepath.Base", Filepath_FFI_Schemas[0].MethodID, Filepath_FFI_Schemas[0].Sig, Filepath_FFI_Schemas[0].Doc)
+	schema.AddFunc("filepath", "Clean", "filepath.Clean", Filepath_FFI_Schemas[1].MethodID, Filepath_FFI_Schemas[1].Sig, Filepath_FFI_Schemas[1].Doc)
+	schema.AddFunc("filepath", "Dir", "filepath.Dir", Filepath_FFI_Schemas[2].MethodID, Filepath_FFI_Schemas[2].Sig, Filepath_FFI_Schemas[2].Doc)
+	schema.AddFunc("filepath", "Ext", "filepath.Ext", Filepath_FFI_Schemas[3].MethodID, Filepath_FFI_Schemas[3].Sig, Filepath_FFI_Schemas[3].Doc)
+	schema.AddFunc("filepath", "IsAbs", "filepath.IsAbs", Filepath_FFI_Schemas[4].MethodID, Filepath_FFI_Schemas[4].Sig, Filepath_FFI_Schemas[4].Doc)
+	schema.AddFunc("filepath", "Join", "filepath.Join", Filepath_FFI_Schemas[5].MethodID, Filepath_FFI_Schemas[5].Sig, Filepath_FFI_Schemas[5].Doc)
+	schema.AddFunc("filepath", "Match", "filepath.Match", Filepath_FFI_Schemas[6].MethodID, Filepath_FFI_Schemas[6].Sig, Filepath_FFI_Schemas[6].Doc)
+	schema.AddFunc("filepath", "Rel", "filepath.Rel", Filepath_FFI_Schemas[7].MethodID, Filepath_FFI_Schemas[7].Sig, Filepath_FFI_Schemas[7].Doc)
+	schema.AddFunc("filepath", "Split", "filepath.Split", Filepath_FFI_Schemas[8].MethodID, Filepath_FFI_Schemas[8].Sig, Filepath_FFI_Schemas[8].Doc)
+	schema.AddFunc("filepath", "ToSlash", "filepath.ToSlash", Filepath_FFI_Schemas[9].MethodID, Filepath_FFI_Schemas[9].Sig, Filepath_FFI_Schemas[9].Doc)
+	schema.AddFunc("filepath", "FromSlash", "filepath.FromSlash", Filepath_FFI_Schemas[10].MethodID, Filepath_FFI_Schemas[10].Sig, Filepath_FFI_Schemas[10].Doc)
+	schema.AddFunc("filepath", "VolumeName", "filepath.VolumeName", Filepath_FFI_Schemas[11].MethodID, Filepath_FFI_Schemas[11].Sig, Filepath_FFI_Schemas[11].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Filepath_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("filepath", "Base", runtime.FFIRoute{Name: "filepath.Base", Bridge: bridge, MethodID: Filepath_FFI_Schemas[0].MethodID, FuncSig: Filepath_FFI_Schemas[0].Sig, Doc: Filepath_FFI_Schemas[0].Doc})
+		bound.AddRoute("filepath", "Clean", runtime.FFIRoute{Name: "filepath.Clean", Bridge: bridge, MethodID: Filepath_FFI_Schemas[1].MethodID, FuncSig: Filepath_FFI_Schemas[1].Sig, Doc: Filepath_FFI_Schemas[1].Doc})
+		bound.AddRoute("filepath", "Dir", runtime.FFIRoute{Name: "filepath.Dir", Bridge: bridge, MethodID: Filepath_FFI_Schemas[2].MethodID, FuncSig: Filepath_FFI_Schemas[2].Sig, Doc: Filepath_FFI_Schemas[2].Doc})
+		bound.AddRoute("filepath", "Ext", runtime.FFIRoute{Name: "filepath.Ext", Bridge: bridge, MethodID: Filepath_FFI_Schemas[3].MethodID, FuncSig: Filepath_FFI_Schemas[3].Sig, Doc: Filepath_FFI_Schemas[3].Doc})
+		bound.AddRoute("filepath", "IsAbs", runtime.FFIRoute{Name: "filepath.IsAbs", Bridge: bridge, MethodID: Filepath_FFI_Schemas[4].MethodID, FuncSig: Filepath_FFI_Schemas[4].Sig, Doc: Filepath_FFI_Schemas[4].Doc})
+		bound.AddRoute("filepath", "Join", runtime.FFIRoute{Name: "filepath.Join", Bridge: bridge, MethodID: Filepath_FFI_Schemas[5].MethodID, FuncSig: Filepath_FFI_Schemas[5].Sig, Doc: Filepath_FFI_Schemas[5].Doc})
+		bound.AddRoute("filepath", "Match", runtime.FFIRoute{Name: "filepath.Match", Bridge: bridge, MethodID: Filepath_FFI_Schemas[6].MethodID, FuncSig: Filepath_FFI_Schemas[6].Sig, Doc: Filepath_FFI_Schemas[6].Doc})
+		bound.AddRoute("filepath", "Rel", runtime.FFIRoute{Name: "filepath.Rel", Bridge: bridge, MethodID: Filepath_FFI_Schemas[7].MethodID, FuncSig: Filepath_FFI_Schemas[7].Sig, Doc: Filepath_FFI_Schemas[7].Doc})
+		bound.AddRoute("filepath", "Split", runtime.FFIRoute{Name: "filepath.Split", Bridge: bridge, MethodID: Filepath_FFI_Schemas[8].MethodID, FuncSig: Filepath_FFI_Schemas[8].Sig, Doc: Filepath_FFI_Schemas[8].Doc})
+		bound.AddRoute("filepath", "ToSlash", runtime.FFIRoute{Name: "filepath.ToSlash", Bridge: bridge, MethodID: Filepath_FFI_Schemas[9].MethodID, FuncSig: Filepath_FFI_Schemas[9].Sig, Doc: Filepath_FFI_Schemas[9].Doc})
+		bound.AddRoute("filepath", "FromSlash", runtime.FFIRoute{Name: "filepath.FromSlash", Bridge: bridge, MethodID: Filepath_FFI_Schemas[10].MethodID, FuncSig: Filepath_FFI_Schemas[10].Sig, Doc: Filepath_FFI_Schemas[10].Doc})
+		bound.AddRoute("filepath", "VolumeName", runtime.FFIRoute{Name: "filepath.VolumeName", Bridge: bridge, MethodID: Filepath_FFI_Schemas[11].MethodID, FuncSig: Filepath_FFI_Schemas[11].Sig, Doc: Filepath_FFI_Schemas[11].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("filepath.Base", bridge, Filepath_FFI_Schemas[0].MethodID, Filepath_FFI_Schemas[0].Sig, Filepath_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("filepath.Clean", bridge, Filepath_FFI_Schemas[1].MethodID, Filepath_FFI_Schemas[1].Sig, Filepath_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("filepath.Dir", bridge, Filepath_FFI_Schemas[2].MethodID, Filepath_FFI_Schemas[2].Sig, Filepath_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("filepath.Ext", bridge, Filepath_FFI_Schemas[3].MethodID, Filepath_FFI_Schemas[3].Sig, Filepath_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("filepath.IsAbs", bridge, Filepath_FFI_Schemas[4].MethodID, Filepath_FFI_Schemas[4].Sig, Filepath_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("filepath.Join", bridge, Filepath_FFI_Schemas[5].MethodID, Filepath_FFI_Schemas[5].Sig, Filepath_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("filepath.Match", bridge, Filepath_FFI_Schemas[6].MethodID, Filepath_FFI_Schemas[6].Sig, Filepath_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("filepath.Rel", bridge, Filepath_FFI_Schemas[7].MethodID, Filepath_FFI_Schemas[7].Sig, Filepath_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("filepath.Split", bridge, Filepath_FFI_Schemas[8].MethodID, Filepath_FFI_Schemas[8].Sig, Filepath_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("filepath.ToSlash", bridge, Filepath_FFI_Schemas[9].MethodID, Filepath_FFI_Schemas[9].Sig, Filepath_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("filepath.FromSlash", bridge, Filepath_FFI_Schemas[10].MethodID, Filepath_FFI_Schemas[10].Sig, Filepath_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("filepath.VolumeName", bridge, Filepath_FFI_Schemas[11].MethodID, Filepath_FFI_Schemas[11].Sig, Filepath_FFI_Schemas[11].Doc)
 }

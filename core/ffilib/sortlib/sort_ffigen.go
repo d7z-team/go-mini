@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -384,20 +385,23 @@ func (b *Sort_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterSort(executor interface{ RegisterConstant(string, string) }, impl Sort, registry *ffigo.HandleRegistry) {
-	bridge := &Sort_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceSort(impl Sort) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("sort", "Ints", "sort.Ints", Sort_FFI_Schemas[0].MethodID, Sort_FFI_Schemas[0].Sig, Sort_FFI_Schemas[0].Doc)
+	schema.AddFunc("sort", "Float64s", "sort.Float64s", Sort_FFI_Schemas[1].MethodID, Sort_FFI_Schemas[1].Sig, Sort_FFI_Schemas[1].Doc)
+	schema.AddFunc("sort", "Strings", "sort.Strings", Sort_FFI_Schemas[2].MethodID, Sort_FFI_Schemas[2].Sig, Sort_FFI_Schemas[2].Doc)
+	schema.AddFunc("sort", "IntsAreSorted", "sort.IntsAreSorted", Sort_FFI_Schemas[3].MethodID, Sort_FFI_Schemas[3].Sig, Sort_FFI_Schemas[3].Doc)
+	schema.AddFunc("sort", "Float64sAreSorted", "sort.Float64sAreSorted", Sort_FFI_Schemas[4].MethodID, Sort_FFI_Schemas[4].Sig, Sort_FFI_Schemas[4].Doc)
+	schema.AddFunc("sort", "StringsAreSorted", "sort.StringsAreSorted", Sort_FFI_Schemas[5].MethodID, Sort_FFI_Schemas[5].Sig, Sort_FFI_Schemas[5].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Sort_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("sort", "Ints", runtime.FFIRoute{Name: "sort.Ints", Bridge: bridge, MethodID: Sort_FFI_Schemas[0].MethodID, FuncSig: Sort_FFI_Schemas[0].Sig, Doc: Sort_FFI_Schemas[0].Doc})
+		bound.AddRoute("sort", "Float64s", runtime.FFIRoute{Name: "sort.Float64s", Bridge: bridge, MethodID: Sort_FFI_Schemas[1].MethodID, FuncSig: Sort_FFI_Schemas[1].Sig, Doc: Sort_FFI_Schemas[1].Doc})
+		bound.AddRoute("sort", "Strings", runtime.FFIRoute{Name: "sort.Strings", Bridge: bridge, MethodID: Sort_FFI_Schemas[2].MethodID, FuncSig: Sort_FFI_Schemas[2].Sig, Doc: Sort_FFI_Schemas[2].Doc})
+		bound.AddRoute("sort", "IntsAreSorted", runtime.FFIRoute{Name: "sort.IntsAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[3].MethodID, FuncSig: Sort_FFI_Schemas[3].Sig, Doc: Sort_FFI_Schemas[3].Doc})
+		bound.AddRoute("sort", "Float64sAreSorted", runtime.FFIRoute{Name: "sort.Float64sAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[4].MethodID, FuncSig: Sort_FFI_Schemas[4].Sig, Doc: Sort_FFI_Schemas[4].Doc})
+		bound.AddRoute("sort", "StringsAreSorted", runtime.FFIRoute{Name: "sort.StringsAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[5].MethodID, FuncSig: Sort_FFI_Schemas[5].Sig, Doc: Sort_FFI_Schemas[5].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("sort.Ints", bridge, Sort_FFI_Schemas[0].MethodID, Sort_FFI_Schemas[0].Sig, Sort_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("sort.Float64s", bridge, Sort_FFI_Schemas[1].MethodID, Sort_FFI_Schemas[1].Sig, Sort_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("sort.Strings", bridge, Sort_FFI_Schemas[2].MethodID, Sort_FFI_Schemas[2].Sig, Sort_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("sort.IntsAreSorted", bridge, Sort_FFI_Schemas[3].MethodID, Sort_FFI_Schemas[3].Sig, Sort_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("sort.Float64sAreSorted", bridge, Sort_FFI_Schemas[4].MethodID, Sort_FFI_Schemas[4].Sig, Sort_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("sort.StringsAreSorted", bridge, Sort_FFI_Schemas[5].MethodID, Sort_FFI_Schemas[5].Sig, Sort_FFI_Schemas[5].Doc)
 }

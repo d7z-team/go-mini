@@ -32,9 +32,10 @@ func (m *MockGeo) SumX(points []RobustPoint) int64 {
 func TestRobustness(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	// 注册一个处理数组+结构体的 FFI
 	mock := &MockGeo{}
-	RegisterMockGeometryLibrary(executor, "e2e", mock, nil)
+	if err := executor.UseSurface(SurfaceMockGeometryLibrary("e2e", mock)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

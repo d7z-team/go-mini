@@ -11,9 +11,6 @@ import (
 	_ "image/gif" // register gif format
 	"image/jpeg"
 	"image/png"
-
-	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // Image 是图像句柄 (对应 Go 的 image.RGBA)
@@ -225,15 +222,4 @@ func (h *ImageHost) Decode(_ context.Context, data []byte) (*Image, string, erro
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
 	return &Image{RGBA: rgba}, format, nil
-}
-
-// RegisterImageAll 为方便外部调用提供的注册函数
-func RegisterImageAll(executor interface {
-	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-	RegisterConstant(string, string)
-}, impl ImageLib, registry *ffigo.HandleRegistry,
-) {
-	RegisterImageLib(executor, impl, registry)
-	RegisterImage(executor, registry)
 }

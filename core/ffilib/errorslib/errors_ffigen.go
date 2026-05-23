@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -123,15 +124,13 @@ func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterErrors(executor interface{ RegisterConstant(string, string) }, impl Errors, registry *ffigo.HandleRegistry) {
-	bridge := &Errors_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceErrors(impl Errors) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("errors", "New", "errors.New", Errors_FFI_Schemas[0].MethodID, Errors_FFI_Schemas[0].Sig, Errors_FFI_Schemas[0].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Errors_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("errors", "New", runtime.FFIRoute{Name: "errors.New", Bridge: bridge, MethodID: Errors_FFI_Schemas[0].MethodID, FuncSig: Errors_FFI_Schemas[0].Sig, Doc: Errors_FFI_Schemas[0].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("errors.New", bridge, Errors_FFI_Schemas[0].MethodID, Errors_FFI_Schemas[0].Sig, Errors_FFI_Schemas[0].Doc)
 }

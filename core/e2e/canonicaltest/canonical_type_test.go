@@ -32,12 +32,15 @@ func TestCanonicalTypeSystem(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	impl := &CanonicalTestImpl{}
-	registry := executor.HandleRegistry()
-
-	// Register with canonical paths (automatically handled by RegisterXXX)
-	canonicaltest.RegisterTestCanonicalService(executor, impl, registry)
-	canonicaltest.RegisterATypeService(executor, &AImpl{}, registry)
-	canonicaltest.RegisterBTypeService(executor, &BImpl{}, registry)
+	if err := executor.UseSurface(canonicaltest.SurfaceTestCanonicalService(impl)); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(canonicaltest.SurfaceATypeService(&AImpl{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(canonicaltest.SurfaceBTypeService(&BImpl{})); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main
@@ -72,11 +75,15 @@ func TestCanonicalTypeInterfaceAcrossPaths(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	impl := &CanonicalTestImpl{}
-	registry := executor.HandleRegistry()
-
-	canonicaltest.RegisterTestCanonicalService(executor, impl, registry)
-	canonicaltest.RegisterATypeService(executor, &AImpl{}, registry)
-	canonicaltest.RegisterBTypeService(executor, &BImpl{}, registry)
+	if err := executor.UseSurface(canonicaltest.SurfaceTestCanonicalService(impl)); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(canonicaltest.SurfaceATypeService(&AImpl{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(canonicaltest.SurfaceBTypeService(&BImpl{})); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 	package main

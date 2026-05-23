@@ -11,8 +11,9 @@
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
+- 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
-- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.RegisterAll` 装配。
+- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。

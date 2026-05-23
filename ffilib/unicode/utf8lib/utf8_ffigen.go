@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -270,20 +271,23 @@ func (b *UTF8_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterUTF8(executor interface{ RegisterConstant(string, string) }, impl UTF8, registry *ffigo.HandleRegistry) {
-	bridge := &UTF8_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceUTF8(impl UTF8) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("unicode/utf8", "DecodeRuneInString", "unicode/utf8.DecodeRuneInString", UTF8_FFI_Schemas[0].MethodID, UTF8_FFI_Schemas[0].Sig, UTF8_FFI_Schemas[0].Doc)
+	schema.AddFunc("unicode/utf8", "EncodeRune", "unicode/utf8.EncodeRune", UTF8_FFI_Schemas[1].MethodID, UTF8_FFI_Schemas[1].Sig, UTF8_FFI_Schemas[1].Doc)
+	schema.AddFunc("unicode/utf8", "FullRuneInString", "unicode/utf8.FullRuneInString", UTF8_FFI_Schemas[2].MethodID, UTF8_FFI_Schemas[2].Sig, UTF8_FFI_Schemas[2].Doc)
+	schema.AddFunc("unicode/utf8", "RuneCountInString", "unicode/utf8.RuneCountInString", UTF8_FFI_Schemas[3].MethodID, UTF8_FFI_Schemas[3].Sig, UTF8_FFI_Schemas[3].Doc)
+	schema.AddFunc("unicode/utf8", "RuneLen", "unicode/utf8.RuneLen", UTF8_FFI_Schemas[4].MethodID, UTF8_FFI_Schemas[4].Sig, UTF8_FFI_Schemas[4].Doc)
+	schema.AddFunc("unicode/utf8", "ValidString", "unicode/utf8.ValidString", UTF8_FFI_Schemas[5].MethodID, UTF8_FFI_Schemas[5].Sig, UTF8_FFI_Schemas[5].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &UTF8_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("unicode/utf8", "DecodeRuneInString", runtime.FFIRoute{Name: "unicode/utf8.DecodeRuneInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[0].MethodID, FuncSig: UTF8_FFI_Schemas[0].Sig, Doc: UTF8_FFI_Schemas[0].Doc})
+		bound.AddRoute("unicode/utf8", "EncodeRune", runtime.FFIRoute{Name: "unicode/utf8.EncodeRune", Bridge: bridge, MethodID: UTF8_FFI_Schemas[1].MethodID, FuncSig: UTF8_FFI_Schemas[1].Sig, Doc: UTF8_FFI_Schemas[1].Doc})
+		bound.AddRoute("unicode/utf8", "FullRuneInString", runtime.FFIRoute{Name: "unicode/utf8.FullRuneInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[2].MethodID, FuncSig: UTF8_FFI_Schemas[2].Sig, Doc: UTF8_FFI_Schemas[2].Doc})
+		bound.AddRoute("unicode/utf8", "RuneCountInString", runtime.FFIRoute{Name: "unicode/utf8.RuneCountInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[3].MethodID, FuncSig: UTF8_FFI_Schemas[3].Sig, Doc: UTF8_FFI_Schemas[3].Doc})
+		bound.AddRoute("unicode/utf8", "RuneLen", runtime.FFIRoute{Name: "unicode/utf8.RuneLen", Bridge: bridge, MethodID: UTF8_FFI_Schemas[4].MethodID, FuncSig: UTF8_FFI_Schemas[4].Sig, Doc: UTF8_FFI_Schemas[4].Doc})
+		bound.AddRoute("unicode/utf8", "ValidString", runtime.FFIRoute{Name: "unicode/utf8.ValidString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[5].MethodID, FuncSig: UTF8_FFI_Schemas[5].Sig, Doc: UTF8_FFI_Schemas[5].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("unicode/utf8.DecodeRuneInString", bridge, UTF8_FFI_Schemas[0].MethodID, UTF8_FFI_Schemas[0].Sig, UTF8_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("unicode/utf8.EncodeRune", bridge, UTF8_FFI_Schemas[1].MethodID, UTF8_FFI_Schemas[1].Sig, UTF8_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("unicode/utf8.FullRuneInString", bridge, UTF8_FFI_Schemas[2].MethodID, UTF8_FFI_Schemas[2].Sig, UTF8_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("unicode/utf8.RuneCountInString", bridge, UTF8_FFI_Schemas[3].MethodID, UTF8_FFI_Schemas[3].Sig, UTF8_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("unicode/utf8.RuneLen", bridge, UTF8_FFI_Schemas[4].MethodID, UTF8_FFI_Schemas[4].Sig, UTF8_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("unicode/utf8.ValidString", bridge, UTF8_FFI_Schemas[5].MethodID, UTF8_FFI_Schemas[5].Sig, UTF8_FFI_Schemas[5].Doc)
 }

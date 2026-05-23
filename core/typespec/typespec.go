@@ -842,9 +842,6 @@ func isCanonicalNamedType(t Type) bool {
 		"Uint", "Uint8", "Uint16", "Uint32", "Uint64", "Byte":
 		return false
 	}
-	if strings.Contains(s, "/") {
-		return false
-	}
 	if strings.ContainsAny(s, "[]*") {
 		return false
 	}
@@ -853,6 +850,40 @@ func isCanonicalNamedType(t Type) bool {
 	}
 	if strings.Contains(s, "interface{}") {
 		return false
+	}
+	if strings.Contains(s, "/") {
+		return isCanonicalModulePathType(s)
+	}
+	return true
+}
+
+func isCanonicalModulePathType(s string) bool {
+	if strings.Contains(s, "://") {
+		return false
+	}
+	lastDot := strings.LastIndex(s, ".")
+	if lastDot <= 0 || lastDot == len(s)-1 {
+		return false
+	}
+	path := s[:lastDot]
+	typeName := s[lastDot+1:]
+	if strings.Contains(typeName, "/") || typeName == "" {
+		return false
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "" || strings.Contains(seg, ".") {
+			return false
+		}
+		for _, ch := range seg {
+			if !isIdentChar(ch) && ch != '-' {
+				return false
+			}
+		}
+	}
+	for _, ch := range typeName {
+		if !isIdentChar(ch) {
+			return false
+		}
 	}
 	return true
 }

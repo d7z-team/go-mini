@@ -29,5 +29,5 @@ test.Out(url.JoinPath("https://example.com/api", "v1", "users"))
 			Want:   "a+b|a b|https://example.com/api/v1/users",
 			Covers: []string{"QueryEscape", "QueryUnescape", "JoinPath"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

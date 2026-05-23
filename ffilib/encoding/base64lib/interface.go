@@ -1,12 +1,15 @@
-//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg base64lib -out base64_ffigen.go interface.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg base64lib -out base64_ffigen.go interface.go host.go
 package base64lib
 
-// Base64 接口定义了 Base64 编码操作
+import "encoding/base64"
 
 // ffigen:module encoding/base64
-type Base64 interface {
-	EncodeToString(src []byte) string
-	DecodeString(s string) ([]byte, error)
-	URLEncodeToString(src []byte) string
-	URLDecodeString(s string) ([]byte, error)
+const (
+	StdPadding = base64.StdPadding
+	NoPadding  = base64.NoPadding
+)
+
+// ffigen:module encoding/base64
+type Module interface {
+	NewEncoding(encoder string) *Encoding
 }

@@ -10,6 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	coreffilib "gopkg.d7z.net/go-mini/core/ffilib"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func NewMiniExecutor() *MiniExecutor {
@@ -20,6 +21,10 @@ func NewMiniExecutor() *MiniExecutor {
 		moduleSources:  make(map[string]*ast.ProgramStmt),
 		modules:        make(map[string]*runtime.PreparedProgram),
 		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		valueSchemas:   make(map[ast.Ident]*runtime.ValueSpec),
+		packageValues:  make(map[string]*runtime.BoundPackageValue),
+		surfaceSchema:  runtime.NewFFISurfaceSchema(),
+		boundSurface:   runtime.NewBoundFFISurface(runtime.NewFFISurfaceSchema()),
 		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
 		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
 		templates:      calltemplate.NewRegistry(),
@@ -41,9 +46,114 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("Float64", runtime.MustRuntimeFuncSig(runtime.SpecFloat64, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("require", runtime.MustRuntimeFuncSig(runtime.SpecModule, false, runtime.SpecString))
 
-	coreffilib.RegisterAll(res)
+	if err := res.UseSurface(coreffilib.Surface()); err != nil {
+		panic(err)
+	}
 
 	return res
+}
+
+func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
+	if bundle == nil {
+		return nil
+	}
+	if bundle.Err != nil {
+		return bundle.Err
+	}
+	var bound *runtime.BoundFFISurface
+	if bundle.Bind != nil {
+		var err error
+		bound, err = bundle.Bind(runtime.FFIBindContext{Registry: e.registry})
+		if err != nil {
+			return err
+		}
+	}
+	if bundle.Schema != nil || bound != nil || len(bundle.Templates) > 0 {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+
+		var nextTemplates *calltemplate.Registry
+		if len(bundle.Templates) > 0 {
+			incomingSymbolExists := func(name string) bool {
+				if bound != nil {
+					if _, ok := bound.Routes[name]; ok {
+						return true
+					}
+					if _, ok := bound.PackageValues[name]; ok {
+						return true
+					}
+					if _, ok := bound.Consts[name]; ok {
+						return true
+					}
+					if _, ok := bound.Structs[name]; ok {
+						return true
+					}
+					if _, ok := bound.Interfaces[name]; ok {
+						return true
+					}
+				}
+				if bundle.Schema == nil {
+					return false
+				}
+				if _, ok := bundle.Schema.Types[name]; ok {
+					return true
+				}
+				pkgPath, memberName := runtime.SplitExternalName(name)
+				if pkgPath == "" || memberName == "" {
+					return false
+				}
+				if pkg := bundle.Schema.Packages[pkgPath]; pkg != nil {
+					_, ok := pkg.Members[memberName]
+					return ok
+				}
+				return false
+			}
+			if e.templates != nil {
+				nextTemplates = e.templates.Clone()
+			}
+			if nextTemplates == nil {
+				nextTemplates = calltemplate.NewRegistry()
+			}
+			for _, tpl := range bundle.Templates {
+				if err := nextTemplates.Register(tpl); err != nil {
+					return err
+				}
+			}
+			for name, registered := range nextTemplates.Globals() {
+				if e.globalSymbolExistsLocked(name) || incomingSymbolExists(name) {
+					return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
+				}
+			}
+		}
+		nextSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
+		if nextSchema == nil {
+			nextSchema = runtime.NewFFISurfaceSchema()
+		}
+		if err := nextSchema.Merge(bundle.Schema); err != nil {
+			return err
+		}
+		nextBound := runtime.NewBoundFFISurface(nextSchema)
+		if e.boundSurface != nil {
+			if err := nextBound.Merge(e.boundSurface); err != nil {
+				return err
+			}
+		}
+		if bound != nil {
+			if err := nextBound.Merge(bound); err != nil {
+				return err
+			}
+			if err := e.validateBoundSurfaceLocked(bound); err != nil {
+				return err
+			}
+			e.applyBoundSurfaceChangesLocked(bound)
+		}
+		e.surfaceSchema = nextSchema
+		e.boundSurface = nextBound
+		if nextTemplates != nil {
+			e.templates = nextTemplates
+		}
+	}
+	return nil
 }
 
 func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
@@ -97,6 +207,14 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 			return err
 		}
 	}
+	for name, value := range e.packageValues {
+		if value == nil {
+			continue
+		}
+		if err := executor.TryRegisterPackageValue(name, value.Spec, value.Value); err != nil {
+			return err
+		}
+	}
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
 	}
@@ -105,9 +223,15 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	schema := e.ExportedSchema()
+	e.mu.RLock()
+	surfaceSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
+	e.mu.RUnlock()
 	return compiler.New(compiler.Config{
 		ModuleLoader:     e.moduleASTLoader(),
+		Surface:          surfaceSchema,
 		FuncSchemas:      schema.Funcs,
+		RegisteredFuncs:  schema.RegisteredFuncs,
+		ValueSchemas:     schema.Values,
 		StructSchemas:    schema.Structs,
 		InterfaceSchemas: schema.Interfaces,
 		Constants:        e.GetExportedConstants(),

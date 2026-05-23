@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // TimeHost 实现 Module 接口
@@ -219,15 +218,4 @@ func (t *Time) String() string {
 		return ""
 	}
 	return t.T.String()
-}
-
-// RegisterTimeAll 注册所有时间相关的 FFI
-func RegisterTimeAll(executor interface {
-	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-	RegisterConstant(string, string)
-}, impl Module, registry *ffigo.HandleRegistry,
-) {
-	RegisterModule(executor, impl, registry)
-	RegisterTime(executor, registry)
 }

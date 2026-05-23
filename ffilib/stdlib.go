@@ -1,9 +1,7 @@
 package ffilib
 
 import (
-	"gopkg.d7z.net/go-mini/core/calltemplate"
-	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib/byteslib"
 	"gopkg.d7z.net/go-mini/ffilib/crypto/md5lib"
 	"gopkg.d7z.net/go-mini/ffilib/crypto/sha256lib"
@@ -23,33 +21,30 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/unicode/utf8lib"
 )
 
-type Registrar interface {
-	RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-	RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-	RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
-	RegisterConstant(string, string)
-	RegisterFunctionTemplate(calltemplate.FunctionTemplate) error
-	HandleRegistry() *ffigo.HandleRegistry
-}
-
-func RegisterAll(executor Registrar) {
-	registry := executor.HandleRegistry()
-	jsonlib.RegisterJSON(executor, &jsonlib.JSONHost{}, registry)
-	timelib.RegisterTimeAll(executor, &timelib.TimeHost{}, registry)
-	filepathlib.RegisterFilepath(executor, &filepathlib.FilepathHost{}, registry)
-	byteslib.RegisterBytes(executor, &byteslib.BytesHost{}, registry)
-	regexplib.RegisterRegexp(executor, &regexplib.RegexpHost{}, registry)
-	randlib.RegisterRand(executor, randlib.NewRandHost(), registry)
-	utf8lib.RegisterUTF8(executor, &utf8lib.UTF8Host{}, registry)
-	synclib.RegisterSyncAll(executor, &synclib.ModuleHost{}, registry)
-	base64lib.RegisterBase64(executor, &base64lib.Base64Host{}, registry)
-	hexlib.RegisterHex(executor, &hexlib.HexHost{}, registry)
-	md5lib.RegisterMD5(executor, &md5lib.MD5Host{}, registry)
-	sha256lib.RegisterSHA256(executor, &sha256lib.SHA256Host{}, registry)
-	urllib.RegisterURL(executor, &urllib.URLHost{}, registry)
-	iolib.RegisterIOSafe(executor, &iolib.IOHost{}, registry)
-	iolib.RegisterFile(executor, registry)
-	imagelib.RegisterImageAll(executor, &imagelib.ImageHost{}, registry)
-	oslib.RegisterOS(executor, &oslib.OSHost{}, registry)
-	fmtlib.RegisterFmtAll(executor, &fmtlib.FmtHost{}, registry)
+func Surface() *surface.Bundle {
+	return surface.Merge(
+		jsonlib.SurfaceJSON(&jsonlib.JSONHost{}),
+		timelib.SurfaceModule(&timelib.TimeHost{}),
+		timelib.SurfaceTime(),
+		filepathlib.SurfaceFilepath(&filepathlib.FilepathHost{}),
+		byteslib.SurfaceBytes(&byteslib.BytesHost{}),
+		regexplib.SurfaceRegexp(&regexplib.RegexpHost{}),
+		randlib.SurfaceRand(randlib.NewRandHost()),
+		utf8lib.SurfaceUTF8(&utf8lib.UTF8Host{}),
+		synclib.SurfaceModule(&synclib.ModuleHost{}),
+		synclib.SurfaceWaitGroup(),
+		base64lib.Surface(),
+		hexlib.SurfaceHex(&hexlib.HexHost{}),
+		md5lib.SurfaceMD5(&md5lib.MD5Host{}),
+		sha256lib.SurfaceSHA256(&sha256lib.SHA256Host{}),
+		urllib.SurfaceURL(&urllib.URLHost{}),
+		iolib.SurfaceIO(&iolib.IOHost{}),
+		iolib.SurfaceReaderSchema(),
+		iolib.SurfaceWriterSchema(),
+		iolib.SurfaceFile(),
+		imagelib.SurfaceImageLib(&imagelib.ImageHost{}),
+		imagelib.SurfaceImage(),
+		oslib.SurfaceOS(&oslib.OSHost{}),
+		fmtlib.Surface(&fmtlib.FmtHost{}),
+	)
 }

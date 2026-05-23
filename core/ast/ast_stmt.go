@@ -1917,6 +1917,12 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 				ctx.AddErrorf("%s", err.Error())
 				hasError = true
 			} else {
+				if ctx.IsReadOnlyVariable(ident.Name) {
+					err := fmt.Errorf("cannot assign to read-only external symbol %s", ident.Name)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
+					continue
+				}
 				if perBinding && targetType.IsTuple() && !vType.IsTuple() {
 					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
 					hasError = true
@@ -1933,6 +1939,12 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 			if err := lhs.Check(ctx); err != nil {
 				hasError = true
 			} else {
+				if member, ok := lhs.(*MemberExpr); ok && member.ResolvedPackageMember && ctx.IsReadOnlyVariable(member.ResolvedPackageName) {
+					err := fmt.Errorf("cannot assign to read-only external symbol %s", member.ResolvedPackageName)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
+					continue
+				}
 				lhsType := lhs.GetBase().Type
 				if perBinding && targetType.IsTuple() && !lhsType.IsTuple() {
 					ctx.AddErrorAt(value, "multiple-value initializer used in single-value assignment slot: %s", targetType)
@@ -2353,6 +2365,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		}
 
 		if b {
+			if ctx.IsReadOnlyVariable(ident.Name) {
+				err := fmt.Errorf("cannot assign to read-only external symbol %s", ident.Name)
+				ctx.AddErrorAt(a.LHS, "%s", err.Error())
+				return err
+			}
 			if miniType.IsTuple() && !vType.IsTuple() {
 				err := fmt.Errorf("multiple-value initializer used in single-value assignment slot: %s", miniType)
 				ctx.AddErrorAt(a.Value, "%s", err.Error())
@@ -2381,6 +2398,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 	if err := a.LHS.Check(ctx); err != nil {
+		return err
+	}
+	if member, ok := a.LHS.(*MemberExpr); ok && member.ResolvedPackageMember && ctx.IsReadOnlyVariable(member.ResolvedPackageName) {
+		err := fmt.Errorf("cannot assign to read-only external symbol %s", member.ResolvedPackageName)
+		ctx.AddErrorAt(a.LHS, "%s", err.Error())
 		return err
 	}
 	if err := a.Value.Check(ctx); err != nil {

@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -135,16 +136,15 @@ func (b *Logger_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterLogger(executor interface{ RegisterConstant(string, string) }, impl Logger, registry *ffigo.HandleRegistry) {
-	bridge := &Logger_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceLogger(impl Logger) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("logger", "Log", "logger.Log", Logger_FFI_Schemas[0].MethodID, Logger_FFI_Schemas[0].Sig, Logger_FFI_Schemas[0].Doc)
+	schema.AddFunc("logger", "Internal", "logger.Internal", Logger_FFI_Schemas[1].MethodID, Logger_FFI_Schemas[1].Sig, Logger_FFI_Schemas[1].Doc)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Logger_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("logger", "Log", runtime.FFIRoute{Name: "logger.Log", Bridge: bridge, MethodID: Logger_FFI_Schemas[0].MethodID, FuncSig: Logger_FFI_Schemas[0].Sig, Doc: Logger_FFI_Schemas[0].Doc})
+		bound.AddRoute("logger", "Internal", runtime.FFIRoute{Name: "logger.Internal", Bridge: bridge, MethodID: Logger_FFI_Schemas[1].MethodID, FuncSig: Logger_FFI_Schemas[1].Sig, Doc: Logger_FFI_Schemas[1].Doc})
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("logger.Log", bridge, Logger_FFI_Schemas[0].MethodID, Logger_FFI_Schemas[0].Sig, Logger_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("logger.Internal", bridge, Logger_FFI_Schemas[1].MethodID, Logger_FFI_Schemas[1].Sig, Logger_FFI_Schemas[1].Doc)
 }

@@ -8,17 +8,30 @@ import (
 	"gopkg.d7z.net/go-mini/core/e2e/structtest"
 )
 
+func useCalculatorSurface(t *testing.T, executor *engine.MiniExecutor) {
+	t.Helper()
+	if err := executor.UseSurface(structtest.SurfaceFactory(&structtest.Factory{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(structtest.SurfaceCalculator()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func useTableSurface(t *testing.T, executor *engine.MiniExecutor) {
+	t.Helper()
+	if err := executor.UseSurface(structtest.SurfaceFactory(&structtest.Factory{})); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(structtest.SurfaceTable()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStructExport(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	registry := executor.HandleRegistry()
-
-	// Register the factory as a module
-	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
-	// Register the Calculator methods
-	// Note: We don't need a specific instance of Calculator to register its methods,
-	// because the methods themselves will be called on instances returned by the factory.
-	structtest.RegisterCalculator(executor, registry)
+	useCalculatorSurface(t, executor)
 	code := `
 	package main
 	import "calc"
@@ -53,9 +66,7 @@ func TestStructExport(t *testing.T) {
 func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	registry := executor.HandleRegistry()
-	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
-	structtest.RegisterCalculator(executor, registry)
+	useCalculatorSurface(t, executor)
 
 	code := `
 	package main
@@ -101,9 +112,7 @@ func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	registry := executor.HandleRegistry()
-	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
-	structtest.RegisterCalculator(executor, registry)
+	useCalculatorSurface(t, executor)
 
 	code := `
 	package main
@@ -144,9 +153,7 @@ func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 func TestFFIStructMethodGroupedParametersE2E(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	registry := executor.HandleRegistry()
-	structtest.RegisterFactory(executor, &structtest.Factory{}, registry)
-	structtest.RegisterTable(executor, registry)
+	useTableSurface(t, executor)
 
 	code := `
 	package main

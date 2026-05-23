@@ -10,7 +10,7 @@ IDE 能力基于源码和 AST，执行链基于 compiled artifact / prepared pro
 
 LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
 
-编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器装配了顶层 `ffilib.RegisterAll` 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
+编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
 
 ## 1. 推荐后端接入
 
@@ -35,7 +35,9 @@ go run ./examples/cmd/lsp-server
 
 ```go
 executor := engine.NewMiniExecutor()
-ffilib.RegisterAll(executor)
+if err := executor.UseSurface(ffilib.Surface()); err != nil {
+    return err
+}
 
 lsp := lspserv.NewLSPServer(executor)
 ```

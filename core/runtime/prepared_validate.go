@@ -3,6 +3,7 @@ package runtime
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const maxPreparedValidationDepth = 256
@@ -24,6 +25,32 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 	for name, spec := range plan.InterfaceSchemas {
 		if err := validateRuntimeInterfaceSpec("interface schema "+name, spec); err != nil {
 			return err
+		}
+	}
+	for i, req := range plan.ExternalRequirements {
+		pkg := req.PackagePath
+		if pkg == "" {
+			pkg = req.Package
+		}
+		member := req.MemberName
+		if member == "" {
+			member = req.Member
+		}
+		if strings.TrimSpace(pkg) == "" {
+			return fmt.Errorf("external requirement %d missing package", i)
+		}
+		if strings.TrimSpace(member) == "" && req.TypeName == "" {
+			return fmt.Errorf("external requirement %d missing member", i)
+		}
+		switch req.Kind {
+		case FFIMemberFunc, FFIMemberConst, FFIMemberValue, FFIMemberType:
+		default:
+			return fmt.Errorf("external requirement %d has invalid kind %s", i, req.Kind)
+		}
+		if !req.Type.IsEmpty() {
+			if err := req.Type.ValidateCanonical(); err != nil {
+				return fmt.Errorf("external requirement %d type: %w", i, err)
+			}
 		}
 	}
 	for i, group := range plan.GlobalInitGroups {

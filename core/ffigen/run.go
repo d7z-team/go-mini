@@ -14,7 +14,13 @@ func Run(opts Options) error {
 	return NewGenerator(opts).Run()
 }
 
-func (g *Generator) Run() error {
+func (g *Generator) Run() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("ffigen generation failed: %v", r)
+		}
+	}()
+
 	if g.opts.PackageName == "" || g.opts.Output == "" {
 		return errors.New("usage: ffigen -pkg <name> -out <file> [input files...]")
 	}

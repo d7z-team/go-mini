@@ -147,12 +147,27 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	defer e.mu.RUnlock()
 
 	res := &ExportedSchemaSnapshot{
-		Funcs:      make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
-		Structs:    make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
-		Interfaces: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
+		Funcs:           make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
+		RegisteredFuncs: make(map[ast.Ident]bool, len(e.routes)),
+		Values:          make(map[ast.Ident]*runtime.ValueSpec, len(e.valueSchemas)),
+		Structs:         make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
+		Interfaces:      make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
 	}
 	for k, v := range e.funcSchemas {
 		res.Funcs[k] = runtime.CloneRuntimeFuncSig(v)
+	}
+	for name := range e.routes {
+		res.RegisteredFuncs[ast.Ident(name)] = true
+	}
+	for k, v := range e.valueSchemas {
+		if v == nil {
+			continue
+		}
+		res.Values[k] = &runtime.ValueSpec{
+			Type:     v.Type,
+			Doc:      v.Doc,
+			ReadOnly: v.ReadOnly,
+		}
 	}
 	for k, v := range e.structsMeta {
 		res.Structs[k] = runtime.CloneRuntimeStructSpec(v)
@@ -179,6 +194,9 @@ func (e *MiniExecutor) globalSymbolExistsLocked(name string) bool {
 	if _, ok := e.routes[name]; ok {
 		return true
 	}
+	if _, ok := e.valueSchemas[ast.Ident(name)]; ok {
+		return true
+	}
 	if _, ok := e.constants[name]; ok {
 		return true
 	}
@@ -189,6 +207,158 @@ func (e *MiniExecutor) globalSymbolExistsLocked(name string) bool {
 		return true
 	}
 	return false
+}
+
+func (e *MiniExecutor) RegisterPackageValue(name string, spec *runtime.ValueSpec, provider runtime.PackageValueProvider) {
+	if err := e.TryRegisterPackageValue(name, spec, provider); err != nil {
+		panic(err)
+	}
+}
+
+func (e *MiniExecutor) TryRegisterPackageValue(name string, spec *runtime.ValueSpec, provider runtime.PackageValueProvider) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if spec == nil {
+		return fmt.Errorf("package value %s missing schema", name)
+	}
+	if provider == nil {
+		return fmt.Errorf("package value %s missing provider", name)
+	}
+	if err := e.checkGlobalTemplateConflictLocked(name, "package value"); err != nil {
+		return err
+	}
+	value, err := provider.Bind(runtime.FFIBindContext{Registry: e.registry})
+	if err != nil {
+		return fmt.Errorf("bind package value %s: %w", name, err)
+	}
+	if existing, ok := e.valueSchemas[ast.Ident(name)]; ok && existing.Type.Raw != spec.Type.Raw {
+		return &runtime.SchemaConflictError{
+			Kind:     "package value",
+			Name:     name,
+			Existing: existing.Type.Raw.String(),
+			New:      spec.Type.Raw.String(),
+		}
+	}
+	e.valueSchemas[ast.Ident(name)] = spec
+	e.packageValues[name] = &runtime.BoundPackageValue{Name: name, Spec: spec, Value: value}
+	return nil
+}
+
+func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface) error {
+	if bound == nil {
+		return nil
+	}
+	for name, route := range bound.Routes {
+		if route.FuncSig != nil {
+			if err := e.checkGlobalTemplateConflictLocked(name, "function"); err != nil {
+				return err
+			}
+		}
+		if existing, ok := e.routes[name]; ok {
+			if err := runtime.CheckRouteCompatible(name, existing, route); err != nil {
+				return err
+			}
+		}
+		if route.FuncSig != nil {
+			ident := ast.Ident(name)
+			if existing, ok := e.funcSchemas[ident]; ok && !runtime.SameRuntimeFuncSchema(existing, route.FuncSig) {
+				return &runtime.SchemaConflictError{
+					Kind:     "schema",
+					Name:     name,
+					Existing: string(existing.Spec),
+					New:      string(route.FuncSig.Spec),
+				}
+			}
+		}
+	}
+	for name, spec := range bound.Structs {
+		if spec == nil {
+			continue
+		}
+		if err := e.checkGlobalTemplateConflictLocked(name, "struct"); err != nil {
+			return err
+		}
+		if existing, ok := e.structsMeta[ast.Ident(name)]; ok {
+			if _, err := runtime.MergeStructSchema(name, existing, spec); err != nil {
+				return err
+			}
+		}
+	}
+	for name, spec := range bound.Interfaces {
+		if spec == nil {
+			continue
+		}
+		if err := e.checkGlobalTemplateConflictLocked(name, "interface"); err != nil {
+			return err
+		}
+		if existing, ok := e.interfacesMeta[ast.Ident(name)]; ok {
+			if err := runtime.CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
+				return err
+			}
+		}
+	}
+	for name, value := range bound.PackageValues {
+		if value == nil || value.Spec == nil {
+			continue
+		}
+		if err := e.checkGlobalTemplateConflictLocked(name, "package value"); err != nil {
+			return err
+		}
+		if existing, ok := e.valueSchemas[ast.Ident(name)]; ok && existing.Type.Raw != value.Spec.Type.Raw {
+			return &runtime.SchemaConflictError{
+				Kind:     "package value",
+				Name:     name,
+				Existing: existing.Type.Raw.String(),
+				New:      value.Spec.Type.Raw.String(),
+			}
+		}
+	}
+	for name, val := range bound.Consts {
+		_ = val
+		if err := e.checkGlobalTemplateConflictLocked(name, "constant"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *MiniExecutor) applyBoundSurfaceChangesLocked(bound *runtime.BoundFFISurface) {
+	if bound == nil {
+		return
+	}
+	for name, route := range bound.Routes {
+		e.routes[name] = route
+		if route.FuncSig != nil {
+			e.funcSchemas[ast.Ident(name)] = runtime.CloneRuntimeFuncSig(route.FuncSig)
+		}
+	}
+	for name, spec := range bound.Structs {
+		if spec == nil {
+			continue
+		}
+		if existing, ok := e.structsMeta[ast.Ident(name)]; ok {
+			if merged, err := runtime.MergeStructSchema(name, existing, spec); err == nil {
+				spec = merged
+			}
+		}
+		e.structsMeta[ast.Ident(name)] = runtime.CloneRuntimeStructSpec(spec)
+	}
+	for name, spec := range bound.Interfaces {
+		if spec == nil {
+			continue
+		}
+		e.interfacesMeta[ast.Ident(name)] = runtime.CloneRuntimeInterfaceSpec(spec)
+	}
+	for name, value := range bound.PackageValues {
+		if value == nil || value.Spec == nil {
+			continue
+		}
+		e.valueSchemas[ast.Ident(name)] = &runtime.ValueSpec{Type: value.Spec.Type, Doc: value.Spec.Doc, ReadOnly: value.Spec.ReadOnly}
+		e.packageValues[name] = value
+	}
+	for name, val := range bound.Consts {
+		e.constants[name] = val
+	}
 }
 
 func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) error {

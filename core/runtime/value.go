@@ -397,6 +397,15 @@ func NewVMHandle(id uint32, bridge ffigo.FFIBridge) *VMHandle {
 	return h
 }
 
+func NewPinnedHostRefVar(id uint32, bridge ffigo.FFIBridge, typ RuntimeType) *Var {
+	v := &Var{VType: TypeHostRef, Handle: id, Bridge: bridge}
+	if id != 0 {
+		v.Ref = &VMHandle{ID: id, Bridge: bridge}
+	}
+	v.SetRuntimeType(typ)
+	return v
+}
+
 type VMArray struct {
 	mu   sync.RWMutex
 	Data []*Var

@@ -44,6 +44,17 @@ type ffigenTarget struct {
 	meta targetMeta
 }
 
+type globalMeta struct {
+	PackagePath string
+	Name        string
+	MiniType    string
+}
+
+type globalValue struct {
+	meta     globalMeta
+	variable string
+}
+
 type generationMode int
 
 const (

@@ -51,5 +51,5 @@ test.Out(filepath.VolumeName(p))
 			Want:   "c.txt|a/b|a/b|.txt|false|true|b/c.txt|a/b/|c.txt|a/b|",
 			Covers: []string{"Base", "Clean", "Dir", "Ext", "IsAbs", "Join", "Match", "Rel", "Split", "ToSlash", "FromSlash", "VolumeName"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

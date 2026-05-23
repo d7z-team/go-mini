@@ -129,6 +129,13 @@ func TestRejectGoStyleTypes(t *testing.T) {
 	}
 }
 
+func TestModulePathNamedTypeIsCanonical(t *testing.T) {
+	typ := Type("HostRef<encoding/base64.Encoding>")
+	if !typ.IsCanonical() {
+		t.Fatalf("%q should be canonical", typ)
+	}
+}
+
 func TestCanonicalIDBaseNameAndAssignabilityDepth(t *testing.T) {
 	if got := CanonicalTypeID("Ptr<HostRef<demo.Type>>"); got != "demo.Type" {
 		t.Fatalf("CanonicalTypeID() = %q, want demo.Type", got)

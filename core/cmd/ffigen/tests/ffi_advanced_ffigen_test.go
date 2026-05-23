@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.TestObj", runtime.StructOwnershipHostOpaque, "struct {}")
@@ -270,23 +271,23 @@ func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterAdvancedFFI(executor interface{ RegisterConstant(string, string) }, impl AdvancedFFI, registry *ffigo.HandleRegistry) {
-	bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceAdvancedFFI(impl AdvancedFFI) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("test", "GetSameObject", "test.GetSameObject", AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
+	schema.AddFunc("test", "IsSame", "test.IsSame", AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
+	schema.AddFunc("test", "EchoMap", "test.EchoMap", AdvancedFFI_FFI_Schemas[2].MethodID, AdvancedFFI_FFI_Schemas[2].Sig, AdvancedFFI_FFI_Schemas[2].Doc)
+	schema.AddFunc("test", "EchoEmbedded", "test.EchoEmbedded", AdvancedFFI_FFI_Schemas[3].MethodID, AdvancedFFI_FFI_Schemas[3].Sig, AdvancedFFI_FFI_Schemas[3].Doc)
+	schema.AddStruct("test.TestObj", test_TestObj_FFI_StructSchema)
+	schema.AddStruct("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("test", "GetSameObject", runtime.FFIRoute{Name: "test.GetSameObject", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[0].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[0].Sig, Doc: AdvancedFFI_FFI_Schemas[0].Doc})
+		bound.AddRoute("test", "IsSame", runtime.FFIRoute{Name: "test.IsSame", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[1].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[1].Sig, Doc: AdvancedFFI_FFI_Schemas[1].Doc})
+		bound.AddRoute("test", "EchoMap", runtime.FFIRoute{Name: "test.EchoMap", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[2].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[2].Sig, Doc: AdvancedFFI_FFI_Schemas[2].Doc})
+		bound.AddRoute("test", "EchoEmbedded", runtime.FFIRoute{Name: "test.EchoEmbedded", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[3].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[3].Sig, Doc: AdvancedFFI_FFI_Schemas[3].Doc})
+		bound.AddStruct("test.TestObj", test_TestObj_FFI_StructSchema)
+		bound.AddStruct("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registerStructSchema := func(name string, spec *runtime.RuntimeStructSpec) {
-		registrar.RegisterStructSchema(name, spec)
-	}
-	registrar.RegisterFFISchema("test.GetSameObject", bridge, AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("test.IsSame", bridge, AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("test.EchoMap", bridge, AdvancedFFI_FFI_Schemas[2].MethodID, AdvancedFFI_FFI_Schemas[2].Sig, AdvancedFFI_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("test.EchoEmbedded", bridge, AdvancedFFI_FFI_Schemas[3].MethodID, AdvancedFFI_FFI_Schemas[3].Sig, AdvancedFFI_FFI_Schemas[3].Doc)
-	registerStructSchema("test.TestObj", test_TestObj_FFI_StructSchema)
-	registerStructSchema("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
 }

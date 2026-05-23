@@ -34,5 +34,5 @@ test.OutBool(utf8.ValidString("你好"))
 			Want:   "20320|3|好|true|2|3|true",
 			Covers: []string{"DecodeRuneInString", "EncodeRune", "FullRuneInString", "RuneCountInString", "RuneLen", "ValidString"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }

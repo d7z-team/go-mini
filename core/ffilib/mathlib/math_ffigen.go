@@ -8,6 +8,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -623,34 +624,51 @@ func (b *Math_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterMath(executor interface{ RegisterConstant(string, string) }, impl Math, registry *ffigo.HandleRegistry) {
-	bridge := &Math_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceMath(impl Math) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("math", "Abs", "math.Abs", Math_FFI_Schemas[0].MethodID, Math_FFI_Schemas[0].Sig, Math_FFI_Schemas[0].Doc)
+	schema.AddFunc("math", "Ceil", "math.Ceil", Math_FFI_Schemas[1].MethodID, Math_FFI_Schemas[1].Sig, Math_FFI_Schemas[1].Doc)
+	schema.AddFunc("math", "Floor", "math.Floor", Math_FFI_Schemas[2].MethodID, Math_FFI_Schemas[2].Sig, Math_FFI_Schemas[2].Doc)
+	schema.AddFunc("math", "Round", "math.Round", Math_FFI_Schemas[3].MethodID, Math_FFI_Schemas[3].Sig, Math_FFI_Schemas[3].Doc)
+	schema.AddFunc("math", "Sqrt", "math.Sqrt", Math_FFI_Schemas[4].MethodID, Math_FFI_Schemas[4].Sig, Math_FFI_Schemas[4].Doc)
+	schema.AddFunc("math", "Pow", "math.Pow", Math_FFI_Schemas[5].MethodID, Math_FFI_Schemas[5].Sig, Math_FFI_Schemas[5].Doc)
+	schema.AddFunc("math", "Min", "math.Min", Math_FFI_Schemas[6].MethodID, Math_FFI_Schemas[6].Sig, Math_FFI_Schemas[6].Doc)
+	schema.AddFunc("math", "Max", "math.Max", Math_FFI_Schemas[7].MethodID, Math_FFI_Schemas[7].Sig, Math_FFI_Schemas[7].Doc)
+	schema.AddFunc("math", "Sin", "math.Sin", Math_FFI_Schemas[8].MethodID, Math_FFI_Schemas[8].Sig, Math_FFI_Schemas[8].Doc)
+	schema.AddFunc("math", "Cos", "math.Cos", Math_FFI_Schemas[9].MethodID, Math_FFI_Schemas[9].Sig, Math_FFI_Schemas[9].Doc)
+	schema.AddFunc("math", "Tan", "math.Tan", Math_FFI_Schemas[10].MethodID, Math_FFI_Schemas[10].Sig, Math_FFI_Schemas[10].Doc)
+	schema.AddFunc("math", "Exp", "math.Exp", Math_FFI_Schemas[11].MethodID, Math_FFI_Schemas[11].Sig, Math_FFI_Schemas[11].Doc)
+	schema.AddFunc("math", "Log", "math.Log", Math_FFI_Schemas[12].MethodID, Math_FFI_Schemas[12].Sig, Math_FFI_Schemas[12].Doc)
+	schema.AddFunc("math", "Log10", "math.Log10", Math_FFI_Schemas[13].MethodID, Math_FFI_Schemas[13].Sig, Math_FFI_Schemas[13].Doc)
+	schema.AddFunc("math", "NaN", "math.NaN", Math_FFI_Schemas[14].MethodID, Math_FFI_Schemas[14].Sig, Math_FFI_Schemas[14].Doc)
+	schema.AddFunc("math", "IsNaN", "math.IsNaN", Math_FFI_Schemas[15].MethodID, Math_FFI_Schemas[15].Sig, Math_FFI_Schemas[15].Doc)
+	schema.AddFunc("math", "Inf", "math.Inf", Math_FFI_Schemas[16].MethodID, Math_FFI_Schemas[16].Sig, Math_FFI_Schemas[16].Doc)
+	schema.AddFunc("math", "IsInf", "math.IsInf", Math_FFI_Schemas[17].MethodID, Math_FFI_Schemas[17].Sig, Math_FFI_Schemas[17].Doc)
+	schema.AddConst("math", "E", ffigo.ToConstantString(2.71828182845904523536))
+	schema.AddConst("math", "Pi", ffigo.ToConstantString(3.14159265358979323846))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &Math_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("math", "Abs", runtime.FFIRoute{Name: "math.Abs", Bridge: bridge, MethodID: Math_FFI_Schemas[0].MethodID, FuncSig: Math_FFI_Schemas[0].Sig, Doc: Math_FFI_Schemas[0].Doc})
+		bound.AddRoute("math", "Ceil", runtime.FFIRoute{Name: "math.Ceil", Bridge: bridge, MethodID: Math_FFI_Schemas[1].MethodID, FuncSig: Math_FFI_Schemas[1].Sig, Doc: Math_FFI_Schemas[1].Doc})
+		bound.AddRoute("math", "Floor", runtime.FFIRoute{Name: "math.Floor", Bridge: bridge, MethodID: Math_FFI_Schemas[2].MethodID, FuncSig: Math_FFI_Schemas[2].Sig, Doc: Math_FFI_Schemas[2].Doc})
+		bound.AddRoute("math", "Round", runtime.FFIRoute{Name: "math.Round", Bridge: bridge, MethodID: Math_FFI_Schemas[3].MethodID, FuncSig: Math_FFI_Schemas[3].Sig, Doc: Math_FFI_Schemas[3].Doc})
+		bound.AddRoute("math", "Sqrt", runtime.FFIRoute{Name: "math.Sqrt", Bridge: bridge, MethodID: Math_FFI_Schemas[4].MethodID, FuncSig: Math_FFI_Schemas[4].Sig, Doc: Math_FFI_Schemas[4].Doc})
+		bound.AddRoute("math", "Pow", runtime.FFIRoute{Name: "math.Pow", Bridge: bridge, MethodID: Math_FFI_Schemas[5].MethodID, FuncSig: Math_FFI_Schemas[5].Sig, Doc: Math_FFI_Schemas[5].Doc})
+		bound.AddRoute("math", "Min", runtime.FFIRoute{Name: "math.Min", Bridge: bridge, MethodID: Math_FFI_Schemas[6].MethodID, FuncSig: Math_FFI_Schemas[6].Sig, Doc: Math_FFI_Schemas[6].Doc})
+		bound.AddRoute("math", "Max", runtime.FFIRoute{Name: "math.Max", Bridge: bridge, MethodID: Math_FFI_Schemas[7].MethodID, FuncSig: Math_FFI_Schemas[7].Sig, Doc: Math_FFI_Schemas[7].Doc})
+		bound.AddRoute("math", "Sin", runtime.FFIRoute{Name: "math.Sin", Bridge: bridge, MethodID: Math_FFI_Schemas[8].MethodID, FuncSig: Math_FFI_Schemas[8].Sig, Doc: Math_FFI_Schemas[8].Doc})
+		bound.AddRoute("math", "Cos", runtime.FFIRoute{Name: "math.Cos", Bridge: bridge, MethodID: Math_FFI_Schemas[9].MethodID, FuncSig: Math_FFI_Schemas[9].Sig, Doc: Math_FFI_Schemas[9].Doc})
+		bound.AddRoute("math", "Tan", runtime.FFIRoute{Name: "math.Tan", Bridge: bridge, MethodID: Math_FFI_Schemas[10].MethodID, FuncSig: Math_FFI_Schemas[10].Sig, Doc: Math_FFI_Schemas[10].Doc})
+		bound.AddRoute("math", "Exp", runtime.FFIRoute{Name: "math.Exp", Bridge: bridge, MethodID: Math_FFI_Schemas[11].MethodID, FuncSig: Math_FFI_Schemas[11].Sig, Doc: Math_FFI_Schemas[11].Doc})
+		bound.AddRoute("math", "Log", runtime.FFIRoute{Name: "math.Log", Bridge: bridge, MethodID: Math_FFI_Schemas[12].MethodID, FuncSig: Math_FFI_Schemas[12].Sig, Doc: Math_FFI_Schemas[12].Doc})
+		bound.AddRoute("math", "Log10", runtime.FFIRoute{Name: "math.Log10", Bridge: bridge, MethodID: Math_FFI_Schemas[13].MethodID, FuncSig: Math_FFI_Schemas[13].Sig, Doc: Math_FFI_Schemas[13].Doc})
+		bound.AddRoute("math", "NaN", runtime.FFIRoute{Name: "math.NaN", Bridge: bridge, MethodID: Math_FFI_Schemas[14].MethodID, FuncSig: Math_FFI_Schemas[14].Sig, Doc: Math_FFI_Schemas[14].Doc})
+		bound.AddRoute("math", "IsNaN", runtime.FFIRoute{Name: "math.IsNaN", Bridge: bridge, MethodID: Math_FFI_Schemas[15].MethodID, FuncSig: Math_FFI_Schemas[15].Sig, Doc: Math_FFI_Schemas[15].Doc})
+		bound.AddRoute("math", "Inf", runtime.FFIRoute{Name: "math.Inf", Bridge: bridge, MethodID: Math_FFI_Schemas[16].MethodID, FuncSig: Math_FFI_Schemas[16].Sig, Doc: Math_FFI_Schemas[16].Doc})
+		bound.AddRoute("math", "IsInf", runtime.FFIRoute{Name: "math.IsInf", Bridge: bridge, MethodID: Math_FFI_Schemas[17].MethodID, FuncSig: Math_FFI_Schemas[17].Sig, Doc: Math_FFI_Schemas[17].Doc})
+		bound.AddConst("math", "E", ffigo.ToConstantString(2.71828182845904523536))
+		bound.AddConst("math", "Pi", ffigo.ToConstantString(3.14159265358979323846))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("math.Abs", bridge, Math_FFI_Schemas[0].MethodID, Math_FFI_Schemas[0].Sig, Math_FFI_Schemas[0].Doc)
-	registrar.RegisterFFISchema("math.Ceil", bridge, Math_FFI_Schemas[1].MethodID, Math_FFI_Schemas[1].Sig, Math_FFI_Schemas[1].Doc)
-	registrar.RegisterFFISchema("math.Floor", bridge, Math_FFI_Schemas[2].MethodID, Math_FFI_Schemas[2].Sig, Math_FFI_Schemas[2].Doc)
-	registrar.RegisterFFISchema("math.Round", bridge, Math_FFI_Schemas[3].MethodID, Math_FFI_Schemas[3].Sig, Math_FFI_Schemas[3].Doc)
-	registrar.RegisterFFISchema("math.Sqrt", bridge, Math_FFI_Schemas[4].MethodID, Math_FFI_Schemas[4].Sig, Math_FFI_Schemas[4].Doc)
-	registrar.RegisterFFISchema("math.Pow", bridge, Math_FFI_Schemas[5].MethodID, Math_FFI_Schemas[5].Sig, Math_FFI_Schemas[5].Doc)
-	registrar.RegisterFFISchema("math.Min", bridge, Math_FFI_Schemas[6].MethodID, Math_FFI_Schemas[6].Sig, Math_FFI_Schemas[6].Doc)
-	registrar.RegisterFFISchema("math.Max", bridge, Math_FFI_Schemas[7].MethodID, Math_FFI_Schemas[7].Sig, Math_FFI_Schemas[7].Doc)
-	registrar.RegisterFFISchema("math.Sin", bridge, Math_FFI_Schemas[8].MethodID, Math_FFI_Schemas[8].Sig, Math_FFI_Schemas[8].Doc)
-	registrar.RegisterFFISchema("math.Cos", bridge, Math_FFI_Schemas[9].MethodID, Math_FFI_Schemas[9].Sig, Math_FFI_Schemas[9].Doc)
-	registrar.RegisterFFISchema("math.Tan", bridge, Math_FFI_Schemas[10].MethodID, Math_FFI_Schemas[10].Sig, Math_FFI_Schemas[10].Doc)
-	registrar.RegisterFFISchema("math.Exp", bridge, Math_FFI_Schemas[11].MethodID, Math_FFI_Schemas[11].Sig, Math_FFI_Schemas[11].Doc)
-	registrar.RegisterFFISchema("math.Log", bridge, Math_FFI_Schemas[12].MethodID, Math_FFI_Schemas[12].Sig, Math_FFI_Schemas[12].Doc)
-	registrar.RegisterFFISchema("math.Log10", bridge, Math_FFI_Schemas[13].MethodID, Math_FFI_Schemas[13].Sig, Math_FFI_Schemas[13].Doc)
-	registrar.RegisterFFISchema("math.NaN", bridge, Math_FFI_Schemas[14].MethodID, Math_FFI_Schemas[14].Sig, Math_FFI_Schemas[14].Doc)
-	registrar.RegisterFFISchema("math.IsNaN", bridge, Math_FFI_Schemas[15].MethodID, Math_FFI_Schemas[15].Sig, Math_FFI_Schemas[15].Doc)
-	registrar.RegisterFFISchema("math.Inf", bridge, Math_FFI_Schemas[16].MethodID, Math_FFI_Schemas[16].Sig, Math_FFI_Schemas[16].Doc)
-	registrar.RegisterFFISchema("math.IsInf", bridge, Math_FFI_Schemas[17].MethodID, Math_FFI_Schemas[17].Sig, Math_FFI_Schemas[17].Doc)
-	executor.RegisterConstant("math.E", ffigo.ToConstantString(2.71828182845904523536))
-	executor.RegisterConstant("math.Pi", ffigo.ToConstantString(3.14159265358979323846))
 }

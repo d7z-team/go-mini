@@ -9,6 +9,7 @@ import (
 import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 const (
@@ -100,17 +101,17 @@ func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func RegisterSHA256(executor interface{ RegisterConstant(string, string) }, impl SHA256, registry *ffigo.HandleRegistry) {
-	bridge := &SHA256_Bridge{Impl: impl, Registry: registry}
-	registrar, ok := executor.(interface {
-		RegisterFFISchema(string, ffigo.FFIBridge, uint32, *runtime.RuntimeFuncSig, string)
-		RegisterStructSchema(string, *runtime.RuntimeStructSpec)
-		RegisterInterfaceSchema(string, *runtime.RuntimeInterfaceSpec)
+func SurfaceSHA256(impl SHA256) *surface.Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddFunc("crypto/sha256", "Sum256", "crypto/sha256.Sum256", SHA256_FFI_Schemas[0].MethodID, SHA256_FFI_Schemas[0].Sig, SHA256_FFI_Schemas[0].Doc)
+	schema.AddConst("crypto/sha256", "BlockSize", ffigo.ToConstantString(sha256.BlockSize))
+	schema.AddConst("crypto/sha256", "Size", ffigo.ToConstantString(sha256.Size))
+	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bridge := &SHA256_Bridge{Impl: impl, Registry: ctx.Registry}
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddRoute("crypto/sha256", "Sum256", runtime.FFIRoute{Name: "crypto/sha256.Sum256", Bridge: bridge, MethodID: SHA256_FFI_Schemas[0].MethodID, FuncSig: SHA256_FFI_Schemas[0].Sig, Doc: SHA256_FFI_Schemas[0].Doc})
+		bound.AddConst("crypto/sha256", "BlockSize", ffigo.ToConstantString(sha256.BlockSize))
+		bound.AddConst("crypto/sha256", "Size", ffigo.ToConstantString(sha256.Size))
+		return bound, nil
 	})
-	if !ok {
-		panic("ffigen: executor does not support schema FFI registration")
-	}
-	registrar.RegisterFFISchema("crypto/sha256.Sum256", bridge, SHA256_FFI_Schemas[0].MethodID, SHA256_FFI_Schemas[0].Sig, SHA256_FFI_Schemas[0].Doc)
-	executor.RegisterConstant("crypto/sha256.BlockSize", ffigo.ToConstantString(sha256.BlockSize))
-	executor.RegisterConstant("crypto/sha256.Size", ffigo.ToConstantString(sha256.Size))
 }

@@ -34,7 +34,9 @@ func run(args []string) error {
 	}
 
 	executor := engine.NewMiniExecutor()
-	ffilib.RegisterAll(executor)
+	if err := executor.UseSurface(ffilib.Surface()); err != nil {
+		return err
+	}
 
 	program, err := loadProgram(executor, options)
 	if err != nil {

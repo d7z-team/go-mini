@@ -119,5 +119,5 @@ test.OutBool(name != "")
 			Want:   "11|5|hello|4|MINI|hello MINI|4|1|1|1|true",
 			Covers: []string{"ReadAll", "Copy", "WriteString", "Write", "Read", "WriteAt", "ReadAt", "Seek", "Close", "Sync", "Truncate", "Name", "WriteNative"},
 		},
-	}, testutil.WithRegister(ffilib.RegisterAll))
+	}, testutil.WithSurface(ffilib.Surface()))
 }
