@@ -115,8 +115,10 @@ func cloneVarForAssign(v *Var) *Var {
 	case TypeClosure:
 		if method, ok := v.Ref.(*VMMethodValue); ok {
 			res.Ref = &VMMethodValue{
-				Receiver: cloneVarForAssign(method.Receiver),
-				Method:   method.Method,
+				Receiver:      cloneVarForAssign(method.Receiver),
+				Method:        method.Method,
+				FuncSig:       CloneRuntimeFuncSig(method.FuncSig),
+				DynamicInvoke: method.DynamicInvoke,
 			}
 		}
 	}
@@ -229,8 +231,10 @@ type VMClosure struct {
 }
 
 type VMMethodValue struct {
-	Receiver *Var
-	Method   string // Full FFI method name or internal function name
+	Receiver      *Var
+	Method        string // Full FFI method name or internal function name
+	FuncSig       *RuntimeFuncSig
+	DynamicInvoke bool
 }
 
 type Var struct {

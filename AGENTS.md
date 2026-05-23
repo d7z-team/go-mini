@@ -11,6 +11,9 @@
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
+- 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
+- FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle 或 VM pointer。
+- MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
 - `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。

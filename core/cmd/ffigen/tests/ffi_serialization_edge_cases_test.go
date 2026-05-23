@@ -55,7 +55,8 @@ func TestFFISerializationEdgeCases(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &ComplexBridge{t: t}
 
-	executor.RegisterFFISchema("test.Zero", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, HostRef<Any>) Void"), "")
+	executor.RegisterStructSchema("test.Handle", runtime.MustParseRuntimeStructSpec("test.Handle", runtime.StructOwnershipHostOpaque, "struct {}"))
+	executor.RegisterFFISchema("test.Zero", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, HostRef<test.Handle>) Void"), "")
 	executor.RegisterFFISchema("test.Nested", bridge, 2, runtime.MustParseRuntimeFuncSig("function(Map<String, Array<Int64>>) Void"), "")
 
 	code := `

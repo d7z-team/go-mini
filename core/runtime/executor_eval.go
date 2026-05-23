@@ -385,8 +385,10 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		v := &Var{
 			VType: TypeClosure,
 			Ref: &VMMethodValue{
-				Receiver: inter.Target,
-				Method:   property,
+				Receiver:      inter.Target,
+				Method:        property,
+				FuncSig:       CloneRuntimeFuncSig(sig),
+				DynamicInvoke: true,
 			},
 		}
 		v.SetRawType(sig.Spec.String())
@@ -876,19 +878,44 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case *VMClosure:
 				return e.setupFuncCall(session, "closure", nil, args, ref)
 			case *VMMethodValue:
+				if !ref.DynamicInvoke && ref.Receiver != nil && ref.Receiver.VType == TypeError && ref.Method == "Error" {
+					if errObj, ok := ref.Receiver.Ref.(*VMError); ok {
+						session.ValueStack.Push(NewString(errObj.Message))
+						return nil
+					}
+				}
 				// Resolve as FFI method
 				if route, ok := e.routes[ref.Method]; ok {
-					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
+					callArgs := args
+					callArgLHS := argLHS
+					if !ref.DynamicInvoke {
+						callArgs = append([]*Var{ref.Receiver}, args...)
+						if argLHS != nil {
+							callArgLHS = make([]LHSValue, len(callArgs))
+							copy(callArgLHS[1:], argLHS)
+						}
+					}
+					return e.evalFFIAndPush(session, route, callArgs, callArgLHS)
 				}
-				// 动态 FFI 路由：如果 Receiver 是一个带 Bridge 的 Handle，直接发起调用
-				if ref.Receiver != nil && ref.Receiver.VType == TypeHostRef && ref.Receiver.Bridge != nil {
-					// 动态接口调用保持 Any 边界，与宿主侧 InterfaceData/Invoke 契约一致。
+				if !ref.DynamicInvoke {
+					callArgs := append([]*Var{ref.Receiver}, args...)
+					if fn, ok := e.lookupFunction(ref.Method); ok {
+						return e.setupFuncCall(session, ref.Method, &DoCallData{
+							Name:        ref.Method,
+							FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
+							BodyTasks:   cloneTasks(fn.BodyTasks),
+							Args:        callArgs,
+						}, callArgs, nil)
+					}
+				}
+				if ref.DynamicInvoke && ref.FuncSig != nil && ref.Receiver != nil && ref.Receiver.VType == TypeHostRef && ref.Receiver.Bridge != nil {
 					route := FFIRoute{
 						Bridge:   ref.Receiver.Bridge,
-						MethodID: 0, // 对于接口调用，通常我们传方法名字符串
+						MethodID: 0,
 						Name:     ref.Method,
+						FuncSig:  ref.FuncSig,
 					}
-					return e.evalFFIAndPush(session, route, append([]*Var{ref.Receiver}, args...), nil)
+					return e.evalFFIAndPush(session, route, args, argLHS)
 				}
 			}
 		}
@@ -903,17 +930,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		return e.evalFFIAndPush(session, route, args, argLHS)
 	}
 
-	// 3a. Dynamic FFI Call for Handles (Interfaces)
-	if receiver != nil && receiver.VType == TypeHostRef && receiver.Bridge != nil && name != "" {
-		route := FFIRoute{
-			Bridge:   receiver.Bridge,
-			MethodID: 0,
-			Name:     name,
-		}
-		return e.evalFFIAndPush(session, route, args, nil)
-	}
-
-	// 3b. Dynamic Method Call for Maps (Interfaces)
+	// 3a. Dynamic Method Call for Maps (Interfaces)
 	if receiver != nil && receiver.VType == TypeMap && name != "" {
 		m := receiver.Ref.(*VMMap)
 		if val, ok := m.Load(name); ok {
@@ -928,7 +945,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 		}
 	}
 
-	// 3c. Dynamic Method Call for Modules (Interfaces)
+	// 3b. Dynamic Method Call for Modules (Interfaces)
 	if receiver != nil && receiver.VType == TypeModule && name != "" {
 		mod := receiver.Ref.(*VMModule)
 		routeKey := fmt.Sprintf("%s.%s", mod.Name, name)

@@ -160,15 +160,10 @@ func (m *mockLoggerBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 func (m *mockLoggerBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	if req.Method == "Log" {
 		reader := ffigo.NewReader(req.Args)
-		// 动态接口调用第一个参数是 receiver (Any)
-		_ = reader.ReadAny() // Skip receiver handle
-
-		// 第二个参数是 msg (String, passed as Any)
-		msgRaw := reader.ReadAny()
-		msg, _ := msgRaw.(string)
+		msg := reader.ReadString()
 
 		buf := ffigo.GetBuffer()
-		buf.WriteAny("Logged: " + msg)
+		buf.WriteString("Logged: " + msg)
 		return buf.Bytes(), nil
 	}
 	return nil, fmt.Errorf("unknown method: %s", req.Method)

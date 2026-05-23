@@ -97,6 +97,9 @@ func (e *MiniExecutor) DeclareFuncSchema(name string, sig *runtime.RuntimeFuncSi
 		delete(e.funcSchemas, ast.Ident(name))
 		return
 	}
+	if err := runtime.CheckPublicRuntimeFuncSig("declared ffi function "+name, sig); err != nil {
+		panic(err)
+	}
 	e.mustNotConflictGlobalTemplateLocked(name, "function")
 	e.funcSchemas[ast.Ident(name)] = sig
 }
@@ -147,17 +150,19 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	defer e.mu.RUnlock()
 
 	res := &ExportedSchemaSnapshot{
-		Funcs:           make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
-		RegisteredFuncs: make(map[ast.Ident]bool, len(e.routes)),
-		Values:          make(map[ast.Ident]*runtime.ValueSpec, len(e.valueSchemas)),
-		Structs:         make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
-		Interfaces:      make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
+		Funcs:                   make(map[ast.Ident]*runtime.RuntimeFuncSig, len(e.funcSchemas)),
+		RegisteredFuncs:         make(map[ast.Ident]bool, len(e.routes)),
+		RegisteredFuncMethodIDs: make(map[ast.Ident]uint32, len(e.routes)),
+		Values:                  make(map[ast.Ident]*runtime.ValueSpec, len(e.valueSchemas)),
+		Structs:                 make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
+		Interfaces:              make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
 	}
 	for k, v := range e.funcSchemas {
 		res.Funcs[k] = runtime.CloneRuntimeFuncSig(v)
 	}
-	for name := range e.routes {
+	for name, route := range e.routes {
 		res.RegisteredFuncs[ast.Ident(name)] = true
+		res.RegisteredFuncMethodIDs[ast.Ident(name)] = route.MethodID
 	}
 	for k, v := range e.valueSchemas {
 		if v == nil {
@@ -221,6 +226,9 @@ func (e *MiniExecutor) TryRegisterPackageValue(name string, spec *runtime.ValueS
 	if spec == nil {
 		return fmt.Errorf("package value %s missing schema", name)
 	}
+	if err := runtime.CheckPublicFFIValueSpec(name, spec); err != nil {
+		return err
+	}
 	if provider == nil {
 		return fmt.Errorf("package value %s missing provider", name)
 	}
@@ -249,6 +257,9 @@ func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface
 		return nil
 	}
 	for name, route := range bound.Routes {
+		if err := runtime.CheckPublicFFIRouteSchema(name, route); err != nil {
+			return err
+		}
 		if route.FuncSig != nil {
 			if err := e.checkGlobalTemplateConflictLocked(name, "function"); err != nil {
 				return err
@@ -275,6 +286,9 @@ func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface
 		if spec == nil {
 			continue
 		}
+		if err := runtime.CheckPublicFFIStructSchema(name, spec); err != nil {
+			return err
+		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "struct"); err != nil {
 			return err
 		}
@@ -288,6 +302,9 @@ func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface
 		if spec == nil {
 			continue
 		}
+		if err := runtime.CheckPublicFFIInterfaceSchema(name, spec); err != nil {
+			return err
+		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "interface"); err != nil {
 			return err
 		}
@@ -300,6 +317,9 @@ func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface
 	for name, value := range bound.PackageValues {
 		if value == nil || value.Spec == nil {
 			continue
+		}
+		if err := runtime.CheckPublicFFIValueSpec(name, value.Spec); err != nil {
+			return err
 		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "package value"); err != nil {
 			return err
@@ -374,6 +394,9 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 		Doc:      doc,
 		FuncSig:  funcSig,
 	}
+	if err := runtime.CheckPublicFFIRouteSchema(name, next); err != nil {
+		return err
+	}
 	if existing, ok := e.routes[name]; ok {
 		if err := runtime.CheckRouteCompatible(name, existing, next); err != nil {
 			return err
@@ -396,6 +419,9 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 
 func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) error {
 	if spec != nil {
+		if err := runtime.CheckPublicFFIStructSchema(name, spec); err != nil {
+			return err
+		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "struct"); err != nil {
 			return err
 		}
@@ -415,6 +441,9 @@ func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.Run
 
 func (e *MiniExecutor) registerInterfaceSchemaLocked(name string, spec *runtime.RuntimeInterfaceSpec) error {
 	if spec != nil {
+		if err := runtime.CheckPublicFFIInterfaceSchema(name, spec); err != nil {
+			return err
+		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "interface"); err != nil {
 			return err
 		}

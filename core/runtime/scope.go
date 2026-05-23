@@ -703,6 +703,19 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 		}
 		return ctx.Executor.CheckSatisfaction(expr, string(target.Raw))
 	}
+	if ctx.Executor != nil && target.Kind == RuntimeTypeNamed {
+		if _, ok := ctx.Executor.resolveInterfaceSpec(target.Raw); ok {
+			if expr.RuntimeType().IsInterface() {
+				if expr.RawType().Equals(target.Raw) {
+					return cloneVarForAssign(expr), nil
+				}
+				if inter, ok := expr.Ref.(*VMInterface); ok && inter.Target != nil {
+					return ctx.Executor.CheckSatisfaction(inter.Target, string(target.Raw))
+				}
+			}
+			return ctx.Executor.CheckSatisfaction(expr, string(target.Raw))
+		}
+	}
 	actual := expr
 	if ctx.Executor != nil {
 		actual = ctx.Executor.unwrapValue(expr)

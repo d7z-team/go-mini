@@ -16,8 +16,10 @@
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则。
+- 公开 FFI schema 会统一拒绝 `Ptr<T>`、`HostRef<Any>`、缺失函数 schema 和非法 inout mode；`Any` 只能承载纯值数据，不能承载 host ref、host handle、host error/interface handle 或 VM pointer。
+- MethodID 0 / `Invoke` 只保留显式 schema route 与 typed interface method 调用；普通 `HostRef` 成员访问不再存在无 schema 动态 Invoke 兜底。
 - Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`，不再按 route/constant 前缀扫描。
-- Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema 与方法 route。
+- Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
 - `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，不再生成 `RegisterXxx` / `RegisterXxxLibrary` 主入口；生成物直接构造 `FFISurfaceSchema` 和 `BoundFFISurface`，并通过 `ffigen:global` 生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
@@ -109,6 +111,7 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first。
 - FFI 只走 schema-only，不引入 spec/registrar 双轨。
+- 公开 FFI schema 禁止 `Ptr<T>` / `HostRef<Any>`；`Any` 不得承载 host identity；MethodID 0 / `Invoke` 必须有明确 schema。
 - Host opaque object 不得被 VM materialize；只能通过 FFI factory/return 形成 `HostRef<T>`。
 - 引用/值语义相关改动必须保持 slot assignment 为唯一写入路径，避免重新引入 boxed cell 或无类型变量覆盖。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。

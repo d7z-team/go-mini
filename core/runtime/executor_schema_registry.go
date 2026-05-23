@@ -16,6 +16,12 @@ func (e *Executor) RegisterRoute(name string, route FFIRoute) {
 func (e *Executor) TryRegisterRoute(name string, route FFIRoute) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if route.Name == "" {
+		route.Name = name
+	}
+	if err := CheckPublicFFIRouteSchema(name, route); err != nil {
+		return err
+	}
 	if existing, ok := e.routes[name]; ok {
 		if err := CheckRouteCompatible(name, existing, route); err != nil {
 			return err
@@ -53,6 +59,9 @@ func (e *Executor) TryRegisterStructSchema(name string, spec *RuntimeStructSpec)
 		e.metadata.registerStructSchema(name, nil)
 		return nil
 	}
+	if err := CheckPublicFFIStructSchema(name, spec); err != nil {
+		return err
+	}
 	if existing, ok := e.metadata.structsByName[name]; ok {
 		merged, err := MergeStructSchema(name, existing, spec)
 		if err != nil {
@@ -76,6 +85,9 @@ func (e *Executor) TryRegisterInterfaceSchema(name string, spec *RuntimeInterfac
 	if spec == nil {
 		e.metadata.registerInterfaceSpec(name, nil)
 		return nil
+	}
+	if err := CheckPublicFFIInterfaceSchema(name, spec); err != nil {
+		return err
 	}
 	if existing, ok := e.metadata.interfacesByName[name]; ok {
 		if err := CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
@@ -233,6 +245,9 @@ func (e *Executor) TryRegisterPackageValue(name string, spec *ValueSpec, value *
 	}
 	if spec == nil {
 		return errors.New("package value missing schema")
+	}
+	if err := CheckPublicFFIValueSpec(name, spec); err != nil {
+		return err
 	}
 	if value == nil {
 		return errors.New("package value missing value")

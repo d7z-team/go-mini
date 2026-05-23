@@ -51,14 +51,14 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 		if idx < len(argLHS) {
 			lhs = argLHS[idx]
 		}
-		current := args[idx]
-		if lhs != nil {
-			loaded, err := e.loadAddress(session, lhs)
-			if err != nil {
-				return nil, err
-			}
-			current = loaded
+		if lhs == nil {
+			return nil, fmt.Errorf("inout parameter %d requires assignable argument", idx)
 		}
+		loaded, err := e.loadAddress(session, lhs)
+		if err != nil {
+			return nil, err
+		}
+		current := loaded
 		current = e.unwrapValue(current)
 		mode := sig.ParamModes[idx]
 		switch mode {
@@ -86,13 +86,7 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 
 func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridge, target ffiCopyBackTarget, reader *ffigo.Reader) error {
 	if target.LHS == nil {
-		switch target.Mode {
-		case FFIParamInOutBytes, FFIParamInOutArray:
-			reader.ReadBytes()
-			return nil
-		default:
-			return fmt.Errorf("unsupported inout parameter mode %d", target.Mode)
-		}
+		return errors.New("inout copy-back target is not assignable")
 	}
 	switch target.Mode {
 	case FFIParamInOutBytes:

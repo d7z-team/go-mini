@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -122,8 +123,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 	case RuntimeTypeVoid:
 		return nil
 	case RuntimeTypeAny:
-		e.serializeVarToAny(buf, v)
-		return nil
+		return e.serializeVarToAny(buf, v)
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
 		case "String":
@@ -189,14 +189,18 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			buf.WriteVarint(iVal)
 			return nil
 		}
+		if typ.Kind == RuntimeTypeNamed {
+			if spec, ok := e.resolveInterfaceSpec(typ.Raw); ok {
+				return e.serializeInterfaceValue(buf, v, typ.Raw, spec)
+			}
+		}
 		if schema, ok := e.lookupStructSchema(typ); ok {
 			if schema.Ownership == StructOwnershipHostOpaque {
 				return fmt.Errorf("cannot serialize bare host opaque value %s; use HostRef<%s>", typ.Raw, schema.TypeID)
 			}
 			return e.serializeStructSchema(buf, v, schema)
 		}
-		e.serializeVarToAny(buf, v)
-		return nil
+		return e.serializeVarToAny(buf, v)
 	case RuntimeTypeHostRef:
 		if v == nil {
 			buf.WriteUvarint(0)
@@ -211,8 +215,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		if _, ok := e.vmPointerTarget(v); !ok && v != nil {
 			return fmt.Errorf("cannot pass %v as VM pointer %s", v.VType, typ.Raw)
 		}
-		e.serializeVarToAny(buf, v)
-		return nil
+		return e.serializeVarToAny(buf, v)
 	case RuntimeTypeArray:
 		if v == nil || v.VType != TypeArray {
 			buf.WriteUvarint(0)
@@ -264,32 +267,65 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		}
 		return nil
 	case RuntimeTypeInterface:
-		if v == nil || v.VType != TypeInterface || v.Ref == nil {
-			buf.WriteRawInterface(0, nil)
-			return nil
-		}
-		if iface, ok := v.Ref.(*VMInterface); ok {
-			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
-		} else {
-			buf.WriteRawInterface(0, nil)
-		}
-		return nil
+		return e.serializeInterfaceValue(buf, v, typ.Raw, nil)
 	case RuntimeTypeStruct:
 		return e.serializeStructSchema(buf, v, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields})
 	case RuntimeTypeFunction:
-		e.serializeVarToAny(buf, v)
-		return nil
+		return e.serializeVarToAny(buf, v)
 	default:
-		e.serializeVarToAny(buf, v)
-		return nil
+		return e.serializeVarToAny(buf, v)
 	}
 }
 
-func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
+func (e *Executor) serializeInterfaceValue(buf *ffigo.Buffer, v *Var, interfaceType TypeSpec, spec *RuntimeInterfaceSpec) error {
+	v = e.unwrapFFIValue(v)
+	if v == nil {
+		buf.WriteRawInterface(0, nil)
+		return nil
+	}
+	if v.VType != TypeInterface {
+		checked, err := e.CheckSatisfaction(v, interfaceType.String())
+		if err != nil {
+			return err
+		}
+		v = e.unwrapFFIValue(checked)
+	}
+	if v == nil || v.VType != TypeInterface || v.Ref == nil {
+		buf.WriteRawInterface(0, nil)
+		return nil
+	}
+	iface, ok := v.Ref.(*VMInterface)
+	if !ok {
+		return fmt.Errorf("cannot serialize %v as FFI interface %s", v.VType, interfaceType)
+	}
+	if iface.Target == nil {
+		buf.WriteRawInterface(0, nil)
+		return nil
+	}
+	if !e.isOpaqueHandle(iface.Target) {
+		return fmt.Errorf("cannot pass VM-only interface %s to FFI: target is %s, not host reference", interfaceType, iface.Target.RawType())
+	}
+	handle := iface.Target.Handle
+	if handle == 0 {
+		buf.WriteRawInterface(0, nil)
+		return nil
+	}
+	if spec == nil {
+		spec = iface.Spec
+	}
+	var methods map[string]string
+	if spec != nil {
+		methods = spec.MethodStringMap()
+	}
+	buf.WriteRawInterface(handle, methods)
+	return nil
+}
+
+func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 	v = e.unwrapFFIValue(v)
 	if v == nil {
 		buf.WriteAny(nil)
-		return
+		return nil
 	}
 	switch v.VType {
 	case TypeInt:
@@ -304,28 +340,27 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		buf.WriteAny(v.Bool)
 	case TypeError:
 		if err, ok := v.Ref.(*VMError); ok {
+			if err.Handle != 0 {
+				return errors.New("FFI Any cannot carry host error handle")
+			}
 			_ = buf.WriteByte(ffigo.TypeTagError)
 			buf.WriteRawError(err.Message, err.Handle)
 		} else {
 			buf.WriteAny(nil)
 		}
 	case TypeHandle:
-		// Internal VM pointers travel as pointer-tagged Any values.
-		if inner, ok := e.vmPointerTarget(v); ok {
-			_ = buf.WriteByte(ffigo.TypeTagPointer)
-			e.serializeVarToAny(buf, inner)
-			return
-		}
-		buf.WriteAny(nil)
+		return errors.New("FFI Any cannot carry VM pointer")
 	case TypeHostRef:
-		buf.WriteAny(v.Handle)
+		return errors.New("FFI Any cannot carry host reference")
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
 		items := arr.Snapshot()
 		_ = buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUvarint(uint64(len(items)))
 		for _, item := range items {
-			e.serializeVarToAny(buf, item)
+			if err := e.serializeVarToAny(buf, item); err != nil {
+				return err
+			}
 		}
 	case TypeMap:
 		vmMap := v.Ref.(*VMMap)
@@ -334,14 +369,16 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 		buf.WriteUvarint(uint64(len(snapshot)))
 		for k, val := range snapshot {
 			buf.WriteString(k)
-			e.serializeVarToAny(buf, val)
+			if err := e.serializeVarToAny(buf, val); err != nil {
+				return err
+			}
 		}
 	case TypeStruct:
 		st := v.Ref.(*VMStruct)
 		_ = buf.WriteByte(ffigo.TypeTagStruct)
 		if st.Spec == nil {
 			buf.WriteUvarint(0)
-			return
+			return nil
 		}
 		buf.WriteUvarint(uint64(len(st.Spec.Fields)))
 		for i, field := range st.Spec.Fields {
@@ -350,17 +387,30 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 			if i < len(st.Fields) && st.Fields[i] != nil {
 				fieldVal = st.Fields[i].Value
 			}
-			e.serializeVarToAny(buf, fieldVal)
+			if err := e.serializeVarToAny(buf, fieldVal); err != nil {
+				return err
+			}
 		}
 	case TypeInterface:
 		if v.Ref == nil {
 			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
-			return
+			return nil
 		}
 		if iface, ok := v.Ref.(*VMInterface); ok {
+			if iface.Target != nil && iface.Target.Handle != 0 {
+				return errors.New("FFI Any cannot carry host interface reference")
+			}
 			_ = buf.WriteByte(ffigo.TypeTagInterface)
-			buf.WriteRawInterface(iface.Target.Handle, iface.Spec.MethodStringMap())
+			handle := uint32(0)
+			if iface.Target != nil {
+				handle = iface.Target.Handle
+			}
+			var methods map[string]string
+			if iface.Spec != nil {
+				methods = iface.Spec.MethodStringMap()
+			}
+			buf.WriteRawInterface(handle, methods)
 		} else {
 			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
@@ -368,6 +418,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) {
 	default:
 		buf.WriteAny(nil)
 	}
+	return nil
 }
 
 func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (string, error) {
@@ -400,7 +451,10 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 
 	switch typ.Kind {
 	case RuntimeTypeAny:
-		res = e.wrapAnyVar(session, e.ToVar(session, reader.ReadAny(), bridge))
+		raw := reader.ReadAny()
+		if err = rejectHostIdentityInAny(raw); err == nil {
+			res = e.wrapAnyVar(session, e.ToVar(session, raw, bridge))
+		}
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
 		case "String":
@@ -429,6 +483,12 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 				}
 				res, err = e.deserializeStructSchema(session, reader, schema, bridge)
 				break
+			}
+			if typ.Kind == RuntimeTypeNamed {
+				if _, ok := e.resolveInterfaceSpec(typ.Raw); ok {
+					res = e.ToVar(session, reader.ReadRawInterface(), bridge)
+					break
+				}
 			}
 			err = fmt.Errorf("unsupported named FFI return type: %s", typ.Raw)
 		}
@@ -482,7 +542,10 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	case RuntimeTypeStruct:
 		res, err = e.deserializeStructSchema(session, reader, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields}, bridge)
 	case RuntimeTypeFunction:
-		res = e.wrapAnyVar(session, e.ToVar(session, reader.ReadAny(), bridge))
+		raw := reader.ReadAny()
+		if err = rejectHostIdentityInAny(raw); err == nil {
+			res = e.wrapAnyVar(session, e.ToVar(session, raw, bridge))
+		}
 	default:
 		return nil, fmt.Errorf("unsupported FFI return type: %s", typ.Raw)
 	}
@@ -497,4 +560,44 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 	}
 	return res, nil
+}
+
+func rejectHostIdentityInAny(v interface{}) error {
+	switch val := v.(type) {
+	case nil:
+		return nil
+	case uint32:
+		return errors.New("FFI Any cannot carry host reference handle")
+	case ffigo.InterfaceData:
+		if val.Handle != 0 {
+			return errors.New("FFI Any cannot carry host interface handle")
+		}
+		return nil
+	case ffigo.ErrorData:
+		if val.Handle != 0 {
+			return errors.New("FFI Any cannot carry host error handle")
+		}
+		return nil
+	case *ffigo.VMPointer:
+		return errors.New("FFI Any cannot carry VM pointer")
+	case *ffigo.VMStruct:
+		for _, field := range val.Fields {
+			if err := rejectHostIdentityInAny(field.Value); err != nil {
+				return err
+			}
+		}
+	case map[string]interface{}:
+		for _, item := range val {
+			if err := rejectHostIdentityInAny(item); err != nil {
+				return err
+			}
+		}
+	case []interface{}:
+		for _, item := range val {
+			if err := rejectHostIdentityInAny(item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

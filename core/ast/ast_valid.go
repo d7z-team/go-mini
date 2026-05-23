@@ -609,6 +609,96 @@ func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
 	return nil, false
 }
 
+func (c *ValidContext) IsAssignableTo(source, target GoMiniType) bool {
+	if source.IsAssignableTo(target) {
+		return true
+	}
+	if c == nil {
+		return false
+	}
+	targetInterface, ok := c.resolveInterfaceType(target)
+	if !ok {
+		return false
+	}
+	if sourceInterface, ok := c.resolveInterfaceType(source); ok {
+		return sourceInterface.IsAssignableTo(targetInterface)
+	}
+	targetMethods, ok := targetInterface.ReadInterfaceMethods()
+	if !ok {
+		return false
+	}
+	receiver := source
+	sourceType := source
+	if source.IsHostRef() {
+		sourceType, _ = source.GetHostRefElementType()
+	} else if source.IsPtr() {
+		sourceType, _ = source.GetPtrElementType()
+	}
+	st, ok := c.GetStruct(Ident(sourceType))
+	if !ok {
+		return false
+	}
+	for name, expected := range targetMethods {
+		actual, ok := st.Methods[Ident(name)]
+		if !ok || expected == nil {
+			return false
+		}
+		if !callFunctionTypeAssignable(actual, expected.ToCallFunctionType(), receiver) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *ValidContext) resolveInterfaceType(typ GoMiniType) (GoMiniType, bool) {
+	if typ.IsInterface() {
+		return typ, true
+	}
+	if stmt, ok := c.GetInterface(Ident(typ)); ok && stmt != nil && stmt.Type.IsInterface() {
+		return stmt.Type, true
+	}
+	if t, ok := c.GetType(Ident(typ)); ok && t.IsInterface() {
+		return t, true
+	}
+	return "", false
+}
+
+func callFunctionTypeAssignable(actual, expected CallFunctionType, receiver GoMiniType) bool {
+	if callFunctionShapeAssignable(actual, expected) {
+		return true
+	}
+	if len(actual.Params) == 0 || !receiver.IsAssignableTo(actual.Params[0]) {
+		return false
+	}
+	trimmed := actual
+	trimmed.Params = append([]GoMiniType(nil), actual.Params[1:]...)
+	return callFunctionShapeAssignable(trimmed, expected)
+}
+
+func callFunctionShapeAssignable(actual, expected CallFunctionType) bool {
+	if !actual.Variadic && expected.Variadic {
+		return false
+	}
+	if !actual.Variadic && len(actual.Params) != len(expected.Params) {
+		return false
+	}
+	for i, expectedParam := range expected.Params {
+		actualParam := TypeAny
+		if i < len(actual.Params) {
+			actualParam = actual.Params[i]
+		} else if actual.Variadic && len(actual.Params) > 0 {
+			actualParam = actual.Params[len(actual.Params)-1]
+		}
+		if !expectedParam.IsAssignableTo(actualParam) {
+			return false
+		}
+	}
+	if actual.Returns == TypeVoid && expected.Returns == TypeAny {
+		return true
+	}
+	return actual.Returns.IsAssignableTo(expected.Returns)
+}
+
 func (c *ValidContext) AddVariable(name Ident, oType GoMiniType) {
 	c.vars[name] = oType
 	if c.parent == nil {

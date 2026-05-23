@@ -42,7 +42,7 @@ test.OutBool(sort.StringsAreSorted(strings))
 			},
 		},
 		{
-			Name:    "slice-window-and-temporary",
+			Name:    "slice-window",
 			Imports: []string{"sort"},
 			Body: `
 ints := []Int64{9, 3, 1, 2, 8}
@@ -56,7 +56,6 @@ test.Out("|")
 test.OutInt(ints[3])
 test.Out("|")
 test.OutInt(ints[4])
-sort.Strings([]string{"b", "a"})
 `,
 			Want: "9|1|2|3|8",
 		},

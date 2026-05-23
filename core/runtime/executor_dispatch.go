@@ -569,12 +569,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 
 			if res != nil && res.VType == TypeClosure {
-				if mv, ok := res.Ref.(*VMMethodValue); ok {
-					receiver = mv.Receiver
-					name = mv.Method
-				} else {
-					callable = res
-				}
+				callable = res
 			} else if res != nil && res.VType == TypeModule {
 				mod = res.Ref.(*VMModule)
 				name = data.Name
@@ -660,12 +655,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 
 			if res != nil && res.VType == TypeClosure {
-				if mv, ok := res.Ref.(*VMMethodValue); ok {
-					receiver = mv.Receiver
-					name = mv.Method
-				} else {
-					callable = res
-				}
+				callable = res
 			} else if res != nil && res.VType == TypeModule {
 				mod = res.Ref.(*VMModule)
 				name = data.Name

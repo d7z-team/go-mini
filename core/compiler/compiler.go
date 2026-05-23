@@ -12,15 +12,16 @@ import (
 )
 
 type Config struct {
-	ModuleLoader     func(path string) (*ast.ProgramStmt, error)
-	Surface          *runtime.FFISurfaceSchema
-	FuncSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
-	RegisteredFuncs  map[ast.Ident]bool
-	ValueSchemas     map[ast.Ident]*runtime.ValueSpec
-	StructSchemas    map[ast.Ident]*runtime.RuntimeStructSpec
-	InterfaceSchemas map[ast.Ident]*runtime.RuntimeInterfaceSpec
-	Constants        map[string]string
-	MaxTypeDepth     int
+	ModuleLoader            func(path string) (*ast.ProgramStmt, error)
+	Surface                 *runtime.FFISurfaceSchema
+	FuncSchemas             map[ast.Ident]*runtime.RuntimeFuncSig
+	RegisteredFuncs         map[ast.Ident]bool
+	RegisteredFuncMethodIDs map[ast.Ident]uint32
+	ValueSchemas            map[ast.Ident]*runtime.ValueSpec
+	StructSchemas           map[ast.Ident]*runtime.RuntimeStructSpec
+	InterfaceSchemas        map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	Constants               map[string]string
+	MaxTypeDepth            int
 	// Templates contains compiler-only call templates. The compiler exposes
 	// their signatures during the first semantic check, expands matching calls,
 	// and rejects any residual template artifacts before bytecode generation.
@@ -247,7 +248,7 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 }
 
 func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.Plan) (map[ast.Ident]ast.ExternalTypeSpec, error) {
-	funcSchemas, valueSchemas, structSchemas, interfaceSchemas, _ := c.externalSchemaMaps()
+	funcSchemas, _, valueSchemas, structSchemas, interfaceSchemas, _ := c.externalSchemaMaps()
 	templateFuncs := map[ast.Ident]*runtime.RuntimeFuncSig(nil)
 	if includeTemplates && plan != nil {
 		templateFuncs = plan.FuncSchemas()

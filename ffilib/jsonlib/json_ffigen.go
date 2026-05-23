@@ -118,21 +118,19 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case uint32:
-			if obj, err := registry.GetWithAudit(rv); err == nil {
-				v = obj
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "v", err)
+			return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "v")
+		case ffigo.InterfaceData:
+			if rv.Handle != 0 {
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "v")
 			}
+			v = rv
 		case ffigo.ErrorData:
 			if rv.Handle != 0 {
-				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-					v = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "v", err)
-				}
-			} else {
-				v = rv
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "v")
 			}
+			v = rv
+		case *ffigo.VMPointer:
+			return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "v")
 		default:
 			v = rawVal
 		}

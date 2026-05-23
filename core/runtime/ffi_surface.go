@@ -30,6 +30,7 @@ type ExternalRequirement struct {
 	Type        TypeSpec      `json:"type,omitempty"`
 	TypeName    string        `json:"type_name,omitempty"`
 	MethodName  string        `json:"method_name,omitempty"`
+	MethodID    uint32        `json:"method_id,omitempty"`
 	Hash        string        `json:"hash,omitempty"`
 }
 
@@ -536,6 +537,17 @@ func FuncSchemaHash(sig *RuntimeFuncSig) string {
 	return VersionedExternalRequirementHash("func", string(sig.Spec), strings.Join(modes, ","))
 }
 
+func FuncRouteHash(methodID uint32, sig *RuntimeFuncSig) string {
+	if sig == nil {
+		return VersionedExternalRequirementHash("func", strconv.FormatUint(uint64(methodID), 10), "")
+	}
+	modes := make([]string, len(sig.ParamModes))
+	for i, mode := range sig.ParamModes {
+		modes[i] = string(mode)
+	}
+	return VersionedExternalRequirementHash("func", strconv.FormatUint(uint64(methodID), 10), string(sig.Spec), strings.Join(modes, ","))
+}
+
 func ValueSchemaHash(spec *ValueSpec) string {
 	if spec == nil {
 		return VersionedExternalRequirementHash("value", "")
@@ -591,7 +603,10 @@ func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) er
 		if !ok {
 			return fmt.Errorf("missing external FFI function %s", name)
 		}
-		if got := FuncSchemaHash(route.FuncSig); req.Hash != "" && got != req.Hash {
+		if req.MethodID != route.MethodID {
+			return fmt.Errorf("external FFI function %s method id mismatch", name)
+		}
+		if got := FuncRouteHash(route.MethodID, route.FuncSig); req.Hash != "" && got != req.Hash {
 			return fmt.Errorf("external FFI function %s schema mismatch", name)
 		}
 	case FFIMemberConst:
@@ -673,9 +688,18 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 	if e == nil || surface == nil {
 		return nil
 	}
+	if err := CheckPublicFFISurfaceSchema(surface.Schema); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for name, route := range surface.Routes {
+		if route.Name == "" {
+			route.Name = name
+		}
+		if err := CheckPublicFFIRouteSchema(name, route); err != nil {
+			return err
+		}
 		if existing, ok := e.routes[name]; ok {
 			if err := CheckRouteCompatible(name, existing, route); err != nil {
 				return err
@@ -686,6 +710,9 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 	for name, spec := range surface.Structs {
 		if spec == nil {
 			continue
+		}
+		if err := CheckPublicFFIStructSchema(name, spec); err != nil {
+			return err
 		}
 		if existing, ok := e.metadata.structsByName[name]; ok {
 			merged, err := MergeStructSchema(name, existing, spec)
@@ -700,6 +727,9 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		if spec == nil {
 			continue
 		}
+		if err := CheckPublicFFIInterfaceSchema(name, spec); err != nil {
+			return err
+		}
 		if existing, ok := e.metadata.interfacesByName[name]; ok {
 			if err := CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
 				return err
@@ -711,6 +741,11 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		e.packageValues = make(map[string]*BoundPackageValue)
 	}
 	for name, value := range surface.PackageValues {
+		if value != nil {
+			if err := CheckPublicFFIValueSpec(name, value.Spec); err != nil {
+				return err
+			}
+		}
 		e.packageValues[name] = value
 	}
 	for name, value := range surface.Consts {

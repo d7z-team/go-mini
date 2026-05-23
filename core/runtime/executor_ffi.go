@@ -9,6 +9,9 @@ import (
 )
 
 func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) (*Var, error) {
+	if route.MethodID == 0 && route.FuncSig == nil {
+		return nil, fmt.Errorf("ffi route %s uses Invoke without schema", route.Name)
+	}
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 

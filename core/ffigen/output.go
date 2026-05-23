@@ -69,7 +69,7 @@ func (g *Generator) generatePackageOutput(outputPath string, data packageData) e
 
 	var generated []string
 	for _, target := range data.targets {
-		generated = append(generated, g.generateCode(target.spec, data.structs, data.interfaces, target.meta, data.constants, schemas, data.ownedStructs))
+		generated = append(generated, g.generateCode(target.spec, data.structs, data.interfaces, data.interfaceFFI, target.meta, data.constants, schemas, data.ownedStructs))
 	}
 
 	var schemaDefs strings.Builder

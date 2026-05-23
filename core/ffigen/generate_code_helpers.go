@@ -140,7 +140,7 @@ type generatedMethod struct {
 	AsyncGoType string
 }
 
-func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct bool, methodsPrefix string, displayTypeName func(string) string, vmType func(ast.Expr) string) []generatedMethod {
+func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct bool, methodsPrefix string, displayTypeName func(string) string, vmType func(ast.Expr) string, interfaceSchemas map[string]string, moduleName string) []generatedMethod {
 	if iface == nil || iface.Methods == nil {
 		return nil
 	}
@@ -173,7 +173,9 @@ func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct boo
 				rawType := g.typeToString(param.Type)
 				paramIsContext := paramIdx == 0 && isContextType(rawType)
 				if !paramIsContext && g.unsupportedInterfaceExpr(param.Type) {
-					panic(fmt.Sprintf("ffigen: interface parameter %s.%s is not supported; use any or *T/HostRef<T>", methodName, rawType))
+					if _, _, ok := g.interfaceSchemaForType(rawType, moduleName, interfaceSchemas); !ok {
+						panic(fmt.Sprintf("ffigen: interface parameter %s.%s is not supported; use any, *T/HostRef<T>, or a named ffigen interface", methodName, rawType))
+					}
 				}
 				variadic := false
 				proxyGoType := g.toGoType(rawType)
@@ -229,7 +231,9 @@ func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct boo
 			for _, result := range funcType.Results.List {
 				rawType := g.typeToString(result.Type)
 				if rawType != "error" && g.unsupportedInterfaceExpr(result.Type) {
-					panic(fmt.Sprintf("ffigen: interface result %s.%s is not supported; use any or *T/HostRef<T>", methodName, rawType))
+					if _, _, ok := g.interfaceSchemaForType(rawType, moduleName, interfaceSchemas); !ok {
+						panic(fmt.Sprintf("ffigen: interface result %s.%s is not supported; use any, *T/HostRef<T>, or a named ffigen interface", methodName, rawType))
+					}
 				}
 				count := len(result.Names)
 				if count == 0 {

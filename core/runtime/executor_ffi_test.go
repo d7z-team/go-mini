@@ -44,7 +44,9 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
-	exec.serializeVarToAny(buf, v)
+	if err := exec.serializeVarToAny(buf, v); err != nil {
+		t.Fatalf("serializeVarToAny failed: %v", err)
+	}
 
 	decoded := ffigo.NewReader(buf.Bytes()).ReadAny()
 	vmStruct, ok := decoded.(*ffigo.VMStruct)
@@ -109,18 +111,28 @@ func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	}
 }
 
-func TestSerializeVarToAnyKeepsHostRefOpaque(t *testing.T) {
+func TestSerializeVarToAnyRejectsHostRef(t *testing.T) {
 	exec := &Executor{}
 	v := &Var{VType: TypeHostRef, Handle: 42, Bridge: testFFIBridge{}}
 
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
-	exec.serializeVarToAny(buf, v)
+	err := exec.serializeVarToAny(buf, v)
+	if err == nil || !strings.Contains(err.Error(), "cannot carry host reference") {
+		t.Fatalf("expected host reference rejection, got %v", err)
+	}
+}
 
-	decoded := ffigo.NewReader(buf.Bytes()).ReadAny()
-	id, ok := decoded.(uint32)
-	if !ok || id != 42 {
-		t.Fatalf("expected opaque handle id, got %#v", decoded)
+func TestDeserializeAnyRejectsHostReferenceHandle(t *testing.T) {
+	exec := &Executor{}
+	buf := ffigo.GetBuffer()
+	buf.WriteAny(uint32(42))
+	reader := ffigo.NewReader(buf.Bytes())
+	ffigo.ReleaseBuffer(buf)
+
+	_, err := exec.deserializeParsedType(nil, reader, MustParseRuntimeType("Any"), testFFIBridge{})
+	if err == nil || !strings.Contains(err.Error(), "cannot carry host reference handle") {
+		t.Fatalf("expected host reference handle rejection, got %v", err)
 	}
 }
 
@@ -236,6 +248,60 @@ func TestTryRegisterRouteReportsParamModeConflict(t *testing.T) {
 	}
 }
 
+func TestTryRegisterRouteRejectsPublicSchemaEscapes(t *testing.T) {
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+		routes:   make(map[string]FFIRoute),
+	}
+
+	err := exec.TryRegisterRoute("demo.Ptr", FFIRoute{
+		Name:    "demo.Ptr",
+		FuncSig: MustParseRuntimeFuncSig("function(Ptr<Int64>) Void"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "Ptr<T>") {
+		t.Fatalf("expected Ptr<T> rejection, got %v", err)
+	}
+
+	err = exec.TryRegisterRoute("demo.AnyRef", FFIRoute{
+		Name:    "demo.AnyRef",
+		FuncSig: MustParseRuntimeFuncSig("function(HostRef<Any>) Void"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "HostRef<Any>") {
+		t.Fatalf("expected HostRef<Any> rejection, got %v", err)
+	}
+
+	err = exec.TryRegisterRoute("demo.Unschematized", FFIRoute{Name: "demo.Unschematized"})
+	if err == nil || !strings.Contains(err.Error(), "missing schema") {
+		t.Fatalf("expected missing schema rejection, got %v", err)
+	}
+}
+
+func TestValidateExternalRequirementsChecksMethodID(t *testing.T) {
+	sig := MustParseRuntimeFuncSig("function(String) Void")
+	exec := &Executor{
+		metadata: newRuntimeMetadataRegistry(),
+		routes: map[string]FFIRoute{
+			"demo.Call": {Name: "demo.Call", MethodID: 2, FuncSig: sig},
+		},
+		externalRequirements: []ExternalRequirement{
+			{
+				Version:     FFISurfaceHashVersion,
+				PackagePath: "demo",
+				MemberName:  "Call",
+				Kind:        FFIMemberFunc,
+				Type:        sig.Spec,
+				MethodID:    1,
+				Hash:        FuncRouteHash(1, sig),
+			},
+		},
+	}
+
+	err := exec.ValidateExternalRequirements()
+	if err == nil || !strings.Contains(err.Error(), "method id mismatch") {
+		t.Fatalf("expected method id mismatch, got %v", err)
+	}
+}
+
 type copyBackFFIBridge struct {
 	returnValue []byte
 }
@@ -335,7 +401,7 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	}
 }
 
-func TestEvalFFICopyBackDiscardsNonAssignableArgument(t *testing.T) {
+func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 	route := FFIRoute{
@@ -344,11 +410,8 @@ func TestEvalFFICopyBackDiscardsNonAssignableArgument(t *testing.T) {
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
 	}
 
-	res, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
-	if err != nil {
-		t.Fatalf("evalFFI failed: %v", err)
-	}
-	if res == nil || res.VType != TypeBytes || string(res.B) != "ret" {
-		t.Fatalf("unexpected ffi return: %#v", res)
+	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
+	if err == nil || !strings.Contains(err.Error(), "requires assignable argument") {
+		t.Fatalf("expected non-assignable inout rejection, got %v", err)
 	}
 }

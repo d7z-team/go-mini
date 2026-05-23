@@ -10,18 +10,20 @@ import (
 
 func (c *Compiler) externalSchemaMaps() (
 	map[ast.Ident]*runtime.RuntimeFuncSig,
+	map[ast.Ident]uint32,
 	map[ast.Ident]*runtime.ValueSpec,
 	map[ast.Ident]*runtime.RuntimeStructSpec,
 	map[ast.Ident]*runtime.RuntimeInterfaceSpec,
 	map[string]string,
 ) {
 	funcs := cloneFuncSchemaMap(c.cfg.FuncSchemas)
+	methodIDs := cloneFuncMethodIDMap(c.cfg.RegisteredFuncMethodIDs)
 	values := cloneValueSchemaMap(c.cfg.ValueSchemas)
 	structs := cloneStructSchemaMap(c.cfg.StructSchemas)
 	interfaces := cloneInterfaceSchemaMap(c.cfg.InterfaceSchemas)
 	constants := cloneStringMap(c.cfg.Constants)
 	if c.cfg.Surface == nil {
-		return funcs, values, structs, interfaces, constants
+		return funcs, methodIDs, values, structs, interfaces, constants
 	}
 	for pkgPath, pkg := range c.cfg.Surface.Packages {
 		if pkg == nil {
@@ -44,6 +46,7 @@ func (c *Compiler) externalSchemaMaps() (
 						routeName = name
 					}
 					funcs[ast.Ident(routeName)] = runtime.CloneRuntimeFuncSig(member.Route.Sig)
+					methodIDs[ast.Ident(routeName)] = member.Route.MethodID
 				}
 			case runtime.FFIMemberConst:
 				if member.Const != nil {
@@ -67,16 +70,17 @@ func (c *Compiler) externalSchemaMaps() (
 			interfaces[ast.Ident(name)] = runtime.CloneRuntimeInterfaceSpec(typ.Interface)
 		}
 	}
-	return funcs, values, structs, interfaces, constants
+	return funcs, methodIDs, values, structs, interfaces, constants
 }
 
 func (c *Compiler) externalRequirements(program *ast.ProgramStmt) []runtime.ExternalRequirement {
 	if program == nil {
 		return nil
 	}
-	funcs, values, structs, interfaces, constants := c.externalSchemaMaps()
+	funcs, methodIDs, values, structs, interfaces, constants := c.externalSchemaMaps()
 	collector := &externalUsageCollector{
 		funcs:      funcs,
+		methodIDs:  methodIDs,
 		registered: c.externalRegisteredFuncs(),
 		values:     values,
 		structs:    structs,
@@ -110,6 +114,7 @@ func (c *Compiler) externalRequirements(program *ast.ProgramStmt) []runtime.Exte
 
 type externalUsageCollector struct {
 	funcs      map[ast.Ident]*runtime.RuntimeFuncSig
+	methodIDs  map[ast.Ident]uint32
 	registered map[ast.Ident]bool
 	values     map[ast.Ident]*runtime.ValueSpec
 	structs    map[ast.Ident]*runtime.RuntimeStructSpec
@@ -141,13 +146,15 @@ func (v *externalUsageCollector) recordPackageMember(member *ast.MemberExpr) {
 		return
 	}
 	if sig := v.funcs[ast.Ident(name)]; sig != nil && v.registered[ast.Ident(name)] {
+		methodID := v.methodIDs[ast.Ident(name)]
 		v.add(runtime.ExternalRequirement{
 			Version:     runtime.FFISurfaceHashVersion,
 			PackagePath: pkg,
 			MemberName:  memberName,
 			Kind:        runtime.FFIMemberFunc,
 			Type:        sig.Spec,
-			Hash:        runtime.FuncSchemaHash(sig),
+			MethodID:    methodID,
+			Hash:        runtime.FuncRouteHash(methodID, sig),
 		})
 		return
 	}
@@ -211,6 +218,7 @@ func (v *externalUsageCollector) recordMethodMember(member *ast.MemberExpr) {
 	if sig == nil || !v.registered[ast.Ident(routeName)] {
 		return
 	}
+	methodID := v.methodIDs[ast.Ident(routeName)]
 	pkg, memberName := runtime.SplitExternalName(routeName)
 	if pkg == "" || memberName == "" {
 		return
@@ -223,7 +231,8 @@ func (v *externalUsageCollector) recordMethodMember(member *ast.MemberExpr) {
 		TypeName:    typeName,
 		MethodName:  string(member.Property),
 		Type:        sig.Spec,
-		Hash:        runtime.FuncSchemaHash(sig),
+		MethodID:    methodID,
+		Hash:        runtime.FuncRouteHash(methodID, sig),
 	})
 	if spec := v.structs[ast.Ident(typeName)]; spec != nil {
 		v.add(runtime.ExternalRequirement{
@@ -309,6 +318,14 @@ func cloneFuncSchemaMap(in map[ast.Ident]*runtime.RuntimeFuncSig) map[ast.Ident]
 	out := make(map[ast.Ident]*runtime.RuntimeFuncSig, len(in))
 	for k, v := range in {
 		out[k] = runtime.CloneRuntimeFuncSig(v)
+	}
+	return out
+}
+
+func cloneFuncMethodIDMap(in map[ast.Ident]uint32) map[ast.Ident]uint32 {
+	out := make(map[ast.Ident]uint32, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

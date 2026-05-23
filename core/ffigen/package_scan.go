@@ -95,6 +95,7 @@ type packageData struct {
 	targets       []ffigenTarget
 	structs       map[string]*ast.StructType
 	interfaces    map[string]*ast.InterfaceType
+	interfaceFFI  map[string]bool
 	constants     map[string]string
 	globals       []globalValue
 	ownedStructs  map[string]bool
@@ -180,6 +181,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 	moduleNames := make(map[string]bool)
 	var targets []ffigenTarget
 	ownedStructs := make(map[string]bool)
+	interfaceFFI := make(map[string]bool)
 	for _, node := range targetFiles {
 		ast.Inspect(node, func(n ast.Node) bool {
 			gd, ok := n.(*ast.GenDecl)
@@ -199,6 +201,9 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 				if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
 					if mat.moduleName != "" || !packageMode || mat.interfaceMarked {
 						targets = append(targets, ffigenTarget{spec: typeSpec, meta: mat})
+					}
+					if mat.interfaceMarked {
+						interfaceFFI[typeSpec.Name.Name] = true
 					}
 					continue
 				}
@@ -239,6 +244,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 		targets:       targets,
 		structs:       structs,
 		interfaces:    interfaces,
+		interfaceFFI:  interfaceFFI,
 		constants:     globalConsts,
 		globals:       globals,
 		ownedStructs:  ownedStructs,

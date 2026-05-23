@@ -53,11 +53,20 @@ func NewIOProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) IO {
 	return &IOProxy{bridge: bridge, registry: registry}
 }
 
-func (__p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
+func (__p *IOProxy) ReadAll(ctx context.Context, r Reader) ([]byte, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteAny(r)
+	// Named FFI interfaces cross the wire as a host handle plus method schema.
+	if r == nil {
+		wireBuf.WriteRawInterface(0, nil)
+	} else {
+		handle := uint32(0)
+		if __p.registry != nil {
+			handle = __p.registry.RegisterTyped(r, "io.Reader")
+		}
+		wireBuf.WriteRawInterface(handle, io_Reader_FFI_InterfaceSchema.MethodStringMap())
+	}
 
 	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_ReadAll, Args: append([]byte(nil), wireBuf.Bytes()...)})
 	retData, syncErr := ffigo.SyncBytes(__ret)
@@ -90,12 +99,30 @@ func (__p *IOProxy) ReadAll(ctx context.Context, r any) ([]byte, error) {
 	return v_0, err_1
 }
 
-func (__p *IOProxy) Copy(ctx context.Context, dst any, src any) (int64, error) {
+func (__p *IOProxy) Copy(ctx context.Context, dst Writer, src Reader) (int64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteAny(dst)
-	wireBuf.WriteAny(src)
+	// Named FFI interfaces cross the wire as a host handle plus method schema.
+	if dst == nil {
+		wireBuf.WriteRawInterface(0, nil)
+	} else {
+		handle := uint32(0)
+		if __p.registry != nil {
+			handle = __p.registry.RegisterTyped(dst, "io.Writer")
+		}
+		wireBuf.WriteRawInterface(handle, io_Writer_FFI_InterfaceSchema.MethodStringMap())
+	}
+	// Named FFI interfaces cross the wire as a host handle plus method schema.
+	if src == nil {
+		wireBuf.WriteRawInterface(0, nil)
+	} else {
+		handle := uint32(0)
+		if __p.registry != nil {
+			handle = __p.registry.RegisterTyped(src, "io.Reader")
+		}
+		wireBuf.WriteRawInterface(handle, io_Reader_FFI_InterfaceSchema.MethodStringMap())
+	}
 
 	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_Copy, Args: append([]byte(nil), wireBuf.Bytes()...)})
 	retData, syncErr := ffigo.SyncBytes(__ret)
@@ -131,11 +158,20 @@ func (__p *IOProxy) Copy(ctx context.Context, dst any, src any) (int64, error) {
 	return v_0, err_1
 }
 
-func (__p *IOProxy) WriteString(ctx context.Context, w any, s string) (int64, error) {
+func (__p *IOProxy) WriteString(ctx context.Context, w Writer, s string) (int64, error) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteAny(w)
+	// Named FFI interfaces cross the wire as a host handle plus method schema.
+	if w == nil {
+		wireBuf.WriteRawInterface(0, nil)
+	} else {
+		handle := uint32(0)
+		if __p.registry != nil {
+			handle = __p.registry.RegisterTyped(w, "io.Writer")
+		}
+		wireBuf.WriteRawInterface(handle, io_Writer_FFI_InterfaceSchema.MethodStringMap())
+	}
 	wireBuf.WriteString(string(s))
 
 	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_WriteString, Args: append([]byte(nil), wireBuf.Bytes()...)})
@@ -185,31 +221,25 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 	}
 
 	reqBuf := ffigo.NewReader(args)
-	var rawVal any
-	_ = rawVal
 	switch methodID {
 	case MethodID_IO_ReadAll:
-		var r any
-		rawVal = reqBuf.ReadAny()
-		switch rv := rawVal.(type) {
-		case uint32:
-			if obj, err := registry.GetWithAudit(rv); err == nil {
-				r = obj
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "r", err)
+		var r Reader
+		ifaceData_r := reqBuf.ReadRawInterface()
+		if ifaceData_r.Handle != 0 {
+			if registry == nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "r")
 			}
-		case ffigo.ErrorData:
-			if rv.Handle != 0 {
-				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-					r = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "r", err)
-				}
-			} else {
-				r = rv
+			obj, err := registry.GetWithAudit(ifaceData_r.Handle)
+			if err != nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: %v", "r", err)
 			}
-		default:
-			r = rawVal
+			cast, ok := obj.(Reader)
+			if !ok {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: expected io.Reader, got %T", "r", obj)
+			}
+			r = cast
+		} else if len(ifaceData_r.Methods) != 0 {
+			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Reader has method schema but no host handle", "r")
 		}
 		r0, err := impl.ReadAll(ctx, r)
 		resBuf := ffigo.GetBuffer()
@@ -225,49 +255,41 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_IO_Copy:
-		var dst any
-		rawVal = reqBuf.ReadAny()
-		switch rv := rawVal.(type) {
-		case uint32:
-			if obj, err := registry.GetWithAudit(rv); err == nil {
-				dst = obj
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "dst", err)
+		var dst Writer
+		ifaceData_dst := reqBuf.ReadRawInterface()
+		if ifaceData_dst.Handle != 0 {
+			if registry == nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "dst")
 			}
-		case ffigo.ErrorData:
-			if rv.Handle != 0 {
-				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-					dst = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "dst", err)
-				}
-			} else {
-				dst = rv
+			obj, err := registry.GetWithAudit(ifaceData_dst.Handle)
+			if err != nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: %v", "dst", err)
 			}
-		default:
-			dst = rawVal
+			cast, ok := obj.(Writer)
+			if !ok {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: expected io.Writer, got %T", "dst", obj)
+			}
+			dst = cast
+		} else if len(ifaceData_dst.Methods) != 0 {
+			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Writer has method schema but no host handle", "dst")
 		}
-		var src any
-		rawVal = reqBuf.ReadAny()
-		switch rv := rawVal.(type) {
-		case uint32:
-			if obj, err := registry.GetWithAudit(rv); err == nil {
-				src = obj
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
+		var src Reader
+		ifaceData_src := reqBuf.ReadRawInterface()
+		if ifaceData_src.Handle != 0 {
+			if registry == nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "src")
 			}
-		case ffigo.ErrorData:
-			if rv.Handle != 0 {
-				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-					src = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "src", err)
-				}
-			} else {
-				src = rv
+			obj, err := registry.GetWithAudit(ifaceData_src.Handle)
+			if err != nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: %v", "src", err)
 			}
-		default:
-			src = rawVal
+			cast, ok := obj.(Reader)
+			if !ok {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: expected io.Reader, got %T", "src", obj)
+			}
+			src = cast
+		} else if len(ifaceData_src.Methods) != 0 {
+			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Reader has method schema but no host handle", "src")
 		}
 		r0, err := impl.Copy(ctx, dst, src)
 		resBuf := ffigo.GetBuffer()
@@ -283,27 +305,23 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		}
 		return resBuf.Bytes(), nil
 	case MethodID_IO_WriteString:
-		var w any
-		rawVal = reqBuf.ReadAny()
-		switch rv := rawVal.(type) {
-		case uint32:
-			if obj, err := registry.GetWithAudit(rv); err == nil {
-				w = obj
-			} else {
-				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "w", err)
+		var w Writer
+		ifaceData_w := reqBuf.ReadRawInterface()
+		if ifaceData_w.Handle != 0 {
+			if registry == nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "w")
 			}
-		case ffigo.ErrorData:
-			if rv.Handle != 0 {
-				if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-					w = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "w", err)
-				}
-			} else {
-				w = rv
+			obj, err := registry.GetWithAudit(ifaceData_w.Handle)
+			if err != nil {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: %v", "w", err)
 			}
-		default:
-			w = rawVal
+			cast, ok := obj.(Writer)
+			if !ok {
+				return nil, fmt.Errorf("FFI restore interface param '%s' failed: expected io.Writer, got %T", "w", obj)
+			}
+			w = cast
+		} else if len(ifaceData_w.Methods) != 0 {
+			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Writer has method schema but no host handle", "w")
 		}
 		var s string
 		s = string(reqBuf.ReadString())
@@ -331,9 +349,9 @@ var IO_FFI_Schemas = []struct {
 	Sig      *runtime.RuntimeFuncSig
 	Doc      string
 }{
-	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Any) tuple(TypeBytes, Error)", runtime.FFIParamIn), "ReadAll 读取所有数据"},
-	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Any, Any) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
-	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Any, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
+	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes("function(io.Reader) tuple(TypeBytes, Error)", runtime.FFIParamIn), "ReadAll 读取所有数据"},
+	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, io.Reader) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
+	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
 }
 
 type IO_Bridge struct {
@@ -370,6 +388,8 @@ func SurfaceIO(impl IO) *surface.Bundle {
 	schema.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 	schema.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
 	schema.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
+	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := &IO_Bridge{Impl: impl, Registry: ctx.Registry}
 		bound := runtime.NewBoundFFISurface(schema)
@@ -379,6 +399,8 @@ func SurfaceIO(impl IO) *surface.Bundle {
 		bound.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 		bound.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
 		bound.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
+		bound.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+		bound.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
 		return bound, nil
 	})
 }
@@ -738,7 +760,7 @@ var File_FFI_Schemas = []struct {
 	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
 	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), ""},
-	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "满足 io.Writer 接口，供宿主侧其他库使用"},
+	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
 }
 
 type File_Bridge struct {

@@ -60,6 +60,9 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 	if bundle.Err != nil {
 		return bundle.Err
 	}
+	if err := runtime.CheckPublicFFISurfaceSchema(bundle.Schema); err != nil {
+		return err
+	}
 	var bound *runtime.BoundFFISurface
 	if bundle.Bind != nil {
 		var err error
@@ -227,16 +230,17 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	surfaceSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
 	e.mu.RUnlock()
 	return compiler.New(compiler.Config{
-		ModuleLoader:     e.moduleASTLoader(),
-		Surface:          surfaceSchema,
-		FuncSchemas:      schema.Funcs,
-		RegisteredFuncs:  schema.RegisteredFuncs,
-		ValueSchemas:     schema.Values,
-		StructSchemas:    schema.Structs,
-		InterfaceSchemas: schema.Interfaces,
-		Constants:        e.GetExportedConstants(),
-		MaxTypeDepth:     e.MaxTypeDepth,
-		Templates:        e.templateRegistrySnapshot(),
+		ModuleLoader:            e.moduleASTLoader(),
+		Surface:                 surfaceSchema,
+		FuncSchemas:             schema.Funcs,
+		RegisteredFuncs:         schema.RegisteredFuncs,
+		RegisteredFuncMethodIDs: schema.RegisteredFuncMethodIDs,
+		ValueSchemas:            schema.Values,
+		StructSchemas:           schema.Structs,
+		InterfaceSchemas:        schema.Interfaces,
+		Constants:               e.GetExportedConstants(),
+		MaxTypeDepth:            e.MaxTypeDepth,
+		Templates:               e.templateRegistrySnapshot(),
 	})
 }
 

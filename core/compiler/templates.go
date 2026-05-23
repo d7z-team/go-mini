@@ -9,7 +9,7 @@ import (
 )
 
 func (c *Compiler) buildTemplatePlan(imported map[string]*ast.ProgramStmt) (*calltemplate.Plan, error) {
-	funcs, values, structs, interfaces, constants := c.externalSchemaMaps()
+	funcs, _, values, structs, interfaces, constants := c.externalSchemaMaps()
 	return calltemplate.BuildPlan(c.cfg.Templates, calltemplate.PlanOptions{
 		FuncSchemas:      funcs,
 		StructSchemas:    structs,

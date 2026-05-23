@@ -128,21 +128,19 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, err := registry.GetWithAudit(rv); err == nil {
-					args[i_args] = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
+			case ffigo.InterfaceData:
+				if rv.Handle != 0 {
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
 				}
+				args[i_args] = rv
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-						args[i_args] = obj
-					} else {
-						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
-					}
-				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
+				args[i_args] = rv
+			case *ffigo.VMPointer:
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -158,21 +156,19 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, err := registry.GetWithAudit(rv); err == nil {
-					args[i_args] = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
+			case ffigo.InterfaceData:
+				if rv.Handle != 0 {
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
 				}
+				args[i_args] = rv
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-						args[i_args] = obj
-					} else {
-						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
-					}
-				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
+				args[i_args] = rv
+			case *ffigo.VMPointer:
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -190,21 +186,19 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, err := registry.GetWithAudit(rv); err == nil {
-					args[i_args] = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
+			case ffigo.InterfaceData:
+				if rv.Handle != 0 {
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
 				}
+				args[i_args] = rv
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-						args[i_args] = obj
-					} else {
-						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
-					}
-				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
+				args[i_args] = rv
+			case *ffigo.VMPointer:
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -222,21 +216,19 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case uint32:
-				if obj, err := registry.GetWithAudit(rv); err == nil {
-					args[i_args] = obj
-				} else {
-					return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
+			case ffigo.InterfaceData:
+				if rv.Handle != 0 {
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
 				}
+				args[i_args] = rv
 			case ffigo.ErrorData:
 				if rv.Handle != 0 {
-					if obj, err := registry.GetWithAudit(rv.Handle); err == nil {
-						args[i_args] = obj
-					} else {
-						return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "args[i_args]", err)
-					}
-				} else {
-					args[i_args] = rv
+					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
+				args[i_args] = rv
+			case *ffigo.VMPointer:
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}

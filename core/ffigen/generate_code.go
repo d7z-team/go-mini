@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, meta targetMeta, constants map[string]string, schemas *schemaRegistry, ownedStructs map[string]bool) string {
+func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]string, schemas *schemaRegistry, ownedStructs map[string]bool) string {
 	name := spec.Name.Name
 	iface, err := g.flattenInterfaceType(name, spec.Type.(*ast.InterfaceType), interfaces)
 	if err != nil {
@@ -26,6 +26,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 
 	displayResolver := g.newDisplayTypeResolver(moduleName)
 	displayTypeName := func(typeName string) string { return displayResolver.NormalizeTypeString(typeName) }
+	interfaceSchemaVars := buildInterfaceSchemaVars(interfaceFFI, displayTypeName)
 	vmType := func(expr ast.Expr) string { return displayResolver.VMType(expr) }
 	funcSpec := generatedFuncSpec(vmType)
 
@@ -48,7 +49,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	if methodsPrefix != "" {
 		fixedPrefix = displayTypeName(methodsPrefix)
 	}
-	methods := g.buildGeneratedMethods(iface, isStruct, methodsPrefix, displayTypeName, vmType)
+	methods := g.buildGeneratedMethods(iface, isStruct, methodsPrefix, displayTypeName, vmType, interfaceSchemaVars, moduleName)
 	if methodsPrefix != "" {
 		for _, method := range methods {
 			if method.HasReceiver || moduleName != "" {
@@ -130,6 +131,12 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 			fmt.Fprintf(&sb, "%s%s.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", indent, receiver, fixedPrefix, key, constants[key])
 		}
 	}
+	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)
+	emitInterfaceAdds := func(indent, receiver string) {
+		for _, interfaceName := range referencedInterfaces {
+			fmt.Fprintf(&sb, "%s%s.AddInterface(\"%s\", %s)\n", indent, receiver, interfaceName, interfaceSchemaVars[interfaceName])
+		}
+	}
 
 	fmt.Fprintf(&sb, "const (\n")
 	for _, method := range methods {
@@ -138,9 +145,9 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	fmt.Fprintf(&sb, ")\n\n")
 
 	if !isStruct {
-		g.writeProxy(&sb, name, methods, structs, moduleName)
+		g.writeProxy(&sb, name, methods, structs, moduleName, interfaceSchemaVars)
 	}
-	g.writeHostRouter(&sb, name, implType, methods, structs, moduleName, isStruct, methodsPrefix, vmType)
+	g.writeHostRouter(&sb, name, implType, methods, structs, moduleName, isStruct, methodsPrefix, vmType, interfaceSchemaVars)
 
 	fmt.Fprintf(&sb, "var %s_FFI_Schemas = []struct {\n\tName     string\n\tMethodID uint32\n\tSig      *runtime.RuntimeFuncSig\n\tDoc      string\n}{\n", name)
 	for _, method := range methods {
@@ -191,12 +198,14 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
 		g.writeGeneratedSurfaceRoutes(&sb, "\t", "schema", "", "", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
 		emitStructAdds("\t", "schema", name)
+		emitInterfaceAdds("\t", "schema")
 		fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: nil, Registry: ctx.Registry}\n", name)
 		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
 		g.writeGeneratedSurfaceRoutes(&sb, "\t\t", "", "bound", "bridge", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
 		emitStructAdds("\t\t", "bound", name)
+		emitInterfaceAdds("\t\t", "bound")
 		fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 		fmt.Fprintf(&sb, "\t})\n")
@@ -218,6 +227,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		} else {
 			emitStructAdds("\t", "schema")
 		}
+		emitInterfaceAdds("\t", "schema")
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
 		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
@@ -229,6 +239,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		} else {
 			emitStructAdds("\t\t", "bound")
 		}
+		emitInterfaceAdds("\t\t", "bound")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
@@ -241,6 +252,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	fmt.Fprintf(&sb, "\t\tschema.AddFunc(prefix, m.Name, prefix+\".\"+m.Name, m.MethodID, m.Sig, m.Doc)\n")
 	fmt.Fprintf(&sb, "\t}\n")
 	emitStructAdds("\t", "schema")
+	emitInterfaceAdds("\t", "schema")
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 	fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
 	fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
@@ -248,13 +260,14 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	fmt.Fprintf(&sb, "\t\t\tbound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix+\".\"+m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})\n")
 	fmt.Fprintf(&sb, "\t\t}\n")
 	emitStructAdds("\t\t", "bound")
+	emitInterfaceAdds("\t\t", "bound")
 	fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 	fmt.Fprintf(&sb, "\t})\n")
 	fmt.Fprintf(&sb, "}\n")
 	return sb.String()
 }
 
-func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string) {
+func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string, interfaceSchemaVars map[string]string) {
 	fmt.Fprintf(sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name)
 	fmt.Fprintf(sb, "func New%sProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) %s {\n\treturn &%sProxy{bridge: bridge, registry: registry}\n}\n\n", name, name, name)
 
@@ -295,7 +308,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 				itemType, _ := readArrayItemType(param.RawType)
 				fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n", wireBufName, param.Name)
 				fmt.Fprintf(sb, "\tfor _, item := range %s {\n", param.Name)
-				g.emitWrite(sb, "item", itemType, param.Expr.(*ast.Ellipsis).Elt, structs, wireBufName, moduleName, false)
+				g.emitWrite(sb, "item", itemType, param.Expr.(*ast.Ellipsis).Elt, structs, wireBufName, moduleName, interfaceSchemaVars, false)
 				fmt.Fprintf(sb, "\t}\n")
 				continue
 			}
@@ -303,11 +316,11 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 				fmt.Fprintf(sb, "\tif %s == nil {\n", param.Name)
 				fmt.Fprintf(sb, "\t\t%s.WriteUvarint(0)\n", wireBufName)
 				fmt.Fprintf(sb, "\t} else {\n")
-				g.emitWrite(sb, param.Name+".Value", param.VMType, param.Expr, structs, wireBufName, moduleName, false)
+				g.emitWrite(sb, param.Name+".Value", param.VMType, param.Expr, structs, wireBufName, moduleName, interfaceSchemaVars, false)
 				fmt.Fprintf(sb, "\t}\n")
 				continue
 			}
-			g.emitWrite(sb, param.Name, param.RawType, param.Expr, structs, wireBufName, moduleName, false)
+			g.emitWrite(sb, param.Name, param.RawType, param.Expr, structs, wireBufName, moduleName, interfaceSchemaVars, false)
 		}
 
 		fmt.Fprintf(sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: MethodID_%s_%s, Args: append([]byte(nil), %s.Bytes()...)})\n", method.ContextVar, name, method.Name, wireBufName)
@@ -347,7 +360,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 					fmt.Fprintf(sb, "\tcopyBackBuf_%s := ffigo.NewReader(retBuf.ReadBytes())\n", copyBackVar.name)
 					tmpVar := "copyBack_" + copyBackVar.name
 					fmt.Fprintf(sb, "\tvar %s %s\n", tmpVar, g.toGoType(copyBackVar.vmType))
-					g.emitReadAssign(sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, moduleName, false)
+					g.emitReadAssign(sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, moduleName, interfaceSchemaVars, false)
 					fmt.Fprintf(sb, "\t%s.Value = %s\n", copyBackVar.name, tmpVar)
 				}
 			}
@@ -370,7 +383,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 			}
 			varName := fmt.Sprintf("v_%d", result.Index)
 			fmt.Fprintf(sb, "\tvar %s %s\n", varName, result.GoType)
-			g.emitReadAssign(sb, varName, result.RawType, result.Expr, structs, "retBuf", moduleName, false)
+			g.emitReadAssign(sb, varName, result.RawType, result.Expr, structs, "retBuf", moduleName, interfaceSchemaVars, false)
 			retStmt = append(retStmt, varName)
 		}
 		if len(retStmt) > 0 {
@@ -382,7 +395,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 	}
 }
 
-func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string, isStruct bool, methodsPrefix string, vmType func(ast.Expr) string) {
+func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string, isStruct bool, methodsPrefix string, vmType func(ast.Expr) string, interfaceSchemaVars map[string]string) {
 	fmt.Fprintf(sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {\n", name, implType)
 	fmt.Fprintf(sb, "\tif methodID == 0 && methodName != \"\" {\n")
 	fmt.Fprintf(sb, "\t\tswitch methodName {\n")
@@ -418,10 +431,10 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 			if param.CopyBackKind == "array" {
 				tmpVar := param.Name + "Value"
 				fmt.Fprintf(sb, "\t\tvar %s %s\n", tmpVar, g.toGoType(param.VMType))
-				g.emitReadAssign(sb, tmpVar, param.VMType, nil, structs, "reqBuf", moduleName, true)
+				g.emitReadAssign(sb, tmpVar, param.VMType, nil, structs, "reqBuf", moduleName, interfaceSchemaVars, true)
 				fmt.Fprintf(sb, "\t\t%s = &%s{Value: %s}\n", param.Name, strings.TrimPrefix(param.HostGoType, "*"), tmpVar)
 			} else {
-				g.emitReadAssign(sb, param.Name, param.RawType, param.Expr, structs, "reqBuf", moduleName, true)
+				g.emitReadAssign(sb, param.Name, param.RawType, param.Expr, structs, "reqBuf", moduleName, interfaceSchemaVars, true)
 			}
 			if param.Variadic {
 				paramVars = append(paramVars, param.Name+"...")
@@ -452,10 +465,10 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 		if method.AsyncExpr != nil {
 			fmt.Fprintf(sb, "\t\treturn ffigo.AsyncValue[%s](r0, func(resBuf *ffigo.Buffer, value %s) error {\n", method.AsyncGoType, method.AsyncGoType)
 			if tupleItems, tupleOK := g.tuple2ElemExprs(method.AsyncExpr); tupleOK {
-				g.emitWrite(sb, "value.V0", vmType(tupleItems[0]), tupleItems[0], structs, "resBuf", moduleName, true)
-				g.emitWrite(sb, "value.V1", vmType(tupleItems[1]), tupleItems[1], structs, "resBuf", moduleName, true)
+				g.emitWrite(sb, "value.V0", vmType(tupleItems[0]), tupleItems[0], structs, "resBuf", moduleName, interfaceSchemaVars, true)
+				g.emitWrite(sb, "value.V1", vmType(tupleItems[1]), tupleItems[1], structs, "resBuf", moduleName, interfaceSchemaVars, true)
 			} else if vmType(method.AsyncExpr) != "Void" {
-				g.emitWrite(sb, "value", vmType(method.AsyncExpr), method.AsyncExpr, structs, "resBuf", moduleName, true)
+				g.emitWrite(sb, "value", vmType(method.AsyncExpr), method.AsyncExpr, structs, "resBuf", moduleName, interfaceSchemaVars, true)
 			}
 			fmt.Fprintf(sb, "\t\t\treturn nil\n\t\t}), nil\n")
 			continue
@@ -472,7 +485,7 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 				case "array":
 					fmt.Fprintf(sb, "\t\tcopyBackBuf_%s := ffigo.GetBuffer()\n", copyBackVar.name)
 					fmt.Fprintf(sb, "\t\tif %s != nil {\n", copyBackVar.name)
-					g.emitWrite(sb, copyBackVar.name+".Value", copyBackVar.vmType, copyBackVar.expr, structs, "copyBackBuf_"+copyBackVar.name, moduleName, true)
+					g.emitWrite(sb, copyBackVar.name+".Value", copyBackVar.vmType, copyBackVar.expr, structs, "copyBackBuf_"+copyBackVar.name, moduleName, interfaceSchemaVars, true)
 					fmt.Fprintf(sb, "\t\t}\n")
 					fmt.Fprintf(sb, "\t\tresBuf.WriteBytes(copyBackBuf_%s.Bytes())\n", copyBackVar.name)
 					fmt.Fprintf(sb, "\t\tffigo.ReleaseBuffer(copyBackBuf_%s)\n", copyBackVar.name)
@@ -486,7 +499,7 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 				fmt.Fprintf(sb, "\t\t} else {\n\t\t\tresBuf.WriteRawError(\"\", 0)\n\t\t}\n")
 				continue
 			}
-			g.emitWrite(sb, fmt.Sprintf("r%d", result.Index), result.RawType, result.Expr, structs, "resBuf", moduleName, true)
+			g.emitWrite(sb, fmt.Sprintf("r%d", result.Index), result.RawType, result.Expr, structs, "resBuf", moduleName, interfaceSchemaVars, true)
 		}
 		fmt.Fprintf(sb, "\t\treturn resBuf.Bytes(), nil\n")
 	}

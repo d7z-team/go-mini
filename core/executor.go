@@ -39,11 +39,12 @@ func SourceFileExt() string {
 }
 
 type ExportedSchemaSnapshot struct {
-	Funcs           map[ast.Ident]*runtime.RuntimeFuncSig
-	RegisteredFuncs map[ast.Ident]bool
-	Values          map[ast.Ident]*runtime.ValueSpec
-	Structs         map[ast.Ident]*runtime.RuntimeStructSpec
-	Interfaces      map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	Funcs                   map[ast.Ident]*runtime.RuntimeFuncSig
+	RegisteredFuncs         map[ast.Ident]bool
+	RegisteredFuncMethodIDs map[ast.Ident]uint32
+	Values                  map[ast.Ident]*runtime.ValueSpec
+	Structs                 map[ast.Ident]*runtime.RuntimeStructSpec
+	Interfaces              map[ast.Ident]*runtime.RuntimeInterfaceSpec
 }
 
 func (e *MiniExecutor) SetMaxTypeDepth(depth int) {

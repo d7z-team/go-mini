@@ -61,6 +61,9 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			if err != nil {
 				continue
 			}
+			if err := CheckPublicRuntimeFuncSig("ffi interface method "+k, methodSig); err != nil {
+				continue
+			}
 			methods = append(methods, RuntimeInterfaceMethod{Name: k, Spec: methodSig})
 		}
 		ifaceSpec, _ := ParseRuntimeInterfaceSpec(InterfaceType(methods))

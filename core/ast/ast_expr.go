@@ -396,7 +396,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
-		if !argType.IsAssignableTo(sigParams[i]) {
+		if !ctx.IsAssignableTo(argType, sigParams[i]) {
 			err := fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
 			ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 			return err
@@ -410,14 +410,14 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 		// 如果只有一个参数且正好是数组类型，视为完美匹配
 		if len(c.Args) == fixedNum+1 {
-			if c.Args[fixedNum].GetBase().Type.IsAssignableTo(targetArrayType) {
+			if ctx.IsAssignableTo(c.Args[fixedNum].GetBase().Type, targetArrayType) {
 				goto done
 			}
 		}
 
 		for i := fixedNum; i < len(c.Args); i++ {
 			argType := c.Args[i].GetBase().Type
-			if !argType.IsAssignableTo(targetElem) {
+			if !ctx.IsAssignableTo(argType, targetElem) {
 				err := fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
 				ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 				return err

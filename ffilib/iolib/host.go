@@ -1,7 +1,6 @@
 package iolib
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"os"
@@ -11,55 +10,91 @@ import (
 
 type IOHost struct{}
 
-// getReader 尝试从 any 转换为 io.Reader
-func getReader(r any) io.Reader {
-	if reader, ok := r.(io.Reader); ok {
-		return reader
-	}
-	if f, ok := r.(*File); ok && f != nil && f.F != nil {
-		return f.F
-	}
-	if b, ok := r.([]byte); ok {
-		return bytes.NewReader(b)
-	}
-	return nil
-}
-
-// getWriter 尝试从 any 转换为 io.Writer
-func getWriter(w any) io.Writer {
-	if writer, ok := w.(io.Writer); ok {
-		return writer
-	}
-	if f, ok := w.(*File); ok && f != nil && f.F != nil {
-		return f.F
-	}
-	return nil
-}
-
-func (h *IOHost) ReadAll(ctx context.Context, r any) ([]byte, error) {
-	reader := getReader(r)
-	if reader == nil {
-		return nil, io.ErrUnexpectedEOF
+func (h *IOHost) ReadAll(ctx context.Context, r Reader) ([]byte, error) {
+	reader, err := nativeReader(r)
+	if err != nil {
+		return nil, err
 	}
 	return io.ReadAll(reader)
 }
 
-func (h *IOHost) Copy(ctx context.Context, dst, src any) (int64, error) {
-	w := getWriter(dst)
-	r := getReader(src)
-	if w == nil || r == nil {
-		return 0, os.ErrInvalid
+func (h *IOHost) Copy(ctx context.Context, dst Writer, src Reader) (int64, error) {
+	writer, err := nativeWriter(dst)
+	if err != nil {
+		return 0, err
 	}
-	return io.Copy(w, r)
+	reader, err := nativeReader(src)
+	if err != nil {
+		return 0, err
+	}
+	return io.Copy(writer, reader)
 }
 
-func (h *IOHost) WriteString(ctx context.Context, w any, s string) (int64, error) {
-	writer := getWriter(w)
-	if writer == nil {
-		return 0, os.ErrInvalid
+func (h *IOHost) WriteString(ctx context.Context, w Writer, s string) (int64, error) {
+	writer, err := nativeWriter(w)
+	if err != nil {
+		return 0, err
 	}
 	n, err := io.WriteString(writer, s)
 	return int64(n), err
+}
+
+func nativeReader(r Reader) (io.Reader, error) {
+	if r == nil {
+		return nil, io.ErrUnexpectedEOF
+	}
+	if f, ok := r.(*File); ok {
+		if f.F == nil {
+			return nil, io.ErrUnexpectedEOF
+		}
+		return f.F, nil
+	}
+	return readerAdapter{r: r}, nil
+}
+
+func nativeWriter(w Writer) (io.Writer, error) {
+	if w == nil {
+		return nil, os.ErrInvalid
+	}
+	if f, ok := w.(*File); ok {
+		if f.F == nil {
+			return nil, os.ErrInvalid
+		}
+		return f.F, nil
+	}
+	return writerAdapter{w: w}, nil
+}
+
+type readerAdapter struct {
+	r Reader
+}
+
+func (a readerAdapter) Read(p []byte) (int, error) {
+	ref := &ffigo.BytesRef{Value: p}
+	n, err := a.r.Read(ref)
+	if len(ref.Value) > len(p) {
+		ref.Value = ref.Value[:len(p)]
+	}
+	copied := copy(p, ref.Value)
+	if n < 0 || n > int64(copied) {
+		n = int64(copied)
+	}
+	return int(n), err
+}
+
+type writerAdapter struct {
+	w Writer
+}
+
+func (a writerAdapter) Write(p []byte) (int, error) {
+	n, err := a.w.Write(p)
+	if n < 0 {
+		n = 0
+	}
+	if n > int64(len(p)) {
+		n = int64(len(p))
+	}
+	return int(n), err
 }
 
 // File 是文件句柄 (包装 *os.File)
@@ -159,7 +194,7 @@ func (f *File) Name() string {
 	return f.F.Name()
 }
 
-// 满足 io.Writer 接口，供宿主侧其他库使用
+// WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。
 func (f *File) WriteNative(p []byte) (n int, err error) {
 	if f == nil || f.F == nil {
 		return 0, os.ErrInvalid

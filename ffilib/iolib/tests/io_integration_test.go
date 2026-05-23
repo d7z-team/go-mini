@@ -73,8 +73,15 @@ dst, err := os.Create(%q)
 if err != nil {
 	panic(err)
 }
-copied, err := io.Copy(dst, []byte("copy"))
+copySrc, err := os.Open(%q)
 if err != nil {
+	panic(err)
+}
+copied, err := io.Copy(dst, copySrc)
+if err != nil {
+	panic(err)
+}
+if err = copySrc.Close(); err != nil {
 	panic(err)
 }
 written, err := io.WriteString(dst, "!")
@@ -115,8 +122,8 @@ test.Out("|")
 test.OutInt(nativeWritten)
 test.Out("|")
 test.OutBool(name != "")
-`, filePath, filePath, secondPath),
-			Want:   "11|5|hello|4|MINI|hello MINI|4|1|1|1|true",
+`, filePath, filePath, secondPath, filePath),
+			Want:   "11|5|hello|4|MINI|hello MINI|10|1|1|1|true",
 			Covers: []string{"ReadAll", "Copy", "WriteString", "Write", "Read", "WriteAt", "ReadAt", "Seek", "Close", "Sync", "Truncate", "Name", "WriteNative"},
 		},
 	}, testutil.WithSurface(ffilib.Surface()))

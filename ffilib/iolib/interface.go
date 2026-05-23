@@ -4,6 +4,8 @@ package iolib
 import (
 	"context"
 	"io"
+
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 // ffigen:module io
@@ -16,7 +18,7 @@ const (
 // ffigen:module io
 // ffigen:interface
 type Reader interface {
-	Read(buf []byte) (int64, error)
+	Read(buf *ffigo.BytesRef) (int64, error)
 }
 
 // ffigen:module io
@@ -28,9 +30,9 @@ type Writer interface {
 // ffigen:module io
 type IO interface {
 	// ReadAll 读取所有数据
-	ReadAll(ctx context.Context, r any) ([]byte, error)
+	ReadAll(ctx context.Context, r Reader) ([]byte, error)
 	// Copy 将 src 的数据拷贝到 dst
-	Copy(ctx context.Context, dst, src any) (int64, error)
+	Copy(ctx context.Context, dst Writer, src Reader) (int64, error)
 	// WriteString 将字符串写入 w
-	WriteString(ctx context.Context, w any, s string) (int64, error)
+	WriteString(ctx context.Context, w Writer, s string) (int64, error)
 }

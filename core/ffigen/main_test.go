@@ -825,6 +825,12 @@ type ReadWriter interface {
 	Reader
 	Writer
 }
+
+// ffigen:module io
+type IO interface {
+	ReadAll(r Reader) ([]byte, error)
+	Copy(dst Writer, src Reader) (int64, error)
+}
 `)
 
 	outputDir := filepath.Join(workspace, "gen")
@@ -844,6 +850,15 @@ type ReadWriter interface {
 	}
 	if !strings.Contains(code, "func SurfaceReadWriterSchema(") {
 		t.Fatalf("expected schema surface helper for interface target")
+	}
+	if !strings.Contains(code, `function(io.Reader) tuple(TypeBytes, Error)`) {
+		t.Fatalf("expected named Reader parameter schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `function(io.Writer, io.Reader) tuple(Int64, Error)`) {
+		t.Fatalf("expected named Writer/Reader parameter schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)`) {
+		t.Fatalf("expected IO surface to include referenced Reader interface, got:\n%s", code)
 	}
 }
 
