@@ -22,7 +22,7 @@ func (g *Generator) collectReferencedStructSet(iface *ast.InterfaceType, structs
 	var visitType func(string, bool)
 	visitType = func(typeName string, asHostRef bool) {
 		walkNestedTypeNames(typeName, asHostRef, func(typeName string, asHostRef bool) {
-			if isPrimitive(typeName) || isInterfaceTypeString(typeName) {
+			if isBuiltinScalarType(typeName) || isInterfaceTypeString(typeName) {
 				return
 			}
 			localName := typeName

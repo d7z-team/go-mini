@@ -30,7 +30,7 @@ func isGeneratedFile(filename string, file *ast.File) bool {
 
 func isGeneratedFilename(filename string) bool {
 	lower := strings.ToLower(filepath.Base(filename))
-	return strings.Contains(lower, "ffigen") && strings.HasSuffix(lower, ".go")
+	return strings.HasSuffix(lower, ".go") && (strings.HasPrefix(lower, "ffigen_") || strings.HasSuffix(lower, "_ffigen.go"))
 }
 
 func resolveTargetDocWithFileSet(fileSet *token.FileSet, file *ast.File, genDecl *ast.GenDecl, typeSpec *ast.TypeSpec) *ast.CommentGroup {

@@ -29,7 +29,7 @@ func (__p *StorageAPIProxy) SetCapacity(capacity uint32) {
 	wireBuf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(wireBuf)
 
-	wireBuf.WriteUvarint(uint64(capacity))
+	wireBuf.WriteVarint(int64(capacity))
 
 	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_StorageAPI_SetCapacity, Args: append([]byte(nil), wireBuf.Bytes()...)})
 	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {

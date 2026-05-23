@@ -8,72 +8,8 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-func (g *Generator) newDisplayTypeResolver(moduleName string, iface *ast.InterfaceType, structs map[string]*ast.StructType, methodsPrefix string, ownedStructs map[string]bool, currentOwned string) *displayTypeResolver {
-	resolver := &displayTypeResolver{
-		gen:               g,
-		moduleName:        moduleName,
-		importAliases:     make(map[string]string, len(g.knownImports)),
-		collidingBaseName: make(map[string]bool),
-	}
-	for alias, path := range g.knownImports {
-		resolver.importAliases[alias] = path
-	}
-	nameOwners := make(map[string]string)
-	record := func(typeName string) {
-		for _, named := range collectNamedTypeRefs(typeName) {
-			baseName := named
-			if idx := strings.LastIndex(baseName, "."); idx >= 0 {
-				baseName = baseName[idx+1:]
-			}
-			owner := named
-			if idx := strings.Index(owner, "."); idx >= 0 {
-				owner = owner[:idx]
-			}
-			if previous, ok := nameOwners[baseName]; ok && previous != owner {
-				resolver.collidingBaseName[baseName] = true
-				continue
-			}
-			nameOwners[baseName] = owner
-		}
-	}
-	record(methodsPrefix)
-	if iface != nil {
-		for _, method := range iface.Methods.List {
-			if len(method.Names) == 0 {
-				continue
-			}
-			funcType := method.Type.(*ast.FuncType)
-			if funcType.Params != nil {
-				for _, param := range funcType.Params.List {
-					record(g.typeToString(param.Type))
-				}
-			}
-			if funcType.Results != nil {
-				for _, result := range funcType.Results.List {
-					record(g.typeToString(result.Type))
-				}
-			}
-		}
-	}
-	for _, structName := range g.collectReferencedStructSet(iface, structs, ownedStructs, currentOwned).ordered {
-		fieldMap := make(map[string]string)
-		g.getFields(structs, structName, fieldMap)
-		for _, fieldType := range fieldMap {
-			record(fieldType)
-		}
-	}
-	return resolver
-}
-
-func collectNamedTypeRefs(typeName string) []string {
-	var refs []string
-	walkNestedTypeNames(typeName, false, func(name string, _ bool) {
-		if isPrimitive(name) || name == "error" || name == "any" || name == "interface{}" || name == "context.Context" || name == "Context" {
-			return
-		}
-		refs = append(refs, name)
-	})
-	return refs
+func (g *Generator) newDisplayTypeResolver(moduleName string) *displayTypeResolver {
+	return &displayTypeResolver{gen: g, moduleName: moduleName}
 }
 
 func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {

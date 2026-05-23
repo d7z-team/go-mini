@@ -368,9 +368,6 @@ func (__p *RandProxy) Uint64() uint64 {
 	var v_0 uint64
 	{
 		tmp := retBuf.ReadVarint()
-		if tmp < 0 {
-			panic(fmt.Sprintf("ffi: uint overflow: %d", tmp))
-		}
 		v_0 = uint64(tmp)
 	}
 	return v_0
@@ -529,12 +526,12 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case MethodID_Rand_Uint32:
 		r0 := impl.Uint32()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case MethodID_Rand_Uint64:
 		r0 := impl.Uint64()
 		resBuf := ffigo.GetBuffer()
-		resBuf.WriteUvarint(uint64(r0))
+		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)

@@ -105,8 +105,6 @@ func (r *schemaRegistry) Ensure(displayName, ownership, specLiteral string) stri
 }
 
 type displayTypeResolver struct {
-	gen               *Generator
-	moduleName        string
-	importAliases     map[string]string
-	collidingBaseName map[string]bool
+	gen        *Generator
+	moduleName string
 }

@@ -41,8 +41,13 @@ func generatedFuncSpec(vmType func(ast.Expr) string) func(*ast.FuncType) string 
 			for _, r := range funcType.Results.List {
 				t := miniast.GoMiniType(vmType(r.Type))
 				if t == "error" {
-					results = append(results, miniast.TypeError)
-				} else {
+					t = miniast.TypeError
+				}
+				count := len(r.Names)
+				if count == 0 {
+					count = 1
+				}
+				for range count {
 					results = append(results, t)
 				}
 			}
@@ -93,26 +98,229 @@ func (g *Generator) generatedMethodHasReceiver(funcType *ast.FuncType, isStruct 
 	return receiverType == expectedType
 }
 
-func (g *Generator) writeGeneratedSurfaceRoutes(sb *strings.Builder, indent, schemaVar, boundVar, bridgeVar string, iface *ast.InterfaceType, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool, displayTypeName func(string) string) {
-	for i, method := range iface.Methods.List {
-		if len(method.Names) == 0 {
+type generatedParam struct {
+	Name         string
+	RawType      string
+	VMType       string
+	ProxyGoType  string
+	HostGoType   string
+	Expr         ast.Expr
+	CopyBackKind string
+	Variadic     bool
+	Context      bool
+}
+
+type generatedResult struct {
+	Index   int
+	RawType string
+	GoType  string
+	Expr    ast.Expr
+	Error   bool
+}
+
+type generatedMethod struct {
+	Name        string
+	SchemaIndex int
+	MethodID    int
+	FuncType    *ast.FuncType
+	Params      []generatedParam
+	Results     []generatedResult
+	Modes       []string
+	Doc         string
+
+	HasContext  bool
+	ContextVar  string
+	HasCopyBack bool
+	HasError    bool
+	HasReceiver bool
+	HasInput    bool
+	NeedsRawVal bool
+
+	AsyncExpr   ast.Expr
+	AsyncGoType string
+}
+
+func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct bool, methodsPrefix string, displayTypeName func(string) string, vmType func(ast.Expr) string) []generatedMethod {
+	if iface == nil || iface.Methods == nil {
+		return nil
+	}
+	methods := make([]generatedMethod, 0, len(iface.Methods.List))
+	for i, field := range iface.Methods.List {
+		if len(field.Names) == 0 {
 			continue
 		}
-		methodName := method.Names[0].Name
-		funcType := method.Type.(*ast.FuncType)
+		methodName := field.Names[0].Name
+		funcType := field.Type.(*ast.FuncType)
+		method := generatedMethod{
+			Name:        methodName,
+			SchemaIndex: len(methods),
+			MethodID:    i + 1,
+			FuncType:    funcType,
+			ContextVar:  "context.Background()",
+			HasReceiver: g.generatedMethodHasReceiver(funcType, isStruct, methodsPrefix, displayTypeName),
+		}
+		if field.Doc != nil {
+			method.Doc = strings.TrimSpace(strings.ReplaceAll(field.Doc.Text(), "\n", " "))
+		}
+		if elemExpr, elemType, ok := g.generatedAsyncReturn(funcType); ok {
+			method.AsyncExpr = elemExpr
+			method.AsyncGoType = g.toGoType(elemType)
+		}
+
+		argIdx := 0
+		if funcType.Params != nil {
+			for paramIdx, param := range funcType.Params.List {
+				rawType := g.typeToString(param.Type)
+				paramIsContext := paramIdx == 0 && isContextType(rawType)
+				if !paramIsContext && g.unsupportedInterfaceExpr(param.Type) {
+					panic(fmt.Sprintf("ffigen: interface parameter %s.%s is not supported; use any or *T/HostRef<T>", methodName, rawType))
+				}
+				variadic := false
+				proxyGoType := g.toGoType(rawType)
+				hostGoType := proxyGoType
+				if _, ok := param.Type.(*ast.Ellipsis); ok {
+					variadic = true
+					proxyGoType = "..." + strings.TrimPrefix(proxyGoType, "[]")
+					hostGoType = "[]" + strings.TrimPrefix(hostGoType, "[]")
+				}
+				names := param.Names
+				if len(names) == 0 {
+					names = []*ast.Ident{ast.NewIdent(fmt.Sprintf("arg%d", argIdx))}
+				}
+				for _, name := range names {
+					paramPlan := generatedParam{
+						Name:         name.Name,
+						RawType:      rawType,
+						VMType:       vmType(param.Type),
+						ProxyGoType:  proxyGoType,
+						HostGoType:   hostGoType,
+						Expr:         param.Type,
+						CopyBackKind: g.copyBackKind(param.Type),
+						Variadic:     variadic,
+						Context:      paramIsContext,
+					}
+					if paramIsContext {
+						method.HasContext = true
+						method.ContextVar = paramPlan.Name
+					} else {
+						method.HasInput = true
+						mode := "runtime.FFIParamIn"
+						switch paramPlan.CopyBackKind {
+						case "bytes":
+							mode = "runtime.FFIParamInOutBytes"
+							method.HasCopyBack = true
+						case "array":
+							mode = "runtime.FFIParamInOutArray"
+							method.HasCopyBack = true
+						}
+						method.Modes = append(method.Modes, mode)
+						if paramNeedsRawVal(paramPlan) {
+							method.NeedsRawVal = true
+						}
+					}
+					method.Params = append(method.Params, paramPlan)
+					argIdx++
+				}
+			}
+		}
+
+		resultIdx := 0
+		if funcType.Results != nil {
+			for _, result := range funcType.Results.List {
+				rawType := g.typeToString(result.Type)
+				if rawType != "error" && g.unsupportedInterfaceExpr(result.Type) {
+					panic(fmt.Sprintf("ffigen: interface result %s.%s is not supported; use any or *T/HostRef<T>", methodName, rawType))
+				}
+				count := len(result.Names)
+				if count == 0 {
+					count = 1
+				}
+				for range count {
+					resultPlan := generatedResult{
+						Index:   resultIdx,
+						RawType: rawType,
+						GoType:  g.toGoType(rawType),
+						Expr:    result.Type,
+						Error:   rawType == "error",
+					}
+					if resultPlan.Error {
+						method.HasError = true
+					}
+					method.Results = append(method.Results, resultPlan)
+					resultIdx++
+				}
+			}
+		}
+		methods = append(methods, method)
+	}
+	return methods
+}
+
+func isContextType(typeName string) bool {
+	return typeName == "context.Context" || typeName == "Context"
+}
+
+func paramNeedsRawVal(param generatedParam) bool {
+	if param.Context {
+		return false
+	}
+	if param.RawType == "Any" || param.RawType == "any" || strings.Contains(param.RawType, "<Any>") || strings.Contains(param.RawType, "<any>") {
+		return true
+	}
+	if param.Variadic {
+		itemType, _ := readArrayItemType(param.RawType)
+		return itemType == "Any" || itemType == "any"
+	}
+	return false
+}
+
+func (m generatedMethod) copyBackParams() []copyBackParam {
+	params := make([]copyBackParam, 0)
+	for _, param := range m.Params {
+		switch param.CopyBackKind {
+		case "bytes":
+			params = append(params, copyBackParam{name: param.Name, kind: "bytes", vmType: "TypeBytes", expr: param.Expr})
+		case "array":
+			params = append(params, copyBackParam{name: param.Name, kind: "array", vmType: param.VMType, expr: param.Expr})
+		}
+	}
+	return params
+}
+
+func (m generatedMethod) resultNames() []string {
+	names := make([]string, 0, len(m.Results))
+	for _, result := range m.Results {
+		if result.Error {
+			names = append(names, "err")
+		} else {
+			names = append(names, fmt.Sprintf("r%d", result.Index))
+		}
+	}
+	return names
+}
+
+type copyBackParam struct {
+	name   string
+	kind   string
+	vmType string
+	expr   ast.Expr
+}
+
+func (g *Generator) writeGeneratedSurfaceRoutes(sb *strings.Builder, indent, schemaVar, boundVar, bridgeVar string, methods []generatedMethod, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool) {
+	for _, method := range methods {
 		routePrefix := fixedPrefix
 		packageMember := !isStruct && methodsPrefix == ""
-		if !isStruct && moduleName != "" && methodsPrefix != "" && !g.generatedMethodHasReceiver(funcType, isStruct, methodsPrefix, displayTypeName) {
+		if !isStruct && moduleName != "" && methodsPrefix != "" && !method.HasReceiver {
 			routePrefix = moduleName
 			packageMember = true
 		} else if methodsPrefix != "" || isStruct {
 			packageMember = false
 		}
-		routeName := routePrefix + "." + methodName
-		item := fmt.Sprintf("%s_FFI_Schemas[%d]", name, i)
+		routeName := routePrefix + "." + method.Name
+		item := fmt.Sprintf("%s_FFI_Schemas[%d]", name, method.SchemaIndex)
 		if schemaVar != "" && packageMember {
 			fmt.Fprintf(sb, "%s%s.AddFunc(%q, %q, %q, %s.MethodID, %s.Sig, %s.Doc)\n",
-				indent, schemaVar, routePrefix, methodName, routeName, item, item, item)
+				indent, schemaVar, routePrefix, method.Name, routeName, item, item, item)
 		}
 		if boundVar == "" {
 			continue
@@ -120,7 +328,7 @@ func (g *Generator) writeGeneratedSurfaceRoutes(sb *strings.Builder, indent, sch
 		route := fmt.Sprintf("runtime.FFIRoute{Name: %q, Bridge: %s, MethodID: %s.MethodID, FuncSig: %s.Sig, Doc: %s.Doc}",
 			routeName, bridgeVar, item, item, item)
 		if packageMember {
-			fmt.Fprintf(sb, "%s%s.AddRoute(%q, %q, %s)\n", indent, boundVar, routePrefix, methodName, route)
+			fmt.Fprintf(sb, "%s%s.AddRoute(%q, %q, %s)\n", indent, boundVar, routePrefix, method.Name, route)
 			continue
 		}
 		fmt.Fprintf(sb, "%s%s.Routes[%q] = %s\n", indent, boundVar, routeName, route)

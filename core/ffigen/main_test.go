@@ -477,6 +477,39 @@ func (t *Table) SetString(row, col int, val string) {}
 	}
 }
 
+func TestRunDirPreservesGroupedResults(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "pair.go", `package pkgmode
+
+// ffigen:module pair
+type PairModule interface {
+	Pair() (left, right int64)
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	content, err := os.ReadFile(generatedPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSig("function() tuple(Int64, Int64)")`) {
+		t.Fatalf("expected grouped results to be expanded in schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, "func (__p *PairModuleProxy) Pair() (int64, int64)") {
+		t.Fatalf("expected grouped results to be expanded in proxy signature, got:\n%s", code)
+	}
+	if !strings.Contains(code, "r0, r1 := impl.Pair()") {
+		t.Fatalf("expected grouped results to be expanded in host call, got:\n%s", code)
+	}
+}
+
 func TestRunDirectoryModeRejectsMultipleModules(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "a.go", `package pkgmode
@@ -560,7 +593,7 @@ type OrderService interface {
 	}
 }
 
-func TestRunFileUsesImportAliasFallback(t *testing.T) {
+func TestRunFileUsesImportAliasFallbackForHostRef(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "api.go", `package pkgmode
 
@@ -568,7 +601,7 @@ import "time"
 
 // ffigen:module demo
 type Demo interface {
-	Load() time.Time
+	Load() *time.Time
 }
 `)
 
@@ -582,8 +615,161 @@ type Demo interface {
 		t.Fatalf("read generated output: %v", err)
 	}
 	code := string(content)
-	if !strings.Contains(code, "Load() time.Time") {
+	if !strings.Contains(code, "Load() *time.Time") {
 		t.Fatalf("expected unresolved import to fall back to alias form, got:\n%s", code)
+	}
+	if !strings.Contains(code, "HostRef<time.Time>") {
+		t.Fatalf("expected imported pointer to use HostRef alias fallback, got:\n%s", code)
+	}
+}
+
+func TestRunFileRejectsBareImportedValueType(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+import "time"
+
+// ffigen:module demo
+type Demo interface {
+	Load() time.Time
+}
+`)
+
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      filepath.Join(workspace, "ffigen_demo.go"),
+		Args:        []string{filepath.Join(workspace, "api.go")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported bare FFI type") {
+		t.Fatalf("expected bare imported value type rejection, got %v", err)
+	}
+}
+
+func TestRunDirectoryModeRejectsInterfaceFFIParam(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+type Reader interface {
+	Read([]byte) (int64, error)
+}
+
+// ffigen:module demo
+type Demo interface {
+	Use(r Reader)
+}
+`)
+
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      filepath.Join(workspace, "gen"),
+		Args:        []string{workspace},
+	})
+	if err == nil || !strings.Contains(err.Error(), "interface parameter") {
+		t.Fatalf("expected interface parameter rejection, got %v", err)
+	}
+}
+
+func TestRunDirectoryModeGeneratesSignedWireForUnsignedGoTypes(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module nums
+type Numbers interface {
+	Echo(v uint8) uint8
+	Next() uint64
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, "wireBuf.WriteVarint(int64(v))") {
+		t.Fatalf("expected unsigned params to use signed varint wire, got:\n%s", code)
+	}
+	if !strings.Contains(code, "resBuf.WriteVarint(int64(r0))") {
+		t.Fatalf("expected unsigned results to use signed varint wire, got:\n%s", code)
+	}
+	if !strings.Contains(code, "tmp := reqBuf.ReadVarint()") || !strings.Contains(code, "tmp < 0 || tmp > 255") {
+		t.Fatalf("expected host router to decode uint8 from signed varint with bounds, got:\n%s", code)
+	}
+	if strings.Contains(code, "wireBuf.WriteUvarint(uint64(v))") || strings.Contains(code, "resBuf.WriteUvarint(uint64(r0))") {
+		t.Fatalf("generated unsigned value codec still uses unsigned varint:\n%s", code)
+	}
+}
+
+func TestRunRejectsMalformedInterfaceDirective(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:interface extra
+type Reader interface {
+	Read([]byte) (int64, error)
+}
+`)
+
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      filepath.Join(workspace, "ffigen_demo.go"),
+		Args:        []string{filepath.Join(workspace, "api.go")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "ffigen:interface does not accept arguments") {
+		t.Fatalf("expected malformed interface directive rejection, got %v", err)
+	}
+}
+
+func TestRunDirectoryModeIgnoresImportedSiblingTestModules(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	depDir := filepath.Join(workspace, "dep")
+	if err := os.Mkdir(depDir, 0o755); err != nil {
+		t.Fatalf("mkdir dep: %v", err)
+	}
+	writeTestFile(t, depDir, "dep.go", `package dep
+
+type Item struct{}
+
+// ffigen:module depmod
+type DepModule interface {
+	New() *Item
+}
+`)
+	writeTestFile(t, depDir, "dep_test.go", `package dep
+
+// ffigen:module wrong
+type WrongModule interface {
+	Wrong() int64
+}
+`)
+	importPath := "gopkg.d7z.net/go-mini/core/ffigen/" + filepath.Base(workspace) + "/dep"
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+import dep "`+importPath+`"
+
+// ffigen:module demo
+type Demo interface {
+	New() *dep.Item
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	if !strings.Contains(code, "HostRef<depmod.Item>") {
+		t.Fatalf("expected imported non-test module metadata to resolve, got:\n%s", code)
+	}
+	if strings.Contains(code, "wrong.Item") {
+		t.Fatalf("imported _test.go module metadata leaked into generated schema:\n%s", code)
 	}
 }
 

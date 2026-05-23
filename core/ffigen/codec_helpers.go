@@ -25,40 +25,18 @@ func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr as
 		fmt.Fprintf(sb, "\t}\n")
 		return
 	}
-	if isInterfaceTypeString(pType) {
-		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteRawInterface(0, nil)\n\t} else {\n\t\tmethods := make(map[string]string)\n", prefix, bufName)
-		if isHost {
-			fmt.Fprintf(sb, "\t\t%s.WriteRawInterface(registry.Register(%s), methods)\n", bufName, prefix)
-		} else {
-			fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteRawInterface(__p.registry.Register(%s), methods) } else { %s.WriteRawInterface(0, nil) }\n", bufName, prefix, bufName)
-		}
-		fmt.Fprintf(sb, "\t}\n")
-		return
-	}
-
-	bt := g.resolveToBasicType(expr)
+	bt := codecBasicType(g.resolveToBasicType(expr))
 	if bt == "" {
-		switch pType {
-		case "int", "int8", "int16", "int32", "int64", "Int", "Int8", "Int16", "Int32", "Int64":
-			bt = "int64"
-		case "uint", "uint8", "uint16", "uint32", "uint64", "Uint", "Uint8", "Uint16", "Uint32", "Uint64", "byte":
-			bt = "uint64"
-		case "float32", "float64", "Float32", "Float64":
-			bt = "float64"
-		case "string", "String":
-			bt = "string"
-		case "bool", "Bool":
-			bt = "bool"
-		}
+		bt = codecBasicType(pType)
 	}
 
 	if bt != "" {
 		switch {
-		case strings.HasPrefix(bt, "int"):
+		case codecSignedBasic(bt):
 			fmt.Fprintf(sb, "\t%s.WriteVarint(int64(%s))\n", bufName, prefix)
 			return
-		case strings.HasPrefix(bt, "uint") || bt == "byte":
-			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(%s))\n", bufName, prefix)
+		case codecUnsignedBasic(bt):
+			fmt.Fprintf(sb, "\t%s.WriteVarint(int64(%s))\n", bufName, prefix)
 			return
 		case strings.HasPrefix(bt, "float"):
 			fmt.Fprintf(sb, "\t%s.WriteFloat64(float64(%s))\n", bufName, prefix)
@@ -103,20 +81,7 @@ func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr as
 				g.emitWrite(sb, prefix+"."+fn, fMap[fn], nil, structs, bufName, moduleName, isHost)
 			}
 		} else {
-			fmt.Fprintf(sb, "\t// Treating %s as Handle\n", pType)
-			gt := g.toGoType(pType)
-			isN := strings.HasPrefix(gt, "*") || strings.HasPrefix(gt, "[]") || strings.HasPrefix(gt, "map[") || gt == "any" || gt == "error"
-			if isN {
-				fmt.Fprintf(sb, "\tif %s == nil { %s.WriteUvarint(0) } else {\n", prefix, bufName)
-			}
-			if isHost {
-				fmt.Fprintf(sb, "\t\t%s.WriteUvarint(uint64(registry.Register(%s)))\n", bufName, prefix)
-			} else {
-				fmt.Fprintf(sb, "\t\tif __p.registry != nil { %s.WriteUvarint(uint64(__p.registry.Register(%s))) } else { %s.WriteUvarint(0) }\n", bufName, prefix, bufName)
-			}
-			if isN {
-				fmt.Fprintf(sb, "\t}\n")
-			}
+			unsupportedBareFFIType(pType)
 		}
 	}
 }
@@ -136,49 +101,15 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 		}
 		return
 	}
-	if isInterfaceTypeString(pType) {
-		fmt.Fprintf(sb, "\tif idat := %s.ReadRawInterface(); idat.Handle != 0 { _ = idat }\n", readerName)
-		return
-	}
-
-	bt := g.resolveToBasicType(expr)
+	bt := codecBasicType(g.resolveToBasicType(expr))
 	if bt == "" {
-		switch pType {
-		case "int", "Int":
-			bt = "int"
-		case "int8", "Int8":
-			bt = "int8"
-		case "int16", "Int16":
-			bt = "int16"
-		case "int32", "Int32":
-			bt = "int32"
-		case "int64", "Int64":
-			bt = "int64"
-		case "uint", "Uint":
-			bt = "uint"
-		case "uint8", "Uint8", "byte":
-			bt = "uint8"
-		case "uint16", "Uint16":
-			bt = "uint16"
-		case "uint32", "Uint32":
-			bt = "uint32"
-		case "uint64", "Uint64":
-			bt = "uint64"
-		case "float32", "Float32":
-			bt = "float32"
-		case "float64", "Float64":
-			bt = "float64"
-		case "string", "String":
-			bt = "string"
-		case "bool", "Bool":
-			bt = "bool"
-		}
+		bt = codecBasicType(pType)
 	}
 
 	if bt != "" {
 		gt := g.toGoType(pType)
 		switch {
-		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint") || bt == "byte":
+		case codecSignedBasic(bt):
 			fmt.Fprintf(sb, "\t{\n\ttmp := %s.ReadVarint()\n", readerName)
 			switch bt {
 			case "int8":
@@ -187,16 +118,17 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 				fmt.Fprintf(sb, "\tif tmp < -32768 || tmp > 32767 { panic(fmt.Sprintf(\"ffi: int16 overflow: %%d\", tmp)) }\n")
 			case "int32":
 				fmt.Fprintf(sb, "\tif tmp < -2147483648 || tmp > 2147483647 { panic(fmt.Sprintf(\"ffi: int32 overflow: %%d\", tmp)) }\n")
-			case "uint8", "byte":
-				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > 255 { panic(fmt.Sprintf(\"ffi: uint8 overflow: %%d\", tmp)) }\n")
-			case "uint16":
-				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > 65535 { panic(fmt.Sprintf(\"ffi: uint16 overflow: %%d\", tmp)) }\n")
-			case "uint32":
-				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > 4294967295 { panic(fmt.Sprintf(\"ffi: uint32 overflow: %%d\", tmp)) }\n")
-			case "uint", "uint64":
-				fmt.Fprintf(sb, "\tif tmp < 0 { panic(fmt.Sprintf(\"ffi: uint overflow: %%d\", tmp)) }\n")
 			case "int":
 				// Go's int is at least 32 bits; generated bindings assume a 64-bit VM integer.
+			}
+			fmt.Fprintf(sb, "\t%s = %s(tmp)\n\t}\n", varName, gt)
+			return
+		case codecUnsignedBasic(bt):
+			fmt.Fprintf(sb, "\t{\n\ttmp := %s.ReadVarint()\n", readerName)
+			if maxLiteral := codecUnsignedMaxLiteral(bt); maxLiteral != "" {
+				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > %s { panic(fmt.Sprintf(\"ffi: %s overflow: %%d\", tmp)) }\n", maxLiteral, bt)
+			} else if isHost {
+				fmt.Fprintf(sb, "\tif tmp < 0 { panic(fmt.Sprintf(\"ffi: %s overflow: %%d\", tmp)) }\n", bt)
 			}
 			fmt.Fprintf(sb, "\t%s = %s(tmp)\n\t}\n", varName, gt)
 			return
@@ -257,12 +189,79 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 				g.emitReadAssign(sb, varName+"."+fn, fMap[fn], nil, structs, readerName, moduleName, isHost)
 			}
 		} else {
-			fmt.Fprintf(sb, "\t// Restoring %s from Handle\n", pType)
-			if isHost {
-				fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, ok := registry.Get(id); ok { %s = obj.(%s) } else { return nil, fmt.Errorf(\"invalid handle ID: %%d\", id) } }\n", readerName, varName, g.toGoType(pType))
-			} else {
-				fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.Get(id); ok { %s = obj.(%s) } } }\n", readerName, varName, g.toGoType(pType))
-			}
+			unsupportedBareFFIType(pType)
 		}
 	}
+}
+
+func codecBasicType(typeName string) string {
+	switch strings.TrimSpace(typeName) {
+	case "int":
+		return "int"
+	case "int8":
+		return "int8"
+	case "int16":
+		return "int16"
+	case "int32", "rune":
+		return "int32"
+	case "Int64", "int64":
+		return "int64"
+	case "uint":
+		return "uint"
+	case "uint8", "byte":
+		return "uint8"
+	case "uint16":
+		return "uint16"
+	case "uint32":
+		return "uint32"
+	case "uint64":
+		return "uint64"
+	case "uintptr":
+		return "uintptr"
+	case "Float64", "float64":
+		return "float64"
+	case "float32":
+		return "float32"
+	case "String", "string":
+		return "string"
+	case "Bool", "bool":
+		return "bool"
+	default:
+		return ""
+	}
+}
+
+func codecSignedBasic(typeName string) bool {
+	switch typeName {
+	case "int", "int8", "int16", "int32", "int64":
+		return true
+	default:
+		return false
+	}
+}
+
+func codecUnsignedBasic(typeName string) bool {
+	switch typeName {
+	case "uint", "uint8", "uint16", "uint32", "uint64", "uintptr":
+		return true
+	default:
+		return false
+	}
+}
+
+func codecUnsignedMaxLiteral(typeName string) string {
+	switch typeName {
+	case "uint8":
+		return "255"
+	case "uint16":
+		return "65535"
+	case "uint32":
+		return "4294967295"
+	default:
+		return ""
+	}
+}
+
+func unsupportedBareFFIType(typeName string) {
+	panic(fmt.Sprintf("ffigen: unsupported bare FFI type %q; use *T/HostRef<T> for host objects or declare a local ffigen struct schema", typeName))
 }

@@ -10,9 +10,12 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
-func isPrimitive(name string) bool {
+func isBuiltinScalarType(name string) bool {
 	switch name {
-	case "Int64", "Float64", "String", "Bool", "Uint8", "Any", "Error", "Void", "TypeBytes":
+	case "Int64", "Float64", "String", "Bool", "Any", "Error", "Void", "TypeBytes",
+		"int", "int8", "int16", "int32", "int64", "rune",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "byte",
+		"float32", "float64", "string", "bool", "any", "error":
 		return true
 	}
 	return false
@@ -75,6 +78,24 @@ func (g *Generator) lookupTypeObject(id *ast.Ident) types.Object {
 	return g.typeInfo.Defs[id]
 }
 
+func (g *Generator) unsupportedInterfaceExpr(expr ast.Expr) bool {
+	if expr == nil {
+		return false
+	}
+	if t, ok := expr.(*ast.InterfaceType); ok {
+		return t.Methods != nil && len(t.Methods.List) > 0
+	}
+	if g.typeInfo == nil {
+		return false
+	}
+	tv, ok := g.typeInfo.Types[expr]
+	if !ok || tv.Type == nil {
+		return false
+	}
+	iface, ok := tv.Type.Underlying().(*types.Interface)
+	return ok && iface.NumMethods() > 0
+}
+
 func (g *Generator) toGoType(pType string) string {
 	if inner, ok := ffigo.RefElementType(pType); ok {
 		return "*" + g.toGoType(inner)
@@ -98,23 +119,29 @@ func (g *Generator) toGoType(pType string) string {
 		return g.toGoType(base) + "[" + strings.Join(goArgs, ", ") + "]"
 	}
 	switch pType {
-	case "Uint32", "uint32":
+	case "uint64":
+		return "uint64"
+	case "uint32":
 		return "uint32"
-	case "Uint16", "uint16":
+	case "uint16":
 		return "uint16"
-	case "Uint8", "byte", "uint8":
+	case "byte", "uint8":
 		return "uint8"
-	case "Int", "int":
+	case "uintptr":
+		return "uintptr"
+	case "int":
 		return "int"
 	case "Int64", "int64":
 		return "int64"
-	case "Int32", "int32":
+	case "int32":
 		return "int32"
-	case "Int16", "int16":
+	case "int16":
 		return "int16"
-	case "Int8", "int8":
+	case "int8":
 		return "int8"
-	case "Uint", "uint":
+	case "rune":
+		return "rune"
+	case "uint":
 		return "uint"
 	case "String", "string":
 		return "string"
@@ -122,7 +149,7 @@ func (g *Generator) toGoType(pType string) string {
 		return "bool"
 	case "Float64", "float64":
 		return "float64"
-	case "Float32", "float32":
+	case "float32":
 		return "float32"
 	case "context.Context", "Context":
 		return "context.Context"
@@ -223,43 +250,6 @@ func (g *Generator) copyBackKind(expr ast.Expr) string {
 	}
 }
 
-func (g *Generator) funcParamModes(funcType *ast.FuncType) []string {
-	var modes []string
-	if funcType == nil || funcType.Params == nil {
-		return nil
-	}
-	for i, p := range funcType.Params.List {
-		pType := g.typeToString(p.Type)
-		if i == 0 && (pType == "context.Context" || pType == "Context") {
-			continue
-		}
-		mode := "runtime.FFIParamIn"
-		switch g.copyBackKind(p.Type) {
-		case "bytes":
-			mode = "runtime.FFIParamInOutBytes"
-		case "array":
-			mode = "runtime.FFIParamInOutArray"
-		}
-		count := len(p.Names)
-		if count == 0 {
-			count = 1
-		}
-		for j := 0; j < count; j++ {
-			modes = append(modes, mode)
-		}
-	}
-	return modes
-}
-
-func (g *Generator) hasCopyBackParam(funcType *ast.FuncType) bool {
-	for _, mode := range g.funcParamModes(funcType) {
-		if mode == "runtime.FFIParamInOutBytes" || mode == "runtime.FFIParamInOutArray" {
-			return true
-		}
-	}
-	return false
-}
-
 func isRefTypeString(typeName string) bool {
 	return ffigo.IsRefTypeString(typeName)
 }
@@ -340,13 +330,14 @@ func zeroValue(t string) string {
 		return "nil"
 	}
 	switch t {
-	case "Uint32", "uint32", "Int", "int", "Int64", "int64", "Int32", "int32":
+	case "int", "int8", "int16", "int32", "Int64", "int64", "rune",
+		"uint", "uint8", "byte", "uint16", "uint32", "uint64", "uintptr":
 		return "0"
 	case "String", "string":
 		return "\"\""
 	case "Bool", "bool":
 		return "false"
-	case "Float64", "float64":
+	case "float32", "Float64", "float64":
 		return "0.0"
 	case "TypeBytes":
 		return "nil"

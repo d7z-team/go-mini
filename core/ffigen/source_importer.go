@@ -69,19 +69,27 @@ func (i *sourceImporter) importFromModule(path string) (*types.Package, error) {
 }
 
 func (i *sourceImporter) importFromGoList(path string) (*types.Package, error) {
-	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", path)
-	if i.baseDir != "" {
-		cmd.Dir = i.baseDir
-	}
-	out, err := cmd.Output()
+	dir, err := goListDir(path, i.baseDir)
 	if err != nil {
 		return nil, err
 	}
+	return i.importFromDir(path, dir)
+}
+
+func goListDir(path, baseDir string) (string, error) {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", path)
+	if baseDir != "" {
+		cmd.Dir = baseDir
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
 	dir := strings.TrimSpace(string(out))
 	if dir == "" {
-		return nil, fmt.Errorf("go list returned empty dir for import %s", path)
+		return "", fmt.Errorf("go list returned empty dir for import %s", path)
 	}
-	return i.importFromDir(path, dir)
+	return dir, nil
 }
 
 func (i *sourceImporter) importFromDir(path, dir string) (*types.Package, error) {
@@ -189,13 +197,30 @@ func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
 		if !strings.HasPrefix(text, "ffigen:") {
 			continue
 		}
-		switch {
-		case strings.HasPrefix(text, "ffigen:module"):
-			meta.moduleName = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:module"))
-		case strings.HasPrefix(text, "ffigen:methods"):
+		fields := strings.Fields(text)
+		if len(fields) == 0 {
+			continue
+		}
+		switch fields[0] {
+		case "ffigen:module":
+			if len(fields) > 2 {
+				panic("ffigen:module accepts at most one module name")
+			}
+			if len(fields) == 2 {
+				meta.moduleName = fields[1]
+			}
+		case "ffigen:methods":
+			if len(fields) > 2 {
+				panic("ffigen:methods accepts at most one receiver type")
+			}
 			meta.methodsMarked = true
-			meta.methodsPrefix = strings.TrimSpace(strings.TrimPrefix(text, "ffigen:methods"))
-		case strings.HasPrefix(text, "ffigen:interface"):
+			if len(fields) == 2 {
+				meta.methodsPrefix = fields[1]
+			}
+		case "ffigen:interface":
+			if len(fields) != 1 {
+				panic("ffigen:interface does not accept arguments")
+			}
 			meta.interfaceMarked = true
 		}
 	}
@@ -208,14 +233,14 @@ func parseGlobalMeta(doc *ast.CommentGroup) (globalMeta, bool) {
 	}
 	for _, comment := range doc.List {
 		text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
-		if !strings.HasPrefix(text, "ffigen:global") {
+		fields := strings.Fields(text)
+		if len(fields) == 0 || fields[0] != "ffigen:global" {
 			continue
 		}
-		fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(text, "ffigen:global")))
-		if len(fields) != 3 {
+		if len(fields) != 4 {
 			panic("ffigen:global requires: <package> <name> <canonical-type>")
 		}
-		return globalMeta{PackagePath: fields[0], Name: fields[1], MiniType: fields[2]}, true
+		return globalMeta{PackagePath: fields[1], Name: fields[2], MiniType: fields[3]}, true
 	}
 	return globalMeta{}, false
 }
@@ -241,14 +266,8 @@ func (g *Generator) resolveImportedModule(importPath string) string {
 	if moduleName, ok := g.moduleCache[importPath]; ok {
 		return moduleName
 	}
-	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", importPath)
-	out, err := cmd.Output()
+	dir, err := goListDir(importPath, g.packageDir)
 	if err != nil {
-		g.moduleCache[importPath] = ""
-		return ""
-	}
-	dir := strings.TrimSpace(string(out))
-	if dir == "" {
 		g.moduleCache[importPath] = ""
 		return ""
 	}
@@ -260,7 +279,7 @@ func (g *Generator) resolveImportedModule(importPath string) string {
 	}
 	var files []*ast.File
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
 		filePath := filepath.Join(dir, entry.Name())

@@ -234,7 +234,7 @@ func (__p *StrconvProxy) FormatFloat(f float64, format uint8, prec int, bitSize 
 	defer ffigo.ReleaseBuffer(wireBuf)
 
 	wireBuf.WriteFloat64(float64(f))
-	wireBuf.WriteUvarint(uint64(format))
+	wireBuf.WriteVarint(int64(format))
 	wireBuf.WriteVarint(int64(prec))
 	wireBuf.WriteVarint(int64(bitSize))
 
