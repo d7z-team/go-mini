@@ -11,6 +11,9 @@ GO_TEST         := go test
 GO_TEST_TIMEOUT ?= 180s
 EXAMPLE_TIMEOUT ?= 30s
 
+export GOCACHE ?= /tmp/go-build-cache
+export GOLANGCI_LINT_CACHE ?= /tmp/golangci-lint-cache
+
 # 获取所有 Go 源码文件作为依赖
 GO_SOURCES := $(shell find . -name "*.go" -not -path "./vendor/*" -not -path "./bin/*")
 

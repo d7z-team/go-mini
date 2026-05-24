@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -123,7 +122,7 @@ const fullPipelineExpectedTrace = "main-boot|start|closure|body:safe|defer:safe|
 
 func TestFullPipelineIntegrity(t *testing.T) {
 	t.Run("source_runtime", func(t *testing.T) {
-		exec, _ := buildFullPipelineFixture(t)
+		exec, _ := buildPipelineFixture(t, "helper", fullPipelineHelperModule, fullPipelineMainProgram)
 		prog, err := exec.NewRuntimeByGoCode(fullPipelineMainProgram)
 		if err != nil {
 			t.Fatalf("new runtime by source failed: %v", err)
@@ -132,7 +131,7 @@ func TestFullPipelineIntegrity(t *testing.T) {
 	})
 
 	t.Run("compiled_prepared_only", func(t *testing.T) {
-		exec, compiled := buildFullPipelineFixture(t)
+		exec, compiled := buildPipelineFixture(t, "helper", fullPipelineHelperModule, fullPipelineMainProgram)
 		prog, err := exec.NewRuntimeByCompiled(compiled)
 		if err != nil {
 			t.Fatalf("new runtime by compiled failed: %v", err)
@@ -141,7 +140,7 @@ func TestFullPipelineIntegrity(t *testing.T) {
 	})
 
 	t.Run("bytecode_json_roundtrip", func(t *testing.T) {
-		exec, compiled := buildFullPipelineFixture(t)
+		exec, compiled := buildPipelineFixture(t, "helper", fullPipelineHelperModule, fullPipelineMainProgram)
 		payload, err := compiled.MarshalBytecodeJSON()
 		if err != nil {
 			t.Fatalf("marshal bytecode failed: %v", err)
@@ -154,24 +153,7 @@ func TestFullPipelineIntegrity(t *testing.T) {
 	})
 }
 
-func buildFullPipelineFixture(t *testing.T) (*engine.MiniExecutor, *compiler.Artifact) {
-	t.Helper()
-
-	exec := newStdExecutor()
-	helperProg, err := exec.NewRuntimeByGoCode(fullPipelineHelperModule)
-	if err != nil {
-		t.Fatalf("compile helper module failed: %v", err)
-	}
-	exec.RegisterModule("helper", helperProg)
-
-	compiled, err := exec.CompileGoCode(fullPipelineMainProgram)
-	if err != nil {
-		t.Fatalf("compile main program failed: %v", err)
-	}
-	return exec, compiled
-}
-
-func assertFullPipelineExecution(t *testing.T, prog *engine.MiniProgram) {
+func assertFullPipelineExecution(t *testing.T, prog *engine.ExecutableProgram) {
 	t.Helper()
 
 	if err := prog.Execute(context.Background()); err != nil {

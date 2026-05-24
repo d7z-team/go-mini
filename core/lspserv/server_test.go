@@ -6,7 +6,9 @@ import (
 	"go/token"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/compiler"
@@ -165,9 +167,123 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 	if !strings.Contains(out.String(), `"completionProvider"`) {
 		t.Fatalf("expected initialize response, got %q", out.String())
 	}
+	if !strings.Contains(out.String(), `"change":1`) {
+		t.Fatalf("expected full text sync capability, got %q", out.String())
+	}
 	if !strings.Contains(out.String(), `"label":"Println"`) {
 		t.Fatalf("expected completion result, got %q", out.String())
 	}
+}
+
+func TestDebouncedDiagnosticsPublishOnlyLatestChange(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	server.diagnosticDelay = 10 * time.Millisecond
+	uri := "file:///workspace/a/main.mgo"
+
+	var mu sync.Mutex
+	var published []map[string][]Diagnostic
+	server.setDiagnosticPublisher(func(updates map[string][]Diagnostic) {
+		mu.Lock()
+		defer mu.Unlock()
+		published = append(published, cloneDiagnosticsMap(updates))
+	})
+	defer server.setDiagnosticPublisher(nil)
+	defer server.stopPendingDiagnostics()
+
+	server.updateSessionDebounced(uri, "package main\nfunc main() {\n")
+	server.updateSessionDebounced(uri, `package main
+func main() {
+	_ = new("Int64")
+}
+`)
+
+	select {
+	case <-time.After(80 * time.Millisecond):
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(published) != 1 {
+		t.Fatalf("expected one debounced diagnostics publish, got %+v", published)
+	}
+	current := published[0][uri]
+	if len(current) == 0 || !strings.Contains(current[0].Message, "new 第一个参数必须是类型") {
+		t.Fatalf("expected latest diagnostics only, got %+v", published[0])
+	}
+}
+
+func TestFlushDiagnosticsPublishesPendingChangeImmediately(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	server.diagnosticDelay = time.Hour
+	uri := "file:///workspace/a/main.mgo"
+
+	server.updateSessionDebounced(uri, "package main\nfunc main() {\n")
+	updates, err := server.flushDiagnostics(uri)
+	if err != nil {
+		t.Fatalf("flush diagnostics failed: %v", err)
+	}
+	if len(updates[uri]) == 0 {
+		t.Fatalf("expected flushed diagnostics, got %+v", updates)
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	updates, err = server.flushDiagnostics(uri)
+	if err != nil {
+		t.Fatalf("second flush diagnostics failed: %v", err)
+	}
+	if len(updates) != 0 {
+		t.Fatalf("expected pending timer to be canceled by first flush, got %+v", updates)
+	}
+}
+
+func TestRemoveSessionCancelsPendingDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	server.diagnosticDelay = 10 * time.Millisecond
+	uri := "file:///workspace/a/main.mgo"
+
+	var mu sync.Mutex
+	published := 0
+	server.setDiagnosticPublisher(func(map[string][]Diagnostic) {
+		mu.Lock()
+		defer mu.Unlock()
+		published++
+	})
+	defer server.setDiagnosticPublisher(nil)
+
+	server.updateSessionDebounced(uri, "package main\nfunc main() {\n")
+	updates := server.RemoveSession(uri)
+	if diags, ok := updates[uri]; !ok || len(diags) != 0 {
+		t.Fatalf("expected close diagnostics clear, got %+v", updates)
+	}
+	time.Sleep(40 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if published != 0 {
+		t.Fatalf("expected pending diagnostics to be canceled, got %d publishes", published)
+	}
+}
+
+func TestQueryRefreshesAnalysisDuringDiagnosticDebounce(t *testing.T) {
+	analyzer := &stubAnalyzer{
+		program: &stubProgram{
+			completions: []ast.CompletionItem{{Label: "Fresh", Kind: "func", Type: "function() Void"}},
+		},
+	}
+	server := NewLSPServer(analyzer)
+	server.diagnosticDelay = time.Hour
+	uri := "file:///workspace/a/main.mgo"
+	code := "package main\nfunc Fresh() {}\n"
+
+	server.updateSessionDebounced(uri, code)
+	items := server.GetCompletions(uri, 1, 4)
+	if len(items) == 0 || items[0].Label != "Fresh" {
+		t.Fatalf("expected fresh completions during debounce, got %+v", items)
+	}
+	if got := analyzer.lastSources[uri]; got != code {
+		t.Fatalf("expected query to analyze latest source %q, got %q", code, got)
+	}
+	server.stopPendingDiagnostics()
 }
 
 func TestUpdateSessionClearsPreviousDiagnostics(t *testing.T) {
@@ -264,6 +380,30 @@ func TestServeStreamDidClosePublishesEmptyDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"diagnostics":[]`) {
 		t.Fatalf("expected didClose to publish empty diagnostics, got %q", out.String())
+	}
+}
+
+func TestServeStreamDidSaveFlushesPendingDiagnostics(t *testing.T) {
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	server.diagnosticDelay = time.Hour
+	uri := "file:///workspace/a/main.mgo"
+
+	openBody := `{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"` + uri + `","text":"package main\nfunc main() {\n    aaaa\n"}}}`
+	saveBody := `{"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"` + uri + `"}}}`
+
+	var in bytes.Buffer
+	writeRPCMessages(&in, openBody, saveBody)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	if err := ServeStream(server, &in, &out, &errOut); err != nil {
+		t.Fatalf("ServeStream returned error: %v", err)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), `"method":"textDocument/publishDiagnostics"`) {
+		t.Fatalf("expected didSave to flush diagnostics, got %q", out.String())
 	}
 }
 

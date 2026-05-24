@@ -103,7 +103,7 @@ func parseOptions(args []string) (*execOptions, error) {
 	return options, nil
 }
 
-func loadProgram(executor *engine.MiniExecutor, options *execOptions) (*engine.MiniProgram, error) {
+func loadProgram(executor *engine.MiniExecutor, options *execOptions) (*engine.ExecutableProgram, error) {
 	if options.bytecode != "" {
 		payload, err := os.ReadFile(options.bytecode)
 		if err != nil {
@@ -148,7 +148,7 @@ func loadSourceFiles(files []string) ([]engine.SourceFile, error) {
 	return res, nil
 }
 
-func writeBytecode(program *engine.MiniProgram, outputPath string) error {
+func writeBytecode(program *engine.ExecutableProgram, outputPath string) error {
 	payload, err := program.MarshalIndentBytecodeJSON("", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal bytecode: %w", err)

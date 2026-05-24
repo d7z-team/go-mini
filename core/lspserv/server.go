@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/compiler"
@@ -32,9 +33,11 @@ type Analyzer interface {
 type LSPServer struct {
 	executor Analyzer
 
-	mu       sync.RWMutex
-	files    map[string]*fileSession
-	packages map[string]*packageState
+	mu                 sync.RWMutex
+	files              map[string]*fileSession
+	packages           map[string]*packageState
+	publishDiagnostics func(map[string][]Diagnostic)
+	diagnosticDelay    time.Duration
 }
 
 type fileSession struct {
@@ -53,7 +56,10 @@ type packageState struct {
 
 	files                map[string]*fileSession
 	combined             ProgramView
+	analysisVersion      uint64
 	publishedDiagnostics map[string][]Diagnostic
+	diagnosticTimer      *time.Timer
+	diagnosticGeneration uint64
 	version              uint64
 }
 
@@ -63,17 +69,60 @@ type parsedFile struct {
 	diagnostics []Diagnostic
 }
 
+type packageAnalysis struct {
+	version     uint64
+	combined    ProgramView
+	diagnostics map[string][]Diagnostic
+}
+
 var scannerFoundTokenPattern = regexp.MustCompile(`found\s+('?[^']+'?|\S+)$`)
+
+const defaultDiagnosticDelay = 180 * time.Millisecond
 
 func NewLSPServer(e Analyzer) *LSPServer {
 	return &LSPServer{
-		executor: e,
-		files:    make(map[string]*fileSession),
-		packages: make(map[string]*packageState),
+		executor:        e,
+		files:           make(map[string]*fileSession),
+		packages:        make(map[string]*packageState),
+		diagnosticDelay: defaultDiagnosticDelay,
 	}
 }
 
+func (s *LSPServer) setDiagnosticPublisher(publish func(map[string][]Diagnostic)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.publishDiagnostics = publish
+}
+
 func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, error) {
+	oldPkg, currentPkg := s.applySession(uri, code)
+	result := make(map[string][]Diagnostic)
+	if oldPkg != nil {
+		oldDiagnostics, _ := s.flushPackageDiagnostics(oldPkg)
+		mergeDiagnostics(result, oldDiagnostics)
+	}
+	currentDiagnostics, err := s.flushPackageDiagnostics(currentPkg)
+	mergeDiagnostics(result, currentDiagnostics)
+	return result, err
+}
+
+func (s *LSPServer) updateSessionDebounced(uri, code string) {
+	oldPkg, currentPkg := s.applySession(uri, code)
+	if oldPkg != nil {
+		s.schedulePackageDiagnostics(oldPkg)
+	}
+	s.schedulePackageDiagnostics(currentPkg)
+}
+
+func (s *LSPServer) flushDiagnostics(uri string) (map[string][]Diagnostic, error) {
+	pkg := s.packageForURI(uri)
+	if pkg == nil {
+		return nil, nil
+	}
+	return s.flushPackageDiagnostics(pkg)
+}
+
+func (s *LSPServer) applySession(uri, code string) (*packageState, *packageState) {
 	pkgName := detectPackageName(uri, code)
 	pkgKey := packageKeyForURI(uri, pkgName)
 
@@ -111,15 +160,7 @@ func (s *LSPServer) UpdateSession(uri, code string) (map[string][]Diagnostic, er
 		}
 	}
 	s.mu.Unlock()
-
-	result := make(map[string][]Diagnostic)
-	if oldPkg != nil {
-		oldDiagnostics, _ := s.rebuildPackage(oldPkg)
-		mergeDiagnostics(result, oldDiagnostics)
-	}
-	currentDiagnostics, err := s.rebuildPackage(currentPkg)
-	mergeDiagnostics(result, currentDiagnostics)
-	return result, err
+	return oldPkg, currentPkg
 }
 
 func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
@@ -135,6 +176,7 @@ func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
 		s.mu.Unlock()
 		return map[string][]Diagnostic{uri: make([]Diagnostic, 0)}
 	}
+	s.cancelPackageDiagnostics(pkg)
 
 	pkg.mu.Lock()
 	delete(pkg.files, uri)
@@ -157,11 +199,88 @@ func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
 	pkg.mu.Unlock()
 	s.mu.Unlock()
 
-	updates, _ := s.rebuildPackage(pkg)
+	updates, _ := s.flushPackageDiagnostics(pkg)
 	if _, ok := updates[uri]; !ok {
 		updates[uri] = []Diagnostic{}
 	}
 	return updates
+}
+
+func (s *LSPServer) stopPendingDiagnostics() {
+	s.mu.RLock()
+	packages := make([]*packageState, 0, len(s.packages))
+	for _, pkg := range s.packages {
+		packages = append(packages, pkg)
+	}
+	s.mu.RUnlock()
+	for _, pkg := range packages {
+		s.cancelPackageDiagnostics(pkg)
+	}
+}
+
+func (s *LSPServer) schedulePackageDiagnostics(pkg *packageState) {
+	if pkg == nil {
+		return
+	}
+	delay := s.diagnosticDelay
+	if delay <= 0 {
+		updates, _ := s.flushPackageDiagnostics(pkg)
+		s.publishDiagnosticUpdates(updates)
+		return
+	}
+
+	pkg.mu.Lock()
+	if pkg.diagnosticTimer != nil {
+		pkg.diagnosticTimer.Stop()
+	}
+	pkg.diagnosticGeneration++
+	generation := pkg.diagnosticGeneration
+	pkg.diagnosticTimer = time.AfterFunc(delay, func() {
+		if !clearScheduledPackageTimer(pkg, generation) {
+			return
+		}
+		updates, _ := s.flushPackageDiagnostics(pkg)
+		s.publishDiagnosticUpdates(updates)
+	})
+	pkg.mu.Unlock()
+}
+
+func clearScheduledPackageTimer(pkg *packageState, generation uint64) bool {
+	pkg.mu.Lock()
+	defer pkg.mu.Unlock()
+	if pkg.diagnosticGeneration != generation || pkg.diagnosticTimer == nil {
+		return false
+	}
+	pkg.diagnosticTimer = nil
+	return true
+}
+
+func (s *LSPServer) cancelPackageDiagnostics(pkg *packageState) {
+	if pkg == nil {
+		return
+	}
+	pkg.mu.Lock()
+	defer pkg.mu.Unlock()
+	s.cancelPackageDiagnosticsLocked(pkg)
+}
+
+func (s *LSPServer) cancelPackageDiagnosticsLocked(pkg *packageState) {
+	if pkg.diagnosticTimer != nil {
+		pkg.diagnosticTimer.Stop()
+		pkg.diagnosticTimer = nil
+	}
+}
+
+func (s *LSPServer) publishDiagnosticUpdates(updates map[string][]Diagnostic) {
+	if len(updates) == 0 {
+		return
+	}
+	s.mu.RLock()
+	publish := s.publishDiagnostics
+	s.mu.RUnlock()
+	if publish != nil {
+		publish(updates)
+	}
 }
 
 func (s *LSPServer) ensurePackageLocked(pkgKey string) *packageState {
@@ -185,14 +304,14 @@ func cloneFileSession(in *fileSession) *fileSession {
 	return &cloned
 }
 
-func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, error) {
+func (s *LSPServer) analyzePackage(pkg *packageState) (*packageAnalysis, error) {
 	if pkg == nil {
 		return nil, nil
 	}
 
 	files, version := snapshotPackageFiles(pkg)
 	if len(files) == 0 {
-		return finalizeDiagnostics(pkg, nil), nil
+		return &packageAnalysis{version: version, diagnostics: nil}, nil
 	}
 	codeByURI := fileCodeMap(files)
 
@@ -219,17 +338,44 @@ func (s *LSPServer) rebuildPackage(pkg *packageState) (map[string][]Diagnostic, 
 				Message:  mergeErr.Error(),
 			})
 		}
-		return finalizeDiagnostics(pkg, diagnostics), mergeErr
+		return &packageAnalysis{version: version, diagnostics: diagnostics}, mergeErr
 	}
 	if combined == nil {
-		return finalizeDiagnostics(pkg, diagnostics), nil
+		return &packageAnalysis{version: version, diagnostics: diagnostics}, nil
 	}
 
 	prog, errs := s.executor.AnalyzeProgramTolerant(combined, codeByURI)
 	for _, err := range errs {
 		appendAnalysisDiagnostics(diagnostics, codeByURI, err)
 	}
-	return finalizePackageState(pkg, version, prog, diagnostics), nil
+	return &packageAnalysis{version: version, combined: prog, diagnostics: diagnostics}, nil
+}
+
+func (s *LSPServer) flushPackageDiagnostics(pkg *packageState) (map[string][]Diagnostic, error) {
+	s.cancelPackageDiagnostics(pkg)
+	analysis, err := s.analyzePackage(pkg)
+	return applyPackageAnalysis(pkg, analysis, true), err
+}
+
+func (s *LSPServer) refreshPackageAnalysis(pkg *packageState) ProgramView {
+	if pkg == nil {
+		return nil
+	}
+	pkg.mu.RLock()
+	if pkg.analysisVersion == pkg.version {
+		combined := pkg.combined
+		pkg.mu.RUnlock()
+		return combined
+	}
+	pkg.mu.RUnlock()
+
+	analysis, _ := s.analyzePackage(pkg)
+	applyPackageAnalysis(pkg, analysis, false)
+
+	pkg.mu.RLock()
+	combined := pkg.combined
+	pkg.mu.RUnlock()
+	return combined
 }
 
 func snapshotPackageFiles(pkg *packageState) ([]*fileSession, uint64) {
@@ -358,19 +504,21 @@ func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, codeByURI ma
 	}
 }
 
-func finalizePackageState(pkg *packageState, version uint64, combined ProgramView, diagnostics map[string][]Diagnostic) map[string][]Diagnostic {
-	pkg.mu.Lock()
-	defer pkg.mu.Unlock()
-	if version == pkg.version {
-		pkg.combined = combined
+func applyPackageAnalysis(pkg *packageState, analysis *packageAnalysis, publish bool) map[string][]Diagnostic {
+	if pkg == nil || analysis == nil {
+		return nil
 	}
-	return diffDiagnosticsLocked(pkg, diagnostics)
-}
-
-func finalizeDiagnostics(pkg *packageState, diagnostics map[string][]Diagnostic) map[string][]Diagnostic {
 	pkg.mu.Lock()
 	defer pkg.mu.Unlock()
-	return diffDiagnosticsLocked(pkg, diagnostics)
+	if analysis.version != pkg.version {
+		return nil
+	}
+	pkg.combined = analysis.combined
+	pkg.analysisVersion = analysis.version
+	if !publish {
+		return nil
+	}
+	return diffDiagnosticsLocked(pkg, analysis.diagnostics)
 }
 
 func diffDiagnosticsLocked(pkg *packageState, diagnostics map[string][]Diagnostic) map[string][]Diagnostic {
@@ -430,6 +578,14 @@ func (s *LSPServer) packageForURI(uri string) *packageState {
 		return nil
 	}
 	return s.packages[file.pkgKey]
+}
+
+func (s *LSPServer) programForURI(uri string) (*packageState, ProgramView) {
+	pkg := s.packageForURI(uri)
+	if pkg == nil {
+		return nil, nil
+	}
+	return pkg, s.refreshPackageAnalysis(pkg)
 }
 
 func mergeDiagnostics(dst, src map[string][]Diagnostic) {
@@ -534,13 +690,7 @@ func scannerErrorToken(message string) string {
 }
 
 func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem {
-	pkg := s.packageForURI(uri)
-	if pkg == nil {
-		return nil
-	}
-	pkg.mu.RLock()
-	combined := pkg.combined
-	pkg.mu.RUnlock()
+	_, combined := s.programForURI(uri)
 	if combined == nil {
 		return nil
 	}
@@ -559,13 +709,7 @@ func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem 
 }
 
 func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
-	pkg := s.packageForURI(uri)
-	if pkg == nil {
-		return nil
-	}
-	pkg.mu.RLock()
-	combined := pkg.combined
-	pkg.mu.RUnlock()
+	_, combined := s.programForURI(uri)
 	if combined == nil {
 		return nil
 	}
@@ -586,13 +730,10 @@ func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
 }
 
 func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
-	pkg := s.packageForURI(uri)
+	pkg, combined := s.programForURI(uri)
 	if pkg == nil {
 		return nil
 	}
-	pkg.mu.RLock()
-	combined := pkg.combined
-	pkg.mu.RUnlock()
 	if combined == nil {
 		return nil
 	}
@@ -609,13 +750,10 @@ func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
 }
 
 func (s *LSPServer) GetReferences(uri string, line, char int, includeDeclaration bool) []Location {
-	pkg := s.packageForURI(uri)
+	pkg, combined := s.programForURI(uri)
 	if pkg == nil {
 		return nil
 	}
-	pkg.mu.RLock()
-	combined := pkg.combined
-	pkg.mu.RUnlock()
 	if combined == nil {
 		return nil
 	}

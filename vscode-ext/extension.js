@@ -6,7 +6,6 @@ const { LanguageClient } = require('vscode-languageclient/node');
 let client;
 let outputChannel;
 const scriptExtension = '.mgo';
-const diagnosticDebounceMs = 180;
 
 function getServerPath(context) {
     const config = vscode.workspace.getConfiguration('go-mini');
@@ -188,49 +187,8 @@ async function startClient(context) {
         args: []
     };
 
-    const pendingChanges = new Map();
     let clientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'go-mini' }],
-        middleware: {
-            didChange: (event, next) => {
-                const document = getDocumentFromEvent(event);
-                if (!document || !document.uri) {
-                    return next(event);
-                }
-                const key = document.uri.toString();
-                const existing = pendingChanges.get(key);
-                if (existing) {
-                    clearTimeout(existing.timer);
-                }
-                const timer = setTimeout(() => {
-                    pendingChanges.delete(key);
-                    next(event);
-                }, diagnosticDebounceMs);
-                pendingChanges.set(key, { timer });
-            },
-            didSave: async (document, next) => {
-                const key = document && document.uri ? document.uri.toString() : "";
-                if (key) {
-                    const existing = pendingChanges.get(key);
-                    if (existing) {
-                        clearTimeout(existing.timer);
-                        pendingChanges.delete(key);
-                    }
-                }
-                return next(document);
-            },
-            didClose: async (document, next) => {
-                const key = document && document.uri ? document.uri.toString() : "";
-                if (key) {
-                    const existing = pendingChanges.get(key);
-                    if (existing) {
-                        clearTimeout(existing.timer);
-                        pendingChanges.delete(key);
-                    }
-                }
-                return next(document);
-            }
-        }
+        documentSelector: [{ scheme: 'file', language: 'go-mini' }]
     };
 
     client = new LanguageClient(
@@ -241,13 +199,6 @@ async function startClient(context) {
     );
 
     await client.start();
-}
-
-function getDocumentFromEvent(event) {
-    if (!event) {
-        return undefined;
-    }
-    return event.document || event;
 }
 
 async function restartServer(context) {

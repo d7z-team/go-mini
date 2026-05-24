@@ -27,13 +27,13 @@ func TestLoadProgramMergesFilesViaCompilePipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadProgram failed: %v", err)
 	}
-	if program.Program.Package != "main" {
-		t.Fatalf("unexpected package: %s", program.Program.Package)
+	if program.Compilation().Bytecode.Executable.Package != "main" {
+		t.Fatalf("unexpected package: %s", program.Compilation().Bytecode.Executable.Package)
 	}
-	if _, ok := program.Program.Functions["helper"]; !ok {
+	if _, ok := program.Compilation().Bytecode.Executable.Functions["helper"]; !ok {
 		t.Fatalf("expected merged helper function")
 	}
-	if _, ok := program.Program.Functions["main"]; !ok {
+	if _, ok := program.Compilation().Bytecode.Executable.Functions["main"]; !ok {
 		t.Fatalf("expected merged main function")
 	}
 }
@@ -85,10 +85,10 @@ func TestLoadProgramFromDirectoryLoadsMGOFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadProgram from dir failed: %v", err)
 	}
-	if _, ok := program.Program.Functions["helper"]; !ok {
+	if _, ok := program.Compilation().Bytecode.Executable.Functions["helper"]; !ok {
 		t.Fatalf("expected helper function from .mgo input")
 	}
-	if _, ok := program.Program.Functions["ignored"]; ok {
+	if _, ok := program.Compilation().Bytecode.Executable.Functions["ignored"]; ok {
 		t.Fatalf("did not expect .go file to be loaded in directory mode")
 	}
 }

@@ -12,7 +12,14 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
+
+type packageValueProviderFunc func(runtime.FFIBindContext) (*runtime.Var, error)
+
+func (f packageValueProviderFunc) Bind(ctx runtime.FFIBindContext) (*runtime.Var, error) {
+	return f(ctx)
+}
 
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.NewMiniExecutor()
@@ -219,8 +226,8 @@ func main() {
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	if prog.Program != nil {
-		t.Fatal("bytecode runtime should not rebuild or retain an AST program")
+	if prog.Compilation().Program != nil {
+		t.Fatal("bytecode-loaded executable should not retain analysis AST")
 	}
 	counter, ok := prog.SharedState().LoadGlobal("counter")
 	if !ok || counter == nil || counter.I64 != 2 {
@@ -228,7 +235,7 @@ func main() {
 	}
 }
 
-func TestMiniProgramMarshalJSONDefaultsToBytecode(t *testing.T) {
+func TestExecutableProgramMarshalJSONDefaultsToBytecode(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -247,7 +254,7 @@ func main() {}
 	}
 }
 
-func TestNewRuntimeByJSONAutoDetectsBytecode(t *testing.T) {
+func TestNewRuntimeByBytecodeJSONLoadsBytecode(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -262,9 +269,9 @@ func main() { counter = counter + 1 }
 		t.Fatalf("marshal json failed: %v", err)
 	}
 
-	loaded, err := exec.NewRuntimeByJSON(payload)
+	loaded, err := exec.NewRuntimeByBytecodeJSON(payload)
 	if err != nil {
-		t.Fatalf("load by generic json failed: %v", err)
+		t.Fatalf("load bytecode json failed: %v", err)
 	}
 	if err := loaded.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -299,6 +306,143 @@ func TestMiniExecutorTryRegisterReportsSchemaConflict(t *testing.T) {
 	}
 }
 
+func TestTryRegisterFFISchemaConflictDoesNotPolluteRoutes(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	sigA := runtime.MustParseRuntimeFuncSig("function(String) Void")
+	sigB := runtime.MustParseRuntimeFuncSig("function(Int64) Void")
+	exec.DeclareFuncSchema("demo.Call", sigA)
+
+	err := exec.TryRegisterFFISchema("demo.Call", nil, 7, sigB, "")
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "schema" {
+		t.Fatalf("expected schema conflict error, got %T %v", err, err)
+	}
+
+	schema := exec.ExportedSchema()
+	if schema.RegisteredFuncs["demo.Call"] {
+		t.Fatalf("failed registration polluted registered route state: %+v", schema.RegisteredFuncs)
+	}
+	if got := schema.Funcs["demo.Call"]; got == nil || !runtime.SameRuntimeFuncSchema(got, sigA) {
+		t.Fatalf("declared schema should remain unchanged, got %#v", got)
+	}
+
+	if err := exec.TryRegisterFFISchema("demo.Call", nil, 1, sigA, ""); err != nil {
+		t.Fatalf("valid registration after failed conflict should succeed: %v", err)
+	}
+}
+
+func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
+	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
+	if err := exec.TryRegisterPackageValue("demo.Value", stringSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
+		return runtime.NewString("old"), nil
+	})); err != nil {
+		t.Fatalf("register existing package value failed: %v", err)
+	}
+
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddValue("demo", "Value", intSpec)
+	var handle uint32
+	err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		if ctx.PinnedRegistry == nil {
+			return nil, errors.New("missing pinned registry")
+		}
+		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
+		bound := runtime.NewBoundFFISurface(schema)
+		bound.AddPackageValue("demo", "Value", intSpec, runtime.NewInt(1))
+		return bound, nil
+	}))
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
+		t.Fatalf("expected package value conflict, got %T %v", err, err)
+	}
+	if handle == 0 {
+		t.Fatal("expected bind to allocate a pinned handle")
+	}
+	if _, ok := exec.HandleRegistry().Get(handle); ok {
+		t.Fatalf("failed UseSurface polluted pinned handle %d", handle)
+	}
+	if got := exec.ExportedSchema().Values["demo.Value"]; got == nil || got.Type.Raw != "String" {
+		t.Fatalf("existing package value schema should remain unchanged, got %#v", got)
+	}
+}
+
+func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	var handle uint32
+	var directHandle uint32
+	err := exec.UseSurface(surface.New(runtime.NewFFISurfaceSchema(), func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		if ctx.PinnedRegistry == nil {
+			return nil, errors.New("missing pinned registry")
+		}
+		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
+		directHandle = ctx.Registry.RegisterTyped(&struct{}{}, "demo.Direct")
+		return nil, errors.New("bind failed")
+	}))
+	if err == nil || !strings.Contains(err.Error(), "bind failed") {
+		t.Fatalf("expected bind error, got %v", err)
+	}
+	if handle == 0 {
+		t.Fatal("expected bind to allocate a pinned handle")
+	}
+	if _, ok := exec.HandleRegistry().Get(handle); ok {
+		t.Fatalf("failed UseSurface bind error polluted pinned handle %d", handle)
+	}
+	if _, ok := exec.HandleRegistry().Get(directHandle); ok {
+		t.Fatalf("failed UseSurface bind error polluted direct handle %d", directHandle)
+	}
+}
+
+func TestTryRegisterPackageValueConflictDoesNotBindProvider(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
+	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
+	if err := exec.TryRegisterPackageValue("demo.Value", stringSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
+		return runtime.NewString("old"), nil
+	})); err != nil {
+		t.Fatalf("register existing package value failed: %v", err)
+	}
+
+	called := false
+	err := exec.TryRegisterPackageValue("demo.Value", intSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
+		called = true
+		return runtime.NewInt(1), nil
+	}))
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
+		t.Fatalf("expected package value conflict, got %T %v", err, err)
+	}
+	if called {
+		t.Fatal("conflicting package value provider should not be bound")
+	}
+}
+
+func TestTryRegisterPackageValueBindErrorRollsBackPinnedHandles(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	spec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
+	var handle uint32
+	err := exec.TryRegisterPackageValue("demo.Value", spec, packageValueProviderFunc(func(ctx runtime.FFIBindContext) (*runtime.Var, error) {
+		if ctx.PinnedRegistry == nil {
+			return nil, errors.New("missing pinned registry")
+		}
+		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
+		return nil, errors.New("bind failed")
+	}))
+	if err == nil || !strings.Contains(err.Error(), "bind failed") {
+		t.Fatalf("expected bind error, got %v", err)
+	}
+	if handle == 0 {
+		t.Fatal("expected bind to allocate a pinned handle")
+	}
+	if _, ok := exec.HandleRegistry().Get(handle); ok {
+		t.Fatalf("failed package value bind error polluted pinned handle %d", handle)
+	}
+	if got := exec.ExportedSchema().Values["demo.Value"]; got != nil {
+		t.Fatalf("failed package value registration polluted schema: %#v", got)
+	}
+}
+
 func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
@@ -310,18 +454,6 @@ func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 	}()
 
 	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
-}
-
-func TestNewRuntimeByJSONRejectsASTPayload(t *testing.T) {
-	exec := engine.NewMiniExecutor()
-	astPayload := []byte(`{"meta":"boot","constants":{},"variables":{},"types":{},"structs":{},"functions":{},"main":[]}`)
-	_, err := exec.NewRuntimeByJSON(astPayload)
-	if err == nil {
-		t.Fatal("expected ast payload rejection")
-	}
-	if !strings.Contains(err.Error(), "expected go-mini bytecode") {
-		t.Fatalf("unexpected ast json load error: %v", err)
-	}
 }
 
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
@@ -389,7 +521,7 @@ func main() {}
 	}
 }
 
-func TestExecutableOnlyBytecodeLoadsAndExecutes(t *testing.T) {
+func TestPreparedOnlyBytecodeLoadsAndExecutes(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -404,20 +536,20 @@ func main() { Result = Result + 41 }
 		t.Fatalf("bytecode accessor failed: %v", err)
 	}
 
-	executableOnly := *program
-	executableOnly.Globals = nil
-	executableOnly.Entry = nil
-	executableOnly.Functions = nil
+	preparedOnly := *program
+	preparedOnly.Globals = nil
+	preparedOnly.Entry = nil
+	preparedOnly.Functions = nil
 
-	loaded, err := exec.NewRuntimeByBytecode(&executableOnly)
+	loaded, err := exec.NewRuntimeByBytecode(&preparedOnly)
 	if err != nil {
-		t.Fatalf("load executable-only bytecode failed: %v", err)
+		t.Fatalf("load prepared-only bytecode failed: %v", err)
 	}
-	if loaded.Program != nil {
-		t.Fatal("executable-only bytecode should not rebuild an AST program shell")
+	if loaded.Compilation().Program != nil {
+		t.Fatal("prepared-only bytecode should not retain analysis AST")
 	}
 	if err := loaded.Execute(context.Background()); err != nil {
-		t.Fatalf("execute executable-only bytecode failed: %v", err)
+		t.Fatalf("execute prepared-only bytecode failed: %v", err)
 	}
 	result, ok := loaded.SharedState().LoadGlobal("Result")
 	if !ok || result == nil || result.I64 != 42 {
@@ -431,30 +563,34 @@ func TestModuleImportUsesPreparedExecutable(t *testing.T) {
 package helper
 func Answer() Int64 { return 40 }
 `
-	helperProg, err := exec.NewRuntimeByGoCode(helperSource)
+	helperCompiled, err := exec.CompileGoCode(helperSource)
 	if err != nil {
 		t.Fatalf("compile helper failed: %v", err)
+	}
+	helperProg, err := exec.NewRuntimeByCompiled(helperCompiled)
+	if err != nil {
+		t.Fatalf("load helper failed: %v", err)
 	}
 	helperBytecode, err := helperProg.Bytecode()
 	if err != nil {
 		t.Fatalf("helper bytecode accessor failed: %v", err)
 	}
-	helperExecutableOnly := *helperBytecode
-	helperExecutableOnly.Globals = nil
-	helperExecutableOnly.Entry = nil
-	helperExecutableOnly.Functions = nil
+	helperPreparedOnly := *helperBytecode
+	helperPreparedOnly.Globals = nil
+	helperPreparedOnly.Entry = nil
+	helperPreparedOnly.Functions = nil
 
-	helperRuntime, err := exec.NewRuntimeByBytecode(&helperExecutableOnly)
+	helperRuntime, err := exec.NewRuntimeByBytecode(&helperPreparedOnly)
 	if err != nil {
-		t.Fatalf("load executable-only helper failed: %v", err)
+		t.Fatalf("load prepared-only helper failed: %v", err)
 	}
-	if helperRuntime.Program != nil {
-		t.Fatal("helper runtime should not carry a rebuilt AST program")
+	if helperRuntime.Compilation().Program != nil {
+		t.Fatal("prepared helper runtime should not retain analysis AST")
 	}
 
 	exec.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
 		if path == "helper" {
-			return helperProg.Program, nil
+			return helperCompiled.Program, nil
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	})
@@ -485,7 +621,7 @@ func main() { Result = helper.Answer() + 2 }
 	}
 }
 
-func TestMiniProgramBytecodeAccessor(t *testing.T) {
+func TestExecutableProgramBytecodeAccessor(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -525,7 +661,7 @@ func main() {}
 		t.Fatal("expected executable artifact")
 	}
 	if artifact.Program != nil {
-		t.Fatal("bytecode artifact should not rebuild an AST program")
+		t.Fatal("bytecode artifact should not contain analysis AST")
 	}
 	if artifact.Bytecode.Executable.Constants["Version"] != "v1" {
 		t.Fatalf("unexpected executable constants: %#v", artifact.Bytecode.Executable.Constants)

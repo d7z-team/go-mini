@@ -57,6 +57,11 @@ func ServeStream(server *LSPServer, in io.Reader, out, errOut io.Writer) error {
 		body, _ := json.Marshal(msg)
 		_, _ = fmt.Fprintf(out, "Content-Length: %d\r\n\r\n%s", len(body), body)
 	}
+	server.setDiagnosticPublisher(func(updates map[string][]Diagnostic) {
+		publishDiagnostics(updates, writeMessage, errOut)
+	})
+	defer server.setDiagnosticPublisher(nil)
+	defer server.stopPendingDiagnostics()
 
 	state := &streamState{}
 	for {
@@ -185,25 +190,28 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 		if len(params.ContentChanges) > 0 {
 			code = params.ContentChanges[0].Text
 		}
-		allDiagnostics, err := server.UpdateSession(uri, code)
+		server.updateSessionDebounced(uri, code)
+		return false
+
+	case "textDocument/didSave":
+		var params struct {
+			TextDocument struct {
+				URI string `json:"uri"`
+			} `json:"textDocument"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		updates, err := server.flushDiagnostics(params.TextDocument.URI)
 		if err != nil {
-			_, _ = fmt.Fprintf(errOut, "Error updating session for %s: %v\n", uri, err)
+			_, _ = fmt.Fprintf(errOut, "Error flushing diagnostics for %s: %v\n", params.TextDocument.URI, err)
 		}
-		for fURI, diags := range allDiagnostics {
-			payload, marshalErr := json.Marshal(publishDiagnosticsParams{
-				URI:         fURI,
-				Diagnostics: diags,
-			})
-			if marshalErr != nil {
-				_, _ = fmt.Fprintf(errOut, "Error marshaling diagnostics for %s: %v\n", fURI, marshalErr)
-				continue
-			}
-			writeMessage(rpcMessage{
-				JSONRPC: "2.0",
-				Method:  "textDocument/publishDiagnostics",
-				Params:  json.RawMessage(payload),
-			})
-		}
+		publishDiagnostics(updates, writeMessage, errOut)
 		return false
 
 	case "textDocument/didClose":
@@ -220,21 +228,7 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
 			return false
 		}
-		for fURI, diags := range server.RemoveSession(params.TextDocument.URI) {
-			payload, marshalErr := json.Marshal(publishDiagnosticsParams{
-				URI:         fURI,
-				Diagnostics: diags,
-			})
-			if marshalErr != nil {
-				_, _ = fmt.Fprintf(errOut, "Error marshaling diagnostics for %s: %v\n", fURI, marshalErr)
-				continue
-			}
-			writeMessage(rpcMessage{
-				JSONRPC: "2.0",
-				Method:  "textDocument/publishDiagnostics",
-				Params:  json.RawMessage(payload),
-			})
-		}
+		publishDiagnostics(server.RemoveSession(params.TextDocument.URI), writeMessage, errOut)
 		return false
 
 	case "textDocument/completion":
@@ -316,6 +310,24 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 			})
 		}
 		return false
+	}
+}
+
+func publishDiagnostics(updates map[string][]Diagnostic, writeMessage func(interface{}), errOut io.Writer) {
+	for uri, diags := range updates {
+		payload, err := json.Marshal(publishDiagnosticsParams{
+			URI:         uri,
+			Diagnostics: diags,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(errOut, "Error marshaling diagnostics for %s: %v\n", uri, err)
+			continue
+		}
+		writeMessage(rpcMessage{
+			JSONRPC: "2.0",
+			Method:  "textDocument/publishDiagnostics",
+			Params:  json.RawMessage(payload),
+		})
 	}
 }
 

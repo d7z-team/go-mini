@@ -2,12 +2,9 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -104,8 +101,8 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	if err != nil {
 		return newMiniAstError(err, semanticCtx, program)
 	}
-	if err := e.prepareArtifactModules(compiled); err != nil {
-		return newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return err
 	}
 
 	executor, err := e.NewRuntimeByCompiled(compiled)
@@ -143,15 +140,4 @@ func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, e
 	defer executor.CleanupSession(session)
 
 	return executor.ImportModulePath(session, path)
-}
-
-// NewRuntimeByJSON 从序列化后的 bytecode JSON 数据加载并构建执行环境。
-func (e *MiniExecutor) NewRuntimeByJSON(data []byte) (*MiniProgram, error) {
-	var probe struct {
-		Format string `json:"format"`
-	}
-	if err := json.Unmarshal(data, &probe); err == nil && probe.Format == bytecode.FormatGoMiniBytecode {
-		return e.NewRuntimeByBytecodeJSON(data)
-	}
-	return nil, errors.New("invalid json payload: expected go-mini bytecode")
 }

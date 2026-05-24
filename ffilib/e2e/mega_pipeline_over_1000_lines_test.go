@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 )
 
@@ -71,7 +70,7 @@ func TestMegaPipelineOver1000Lines(t *testing.T) {
 	}
 
 	t.Run("source_runtime", func(t *testing.T) {
-		exec, _ := buildMegaPipelineFixture(t, spec)
+		exec, _ := buildPipelineFixture(t, "helper", megaPipelineHelperModule, spec.source)
 		prog, err := exec.NewRuntimeByGoCode(spec.source)
 		if err != nil {
 			t.Fatalf("new runtime by source failed: %v", err)
@@ -80,7 +79,7 @@ func TestMegaPipelineOver1000Lines(t *testing.T) {
 	})
 
 	t.Run("compiled_prepared", func(t *testing.T) {
-		exec, compiled := buildMegaPipelineFixture(t, spec)
+		exec, compiled := buildPipelineFixture(t, "helper", megaPipelineHelperModule, spec.source)
 		prog, err := exec.NewRuntimeByCompiled(compiled)
 		if err != nil {
 			t.Fatalf("new runtime by compiled failed: %v", err)
@@ -89,7 +88,7 @@ func TestMegaPipelineOver1000Lines(t *testing.T) {
 	})
 
 	t.Run("bytecode_roundtrip", func(t *testing.T) {
-		exec, compiled := buildMegaPipelineFixture(t, spec)
+		exec, compiled := buildPipelineFixture(t, "helper", megaPipelineHelperModule, spec.source)
 		payload, err := compiled.MarshalBytecodeJSON()
 		if err != nil {
 			t.Fatalf("marshal bytecode failed: %v", err)
@@ -102,24 +101,7 @@ func TestMegaPipelineOver1000Lines(t *testing.T) {
 	})
 }
 
-func buildMegaPipelineFixture(t *testing.T, spec megaPipelineSpec) (*engine.MiniExecutor, *compiler.Artifact) {
-	t.Helper()
-
-	exec := newStdExecutor()
-	helperProg, err := exec.NewRuntimeByGoCode(megaPipelineHelperModule)
-	if err != nil {
-		t.Fatalf("compile helper module failed: %v", err)
-	}
-	exec.RegisterModule("helper", helperProg)
-
-	compiled, err := exec.CompileGoCode(spec.source)
-	if err != nil {
-		t.Fatalf("compile mega pipeline failed: %v", err)
-	}
-	return exec, compiled
-}
-
-func assertMegaPipelineExecution(t *testing.T, prog *engine.MiniProgram, spec megaPipelineSpec) {
+func assertMegaPipelineExecution(t *testing.T, prog *engine.ExecutableProgram, spec megaPipelineSpec) {
 	t.Helper()
 
 	recorder := &megaOutputRecorder{}

@@ -276,6 +276,73 @@ func TestTryRegisterRouteRejectsPublicSchemaEscapes(t *testing.T) {
 	}
 }
 
+func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPolluteRoutes(t *testing.T) {
+	exec := &Executor{
+		metadata:      newRuntimeMetadataRegistry(),
+		routes:        make(map[string]FFIRoute),
+		packageValues: make(map[string]*BoundPackageValue),
+		consts:        make(map[string]string),
+		ffiPackages:   make(map[string]*BoundFFIPackage),
+	}
+	exec.metadata.registerStructSchema("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; }"))
+
+	surface := NewBoundFFISurface(nil)
+	surface.AddRoute("demo", "Call", FFIRoute{
+		Name:    "demo.Call",
+		FuncSig: MustParseRuntimeFuncSig("function(String) Void"),
+	})
+	surface.AddStruct("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+
+	err := exec.ApplyBoundFFISurface(surface)
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "struct schema" {
+		t.Fatalf("expected struct schema conflict, got %T %v", err, err)
+	}
+	if _, ok := exec.routes["demo.Call"]; ok {
+		t.Fatalf("failed surface registration polluted route state: %+v", exec.routes)
+	}
+	if pkg, ok := exec.lookupFFIPackage("demo"); ok && len(pkg.Members) != 0 {
+		t.Fatalf("failed surface registration polluted package members: %+v", pkg.Members)
+	}
+}
+
+func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPollutePackageMembers(t *testing.T) {
+	exec := &Executor{
+		metadata:      newRuntimeMetadataRegistry(),
+		routes:        make(map[string]FFIRoute),
+		packageValues: make(map[string]*BoundPackageValue),
+		consts:        make(map[string]string),
+		ffiPackages:   make(map[string]*BoundFFIPackage),
+	}
+	exec.packageValues["demo.Value"] = &BoundPackageValue{
+		Name:  "demo.Value",
+		Spec:  &ValueSpec{Type: MustParseRuntimeType("String"), ReadOnly: true},
+		Value: NewString("old"),
+	}
+
+	surface := NewBoundFFISurface(nil)
+	surface.AddRoute("demo", "Call", FFIRoute{
+		Name:    "demo.Call",
+		FuncSig: MustParseRuntimeFuncSig("function(String) Void"),
+	})
+	surface.AddPackageValue("demo", "Value", &ValueSpec{Type: MustParseRuntimeType("Int64"), ReadOnly: true}, NewInt(1))
+
+	err := exec.ApplyBoundFFISurface(surface)
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
+		t.Fatalf("expected package value conflict, got %T %v", err, err)
+	}
+	if _, ok := exec.routes["demo.Call"]; ok {
+		t.Fatalf("failed surface registration polluted route state: %+v", exec.routes)
+	}
+	if pkg, ok := exec.lookupFFIPackage("demo"); ok && len(pkg.Members) != 0 {
+		t.Fatalf("failed surface registration polluted package members: %+v", pkg.Members)
+	}
+	if got := exec.packageValues["demo.Value"]; got == nil || got.Spec == nil || got.Spec.Type.Raw != "String" {
+		t.Fatalf("existing package value should remain unchanged, got %#v", got)
+	}
+}
+
 func TestValidateExternalRequirementsChecksMethodID(t *testing.T) {
 	sig := MustParseRuntimeFuncSig("function(String) Void")
 	exec := &Executor{

@@ -20,6 +20,38 @@ func newRuntimeMetadataRegistry() *runtimeMetadataRegistry {
 	}
 }
 
+func cloneRuntimeMetadataRegistry(in *runtimeMetadataRegistry) *runtimeMetadataRegistry {
+	out := newRuntimeMetadataRegistry()
+	if in == nil {
+		return out
+	}
+	out.namedTypesByName = cloneRuntimeTypeMap(in.namedTypesByName)
+	out.namedTypesByTypeID = cloneRuntimeTypeMap(in.namedTypesByTypeID)
+	out.structsByName = cloneRuntimeStructSpecMap(in.structsByName)
+	out.structsByTypeID = cloneRuntimeStructSpecMap(in.structsByTypeID)
+	out.interfacesByName = cloneRuntimeInterfaceSpecMap(in.interfacesByName)
+	out.interfacesByTypeID = cloneRuntimeInterfaceSpecMap(in.interfacesByTypeID)
+	if out.namedTypesByName == nil {
+		out.namedTypesByName = make(map[string]RuntimeType)
+	}
+	if out.namedTypesByTypeID == nil {
+		out.namedTypesByTypeID = make(map[string]RuntimeType)
+	}
+	if out.structsByName == nil {
+		out.structsByName = make(map[string]*RuntimeStructSpec)
+	}
+	if out.structsByTypeID == nil {
+		out.structsByTypeID = make(map[string]*RuntimeStructSpec)
+	}
+	if out.interfacesByName == nil {
+		out.interfacesByName = make(map[string]*RuntimeInterfaceSpec)
+	}
+	if out.interfacesByTypeID == nil {
+		out.interfacesByTypeID = make(map[string]*RuntimeInterfaceSpec)
+	}
+	return out
+}
+
 func (r *runtimeMetadataRegistry) registerNamedType(name string, typeInfo RuntimeType) {
 	r.namedTypesByName[name] = typeInfo
 	switch typeInfo.Kind {

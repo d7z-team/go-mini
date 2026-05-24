@@ -63,17 +63,30 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 	if err := runtime.CheckPublicFFISurfaceSchema(bundle.Schema); err != nil {
 		return err
 	}
-	var bound *runtime.BoundFFISurface
-	if bundle.Bind != nil {
-		var err error
-		bound, err = bundle.Bind(runtime.FFIBindContext{Registry: e.registry})
-		if err != nil {
-			return err
-		}
-	}
-	if bundle.Schema != nil || bound != nil || len(bundle.Templates) > 0 {
+	if bundle.Schema != nil || bundle.Bind != nil || len(bundle.Templates) > 0 {
 		e.mu.Lock()
 		defer e.mu.Unlock()
+
+		nextSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
+		if nextSchema == nil {
+			nextSchema = runtime.NewFFISurfaceSchema()
+		}
+		if err := nextSchema.Merge(bundle.Schema); err != nil {
+			return err
+		}
+
+		var bound *runtime.BoundFFISurface
+		var registryTx *ffigo.HandleRegistryTx
+		if bundle.Bind != nil {
+			registryTx = e.registry.BeginTransaction()
+			defer registryTx.Rollback()
+
+			var err error
+			bound, err = bundle.Bind(runtime.FFIBindContext{Registry: registryTx.Registry, PinnedRegistry: registryTx.Registry})
+			if err != nil {
+				return err
+			}
+		}
 
 		var nextTemplates *calltemplate.Registry
 		if len(bundle.Templates) > 0 {
@@ -128,13 +141,6 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 				}
 			}
 		}
-		nextSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
-		if nextSchema == nil {
-			nextSchema = runtime.NewFFISurfaceSchema()
-		}
-		if err := nextSchema.Merge(bundle.Schema); err != nil {
-			return err
-		}
 		nextBound := runtime.NewBoundFFISurface(nextSchema)
 		if e.boundSurface != nil {
 			if err := nextBound.Merge(e.boundSurface); err != nil {
@@ -150,7 +156,10 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 			}
 			e.applyBoundSurfaceChangesLocked(bound)
 		}
-		e.surfaceSchema = nextSchema
+		if bound != nil {
+			registryTx.Commit()
+		}
+		e.surfaceSchema = runtime.CloneFFISurfaceSchema(nextBound.Schema)
 		e.boundSurface = nextBound
 		if nextTemplates != nil {
 			e.templates = nextTemplates
@@ -259,6 +268,13 @@ func compiledProgramNode(compiled *compiler.Artifact) *ast.ProgramStmt {
 	return compiled.Program
 }
 
+func (e *MiniExecutor) prepareCompiledArtifact(compiled *compiler.Artifact, semanticCtx *ast.SemanticContext) error {
+	if err := e.prepareArtifactModules(compiled); err != nil {
+		return newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	return nil
+}
+
 func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error {
 	if compiled == nil || compiled.Program == nil {
 		return nil
@@ -345,19 +361,7 @@ func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStm
 }
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
-func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
-	var prepared *runtime.PreparedProgram
-	if prog != nil {
-		if prog.Compiled != nil && prog.Compiled.Bytecode != nil && prog.Compiled.Bytecode.Executable != nil {
-			prepared = prog.Compiled.Bytecode.Executable
-		} else if prog.Program != nil {
-			compiled, _, err := e.newCompiler().CompileProgram(path, "", prog.Program, false)
-			if err == nil && compiled != nil && compiled.Bytecode != nil {
-				prepared = compiled.Bytecode.Executable
-			}
-		}
-	}
-
+func (e *MiniExecutor) RegisterModule(path string, prog *ExecutableProgram) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if prog == nil {
@@ -365,14 +369,15 @@ func (e *MiniExecutor) RegisterModule(path string, prog *MiniProgram) {
 		delete(e.moduleSources, path)
 		return
 	}
-	delete(e.modules, path)
-	if prog.Program != nil {
-		e.moduleSources[path] = prog.Program
-	} else {
-		delete(e.moduleSources, path)
+
+	var prepared *runtime.PreparedProgram
+	if compiled := prog.Compilation(); compiled != nil && compiled.Bytecode != nil {
+		prepared = compiled.Bytecode.Executable
 	}
+	delete(e.moduleSources, path)
 	if prepared != nil {
 		e.modules[path] = prepared
 		return
 	}
+	delete(e.modules, path)
 }

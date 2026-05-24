@@ -23,7 +23,7 @@ func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, co
 func TestAdvancedAssignmentAndSlice(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	execute := func(t *testing.T, prog *engine.MiniProgram) {
+	execute := func(t *testing.T, prog *engine.ExecutableProgram) {
 		t.Helper()
 		if err := prog.Execute(context.Background()); err != nil {
 			t.Fatal(err)

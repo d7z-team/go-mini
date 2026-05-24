@@ -40,7 +40,7 @@ func TestCompileAndExecuteSeparation(t *testing.T) {
 	// 阶段 2：在节点 B 接收 JSON 并高并发执行
 	bytecodeLoader := engine.NewMiniExecutor()
 
-	// 从 bytecode JSON 数据直接恢复为可执行的 MiniProgram 蓝图
+	// 从 bytecode JSON 数据直接恢复为可执行程序蓝图
 	loadedProgram, err := bytecodeLoader.NewRuntimeByBytecodeJSON(bytecodeJSON)
 	if err != nil {
 		t.Fatalf("Server B failed to load program from bytecode JSON: %v", err)

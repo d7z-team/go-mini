@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,14 +9,33 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/frontend"
 	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 const ScriptFileExt = ".mgo"
 
-type SourceFile struct {
-	Filename string
-	Code     string
+type SourceFile = frontend.SourceFile
+
+type GoFrontend struct{}
+
+func (GoFrontend) Language() string {
+	return "go-mini/go"
+}
+
+func (GoFrontend) Parse(ctx context.Context, files []frontend.SourceFile, mode frontend.Mode) (*ast.ProgramStmt, *frontend.SourceBundle, []error, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+	programs, errs, err := ParseSourceFiles(files, mode.Tolerant)
+	if err != nil {
+		return nil, frontend.NewSourceBundle(GoFrontend{}.Language(), files), errs, err
+	}
+	program, err := MergePrograms(programs)
+	if err != nil {
+		return nil, frontend.NewSourceBundle(GoFrontend{}.Language(), files), errs, err
+	}
+	return program, frontend.NewSourceBundle(GoFrontend{}.Language(), files), errs, nil
 }
 
 func CompileDirInputs(dir string) ([]SourceFile, error) {
@@ -36,6 +56,7 @@ func CompileDirInputs(dir string) ([]SourceFile, error) {
 		}
 		files = append(files, SourceFile{
 			Filename: path,
+			Language: GoFrontend{}.Language(),
 			Code:     string(content),
 		})
 	}

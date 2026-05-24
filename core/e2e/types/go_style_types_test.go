@@ -172,9 +172,6 @@ func TestGoStyleTypes(t *testing.T) {
 				t.Fatalf("Compile failed: %v", err)
 			}
 
-			// astJSON, _ := prog.MarshalIndentJSON("", "  ")
-			// t.Logf("Normalized AST: %s", string(astJSON))
-
 			err = prog.Execute(context.Background())
 			if err != nil {
 				t.Errorf("Execute failed: %v", err)

@@ -235,10 +235,6 @@ func (e *MiniExecutor) TryRegisterPackageValue(name string, spec *runtime.ValueS
 	if err := e.checkGlobalTemplateConflictLocked(name, "package value"); err != nil {
 		return err
 	}
-	value, err := provider.Bind(runtime.FFIBindContext{Registry: e.registry})
-	if err != nil {
-		return fmt.Errorf("bind package value %s: %w", name, err)
-	}
 	if existing, ok := e.valueSchemas[ast.Ident(name)]; ok && existing.Type.Raw != spec.Type.Raw {
 		return &runtime.SchemaConflictError{
 			Kind:     "package value",
@@ -247,6 +243,17 @@ func (e *MiniExecutor) TryRegisterPackageValue(name string, spec *runtime.ValueS
 			New:      spec.Type.Raw.String(),
 		}
 	}
+
+	registryTx := e.registry.BeginTransaction()
+	defer registryTx.Rollback()
+	value, err := provider.Bind(runtime.FFIBindContext{Registry: registryTx.Registry, PinnedRegistry: registryTx.Registry})
+	if err != nil {
+		return fmt.Errorf("bind package value %s: %w", name, err)
+	}
+	if value == nil {
+		return fmt.Errorf("bind package value %s returned nil value", name)
+	}
+	registryTx.Commit()
 	e.valueSchemas[ast.Ident(name)] = spec
 	e.packageValues[name] = &runtime.BoundPackageValue{Name: name, Spec: spec, Value: value}
 	return nil
@@ -402,7 +409,6 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 			return err
 		}
 	}
-	e.routes[name] = next
 	if funcSig != nil {
 		if existing, ok := e.funcSchemas[ast.Ident(name)]; ok && !runtime.SameRuntimeFuncSchema(existing, funcSig) {
 			return &runtime.SchemaConflictError{
@@ -412,6 +418,9 @@ func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBrid
 				New:      string(funcSig.Spec),
 			}
 		}
+	}
+	e.routes[name] = next
+	if funcSig != nil {
 		e.funcSchemas[ast.Ident(name)] = funcSig
 	}
 	return nil

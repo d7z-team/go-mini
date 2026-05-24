@@ -22,7 +22,7 @@ func main() {
 	tbl.SetString(1, 2, "x")
 }`
 
-	prog, errs := exec.NewMiniProgramByGoCodeTolerant(source)
+	prog, errs := exec.AnalyzeGoCodeTolerant(source)
 	if prog == nil {
 		t.Fatal("expected program")
 	}

@@ -16,8 +16,13 @@ type PackageValueProvider interface {
 	Bind(FFIBindContext) (*Var, error)
 }
 
+type HandleRegistrar interface {
+	RegisterPinnedTyped(obj interface{}, typeID string) uint32
+}
+
 type FFIBindContext struct {
-	Registry *ffigo.HandleRegistry
+	Registry       *ffigo.HandleRegistry
+	PinnedRegistry HandleRegistrar
 }
 
 type StaticHostRefProvider struct {
@@ -27,7 +32,11 @@ type StaticHostRefProvider struct {
 }
 
 func (p StaticHostRefProvider) Bind(ctx FFIBindContext) (*Var, error) {
-	if ctx.Registry == nil {
+	registrar := ctx.PinnedRegistry
+	if registrar == nil {
+		registrar = ctx.Registry
+	}
+	if registrar == nil {
 		return nil, errors.New("package value requires a handle registry")
 	}
 	if p.ElementType.IsEmpty() {
@@ -37,7 +46,7 @@ func (p StaticHostRefProvider) Bind(ctx FFIBindContext) (*Var, error) {
 	if err != nil {
 		return nil, err
 	}
-	handle := ctx.Registry.RegisterPinnedTyped(p.Value, p.ElementType.String())
+	handle := registrar.RegisterPinnedTyped(p.Value, p.ElementType.String())
 	return NewPinnedHostRefVar(handle, p.Bridge, typ), nil
 }
 

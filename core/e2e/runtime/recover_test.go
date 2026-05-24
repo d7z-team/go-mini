@@ -35,92 +35,28 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = runtime.Execute(context.Background())
-	if err != nil {
+	if err := runtime.Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTryCatchManual(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	// 手动构造一个 TryStmt 的 JSON 表达
-	// 注意我们需要一个 ProgramStmt 包含 Main
-	tryJSON := `
-{
-  "meta": "boot",
-  "variables": {
-    "res": { "meta": "literal", "type": "String", "value": "initial" }
-  },
-  "main": [
-    {
-      "meta": "try",
-      "body": {
-        "meta": "block",
-        "children": [
-          {
-            "meta": "call",
-            "func": { "meta": "const_ref", "name": "panic" },
-            "args": [ { "meta": "literal", "type": "String", "value": "try-boom" } ]
-          }
-        ]
-      },
-      "catch": {
-        "meta": "catch",
-        "var_name": "e",
-        "body": {
-          "meta": "block",
-          "children": [
-            {
-              "meta": "assignment",
-              "kind": "=",
-              "lhs": { "meta": "identifier", "name": "res" },
-              "value": { "meta": "identifier", "name": "e" }
-            }
-          ]
-        }
-      }
-    },
-    {
-       "meta": "if",
-       "cond": {
-          "meta": "binary", "operator": "Neq",
-          "left": { "meta": "identifier", "name": "res" },
-          "right": { "meta": "literal", "type": "String", "value": "try-boom" }
-       },
-       "body": {
-          "meta": "block",
-          "children": [
-             { "meta": "call", "func": { "meta": "const_ref", "name": "panic" }, "args": [ { "meta": "literal", "type": "String", "value": "failed" } ] }
-          ]
-       }
-    }
-  ]
-}
-`
-	node, err := engine.Unmarshal([]byte(tryJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	program := tryProgram(
+		map[ast.Ident]ast.Expr{"res": stringLit("initial")},
+		nil,
+		tryStmt(
+			block(call("panic", stringLit("try-boom"))),
+			catchStmt("e", assign("res", ident("e"))),
+			nil,
+		),
+		ifStmt(
+			binary("Neq", ident("res"), stringLit("try-boom")),
+			call("panic", stringLit("failed")),
+		),
+	)
 
-	program, _, err := engine.ValidateAndOptimize(node, func(v *ast.ValidContext) error {
-		v.AddVariable("panic", "function(String) Void")
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	compiled, err := executor.CompileProgram(program)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := executor.NewRuntimeByCompiled(compiled)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = runtime.Execute(context.Background())
-	if err != nil {
+	runtime := compileASTRuntimeProgram(t, program)
+	if err := runtime.Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -693,6 +693,13 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	stagedRoutes := cloneFFIRouteMap(e.routes)
+	stagedMetadata := cloneRuntimeMetadataRegistry(e.metadata)
+	stagedPackageValues := cloneBoundPackageValueMap(e.packageValues)
+	stagedConsts := cloneStringMap(e.consts)
+	stagedPackages := cloneBoundFFIPackageMap(e.ffiPackages)
+
 	for name, route := range surface.Routes {
 		if route.Name == "" {
 			route.Name = name
@@ -700,12 +707,12 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		if err := CheckPublicFFIRouteSchema(name, route); err != nil {
 			return err
 		}
-		if existing, ok := e.routes[name]; ok {
+		if existing, ok := stagedRoutes[name]; ok {
 			if err := CheckRouteCompatible(name, existing, route); err != nil {
 				return err
 			}
 		}
-		e.routes[name] = route
+		stagedRoutes[name] = route
 	}
 	for name, spec := range surface.Structs {
 		if spec == nil {
@@ -714,14 +721,14 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		if err := CheckPublicFFIStructSchema(name, spec); err != nil {
 			return err
 		}
-		if existing, ok := e.metadata.structsByName[name]; ok {
+		if existing, ok := stagedMetadata.structsByName[name]; ok {
 			merged, err := MergeStructSchema(name, existing, spec)
 			if err != nil {
 				return err
 			}
 			spec = merged
 		}
-		e.metadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
+		stagedMetadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
 	}
 	for name, spec := range surface.Interfaces {
 		if spec == nil {
@@ -730,44 +737,104 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		if err := CheckPublicFFIInterfaceSchema(name, spec); err != nil {
 			return err
 		}
-		if existing, ok := e.metadata.interfacesByName[name]; ok {
+		if existing, ok := stagedMetadata.interfacesByName[name]; ok {
 			if err := CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
 				return err
 			}
 		}
-		e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
-	}
-	if e.packageValues == nil {
-		e.packageValues = make(map[string]*BoundPackageValue)
+		stagedMetadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
 	}
 	for name, value := range surface.PackageValues {
 		if value != nil {
 			if err := CheckPublicFFIValueSpec(name, value.Spec); err != nil {
 				return err
 			}
+			if existing, ok := stagedPackageValues[name]; ok && existing != nil && existing.Spec != nil && value.Spec != nil && existing.Spec.Type.Raw != value.Spec.Type.Raw {
+				return &SchemaConflictError{
+					Kind:     "package value",
+					Name:     name,
+					Existing: existing.Spec.Type.Raw.String(),
+					New:      value.Spec.Type.Raw.String(),
+				}
+			}
 		}
-		e.packageValues[name] = value
+		stagedPackageValues[name] = cloneBoundPackageValue(value)
 	}
 	for name, value := range surface.Consts {
-		e.consts[name] = value
-	}
-	if e.ffiPackages == nil {
-		e.ffiPackages = make(map[string]*BoundFFIPackage)
+		stagedConsts[name] = value
 	}
 	for path, pkg := range surface.Packages {
 		if pkg == nil {
 			continue
 		}
-		target := e.ffiPackages[path]
+		target := stagedPackages[path]
 		if target == nil {
 			target = &BoundFFIPackage{Path: path, Members: make(map[string]*BoundFFIMember)}
-			e.ffiPackages[path] = target
+			stagedPackages[path] = target
 		}
 		for name, member := range pkg.Members {
-			target.Members[name] = member
+			target.Members[name] = cloneBoundFFIMember(member)
 		}
 	}
+
+	e.routes = stagedRoutes
+	e.metadata = stagedMetadata
+	e.packageValues = stagedPackageValues
+	e.consts = stagedConsts
+	e.ffiPackages = stagedPackages
 	return nil
+}
+
+func cloneFFIRouteMap(in map[string]FFIRoute) map[string]FFIRoute {
+	out := make(map[string]FFIRoute, len(in))
+	for name, route := range in {
+		route.FuncSig = CloneRuntimeFuncSig(route.FuncSig)
+		out[name] = route
+	}
+	return out
+}
+
+func cloneBoundPackageValue(in *BoundPackageValue) *BoundPackageValue {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Spec = cloneValueSpec(in.Spec)
+	return &out
+}
+
+func cloneBoundPackageValueMap(in map[string]*BoundPackageValue) map[string]*BoundPackageValue {
+	out := make(map[string]*BoundPackageValue, len(in))
+	for name, value := range in {
+		out[name] = cloneBoundPackageValue(value)
+	}
+	return out
+}
+
+func cloneBoundFFIMember(in *BoundFFIMember) *BoundFFIMember {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
+}
+
+func cloneBoundFFIPackageMap(in map[string]*BoundFFIPackage) map[string]*BoundFFIPackage {
+	out := make(map[string]*BoundFFIPackage, len(in))
+	for path, pkg := range in {
+		if pkg == nil {
+			continue
+		}
+		cloned := &BoundFFIPackage{
+			Path:    pkg.Path,
+			Members: make(map[string]*BoundFFIMember, len(pkg.Members)),
+		}
+		for name, member := range pkg.Members {
+			cloned.Members[name] = cloneBoundFFIMember(member)
+		}
+		out[path] = cloned
+	}
+	return out
 }
 
 func sortedBoundPackageMembers(pkg *BoundFFIPackage) []*BoundFFIMember {

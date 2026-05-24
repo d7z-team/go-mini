@@ -19,7 +19,7 @@ func main() {
     fmt.
 }`
 	// 使用容错解析，因为 fmt. 语法是不完整的
-	testProgram, _ := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	testProgram, _ := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if testProgram == nil {
 		t.Fatal("failed to get program even in tolerant mode")
 	}
@@ -52,7 +52,7 @@ func TestLSPGlobalBuiltins(t *testing.T) {
 func main() {
 	
 }`
-	testProgram, _ := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	testProgram, _ := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	completionItems := testProgram.GetCompletionsAt(3, 1)
 
 	printCount := 0
@@ -108,7 +108,7 @@ func main() {
 	time.Sleep(1 * time.Second)
 }`
 
-	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) == 0 {
 		t.Fatal("expected semantic diagnostics for missing import")
 	}
@@ -129,7 +129,7 @@ import "definitely/not-found"
 func main() {}
 `
 
-	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) == 0 {
 		t.Fatal("expected unknown import diagnostic")
 	}
@@ -157,7 +157,7 @@ func main() {
 }
 `
 
-	_, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	for _, err := range errs {
 		if strings.Contains(err.Error(), "module not found: time") {
 			t.Fatalf("registered FFI import should be accepted, got: %v", err)
@@ -183,7 +183,7 @@ func main() {
 	a.Log("created", 1001)
 }`
 
-	testProgram, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	testProgram, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) > 0 {
 		t.Fatalf("unexpected diagnostics: %v", errs)
 	}
@@ -222,7 +222,7 @@ func main() {
 	traceValue(count+1)
 }`
 
-	testProgram, errs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	testProgram, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) > 0 {
 		t.Fatalf("unexpected diagnostics: %v", errs)
 	}
@@ -242,7 +242,7 @@ func main() {
 	}
 }
 
-func hoverMarkdownAtSubstring(t *testing.T, program *engine.MiniProgram, source, needle string) string {
+func hoverMarkdownAtSubstring(t *testing.T, program *engine.AnalysisProgram, source, needle string) string {
 	t.Helper()
 	index := strings.Index(source, needle)
 	if index < 0 {

@@ -1,4 +1,4 @@
-package e2e_test
+package tests
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/debugger"
 )
 
-func mustLoadInt64Global(t *testing.T, prog *engine.MiniProgram, name string) int64 {
+func loadInt64Global(t *testing.T, prog *engine.ExecutableProgram, name string) int64 {
 	t.Helper()
 	value, ok := prog.SharedState().LoadGlobal(name)
 	if !ok || value == nil {
@@ -18,9 +18,8 @@ func mustLoadInt64Global(t *testing.T, prog *engine.MiniProgram, name string) in
 	return value.I64
 }
 
-func TestDebugger_BasicBreakAndStep(t *testing.T) {
-	testExecutor := newStdExecutor()
-	// 注意行号：第一行是 package main
+func TestDebuggerBasicBreakAndStep(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -35,7 +34,7 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(5) // Break at 'b := 20'
+	dbg.AddBreakpoint(5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -46,50 +45,45 @@ func TestDebugger_BasicBreakAndStep(t *testing.T) {
 		done <- testProgram.Execute(ctx)
 	}()
 
-	// Wait for breakpoint at line 5
 	select {
-	case event := <-dbg.EventChan:
-		t.Logf("Hit breakpoint at line %d", event.Loc.L)
+	case event := <-dbg.Events():
 		if event.ExecutionContextID != 1 {
 			t.Fatalf("expected root execution context id 1, got %d", event.ExecutionContextID)
 		}
 		if event.Loc.L != 5 {
-			t.Fatalf("Expected break at line 5, got %d", event.Loc.L)
+			t.Fatalf("expected break at line 5, got %d", event.Loc.L)
 		}
 		if event.Variables["a"] != "10" {
-			t.Fatalf("Expected a=10, got %v", event.Variables["a"])
+			t.Fatalf("expected a=10, got %v", event.Variables["a"])
 		}
 		if _, exists := event.Variables["b"]; exists {
 			t.Fatalf("b should not be initialized yet")
 		}
-		// Send step into
-		dbg.CommandChan <- debugger.CmdStepInto
+		dbg.StepInto()
 	case <-ctx.Done():
-		t.Fatal("Timeout waiting for breakpoint at line 5")
+		t.Fatal("timeout waiting for breakpoint at line 5")
 	}
 
-	// Step repeatedly until we reach line 6
 	for {
 		select {
-		case event := <-dbg.EventChan:
-			t.Logf("Stepped to line %d", event.Loc.L)
+		case event := <-dbg.Events():
 			if event.Loc.L == 6 {
 				if event.Variables["b"] != "20" {
-					t.Fatalf("Expected b=20, got %v", event.Variables["b"])
+					t.Fatalf("expected b=20, got %v", event.Variables["b"])
 				}
-				// Reached line 6, continue
-				dbg.CommandChan <- debugger.CmdContinue
+				dbg.Continue()
 				goto WAIT_DONE
-			} else if event.Loc.L == 5 {
-				// Keep stepping if still on line 5
-				dbg.CommandChan <- debugger.CmdStepInto
-			} else {
-				t.Fatalf("Unexpected step to line %d", event.Loc.L)
 			}
+			if event.Loc.L == 5 {
+				dbg.StepInto()
+				continue
+			}
+			t.Fatalf("unexpected step to line %d", event.Loc.L)
 		case <-ctx.Done():
-			t.Fatal("Timeout waiting for step to line 6")
+			t.Fatal("timeout waiting for step to line 6")
 		}
 	}
+
 WAIT_DONE:
 	select {
 	case err = <-done:
@@ -97,12 +91,12 @@ WAIT_DONE:
 			t.Fatal(err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Timeout waiting for program completion")
+		t.Fatal("timeout waiting for program completion")
 	}
 }
 
-func TestDebugger_SnippetMode(t *testing.T) {
-	testExecutor := newStdExecutor()
+func TestDebuggerSnippetMode(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 
 	sourceSnippet := `
 		x := 100 // Line 2
@@ -111,7 +105,7 @@ func TestDebugger_SnippetMode(t *testing.T) {
 	`
 
 	dbg := debugger.NewSession()
-	dbg.SetStepping(true) // 开启单步模式以观察每一行
+	dbg.SetStepping(true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -123,33 +117,29 @@ func TestDebugger_SnippetMode(t *testing.T) {
 	}()
 
 	linesSeen := []int{}
-
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case event := <-dbg.EventChan:
+		case event := <-dbg.Events():
 			linesSeen = append(linesSeen, event.Loc.L)
-			if event.Loc.L == 3 {
-				if event.Variables["x"] != "100" {
-					t.Fatalf("Expected x=100, got %v", event.Variables["x"])
-				}
+			if event.Loc.L == 3 && event.Variables["x"] != "100" {
+				t.Fatalf("expected x=100, got %v", event.Variables["x"])
 			}
-			dbg.CommandChan <- debugger.CmdStepInto
+			dbg.StepInto()
 		case err := <-done:
 			if err != nil {
 				t.Fatal(err)
 			}
 			goto DONE
 		case <-ctx.Done():
-			t.Fatal("Timeout in TestDebugger_SnippetMode")
+			t.Fatal("timeout in snippet debugger test")
 		case <-ticker.C:
-			// Just to ensure we don't block forever if event and done are both empty
 		}
 	}
+
 DONE:
-	// Ensure we read from done if we haven't already
 	select {
 	case err := <-done:
 		if err != nil {
@@ -159,14 +149,12 @@ DONE:
 	}
 
 	if len(linesSeen) == 0 {
-		t.Fatalf("No statements were intercepted in snippet mode. Is stepping working?")
+		t.Fatalf("no statements were intercepted in snippet mode")
 	}
-	t.Logf("Lines seen: %v", linesSeen)
 }
 
-func TestDebugger_LoopExecution(t *testing.T) {
-	testExecutor := newStdExecutor()
-	// 测试循环内的断点命中情况
+func TestDebuggerLoopExecution(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -183,7 +171,7 @@ func TestDebugger_LoopExecution(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(6) // 在循环体内打断点
+	dbg.AddBreakpoint(6)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -194,53 +182,39 @@ func TestDebugger_LoopExecution(t *testing.T) {
 		done <- testProgram.Execute(ctx)
 	}()
 
-	// 预期循环 3 次，所以断点应该被命中 3 次
 	expectedI := []string{"1", "2", "3"}
-	expectedSum := []string{"0", "1", "3"} // sum 在执行第 6 行时的状态 (赋值发生前)
-
+	expectedSum := []string{"0", "1", "3"}
 	for loopCount := 0; loopCount < 3; loopCount++ {
 		select {
-		case event := <-dbg.EventChan:
+		case event := <-dbg.Events():
 			if event.Loc.L != 6 {
-				t.Fatalf("Expected break at line 6, got %d", event.Loc.L)
+				t.Fatalf("expected break at line 6, got %d", event.Loc.L)
 			}
-
-			// 验证循环变量 i 和 累加器 sum 的当前状态
-			actualI := event.Variables["i"]
-			actualSum := event.Variables["sum"]
-
-			if actualI != expectedI[loopCount] {
-				t.Errorf("Loop %d: Expected i=%s, got %s", loopCount, expectedI[loopCount], actualI)
+			if actual := event.Variables["i"]; actual != expectedI[loopCount] {
+				t.Errorf("loop %d: expected i=%s, got %s", loopCount, expectedI[loopCount], actual)
 			}
-			if actualSum != expectedSum[loopCount] {
-				t.Errorf("Loop %d: Expected sum=%s, got %s", loopCount, expectedSum[loopCount], actualSum)
+			if actual := event.Variables["sum"]; actual != expectedSum[loopCount] {
+				t.Errorf("loop %d: expected sum=%s, got %s", loopCount, expectedSum[loopCount], actual)
 			}
-
-			// 继续执行，直到下一次命中该断点
-			dbg.CommandChan <- debugger.CmdContinue
-
+			dbg.Continue()
 		case <-ctx.Done():
-			t.Fatalf("Timeout waiting for breakpoint in loop %d", loopCount)
+			t.Fatalf("timeout waiting for breakpoint in loop %d", loopCount)
 		}
 	}
 
-	// 确保没有多余的命中
 	select {
-	case <-dbg.EventChan:
-		t.Fatal("Breakpoint hit more times than expected")
+	case <-dbg.Events():
+		t.Fatal("breakpoint hit more times than expected")
 	case <-time.After(100 * time.Millisecond):
-		// 正常，没有多余的命中
 	}
 
-	err = <-done
-	if err != nil {
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDebugger_AnytimePause(t *testing.T) {
-	testExecutor := newStdExecutor()
-	// 一个执行较长时间的循环，方便我们有时间发起异步暂停
+func TestDebuggerAnytimePause(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -256,7 +230,6 @@ func TestDebugger_AnytimePause(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	ctx = debugger.WithDebugger(ctx, dbg)
@@ -266,64 +239,54 @@ func TestDebugger_AnytimePause(t *testing.T) {
 		done <- testProgram.Execute(ctx)
 	}()
 
-	// 发起异步暂停请求
-	// 我们不再 sleep，而是直接发请求，或者稍微 sleep 一点点
 	time.Sleep(10 * time.Millisecond)
 	dbg.RequestPause()
-
-	// 预期在下一条语句停下
 	select {
-	case event := <-dbg.EventChan:
-		t.Logf("Successfully paused at line %d", event.Loc.L)
-		// 恢复执行
-		dbg.CommandChan <- debugger.CmdContinue
+	case <-dbg.Events():
+		dbg.Continue()
 	case <-ctx.Done():
-		t.Fatal("Timeout waiting for anytime pause")
+		t.Fatal("timeout waiting for anytime pause")
 	}
 
-	// 再次尝试暂停
 	time.Sleep(20 * time.Millisecond)
 	dbg.RequestPause()
-
 	select {
-	case event := <-dbg.EventChan:
-		t.Logf("Successfully paused second time at line %d", event.Loc.L)
-		dbg.CommandChan <- debugger.CmdContinue
+	case <-dbg.Events():
+		dbg.Continue()
 	case <-ctx.Done():
-		t.Fatal("Timeout waiting for second anytime pause")
+		t.Fatal("timeout waiting for second anytime pause")
 	}
 
-	err = <-done
-	if err != nil {
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestDebugger_ContextBreakpointHitsChildContext(t *testing.T) {
-	testExecutor := newStdExecutor()
-
+func TestDebuggerContextBreakpointHitsChildContext(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
-	package main
-	import "time"
+package main
 
-	func worker() Int64 {
-		time.Sleep(20000000) // Line 6
-		x := 1               // Line 7
-		return x
-	}
+func worker() Int64 {
+	x := 1 // Line 5
+	return x
+}
 
-	func main() {
-		go worker()
-		time.Sleep(50000000)
+func main() {
+	go worker()
+	for i := 0; i < 1000; i++ {
+		anchor := i
+		_ = anchor
 	}
-	`
+}
+`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(6)
+	dbg.AddBreakpoint(5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -335,14 +298,14 @@ func TestDebugger_ContextBreakpointHitsChildContext(t *testing.T) {
 	}()
 
 	select {
-	case event := <-dbg.EventChan:
-		if event.Loc.L != 6 {
-			t.Fatalf("expected child execution context breakpoint at line 6, got %d", event.Loc.L)
+	case event := <-dbg.Events():
+		if event.Loc.L != 5 {
+			t.Fatalf("expected child execution context breakpoint at line 5, got %d", event.Loc.L)
 		}
 		if event.ExecutionContextID <= 1 {
 			t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 		}
-		dbg.CommandChan <- debugger.CmdContinue
+		dbg.Continue()
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for child execution context breakpoint")
 	}
@@ -352,32 +315,32 @@ func TestDebugger_ContextBreakpointHitsChildContext(t *testing.T) {
 	}
 }
 
-func TestDebugger_ContextBreakpointHitsMultipleContexts(t *testing.T) {
-	testExecutor := newStdExecutor()
-
+func TestDebuggerContextBreakpointHitsMultipleContexts(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
-	package main
-	import "time"
+package main
 
-	func worker() Int64 {
-		time.Sleep(20000000) // Line 6
-		x := 1               // Line 7
-		return x
-	}
+func worker() Int64 {
+	x := 1 // Line 5
+	return x
+}
 
-	func main() {
-		go worker()
-		go worker()
-		time.Sleep(50000000)
+func main() {
+	go worker()
+	go worker()
+	for i := 0; i < 1000; i++ {
+		anchor := i
+		_ = anchor
 	}
-	`
+}
+`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(6)
+	dbg.AddBreakpoint(5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -392,16 +355,16 @@ func TestDebugger_ContextBreakpointHitsMultipleContexts(t *testing.T) {
 	contextHits := make(map[uint32]bool)
 	for {
 		select {
-		case event := <-dbg.EventChan:
-			if event.Loc.L != 6 {
-				t.Fatalf("expected child execution context breakpoint at line 6, got %d", event.Loc.L)
+		case event := <-dbg.Events():
+			if event.Loc.L != 5 {
+				t.Fatalf("expected child execution context breakpoint at line 5, got %d", event.Loc.L)
 			}
 			if event.ExecutionContextID <= 1 {
 				t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 			}
 			hits++
 			contextHits[event.ExecutionContextID] = true
-			dbg.CommandChan <- debugger.CmdContinue
+			dbg.Continue()
 		case err := <-done:
 			if err != nil {
 				t.Fatal(err)
@@ -419,41 +382,44 @@ func TestDebugger_ContextBreakpointHitsMultipleContexts(t *testing.T) {
 	}
 }
 
-func TestDebugger_ContextBreakpointUsesAllStopPause(t *testing.T) {
-	testExecutor := newStdExecutor()
-
+func TestDebuggerContextBreakpointUsesAllStopPause(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
 	sourceProgram := `
-	package main
-	import "time"
+package main
 
-	var ticks = 0
+var ticks = 0
 
-	func breaker() {
-		time.Sleep(20000000) // Line 8
-		marker := 1
+func breaker() {
+	for i := 0; i < 1000; i++ {
+		marker := i
 		_ = marker
 	}
+	paused := 1 // Line 11
+	_ = paused
+}
 
-	func runner() {
-		for i := 0; i < 10; i++ {
-			ticks = ticks + 1
-			time.Sleep(10000000)
-		}
+func runner() {
+	for i := 0; i < 50000; i++ {
+		ticks = ticks + 1
 	}
+}
 
-	func main() {
-		go breaker()
-		go runner()
-		time.Sleep(200000000)
+func main() {
+	go runner()
+	go breaker()
+	for i := 0; i < 50000; i++ {
+		anchor := i
+		_ = anchor
 	}
-	`
+}
+`
 	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(8)
+	dbg.AddBreakpoint(11)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -465,25 +431,138 @@ func TestDebugger_ContextBreakpointUsesAllStopPause(t *testing.T) {
 	}()
 
 	select {
-	case event := <-dbg.EventChan:
-		if event.Loc.L != 8 {
-			t.Fatalf("expected child execution context breakpoint at line 8, got %d", event.Loc.L)
+	case event := <-dbg.Events():
+		if event.Loc.L != 11 {
+			t.Fatalf("expected child execution context breakpoint at line 11, got %d", event.Loc.L)
 		}
 		if event.ExecutionContextID <= 1 {
 			t.Fatalf("expected child execution context id greater than root, got %d", event.ExecutionContextID)
 		}
-		ticksBefore := mustLoadInt64Global(t, testProgram, "ticks")
+		ticksBefore := loadInt64Global(t, testProgram, "ticks")
 		time.Sleep(50 * time.Millisecond)
-		ticksAfter := mustLoadInt64Global(t, testProgram, "ticks")
+		ticksAfter := loadInt64Global(t, testProgram, "ticks")
 		if ticksAfter != ticksBefore {
 			t.Fatalf("expected all-stop pause to freeze other execution contexts, ticks changed from %d to %d", ticksBefore, ticksAfter)
 		}
-		dbg.CommandChan <- debugger.CmdContinue
+		dbg.Continue()
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for child execution context breakpoint")
 	}
 
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDebuggerRemoveBreakpointAfterHitPreventsLaterHits(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	sourceProgram := `
+package main
+func main() {
+	total := 0
+	for i := 0; i < 3; i++ {
+		total = total + 1 // Line 6
+	}
+}
+`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	dbg.AddBreakpoint(6)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- testProgram.Execute(ctx)
+	}()
+
+	select {
+	case event := <-dbg.Events():
+		if event.Loc.L != 6 {
+			t.Fatalf("expected first breakpoint at line 6, got %d", event.Loc.L)
+		}
+		dbg.RemoveBreakpoint(6)
+		dbg.Continue()
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for first breakpoint")
+	}
+
+	select {
+	case event := <-dbg.Events():
+		t.Fatalf("removed breakpoint should not pause again, got line %d", event.Loc.L)
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for completion after breakpoint removal")
+	}
+}
+
+func TestDebuggerConcurrentBreakpointMutation(t *testing.T) {
+	testExecutor := engine.NewMiniExecutor()
+	sourceProgram := `
+package main
+func main() {
+	total := 0
+	for i := 0; i < 20000; i++ {
+		total = total + 1 // Line 6
+	}
+}
+`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	stopMutating := make(chan struct{})
+	mutatorDone := make(chan struct{})
+	go func() {
+		defer close(mutatorDone)
+		for {
+			select {
+			case <-stopMutating:
+				return
+			case <-ctx.Done():
+				return
+			default:
+			}
+			dbg.AddBreakpoint(6)
+			_ = dbg.HasBreakpoint(6)
+			dbg.RemoveBreakpoint(6)
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		err := testProgram.Execute(ctx)
+		close(stopMutating)
+		done <- err
+	}()
+
+	for {
+		select {
+		case <-dbg.Events():
+			dbg.Continue()
+		case err := <-done:
+			<-mutatorDone
+			if err != nil {
+				t.Fatal(err)
+			}
+			return
+		case <-ctx.Done():
+			t.Fatal("timeout during concurrent breakpoint mutation")
+		}
 	}
 }

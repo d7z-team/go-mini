@@ -27,10 +27,20 @@ func newFFILibTemplateExecutor() *engine.MiniExecutor {
 
 func registerTemplateModule(t *testing.T, executor *engine.MiniExecutor, path, source string) {
 	t.Helper()
-	prog, err := executor.NewRuntimeByGoCode(source)
+	compiled, err := executor.CompileGoCode(source)
 	if err != nil {
 		t.Fatalf("compile module %s failed: %v", path, err)
 	}
+	prog, err := executor.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		t.Fatalf("load module %s failed: %v", path, err)
+	}
+	executor.SetModuleLoader(func(request string) (*ast.ProgramStmt, error) {
+		if request == path {
+			return compiled.Program, nil
+		}
+		return nil, runtime.ErrModuleNotFound
+	})
 	executor.RegisterModule(path, prog)
 }
 
@@ -123,7 +133,7 @@ func TestCompileOnlyPackageTemplateIsRemovedBeforeBytecode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register template failed: %v", err)
 	}
-	prog, err := executor.NewRuntimeByGoCode(`
+	compiled, err := executor.CompileGoCode(`
 package main
 
 import x "aaa"
@@ -134,6 +144,10 @@ func main() {
 `)
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
+	}
+	prog, err := executor.NewRuntimeByCompiled(compiled)
+	if err != nil {
+		t.Fatalf("load runtime failed: %v", err)
 	}
 	recorder := &templateOutputRecorder{}
 	if err := prog.Execute(fmtlib.WithOutputter(context.Background(), recorder)); err != nil {
@@ -149,12 +163,12 @@ func main() {
 	if hasImportAlias(aliases, "aaa", calltemplate.InternalNamePrefix) {
 		t.Fatalf("synthetic compile-only import leaked into bytecode aliases: %#v", aliases)
 	}
-	if imports := prog.Compilation().ImportedPrograms; len(imports) != 0 {
+	if imports := compiled.ImportedPrograms; len(imports) != 0 {
 		t.Fatalf("compile-only import leaked into artifact imports: %#v", imports)
 	}
-	for key := range prog.Compilation().Program.ImportLocs {
+	for key := range compiled.Program.ImportLocs {
 		if key == "x" || strings.HasSuffix(key, "\x1fx") {
-			t.Fatalf("compile-only import location leaked: %#v", prog.Compilation().Program.ImportLocs)
+			t.Fatalf("compile-only import location leaked: %#v", compiled.Program.ImportLocs)
 		}
 	}
 }

@@ -27,7 +27,7 @@ func main() {
     }
 }`
 
-	testProgram, parseErrs := testExecutor.NewMiniProgramByGoCodeTolerant(sourceSnippet)
+	testProgram, parseErrs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
 	if testProgram == nil {
 		t.Fatal("failed to get program")
 	}

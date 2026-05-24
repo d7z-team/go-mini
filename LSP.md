@@ -3,10 +3,11 @@
 `go-mini` 的 LSP / 查询能力建立在源码 AST 与语义上下文之上，和运行时执行链各自独立：
 
 - LSP 使用 `core/ast` 与 `core/lspserv`
-- 源码解析和 tolerant conversion 使用 `core/gofrontend`
-- 执行使用 compiled artifact / prepared program / bytecode
+- Go 源码解析和 tolerant conversion 使用 `core/gofrontend`
+- 其他语言前端通过 `core/frontend.Frontend` 产出 Mini AST 后进入同一分析链
+- 执行使用 `ExecutableProgram` / prepared program / bytecode
 
-IDE 能力基于源码和 AST，执行链基于 compiled artifact / prepared program / bytecode。
+IDE 能力基于 `AnalysisProgram` 持有的源码 AST，执行链基于 `ExecutableProgram` / prepared program / bytecode。
 
 LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
 
@@ -27,7 +28,9 @@ Go-Mini 提供两类常见接入方式：
 go run ./examples/cmd/lsp-server
 ```
 
-编辑器插件只需要把该命令配置为 language server command。服务端支持 initialize、didOpen、didChange、didClose、completion、hover、definition、references、shutdown 和 exit。
+编辑器插件只需要把该命令配置为 language server command。服务端支持 initialize、didOpen、didChange、didSave、didClose、completion、hover、definition、references、shutdown 和 exit。
+
+stdio LSP 声明 full text sync（`textDocumentSync.change = 1`），客户端应在 didOpen / didChange 中发送完整文本。诊断防抖在 server 侧完成：didChange 只更新会话并延迟发布 diagnostics，didSave 会立即 flush pending diagnostics，didClose 会取消 pending diagnostics 并发布空诊断清理旧状态。completion / hover / definition / references 查询会基于最新会话文本刷新分析，不等待诊断防抖结束。
 
 ### HTTP / RPC API
 
@@ -144,6 +147,6 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 
 ## 7. 当前 IDE 能力
 
-`examples/cmd/lsp-server` 支持标准 stdio JSON-RPC 生命周期，包括 initialize、didOpen、didChange、didClose、shutdown 和 exit。
+`examples/cmd/lsp-server` 支持标准 stdio JSON-RPC 生命周期，包括 initialize、didOpen、didChange、didSave、didClose、shutdown 和 exit，并使用 full text sync 与 server 侧 diagnostics debounce。
 
 导航与悬浮覆盖局部变量、全局变量、函数、方法、结构体字段、import 别名、常量、类型别名、结构体和接口声明。references 会按客户端传入的 `includeDeclaration` 决定是否返回声明位置。

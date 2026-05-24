@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-func executeAndSnapshot(t *testing.T, prog *engine.MiniProgram) *runtime.SharedStateSnapshot {
+func executeAndSnapshot(t *testing.T, prog *engine.ExecutableProgram) *runtime.SharedStateSnapshot {
 	t.Helper()
 
 	if err := prog.Execute(context.Background()); err != nil {

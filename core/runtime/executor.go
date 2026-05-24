@@ -742,7 +742,7 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 							execCtxID = execCtx.ID
 						}
 					}
-					session.Debugger.EventChan <- &debugger.Event{
+					event := &debugger.Event{
 						ExecutionContextID: execCtxID,
 						Loc: &debugger.Position{
 							F: task.Source.File,
@@ -753,7 +753,7 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 					}
 					// Debugger pause is currently all-stop: once any VM execution context triggers a pause,
 					// the single-threaded VM waits here for a global debugger command.
-					cmd := <-session.Debugger.CommandChan
+					cmd := session.Debugger.Pause(event)
 					if cmd == debugger.CmdStepInto {
 						session.Debugger.SetStepping(true)
 					}

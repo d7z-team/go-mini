@@ -1,12 +1,14 @@
 package compiler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/calltemplate"
+	"gopkg.d7z.net/go-mini/core/frontend"
 	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
@@ -107,20 +109,39 @@ func (c *Compiler) CompileDir(dir string, tolerant bool) (*Artifact, []error, *a
 }
 
 func (c *Compiler) compileSources(files []SourceFile, source string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
-	programs, errs, err := ParseSourceFiles(files, tolerant)
+	return c.CompileWithFrontend(context.Background(), GoFrontend{}, files, source, tolerant)
+}
+
+func (c *Compiler) CompileWithFrontend(ctx context.Context, fe frontend.Frontend, files []SourceFile, source string, tolerant bool) (*Artifact, []error, *ast.SemanticContext, error) {
+	if fe == nil {
+		return nil, nil, nil, errors.New("missing frontend")
+	}
+	if len(files) == 0 {
+		return nil, nil, nil, errors.New("missing source files")
+	}
+	program, bundle, errs, err := fe.Parse(ctx, files, frontend.Mode{Tolerant: tolerant})
 	if err != nil {
 		return nil, errs, nil, err
 	}
-	program, err := MergePrograms(programs)
-	if err != nil {
-		return nil, errs, nil, err
+	filename := files[0].Filename
+	if filename == "" {
+		filename = files[0].URI
 	}
-	sources := make(map[string]string, len(files))
-	for _, file := range files {
-		sources[file.Filename] = file.Code
+	sources := map[string]string(nil)
+	if bundle != nil {
+		if len(bundle.Files) > 0 {
+			if name := bundle.Files[0].Filename; name != "" {
+				filename = name
+			} else if uri := bundle.Files[0].URI; uri != "" {
+				filename = uri
+			}
+		}
+		if len(bundle.Sources) > 0 {
+			sources = bundle.Sources
+		}
 	}
-	artifact, sem, compileErr := c.CompileProgramWithSources(files[0].Filename, "", program, tolerant, sources)
-	if source != "" {
+	artifact, sem, compileErr := c.CompileProgramWithSources(filename, "", program, tolerant, sources)
+	if artifact != nil && source != "" {
 		artifact.Source = source
 	}
 	return artifact, errs, sem, compileErr

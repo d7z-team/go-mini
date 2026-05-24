@@ -1,13 +1,14 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-23
+更新时间: 2026-05-25
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
 ## 当前架构状态
 
 - 执行主路径以 `PreparedProgram` / `go-mini-bytecode` 为唯一装载工件，非调试运行不依赖 AST 节点。
-- `core/gofrontend` 是 Go source / Go AST -> Mini AST 的唯一前端转换包；Go 风格类型必须在这里立即规范化。
+- `core/frontend` 定义源码前端边界；`core/gofrontend` 是 Go source / Go AST -> Mini AST 的唯一 Go 前端转换包，其他语言只能实现 frontend 输出 Mini AST。Go 风格类型必须在 Go 前端立即规范化。
+- `ExecutableProgram` 只保留 bytecode artifact 与 runtime executor；AST、模板 hover 预览和 LSP 缓存只存在于 `AnalysisProgram` 或 compiler artifact。
 - `core/lowering` 是唯一 Mini AST -> `runtime.PreparedProgram` 边界；compiler 调用 `lowering.PrepareProgram`，runtime 包和依赖图不再引入 `core/ast`。
 - `core/lowering` 对不支持的 AST 节点与非法 canonical type 返回 lowering error，不以 panic 作为主错误通道。
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
@@ -15,7 +16,7 @@
 - Mini AST / lowering / compiler / runtime 只接受 canonical type；Go 风格类型只允许停留在 Go 前端输入层。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
-- FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则。
+- FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
 - 公开 FFI schema 会统一拒绝 `Ptr<T>`、`HostRef<Any>`、缺失函数 schema 和非法 inout mode；`Any` 只能承载纯值数据，不能承载 host ref、host handle、host error/interface handle 或 VM pointer。
 - MethodID 0 / `Invoke` 只保留显式 schema route 与 typed interface method 调用；普通 `HostRef` 成员访问不再存在无 schema 动态 Invoke 兜底。
 - Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`，不再按 route/constant 前缀扫描。
@@ -50,6 +51,9 @@
 - 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表只服务调试和必要兼容查找。
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链；bytecode 装载执行只使用 `Executable`，不从展示信息重建 AST。
+- AST 格式 JSON 解析与执行装载入口已移除；对外 JSON / 持久化 / CLI 装载只接受 `go-mini-bytecode`。
+- Debugger session 的断点、单步、事件和命令通道均封装在并发安全方法后，运行中增删断点不会直接读写公开 map。
+- stdio LSP 声明 full text sync；didOpen/didChange 进入 server 侧 diagnostics debounce，didSave 立即 flush pending diagnostics，didClose 取消 pending diagnostics 并清理旧诊断。
 
 ## 剩余工作
 
@@ -105,11 +109,11 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 ## 架构约束
 
 - 非调试执行主路径不得重新引入 AST 节点依赖。
-- runtime 包及其依赖图不得引入 `core/ast`；AST 相关转换必须停留在 `core/gofrontend`、`core/lowering`、compiler 或分析/调试边界。
+- runtime 包及其依赖图不得引入 `core/ast`；AST 相关转换必须停留在 `core/frontend` 实现、`core/gofrontend`、`core/lowering`、compiler 或分析/调试边界。
 - `core/ffigo` 不得 import `core/ast`、`go/ast`、`go/parser`、`go/scanner`、`go/token`；Go 前端转换只允许在 `core/gofrontend`。
 - `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
-- 对外 JSON / 持久化 / CLI 装载保持 bytecode-first。
+- 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，不恢复 AST 格式 JSON 装载入口。
 - FFI 只走 schema-only，不引入 spec/registrar 双轨。
 - 公开 FFI schema 禁止 `Ptr<T>` / `HostRef<Any>`；`Any` 不得承载 host identity；MethodID 0 / `Invoke` 必须有明确 schema。
 - Host opaque object 不得被 VM materialize；只能通过 FFI factory/return 形成 `HostRef<T>`。

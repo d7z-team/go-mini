@@ -6,6 +6,7 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 
 - Go-like syntax for small scripts and embedded workflows
 - Bytecode-first runtime
+- Frontend boundary for Go and future source languages
 - Embeddable Go API
 - CLI for running scripts and bytecode
 - Compile-time call templates for lightweight builtins

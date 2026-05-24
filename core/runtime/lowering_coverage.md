@@ -1,6 +1,6 @@
 # Go-Mini AST Lowering Coverage Matrix
 
-本文档记录了 `go-mini` 中所有 AST 节点在 `core/runtime/task_lowering.go` 中的转换（Lowering）状态，确保运行时完全脱 AST（AST-free）。
+本文档记录了 `go-mini` 中 AST 节点在 `core/lowering/task_lowering.go` 中的转换（Lowering）状态。AST 只允许停留在 frontend / compiler / lowering / analysis 边界，runtime 包不持有或导入 AST。
 
 ## 1. 语句 (Statements)
 
@@ -21,11 +21,11 @@
 | `ast.CallExprStmt` | **Lowered** | 转换为 `OpCall` + `CallData` |
 | `ast.InterruptStmt` | **Lowered** | 转换为 `OpInterrupt` (break/continue) |
 | `ast.GenDeclStmt` | **Lowered** | 转换为 `OpDeclareInitVars` (变量声明与可选初始化) |
-| `ast.ProgramStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，不进入执行路径 |
-| `ast.FunctionStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，转换为运行时闭包 |
-| `ast.StructStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，注册到结构体映射 |
-| `ast.InterfaceStmt` | **Handled at Init** | 在 `Executor` 初始化阶段处理，注册到接口映射 |
-| `ast.BadStmt` | **Explicitly Rejected** | 非法节点，在 Lowering 阶段抛出 Panic |
+| `ast.ProgramStmt` | **Handled at Lowering Init** | 在 lowering 初始化阶段处理，不进入执行任务路径 |
+| `ast.FunctionStmt` | **Handled at Lowering Init** | 在 lowering 初始化阶段转换为 `PreparedFunction` |
+| `ast.StructStmt` | **Handled at Lowering Init** | 在 lowering 初始化阶段写入 schema payload |
+| `ast.InterfaceStmt` | **Handled at Lowering Init** | 在 lowering 初始化阶段写入 schema payload |
+| `ast.BadStmt` | **Explicitly Rejected** | 非法节点在 lowering 阶段返回错误 |
 
 ## 2. 表达式 (Expressions)
 
@@ -45,7 +45,7 @@
 | `ast.StarExpr` | **Lowered** | 转换为 `OpApplyUnary` (Dereference) |
 | `ast.ImportExpr` | **Lowered** | 转换为 `OpImportInit` |
 | `ast.FuncLitExpr` | **Lowered** | 转换为 `OpMakeClosure` + `ClosureData` |
-| `ast.BadExpr` | **Explicitly Rejected** | 非法节点，在 Lowering 阶段抛出 Panic |
+| `ast.BadExpr` | **Explicitly Rejected** | 非法节点在 lowering 阶段返回错误 |
 
 ## 3. 左值 (LHS)
 

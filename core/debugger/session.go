@@ -2,6 +2,7 @@ package debugger
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 )
 
@@ -28,62 +29,85 @@ type Position struct {
 }
 
 type Session struct {
-	Breakpoints map[int]bool
-	EventChan   chan *Event
-	// CommandChan resumes the entire VM after an all-stop pause.
-	CommandChan    chan Command
-	isStepping     bool
-	pauseRequested int32
+	mu          sync.RWMutex
+	breakpoints map[int]struct{}
+	events      chan *Event
+	commands    chan Command
+	isStepping  bool
+
+	pauseRequested atomic.Bool
 }
 
 func NewSession() *Session {
 	return &Session{
-		Breakpoints: make(map[int]bool),
-		EventChan:   make(chan *Event),
-		CommandChan: make(chan Command),
+		breakpoints: make(map[int]struct{}),
+		events:      make(chan *Event),
+		commands:    make(chan Command),
 	}
 }
 
 func (s *Session) AddBreakpoint(line int) {
-	s.Breakpoints[line] = true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.breakpoints[line] = struct{}{}
 }
 
 func (s *Session) RemoveBreakpoint(line int) {
-	delete(s.Breakpoints, line)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.breakpoints, line)
 }
 
 func (s *Session) HasBreakpoint(line int) bool {
-	return s.Breakpoints[line]
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.breakpoints[line]
+	return ok
 }
 
 func (s *Session) IsStepping() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.isStepping
 }
 
 func (s *Session) SetStepping(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.isStepping = v
 }
 
 // RequestPause 宿主调用：请求 VM 在下一条语句立即停止执行
 func (s *Session) RequestPause() {
-	atomic.StoreInt32(&s.pauseRequested, 1)
+	s.pauseRequested.Store(true)
+}
+
+func (s *Session) Events() <-chan *Event {
+	return s.events
+}
+
+func (s *Session) Continue() {
+	s.commands <- CmdContinue
+}
+
+func (s *Session) StepInto() {
+	s.commands <- CmdStepInto
+}
+
+// Pause publishes an all-stop event and blocks until the debugger host resumes the VM.
+func (s *Session) Pause(event *Event) Command {
+	s.events <- event
+	return <-s.commands
 }
 
 // ShouldTrigger 内部方法：检查是否应该触发暂停（断点、单步或人工请求暂停）
 func (s *Session) ShouldTrigger(line int) bool {
-	// 1. 检查断点
-	if s.HasBreakpoint(line) {
-		return true
-	}
-	// 2. 检查单步模式
-	if s.IsStepping() {
-		return true
-	}
-	// 3. 检查人工异步暂停请求
-	if atomic.CompareAndSwapInt32(&s.pauseRequested, 1, 0) {
-		return true
-	}
-	return false
+	s.mu.RLock()
+	_, hitBreakpoint := s.breakpoints[line]
+	stepping := s.isStepping
+	s.mu.RUnlock()
+
+	return hitBreakpoint || stepping || s.pauseRequested.Swap(false)
 }
 
 type contextKey string

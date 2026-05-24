@@ -5,7 +5,8 @@
 ## 核心约束
 
 - 非调试执行主路径不得重新引入 AST 节点依赖。
-- runtime 包及其依赖图不得引入 `core/ast`；Go source 到 Mini AST 的转换只允许在 `core/gofrontend`，AST 到执行计划的转换只允许在 `core/lowering`。
+- runtime 包及其依赖图不得引入 `core/ast`；Go source 到 Mini AST 的转换只允许在 `core/gofrontend`，其他语言只能通过 `core/frontend.Frontend` 输出 Mini AST，AST 到执行计划的转换只允许在 `core/lowering`。
+- 执行对象必须保持 bytecode/runtime-only；AST、模板 hover 预览和 LSP 缓存只允许存在于分析对象或 compiler artifact。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，`go-mini-bytecode` / `PreparedProgram` 是唯一执行装载工件。
 - 不要扩展 AST-only 执行装载入口。
@@ -27,7 +28,7 @@
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。
-- 手写 AST / JSON AST 若出现非 canonical type，必须直接编译错误，不做兼容修复。
+- 手写 AST 若出现非 canonical type，必须直接编译错误，不做兼容修复；不得恢复 AST 格式 JSON 装载或执行入口。
 
 ## 多模块规则
 

@@ -8,7 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func newGoProgram(t *testing.T, code string) *engine.MiniProgram {
+func newGoProgram(t *testing.T, code string) *engine.ExecutableProgram {
 	t.Helper()
 	executor := newStdExecutor()
 	prog, err := executor.NewRuntimeByGoCode(code)
