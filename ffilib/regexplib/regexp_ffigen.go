@@ -12,502 +12,53 @@ import (
 )
 
 const (
-	MethodID_Regexp_Match                   = 1
-	MethodID_Regexp_MatchString             = 2
-	MethodID_Regexp_QuoteMeta               = 3
-	MethodID_Regexp_FindString              = 4
-	MethodID_Regexp_FindAllString           = 5
-	MethodID_Regexp_FindStringIndex         = 6
-	MethodID_Regexp_FindStringSubmatchIndex = 7
-	MethodID_Regexp_FindStringSubmatch      = 8
-	MethodID_Regexp_FindAllStringSubmatch   = 9
-	MethodID_Regexp_ReplaceAllString        = 10
-	MethodID_Regexp_ReplaceAllLiteralString = 11
-	MethodID_Regexp_Split                   = 12
+	methodIDRegexpMatch                   = 1
+	methodIDRegexpMatchString             = 2
+	methodIDRegexpQuoteMeta               = 3
+	methodIDRegexpFindString              = 4
+	methodIDRegexpFindAllString           = 5
+	methodIDRegexpFindStringIndex         = 6
+	methodIDRegexpFindStringSubmatchIndex = 7
+	methodIDRegexpFindStringSubmatch      = 8
+	methodIDRegexpFindAllStringSubmatch   = 9
+	methodIDRegexpReplaceAllString        = 10
+	methodIDRegexpReplaceAllLiteralString = 11
+	methodIDRegexpSplit                   = 12
 )
 
-type RegexpProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewRegexpProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Regexp {
-	return &RegexpProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *RegexpProxy) Match(pattern string, b []byte) (bool, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteBytes(b)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_Match, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return false, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) MatchString(pattern string, s string) (bool, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_MatchString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return false, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) QuoteMeta(s string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_QuoteMeta, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *RegexpProxy) FindString(pattern string, s string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *RegexpProxy) FindAllString(pattern string, s string, n int) ([]string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindAllString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]string, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = string(retBuf.ReadString())
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) FindStringIndex(pattern string, s string) ([]int, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []int
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]int, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		{
-			tmp := retBuf.ReadVarint()
-			v_0[i_v_0] = int(tmp)
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) FindStringSubmatchIndex(pattern string, s string) ([]int, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringSubmatchIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []int
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]int, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		{
-			tmp := retBuf.ReadVarint()
-			v_0[i_v_0] = int(tmp)
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) FindStringSubmatch(pattern string, s string) []string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindStringSubmatch, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]string, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = string(retBuf.ReadString())
-	}
-	return v_0
-}
-
-func (__p *RegexpProxy) FindAllStringSubmatch(pattern string, s string, n int) ([][]string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_FindAllStringSubmatch, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 [][]string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([][]string, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		l_v_0_i_v_0_ := int(retBuf.ReadUvarint())
-		v_0[i_v_0] = make([]string, l_v_0_i_v_0_)
-		for i_v_0_i_v_0_ := 0; i_v_0_i_v_0_ < l_v_0_i_v_0_; i_v_0_i_v_0_++ {
-			v_0[i_v_0][i_v_0_i_v_0_] = string(retBuf.ReadString())
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) ReplaceAllString(pattern string, src string, repl string) (string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(src))
-	wireBuf.WriteString(string(repl))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_ReplaceAllString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return "", err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) ReplaceAllLiteralString(pattern string, src string, repl string) (string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(src))
-	wireBuf.WriteString(string(repl))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_ReplaceAllLiteralString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return "", err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RegexpProxy) Split(pattern string, s string, n int) ([]string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(s))
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Regexp_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]string, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = string(retBuf.ReadString())
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Match":
-			methodID = MethodID_Regexp_Match
+			methodID = methodIDRegexpMatch
 		case "MatchString":
-			methodID = MethodID_Regexp_MatchString
+			methodID = methodIDRegexpMatchString
 		case "QuoteMeta":
-			methodID = MethodID_Regexp_QuoteMeta
+			methodID = methodIDRegexpQuoteMeta
 		case "FindString":
-			methodID = MethodID_Regexp_FindString
+			methodID = methodIDRegexpFindString
 		case "FindAllString":
-			methodID = MethodID_Regexp_FindAllString
+			methodID = methodIDRegexpFindAllString
 		case "FindStringIndex":
-			methodID = MethodID_Regexp_FindStringIndex
+			methodID = methodIDRegexpFindStringIndex
 		case "FindStringSubmatchIndex":
-			methodID = MethodID_Regexp_FindStringSubmatchIndex
+			methodID = methodIDRegexpFindStringSubmatchIndex
 		case "FindStringSubmatch":
-			methodID = MethodID_Regexp_FindStringSubmatch
+			methodID = methodIDRegexpFindStringSubmatch
 		case "FindAllStringSubmatch":
-			methodID = MethodID_Regexp_FindAllStringSubmatch
+			methodID = methodIDRegexpFindAllStringSubmatch
 		case "ReplaceAllString":
-			methodID = MethodID_Regexp_ReplaceAllString
+			methodID = methodIDRegexpReplaceAllString
 		case "ReplaceAllLiteralString":
-			methodID = MethodID_Regexp_ReplaceAllLiteralString
+			methodID = methodIDRegexpReplaceAllLiteralString
 		case "Split":
-			methodID = MethodID_Regexp_Split
+			methodID = methodIDRegexpSplit
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Regexp_Match:
+	case methodIDRegexpMatch:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var b []byte
@@ -525,7 +76,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_MatchString:
+	case methodIDRegexpMatchString:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -543,14 +94,14 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_QuoteMeta:
+	case methodIDRegexpQuoteMeta:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.QuoteMeta(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindString:
+	case methodIDRegexpFindString:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -559,7 +110,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindAllString:
+	case methodIDRegexpFindAllString:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -585,7 +136,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindStringIndex:
+	case methodIDRegexpFindStringIndex:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -606,7 +157,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindStringSubmatchIndex:
+	case methodIDRegexpFindStringSubmatchIndex:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -627,7 +178,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindStringSubmatch:
+	case methodIDRegexpFindStringSubmatch:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -639,7 +190,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteString(string(item))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_FindAllStringSubmatch:
+	case methodIDRegexpFindAllStringSubmatch:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -668,7 +219,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_ReplaceAllString:
+	case methodIDRegexpReplaceAllString:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var src string
@@ -688,7 +239,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_ReplaceAllLiteralString:
+	case methodIDRegexpReplaceAllLiteralString:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var src string
@@ -708,7 +259,7 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Regexp_Split:
+	case methodIDRegexpSplit:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var s string
@@ -739,81 +290,32 @@ func RegexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 	}
 }
 
-var Regexp_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Match", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"MatchString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"QuoteMeta", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"FindString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindAllString", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<String>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindStringIndex", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Array<Int64>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindStringSubmatchIndex", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Array<Int64>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindStringSubmatch", 8, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Array<String>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FindAllStringSubmatch", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<Array<String>>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAllString", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAllLiteralString", 11, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Split", 12, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<String>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Regexp_Bridge struct {
-	Impl     Regexp
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Regexp_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return RegexpHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Regexp_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return RegexpHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Regexp_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var regexpRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "regexp", MemberName: "Match", RouteName: "regexp.Match", MethodID: methodIDRegexpMatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "MatchString", RouteName: "regexp.MatchString", MethodID: methodIDRegexpMatchString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "QuoteMeta", RouteName: "regexp.QuoteMeta", MethodID: methodIDRegexpQuoteMeta, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindString", RouteName: "regexp.FindString", MethodID: methodIDRegexpFindString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindAllString", RouteName: "regexp.FindAllString", MethodID: methodIDRegexpFindAllString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<String>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindStringIndex", RouteName: "regexp.FindStringIndex", MethodID: methodIDRegexpFindStringIndex, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Array<Int64>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindStringSubmatchIndex", RouteName: "regexp.FindStringSubmatchIndex", MethodID: methodIDRegexpFindStringSubmatchIndex, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Array<Int64>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindStringSubmatch", RouteName: "regexp.FindStringSubmatch", MethodID: methodIDRegexpFindStringSubmatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) Array<String>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "FindAllStringSubmatch", RouteName: "regexp.FindAllStringSubmatch", MethodID: methodIDRegexpFindAllStringSubmatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<Array<String>>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "ReplaceAllString", RouteName: "regexp.ReplaceAllString", MethodID: methodIDRegexpReplaceAllString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "ReplaceAllLiteralString", RouteName: "regexp.ReplaceAllLiteralString", MethodID: methodIDRegexpReplaceAllLiteralString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "Split", RouteName: "regexp.Split", MethodID: methodIDRegexpSplit, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) tuple(Array<String>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceRegexp(impl Regexp) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("regexp", "Match", "regexp.Match", Regexp_FFI_Schemas[0].MethodID, Regexp_FFI_Schemas[0].Sig, Regexp_FFI_Schemas[0].Doc)
-	schema.AddFunc("regexp", "MatchString", "regexp.MatchString", Regexp_FFI_Schemas[1].MethodID, Regexp_FFI_Schemas[1].Sig, Regexp_FFI_Schemas[1].Doc)
-	schema.AddFunc("regexp", "QuoteMeta", "regexp.QuoteMeta", Regexp_FFI_Schemas[2].MethodID, Regexp_FFI_Schemas[2].Sig, Regexp_FFI_Schemas[2].Doc)
-	schema.AddFunc("regexp", "FindString", "regexp.FindString", Regexp_FFI_Schemas[3].MethodID, Regexp_FFI_Schemas[3].Sig, Regexp_FFI_Schemas[3].Doc)
-	schema.AddFunc("regexp", "FindAllString", "regexp.FindAllString", Regexp_FFI_Schemas[4].MethodID, Regexp_FFI_Schemas[4].Sig, Regexp_FFI_Schemas[4].Doc)
-	schema.AddFunc("regexp", "FindStringIndex", "regexp.FindStringIndex", Regexp_FFI_Schemas[5].MethodID, Regexp_FFI_Schemas[5].Sig, Regexp_FFI_Schemas[5].Doc)
-	schema.AddFunc("regexp", "FindStringSubmatchIndex", "regexp.FindStringSubmatchIndex", Regexp_FFI_Schemas[6].MethodID, Regexp_FFI_Schemas[6].Sig, Regexp_FFI_Schemas[6].Doc)
-	schema.AddFunc("regexp", "FindStringSubmatch", "regexp.FindStringSubmatch", Regexp_FFI_Schemas[7].MethodID, Regexp_FFI_Schemas[7].Sig, Regexp_FFI_Schemas[7].Doc)
-	schema.AddFunc("regexp", "FindAllStringSubmatch", "regexp.FindAllStringSubmatch", Regexp_FFI_Schemas[8].MethodID, Regexp_FFI_Schemas[8].Sig, Regexp_FFI_Schemas[8].Doc)
-	schema.AddFunc("regexp", "ReplaceAllString", "regexp.ReplaceAllString", Regexp_FFI_Schemas[9].MethodID, Regexp_FFI_Schemas[9].Sig, Regexp_FFI_Schemas[9].Doc)
-	schema.AddFunc("regexp", "ReplaceAllLiteralString", "regexp.ReplaceAllLiteralString", Regexp_FFI_Schemas[10].MethodID, Regexp_FFI_Schemas[10].Sig, Regexp_FFI_Schemas[10].Doc)
-	schema.AddFunc("regexp", "Split", "regexp.Split", Regexp_FFI_Schemas[11].MethodID, Regexp_FFI_Schemas[11].Sig, Regexp_FFI_Schemas[11].Doc)
+	schema.AddRouteDecls(regexpRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Regexp_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("regexp", "Match", runtime.FFIRoute{Name: "regexp.Match", Bridge: bridge, MethodID: Regexp_FFI_Schemas[0].MethodID, FuncSig: Regexp_FFI_Schemas[0].Sig, Doc: Regexp_FFI_Schemas[0].Doc})
-		bound.AddRoute("regexp", "MatchString", runtime.FFIRoute{Name: "regexp.MatchString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[1].MethodID, FuncSig: Regexp_FFI_Schemas[1].Sig, Doc: Regexp_FFI_Schemas[1].Doc})
-		bound.AddRoute("regexp", "QuoteMeta", runtime.FFIRoute{Name: "regexp.QuoteMeta", Bridge: bridge, MethodID: Regexp_FFI_Schemas[2].MethodID, FuncSig: Regexp_FFI_Schemas[2].Sig, Doc: Regexp_FFI_Schemas[2].Doc})
-		bound.AddRoute("regexp", "FindString", runtime.FFIRoute{Name: "regexp.FindString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[3].MethodID, FuncSig: Regexp_FFI_Schemas[3].Sig, Doc: Regexp_FFI_Schemas[3].Doc})
-		bound.AddRoute("regexp", "FindAllString", runtime.FFIRoute{Name: "regexp.FindAllString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[4].MethodID, FuncSig: Regexp_FFI_Schemas[4].Sig, Doc: Regexp_FFI_Schemas[4].Doc})
-		bound.AddRoute("regexp", "FindStringIndex", runtime.FFIRoute{Name: "regexp.FindStringIndex", Bridge: bridge, MethodID: Regexp_FFI_Schemas[5].MethodID, FuncSig: Regexp_FFI_Schemas[5].Sig, Doc: Regexp_FFI_Schemas[5].Doc})
-		bound.AddRoute("regexp", "FindStringSubmatchIndex", runtime.FFIRoute{Name: "regexp.FindStringSubmatchIndex", Bridge: bridge, MethodID: Regexp_FFI_Schemas[6].MethodID, FuncSig: Regexp_FFI_Schemas[6].Sig, Doc: Regexp_FFI_Schemas[6].Doc})
-		bound.AddRoute("regexp", "FindStringSubmatch", runtime.FFIRoute{Name: "regexp.FindStringSubmatch", Bridge: bridge, MethodID: Regexp_FFI_Schemas[7].MethodID, FuncSig: Regexp_FFI_Schemas[7].Sig, Doc: Regexp_FFI_Schemas[7].Doc})
-		bound.AddRoute("regexp", "FindAllStringSubmatch", runtime.FFIRoute{Name: "regexp.FindAllStringSubmatch", Bridge: bridge, MethodID: Regexp_FFI_Schemas[8].MethodID, FuncSig: Regexp_FFI_Schemas[8].Sig, Doc: Regexp_FFI_Schemas[8].Doc})
-		bound.AddRoute("regexp", "ReplaceAllString", runtime.FFIRoute{Name: "regexp.ReplaceAllString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[9].MethodID, FuncSig: Regexp_FFI_Schemas[9].Sig, Doc: Regexp_FFI_Schemas[9].Doc})
-		bound.AddRoute("regexp", "ReplaceAllLiteralString", runtime.FFIRoute{Name: "regexp.ReplaceAllLiteralString", Bridge: bridge, MethodID: Regexp_FFI_Schemas[10].MethodID, FuncSig: Regexp_FFI_Schemas[10].Sig, Doc: Regexp_FFI_Schemas[10].Doc})
-		bound.AddRoute("regexp", "Split", runtime.FFIRoute{Name: "regexp.Split", Bridge: bridge, MethodID: Regexp_FFI_Schemas[11].MethodID, FuncSig: Regexp_FFI_Schemas[11].Sig, Doc: Regexp_FFI_Schemas[11].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return regexpHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

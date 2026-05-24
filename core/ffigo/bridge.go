@@ -107,3 +107,35 @@ type FFIBridge interface {
 	// DestroyHandle 释放由 Host 创建的句柄
 	DestroyHandle(handle uint32) error
 }
+
+type RouterFunc func(context.Context, *FFICallRequest) (FFIReturn, error)
+
+type RouterBridge struct {
+	Registry *HandleRegistry
+	Router   RouterFunc
+}
+
+func NewRouterBridge(registry *HandleRegistry, router RouterFunc) *RouterBridge {
+	return &RouterBridge{Registry: registry, Router: router}
+}
+
+func (b *RouterBridge) Call(ctx context.Context, req *FFICallRequest) (FFIReturn, error) {
+	if req == nil {
+		return nil, errors.New("ffigo: missing FFI request")
+	}
+	if b == nil || b.Router == nil {
+		return nil, errors.New("ffigo: missing FFI router")
+	}
+	return b.Router(ctx, req)
+}
+
+func (b *RouterBridge) Invoke(ctx context.Context, req *FFICallRequest) (FFIReturn, error) {
+	return b.Call(ctx, req)
+}
+
+func (b *RouterBridge) DestroyHandle(handle uint32) error {
+	if b != nil && b.Registry != nil {
+		b.Registry.Remove(handle)
+	}
+	return nil
+}

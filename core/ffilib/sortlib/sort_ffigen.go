@@ -12,230 +12,35 @@ import (
 )
 
 const (
-	MethodID_Sort_Ints              = 1
-	MethodID_Sort_Float64s          = 2
-	MethodID_Sort_Strings           = 3
-	MethodID_Sort_IntsAreSorted     = 4
-	MethodID_Sort_Float64sAreSorted = 5
-	MethodID_Sort_StringsAreSorted  = 6
+	methodIDSortInts              = 1
+	methodIDSortFloat64s          = 2
+	methodIDSortStrings           = 3
+	methodIDSortIntsAreSorted     = 4
+	methodIDSortFloat64sAreSorted = 5
+	methodIDSortStringsAreSorted  = 6
 )
 
-type SortProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewSortProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Sort {
-	return &SortProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *SortProxy) Ints(x *ffigo.ArrayRef[int64]) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	if x == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		wireBuf.WriteUvarint(uint64(len(x.Value)))
-		for _, item := range x.Value {
-			wireBuf.WriteVarint(int64(item))
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Ints, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
-	if copyBackCount != 1 {
-		panic(fmt.Sprintf("ffigen: Sort.Ints copy-back mismatch: %d", copyBackCount))
-	}
-	if x == nil {
-		panic("ffigen: nil ArrayRef passed to Sort.Ints")
-	}
-	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
-	var copyBack_x []int64
-	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
-	copyBack_x = make([]int64, l_copyBack_x)
-	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
-		{
-			tmp := copyBackBuf_x.ReadVarint()
-			copyBack_x[i_copyBack_x] = int64(tmp)
-		}
-	}
-	x.Value = copyBack_x
-	return
-}
-
-func (__p *SortProxy) Float64s(x *ffigo.ArrayRef[float64]) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	if x == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		wireBuf.WriteUvarint(uint64(len(x.Value)))
-		for _, item := range x.Value {
-			wireBuf.WriteFloat64(float64(item))
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Float64s, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
-	if copyBackCount != 1 {
-		panic(fmt.Sprintf("ffigen: Sort.Float64s copy-back mismatch: %d", copyBackCount))
-	}
-	if x == nil {
-		panic("ffigen: nil ArrayRef passed to Sort.Float64s")
-	}
-	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
-	var copyBack_x []float64
-	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
-	copyBack_x = make([]float64, l_copyBack_x)
-	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
-		copyBack_x[i_copyBack_x] = float64(copyBackBuf_x.ReadFloat64())
-	}
-	x.Value = copyBack_x
-	return
-}
-
-func (__p *SortProxy) Strings(x *ffigo.ArrayRef[string]) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	if x == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		wireBuf.WriteUvarint(uint64(len(x.Value)))
-		for _, item := range x.Value {
-			wireBuf.WriteString(string(item))
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Strings, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
-	if copyBackCount != 1 {
-		panic(fmt.Sprintf("ffigen: Sort.Strings copy-back mismatch: %d", copyBackCount))
-	}
-	if x == nil {
-		panic("ffigen: nil ArrayRef passed to Sort.Strings")
-	}
-	copyBackBuf_x := ffigo.NewReader(retBuf.ReadBytes())
-	var copyBack_x []string
-	l_copyBack_x := int(copyBackBuf_x.ReadUvarint())
-	copyBack_x = make([]string, l_copyBack_x)
-	for i_copyBack_x := 0; i_copyBack_x < l_copyBack_x; i_copyBack_x++ {
-		copyBack_x[i_copyBack_x] = string(copyBackBuf_x.ReadString())
-	}
-	x.Value = copyBack_x
-	return
-}
-
-func (__p *SortProxy) IntsAreSorted(x []int64) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteVarint(int64(item))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_IntsAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *SortProxy) Float64sAreSorted(x []float64) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteFloat64(float64(item))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_Float64sAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *SortProxy) StringsAreSorted(x []string) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(x)))
-	for _, item := range x {
-		wireBuf.WriteString(string(item))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Sort_StringsAreSorted, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Ints":
-			methodID = MethodID_Sort_Ints
+			methodID = methodIDSortInts
 		case "Float64s":
-			methodID = MethodID_Sort_Float64s
+			methodID = methodIDSortFloat64s
 		case "Strings":
-			methodID = MethodID_Sort_Strings
+			methodID = methodIDSortStrings
 		case "IntsAreSorted":
-			methodID = MethodID_Sort_IntsAreSorted
+			methodID = methodIDSortIntsAreSorted
 		case "Float64sAreSorted":
-			methodID = MethodID_Sort_Float64sAreSorted
+			methodID = methodIDSortFloat64sAreSorted
 		case "StringsAreSorted":
-			methodID = MethodID_Sort_StringsAreSorted
+			methodID = methodIDSortStringsAreSorted
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Sort_Ints:
+	case methodIDSortInts:
 		var x *ffigo.ArrayRef[int64]
 		var xValue []int64
 		l_xValue := int(reqBuf.ReadUvarint())
@@ -260,7 +65,7 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		resBuf.WriteBytes(copyBackBuf_x.Bytes())
 		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
-	case MethodID_Sort_Float64s:
+	case methodIDSortFloat64s:
 		var x *ffigo.ArrayRef[float64]
 		var xValue []float64
 		l_xValue := int(reqBuf.ReadUvarint())
@@ -282,7 +87,7 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		resBuf.WriteBytes(copyBackBuf_x.Bytes())
 		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
-	case MethodID_Sort_Strings:
+	case methodIDSortStrings:
 		var x *ffigo.ArrayRef[string]
 		var xValue []string
 		l_xValue := int(reqBuf.ReadUvarint())
@@ -304,7 +109,7 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		resBuf.WriteBytes(copyBackBuf_x.Bytes())
 		ffigo.ReleaseBuffer(copyBackBuf_x)
 		return resBuf.Bytes(), nil
-	case MethodID_Sort_IntsAreSorted:
+	case methodIDSortIntsAreSorted:
 		var x []int64
 		l_x := int(reqBuf.ReadUvarint())
 		x = make([]int64, l_x)
@@ -318,7 +123,7 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Sort_Float64sAreSorted:
+	case methodIDSortFloat64sAreSorted:
 		var x []float64
 		l_x := int(reqBuf.ReadUvarint())
 		x = make([]float64, l_x)
@@ -329,7 +134,7 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Sort_StringsAreSorted:
+	case methodIDSortStringsAreSorted:
 		var x []string
 		l_x := int(reqBuf.ReadUvarint())
 		x = make([]string, l_x)
@@ -345,63 +150,26 @@ func SortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	}
 }
 
-var Sort_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Ints", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Void", runtime.FFIParamInOutArray), ""},
-	{"Float64s", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Void", runtime.FFIParamInOutArray), ""},
-	{"Strings", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Void", runtime.FFIParamInOutArray), ""},
-	{"IntsAreSorted", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Bool", runtime.FFIParamIn), ""},
-	{"Float64sAreSorted", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Bool", runtime.FFIParamIn), ""},
-	{"StringsAreSorted", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Bool", runtime.FFIParamIn), ""},
-}
-
-type Sort_Bridge struct {
-	Impl     Sort
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Sort_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return SortHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Sort_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return SortHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Sort_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var sortRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "sort", MemberName: "Ints", RouteName: "sort.Ints", MethodID: methodIDSortInts, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Void", runtime.FFIParamInOutArray), Doc: ""},
+	{PackagePath: "sort", MemberName: "Float64s", RouteName: "sort.Float64s", MethodID: methodIDSortFloat64s, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Void", runtime.FFIParamInOutArray), Doc: ""},
+	{PackagePath: "sort", MemberName: "Strings", RouteName: "sort.Strings", MethodID: methodIDSortStrings, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Void", runtime.FFIParamInOutArray), Doc: ""},
+	{PackagePath: "sort", MemberName: "IntsAreSorted", RouteName: "sort.IntsAreSorted", MethodID: methodIDSortIntsAreSorted, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Bool", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "sort", MemberName: "Float64sAreSorted", RouteName: "sort.Float64sAreSorted", MethodID: methodIDSortFloat64sAreSorted, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Float64>) Bool", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "sort", MemberName: "StringsAreSorted", RouteName: "sort.StringsAreSorted", MethodID: methodIDSortStringsAreSorted, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<String>) Bool", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceSort(impl Sort) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("sort", "Ints", "sort.Ints", Sort_FFI_Schemas[0].MethodID, Sort_FFI_Schemas[0].Sig, Sort_FFI_Schemas[0].Doc)
-	schema.AddFunc("sort", "Float64s", "sort.Float64s", Sort_FFI_Schemas[1].MethodID, Sort_FFI_Schemas[1].Sig, Sort_FFI_Schemas[1].Doc)
-	schema.AddFunc("sort", "Strings", "sort.Strings", Sort_FFI_Schemas[2].MethodID, Sort_FFI_Schemas[2].Sig, Sort_FFI_Schemas[2].Doc)
-	schema.AddFunc("sort", "IntsAreSorted", "sort.IntsAreSorted", Sort_FFI_Schemas[3].MethodID, Sort_FFI_Schemas[3].Sig, Sort_FFI_Schemas[3].Doc)
-	schema.AddFunc("sort", "Float64sAreSorted", "sort.Float64sAreSorted", Sort_FFI_Schemas[4].MethodID, Sort_FFI_Schemas[4].Sig, Sort_FFI_Schemas[4].Doc)
-	schema.AddFunc("sort", "StringsAreSorted", "sort.StringsAreSorted", Sort_FFI_Schemas[5].MethodID, Sort_FFI_Schemas[5].Sig, Sort_FFI_Schemas[5].Doc)
+	schema.AddRouteDecls(sortRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Sort_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("sort", "Ints", runtime.FFIRoute{Name: "sort.Ints", Bridge: bridge, MethodID: Sort_FFI_Schemas[0].MethodID, FuncSig: Sort_FFI_Schemas[0].Sig, Doc: Sort_FFI_Schemas[0].Doc})
-		bound.AddRoute("sort", "Float64s", runtime.FFIRoute{Name: "sort.Float64s", Bridge: bridge, MethodID: Sort_FFI_Schemas[1].MethodID, FuncSig: Sort_FFI_Schemas[1].Sig, Doc: Sort_FFI_Schemas[1].Doc})
-		bound.AddRoute("sort", "Strings", runtime.FFIRoute{Name: "sort.Strings", Bridge: bridge, MethodID: Sort_FFI_Schemas[2].MethodID, FuncSig: Sort_FFI_Schemas[2].Sig, Doc: Sort_FFI_Schemas[2].Doc})
-		bound.AddRoute("sort", "IntsAreSorted", runtime.FFIRoute{Name: "sort.IntsAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[3].MethodID, FuncSig: Sort_FFI_Schemas[3].Sig, Doc: Sort_FFI_Schemas[3].Doc})
-		bound.AddRoute("sort", "Float64sAreSorted", runtime.FFIRoute{Name: "sort.Float64sAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[4].MethodID, FuncSig: Sort_FFI_Schemas[4].Sig, Doc: Sort_FFI_Schemas[4].Doc})
-		bound.AddRoute("sort", "StringsAreSorted", runtime.FFIRoute{Name: "sort.StringsAreSorted", Bridge: bridge, MethodID: Sort_FFI_Schemas[5].MethodID, FuncSig: Sort_FFI_Schemas[5].Sig, Doc: Sort_FFI_Schemas[5].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return sortHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

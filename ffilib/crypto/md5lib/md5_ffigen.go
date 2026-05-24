@@ -13,48 +13,20 @@ import (
 )
 
 const (
-	MethodID_MD5_Sum = 1
+	methodIDMD5Sum = 1
 )
 
-type MD5Proxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMD5Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MD5 {
-	return &MD5Proxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MD5Proxy) Sum(data []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(data)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MD5_Sum, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func md5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sum":
-			methodID = MethodID_MD5_Sum
+			methodID = methodIDMD5Sum
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_MD5_Sum:
+	case methodIDMD5Sum:
 		var data []byte
 		data = reqBuf.ReadBytes()
 		r0 := impl.Sum(data)
@@ -66,52 +38,23 @@ func MD5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 	}
 }
 
-var MD5_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Sum", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
-}
-
-type MD5_Bridge struct {
-	Impl     MD5
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *MD5_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MD5HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *MD5_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MD5HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *MD5_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var md5Routes = []runtime.FFIRouteDecl{
+	{PackagePath: "crypto/md5", MemberName: "Sum", RouteName: "crypto/md5.Sum", MethodID: methodIDMD5Sum, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMD5(impl MD5) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("crypto/md5", "Sum", "crypto/md5.Sum", MD5_FFI_Schemas[0].MethodID, MD5_FFI_Schemas[0].Sig, MD5_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(md5Routes)
 	schema.AddConst("crypto/md5", "BlockSize", ffigo.ToConstantString(md5.BlockSize))
 	schema.AddConst("crypto/md5", "Size", ffigo.ToConstantString(md5.Size))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &MD5_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("crypto/md5", "Sum", runtime.FFIRoute{Name: "crypto/md5.Sum", Bridge: bridge, MethodID: MD5_FFI_Schemas[0].MethodID, FuncSig: MD5_FFI_Schemas[0].Sig, Doc: MD5_FFI_Schemas[0].Doc})
-		bound.AddConst("crypto/md5", "BlockSize", ffigo.ToConstantString(md5.BlockSize))
-		bound.AddConst("crypto/md5", "Size", ffigo.ToConstantString(md5.Size))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return md5HostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

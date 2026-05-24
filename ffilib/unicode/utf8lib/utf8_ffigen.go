@@ -12,172 +12,35 @@ import (
 )
 
 const (
-	MethodID_UTF8_DecodeRuneInString = 1
-	MethodID_UTF8_EncodeRune         = 2
-	MethodID_UTF8_FullRuneInString   = 3
-	MethodID_UTF8_RuneCountInString  = 4
-	MethodID_UTF8_RuneLen            = 5
-	MethodID_UTF8_ValidString        = 6
+	methodIDUTF8DecodeRuneInString = 1
+	methodIDUTF8EncodeRune         = 2
+	methodIDUTF8FullRuneInString   = 3
+	methodIDUTF8RuneCountInString  = 4
+	methodIDUTF8RuneLen            = 5
+	methodIDUTF8ValidString        = 6
 )
 
-type UTF8Proxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewUTF8Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) UTF8 {
-	return &UTF8Proxy{bridge: bridge, registry: registry}
-}
-
-func (__p *UTF8Proxy) DecodeRuneInString(s string) (int64, int) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_DecodeRuneInString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var v_1 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_1 = int(tmp)
-	}
-	return v_0, v_1
-}
-
-func (__p *UTF8Proxy) EncodeRune(r int64) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(r))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_EncodeRune, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *UTF8Proxy) FullRuneInString(s string) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_FullRuneInString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *UTF8Proxy) RuneCountInString(s string) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_RuneCountInString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *UTF8Proxy) RuneLen(r int64) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(r))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_RuneLen, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *UTF8Proxy) ValidString(s string) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_UTF8_ValidString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "DecodeRuneInString":
-			methodID = MethodID_UTF8_DecodeRuneInString
+			methodID = methodIDUTF8DecodeRuneInString
 		case "EncodeRune":
-			methodID = MethodID_UTF8_EncodeRune
+			methodID = methodIDUTF8EncodeRune
 		case "FullRuneInString":
-			methodID = MethodID_UTF8_FullRuneInString
+			methodID = methodIDUTF8FullRuneInString
 		case "RuneCountInString":
-			methodID = MethodID_UTF8_RuneCountInString
+			methodID = methodIDUTF8RuneCountInString
 		case "RuneLen":
-			methodID = MethodID_UTF8_RuneLen
+			methodID = methodIDUTF8RuneLen
 		case "ValidString":
-			methodID = MethodID_UTF8_ValidString
+			methodID = methodIDUTF8ValidString
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_UTF8_DecodeRuneInString:
+	case methodIDUTF8DecodeRuneInString:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, r1 := impl.DecodeRuneInString(s)
@@ -185,7 +48,7 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 		resBuf.WriteVarint(int64(r0))
 		resBuf.WriteVarint(int64(r1))
 		return resBuf.Bytes(), nil
-	case MethodID_UTF8_EncodeRune:
+	case methodIDUTF8EncodeRune:
 		var r int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -195,21 +58,21 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_UTF8_FullRuneInString:
+	case methodIDUTF8FullRuneInString:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.FullRuneInString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_UTF8_RuneCountInString:
+	case methodIDUTF8RuneCountInString:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.RuneCountInString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_UTF8_RuneLen:
+	case methodIDUTF8RuneLen:
 		var r int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -219,7 +82,7 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_UTF8_ValidString:
+	case methodIDUTF8ValidString:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.ValidString(s)
@@ -231,63 +94,26 @@ func UTF8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	}
 }
 
-var UTF8_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"DecodeRuneInString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Int64)", runtime.FFIParamIn), ""},
-	{"EncodeRune", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) TypeBytes", runtime.FFIParamIn), ""},
-	{"FullRuneInString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
-	{"RuneCountInString", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) Int64", runtime.FFIParamIn), ""},
-	{"RuneLen", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"ValidString", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
-}
-
-type UTF8_Bridge struct {
-	Impl     UTF8
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *UTF8_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return UTF8HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *UTF8_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return UTF8HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *UTF8_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var utf8Routes = []runtime.FFIRouteDecl{
+	{PackagePath: "unicode/utf8", MemberName: "DecodeRuneInString", RouteName: "unicode/utf8.DecodeRuneInString", MethodID: methodIDUTF8DecodeRuneInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Int64)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "EncodeRune", RouteName: "unicode/utf8.EncodeRune", MethodID: methodIDUTF8EncodeRune, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "FullRuneInString", RouteName: "unicode/utf8.FullRuneInString", MethodID: methodIDUTF8FullRuneInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "RuneCountInString", RouteName: "unicode/utf8.RuneCountInString", MethodID: methodIDUTF8RuneCountInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "RuneLen", RouteName: "unicode/utf8.RuneLen", MethodID: methodIDUTF8RuneLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "ValidString", RouteName: "unicode/utf8.ValidString", MethodID: methodIDUTF8ValidString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceUTF8(impl UTF8) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("unicode/utf8", "DecodeRuneInString", "unicode/utf8.DecodeRuneInString", UTF8_FFI_Schemas[0].MethodID, UTF8_FFI_Schemas[0].Sig, UTF8_FFI_Schemas[0].Doc)
-	schema.AddFunc("unicode/utf8", "EncodeRune", "unicode/utf8.EncodeRune", UTF8_FFI_Schemas[1].MethodID, UTF8_FFI_Schemas[1].Sig, UTF8_FFI_Schemas[1].Doc)
-	schema.AddFunc("unicode/utf8", "FullRuneInString", "unicode/utf8.FullRuneInString", UTF8_FFI_Schemas[2].MethodID, UTF8_FFI_Schemas[2].Sig, UTF8_FFI_Schemas[2].Doc)
-	schema.AddFunc("unicode/utf8", "RuneCountInString", "unicode/utf8.RuneCountInString", UTF8_FFI_Schemas[3].MethodID, UTF8_FFI_Schemas[3].Sig, UTF8_FFI_Schemas[3].Doc)
-	schema.AddFunc("unicode/utf8", "RuneLen", "unicode/utf8.RuneLen", UTF8_FFI_Schemas[4].MethodID, UTF8_FFI_Schemas[4].Sig, UTF8_FFI_Schemas[4].Doc)
-	schema.AddFunc("unicode/utf8", "ValidString", "unicode/utf8.ValidString", UTF8_FFI_Schemas[5].MethodID, UTF8_FFI_Schemas[5].Sig, UTF8_FFI_Schemas[5].Doc)
+	schema.AddRouteDecls(utf8Routes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &UTF8_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("unicode/utf8", "DecodeRuneInString", runtime.FFIRoute{Name: "unicode/utf8.DecodeRuneInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[0].MethodID, FuncSig: UTF8_FFI_Schemas[0].Sig, Doc: UTF8_FFI_Schemas[0].Doc})
-		bound.AddRoute("unicode/utf8", "EncodeRune", runtime.FFIRoute{Name: "unicode/utf8.EncodeRune", Bridge: bridge, MethodID: UTF8_FFI_Schemas[1].MethodID, FuncSig: UTF8_FFI_Schemas[1].Sig, Doc: UTF8_FFI_Schemas[1].Doc})
-		bound.AddRoute("unicode/utf8", "FullRuneInString", runtime.FFIRoute{Name: "unicode/utf8.FullRuneInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[2].MethodID, FuncSig: UTF8_FFI_Schemas[2].Sig, Doc: UTF8_FFI_Schemas[2].Doc})
-		bound.AddRoute("unicode/utf8", "RuneCountInString", runtime.FFIRoute{Name: "unicode/utf8.RuneCountInString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[3].MethodID, FuncSig: UTF8_FFI_Schemas[3].Sig, Doc: UTF8_FFI_Schemas[3].Doc})
-		bound.AddRoute("unicode/utf8", "RuneLen", runtime.FFIRoute{Name: "unicode/utf8.RuneLen", Bridge: bridge, MethodID: UTF8_FFI_Schemas[4].MethodID, FuncSig: UTF8_FFI_Schemas[4].Sig, Doc: UTF8_FFI_Schemas[4].Doc})
-		bound.AddRoute("unicode/utf8", "ValidString", runtime.FFIRoute{Name: "unicode/utf8.ValidString", Bridge: bridge, MethodID: UTF8_FFI_Schemas[5].MethodID, FuncSig: UTF8_FFI_Schemas[5].Sig, Doc: UTF8_FFI_Schemas[5].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return utf8HostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

@@ -10,8 +10,8 @@ import (
 
 func TestImage(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("image", imagelib.ImageLib_FFI_Schemas),
-		testutil.FFISchema("image.Image", imagelib.Image_FFI_Schemas),
+		testutil.SurfaceFFISchema("image", imagelib.SurfaceImageLib(&imagelib.ImageHost{})),
+		testutil.SurfaceFFISchema("image.Image", imagelib.SurfaceImage()),
 	}, []testutil.Case{
 		{
 			Name:    "image-operations-and-codecs",

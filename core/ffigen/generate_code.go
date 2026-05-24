@@ -7,6 +7,36 @@ import (
 	"strings"
 )
 
+func privateIdent(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	allUpper := true
+	for _, r := range name {
+		if 'a' <= r && r <= 'z' {
+			allUpper = false
+			break
+		}
+	}
+	if allUpper {
+		return strings.ToLower(name)
+	}
+	return strings.ToLower(name[:1]) + name[1:]
+}
+
+func methodIDConstName(typeName, methodName string) string {
+	return "methodID" + typeName + methodName
+}
+
+func routeDeclVarName(typeName string) string {
+	return privateIdent(typeName) + "Routes"
+}
+
+func hostRouterName(typeName string) string {
+	return privateIdent(typeName) + "HostRouter"
+}
+
 func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]string, schemas *schemaRegistry, ownedStructs map[string]bool) string {
 	name := spec.Name.Name
 	iface, err := g.flattenInterfaceType(name, spec.Type.(*ast.InterfaceType), interfaces)
@@ -37,8 +67,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
 		fmt.Fprintf(&sb, "\tschema.AddInterface(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
-		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
-		fmt.Fprintf(&sb, "\t\tbound.AddInterface(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
+		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurfaceFromSchema(schema)\n")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n\n")
@@ -106,7 +135,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		return structSchemaVarName(displayTypeName(structName))
 	}
-	emitStructAdds := func(indent, receiver string, skip ...string) {
+	emitStructAdds := func(skip ...string) {
 		skipSet := make(map[string]bool, len(skip))
 		for _, structName := range skip {
 			skipSet[structName] = true
@@ -115,10 +144,10 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 			if skipSet[structName] {
 				continue
 			}
-			fmt.Fprintf(&sb, "%s%s.AddStruct(\"%s\", %s)\n", indent, receiver, displayTypeName(structName), structSchemaVar(structName))
+			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), structSchemaVar(structName))
 		}
 	}
-	emitConstAdds := func(indent, receiver string) {
+	emitConstAdds := func() {
 		if !isModule || fixedPrefix == "" || len(constants) == 0 {
 			return
 		}
@@ -128,47 +157,37 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			fmt.Fprintf(&sb, "%s%s.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", indent, receiver, fixedPrefix, key, constants[key])
+			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", fixedPrefix, key, constants[key])
 		}
 	}
 	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)
-	emitInterfaceAdds := func(indent, receiver string) {
+	emitInterfaceAdds := func() {
 		for _, interfaceName := range referencedInterfaces {
-			fmt.Fprintf(&sb, "%s%s.AddInterface(\"%s\", %s)\n", indent, receiver, interfaceName, interfaceSchemaVars[interfaceName])
+			fmt.Fprintf(&sb, "\tschema.AddInterface(\"%s\", %s)\n", interfaceName, interfaceSchemaVars[interfaceName])
 		}
 	}
 
 	fmt.Fprintf(&sb, "const (\n")
 	for _, method := range methods {
-		fmt.Fprintf(&sb, "\tMethodID_%s_%s = %d\n", name, method.Name, method.MethodID)
+		fmt.Fprintf(&sb, "\t%s = %d\n", methodIDConstName(name, method.Name), method.MethodID)
 	}
 	fmt.Fprintf(&sb, ")\n\n")
 
-	if !isStruct {
+	if !isStruct && meta.proxyMarked {
 		g.writeProxy(&sb, name, methods, structs, moduleName, interfaceSchemaVars)
 	}
 	g.writeHostRouter(&sb, name, implType, methods, structs, moduleName, isStruct, methodsPrefix, vmType, interfaceSchemaVars)
 
-	fmt.Fprintf(&sb, "var %s_FFI_Schemas = []struct {\n\tName     string\n\tMethodID uint32\n\tSig      *runtime.RuntimeFuncSig\n\tDoc      string\n}{\n", name)
+	fmt.Fprintf(&sb, "var %s = []runtime.FFIRouteDecl{\n", routeDeclVarName(name))
 	for _, method := range methods {
+		decl := g.generatedRouteDeclLiteral(method, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
 		if len(method.Modes) > 0 {
-			fmt.Fprintf(&sb, "\t{%q, %d, runtime.MustParseRuntimeFuncSigWithModes(%q, %s), %q},\n", method.Name, method.MethodID, funcSpec(method.FuncType), strings.Join(method.Modes, ", "), method.Doc)
+			fmt.Fprintf(&sb, "\t%s Sig: runtime.MustParseRuntimeFuncSigWithModes(%q, %s), Doc: %q},\n", decl, funcSpec(method.FuncType), strings.Join(method.Modes, ", "), method.Doc)
 		} else {
-			fmt.Fprintf(&sb, "\t{%q, %d, runtime.MustParseRuntimeFuncSig(%q), %q},\n", method.Name, method.MethodID, funcSpec(method.FuncType), method.Doc)
+			fmt.Fprintf(&sb, "\t%s Sig: runtime.MustParseRuntimeFuncSig(%q), Doc: %q},\n", decl, funcSpec(method.FuncType), method.Doc)
 		}
 	}
 	fmt.Fprintf(&sb, "}\n\n")
-
-	fmt.Fprintf(&sb, "type %s_Bridge struct {\n\tImpl %s\n\tRegistry *ffigo.HandleRegistry\n}\n\n", name, implType)
-	fmt.Fprintf(&sb, "func (b *%s_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", name)
-	fmt.Fprintf(&sb, "\tif req == nil { return nil, fmt.Errorf(\"ffigen: missing FFI request\") }\n")
-	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, req.MethodID, \"\", req.Args)\n", name)
-	fmt.Fprintf(&sb, "}\n\n")
-	fmt.Fprintf(&sb, "func (b *%s_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", name)
-	fmt.Fprintf(&sb, "\tif req == nil { return nil, fmt.Errorf(\"ffigen: missing FFI request\") }\n")
-	fmt.Fprintf(&sb, "\treturn %sHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)\n", name)
-	fmt.Fprintf(&sb, "}\n\n")
-	fmt.Fprintf(&sb, "func (b *%s_Bridge) DestroyHandle(handle uint32) error {\n\tif b.Registry != nil { b.Registry.Remove(handle) }\n\treturn nil\n}\n\n", name)
 
 	if schemas == nil {
 		for _, structName := range referencedStructs {
@@ -196,17 +215,12 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		selfVar := selfStructSchemaVar(name)
 		fmt.Fprintf(&sb, "func Surface%s() *surface.Bundle {\n", name)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		g.writeGeneratedSurfaceRoutes(&sb, "\t", "schema", "", "", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
-		emitStructAdds("\t", "schema", name)
-		emitInterfaceAdds("\t", "schema")
+		fmt.Fprintf(&sb, "\tschema.AddRouteDecls(%s)\n", routeDeclVarName(name))
+		emitStructAdds(name)
+		emitInterfaceAdds()
 		fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
-		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: nil, Registry: ctx.Registry}\n", name)
-		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
-		g.writeGeneratedSurfaceRoutes(&sb, "\t\t", "", "bound", "bridge", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
-		emitStructAdds("\t\t", "bound", name)
-		emitInterfaceAdds("\t\t", "bound")
-		fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
+		g.writeSchemaRouteBinder(&sb, "\t\t", name, "nil")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
@@ -219,27 +233,17 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		fmt.Fprintf(&sb, "func Surface%s(impl %s) *surface.Bundle {\n", name, implType)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		g.writeGeneratedSurfaceRoutes(&sb, "\t", "schema", "", "", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
-		emitConstAdds("\t", "schema")
+		fmt.Fprintf(&sb, "\tschema.AddRouteDecls(%s)\n", routeDeclVarName(name))
+		emitConstAdds()
 		if methodsPrefix != "" {
-			emitStructAdds("\t", "schema", methodsPrefix)
+			emitStructAdds(methodsPrefix)
 			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfStructSchemaVar(methodsPrefix))
 		} else {
-			emitStructAdds("\t", "schema")
+			emitStructAdds()
 		}
-		emitInterfaceAdds("\t", "schema")
+		emitInterfaceAdds()
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
-		fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
-		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
-		g.writeGeneratedSurfaceRoutes(&sb, "\t\t", "", "bound", "bridge", methods, name, fixedPrefix, moduleName, methodsPrefix, isStruct)
-		emitConstAdds("\t\t", "bound")
-		if methodsPrefix != "" {
-			emitStructAdds("\t\t", "bound", methodsPrefix)
-			fmt.Fprintf(&sb, "\t\tbound.AddStruct(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfStructSchemaVar(methodsPrefix))
-		} else {
-			emitStructAdds("\t\t", "bound")
-		}
-		emitInterfaceAdds("\t\t", "bound")
+		g.writeSchemaRouteBinder(&sb, "\t\t", name, "impl")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 		fmt.Fprintf(&sb, "\t})\n")
 		fmt.Fprintf(&sb, "}\n")
@@ -248,19 +252,17 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 
 	fmt.Fprintf(&sb, "func Surface%sLibrary(prefix string, impl %s) *surface.Bundle {\n", name, implType)
 	fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-	fmt.Fprintf(&sb, "\tfor _, m := range %s_FFI_Schemas {\n", name)
-	fmt.Fprintf(&sb, "\t\tschema.AddFunc(prefix, m.Name, prefix+\".\"+m.Name, m.MethodID, m.Sig, m.Doc)\n")
+	fmt.Fprintf(&sb, "\troutes := make([]runtime.FFIRouteDecl, 0, len(%s))\n", routeDeclVarName(name))
+	fmt.Fprintf(&sb, "\tfor _, route := range %s {\n", routeDeclVarName(name))
+	fmt.Fprintf(&sb, "\t\troute.PackagePath = prefix\n")
+	fmt.Fprintf(&sb, "\t\troute.RouteName = prefix + \".\" + route.MemberName\n")
+	fmt.Fprintf(&sb, "\t\troutes = append(routes, route)\n")
 	fmt.Fprintf(&sb, "\t}\n")
-	emitStructAdds("\t", "schema")
-	emitInterfaceAdds("\t", "schema")
+	fmt.Fprintf(&sb, "\tschema.AddRouteDecls(routes)\n")
+	emitStructAdds()
+	emitInterfaceAdds()
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
-	fmt.Fprintf(&sb, "\t\tbridge := &%s_Bridge{Impl: impl, Registry: ctx.Registry}\n", name)
-	fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
-	fmt.Fprintf(&sb, "\t\tfor _, m := range %s_FFI_Schemas {\n", name)
-	fmt.Fprintf(&sb, "\t\t\tbound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix+\".\"+m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})\n")
-	fmt.Fprintf(&sb, "\t\t}\n")
-	emitStructAdds("\t\t", "bound")
-	emitInterfaceAdds("\t\t", "bound")
+	g.writeSchemaRouteBinder(&sb, "\t\t", name, "impl")
 	fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 	fmt.Fprintf(&sb, "\t})\n")
 	fmt.Fprintf(&sb, "}\n")
@@ -323,7 +325,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 			g.emitWrite(sb, param.Name, param.RawType, param.Expr, structs, wireBufName, moduleName, interfaceSchemaVars, false)
 		}
 
-		fmt.Fprintf(sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: MethodID_%s_%s, Args: append([]byte(nil), %s.Bytes()...)})\n", method.ContextVar, name, method.Name, wireBufName)
+		fmt.Fprintf(sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: %s, Args: append([]byte(nil), %s.Bytes()...)})\n", method.ContextVar, methodIDConstName(name, method.Name), wireBufName)
 		if needsRetBuf || method.HasError || method.HasCopyBack {
 			fmt.Fprintf(sb, "\tretData, syncErr := ffigo.SyncBytes(__ret)\n")
 			fmt.Fprintf(sb, "\tif err == nil { err = syncErr }\n")
@@ -396,12 +398,12 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 }
 
 func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string, isStruct bool, methodsPrefix string, vmType func(ast.Expr) string, interfaceSchemaVars map[string]string) {
-	fmt.Fprintf(sb, "func %sHostRouter(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {\n", name, implType)
+	fmt.Fprintf(sb, "func %s(ctx context.Context, impl %s, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {\n", hostRouterName(name), implType)
 	fmt.Fprintf(sb, "\tif methodID == 0 && methodName != \"\" {\n")
 	fmt.Fprintf(sb, "\t\tswitch methodName {\n")
 	for _, method := range methods {
 		fmt.Fprintf(sb, "\t\tcase \"%s\":\n", method.Name)
-		fmt.Fprintf(sb, "\t\t\tmethodID = MethodID_%s_%s\n", name, method.Name)
+		fmt.Fprintf(sb, "\t\t\tmethodID = %s\n", methodIDConstName(name, method.Name))
 	}
 	fmt.Fprintf(sb, "\t\t}\n")
 	fmt.Fprintf(sb, "\t}\n\n")
@@ -420,7 +422,7 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 	}
 	fmt.Fprintf(sb, "\tswitch methodID {\n")
 	for _, method := range methods {
-		fmt.Fprintf(sb, "\tcase MethodID_%s_%s:\n", name, method.Name)
+		fmt.Fprintf(sb, "\tcase %s:\n", methodIDConstName(name, method.Name))
 		paramVars := make([]string, 0, len(method.Params))
 		for _, param := range method.Params {
 			if param.Context {

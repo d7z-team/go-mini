@@ -12,69 +12,23 @@ import (
 )
 
 const (
-	MethodID_StorageAPI_SetCapacity = 1
-	MethodID_StorageAPI_GetStatus   = 2
+	methodIDStorageAPISetCapacity = 1
+	methodIDStorageAPIGetStatus   = 2
 )
 
-type StorageAPIProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewStorageAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) StorageAPI {
-	return &StorageAPIProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *StorageAPIProxy) SetCapacity(capacity uint32) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(capacity))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_StorageAPI_SetCapacity, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *StorageAPIProxy) GetStatus() int16 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_StorageAPI_GetStatus, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int16
-	{
-		tmp := retBuf.ReadVarint()
-		if tmp < -32768 || tmp > 32767 {
-			panic(fmt.Sprintf("ffi: int16 overflow: %d", tmp))
-		}
-		v_0 = int16(tmp)
-	}
-	return v_0
-}
-
-func StorageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func storageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "SetCapacity":
-			methodID = MethodID_StorageAPI_SetCapacity
+			methodID = methodIDStorageAPISetCapacity
 		case "GetStatus":
-			methodID = MethodID_StorageAPI_GetStatus
+			methodID = methodIDStorageAPIGetStatus
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_StorageAPI_SetCapacity:
+	case methodIDStorageAPISetCapacity:
 		var capacity uint32
 		{
 			tmp := reqBuf.ReadVarint()
@@ -86,7 +40,7 @@ func StorageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.
 		impl.SetCapacity(capacity)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_StorageAPI_GetStatus:
+	case methodIDStorageAPIGetStatus:
 		r0 := impl.GetStatus()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -96,51 +50,22 @@ func StorageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.
 	}
 }
 
-var StorageAPI_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"SetCapacity", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"GetStatus", 2, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-}
-
-type StorageAPI_Bridge struct {
-	Impl     StorageAPI
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *StorageAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return StorageAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *StorageAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return StorageAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *StorageAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var storageAPIRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "storage", MemberName: "SetCapacity", RouteName: "storage.SetCapacity", MethodID: methodIDStorageAPISetCapacity, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "storage", MemberName: "GetStatus", RouteName: "storage.GetStatus", MethodID: methodIDStorageAPIGetStatus, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
 }
 
 func SurfaceStorageAPI(impl StorageAPI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("storage", "SetCapacity", "storage.SetCapacity", StorageAPI_FFI_Schemas[0].MethodID, StorageAPI_FFI_Schemas[0].Sig, StorageAPI_FFI_Schemas[0].Doc)
-	schema.AddFunc("storage", "GetStatus", "storage.GetStatus", StorageAPI_FFI_Schemas[1].MethodID, StorageAPI_FFI_Schemas[1].Sig, StorageAPI_FFI_Schemas[1].Doc)
+	schema.AddRouteDecls(storageAPIRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &StorageAPI_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("storage", "SetCapacity", runtime.FFIRoute{Name: "storage.SetCapacity", Bridge: bridge, MethodID: StorageAPI_FFI_Schemas[0].MethodID, FuncSig: StorageAPI_FFI_Schemas[0].Sig, Doc: StorageAPI_FFI_Schemas[0].Doc})
-		bound.AddRoute("storage", "GetStatus", runtime.FFIRoute{Name: "storage.GetStatus", Bridge: bridge, MethodID: StorageAPI_FFI_Schemas[1].MethodID, FuncSig: StorageAPI_FFI_Schemas[1].Sig, Doc: StorageAPI_FFI_Schemas[1].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return storageAPIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

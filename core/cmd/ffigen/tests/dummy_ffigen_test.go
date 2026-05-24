@@ -26,342 +26,38 @@ var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", r
 var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", runtime.StructOwnershipHostOpaque, "struct { GetByPlaceholder function(HostRef<Page>, String, ...Bool) HostRef<Selector>; }")
 
 const (
-	MethodID_MockOS_Open  = 1
-	MethodID_MockOS_Name  = 2
-	MethodID_MockOS_Stat  = 3
-	MethodID_MockOS_Read  = 4
-	MethodID_MockOS_Write = 5
-	MethodID_MockOS_Close = 6
-	MethodID_MockOS_Deep  = 7
+	methodIDMockOSOpen  = 1
+	methodIDMockOSName  = 2
+	methodIDMockOSStat  = 3
+	methodIDMockOSRead  = 4
+	methodIDMockOSWrite = 5
+	methodIDMockOSClose = 6
+	methodIDMockOSDeep  = 7
 )
 
-type MockOSProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMockOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MockOS {
-	return &MockOSProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MockOSProxy) Open(name string) (*File, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Open, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *File
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "os.File"); ok {
-				v_0 = obj.(*File)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MockOSProxy) Name(f *File) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if f == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Name, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *MockOSProxy) Stat(f *File) (FileInfo, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if f == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Stat, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return FileInfo{}, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 FileInfo
-	v_0.Name = string(retBuf.ReadString())
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.Size = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MockOSProxy) Read(f *File, b []byte) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if f == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-	wireBuf.WriteBytes(b)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Read, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MockOSProxy) Write(f *File, b []byte) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if f == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-	wireBuf.WriteBytes(b)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Write, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MockOSProxy) Close(f *File) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if f == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(f, "os.File")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Close, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *MockOSProxy) Deep(n Nested) Nested {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(n.Info.Name))
-	wireBuf.WriteVarint(int64(n.Info.Size))
-	wireBuf.WriteVarint(int64(n.Level))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockOS_Deep, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 Nested
-	v_0.Info.Name = string(retBuf.ReadString())
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.Info.Size = int64(tmp)
-	}
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.Level = int64(tmp)
-	}
-	return v_0
-}
-
-func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Open":
-			methodID = MethodID_MockOS_Open
+			methodID = methodIDMockOSOpen
 		case "Name":
-			methodID = MethodID_MockOS_Name
+			methodID = methodIDMockOSName
 		case "Stat":
-			methodID = MethodID_MockOS_Stat
+			methodID = methodIDMockOSStat
 		case "Read":
-			methodID = MethodID_MockOS_Read
+			methodID = methodIDMockOSRead
 		case "Write":
-			methodID = MethodID_MockOS_Write
+			methodID = methodIDMockOSWrite
 		case "Close":
-			methodID = MethodID_MockOS_Close
+			methodID = methodIDMockOSClose
 		case "Deep":
-			methodID = MethodID_MockOS_Deep
+			methodID = methodIDMockOSDeep
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_MockOS_Open:
+	case methodIDMockOSOpen:
 		var name string
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
@@ -382,7 +78,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Name:
+	case methodIDMockOSName:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -396,7 +92,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Stat:
+	case methodIDMockOSStat:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -420,7 +116,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Read:
+	case methodIDMockOSRead:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -445,7 +141,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Write:
+	case methodIDMockOSWrite:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -470,7 +166,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Close:
+	case methodIDMockOSClose:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -492,7 +188,7 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MockOS_Deep:
+	case methodIDMockOSDeep:
 		var n Nested
 		n.Info.Name = string(reqBuf.ReadString())
 		{
@@ -514,148 +210,59 @@ func MockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	}
 }
 
-var MockOS_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<os.File>, Error)", runtime.FFIParamIn), ""},
-	{"Name", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) String", runtime.FFIParamIn), ""},
-	{"Stat", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), ""},
-	{"Read", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Write", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) Error", runtime.FFIParamIn), ""},
-	{"Deep", 7, runtime.MustParseRuntimeFuncSigWithModes("function(os.Nested) os.Nested", runtime.FFIParamIn), ""},
-}
-
-type MockOS_Bridge struct {
-	Impl     MockOS
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *MockOS_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockOSHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *MockOS_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockOSHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *MockOS_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var mockOSRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "os", MemberName: "Open", RouteName: "os.Open", MethodID: methodIDMockOSOpen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<os.File>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Name", RouteName: "os.Name", MethodID: methodIDMockOSName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Stat", RouteName: "os.Stat", MethodID: methodIDMockOSStat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Read", RouteName: "os.Read", MethodID: methodIDMockOSRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Write", RouteName: "os.Write", MethodID: methodIDMockOSWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Close", RouteName: "os.Close", MethodID: methodIDMockOSClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) Error", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Deep", RouteName: "os.Deep", MethodID: methodIDMockOSDeep, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(os.Nested) os.Nested", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMockOS(impl MockOS) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("os", "Open", "os.Open", MockOS_FFI_Schemas[0].MethodID, MockOS_FFI_Schemas[0].Sig, MockOS_FFI_Schemas[0].Doc)
-	schema.AddFunc("os", "Name", "os.Name", MockOS_FFI_Schemas[1].MethodID, MockOS_FFI_Schemas[1].Sig, MockOS_FFI_Schemas[1].Doc)
-	schema.AddFunc("os", "Stat", "os.Stat", MockOS_FFI_Schemas[2].MethodID, MockOS_FFI_Schemas[2].Sig, MockOS_FFI_Schemas[2].Doc)
-	schema.AddFunc("os", "Read", "os.Read", MockOS_FFI_Schemas[3].MethodID, MockOS_FFI_Schemas[3].Sig, MockOS_FFI_Schemas[3].Doc)
-	schema.AddFunc("os", "Write", "os.Write", MockOS_FFI_Schemas[4].MethodID, MockOS_FFI_Schemas[4].Sig, MockOS_FFI_Schemas[4].Doc)
-	schema.AddFunc("os", "Close", "os.Close", MockOS_FFI_Schemas[5].MethodID, MockOS_FFI_Schemas[5].Sig, MockOS_FFI_Schemas[5].Doc)
-	schema.AddFunc("os", "Deep", "os.Deep", MockOS_FFI_Schemas[6].MethodID, MockOS_FFI_Schemas[6].Sig, MockOS_FFI_Schemas[6].Doc)
+	schema.AddRouteDecls(mockOSRoutes)
 	schema.AddStruct("os.File", os_File_FFI_StructSchema)
 	schema.AddStruct("os.FileInfo", os_FileInfo_FFI_StructSchema)
 	schema.AddStruct("os.Nested", os_Nested_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &MockOS_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("os", "Open", runtime.FFIRoute{Name: "os.Open", Bridge: bridge, MethodID: MockOS_FFI_Schemas[0].MethodID, FuncSig: MockOS_FFI_Schemas[0].Sig, Doc: MockOS_FFI_Schemas[0].Doc})
-		bound.AddRoute("os", "Name", runtime.FFIRoute{Name: "os.Name", Bridge: bridge, MethodID: MockOS_FFI_Schemas[1].MethodID, FuncSig: MockOS_FFI_Schemas[1].Sig, Doc: MockOS_FFI_Schemas[1].Doc})
-		bound.AddRoute("os", "Stat", runtime.FFIRoute{Name: "os.Stat", Bridge: bridge, MethodID: MockOS_FFI_Schemas[2].MethodID, FuncSig: MockOS_FFI_Schemas[2].Sig, Doc: MockOS_FFI_Schemas[2].Doc})
-		bound.AddRoute("os", "Read", runtime.FFIRoute{Name: "os.Read", Bridge: bridge, MethodID: MockOS_FFI_Schemas[3].MethodID, FuncSig: MockOS_FFI_Schemas[3].Sig, Doc: MockOS_FFI_Schemas[3].Doc})
-		bound.AddRoute("os", "Write", runtime.FFIRoute{Name: "os.Write", Bridge: bridge, MethodID: MockOS_FFI_Schemas[4].MethodID, FuncSig: MockOS_FFI_Schemas[4].Sig, Doc: MockOS_FFI_Schemas[4].Doc})
-		bound.AddRoute("os", "Close", runtime.FFIRoute{Name: "os.Close", Bridge: bridge, MethodID: MockOS_FFI_Schemas[5].MethodID, FuncSig: MockOS_FFI_Schemas[5].Sig, Doc: MockOS_FFI_Schemas[5].Doc})
-		bound.AddRoute("os", "Deep", runtime.FFIRoute{Name: "os.Deep", Bridge: bridge, MethodID: MockOS_FFI_Schemas[6].MethodID, FuncSig: MockOS_FFI_Schemas[6].Sig, Doc: MockOS_FFI_Schemas[6].Doc})
-		bound.AddStruct("os.File", os_File_FFI_StructSchema)
-		bound.AddStruct("os.FileInfo", os_FileInfo_FFI_StructSchema)
-		bound.AddStruct("os.Nested", os_Nested_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return mockOSHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_ContextMock_WithContext    = 1
-	MethodID_ContextMock_WithoutContext = 2
+	methodIDContextMockWithContext    = 1
+	methodIDContextMockWithoutContext = 2
 )
 
-type ContextMockProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewContextMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) ContextMock {
-	return &ContextMockProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ContextMockProxy) WithContext(ctx context.Context, key string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(key))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_ContextMock_WithContext, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *ContextMockProxy) WithoutContext(val string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(val))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ContextMock_WithoutContext, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func contextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "WithContext":
-			methodID = MethodID_ContextMock_WithContext
+			methodID = methodIDContextMockWithContext
 		case "WithoutContext":
-			methodID = MethodID_ContextMock_WithoutContext
+			methodID = methodIDContextMockWithoutContext
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_ContextMock_WithContext:
+	case methodIDContextMockWithContext:
 		var key string
 		key = string(reqBuf.ReadString())
 		r0 := impl.WithContext(ctx, key)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_ContextMock_WithoutContext:
+	case methodIDContextMockWithoutContext:
 		var val string
 		val = string(reqBuf.ReadString())
 		r0 := impl.WithoutContext(val)
@@ -667,193 +274,56 @@ func ContextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffig
 	}
 }
 
-var ContextMock_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"WithContext", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"WithoutContext", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-}
-
-type ContextMock_Bridge struct {
-	Impl     ContextMock
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *ContextMock_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ContextMockHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *ContextMock_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ContextMockHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *ContextMock_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var contextMockRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "ctx_test", MemberName: "WithContext", RouteName: "ctx_test.WithContext", MethodID: methodIDContextMockWithContext, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "ctx_test", MemberName: "WithoutContext", RouteName: "ctx_test.WithoutContext", MethodID: methodIDContextMockWithoutContext, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceContextMock(impl ContextMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("ctx_test", "WithContext", "ctx_test.WithContext", ContextMock_FFI_Schemas[0].MethodID, ContextMock_FFI_Schemas[0].Sig, ContextMock_FFI_Schemas[0].Doc)
-	schema.AddFunc("ctx_test", "WithoutContext", "ctx_test.WithoutContext", ContextMock_FFI_Schemas[1].MethodID, ContextMock_FFI_Schemas[1].Sig, ContextMock_FFI_Schemas[1].Doc)
+	schema.AddRouteDecls(contextMockRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &ContextMock_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("ctx_test", "WithContext", runtime.FFIRoute{Name: "ctx_test.WithContext", Bridge: bridge, MethodID: ContextMock_FFI_Schemas[0].MethodID, FuncSig: ContextMock_FFI_Schemas[0].Sig, Doc: ContextMock_FFI_Schemas[0].Doc})
-		bound.AddRoute("ctx_test", "WithoutContext", runtime.FFIRoute{Name: "ctx_test.WithoutContext", Bridge: bridge, MethodID: ContextMock_FFI_Schemas[1].MethodID, FuncSig: ContextMock_FFI_Schemas[1].Sig, Doc: ContextMock_FFI_Schemas[1].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return contextMockHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_NativeMock_GetStruct = 1
-	MethodID_NativeMock_GetPtr    = 2
-	MethodID_NativeMock_SetStruct = 3
-	MethodID_NativeMock_SetPtr    = 4
+	methodIDNativeMockGetStruct = 1
+	methodIDNativeMockGetPtr    = 2
+	methodIDNativeMockSetStruct = 3
+	methodIDNativeMockSetPtr    = 4
 )
 
-type NativeMockProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewNativeMockProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) NativeMock {
-	return &NativeMockProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *NativeMockProxy) GetStruct() NativeStruct {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_GetStruct, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 NativeStruct
-	v_0.Msg = string(retBuf.ReadString())
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.Value = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *NativeMockProxy) GetPtr() *NativeHandle {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_GetPtr, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *NativeHandle
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "native.NativeHandle"); ok {
-				v_0 = obj.(*NativeHandle)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *NativeMockProxy) SetStruct(s NativeStruct) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s.Msg))
-	wireBuf.WriteVarint(int64(s.Value))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_SetStruct, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *NativeMockProxy) SetPtr(s *NativeHandle) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if s == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(s, "native.NativeHandle")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_NativeMock_SetPtr, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func nativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetStruct":
-			methodID = MethodID_NativeMock_GetStruct
+			methodID = methodIDNativeMockGetStruct
 		case "GetPtr":
-			methodID = MethodID_NativeMock_GetPtr
+			methodID = methodIDNativeMockGetPtr
 		case "SetStruct":
-			methodID = MethodID_NativeMock_SetStruct
+			methodID = methodIDNativeMockSetStruct
 		case "SetPtr":
-			methodID = MethodID_NativeMock_SetPtr
+			methodID = methodIDNativeMockSetPtr
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_NativeMock_GetStruct:
+	case methodIDNativeMockGetStruct:
 		r0 := impl.GetStruct()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0.Msg))
 		resBuf.WriteVarint(int64(r0.Value))
 		return resBuf.Bytes(), nil
-	case MethodID_NativeMock_GetPtr:
+	case methodIDNativeMockGetPtr:
 		r0 := impl.GetPtr()
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -863,7 +333,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "native.NativeHandle")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_NativeMock_SetStruct:
+	case methodIDNativeMockSetStruct:
 		var s NativeStruct
 		s.Msg = string(reqBuf.ReadString())
 		{
@@ -874,7 +344,7 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_NativeMock_SetPtr:
+	case methodIDNativeMockSetPtr:
 		var s *NativeHandle
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -893,80 +363,45 @@ func NativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	}
 }
 
-var NativeMock_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"GetStruct", 1, runtime.MustParseRuntimeFuncSig("function() native.NativeStruct"), ""},
-	{"GetPtr", 2, runtime.MustParseRuntimeFuncSig("function() HostRef<native.NativeHandle>"), ""},
-	{"SetStruct", 3, runtime.MustParseRuntimeFuncSigWithModes("function(native.NativeStruct) Int64", runtime.FFIParamIn), ""},
-	{"SetPtr", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<native.NativeHandle>) Int64", runtime.FFIParamIn), ""},
-}
-
-type NativeMock_Bridge struct {
-	Impl     NativeMock
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *NativeMock_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return NativeMockHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *NativeMock_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return NativeMockHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *NativeMock_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var nativeMockRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "native", MemberName: "GetStruct", RouteName: "native.GetStruct", MethodID: methodIDNativeMockGetStruct, Sig: runtime.MustParseRuntimeFuncSig("function() native.NativeStruct"), Doc: ""},
+	{PackagePath: "native", MemberName: "GetPtr", RouteName: "native.GetPtr", MethodID: methodIDNativeMockGetPtr, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<native.NativeHandle>"), Doc: ""},
+	{PackagePath: "native", MemberName: "SetStruct", RouteName: "native.SetStruct", MethodID: methodIDNativeMockSetStruct, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(native.NativeStruct) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "native", MemberName: "SetPtr", RouteName: "native.SetPtr", MethodID: methodIDNativeMockSetPtr, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<native.NativeHandle>) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceNativeMock(impl NativeMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("native", "GetStruct", "native.GetStruct", NativeMock_FFI_Schemas[0].MethodID, NativeMock_FFI_Schemas[0].Sig, NativeMock_FFI_Schemas[0].Doc)
-	schema.AddFunc("native", "GetPtr", "native.GetPtr", NativeMock_FFI_Schemas[1].MethodID, NativeMock_FFI_Schemas[1].Sig, NativeMock_FFI_Schemas[1].Doc)
-	schema.AddFunc("native", "SetStruct", "native.SetStruct", NativeMock_FFI_Schemas[2].MethodID, NativeMock_FFI_Schemas[2].Sig, NativeMock_FFI_Schemas[2].Doc)
-	schema.AddFunc("native", "SetPtr", "native.SetPtr", NativeMock_FFI_Schemas[3].MethodID, NativeMock_FFI_Schemas[3].Sig, NativeMock_FFI_Schemas[3].Doc)
+	schema.AddRouteDecls(nativeMockRoutes)
 	schema.AddStruct("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
 	schema.AddStruct("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &NativeMock_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("native", "GetStruct", runtime.FFIRoute{Name: "native.GetStruct", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[0].MethodID, FuncSig: NativeMock_FFI_Schemas[0].Sig, Doc: NativeMock_FFI_Schemas[0].Doc})
-		bound.AddRoute("native", "GetPtr", runtime.FFIRoute{Name: "native.GetPtr", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[1].MethodID, FuncSig: NativeMock_FFI_Schemas[1].Sig, Doc: NativeMock_FFI_Schemas[1].Doc})
-		bound.AddRoute("native", "SetStruct", runtime.FFIRoute{Name: "native.SetStruct", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[2].MethodID, FuncSig: NativeMock_FFI_Schemas[2].Sig, Doc: NativeMock_FFI_Schemas[2].Doc})
-		bound.AddRoute("native", "SetPtr", runtime.FFIRoute{Name: "native.SetPtr", Bridge: bridge, MethodID: NativeMock_FFI_Schemas[3].MethodID, FuncSig: NativeMock_FFI_Schemas[3].Sig, Doc: NativeMock_FFI_Schemas[3].Doc})
-		bound.AddStruct("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
-		bound.AddStruct("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return nativeMockHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_Page_GetByPlaceholder = 1
+	methodIDPageGetByPlaceholder = 1
 )
 
-func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetByPlaceholder":
-			methodID = MethodID_Page_GetByPlaceholder
+			methodID = methodIDPageGetByPlaceholder
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Page_GetByPlaceholder:
+	case methodIDPageGetByPlaceholder:
 		var __recv *Page
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -998,51 +433,23 @@ func PageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 	}
 }
 
-var Page_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"GetByPlaceholder", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<Page>, String, ...Bool) HostRef<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Page_Bridge struct {
-	Impl     *Page
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Page_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return PageHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Page_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return PageHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Page_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var pageRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "Page", MethodName: "GetByPlaceholder", RouteName: "Page.GetByPlaceholder", MethodID: methodIDPageGetByPlaceholder, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<Page>, String, ...Bool) HostRef<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfacePage() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(pageRoutes)
 	schema.AddStruct("Selector", Selector_FFI_StructSchema)
 	schema.AddStruct("Page", Page_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Page_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["Page.GetByPlaceholder"] = runtime.FFIRoute{Name: "Page.GetByPlaceholder", Bridge: bridge, MethodID: Page_FFI_Schemas[0].MethodID, FuncSig: Page_FFI_Schemas[0].Sig, Doc: Page_FFI_Schemas[0].Doc}
-		bound.AddStruct("Selector", Selector_FFI_StructSchema)
-		bound.AddStruct("Page", Page_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return pageHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

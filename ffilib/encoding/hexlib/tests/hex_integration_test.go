@@ -10,7 +10,7 @@ import (
 
 func TestHex(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("encoding/hex", hexlib.Hex_FFI_Schemas),
+		testutil.SurfaceFFISchema("encoding/hex", hexlib.SurfaceHex(&hexlib.HexHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "encode-decode-dump",

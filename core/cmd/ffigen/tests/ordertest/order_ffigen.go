@@ -14,218 +14,29 @@ import (
 var order_Order_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("order.Order", runtime.StructOwnershipHostOpaque, "struct { New function(String) tuple(HostRef<order.Order>, Error); AddItem function(HostRef<order.Order>, String, Float64) Error; GetTotal function(HostRef<order.Order>) tuple(Float64, Error); Close function(HostRef<order.Order>) Error; }")
 
 const (
-	MethodID_OrderService_New      = 1
-	MethodID_OrderService_AddItem  = 2
-	MethodID_OrderService_GetTotal = 3
-	MethodID_OrderService_Close    = 4
+	methodIDOrderServiceNew      = 1
+	methodIDOrderServiceAddItem  = 2
+	methodIDOrderServiceGetTotal = 3
+	methodIDOrderServiceClose    = 4
 )
 
-type OrderServiceProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewOrderServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) OrderService {
-	return &OrderServiceProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *OrderServiceProxy) New(id string) (*Order, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(id))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_New, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Order
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "order.Order"); ok {
-				v_0 = obj.(*Order)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OrderServiceProxy) AddItem(o *Order, name string, price float64) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if o == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-	wireBuf.WriteString(string(name))
-	wireBuf.WriteFloat64(float64(price))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_AddItem, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *OrderServiceProxy) GetTotal(o *Order) (float64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if o == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_GetTotal, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0.0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OrderServiceProxy) Close(o *Order) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if o == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(o, "order.Order")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OrderService_Close, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
-			methodID = MethodID_OrderService_New
+			methodID = methodIDOrderServiceNew
 		case "AddItem":
-			methodID = MethodID_OrderService_AddItem
+			methodID = methodIDOrderServiceAddItem
 		case "GetTotal":
-			methodID = MethodID_OrderService_GetTotal
+			methodID = methodIDOrderServiceGetTotal
 		case "Close":
-			methodID = MethodID_OrderService_Close
+			methodID = methodIDOrderServiceClose
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_OrderService_New:
+	case methodIDOrderServiceNew:
 		var id string
 		id = string(reqBuf.ReadString())
 		r0, err := impl.New(id)
@@ -246,7 +57,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OrderService_AddItem:
+	case methodIDOrderServiceAddItem:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -272,7 +83,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OrderService_GetTotal:
+	case methodIDOrderServiceGetTotal:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -295,7 +106,7 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OrderService_Close:
+	case methodIDOrderServiceClose:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -322,56 +133,25 @@ func OrderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	}
 }
 
-var OrderService_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<order.Order>, Error)", runtime.FFIParamIn), "New 创建新订单"},
-	{"AddItem", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{"GetTotal", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), "GetTotal 获取总价"},
-	{"Close", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) Error", runtime.FFIParamIn), "Close 关闭订单"},
-}
-
-type OrderService_Bridge struct {
-	Impl     OrderService
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *OrderService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *OrderService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return OrderServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *OrderService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var orderServiceRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "order", MemberName: "New", RouteName: "order.New", MethodID: methodIDOrderServiceNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<order.Order>, Error)", runtime.FFIParamIn), Doc: "New 创建新订单"},
+	{TypeName: "order.Order", MethodName: "AddItem", RouteName: "order.Order.AddItem", MethodID: methodIDOrderServiceAddItem, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{TypeName: "order.Order", MethodName: "GetTotal", RouteName: "order.Order.GetTotal", MethodID: methodIDOrderServiceGetTotal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), Doc: "GetTotal 获取总价"},
+	{TypeName: "order.Order", MethodName: "Close", RouteName: "order.Order.Close", MethodID: methodIDOrderServiceClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) Error", runtime.FFIParamIn), Doc: "Close 关闭订单"},
 }
 
 func SurfaceOrderService(impl OrderService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("order", "New", "order.New", OrderService_FFI_Schemas[0].MethodID, OrderService_FFI_Schemas[0].Sig, OrderService_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(orderServiceRoutes)
 	schema.AddStruct("order.Order", order_Order_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &OrderService_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("order", "New", runtime.FFIRoute{Name: "order.New", Bridge: bridge, MethodID: OrderService_FFI_Schemas[0].MethodID, FuncSig: OrderService_FFI_Schemas[0].Sig, Doc: OrderService_FFI_Schemas[0].Doc})
-		bound.Routes["order.Order.AddItem"] = runtime.FFIRoute{Name: "order.Order.AddItem", Bridge: bridge, MethodID: OrderService_FFI_Schemas[1].MethodID, FuncSig: OrderService_FFI_Schemas[1].Sig, Doc: OrderService_FFI_Schemas[1].Doc}
-		bound.Routes["order.Order.GetTotal"] = runtime.FFIRoute{Name: "order.Order.GetTotal", Bridge: bridge, MethodID: OrderService_FFI_Schemas[2].MethodID, FuncSig: OrderService_FFI_Schemas[2].Sig, Doc: OrderService_FFI_Schemas[2].Doc}
-		bound.Routes["order.Order.Close"] = runtime.FFIRoute{Name: "order.Order.Close", Bridge: bridge, MethodID: OrderService_FFI_Schemas[3].MethodID, FuncSig: OrderService_FFI_Schemas[3].Sig, Doc: OrderService_FFI_Schemas[3].Doc}
-		bound.AddStruct("order.Order", order_Order_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return orderServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

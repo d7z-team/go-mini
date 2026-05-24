@@ -82,6 +82,8 @@ Generate bindings from Go interfaces:
 go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
+Generated bindings expose `SurfaceXxx(...) *surface.Bundle` for `executor.UseSurface(...)`. Go-side proxies are generated only when the source interface is marked with `// ffigen:proxy`.
+
 For examples and runtime integration details, see [DOCS.md](./DOCS.md).
 
 ## Development

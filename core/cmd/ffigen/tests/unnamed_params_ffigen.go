@@ -12,64 +12,23 @@ import (
 )
 
 const (
-	MethodID_Logger_Log      = 1
-	MethodID_Logger_Internal = 2
+	methodIDLoggerLog      = 1
+	methodIDLoggerInternal = 2
 )
 
-type LoggerProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewLoggerProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Logger {
-	return &LoggerProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *LoggerProxy) Log(ctx context.Context, msg string, level string, code int64) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(msg))
-	wireBuf.WriteString(string(level))
-	wireBuf.WriteVarint(int64(code))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Logger_Log, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *LoggerProxy) Internal(arg0 string, arg1 string, arg2 int64) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(arg0))
-	wireBuf.WriteString(string(arg1))
-	wireBuf.WriteVarint(int64(arg2))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Logger_Internal, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func loggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Log":
-			methodID = MethodID_Logger_Log
+			methodID = methodIDLoggerLog
 		case "Internal":
-			methodID = MethodID_Logger_Internal
+			methodID = methodIDLoggerInternal
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Logger_Log:
+	case methodIDLoggerLog:
 		var msg string
 		msg = string(reqBuf.ReadString())
 		var level string
@@ -82,7 +41,7 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 		impl.Log(ctx, msg, level, code)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Logger_Internal:
+	case methodIDLoggerInternal:
 		var arg0 string
 		arg0 = string(reqBuf.ReadString())
 		var arg1 string
@@ -100,51 +59,22 @@ func LoggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 	}
 }
 
-var Logger_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Log", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Internal", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
-}
-
-type Logger_Bridge struct {
-	Impl     Logger
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Logger_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return LoggerHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Logger_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return LoggerHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Logger_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var loggerRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "logger", MemberName: "Log", RouteName: "logger.Log", MethodID: methodIDLoggerLog, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "logger", MemberName: "Internal", RouteName: "logger.Internal", MethodID: methodIDLoggerInternal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)"},
 }
 
 func SurfaceLogger(impl Logger) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("logger", "Log", "logger.Log", Logger_FFI_Schemas[0].MethodID, Logger_FFI_Schemas[0].Sig, Logger_FFI_Schemas[0].Doc)
-	schema.AddFunc("logger", "Internal", "logger.Internal", Logger_FFI_Schemas[1].MethodID, Logger_FFI_Schemas[1].Sig, Logger_FFI_Schemas[1].Doc)
+	schema.AddRouteDecls(loggerRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Logger_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("logger", "Log", runtime.FFIRoute{Name: "logger.Log", Bridge: bridge, MethodID: Logger_FFI_Schemas[0].MethodID, FuncSig: Logger_FFI_Schemas[0].Sig, Doc: Logger_FFI_Schemas[0].Doc})
-		bound.AddRoute("logger", "Internal", runtime.FFIRoute{Name: "logger.Internal", Bridge: bridge, MethodID: Logger_FFI_Schemas[1].MethodID, FuncSig: Logger_FFI_Schemas[1].Sig, Doc: Logger_FFI_Schemas[1].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return loggerHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

@@ -19,10 +19,16 @@ func TestFFIGenCrossPackageImport(t *testing.T) {
 		t.Errorf("Generated code should contain import \"time\"\nFull code:\n%s", code)
 	}
 
-	// 2. 验证方法签名是否正确使用了 time.Duration
-	expectedSignature := "Sleep(ctx context.Context, d time.Duration) error"
-	if !strings.Contains(code, expectedSignature) {
-		t.Errorf("Generated method signature should contain: %s", expectedSignature)
+	// 2. 验证路由解码仍使用源 Go 类型 time.Duration
+	requiredDurationCode := []string{
+		"var d time.Duration",
+		"d = time.Duration(tmp)",
+		"err := impl.Sleep(ctx, d)",
+	}
+	for _, pattern := range requiredDurationCode {
+		if !strings.Contains(code, pattern) {
+			t.Errorf("Generated route should contain: %s", pattern)
+		}
 	}
 
 	// 3. 验证是否包含默认导入

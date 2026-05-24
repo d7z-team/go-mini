@@ -222,6 +222,11 @@ func parseTargetMeta(doc *ast.CommentGroup) targetMeta {
 				panic("ffigen:interface does not accept arguments")
 			}
 			meta.interfaceMarked = true
+		case "ffigen:proxy":
+			if len(fields) != 1 {
+				panic("ffigen:proxy does not accept arguments")
+			}
+			meta.proxyMarked = true
 		}
 	}
 	return meta

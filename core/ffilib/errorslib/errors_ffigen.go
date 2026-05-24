@@ -12,64 +12,20 @@ import (
 )
 
 const (
-	MethodID_Errors_New = 1
+	methodIDErrorsNew = 1
 )
 
-type ErrorsProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewErrorsProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Errors {
-	return &ErrorsProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ErrorsProxy) New(text string) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(text))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Errors_New, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func errorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
-			methodID = MethodID_Errors_New
+			methodID = methodIDErrorsNew
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Errors_New:
+	case methodIDErrorsNew:
 		var text string
 		text = string(reqBuf.ReadString())
 		err := impl.New(text)
@@ -89,48 +45,21 @@ func ErrorsHostRouter(ctx context.Context, impl Errors, registry *ffigo.HandleRe
 	}
 }
 
-var Errors_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), ""},
-}
-
-type Errors_Bridge struct {
-	Impl     Errors
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Errors_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ErrorsHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Errors_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ErrorsHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Errors_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var errorsRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "errors", MemberName: "New", RouteName: "errors.New", MethodID: methodIDErrorsNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceErrors(impl Errors) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("errors", "New", "errors.New", Errors_FFI_Schemas[0].MethodID, Errors_FFI_Schemas[0].Sig, Errors_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(errorsRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Errors_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("errors", "New", runtime.FFIRoute{Name: "errors.New", Bridge: bridge, MethodID: Errors_FFI_Schemas[0].MethodID, FuncSig: Errors_FFI_Schemas[0].Sig, Doc: Errors_FFI_Schemas[0].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return errorsHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

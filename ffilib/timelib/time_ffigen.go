@@ -15,251 +15,38 @@ import (
 var time_Time_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("time.Time", runtime.StructOwnershipHostOpaque, "struct { Year function(HostRef<time.Time>) Int64; Month function(HostRef<time.Time>) Int64; Day function(HostRef<time.Time>) Int64; Hour function(HostRef<time.Time>) Int64; Minute function(HostRef<time.Time>) Int64; Second function(HostRef<time.Time>) Int64; Nanosecond function(HostRef<time.Time>) Int64; Unix function(HostRef<time.Time>) Int64; UnixMilli function(HostRef<time.Time>) Int64; UnixMicro function(HostRef<time.Time>) Int64; UnixNano function(HostRef<time.Time>) Int64; Format function(HostRef<time.Time>, String) String; Add function(HostRef<time.Time>, Int64) HostRef<time.Time>; Sub function(HostRef<time.Time>, HostRef<time.Time>) Int64; IsZero function(HostRef<time.Time>) Bool; Before function(HostRef<time.Time>, HostRef<time.Time>) Bool; After function(HostRef<time.Time>, HostRef<time.Time>) Bool; Equal function(HostRef<time.Time>, HostRef<time.Time>) Bool; String function(HostRef<time.Time>) String; }")
 
 const (
-	MethodID_Module_Now           = 1
-	MethodID_Module_Unix          = 2
-	MethodID_Module_Sleep         = 3
-	MethodID_Module_Since         = 4
-	MethodID_Module_Until         = 5
-	MethodID_Module_Parse         = 6
-	MethodID_Module_ParseDuration = 7
+	methodIDModuleNow           = 1
+	methodIDModuleUnix          = 2
+	methodIDModuleSleep         = 3
+	methodIDModuleSince         = 4
+	methodIDModuleUntil         = 5
+	methodIDModuleParse         = 6
+	methodIDModuleParseDuration = 7
 )
 
-type ModuleProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Module {
-	return &ModuleProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ModuleProxy) Now() *Time {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Now, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Time
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
-				v_0 = obj.(*Time)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *ModuleProxy) Unix(sec int64, nsec int64) *Time {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(sec))
-	wireBuf.WriteVarint(int64(nsec))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Unix, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Time
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
-				v_0 = obj.(*Time)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *ModuleProxy) Sleep(ns int64) ffigo.Async[ffigo.Void] {
-	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
-		return nil, fmt.Errorf("ffigen: proxy async call Module.Sleep is not supported")
-	})
-}
-
-func (__p *ModuleProxy) Since(t *Time) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if t == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "time.Time")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Since, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *ModuleProxy) Until(t *Time) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if t == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "time.Time")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Until, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *ModuleProxy) Parse(layout string, value string) (*Time, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(layout))
-	wireBuf.WriteString(string(value))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_Parse, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *Time
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "time.Time"); ok {
-				v_0 = obj.(*Time)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *ModuleProxy) ParseDuration(s string) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_ParseDuration, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Now":
-			methodID = MethodID_Module_Now
+			methodID = methodIDModuleNow
 		case "Unix":
-			methodID = MethodID_Module_Unix
+			methodID = methodIDModuleUnix
 		case "Sleep":
-			methodID = MethodID_Module_Sleep
+			methodID = methodIDModuleSleep
 		case "Since":
-			methodID = MethodID_Module_Since
+			methodID = methodIDModuleSince
 		case "Until":
-			methodID = MethodID_Module_Until
+			methodID = methodIDModuleUntil
 		case "Parse":
-			methodID = MethodID_Module_Parse
+			methodID = methodIDModuleParse
 		case "ParseDuration":
-			methodID = MethodID_Module_ParseDuration
+			methodID = methodIDModuleParseDuration
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Module_Now:
+	case methodIDModuleNow:
 		r0 := impl.Now()
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -269,7 +56,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Module_Unix:
+	case methodIDModuleUnix:
 		var sec int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -289,7 +76,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Module_Sleep:
+	case methodIDModuleSleep:
 		var ns int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -299,7 +86,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		return ffigo.AsyncValue[ffigo.Void](r0, func(resBuf *ffigo.Buffer, value ffigo.Void) error {
 			return nil
 		}), nil
-	case MethodID_Module_Since:
+	case methodIDModuleSince:
 		var t *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -313,7 +100,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Module_Until:
+	case methodIDModuleUntil:
 		var t *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -327,7 +114,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Module_Parse:
+	case methodIDModuleParse:
 		var layout string
 		layout = string(reqBuf.ReadString())
 		var value string
@@ -350,7 +137,7 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Module_ParseDuration:
+	case methodIDModuleParseDuration:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.ParseDuration(s)
@@ -371,56 +158,19 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	}
 }
 
-var Module_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Now", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<time.Time>"), ""},
-	{"Unix", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sleep", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"Since", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Until", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Parse", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(HostRef<time.Time>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ParseDuration", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), ""},
-}
-
-type Module_Bridge struct {
-	Impl     Module
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Module_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Module_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Module_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var moduleRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "time", MemberName: "Now", RouteName: "time.Now", MethodID: methodIDModuleNow, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<time.Time>"), Doc: ""},
+	{PackagePath: "time", MemberName: "Unix", RouteName: "time.Unix", MethodID: methodIDModuleUnix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "time", MemberName: "Sleep", RouteName: "time.Sleep", MethodID: methodIDModuleSleep, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "time", MemberName: "Since", RouteName: "time.Since", MethodID: methodIDModuleSince, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "time", MemberName: "Until", RouteName: "time.Until", MethodID: methodIDModuleUntil, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "time", MemberName: "Parse", RouteName: "time.Parse", MethodID: methodIDModuleParse, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(HostRef<time.Time>, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "time", MemberName: "ParseDuration", RouteName: "time.ParseDuration", MethodID: methodIDModuleParseDuration, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("time", "Now", "time.Now", Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
-	schema.AddFunc("time", "Unix", "time.Unix", Module_FFI_Schemas[1].MethodID, Module_FFI_Schemas[1].Sig, Module_FFI_Schemas[1].Doc)
-	schema.AddFunc("time", "Sleep", "time.Sleep", Module_FFI_Schemas[2].MethodID, Module_FFI_Schemas[2].Sig, Module_FFI_Schemas[2].Doc)
-	schema.AddFunc("time", "Since", "time.Since", Module_FFI_Schemas[3].MethodID, Module_FFI_Schemas[3].Sig, Module_FFI_Schemas[3].Doc)
-	schema.AddFunc("time", "Until", "time.Until", Module_FFI_Schemas[4].MethodID, Module_FFI_Schemas[4].Sig, Module_FFI_Schemas[4].Doc)
-	schema.AddFunc("time", "Parse", "time.Parse", Module_FFI_Schemas[5].MethodID, Module_FFI_Schemas[5].Sig, Module_FFI_Schemas[5].Doc)
-	schema.AddFunc("time", "ParseDuration", "time.ParseDuration", Module_FFI_Schemas[6].MethodID, Module_FFI_Schemas[6].Sig, Module_FFI_Schemas[6].Doc)
+	schema.AddRouteDecls(moduleRoutes)
 	schema.AddConst("time", "ANSIC", ffigo.ToConstantString(time.ANSIC))
 	schema.AddConst("time", "Hour", ffigo.ToConstantString(time.Hour))
 	schema.AddConst("time", "Kitchen", ffigo.ToConstantString(time.Kitchen))
@@ -440,106 +190,86 @@ func SurfaceModule(impl Module) *surface.Bundle {
 	schema.AddConst("time", "Second", ffigo.ToConstantString(time.Second))
 	schema.AddConst("time", "UnixDate", ffigo.ToConstantString(time.UnixDate))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Module_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("time", "Now", runtime.FFIRoute{Name: "time.Now", Bridge: bridge, MethodID: Module_FFI_Schemas[0].MethodID, FuncSig: Module_FFI_Schemas[0].Sig, Doc: Module_FFI_Schemas[0].Doc})
-		bound.AddRoute("time", "Unix", runtime.FFIRoute{Name: "time.Unix", Bridge: bridge, MethodID: Module_FFI_Schemas[1].MethodID, FuncSig: Module_FFI_Schemas[1].Sig, Doc: Module_FFI_Schemas[1].Doc})
-		bound.AddRoute("time", "Sleep", runtime.FFIRoute{Name: "time.Sleep", Bridge: bridge, MethodID: Module_FFI_Schemas[2].MethodID, FuncSig: Module_FFI_Schemas[2].Sig, Doc: Module_FFI_Schemas[2].Doc})
-		bound.AddRoute("time", "Since", runtime.FFIRoute{Name: "time.Since", Bridge: bridge, MethodID: Module_FFI_Schemas[3].MethodID, FuncSig: Module_FFI_Schemas[3].Sig, Doc: Module_FFI_Schemas[3].Doc})
-		bound.AddRoute("time", "Until", runtime.FFIRoute{Name: "time.Until", Bridge: bridge, MethodID: Module_FFI_Schemas[4].MethodID, FuncSig: Module_FFI_Schemas[4].Sig, Doc: Module_FFI_Schemas[4].Doc})
-		bound.AddRoute("time", "Parse", runtime.FFIRoute{Name: "time.Parse", Bridge: bridge, MethodID: Module_FFI_Schemas[5].MethodID, FuncSig: Module_FFI_Schemas[5].Sig, Doc: Module_FFI_Schemas[5].Doc})
-		bound.AddRoute("time", "ParseDuration", runtime.FFIRoute{Name: "time.ParseDuration", Bridge: bridge, MethodID: Module_FFI_Schemas[6].MethodID, FuncSig: Module_FFI_Schemas[6].Sig, Doc: Module_FFI_Schemas[6].Doc})
-		bound.AddConst("time", "ANSIC", ffigo.ToConstantString(time.ANSIC))
-		bound.AddConst("time", "Hour", ffigo.ToConstantString(time.Hour))
-		bound.AddConst("time", "Kitchen", ffigo.ToConstantString(time.Kitchen))
-		bound.AddConst("time", "Layout", ffigo.ToConstantString(time.Layout))
-		bound.AddConst("time", "Microsecond", ffigo.ToConstantString(time.Microsecond))
-		bound.AddConst("time", "Millisecond", ffigo.ToConstantString(time.Millisecond))
-		bound.AddConst("time", "Minute", ffigo.ToConstantString(time.Minute))
-		bound.AddConst("time", "Nanosecond", ffigo.ToConstantString(time.Nanosecond))
-		bound.AddConst("time", "RFC1123", ffigo.ToConstantString(time.RFC1123))
-		bound.AddConst("time", "RFC1123Z", ffigo.ToConstantString(time.RFC1123Z))
-		bound.AddConst("time", "RFC3339", ffigo.ToConstantString(time.RFC3339))
-		bound.AddConst("time", "RFC3339Nano", ffigo.ToConstantString(time.RFC3339Nano))
-		bound.AddConst("time", "RFC822", ffigo.ToConstantString(time.RFC822))
-		bound.AddConst("time", "RFC822Z", ffigo.ToConstantString(time.RFC822Z))
-		bound.AddConst("time", "RFC850", ffigo.ToConstantString(time.RFC850))
-		bound.AddConst("time", "RubyDate", ffigo.ToConstantString(time.RubyDate))
-		bound.AddConst("time", "Second", ffigo.ToConstantString(time.Second))
-		bound.AddConst("time", "UnixDate", ffigo.ToConstantString(time.UnixDate))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_Time_Year       = 1
-	MethodID_Time_Month      = 2
-	MethodID_Time_Day        = 3
-	MethodID_Time_Hour       = 4
-	MethodID_Time_Minute     = 5
-	MethodID_Time_Second     = 6
-	MethodID_Time_Nanosecond = 7
-	MethodID_Time_Unix       = 8
-	MethodID_Time_UnixMilli  = 9
-	MethodID_Time_UnixMicro  = 10
-	MethodID_Time_UnixNano   = 11
-	MethodID_Time_Format     = 12
-	MethodID_Time_Add        = 13
-	MethodID_Time_Sub        = 14
-	MethodID_Time_IsZero     = 15
-	MethodID_Time_Before     = 16
-	MethodID_Time_After      = 17
-	MethodID_Time_Equal      = 18
-	MethodID_Time_String     = 19
+	methodIDTimeYear       = 1
+	methodIDTimeMonth      = 2
+	methodIDTimeDay        = 3
+	methodIDTimeHour       = 4
+	methodIDTimeMinute     = 5
+	methodIDTimeSecond     = 6
+	methodIDTimeNanosecond = 7
+	methodIDTimeUnix       = 8
+	methodIDTimeUnixMilli  = 9
+	methodIDTimeUnixMicro  = 10
+	methodIDTimeUnixNano   = 11
+	methodIDTimeFormat     = 12
+	methodIDTimeAdd        = 13
+	methodIDTimeSub        = 14
+	methodIDTimeIsZero     = 15
+	methodIDTimeBefore     = 16
+	methodIDTimeAfter      = 17
+	methodIDTimeEqual      = 18
+	methodIDTimeString     = 19
 )
 
-func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Year":
-			methodID = MethodID_Time_Year
+			methodID = methodIDTimeYear
 		case "Month":
-			methodID = MethodID_Time_Month
+			methodID = methodIDTimeMonth
 		case "Day":
-			methodID = MethodID_Time_Day
+			methodID = methodIDTimeDay
 		case "Hour":
-			methodID = MethodID_Time_Hour
+			methodID = methodIDTimeHour
 		case "Minute":
-			methodID = MethodID_Time_Minute
+			methodID = methodIDTimeMinute
 		case "Second":
-			methodID = MethodID_Time_Second
+			methodID = methodIDTimeSecond
 		case "Nanosecond":
-			methodID = MethodID_Time_Nanosecond
+			methodID = methodIDTimeNanosecond
 		case "Unix":
-			methodID = MethodID_Time_Unix
+			methodID = methodIDTimeUnix
 		case "UnixMilli":
-			methodID = MethodID_Time_UnixMilli
+			methodID = methodIDTimeUnixMilli
 		case "UnixMicro":
-			methodID = MethodID_Time_UnixMicro
+			methodID = methodIDTimeUnixMicro
 		case "UnixNano":
-			methodID = MethodID_Time_UnixNano
+			methodID = methodIDTimeUnixNano
 		case "Format":
-			methodID = MethodID_Time_Format
+			methodID = methodIDTimeFormat
 		case "Add":
-			methodID = MethodID_Time_Add
+			methodID = methodIDTimeAdd
 		case "Sub":
-			methodID = MethodID_Time_Sub
+			methodID = methodIDTimeSub
 		case "IsZero":
-			methodID = MethodID_Time_IsZero
+			methodID = methodIDTimeIsZero
 		case "Before":
-			methodID = MethodID_Time_Before
+			methodID = methodIDTimeBefore
 		case "After":
-			methodID = MethodID_Time_After
+			methodID = methodIDTimeAfter
 		case "Equal":
-			methodID = MethodID_Time_Equal
+			methodID = methodIDTimeEqual
 		case "String":
-			methodID = MethodID_Time_String
+			methodID = methodIDTimeString
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Time_Year:
+	case methodIDTimeYear:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -553,7 +283,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Month:
+	case methodIDTimeMonth:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -567,7 +297,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Day:
+	case methodIDTimeDay:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -581,7 +311,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Hour:
+	case methodIDTimeHour:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -595,7 +325,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Minute:
+	case methodIDTimeMinute:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -609,7 +339,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Second:
+	case methodIDTimeSecond:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -623,7 +353,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Nanosecond:
+	case methodIDTimeNanosecond:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -637,7 +367,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Unix:
+	case methodIDTimeUnix:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -651,7 +381,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixMilli:
+	case methodIDTimeUnixMilli:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -665,7 +395,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixMicro:
+	case methodIDTimeUnixMicro:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -679,7 +409,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_UnixNano:
+	case methodIDTimeUnixNano:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -693,7 +423,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Format:
+	case methodIDTimeFormat:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -709,7 +439,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Add:
+	case methodIDTimeAdd:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -733,7 +463,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "time.Time")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Sub:
+	case methodIDTimeSub:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -756,7 +486,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_IsZero:
+	case methodIDTimeIsZero:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -770,7 +500,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Before:
+	case methodIDTimeBefore:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -793,7 +523,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_After:
+	case methodIDTimeAfter:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -816,7 +546,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_Equal:
+	case methodIDTimeEqual:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -839,7 +569,7 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Time_String:
+	case methodIDTimeString:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -858,85 +588,40 @@ func TimeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	}
 }
 
-var Time_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Year", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Month", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Day", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Hour", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Minute", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Second", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Nanosecond", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Unix", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixMilli", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixMicro", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"UnixNano", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), ""},
-	{"Format", 12, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Add", 13, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sub", 14, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"IsZero", 15, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Bool", runtime.FFIParamIn), ""},
-	{"Before", 16, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"After", 17, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Equal", 18, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"String", 19, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) String", runtime.FFIParamIn), ""},
-}
-
-type Time_Bridge struct {
-	Impl     *Time
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Time_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TimeHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Time_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TimeHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Time_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var timeRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "time.Time", MethodName: "Year", RouteName: "time.Time.Year", MethodID: methodIDTimeYear, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Month", RouteName: "time.Time.Month", MethodID: methodIDTimeMonth, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Day", RouteName: "time.Time.Day", MethodID: methodIDTimeDay, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Hour", RouteName: "time.Time.Hour", MethodID: methodIDTimeHour, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Minute", RouteName: "time.Time.Minute", MethodID: methodIDTimeMinute, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Second", RouteName: "time.Time.Second", MethodID: methodIDTimeSecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Nanosecond", RouteName: "time.Time.Nanosecond", MethodID: methodIDTimeNanosecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Unix", RouteName: "time.Time.Unix", MethodID: methodIDTimeUnix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "UnixMilli", RouteName: "time.Time.UnixMilli", MethodID: methodIDTimeUnixMilli, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "UnixMicro", RouteName: "time.Time.UnixMicro", MethodID: methodIDTimeUnixMicro, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "UnixNano", RouteName: "time.Time.UnixNano", MethodID: methodIDTimeUnixNano, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Format", RouteName: "time.Time.Format", MethodID: methodIDTimeFormat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Add", RouteName: "time.Time.Add", MethodID: methodIDTimeAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Sub", RouteName: "time.Time.Sub", MethodID: methodIDTimeSub, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "IsZero", RouteName: "time.Time.IsZero", MethodID: methodIDTimeIsZero, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Bool", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Before", RouteName: "time.Time.Before", MethodID: methodIDTimeBefore, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "After", RouteName: "time.Time.After", MethodID: methodIDTimeAfter, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "Equal", RouteName: "time.Time.Equal", MethodID: methodIDTimeEqual, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "time.Time", MethodName: "String", RouteName: "time.Time.String", MethodID: methodIDTimeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTime() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(timeRoutes)
 	schema.AddStruct("time.Time", time_Time_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Time_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["time.Time.Year"] = runtime.FFIRoute{Name: "time.Time.Year", Bridge: bridge, MethodID: Time_FFI_Schemas[0].MethodID, FuncSig: Time_FFI_Schemas[0].Sig, Doc: Time_FFI_Schemas[0].Doc}
-		bound.Routes["time.Time.Month"] = runtime.FFIRoute{Name: "time.Time.Month", Bridge: bridge, MethodID: Time_FFI_Schemas[1].MethodID, FuncSig: Time_FFI_Schemas[1].Sig, Doc: Time_FFI_Schemas[1].Doc}
-		bound.Routes["time.Time.Day"] = runtime.FFIRoute{Name: "time.Time.Day", Bridge: bridge, MethodID: Time_FFI_Schemas[2].MethodID, FuncSig: Time_FFI_Schemas[2].Sig, Doc: Time_FFI_Schemas[2].Doc}
-		bound.Routes["time.Time.Hour"] = runtime.FFIRoute{Name: "time.Time.Hour", Bridge: bridge, MethodID: Time_FFI_Schemas[3].MethodID, FuncSig: Time_FFI_Schemas[3].Sig, Doc: Time_FFI_Schemas[3].Doc}
-		bound.Routes["time.Time.Minute"] = runtime.FFIRoute{Name: "time.Time.Minute", Bridge: bridge, MethodID: Time_FFI_Schemas[4].MethodID, FuncSig: Time_FFI_Schemas[4].Sig, Doc: Time_FFI_Schemas[4].Doc}
-		bound.Routes["time.Time.Second"] = runtime.FFIRoute{Name: "time.Time.Second", Bridge: bridge, MethodID: Time_FFI_Schemas[5].MethodID, FuncSig: Time_FFI_Schemas[5].Sig, Doc: Time_FFI_Schemas[5].Doc}
-		bound.Routes["time.Time.Nanosecond"] = runtime.FFIRoute{Name: "time.Time.Nanosecond", Bridge: bridge, MethodID: Time_FFI_Schemas[6].MethodID, FuncSig: Time_FFI_Schemas[6].Sig, Doc: Time_FFI_Schemas[6].Doc}
-		bound.Routes["time.Time.Unix"] = runtime.FFIRoute{Name: "time.Time.Unix", Bridge: bridge, MethodID: Time_FFI_Schemas[7].MethodID, FuncSig: Time_FFI_Schemas[7].Sig, Doc: Time_FFI_Schemas[7].Doc}
-		bound.Routes["time.Time.UnixMilli"] = runtime.FFIRoute{Name: "time.Time.UnixMilli", Bridge: bridge, MethodID: Time_FFI_Schemas[8].MethodID, FuncSig: Time_FFI_Schemas[8].Sig, Doc: Time_FFI_Schemas[8].Doc}
-		bound.Routes["time.Time.UnixMicro"] = runtime.FFIRoute{Name: "time.Time.UnixMicro", Bridge: bridge, MethodID: Time_FFI_Schemas[9].MethodID, FuncSig: Time_FFI_Schemas[9].Sig, Doc: Time_FFI_Schemas[9].Doc}
-		bound.Routes["time.Time.UnixNano"] = runtime.FFIRoute{Name: "time.Time.UnixNano", Bridge: bridge, MethodID: Time_FFI_Schemas[10].MethodID, FuncSig: Time_FFI_Schemas[10].Sig, Doc: Time_FFI_Schemas[10].Doc}
-		bound.Routes["time.Time.Format"] = runtime.FFIRoute{Name: "time.Time.Format", Bridge: bridge, MethodID: Time_FFI_Schemas[11].MethodID, FuncSig: Time_FFI_Schemas[11].Sig, Doc: Time_FFI_Schemas[11].Doc}
-		bound.Routes["time.Time.Add"] = runtime.FFIRoute{Name: "time.Time.Add", Bridge: bridge, MethodID: Time_FFI_Schemas[12].MethodID, FuncSig: Time_FFI_Schemas[12].Sig, Doc: Time_FFI_Schemas[12].Doc}
-		bound.Routes["time.Time.Sub"] = runtime.FFIRoute{Name: "time.Time.Sub", Bridge: bridge, MethodID: Time_FFI_Schemas[13].MethodID, FuncSig: Time_FFI_Schemas[13].Sig, Doc: Time_FFI_Schemas[13].Doc}
-		bound.Routes["time.Time.IsZero"] = runtime.FFIRoute{Name: "time.Time.IsZero", Bridge: bridge, MethodID: Time_FFI_Schemas[14].MethodID, FuncSig: Time_FFI_Schemas[14].Sig, Doc: Time_FFI_Schemas[14].Doc}
-		bound.Routes["time.Time.Before"] = runtime.FFIRoute{Name: "time.Time.Before", Bridge: bridge, MethodID: Time_FFI_Schemas[15].MethodID, FuncSig: Time_FFI_Schemas[15].Sig, Doc: Time_FFI_Schemas[15].Doc}
-		bound.Routes["time.Time.After"] = runtime.FFIRoute{Name: "time.Time.After", Bridge: bridge, MethodID: Time_FFI_Schemas[16].MethodID, FuncSig: Time_FFI_Schemas[16].Sig, Doc: Time_FFI_Schemas[16].Doc}
-		bound.Routes["time.Time.Equal"] = runtime.FFIRoute{Name: "time.Time.Equal", Bridge: bridge, MethodID: Time_FFI_Schemas[17].MethodID, FuncSig: Time_FFI_Schemas[17].Sig, Doc: Time_FFI_Schemas[17].Doc}
-		bound.Routes["time.Time.String"] = runtime.FFIRoute{Name: "time.Time.String", Bridge: bridge, MethodID: Time_FFI_Schemas[18].MethodID, FuncSig: Time_FFI_Schemas[18].Sig, Doc: Time_FFI_Schemas[18].Doc}
-		bound.AddStruct("time.Time", time_Time_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return timeHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

@@ -10,7 +10,7 @@ import (
 
 func TestJSON(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("encoding/json", jsonlib.JSON_FFI_Schemas),
+		testutil.SurfaceFFISchema("encoding/json", jsonlib.SurfaceJSON(&jsonlib.JSONHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "map-roundtrip",

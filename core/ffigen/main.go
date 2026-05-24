@@ -36,6 +36,7 @@ type targetMeta struct {
 	methodsPrefix   string
 	methodsMarked   bool
 	interfaceMarked bool
+	proxyMarked     bool
 	structTarget    bool
 }
 

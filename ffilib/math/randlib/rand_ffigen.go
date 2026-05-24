@@ -12,431 +12,87 @@ import (
 )
 
 const (
-	MethodID_Rand_ExpFloat64  = 1
-	MethodID_Rand_Float32     = 2
-	MethodID_Rand_Float64     = 3
-	MethodID_Rand_Int         = 4
-	MethodID_Rand_Int31       = 5
-	MethodID_Rand_Int31n      = 6
-	MethodID_Rand_Intn        = 7
-	MethodID_Rand_Int63       = 8
-	MethodID_Rand_Int63n      = 9
-	MethodID_Rand_NormFloat64 = 10
-	MethodID_Rand_Read        = 11
-	MethodID_Rand_Seed        = 12
-	MethodID_Rand_Perm        = 13
-	MethodID_Rand_Uint32      = 14
-	MethodID_Rand_Uint64      = 15
+	methodIDRandExpFloat64  = 1
+	methodIDRandFloat32     = 2
+	methodIDRandFloat64     = 3
+	methodIDRandInt         = 4
+	methodIDRandInt31       = 5
+	methodIDRandInt31n      = 6
+	methodIDRandIntn        = 7
+	methodIDRandInt63       = 8
+	methodIDRandInt63n      = 9
+	methodIDRandNormFloat64 = 10
+	methodIDRandRead        = 11
+	methodIDRandSeed        = 12
+	methodIDRandPerm        = 13
+	methodIDRandUint32      = 14
+	methodIDRandUint64      = 15
 )
 
-type RandProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewRandProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Rand {
-	return &RandProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *RandProxy) ExpFloat64() float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_ExpFloat64, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *RandProxy) Float32() float32 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Float32, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float32
-	v_0 = float32(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *RandProxy) Float64() float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Float64, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *RandProxy) Int() int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Int, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Int31() int32 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Int31, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int32
-	{
-		tmp := retBuf.ReadVarint()
-		if tmp < -2147483648 || tmp > 2147483647 {
-			panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
-		}
-		v_0 = int32(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Int31n(n int32) int32 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Int31n, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int32
-	{
-		tmp := retBuf.ReadVarint()
-		if tmp < -2147483648 || tmp > 2147483647 {
-			panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
-		}
-		v_0 = int32(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Intn(n int) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Intn, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Int63() int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Int63, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Int63n(n int64) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Int63n, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) NormFloat64() float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_NormFloat64, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *RandProxy) Read(p *ffigo.BytesRef) (int, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	if p == nil {
-		wireBuf.WriteBytes(nil)
-	} else {
-		wireBuf.WriteBytes(p.Value)
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Read, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
-	if copyBackCount != 1 {
-		panic(fmt.Sprintf("ffigen: Rand.Read copy-back mismatch: %d", copyBackCount))
-	}
-	if p == nil {
-		panic("ffigen: nil BytesRef passed to Rand.Read")
-	}
-	p.Value = retBuf.ReadBytes()
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *RandProxy) Seed(seed int64) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(seed))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Seed, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *RandProxy) Perm(n int) []int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(n))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Perm, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []int
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([]int, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		{
-			tmp := retBuf.ReadVarint()
-			v_0[i_v_0] = int(tmp)
-		}
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Uint32() uint32 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Uint32, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 uint32
-	{
-		tmp := retBuf.ReadVarint()
-		if tmp < 0 || tmp > 4294967295 {
-			panic(fmt.Sprintf("ffi: uint32 overflow: %d", tmp))
-		}
-		v_0 = uint32(tmp)
-	}
-	return v_0
-}
-
-func (__p *RandProxy) Uint64() uint64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Rand_Uint64, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 uint64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = uint64(tmp)
-	}
-	return v_0
-}
-
-func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "ExpFloat64":
-			methodID = MethodID_Rand_ExpFloat64
+			methodID = methodIDRandExpFloat64
 		case "Float32":
-			methodID = MethodID_Rand_Float32
+			methodID = methodIDRandFloat32
 		case "Float64":
-			methodID = MethodID_Rand_Float64
+			methodID = methodIDRandFloat64
 		case "Int":
-			methodID = MethodID_Rand_Int
+			methodID = methodIDRandInt
 		case "Int31":
-			methodID = MethodID_Rand_Int31
+			methodID = methodIDRandInt31
 		case "Int31n":
-			methodID = MethodID_Rand_Int31n
+			methodID = methodIDRandInt31n
 		case "Intn":
-			methodID = MethodID_Rand_Intn
+			methodID = methodIDRandIntn
 		case "Int63":
-			methodID = MethodID_Rand_Int63
+			methodID = methodIDRandInt63
 		case "Int63n":
-			methodID = MethodID_Rand_Int63n
+			methodID = methodIDRandInt63n
 		case "NormFloat64":
-			methodID = MethodID_Rand_NormFloat64
+			methodID = methodIDRandNormFloat64
 		case "Read":
-			methodID = MethodID_Rand_Read
+			methodID = methodIDRandRead
 		case "Seed":
-			methodID = MethodID_Rand_Seed
+			methodID = methodIDRandSeed
 		case "Perm":
-			methodID = MethodID_Rand_Perm
+			methodID = methodIDRandPerm
 		case "Uint32":
-			methodID = MethodID_Rand_Uint32
+			methodID = methodIDRandUint32
 		case "Uint64":
-			methodID = MethodID_Rand_Uint64
+			methodID = methodIDRandUint64
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Rand_ExpFloat64:
+	case methodIDRandExpFloat64:
 		r0 := impl.ExpFloat64()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Float32:
+	case methodIDRandFloat32:
 		r0 := impl.Float32()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Float64:
+	case methodIDRandFloat64:
 		r0 := impl.Float64()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Int:
+	case methodIDRandInt:
 		r0 := impl.Int()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Int31:
+	case methodIDRandInt31:
 		r0 := impl.Int31()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Int31n:
+	case methodIDRandInt31n:
 		var n int32
 		{
 			tmp := reqBuf.ReadVarint()
@@ -449,7 +105,7 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Intn:
+	case methodIDRandIntn:
 		var n int
 		{
 			tmp := reqBuf.ReadVarint()
@@ -459,12 +115,12 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Int63:
+	case methodIDRandInt63:
 		r0 := impl.Int63()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Int63n:
+	case methodIDRandInt63n:
 		var n int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -474,12 +130,12 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_NormFloat64:
+	case methodIDRandNormFloat64:
 		r0 := impl.NormFloat64()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Read:
+	case methodIDRandRead:
 		var p *ffigo.BytesRef
 		p = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
 		r0, err := impl.Read(p)
@@ -501,7 +157,7 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Seed:
+	case methodIDRandSeed:
 		var seed int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -510,7 +166,7 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		impl.Seed(seed)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Perm:
+	case methodIDRandPerm:
 		var n int
 		{
 			tmp := reqBuf.ReadVarint()
@@ -523,12 +179,12 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 			resBuf.WriteVarint(int64(item))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Uint32:
+	case methodIDRandUint32:
 		r0 := impl.Uint32()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Rand_Uint64:
+	case methodIDRandUint64:
 		r0 := impl.Uint64()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -538,90 +194,35 @@ func RandHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	}
 }
 
-var Rand_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"ExpFloat64", 1, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"Float32", 2, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"Float64", 3, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"Int", 4, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Int31", 5, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Int31n", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"Intn", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"Int63", 8, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Int63n", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), ""},
-	{"NormFloat64", 10, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"Read", 11, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Int64, Error)", runtime.FFIParamInOutBytes), ""},
-	{"Seed", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), ""},
-	{"Perm", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), ""},
-	{"Uint32", 14, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-	{"Uint64", 15, runtime.MustParseRuntimeFuncSig("function() Int64"), ""},
-}
-
-type Rand_Bridge struct {
-	Impl     Rand
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Rand_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return RandHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Rand_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return RandHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Rand_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var randRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "math/rand", MemberName: "ExpFloat64", RouteName: "math/rand.ExpFloat64", MethodID: methodIDRandExpFloat64, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Float32", RouteName: "math/rand.Float32", MethodID: methodIDRandFloat32, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Float64", RouteName: "math/rand.Float64", MethodID: methodIDRandFloat64, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Int", RouteName: "math/rand.Int", MethodID: methodIDRandInt, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Int31", RouteName: "math/rand.Int31", MethodID: methodIDRandInt31, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Int31n", RouteName: "math/rand.Int31n", MethodID: methodIDRandInt31n, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Intn", RouteName: "math/rand.Intn", MethodID: methodIDRandIntn, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Int63", RouteName: "math/rand.Int63", MethodID: methodIDRandInt63, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Int63n", RouteName: "math/rand.Int63n", MethodID: methodIDRandInt63n, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "NormFloat64", RouteName: "math/rand.NormFloat64", MethodID: methodIDRandNormFloat64, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Read", RouteName: "math/rand.Read", MethodID: methodIDRandRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Int64, Error)", runtime.FFIParamInOutBytes), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Seed", RouteName: "math/rand.Seed", MethodID: methodIDRandSeed, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Perm", RouteName: "math/rand.Perm", MethodID: methodIDRandPerm, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Uint32", RouteName: "math/rand.Uint32", MethodID: methodIDRandUint32, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Uint64", RouteName: "math/rand.Uint64", MethodID: methodIDRandUint64, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
 }
 
 func SurfaceRand(impl Rand) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("math/rand", "ExpFloat64", "math/rand.ExpFloat64", Rand_FFI_Schemas[0].MethodID, Rand_FFI_Schemas[0].Sig, Rand_FFI_Schemas[0].Doc)
-	schema.AddFunc("math/rand", "Float32", "math/rand.Float32", Rand_FFI_Schemas[1].MethodID, Rand_FFI_Schemas[1].Sig, Rand_FFI_Schemas[1].Doc)
-	schema.AddFunc("math/rand", "Float64", "math/rand.Float64", Rand_FFI_Schemas[2].MethodID, Rand_FFI_Schemas[2].Sig, Rand_FFI_Schemas[2].Doc)
-	schema.AddFunc("math/rand", "Int", "math/rand.Int", Rand_FFI_Schemas[3].MethodID, Rand_FFI_Schemas[3].Sig, Rand_FFI_Schemas[3].Doc)
-	schema.AddFunc("math/rand", "Int31", "math/rand.Int31", Rand_FFI_Schemas[4].MethodID, Rand_FFI_Schemas[4].Sig, Rand_FFI_Schemas[4].Doc)
-	schema.AddFunc("math/rand", "Int31n", "math/rand.Int31n", Rand_FFI_Schemas[5].MethodID, Rand_FFI_Schemas[5].Sig, Rand_FFI_Schemas[5].Doc)
-	schema.AddFunc("math/rand", "Intn", "math/rand.Intn", Rand_FFI_Schemas[6].MethodID, Rand_FFI_Schemas[6].Sig, Rand_FFI_Schemas[6].Doc)
-	schema.AddFunc("math/rand", "Int63", "math/rand.Int63", Rand_FFI_Schemas[7].MethodID, Rand_FFI_Schemas[7].Sig, Rand_FFI_Schemas[7].Doc)
-	schema.AddFunc("math/rand", "Int63n", "math/rand.Int63n", Rand_FFI_Schemas[8].MethodID, Rand_FFI_Schemas[8].Sig, Rand_FFI_Schemas[8].Doc)
-	schema.AddFunc("math/rand", "NormFloat64", "math/rand.NormFloat64", Rand_FFI_Schemas[9].MethodID, Rand_FFI_Schemas[9].Sig, Rand_FFI_Schemas[9].Doc)
-	schema.AddFunc("math/rand", "Read", "math/rand.Read", Rand_FFI_Schemas[10].MethodID, Rand_FFI_Schemas[10].Sig, Rand_FFI_Schemas[10].Doc)
-	schema.AddFunc("math/rand", "Seed", "math/rand.Seed", Rand_FFI_Schemas[11].MethodID, Rand_FFI_Schemas[11].Sig, Rand_FFI_Schemas[11].Doc)
-	schema.AddFunc("math/rand", "Perm", "math/rand.Perm", Rand_FFI_Schemas[12].MethodID, Rand_FFI_Schemas[12].Sig, Rand_FFI_Schemas[12].Doc)
-	schema.AddFunc("math/rand", "Uint32", "math/rand.Uint32", Rand_FFI_Schemas[13].MethodID, Rand_FFI_Schemas[13].Sig, Rand_FFI_Schemas[13].Doc)
-	schema.AddFunc("math/rand", "Uint64", "math/rand.Uint64", Rand_FFI_Schemas[14].MethodID, Rand_FFI_Schemas[14].Sig, Rand_FFI_Schemas[14].Doc)
+	schema.AddRouteDecls(randRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Rand_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("math/rand", "ExpFloat64", runtime.FFIRoute{Name: "math/rand.ExpFloat64", Bridge: bridge, MethodID: Rand_FFI_Schemas[0].MethodID, FuncSig: Rand_FFI_Schemas[0].Sig, Doc: Rand_FFI_Schemas[0].Doc})
-		bound.AddRoute("math/rand", "Float32", runtime.FFIRoute{Name: "math/rand.Float32", Bridge: bridge, MethodID: Rand_FFI_Schemas[1].MethodID, FuncSig: Rand_FFI_Schemas[1].Sig, Doc: Rand_FFI_Schemas[1].Doc})
-		bound.AddRoute("math/rand", "Float64", runtime.FFIRoute{Name: "math/rand.Float64", Bridge: bridge, MethodID: Rand_FFI_Schemas[2].MethodID, FuncSig: Rand_FFI_Schemas[2].Sig, Doc: Rand_FFI_Schemas[2].Doc})
-		bound.AddRoute("math/rand", "Int", runtime.FFIRoute{Name: "math/rand.Int", Bridge: bridge, MethodID: Rand_FFI_Schemas[3].MethodID, FuncSig: Rand_FFI_Schemas[3].Sig, Doc: Rand_FFI_Schemas[3].Doc})
-		bound.AddRoute("math/rand", "Int31", runtime.FFIRoute{Name: "math/rand.Int31", Bridge: bridge, MethodID: Rand_FFI_Schemas[4].MethodID, FuncSig: Rand_FFI_Schemas[4].Sig, Doc: Rand_FFI_Schemas[4].Doc})
-		bound.AddRoute("math/rand", "Int31n", runtime.FFIRoute{Name: "math/rand.Int31n", Bridge: bridge, MethodID: Rand_FFI_Schemas[5].MethodID, FuncSig: Rand_FFI_Schemas[5].Sig, Doc: Rand_FFI_Schemas[5].Doc})
-		bound.AddRoute("math/rand", "Intn", runtime.FFIRoute{Name: "math/rand.Intn", Bridge: bridge, MethodID: Rand_FFI_Schemas[6].MethodID, FuncSig: Rand_FFI_Schemas[6].Sig, Doc: Rand_FFI_Schemas[6].Doc})
-		bound.AddRoute("math/rand", "Int63", runtime.FFIRoute{Name: "math/rand.Int63", Bridge: bridge, MethodID: Rand_FFI_Schemas[7].MethodID, FuncSig: Rand_FFI_Schemas[7].Sig, Doc: Rand_FFI_Schemas[7].Doc})
-		bound.AddRoute("math/rand", "Int63n", runtime.FFIRoute{Name: "math/rand.Int63n", Bridge: bridge, MethodID: Rand_FFI_Schemas[8].MethodID, FuncSig: Rand_FFI_Schemas[8].Sig, Doc: Rand_FFI_Schemas[8].Doc})
-		bound.AddRoute("math/rand", "NormFloat64", runtime.FFIRoute{Name: "math/rand.NormFloat64", Bridge: bridge, MethodID: Rand_FFI_Schemas[9].MethodID, FuncSig: Rand_FFI_Schemas[9].Sig, Doc: Rand_FFI_Schemas[9].Doc})
-		bound.AddRoute("math/rand", "Read", runtime.FFIRoute{Name: "math/rand.Read", Bridge: bridge, MethodID: Rand_FFI_Schemas[10].MethodID, FuncSig: Rand_FFI_Schemas[10].Sig, Doc: Rand_FFI_Schemas[10].Doc})
-		bound.AddRoute("math/rand", "Seed", runtime.FFIRoute{Name: "math/rand.Seed", Bridge: bridge, MethodID: Rand_FFI_Schemas[11].MethodID, FuncSig: Rand_FFI_Schemas[11].Sig, Doc: Rand_FFI_Schemas[11].Doc})
-		bound.AddRoute("math/rand", "Perm", runtime.FFIRoute{Name: "math/rand.Perm", Bridge: bridge, MethodID: Rand_FFI_Schemas[12].MethodID, FuncSig: Rand_FFI_Schemas[12].Sig, Doc: Rand_FFI_Schemas[12].Doc})
-		bound.AddRoute("math/rand", "Uint32", runtime.FFIRoute{Name: "math/rand.Uint32", Bridge: bridge, MethodID: Rand_FFI_Schemas[13].MethodID, FuncSig: Rand_FFI_Schemas[13].Sig, Doc: Rand_FFI_Schemas[13].Doc})
-		bound.AddRoute("math/rand", "Uint64", runtime.FFIRoute{Name: "math/rand.Uint64", Bridge: bridge, MethodID: Rand_FFI_Schemas[14].MethodID, FuncSig: Rand_FFI_Schemas[14].Sig, Doc: Rand_FFI_Schemas[14].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return randHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

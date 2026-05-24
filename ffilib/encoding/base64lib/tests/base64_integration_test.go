@@ -10,8 +10,8 @@ import (
 
 func TestBase64(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("encoding/base64", base64lib.Module_FFI_Schemas),
-		testutil.FFISchema("encoding/base64.Encoding", base64lib.Encoding_FFI_Schemas),
+		testutil.SurfaceFFISchema("encoding/base64", base64lib.SurfaceModule(&base64lib.ModuleHost{})),
+		testutil.SurfaceFFISchema("encoding/base64.Encoding", base64lib.SurfaceEncoding()),
 	}, []testutil.Case{
 		{
 			Name:    "package-encoding-values",

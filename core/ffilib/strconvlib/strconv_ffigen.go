@@ -13,349 +13,47 @@ import (
 )
 
 const (
-	MethodID_Strconv_Atoi        = 1
-	MethodID_Strconv_Itoa        = 2
-	MethodID_Strconv_ParseBool   = 3
-	MethodID_Strconv_ParseFloat  = 4
-	MethodID_Strconv_ParseInt    = 5
-	MethodID_Strconv_FormatBool  = 6
-	MethodID_Strconv_FormatFloat = 7
-	MethodID_Strconv_FormatInt   = 8
-	MethodID_Strconv_Quote       = 9
-	MethodID_Strconv_Unquote     = 10
+	methodIDStrconvAtoi        = 1
+	methodIDStrconvItoa        = 2
+	methodIDStrconvParseBool   = 3
+	methodIDStrconvParseFloat  = 4
+	methodIDStrconvParseInt    = 5
+	methodIDStrconvFormatBool  = 6
+	methodIDStrconvFormatFloat = 7
+	methodIDStrconvFormatInt   = 8
+	methodIDStrconvQuote       = 9
+	methodIDStrconvUnquote     = 10
 )
 
-type StrconvProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewStrconvProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Strconv {
-	return &StrconvProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *StrconvProxy) Atoi(s string) (int, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Atoi, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *StrconvProxy) Itoa(i int) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(i))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Itoa, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *StrconvProxy) ParseBool(str string) (bool, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(str))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseBool, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return false, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *StrconvProxy) ParseFloat(s string, bitSize int) (float64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-	wireBuf.WriteVarint(int64(bitSize))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseFloat, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0.0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *StrconvProxy) ParseInt(s string, base int, bitSize int) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-	wireBuf.WriteVarint(int64(base))
-	wireBuf.WriteVarint(int64(bitSize))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_ParseInt, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *StrconvProxy) FormatBool(b bool) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBool(bool(b))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatBool, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *StrconvProxy) FormatFloat(f float64, format uint8, prec int, bitSize int) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(f))
-	wireBuf.WriteVarint(int64(format))
-	wireBuf.WriteVarint(int64(prec))
-	wireBuf.WriteVarint(int64(bitSize))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatFloat, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *StrconvProxy) FormatInt(i int64, base int) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(i))
-	wireBuf.WriteVarint(int64(base))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_FormatInt, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *StrconvProxy) Quote(s string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Quote, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *StrconvProxy) Unquote(s string) (string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Strconv_Unquote, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return "", err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Atoi":
-			methodID = MethodID_Strconv_Atoi
+			methodID = methodIDStrconvAtoi
 		case "Itoa":
-			methodID = MethodID_Strconv_Itoa
+			methodID = methodIDStrconvItoa
 		case "ParseBool":
-			methodID = MethodID_Strconv_ParseBool
+			methodID = methodIDStrconvParseBool
 		case "ParseFloat":
-			methodID = MethodID_Strconv_ParseFloat
+			methodID = methodIDStrconvParseFloat
 		case "ParseInt":
-			methodID = MethodID_Strconv_ParseInt
+			methodID = methodIDStrconvParseInt
 		case "FormatBool":
-			methodID = MethodID_Strconv_FormatBool
+			methodID = methodIDStrconvFormatBool
 		case "FormatFloat":
-			methodID = MethodID_Strconv_FormatFloat
+			methodID = methodIDStrconvFormatFloat
 		case "FormatInt":
-			methodID = MethodID_Strconv_FormatInt
+			methodID = methodIDStrconvFormatInt
 		case "Quote":
-			methodID = MethodID_Strconv_Quote
+			methodID = methodIDStrconvQuote
 		case "Unquote":
-			methodID = MethodID_Strconv_Unquote
+			methodID = methodIDStrconvUnquote
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Strconv_Atoi:
+	case methodIDStrconvAtoi:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.Atoi(s)
@@ -371,7 +69,7 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_Itoa:
+	case methodIDStrconvItoa:
 		var i int
 		{
 			tmp := reqBuf.ReadVarint()
@@ -381,7 +79,7 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_ParseBool:
+	case methodIDStrconvParseBool:
 		var str string
 		str = string(reqBuf.ReadString())
 		r0, err := impl.ParseBool(str)
@@ -397,7 +95,7 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_ParseFloat:
+	case methodIDStrconvParseFloat:
 		var s string
 		s = string(reqBuf.ReadString())
 		var bitSize int
@@ -418,7 +116,7 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_ParseInt:
+	case methodIDStrconvParseInt:
 		var s string
 		s = string(reqBuf.ReadString())
 		var base int
@@ -444,14 +142,14 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_FormatBool:
+	case methodIDStrconvFormatBool:
 		var b bool
 		b = bool(reqBuf.ReadBool())
 		r0 := impl.FormatBool(b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_FormatFloat:
+	case methodIDStrconvFormatFloat:
 		var f float64
 		f = float64(reqBuf.ReadFloat64())
 		var format uint8
@@ -476,7 +174,7 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_FormatInt:
+	case methodIDStrconvFormatInt:
 		var i int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -491,14 +189,14 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_Quote:
+	case methodIDStrconvQuote:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.Quote(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Strconv_Unquote:
+	case methodIDStrconvUnquote:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.Unquote(s)
@@ -519,77 +217,31 @@ func StrconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	}
 }
 
-var Strconv_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Atoi", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), ""},
-	{"Itoa", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) String", runtime.FFIParamIn), ""},
-	{"ParseBool", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Bool, Error)", runtime.FFIParamIn), ""},
-	{"ParseFloat", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64) tuple(Float64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ParseInt", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FormatBool", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Bool) String", runtime.FFIParamIn), ""},
-	{"FormatFloat", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"FormatInt", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Quote", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"Unquote", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), ""},
-}
-
-type Strconv_Bridge struct {
-	Impl     Strconv
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Strconv_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return StrconvHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Strconv_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return StrconvHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Strconv_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var strconvRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "strconv", MemberName: "Atoi", RouteName: "strconv.Atoi", MethodID: methodIDStrconvAtoi, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "Itoa", RouteName: "strconv.Itoa", MethodID: methodIDStrconvItoa, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "ParseBool", RouteName: "strconv.ParseBool", MethodID: methodIDStrconvParseBool, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Bool, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "ParseFloat", RouteName: "strconv.ParseFloat", MethodID: methodIDStrconvParseFloat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64) tuple(Float64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "ParseInt", RouteName: "strconv.ParseInt", MethodID: methodIDStrconvParseInt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "FormatBool", RouteName: "strconv.FormatBool", MethodID: methodIDStrconvFormatBool, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Bool) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "FormatFloat", RouteName: "strconv.FormatFloat", MethodID: methodIDStrconvFormatFloat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "FormatInt", RouteName: "strconv.FormatInt", MethodID: methodIDStrconvFormatInt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "Quote", RouteName: "strconv.Quote", MethodID: methodIDStrconvQuote, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "strconv", MemberName: "Unquote", RouteName: "strconv.Unquote", MethodID: methodIDStrconvUnquote, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceStrconv(impl Strconv) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("strconv", "Atoi", "strconv.Atoi", Strconv_FFI_Schemas[0].MethodID, Strconv_FFI_Schemas[0].Sig, Strconv_FFI_Schemas[0].Doc)
-	schema.AddFunc("strconv", "Itoa", "strconv.Itoa", Strconv_FFI_Schemas[1].MethodID, Strconv_FFI_Schemas[1].Sig, Strconv_FFI_Schemas[1].Doc)
-	schema.AddFunc("strconv", "ParseBool", "strconv.ParseBool", Strconv_FFI_Schemas[2].MethodID, Strconv_FFI_Schemas[2].Sig, Strconv_FFI_Schemas[2].Doc)
-	schema.AddFunc("strconv", "ParseFloat", "strconv.ParseFloat", Strconv_FFI_Schemas[3].MethodID, Strconv_FFI_Schemas[3].Sig, Strconv_FFI_Schemas[3].Doc)
-	schema.AddFunc("strconv", "ParseInt", "strconv.ParseInt", Strconv_FFI_Schemas[4].MethodID, Strconv_FFI_Schemas[4].Sig, Strconv_FFI_Schemas[4].Doc)
-	schema.AddFunc("strconv", "FormatBool", "strconv.FormatBool", Strconv_FFI_Schemas[5].MethodID, Strconv_FFI_Schemas[5].Sig, Strconv_FFI_Schemas[5].Doc)
-	schema.AddFunc("strconv", "FormatFloat", "strconv.FormatFloat", Strconv_FFI_Schemas[6].MethodID, Strconv_FFI_Schemas[6].Sig, Strconv_FFI_Schemas[6].Doc)
-	schema.AddFunc("strconv", "FormatInt", "strconv.FormatInt", Strconv_FFI_Schemas[7].MethodID, Strconv_FFI_Schemas[7].Sig, Strconv_FFI_Schemas[7].Doc)
-	schema.AddFunc("strconv", "Quote", "strconv.Quote", Strconv_FFI_Schemas[8].MethodID, Strconv_FFI_Schemas[8].Sig, Strconv_FFI_Schemas[8].Doc)
-	schema.AddFunc("strconv", "Unquote", "strconv.Unquote", Strconv_FFI_Schemas[9].MethodID, Strconv_FFI_Schemas[9].Sig, Strconv_FFI_Schemas[9].Doc)
+	schema.AddRouteDecls(strconvRoutes)
 	schema.AddConst("strconv", "IntSize", ffigo.ToConstantString(strconv.IntSize))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Strconv_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("strconv", "Atoi", runtime.FFIRoute{Name: "strconv.Atoi", Bridge: bridge, MethodID: Strconv_FFI_Schemas[0].MethodID, FuncSig: Strconv_FFI_Schemas[0].Sig, Doc: Strconv_FFI_Schemas[0].Doc})
-		bound.AddRoute("strconv", "Itoa", runtime.FFIRoute{Name: "strconv.Itoa", Bridge: bridge, MethodID: Strconv_FFI_Schemas[1].MethodID, FuncSig: Strconv_FFI_Schemas[1].Sig, Doc: Strconv_FFI_Schemas[1].Doc})
-		bound.AddRoute("strconv", "ParseBool", runtime.FFIRoute{Name: "strconv.ParseBool", Bridge: bridge, MethodID: Strconv_FFI_Schemas[2].MethodID, FuncSig: Strconv_FFI_Schemas[2].Sig, Doc: Strconv_FFI_Schemas[2].Doc})
-		bound.AddRoute("strconv", "ParseFloat", runtime.FFIRoute{Name: "strconv.ParseFloat", Bridge: bridge, MethodID: Strconv_FFI_Schemas[3].MethodID, FuncSig: Strconv_FFI_Schemas[3].Sig, Doc: Strconv_FFI_Schemas[3].Doc})
-		bound.AddRoute("strconv", "ParseInt", runtime.FFIRoute{Name: "strconv.ParseInt", Bridge: bridge, MethodID: Strconv_FFI_Schemas[4].MethodID, FuncSig: Strconv_FFI_Schemas[4].Sig, Doc: Strconv_FFI_Schemas[4].Doc})
-		bound.AddRoute("strconv", "FormatBool", runtime.FFIRoute{Name: "strconv.FormatBool", Bridge: bridge, MethodID: Strconv_FFI_Schemas[5].MethodID, FuncSig: Strconv_FFI_Schemas[5].Sig, Doc: Strconv_FFI_Schemas[5].Doc})
-		bound.AddRoute("strconv", "FormatFloat", runtime.FFIRoute{Name: "strconv.FormatFloat", Bridge: bridge, MethodID: Strconv_FFI_Schemas[6].MethodID, FuncSig: Strconv_FFI_Schemas[6].Sig, Doc: Strconv_FFI_Schemas[6].Doc})
-		bound.AddRoute("strconv", "FormatInt", runtime.FFIRoute{Name: "strconv.FormatInt", Bridge: bridge, MethodID: Strconv_FFI_Schemas[7].MethodID, FuncSig: Strconv_FFI_Schemas[7].Sig, Doc: Strconv_FFI_Schemas[7].Doc})
-		bound.AddRoute("strconv", "Quote", runtime.FFIRoute{Name: "strconv.Quote", Bridge: bridge, MethodID: Strconv_FFI_Schemas[8].MethodID, FuncSig: Strconv_FFI_Schemas[8].Sig, Doc: Strconv_FFI_Schemas[8].Doc})
-		bound.AddRoute("strconv", "Unquote", runtime.FFIRoute{Name: "strconv.Unquote", Bridge: bridge, MethodID: Strconv_FFI_Schemas[9].MethodID, FuncSig: Strconv_FFI_Schemas[9].Sig, Doc: Strconv_FFI_Schemas[9].Doc})
-		bound.AddConst("strconv", "IntSize", ffigo.ToConstantString(strconv.IntSize))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return strconvHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

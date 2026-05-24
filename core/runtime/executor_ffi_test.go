@@ -369,6 +369,75 @@ func TestValidateExternalRequirementsChecksMethodID(t *testing.T) {
 	}
 }
 
+func TestSurfaceRouteDeclsBindTypeMethods(t *testing.T) {
+	sig := MustParseRuntimeFuncSigWithModes("function(HostRef<demo.Handle>) Error", FFIParamIn)
+	schema := NewFFISurfaceSchema()
+	schema.AddStruct("demo.Handle", MustParseRuntimeStructSpec("demo.Handle", StructOwnershipHostOpaque, "struct { Close function(HostRef<demo.Handle>) Error; }"))
+	schema.AddRouteDecls([]FFIRouteDecl{{
+		TypeName:   "demo.Handle",
+		MethodName: "Close",
+		MethodID:   9,
+		Sig:        sig,
+	}})
+
+	if err := CheckPublicFFISurfaceSchema(schema); err != nil {
+		t.Fatalf("schema validation failed: %v", err)
+	}
+	bound := NewBoundFFISurfaceFromSchema(schema)
+	if _, ok := bound.Structs["demo.Handle"]; !ok {
+		t.Fatalf("expected schema-bound struct, got %#v", bound.Structs)
+	}
+	if err := bound.BindSchemaRoutes(schema, testFFIBridge{}); err != nil {
+		t.Fatalf("bind schema routes failed: %v", err)
+	}
+
+	route := bound.Routes["demo.Handle.Close"]
+	if route.Name != "demo.Handle.Close" || route.MethodID != 9 || !SameRuntimeFuncSchema(route.FuncSig, sig) || route.Bridge == nil {
+		t.Fatalf("unexpected bound method route: %#v", route)
+	}
+	if len(bound.Packages) != 0 {
+		t.Fatalf("type method routes should not create package members: %#v", bound.Packages)
+	}
+}
+
+func TestSurfaceSchemaMergeTypeMethodConflictDoesNotPollute(t *testing.T) {
+	left := NewFFISurfaceSchema()
+	left.AddRouteDecls([]FFIRouteDecl{{
+		TypeName:   "demo.Handle",
+		MethodName: "Close",
+		MethodID:   1,
+		Sig:        MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
+	}})
+	right := NewFFISurfaceSchema()
+	right.AddRouteDecls([]FFIRouteDecl{{
+		TypeName:   "demo.Handle",
+		MethodName: "Close",
+		MethodID:   2,
+		Sig:        MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
+	}})
+
+	err := left.Merge(right)
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "surface type method" {
+		t.Fatalf("expected type method conflict, got %T %v", err, err)
+	}
+	if got := left.Types["demo.Handle"].Methods["Close"].MethodID; got != 1 {
+		t.Fatalf("failed merge polluted existing method id: %d", got)
+	}
+}
+
+func TestBindSchemaRoutesRejectsDuplicateRouteNameConflict(t *testing.T) {
+	schema := NewFFISurfaceSchema()
+	schema.AddFunc("demo", "Call", "demo.Shared", 1, MustParseRuntimeFuncSig("function() Void"), "")
+	schema.AddTypeMethod("demo.Handle", "Close", "demo.Shared", 2, MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Void"), "")
+
+	err := NewBoundFFISurfaceFromSchema(schema).BindSchemaRoutes(schema, testFFIBridge{})
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "route" {
+		t.Fatalf("expected duplicate route conflict, got %T %v", err, err)
+	}
+}
+
 type copyBackFFIBridge struct {
 	returnValue []byte
 }

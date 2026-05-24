@@ -10,7 +10,7 @@ import (
 
 func TestRegexp(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("regexp", regexplib.Regexp_FFI_Schemas),
+		testutil.SurfaceFFISchema("regexp", regexplib.SurfaceRegexp(&regexplib.RegexpHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "matching-and-search",

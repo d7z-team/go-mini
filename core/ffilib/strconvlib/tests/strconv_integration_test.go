@@ -9,7 +9,7 @@ import (
 
 func TestStrconv(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("strconv", strconvlib.Strconv_FFI_Schemas),
+		testutil.SurfaceFFISchema("strconv", strconvlib.SurfaceStrconv(&strconvlib.StrconvHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "atoi-itoa",

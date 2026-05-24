@@ -12,100 +12,17 @@ import (
 )
 
 const (
-	MethodID_JSON_Marshal   = 1
-	MethodID_JSON_Unmarshal = 2
+	methodIDJSONMarshal   = 1
+	methodIDJSONUnmarshal = 2
 )
 
-type JSONProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewJSONProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) JSON {
-	return &JSONProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *JSONProxy) Marshal(v any) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteAny(v)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_JSON_Marshal, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *JSONProxy) Unmarshal(data []byte) (any, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(data)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_JSON_Unmarshal, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 any
-	v_0 = retBuf.ReadAny()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func jsonHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Marshal":
-			methodID = MethodID_JSON_Marshal
+			methodID = methodIDJSONMarshal
 		case "Unmarshal":
-			methodID = MethodID_JSON_Unmarshal
+			methodID = methodIDJSONUnmarshal
 		}
 	}
 
@@ -113,7 +30,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 	var rawVal any
 	_ = rawVal
 	switch methodID {
-	case MethodID_JSON_Marshal:
+	case methodIDJSONMarshal:
 		var v any
 		rawVal = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
@@ -147,7 +64,7 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_JSON_Unmarshal:
+	case methodIDJSONUnmarshal:
 		var data []byte
 		data = reqBuf.ReadBytes()
 		r0, err := impl.Unmarshal(data)
@@ -168,51 +85,22 @@ func JSONHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 	}
 }
 
-var JSON_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Marshal", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Any) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
-	{"Unmarshal", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Any, Error)", runtime.FFIParamIn), ""},
-}
-
-type JSON_Bridge struct {
-	Impl     JSON
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *JSON_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return JSONHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *JSON_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return JSONHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *JSON_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var jsonRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "encoding/json", MemberName: "Marshal", RouteName: "encoding/json.Marshal", MethodID: methodIDJSONMarshal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Any) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/json", MemberName: "Unmarshal", RouteName: "encoding/json.Unmarshal", MethodID: methodIDJSONUnmarshal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Any, Error)", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceJSON(impl JSON) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("encoding/json", "Marshal", "encoding/json.Marshal", JSON_FFI_Schemas[0].MethodID, JSON_FFI_Schemas[0].Sig, JSON_FFI_Schemas[0].Doc)
-	schema.AddFunc("encoding/json", "Unmarshal", "encoding/json.Unmarshal", JSON_FFI_Schemas[1].MethodID, JSON_FFI_Schemas[1].Sig, JSON_FFI_Schemas[1].Doc)
+	schema.AddRouteDecls(jsonRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &JSON_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("encoding/json", "Marshal", runtime.FFIRoute{Name: "encoding/json.Marshal", Bridge: bridge, MethodID: JSON_FFI_Schemas[0].MethodID, FuncSig: JSON_FFI_Schemas[0].Sig, Doc: JSON_FFI_Schemas[0].Doc})
-		bound.AddRoute("encoding/json", "Unmarshal", runtime.FFIRoute{Name: "encoding/json.Unmarshal", Bridge: bridge, MethodID: JSON_FFI_Schemas[1].MethodID, FuncSig: JSON_FFI_Schemas[1].Sig, Doc: JSON_FFI_Schemas[1].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return jsonHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

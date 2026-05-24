@@ -18,84 +18,23 @@ var a_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("a_other.
 var b_other_Type_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("b_other.Type", runtime.StructOwnershipHostOpaque, "struct { Hello function(HostRef<b_other.Type>) String; }")
 
 const (
-	MethodID_TestCanonicalService_NewA = 1
-	MethodID_TestCanonicalService_NewB = 2
+	methodIDTestCanonicalServiceNewA = 1
+	methodIDTestCanonicalServiceNewB = 2
 )
 
-type TestCanonicalServiceProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewTestCanonicalServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) TestCanonicalService {
-	return &TestCanonicalServiceProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *TestCanonicalServiceProxy) NewA(ctx context.Context, name string) *a_other.Type {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_TestCanonicalService_NewA, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *a_other.Type
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type"); ok {
-				v_0 = obj.(*a_other.Type)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *TestCanonicalServiceProxy) NewB(ctx context.Context, id int) *b_other.Type {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(id))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_TestCanonicalService_NewB, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *b_other.Type
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type"); ok {
-				v_0 = obj.(*b_other.Type)
-			}
-		}
-	}
-	return v_0
-}
-
-func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func testCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "NewA":
-			methodID = MethodID_TestCanonicalService_NewA
+			methodID = methodIDTestCanonicalServiceNewA
 		case "NewB":
-			methodID = MethodID_TestCanonicalService_NewB
+			methodID = methodIDTestCanonicalServiceNewB
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_TestCanonicalService_NewA:
+	case methodIDTestCanonicalServiceNewA:
 		var name string
 		name = string(reqBuf.ReadString())
 		r0 := impl.NewA(ctx, name)
@@ -107,7 +46,7 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_TestCanonicalService_NewB:
+	case methodIDTestCanonicalServiceNewB:
 		var id int
 		{
 			tmp := reqBuf.ReadVarint()
@@ -127,107 +66,41 @@ func TestCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	}
 }
 
-var TestCanonicalService_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"NewA", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) HostRef<a_other.Type>", runtime.FFIParamIn), ""},
-	{"NewB", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<b_other.Type>", runtime.FFIParamIn), ""},
-}
-
-type TestCanonicalService_Bridge struct {
-	Impl     TestCanonicalService
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *TestCanonicalService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *TestCanonicalService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TestCanonicalServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *TestCanonicalService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var testCanonicalServiceRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "test_canonical", MemberName: "NewA", RouteName: "test_canonical.NewA", MethodID: methodIDTestCanonicalServiceNewA, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) HostRef<a_other.Type>", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "test_canonical", MemberName: "NewB", RouteName: "test_canonical.NewB", MethodID: methodIDTestCanonicalServiceNewB, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<b_other.Type>", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTestCanonicalService(impl TestCanonicalService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("test_canonical", "NewA", "test_canonical.NewA", TestCanonicalService_FFI_Schemas[0].MethodID, TestCanonicalService_FFI_Schemas[0].Sig, TestCanonicalService_FFI_Schemas[0].Doc)
-	schema.AddFunc("test_canonical", "NewB", "test_canonical.NewB", TestCanonicalService_FFI_Schemas[1].MethodID, TestCanonicalService_FFI_Schemas[1].Sig, TestCanonicalService_FFI_Schemas[1].Doc)
+	schema.AddRouteDecls(testCanonicalServiceRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &TestCanonicalService_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("test_canonical", "NewA", runtime.FFIRoute{Name: "test_canonical.NewA", Bridge: bridge, MethodID: TestCanonicalService_FFI_Schemas[0].MethodID, FuncSig: TestCanonicalService_FFI_Schemas[0].Sig, Doc: TestCanonicalService_FFI_Schemas[0].Doc})
-		bound.AddRoute("test_canonical", "NewB", runtime.FFIRoute{Name: "test_canonical.NewB", Bridge: bridge, MethodID: TestCanonicalService_FFI_Schemas[1].MethodID, FuncSig: TestCanonicalService_FFI_Schemas[1].Sig, Doc: TestCanonicalService_FFI_Schemas[1].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return testCanonicalServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_ATypeService_Hello = 1
+	methodIDATypeServiceHello = 1
 )
 
-type ATypeServiceProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewATypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) ATypeService {
-	return &ATypeServiceProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ATypeServiceProxy) Hello(t *a_other.Type) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if t == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ATypeService_Hello, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func aTypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
-			methodID = MethodID_ATypeService_Hello
+			methodID = methodIDATypeServiceHello
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_ATypeService_Hello:
+	case methodIDATypeServiceHello:
 		var t *a_other.Type
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -246,105 +119,41 @@ func ATypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	}
 }
 
-var ATypeService_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<a_other.Type>) String", runtime.FFIParamIn), ""},
-}
-
-type ATypeService_Bridge struct {
-	Impl     ATypeService
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *ATypeService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *ATypeService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ATypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *ATypeService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var aTypeServiceRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "a_other.Type", MethodName: "Hello", RouteName: "a_other.Type.Hello", MethodID: methodIDATypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<a_other.Type>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceATypeService(impl ATypeService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(aTypeServiceRoutes)
 	schema.AddStruct("a_other.Type", a_other_Type_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &ATypeService_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["a_other.Type.Hello"] = runtime.FFIRoute{Name: "a_other.Type.Hello", Bridge: bridge, MethodID: ATypeService_FFI_Schemas[0].MethodID, FuncSig: ATypeService_FFI_Schemas[0].Sig, Doc: ATypeService_FFI_Schemas[0].Doc}
-		bound.AddStruct("a_other.Type", a_other_Type_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return aTypeServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_BTypeService_Hello = 1
+	methodIDBTypeServiceHello = 1
 )
 
-type BTypeServiceProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewBTypeServiceProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) BTypeService {
-	return &BTypeServiceProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *BTypeServiceProxy) Hello(t *b_other.Type) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if t == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(t, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_BTypeService_Hello, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func bTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Hello":
-			methodID = MethodID_BTypeService_Hello
+			methodID = methodIDBTypeServiceHello
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_BTypeService_Hello:
+	case methodIDBTypeServiceHello:
 		var t *b_other.Type
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -363,49 +172,22 @@ func BTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	}
 }
 
-var BTypeService_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Hello", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<b_other.Type>) String", runtime.FFIParamIn), ""},
-}
-
-type BTypeService_Bridge struct {
-	Impl     BTypeService
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *BTypeService_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *BTypeService_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BTypeServiceHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *BTypeService_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var bTypeServiceRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "b_other.Type", MethodName: "Hello", RouteName: "b_other.Type.Hello", MethodID: methodIDBTypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<b_other.Type>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceBTypeService(impl BTypeService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(bTypeServiceRoutes)
 	schema.AddStruct("b_other.Type", b_other_Type_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &BTypeService_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["b_other.Type.Hello"] = runtime.FFIRoute{Name: "b_other.Type.Hello", Bridge: bridge, MethodID: BTypeService_FFI_Schemas[0].MethodID, FuncSig: BTypeService_FFI_Schemas[0].Sig, Doc: BTypeService_FFI_Schemas[0].Doc}
-		bound.AddStruct("b_other.Type", b_other_Type_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return bTypeServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

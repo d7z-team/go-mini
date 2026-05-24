@@ -69,6 +69,17 @@ func (c *Compiler) externalSchemaMaps() (
 		if typ.Interface != nil {
 			interfaces[ast.Ident(name)] = runtime.CloneRuntimeInterfaceSpec(typ.Interface)
 		}
+		for methodName, method := range typ.Methods {
+			if method == nil || method.Sig == nil {
+				continue
+			}
+			routeName := method.RouteName
+			if routeName == "" {
+				routeName = runtime.ExternalFullName(name, methodName)
+			}
+			funcs[ast.Ident(routeName)] = runtime.CloneRuntimeFuncSig(method.Sig)
+			methodIDs[ast.Ident(routeName)] = method.MethodID
+		}
 	}
 	return funcs, methodIDs, values, structs, interfaces, constants
 }
@@ -307,6 +318,21 @@ func (c *Compiler) externalRegisteredFuncs() map[ast.Ident]bool {
 			routeName := member.Route.RouteName
 			if routeName == "" {
 				routeName = runtime.ExternalFullName(path, memberName)
+			}
+			out[ast.Ident(routeName)] = true
+		}
+	}
+	for typeName, typ := range c.cfg.Surface.Types {
+		if typ == nil {
+			continue
+		}
+		for methodName, method := range typ.Methods {
+			if method == nil {
+				continue
+			}
+			routeName := method.RouteName
+			if routeName == "" {
+				routeName = runtime.ExternalFullName(typeName, methodName)
 			}
 			out[ast.Ident(routeName)] = true
 		}

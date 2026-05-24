@@ -10,7 +10,7 @@ import (
 
 func TestRand(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("math/rand", randlib.Rand_FFI_Schemas),
+		testutil.SurfaceFFISchema("math/rand", randlib.SurfaceRand(randlib.NewRandHost())),
 	}, []testutil.Case{
 		{
 			Name:    "scalars-perm-and-read",

@@ -12,117 +12,33 @@ import (
 )
 
 const (
-	MethodID_Hex_EncodeToString = 1
-	MethodID_Hex_DecodeString   = 2
-	MethodID_Hex_Dump           = 3
+	methodIDHexEncodeToString = 1
+	methodIDHexDecodeString   = 2
+	methodIDHexDump           = 3
 )
 
-type HexProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewHexProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Hex {
-	return &HexProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *HexProxy) EncodeToString(src []byte) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(src)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Hex_EncodeToString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *HexProxy) DecodeString(s string) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Hex_DecodeString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *HexProxy) Dump(data []byte) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(data)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Hex_Dump, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func hexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EncodeToString":
-			methodID = MethodID_Hex_EncodeToString
+			methodID = methodIDHexEncodeToString
 		case "DecodeString":
-			methodID = MethodID_Hex_DecodeString
+			methodID = methodIDHexDecodeString
 		case "Dump":
-			methodID = MethodID_Hex_Dump
+			methodID = methodIDHexDump
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Hex_EncodeToString:
+	case methodIDHexEncodeToString:
 		var src []byte
 		src = reqBuf.ReadBytes()
 		r0 := impl.EncodeToString(src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Hex_DecodeString:
+	case methodIDHexDecodeString:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.DecodeString(s)
@@ -138,7 +54,7 @@ func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Hex_Dump:
+	case methodIDHexDump:
 		var data []byte
 		data = reqBuf.ReadBytes()
 		r0 := impl.Dump(data)
@@ -150,54 +66,23 @@ func HexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 	}
 }
 
-var Hex_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"EncodeToString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
-	{"DecodeString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
-	{"Dump", 3, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), ""},
-}
-
-type Hex_Bridge struct {
-	Impl     Hex
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Hex_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return HexHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Hex_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return HexHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Hex_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var hexRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "encoding/hex", MemberName: "EncodeToString", RouteName: "encoding/hex.EncodeToString", MethodID: methodIDHexEncodeToString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/hex", MemberName: "DecodeString", RouteName: "encoding/hex.DecodeString", MethodID: methodIDHexDecodeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/hex", MemberName: "Dump", RouteName: "encoding/hex.Dump", MethodID: methodIDHexDump, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceHex(impl Hex) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("encoding/hex", "EncodeToString", "encoding/hex.EncodeToString", Hex_FFI_Schemas[0].MethodID, Hex_FFI_Schemas[0].Sig, Hex_FFI_Schemas[0].Doc)
-	schema.AddFunc("encoding/hex", "DecodeString", "encoding/hex.DecodeString", Hex_FFI_Schemas[1].MethodID, Hex_FFI_Schemas[1].Sig, Hex_FFI_Schemas[1].Doc)
-	schema.AddFunc("encoding/hex", "Dump", "encoding/hex.Dump", Hex_FFI_Schemas[2].MethodID, Hex_FFI_Schemas[2].Sig, Hex_FFI_Schemas[2].Doc)
+	schema.AddRouteDecls(hexRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Hex_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("encoding/hex", "EncodeToString", runtime.FFIRoute{Name: "encoding/hex.EncodeToString", Bridge: bridge, MethodID: Hex_FFI_Schemas[0].MethodID, FuncSig: Hex_FFI_Schemas[0].Sig, Doc: Hex_FFI_Schemas[0].Doc})
-		bound.AddRoute("encoding/hex", "DecodeString", runtime.FFIRoute{Name: "encoding/hex.DecodeString", Bridge: bridge, MethodID: Hex_FFI_Schemas[1].MethodID, FuncSig: Hex_FFI_Schemas[1].Sig, Doc: Hex_FFI_Schemas[1].Doc})
-		bound.AddRoute("encoding/hex", "Dump", runtime.FFIRoute{Name: "encoding/hex.Dump", Bridge: bridge, MethodID: Hex_FFI_Schemas[2].MethodID, FuncSig: Hex_FFI_Schemas[2].Sig, Doc: Hex_FFI_Schemas[2].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return hexHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

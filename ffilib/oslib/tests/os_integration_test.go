@@ -17,7 +17,7 @@ func TestFileLifecycle(t *testing.T) {
 	openFilePath := filepath.Join(dir, "openfile.txt")
 	t.Setenv("GO_MINI_TEST", "rocks")
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("os", oslib.OS_FFI_Schemas),
+		testutil.SurfaceFFISchema("os", oslib.SurfaceOS(&oslib.OSHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "files-env-and-constants",

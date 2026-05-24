@@ -10,312 +10,41 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/core/surface"
-	"gopkg.d7z.net/go-mini/ffilib/iolib"
 )
 
 const (
-	MethodID_OS_Open      = 1
-	MethodID_OS_Create    = 2
-	MethodID_OS_OpenFile  = 3
-	MethodID_OS_ReadFile  = 4
-	MethodID_OS_WriteFile = 5
-	MethodID_OS_Remove    = 6
-	MethodID_OS_Getenv    = 7
+	methodIDOSOpen      = 1
+	methodIDOSCreate    = 2
+	methodIDOSOpenFile  = 3
+	methodIDOSReadFile  = 4
+	methodIDOSWriteFile = 5
+	methodIDOSRemove    = 6
+	methodIDOSGetenv    = 7
 )
 
-type OSProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewOSProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) OS {
-	return &OSProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *OSProxy) Open(name string) (*iolib.File, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Open, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *iolib.File
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
-				v_0 = obj.(*iolib.File)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OSProxy) Create(name string) (*iolib.File, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Create, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *iolib.File
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
-				v_0 = obj.(*iolib.File)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OSProxy) OpenFile(name string, flag int, perm int) (*iolib.File, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-	wireBuf.WriteVarint(int64(flag))
-	wireBuf.WriteVarint(int64(perm))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_OpenFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *iolib.File
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "io.File"); ok {
-				v_0 = obj.(*iolib.File)
-			}
-		}
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OSProxy) ReadFile(name string) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_ReadFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *OSProxy) WriteFile(name string, data []byte) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-	wireBuf.WriteBytes(data)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_WriteFile, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *OSProxy) Remove(name string) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Remove, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func (__p *OSProxy) Getenv(key string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(key))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_OS_Getenv, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Open":
-			methodID = MethodID_OS_Open
+			methodID = methodIDOSOpen
 		case "Create":
-			methodID = MethodID_OS_Create
+			methodID = methodIDOSCreate
 		case "OpenFile":
-			methodID = MethodID_OS_OpenFile
+			methodID = methodIDOSOpenFile
 		case "ReadFile":
-			methodID = MethodID_OS_ReadFile
+			methodID = methodIDOSReadFile
 		case "WriteFile":
-			methodID = MethodID_OS_WriteFile
+			methodID = methodIDOSWriteFile
 		case "Remove":
-			methodID = MethodID_OS_Remove
+			methodID = methodIDOSRemove
 		case "Getenv":
-			methodID = MethodID_OS_Getenv
+			methodID = methodIDOSGetenv
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_OS_Open:
+	case methodIDOSOpen:
 		var name string
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Open(name)
@@ -336,7 +65,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_Create:
+	case methodIDOSCreate:
 		var name string
 		name = string(reqBuf.ReadString())
 		r0, err := impl.Create(name)
@@ -357,7 +86,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_OpenFile:
+	case methodIDOSOpenFile:
 		var name string
 		name = string(reqBuf.ReadString())
 		var flag int
@@ -388,7 +117,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_ReadFile:
+	case methodIDOSReadFile:
 		var name string
 		name = string(reqBuf.ReadString())
 		r0, err := impl.ReadFile(name)
@@ -404,7 +133,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_WriteFile:
+	case methodIDOSWriteFile:
 		var name string
 		name = string(reqBuf.ReadString())
 		var data []byte
@@ -421,7 +150,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_Remove:
+	case methodIDOSRemove:
 		var name string
 		name = string(reqBuf.ReadString())
 		err := impl.Remove(name)
@@ -436,7 +165,7 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_OS_Getenv:
+	case methodIDOSGetenv:
 		var key string
 		key = string(reqBuf.ReadString())
 		r0 := impl.Getenv(key)
@@ -448,56 +177,19 @@ func OSHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	}
 }
 
-var OS_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Open", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), ""},
-	{"Create", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), ""},
-	{"OpenFile", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReadFile", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), ""},
-	{"WriteFile", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Remove", 6, runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), ""},
-	{"Getenv", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-}
-
-type OS_Bridge struct {
-	Impl     OS
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *OS_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return OSHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *OS_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return OSHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *OS_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var osRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "os", MemberName: "Open", RouteName: "os.Open", MethodID: methodIDOSOpen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Create", RouteName: "os.Create", MethodID: methodIDOSCreate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "OpenFile", RouteName: "os.OpenFile", MethodID: methodIDOSOpenFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "ReadFile", RouteName: "os.ReadFile", MethodID: methodIDOSReadFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "WriteFile", RouteName: "os.WriteFile", MethodID: methodIDOSWriteFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Remove", RouteName: "os.Remove", MethodID: methodIDOSRemove, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Getenv", RouteName: "os.Getenv", MethodID: methodIDOSGetenv, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceOS(impl OS) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("os", "Open", "os.Open", OS_FFI_Schemas[0].MethodID, OS_FFI_Schemas[0].Sig, OS_FFI_Schemas[0].Doc)
-	schema.AddFunc("os", "Create", "os.Create", OS_FFI_Schemas[1].MethodID, OS_FFI_Schemas[1].Sig, OS_FFI_Schemas[1].Doc)
-	schema.AddFunc("os", "OpenFile", "os.OpenFile", OS_FFI_Schemas[2].MethodID, OS_FFI_Schemas[2].Sig, OS_FFI_Schemas[2].Doc)
-	schema.AddFunc("os", "ReadFile", "os.ReadFile", OS_FFI_Schemas[3].MethodID, OS_FFI_Schemas[3].Sig, OS_FFI_Schemas[3].Doc)
-	schema.AddFunc("os", "WriteFile", "os.WriteFile", OS_FFI_Schemas[4].MethodID, OS_FFI_Schemas[4].Sig, OS_FFI_Schemas[4].Doc)
-	schema.AddFunc("os", "Remove", "os.Remove", OS_FFI_Schemas[5].MethodID, OS_FFI_Schemas[5].Sig, OS_FFI_Schemas[5].Doc)
-	schema.AddFunc("os", "Getenv", "os.Getenv", OS_FFI_Schemas[6].MethodID, OS_FFI_Schemas[6].Sig, OS_FFI_Schemas[6].Doc)
+	schema.AddRouteDecls(osRoutes)
 	schema.AddConst("os", "DevNull", ffigo.ToConstantString(os.DevNull))
 	schema.AddConst("os", "O_APPEND", ffigo.ToConstantString(os.O_APPEND))
 	schema.AddConst("os", "O_CREATE", ffigo.ToConstantString(os.O_CREATE))
@@ -510,26 +202,13 @@ func SurfaceOS(impl OS) *surface.Bundle {
 	schema.AddConst("os", "PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
 	schema.AddConst("os", "PathSeparator", ffigo.ToConstantString(os.PathSeparator))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &OS_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("os", "Open", runtime.FFIRoute{Name: "os.Open", Bridge: bridge, MethodID: OS_FFI_Schemas[0].MethodID, FuncSig: OS_FFI_Schemas[0].Sig, Doc: OS_FFI_Schemas[0].Doc})
-		bound.AddRoute("os", "Create", runtime.FFIRoute{Name: "os.Create", Bridge: bridge, MethodID: OS_FFI_Schemas[1].MethodID, FuncSig: OS_FFI_Schemas[1].Sig, Doc: OS_FFI_Schemas[1].Doc})
-		bound.AddRoute("os", "OpenFile", runtime.FFIRoute{Name: "os.OpenFile", Bridge: bridge, MethodID: OS_FFI_Schemas[2].MethodID, FuncSig: OS_FFI_Schemas[2].Sig, Doc: OS_FFI_Schemas[2].Doc})
-		bound.AddRoute("os", "ReadFile", runtime.FFIRoute{Name: "os.ReadFile", Bridge: bridge, MethodID: OS_FFI_Schemas[3].MethodID, FuncSig: OS_FFI_Schemas[3].Sig, Doc: OS_FFI_Schemas[3].Doc})
-		bound.AddRoute("os", "WriteFile", runtime.FFIRoute{Name: "os.WriteFile", Bridge: bridge, MethodID: OS_FFI_Schemas[4].MethodID, FuncSig: OS_FFI_Schemas[4].Sig, Doc: OS_FFI_Schemas[4].Doc})
-		bound.AddRoute("os", "Remove", runtime.FFIRoute{Name: "os.Remove", Bridge: bridge, MethodID: OS_FFI_Schemas[5].MethodID, FuncSig: OS_FFI_Schemas[5].Sig, Doc: OS_FFI_Schemas[5].Doc})
-		bound.AddRoute("os", "Getenv", runtime.FFIRoute{Name: "os.Getenv", Bridge: bridge, MethodID: OS_FFI_Schemas[6].MethodID, FuncSig: OS_FFI_Schemas[6].Sig, Doc: OS_FFI_Schemas[6].Doc})
-		bound.AddConst("os", "DevNull", ffigo.ToConstantString(os.DevNull))
-		bound.AddConst("os", "O_APPEND", ffigo.ToConstantString(os.O_APPEND))
-		bound.AddConst("os", "O_CREATE", ffigo.ToConstantString(os.O_CREATE))
-		bound.AddConst("os", "O_EXCL", ffigo.ToConstantString(os.O_EXCL))
-		bound.AddConst("os", "O_RDONLY", ffigo.ToConstantString(os.O_RDONLY))
-		bound.AddConst("os", "O_RDWR", ffigo.ToConstantString(os.O_RDWR))
-		bound.AddConst("os", "O_SYNC", ffigo.ToConstantString(os.O_SYNC))
-		bound.AddConst("os", "O_TRUNC", ffigo.ToConstantString(os.O_TRUNC))
-		bound.AddConst("os", "O_WRONLY", ffigo.ToConstantString(os.O_WRONLY))
-		bound.AddConst("os", "PathListSeparator", ffigo.ToConstantString(os.PathListSeparator))
-		bound.AddConst("os", "PathSeparator", ffigo.ToConstantString(os.PathSeparator))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return osHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

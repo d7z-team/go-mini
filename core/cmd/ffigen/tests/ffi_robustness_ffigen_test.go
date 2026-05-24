@@ -14,55 +14,20 @@ import (
 var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
-	MethodID_MockGeometry_SumX = 1
+	methodIDMockGeometrySumX = 1
 )
 
-type MockGeometryProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMockGeometryProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MockGeometry {
-	return &MockGeometryProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MockGeometryProxy) SumX(points []RobustPoint) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(points)))
-	for _, item := range points {
-		wireBuf.WriteVarint(int64(item.X))
-		wireBuf.WriteVarint(int64(item.Y))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockGeometry_SumX, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func mockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "SumX":
-			methodID = MethodID_MockGeometry_SumX
+			methodID = methodIDMockGeometrySumX
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_MockGeometry_SumX:
+	case methodIDMockGeometrySumX:
 		var points []RobustPoint
 		l_points := int(reqBuf.ReadUvarint())
 		points = make([]RobustPoint, l_points)
@@ -85,54 +50,28 @@ func MockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	}
 }
 
-var MockGeometry_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"SumX", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<RobustPoint>) Int64", runtime.FFIParamIn), ""},
-}
-
-type MockGeometry_Bridge struct {
-	Impl     MockGeometry
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *MockGeometry_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockGeometryHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *MockGeometry_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockGeometryHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *MockGeometry_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var mockGeometryRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "", MemberName: "SumX", RouteName: ".SumX", MethodID: methodIDMockGeometrySumX, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<RobustPoint>) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMockGeometryLibrary(prefix string, impl MockGeometry) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	for _, m := range MockGeometry_FFI_Schemas {
-		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
+	routes := make([]runtime.FFIRouteDecl, 0, len(mockGeometryRoutes))
+	for _, route := range mockGeometryRoutes {
+		route.PackagePath = prefix
+		route.RouteName = prefix + "." + route.MemberName
+		routes = append(routes, route)
 	}
+	schema.AddRouteDecls(routes)
 	schema.AddStruct("RobustPoint", RobustPoint_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &MockGeometry_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		for _, m := range MockGeometry_FFI_Schemas {
-			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return mockGeometryHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
 		}
-		bound.AddStruct("RobustPoint", RobustPoint_FFI_StructSchema)
 		return bound, nil
 	})
 }

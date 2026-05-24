@@ -10,7 +10,7 @@ import (
 
 func TestSHA256Sum(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("crypto/sha256", sha256lib.SHA256_FFI_Schemas),
+		testutil.SurfaceFFISchema("crypto/sha256", sha256lib.SurfaceSHA256(&sha256lib.SHA256Host{})),
 	}, []testutil.Case{
 		{
 			Name:    "sum256",

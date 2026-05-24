@@ -16,6 +16,7 @@
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle 或 VM pointer。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
+- `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
 - `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。

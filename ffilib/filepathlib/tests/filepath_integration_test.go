@@ -10,7 +10,7 @@ import (
 
 func TestFilepath(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("filepath", filepathlib.Filepath_FFI_Schemas),
+		testutil.SurfaceFFISchema("filepath", filepathlib.SurfaceFilepath(&filepathlib.FilepathHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "path-helpers",

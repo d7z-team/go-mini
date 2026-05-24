@@ -20,8 +20,7 @@ func SurfaceReaderSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		return bound, nil
 	})
 }
@@ -32,197 +31,32 @@ func SurfaceWriterSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_IO_ReadAll     = 1
-	MethodID_IO_Copy        = 2
-	MethodID_IO_WriteString = 3
+	methodIDIOReadAll     = 1
+	methodIDIOCopy        = 2
+	methodIDIOWriteString = 3
 )
 
-type IOProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewIOProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) IO {
-	return &IOProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *IOProxy) ReadAll(ctx context.Context, r Reader) ([]byte, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Named FFI interfaces cross the wire as a host handle plus method schema.
-	if r == nil {
-		wireBuf.WriteRawInterface(0, nil)
-	} else {
-		handle := uint32(0)
-		if __p.registry != nil {
-			handle = __p.registry.RegisterTyped(r, "io.Reader")
-		}
-		wireBuf.WriteRawInterface(handle, io_Reader_FFI_InterfaceSchema.MethodStringMap())
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_ReadAll, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return nil, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *IOProxy) Copy(ctx context.Context, dst Writer, src Reader) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Named FFI interfaces cross the wire as a host handle plus method schema.
-	if dst == nil {
-		wireBuf.WriteRawInterface(0, nil)
-	} else {
-		handle := uint32(0)
-		if __p.registry != nil {
-			handle = __p.registry.RegisterTyped(dst, "io.Writer")
-		}
-		wireBuf.WriteRawInterface(handle, io_Writer_FFI_InterfaceSchema.MethodStringMap())
-	}
-	// Named FFI interfaces cross the wire as a host handle plus method schema.
-	if src == nil {
-		wireBuf.WriteRawInterface(0, nil)
-	} else {
-		handle := uint32(0)
-		if __p.registry != nil {
-			handle = __p.registry.RegisterTyped(src, "io.Reader")
-		}
-		wireBuf.WriteRawInterface(handle, io_Reader_FFI_InterfaceSchema.MethodStringMap())
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_Copy, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *IOProxy) WriteString(ctx context.Context, w Writer, s string) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// Named FFI interfaces cross the wire as a host handle plus method schema.
-	if w == nil {
-		wireBuf.WriteRawInterface(0, nil)
-	} else {
-		handle := uint32(0)
-		if __p.registry != nil {
-			handle = __p.registry.RegisterTyped(w, "io.Writer")
-		}
-		wireBuf.WriteRawInterface(handle, io_Writer_FFI_InterfaceSchema.MethodStringMap())
-	}
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_IO_WriteString, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "ReadAll":
-			methodID = MethodID_IO_ReadAll
+			methodID = methodIDIOReadAll
 		case "Copy":
-			methodID = MethodID_IO_Copy
+			methodID = methodIDIOCopy
 		case "WriteString":
-			methodID = MethodID_IO_WriteString
+			methodID = methodIDIOWriteString
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_IO_ReadAll:
+	case methodIDIOReadAll:
 		var r Reader
 		ifaceData_r := reqBuf.ReadRawInterface()
 		if ifaceData_r.Handle != 0 {
@@ -254,7 +88,7 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_IO_Copy:
+	case methodIDIOCopy:
 		var dst Writer
 		ifaceData_dst := reqBuf.ReadRawInterface()
 		if ifaceData_dst.Handle != 0 {
@@ -304,7 +138,7 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_IO_WriteString:
+	case methodIDIOWriteString:
 		var w Writer
 		ifaceData_w := reqBuf.ReadRawInterface()
 		if ifaceData_w.Handle != 0 {
@@ -343,113 +177,77 @@ func IOHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 	}
 }
 
-var IO_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"ReadAll", 1, runtime.MustParseRuntimeFuncSigWithModes("function(io.Reader) tuple(TypeBytes, Error)", runtime.FFIParamIn), "ReadAll 读取所有数据"},
-	{"Copy", 2, runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, io.Reader) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Copy 将 src 的数据拷贝到 dst"},
-	{"WriteString", 3, runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteString 将字符串写入 w"},
-}
-
-type IO_Bridge struct {
-	Impl     IO
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *IO_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return IOHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *IO_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return IOHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *IO_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var ioRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "io", MemberName: "ReadAll", RouteName: "io.ReadAll", MethodID: methodIDIOReadAll, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Reader) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: "ReadAll 读取所有数据"},
+	{PackagePath: "io", MemberName: "Copy", RouteName: "io.Copy", MethodID: methodIDIOCopy, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, io.Reader) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Copy 将 src 的数据拷贝到 dst"},
+	{PackagePath: "io", MemberName: "WriteString", RouteName: "io.WriteString", MethodID: methodIDIOWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteString 将字符串写入 w"},
 }
 
 func SurfaceIO(impl IO) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("io", "ReadAll", "io.ReadAll", IO_FFI_Schemas[0].MethodID, IO_FFI_Schemas[0].Sig, IO_FFI_Schemas[0].Doc)
-	schema.AddFunc("io", "Copy", "io.Copy", IO_FFI_Schemas[1].MethodID, IO_FFI_Schemas[1].Sig, IO_FFI_Schemas[1].Doc)
-	schema.AddFunc("io", "WriteString", "io.WriteString", IO_FFI_Schemas[2].MethodID, IO_FFI_Schemas[2].Sig, IO_FFI_Schemas[2].Doc)
+	schema.AddRouteDecls(ioRoutes)
 	schema.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
 	schema.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
 	schema.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
 	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
 	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &IO_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("io", "ReadAll", runtime.FFIRoute{Name: "io.ReadAll", Bridge: bridge, MethodID: IO_FFI_Schemas[0].MethodID, FuncSig: IO_FFI_Schemas[0].Sig, Doc: IO_FFI_Schemas[0].Doc})
-		bound.AddRoute("io", "Copy", runtime.FFIRoute{Name: "io.Copy", Bridge: bridge, MethodID: IO_FFI_Schemas[1].MethodID, FuncSig: IO_FFI_Schemas[1].Sig, Doc: IO_FFI_Schemas[1].Doc})
-		bound.AddRoute("io", "WriteString", runtime.FFIRoute{Name: "io.WriteString", Bridge: bridge, MethodID: IO_FFI_Schemas[2].MethodID, FuncSig: IO_FFI_Schemas[2].Sig, Doc: IO_FFI_Schemas[2].Doc})
-		bound.AddConst("io", "SeekCurrent", ffigo.ToConstantString(io.SeekCurrent))
-		bound.AddConst("io", "SeekEnd", ffigo.ToConstantString(io.SeekEnd))
-		bound.AddConst("io", "SeekStart", ffigo.ToConstantString(io.SeekStart))
-		bound.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
-		bound.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return ioHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_File_Write       = 1
-	MethodID_File_Read        = 2
-	MethodID_File_WriteAt     = 3
-	MethodID_File_ReadAt      = 4
-	MethodID_File_Seek        = 5
-	MethodID_File_Close       = 6
-	MethodID_File_Sync        = 7
-	MethodID_File_Truncate    = 8
-	MethodID_File_WriteString = 9
-	MethodID_File_Name        = 10
-	MethodID_File_WriteNative = 11
+	methodIDFileWrite       = 1
+	methodIDFileRead        = 2
+	methodIDFileWriteAt     = 3
+	methodIDFileReadAt      = 4
+	methodIDFileSeek        = 5
+	methodIDFileClose       = 6
+	methodIDFileSync        = 7
+	methodIDFileTruncate    = 8
+	methodIDFileWriteString = 9
+	methodIDFileName        = 10
+	methodIDFileWriteNative = 11
 )
 
-func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Write":
-			methodID = MethodID_File_Write
+			methodID = methodIDFileWrite
 		case "Read":
-			methodID = MethodID_File_Read
+			methodID = methodIDFileRead
 		case "WriteAt":
-			methodID = MethodID_File_WriteAt
+			methodID = methodIDFileWriteAt
 		case "ReadAt":
-			methodID = MethodID_File_ReadAt
+			methodID = methodIDFileReadAt
 		case "Seek":
-			methodID = MethodID_File_Seek
+			methodID = methodIDFileSeek
 		case "Close":
-			methodID = MethodID_File_Close
+			methodID = methodIDFileClose
 		case "Sync":
-			methodID = MethodID_File_Sync
+			methodID = methodIDFileSync
 		case "Truncate":
-			methodID = MethodID_File_Truncate
+			methodID = methodIDFileTruncate
 		case "WriteString":
-			methodID = MethodID_File_WriteString
+			methodID = methodIDFileWriteString
 		case "Name":
-			methodID = MethodID_File_Name
+			methodID = methodIDFileName
 		case "WriteNative":
-			methodID = MethodID_File_WriteNative
+			methodID = methodIDFileWriteNative
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_File_Write:
+	case methodIDFileWrite:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -474,7 +272,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Read:
+	case methodIDFileRead:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -505,7 +303,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_WriteAt:
+	case methodIDFileWriteAt:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -535,7 +333,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_ReadAt:
+	case methodIDFileReadAt:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -571,7 +369,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Seek:
+	case methodIDFileSeek:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -604,7 +402,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Close:
+	case methodIDFileClose:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -626,7 +424,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Sync:
+	case methodIDFileSync:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -648,7 +446,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Truncate:
+	case methodIDFileTruncate:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -675,7 +473,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_WriteString:
+	case methodIDFileWriteString:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -700,7 +498,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_File_Name:
+	case methodIDFileName:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -714,7 +512,7 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_File_WriteNative:
+	case methodIDFileWriteNative:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -744,69 +542,32 @@ func FileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	}
 }
 
-var File_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Write", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{"Read", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
-	{"WriteAt", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), "WriteAt 正常工作：支持偏移量写入"},
-	{"ReadAt", 4, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
-	{"Seek", 5, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Close", 6, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), ""},
-	{"Sync", 7, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), ""},
-	{"Truncate", 8, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"WriteString", 9, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Name", 10, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), ""},
-	{"WriteNative", 11, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
-}
-
-type File_Bridge struct {
-	Impl     *File
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *File_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FileHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *File_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FileHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *File_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var fileRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "io.File", MethodName: "Write", RouteName: "io.File.Write", MethodID: methodIDFileWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{TypeName: "io.File", MethodName: "Read", RouteName: "io.File.Read", MethodID: methodIDFileRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), Doc: "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{TypeName: "io.File", MethodName: "WriteAt", RouteName: "io.File.WriteAt", MethodID: methodIDFileWriteAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteAt 正常工作：支持偏移量写入"},
+	{TypeName: "io.File", MethodName: "ReadAt", RouteName: "io.File.ReadAt", MethodID: methodIDFileReadAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{TypeName: "io.File", MethodName: "Seek", RouteName: "io.File.Seek", MethodID: methodIDFileSeek, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "Close", RouteName: "io.File.Close", MethodID: methodIDFileClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "Sync", RouteName: "io.File.Sync", MethodID: methodIDFileSync, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "Truncate", RouteName: "io.File.Truncate", MethodID: methodIDFileTruncate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "WriteString", RouteName: "io.File.WriteString", MethodID: methodIDFileWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "Name", RouteName: "io.File.Name", MethodID: methodIDFileName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "io.File", MethodName: "WriteNative", RouteName: "io.File.WriteNative", MethodID: methodIDFileWriteNative, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
 }
 
 func SurfaceFile() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(fileRoutes)
 	schema.AddStruct("io.File", io_File_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &File_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["io.File.Write"] = runtime.FFIRoute{Name: "io.File.Write", Bridge: bridge, MethodID: File_FFI_Schemas[0].MethodID, FuncSig: File_FFI_Schemas[0].Sig, Doc: File_FFI_Schemas[0].Doc}
-		bound.Routes["io.File.Read"] = runtime.FFIRoute{Name: "io.File.Read", Bridge: bridge, MethodID: File_FFI_Schemas[1].MethodID, FuncSig: File_FFI_Schemas[1].Sig, Doc: File_FFI_Schemas[1].Doc}
-		bound.Routes["io.File.WriteAt"] = runtime.FFIRoute{Name: "io.File.WriteAt", Bridge: bridge, MethodID: File_FFI_Schemas[2].MethodID, FuncSig: File_FFI_Schemas[2].Sig, Doc: File_FFI_Schemas[2].Doc}
-		bound.Routes["io.File.ReadAt"] = runtime.FFIRoute{Name: "io.File.ReadAt", Bridge: bridge, MethodID: File_FFI_Schemas[3].MethodID, FuncSig: File_FFI_Schemas[3].Sig, Doc: File_FFI_Schemas[3].Doc}
-		bound.Routes["io.File.Seek"] = runtime.FFIRoute{Name: "io.File.Seek", Bridge: bridge, MethodID: File_FFI_Schemas[4].MethodID, FuncSig: File_FFI_Schemas[4].Sig, Doc: File_FFI_Schemas[4].Doc}
-		bound.Routes["io.File.Close"] = runtime.FFIRoute{Name: "io.File.Close", Bridge: bridge, MethodID: File_FFI_Schemas[5].MethodID, FuncSig: File_FFI_Schemas[5].Sig, Doc: File_FFI_Schemas[5].Doc}
-		bound.Routes["io.File.Sync"] = runtime.FFIRoute{Name: "io.File.Sync", Bridge: bridge, MethodID: File_FFI_Schemas[6].MethodID, FuncSig: File_FFI_Schemas[6].Sig, Doc: File_FFI_Schemas[6].Doc}
-		bound.Routes["io.File.Truncate"] = runtime.FFIRoute{Name: "io.File.Truncate", Bridge: bridge, MethodID: File_FFI_Schemas[7].MethodID, FuncSig: File_FFI_Schemas[7].Sig, Doc: File_FFI_Schemas[7].Doc}
-		bound.Routes["io.File.WriteString"] = runtime.FFIRoute{Name: "io.File.WriteString", Bridge: bridge, MethodID: File_FFI_Schemas[8].MethodID, FuncSig: File_FFI_Schemas[8].Sig, Doc: File_FFI_Schemas[8].Doc}
-		bound.Routes["io.File.Name"] = runtime.FFIRoute{Name: "io.File.Name", Bridge: bridge, MethodID: File_FFI_Schemas[9].MethodID, FuncSig: File_FFI_Schemas[9].Sig, Doc: File_FFI_Schemas[9].Doc}
-		bound.Routes["io.File.WriteNative"] = runtime.FFIRoute{Name: "io.File.WriteNative", Bridge: bridge, MethodID: File_FFI_Schemas[10].MethodID, FuncSig: File_FFI_Schemas[10].Sig, Doc: File_FFI_Schemas[10].Doc}
-		bound.AddStruct("io.File", io_File_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return fileHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

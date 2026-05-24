@@ -16,155 +16,29 @@ var test_TestObj_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.Tes
 var test_EmbeddedStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("test.EmbeddedStruct", runtime.StructOwnershipVMValue, "struct { BaseField String; ExtraField Int64; }")
 
 const (
-	MethodID_AdvancedFFI_GetSameObject = 1
-	MethodID_AdvancedFFI_IsSame        = 2
-	MethodID_AdvancedFFI_EchoMap       = 3
-	MethodID_AdvancedFFI_EchoEmbedded  = 4
+	methodIDAdvancedFFIGetSameObject = 1
+	methodIDAdvancedFFIIsSame        = 2
+	methodIDAdvancedFFIEchoMap       = 3
+	methodIDAdvancedFFIEchoEmbedded  = 4
 )
 
-type AdvancedFFIProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewAdvancedFFIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) AdvancedFFI {
-	return &AdvancedFFIProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *AdvancedFFIProxy) GetSameObject() *TestObj {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_GetSameObject, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *TestObj
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "test.TestObj"); ok {
-				v_0 = obj.(*TestObj)
-			}
-		}
-	}
-	return v_0
-}
-
-func (__p *AdvancedFFIProxy) IsSame(a *TestObj, b *TestObj) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if a == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(a, "test.TestObj")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-	// HostRef<T> crosses the FFI boundary as an opaque handle ID.
-	if b == nil {
-		wireBuf.WriteUvarint(0)
-	} else {
-		if __p.registry != nil {
-			wireBuf.WriteUvarint(uint64(__p.registry.RegisterTyped(b, "test.TestObj")))
-		} else {
-			wireBuf.WriteUvarint(0)
-		}
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_IsSame, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *AdvancedFFIProxy) EchoMap(m map[bool]string) map[float64]bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(m)))
-	for k, v := range m {
-		wireBuf.WriteBool(bool(k))
-		wireBuf.WriteString(string(v))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_EchoMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 map[float64]bool
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make(map[float64]bool)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		var k float64
-		var v bool
-		k = float64(retBuf.ReadFloat64())
-		v = bool(retBuf.ReadBool())
-		v_0[k] = v
-	}
-	return v_0
-}
-
-func (__p *AdvancedFFIProxy) EchoEmbedded(e EmbeddedStruct) EmbeddedStruct {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(e.BaseField))
-	wireBuf.WriteVarint(int64(e.ExtraField))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_AdvancedFFI_EchoEmbedded, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 EmbeddedStruct
-	v_0.BaseField = string(retBuf.ReadString())
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.ExtraField = int64(tmp)
-	}
-	return v_0
-}
-
-func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func advancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetSameObject":
-			methodID = MethodID_AdvancedFFI_GetSameObject
+			methodID = methodIDAdvancedFFIGetSameObject
 		case "IsSame":
-			methodID = MethodID_AdvancedFFI_IsSame
+			methodID = methodIDAdvancedFFIIsSame
 		case "EchoMap":
-			methodID = MethodID_AdvancedFFI_EchoMap
+			methodID = methodIDAdvancedFFIEchoMap
 		case "EchoEmbedded":
-			methodID = MethodID_AdvancedFFI_EchoEmbedded
+			methodID = methodIDAdvancedFFIEchoEmbedded
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_AdvancedFFI_GetSameObject:
+	case methodIDAdvancedFFIGetSameObject:
 		r0 := impl.GetSameObject()
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -174,7 +48,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "test.TestObj")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_AdvancedFFI_IsSame:
+	case methodIDAdvancedFFIIsSame:
 		var a *TestObj
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -197,7 +71,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_AdvancedFFI_EchoMap:
+	case methodIDAdvancedFFIEchoMap:
 		var m map[bool]string
 		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[bool]string)
@@ -216,7 +90,7 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 			resBuf.WriteBool(bool(v))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_AdvancedFFI_EchoEmbedded:
+	case methodIDAdvancedFFIEchoEmbedded:
 		var e EmbeddedStruct
 		e.BaseField = string(reqBuf.ReadString())
 		{
@@ -233,61 +107,26 @@ func AdvancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	}
 }
 
-var AdvancedFFI_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"GetSameObject", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<test.TestObj>"), "Identity check"},
-	{"IsSame", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<test.TestObj>, HostRef<test.TestObj>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"EchoMap", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Map<Bool, String>) Map<Float64, Bool>", runtime.FFIParamIn), "Map keys"},
-	{"EchoEmbedded", 4, runtime.MustParseRuntimeFuncSigWithModes("function(test.EmbeddedStruct) test.EmbeddedStruct", runtime.FFIParamIn), "Embedded structs"},
-}
-
-type AdvancedFFI_Bridge struct {
-	Impl     AdvancedFFI
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *AdvancedFFI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *AdvancedFFI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return AdvancedFFIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *AdvancedFFI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var advancedFFIRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "test", MemberName: "GetSameObject", RouteName: "test.GetSameObject", MethodID: methodIDAdvancedFFIGetSameObject, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<test.TestObj>"), Doc: "Identity check"},
+	{PackagePath: "test", MemberName: "IsSame", RouteName: "test.IsSame", MethodID: methodIDAdvancedFFIIsSame, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<test.TestObj>, HostRef<test.TestObj>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "test", MemberName: "EchoMap", RouteName: "test.EchoMap", MethodID: methodIDAdvancedFFIEchoMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<Bool, String>) Map<Float64, Bool>", runtime.FFIParamIn), Doc: "Map keys"},
+	{PackagePath: "test", MemberName: "EchoEmbedded", RouteName: "test.EchoEmbedded", MethodID: methodIDAdvancedFFIEchoEmbedded, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(test.EmbeddedStruct) test.EmbeddedStruct", runtime.FFIParamIn), Doc: "Embedded structs"},
 }
 
 func SurfaceAdvancedFFI(impl AdvancedFFI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("test", "GetSameObject", "test.GetSameObject", AdvancedFFI_FFI_Schemas[0].MethodID, AdvancedFFI_FFI_Schemas[0].Sig, AdvancedFFI_FFI_Schemas[0].Doc)
-	schema.AddFunc("test", "IsSame", "test.IsSame", AdvancedFFI_FFI_Schemas[1].MethodID, AdvancedFFI_FFI_Schemas[1].Sig, AdvancedFFI_FFI_Schemas[1].Doc)
-	schema.AddFunc("test", "EchoMap", "test.EchoMap", AdvancedFFI_FFI_Schemas[2].MethodID, AdvancedFFI_FFI_Schemas[2].Sig, AdvancedFFI_FFI_Schemas[2].Doc)
-	schema.AddFunc("test", "EchoEmbedded", "test.EchoEmbedded", AdvancedFFI_FFI_Schemas[3].MethodID, AdvancedFFI_FFI_Schemas[3].Sig, AdvancedFFI_FFI_Schemas[3].Doc)
+	schema.AddRouteDecls(advancedFFIRoutes)
 	schema.AddStruct("test.TestObj", test_TestObj_FFI_StructSchema)
 	schema.AddStruct("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &AdvancedFFI_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("test", "GetSameObject", runtime.FFIRoute{Name: "test.GetSameObject", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[0].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[0].Sig, Doc: AdvancedFFI_FFI_Schemas[0].Doc})
-		bound.AddRoute("test", "IsSame", runtime.FFIRoute{Name: "test.IsSame", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[1].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[1].Sig, Doc: AdvancedFFI_FFI_Schemas[1].Doc})
-		bound.AddRoute("test", "EchoMap", runtime.FFIRoute{Name: "test.EchoMap", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[2].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[2].Sig, Doc: AdvancedFFI_FFI_Schemas[2].Doc})
-		bound.AddRoute("test", "EchoEmbedded", runtime.FFIRoute{Name: "test.EchoEmbedded", Bridge: bridge, MethodID: AdvancedFFI_FFI_Schemas[3].MethodID, FuncSig: AdvancedFFI_FFI_Schemas[3].Sig, Doc: AdvancedFFI_FFI_Schemas[3].Doc})
-		bound.AddStruct("test.TestObj", test_TestObj_FFI_StructSchema)
-		bound.AddStruct("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return advancedFFIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

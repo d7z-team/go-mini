@@ -13,64 +13,20 @@ import (
 )
 
 const (
-	MethodID_ImportTester_Sleep = 1
+	methodIDImportTesterSleep = 1
 )
 
-type ImportTesterProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewImportTesterProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) ImportTester {
-	return &ImportTesterProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ImportTesterProxy) Sleep(ctx context.Context, d time.Duration) error {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(d))
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_ImportTester_Sleep, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var err_0 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_0 = obj.(error)
-				} else {
-					err_0 = ed
-				}
-			} else {
-				err_0 = ed
-			}
-		}
-	}
-	return err_0
-}
-
-func ImportTesterHostRouter(ctx context.Context, impl ImportTester, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func importTesterHostRouter(ctx context.Context, impl ImportTester, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sleep":
-			methodID = MethodID_ImportTester_Sleep
+			methodID = methodIDImportTesterSleep
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_ImportTester_Sleep:
+	case methodIDImportTesterSleep:
 		var d time.Duration
 		{
 			tmp := reqBuf.ReadVarint()
@@ -93,48 +49,21 @@ func ImportTesterHostRouter(ctx context.Context, impl ImportTester, registry *ff
 	}
 }
 
-var ImportTester_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Sleep", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Error", runtime.FFIParamIn), ""},
-}
-
-type ImportTester_Bridge struct {
-	Impl     ImportTester
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *ImportTester_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *ImportTester_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ImportTesterHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *ImportTester_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var importTesterRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "tester", MemberName: "Sleep", RouteName: "tester.Sleep", MethodID: methodIDImportTesterSleep, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Error", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceImportTester(impl ImportTester) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("tester", "Sleep", "tester.Sleep", ImportTester_FFI_Schemas[0].MethodID, ImportTester_FFI_Schemas[0].Sig, ImportTester_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(importTesterRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &ImportTester_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("tester", "Sleep", runtime.FFIRoute{Name: "tester.Sleep", Bridge: bridge, MethodID: ImportTester_FFI_Schemas[0].MethodID, FuncSig: ImportTester_FFI_Schemas[0].Sig, Doc: ImportTester_FFI_Schemas[0].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return importTesterHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

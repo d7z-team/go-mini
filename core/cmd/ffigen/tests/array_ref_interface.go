@@ -10,6 +10,7 @@ import (
 )
 
 // ffigen:module copyback
+// ffigen:proxy
 type ArrayRefAPI interface {
 	Rewrite(nums *ffigo.ArrayRef[int64]) int64
 }
@@ -57,7 +58,10 @@ func TestGeneratedArrayRefCopyBack(t *testing.T) {
 
 func TestGeneratedArrayRefProxyRoundTrip(t *testing.T) {
 	registry := ffigo.NewHandleRegistry()
-	bridge := &ArrayRefAPI_Bridge{Impl: &ArrayRefHost{}, Registry: registry}
+	host := &ArrayRefHost{}
+	bridge := ffigo.NewRouterBridge(registry, func(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+		return arrayRefAPIHostRouter(ctx, host, registry, req.MethodID, req.Method, req.Args)
+	})
 	proxy := NewArrayRefAPIProxy(bridge, registry)
 
 	nums := &ffigo.ArrayRef[int64]{Value: []int64{4, 5}}

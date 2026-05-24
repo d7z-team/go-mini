@@ -9,7 +9,7 @@ import (
 
 func TestStrings(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("strings", stringslib.Strings_FFI_Schemas),
+		testutil.SurfaceFFISchema("strings", stringslib.SurfaceStrings(&stringslib.StringsHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "predicates",

@@ -10,7 +10,7 @@ import (
 
 func TestFmt(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("fmt", fmtlib.Fmt_FFI_Schemas),
+		testutil.SurfaceFFISchema("fmt", fmtlib.Surface(&fmtlib.FmtHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "print-and-format",

@@ -12,107 +12,23 @@ import (
 )
 
 const (
-	MethodID_Fmt_Print   = 1
-	MethodID_Fmt_Println = 2
-	MethodID_Fmt_Printf  = 3
-	MethodID_Fmt_Sprintf = 4
+	methodIDFmtPrint   = 1
+	methodIDFmtPrintln = 2
+	methodIDFmtPrintf  = 3
+	methodIDFmtSprintf = 4
 )
 
-type FmtProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewFmtProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Fmt {
-	return &FmtProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *FmtProxy) Print(ctx context.Context, args ...any) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(args)))
-	for _, item := range args {
-		wireBuf.WriteAny(item)
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Print, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *FmtProxy) Println(ctx context.Context, args ...any) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(args)))
-	for _, item := range args {
-		wireBuf.WriteAny(item)
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Println, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *FmtProxy) Printf(ctx context.Context, format string, args ...any) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(format))
-	wireBuf.WriteUvarint(uint64(len(args)))
-	for _, item := range args {
-		wireBuf.WriteAny(item)
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Printf, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	if syncErr := func() error { _, syncErr := ffigo.SyncBytes(__ret); return syncErr }(); err == nil {
-		err = syncErr
-	}
-	_ = err
-	return
-}
-
-func (__p *FmtProxy) Sprintf(ctx context.Context, format string, args ...any) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(format))
-	wireBuf.WriteUvarint(uint64(len(args)))
-	for _, item := range args {
-		wireBuf.WriteAny(item)
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_Fmt_Sprintf, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Print":
-			methodID = MethodID_Fmt_Print
+			methodID = methodIDFmtPrint
 		case "Println":
-			methodID = MethodID_Fmt_Println
+			methodID = methodIDFmtPrintln
 		case "Printf":
-			methodID = MethodID_Fmt_Printf
+			methodID = methodIDFmtPrintf
 		case "Sprintf":
-			methodID = MethodID_Fmt_Sprintf
+			methodID = methodIDFmtSprintf
 		}
 	}
 
@@ -120,7 +36,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	var rawVal any
 	_ = rawVal
 	switch methodID {
-	case MethodID_Fmt_Print:
+	case methodIDFmtPrint:
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
@@ -148,7 +64,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		impl.Print(ctx, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Fmt_Println:
+	case methodIDFmtPrintln:
 		var args []any
 		l_args := int(reqBuf.ReadUvarint())
 		args = make([]any, l_args)
@@ -176,7 +92,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		impl.Println(ctx, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Fmt_Printf:
+	case methodIDFmtPrintf:
 		var format string
 		format = string(reqBuf.ReadString())
 		var args []any
@@ -206,7 +122,7 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		impl.Printf(ctx, format, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Fmt_Sprintf:
+	case methodIDFmtSprintf:
 		var format string
 		format = string(reqBuf.ReadString())
 		var args []any
@@ -242,59 +158,25 @@ func FmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	}
 }
 
-var Fmt_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Print", 1, runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), ""},
-	{"Println", 2, runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), ""},
-	{"Printf", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sprintf", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Fmt_Bridge struct {
-	Impl     Fmt
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Fmt_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FmtHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Fmt_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FmtHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Fmt_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var fmtRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "fmt", MemberName: "Print", RouteName: "fmt.Print", MethodID: methodIDFmtPrint, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "fmt", MemberName: "Println", RouteName: "fmt.Println", MethodID: methodIDFmtPrintln, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(...Any) Void", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "fmt", MemberName: "Printf", RouteName: "fmt.Printf", MethodID: methodIDFmtPrintf, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "fmt", MemberName: "Sprintf", RouteName: "fmt.Sprintf", MethodID: methodIDFmtSprintf, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceFmt(impl Fmt) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("fmt", "Print", "fmt.Print", Fmt_FFI_Schemas[0].MethodID, Fmt_FFI_Schemas[0].Sig, Fmt_FFI_Schemas[0].Doc)
-	schema.AddFunc("fmt", "Println", "fmt.Println", Fmt_FFI_Schemas[1].MethodID, Fmt_FFI_Schemas[1].Sig, Fmt_FFI_Schemas[1].Doc)
-	schema.AddFunc("fmt", "Printf", "fmt.Printf", Fmt_FFI_Schemas[2].MethodID, Fmt_FFI_Schemas[2].Sig, Fmt_FFI_Schemas[2].Doc)
-	schema.AddFunc("fmt", "Sprintf", "fmt.Sprintf", Fmt_FFI_Schemas[3].MethodID, Fmt_FFI_Schemas[3].Sig, Fmt_FFI_Schemas[3].Doc)
+	schema.AddRouteDecls(fmtRoutes)
 	schema.AddConst("fmt", "FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Fmt_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("fmt", "Print", runtime.FFIRoute{Name: "fmt.Print", Bridge: bridge, MethodID: Fmt_FFI_Schemas[0].MethodID, FuncSig: Fmt_FFI_Schemas[0].Sig, Doc: Fmt_FFI_Schemas[0].Doc})
-		bound.AddRoute("fmt", "Println", runtime.FFIRoute{Name: "fmt.Println", Bridge: bridge, MethodID: Fmt_FFI_Schemas[1].MethodID, FuncSig: Fmt_FFI_Schemas[1].Sig, Doc: Fmt_FFI_Schemas[1].Doc})
-		bound.AddRoute("fmt", "Printf", runtime.FFIRoute{Name: "fmt.Printf", Bridge: bridge, MethodID: Fmt_FFI_Schemas[2].MethodID, FuncSig: Fmt_FFI_Schemas[2].Sig, Doc: Fmt_FFI_Schemas[2].Doc})
-		bound.AddRoute("fmt", "Sprintf", runtime.FFIRoute{Name: "fmt.Sprintf", Bridge: bridge, MethodID: Fmt_FFI_Schemas[3].MethodID, FuncSig: Fmt_FFI_Schemas[3].Sig, Doc: Fmt_FFI_Schemas[3].Doc})
-		bound.AddConst("fmt", "FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return fmtHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

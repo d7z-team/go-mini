@@ -16,89 +16,23 @@ var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", runtime.S
 var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
-	MethodID_MockShapeAPI_GetRect = 1
-	MethodID_MockShapeAPI_Area    = 2
+	methodIDMockShapeAPIGetRect = 1
+	methodIDMockShapeAPIArea    = 2
 )
 
-type MockShapeAPIProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMockShapeAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MockShapeAPI {
-	return &MockShapeAPIProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MockShapeAPIProxy) GetRect() Rect {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockShapeAPI_GetRect, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 Rect
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.A.X = int64(tmp)
-	}
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.A.Y = int64(tmp)
-	}
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.B.X = int64(tmp)
-	}
-	{
-		tmp := retBuf.ReadVarint()
-		v_0.B.Y = int64(tmp)
-	}
-	return v_0
-}
-
-func (__p *MockShapeAPIProxy) Area(r Rect) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(r.A.X))
-	wireBuf.WriteVarint(int64(r.A.Y))
-	wireBuf.WriteVarint(int64(r.B.X))
-	wireBuf.WriteVarint(int64(r.B.Y))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_MockShapeAPI_Area, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func mockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "GetRect":
-			methodID = MethodID_MockShapeAPI_GetRect
+			methodID = methodIDMockShapeAPIGetRect
 		case "Area":
-			methodID = MethodID_MockShapeAPI_Area
+			methodID = methodIDMockShapeAPIArea
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_MockShapeAPI_GetRect:
+	case methodIDMockShapeAPIGetRect:
 		r0 := impl.GetRect()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0.A.X))
@@ -106,7 +40,7 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 		resBuf.WriteVarint(int64(r0.B.X))
 		resBuf.WriteVarint(int64(r0.B.Y))
 		return resBuf.Bytes(), nil
-	case MethodID_MockShapeAPI_Area:
+	case methodIDMockShapeAPIArea:
 		var r Rect
 		{
 			tmp := reqBuf.ReadVarint()
@@ -133,57 +67,30 @@ func MockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	}
 }
 
-var MockShapeAPI_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"GetRect", 1, runtime.MustParseRuntimeFuncSig("function() Rect"), ""},
-	{"Area", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Rect) Int64", runtime.FFIParamIn), ""},
-}
-
-type MockShapeAPI_Bridge struct {
-	Impl     MockShapeAPI
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *MockShapeAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockShapeAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *MockShapeAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MockShapeAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *MockShapeAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var mockShapeAPIRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "", MemberName: "GetRect", RouteName: ".GetRect", MethodID: methodIDMockShapeAPIGetRect, Sig: runtime.MustParseRuntimeFuncSig("function() Rect"), Doc: ""},
+	{PackagePath: "", MemberName: "Area", RouteName: ".Area", MethodID: methodIDMockShapeAPIArea, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Rect) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMockShapeAPILibrary(prefix string, impl MockShapeAPI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	for _, m := range MockShapeAPI_FFI_Schemas {
-		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
+	routes := make([]runtime.FFIRouteDecl, 0, len(mockShapeAPIRoutes))
+	for _, route := range mockShapeAPIRoutes {
+		route.PackagePath = prefix
+		route.RouteName = prefix + "." + route.MemberName
+		routes = append(routes, route)
 	}
+	schema.AddRouteDecls(routes)
 	schema.AddStruct("Rect", Rect_FFI_StructSchema)
 	schema.AddStruct("Point", Point_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &MockShapeAPI_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		for _, m := range MockShapeAPI_FFI_Schemas {
-			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return mockShapeAPIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
 		}
-		bound.AddStruct("Rect", Rect_FFI_StructSchema)
-		bound.AddStruct("Point", Point_FFI_StructSchema)
 		return bound, nil
 	})
 }

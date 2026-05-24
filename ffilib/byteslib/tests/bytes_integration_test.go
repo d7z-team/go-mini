@@ -10,7 +10,7 @@ import (
 
 func TestBytes(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("bytes", byteslib.Bytes_FFI_Schemas),
+		testutil.SurfaceFFISchema("bytes", byteslib.SurfaceBytes(&byteslib.BytesHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "predicates-and-index",

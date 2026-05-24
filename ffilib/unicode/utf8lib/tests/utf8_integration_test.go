@@ -10,7 +10,7 @@ import (
 
 func TestUTF8(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("unicode/utf8", utf8lib.UTF8_FFI_Schemas),
+		testutil.SurfaceFFISchema("unicode/utf8", utf8lib.SurfaceUTF8(&utf8lib.UTF8Host{})),
 	}, []testutil.Case{
 		{
 			Name:    "string-and-rune-helpers",

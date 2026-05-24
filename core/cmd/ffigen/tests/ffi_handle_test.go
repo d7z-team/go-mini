@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type HandleMockOS struct {
@@ -47,7 +46,6 @@ func (m *HandleMockOS) Deep(n Nested) Nested {
 func TestFFIHandle(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	mock := &HandleMockOS{}
-	registry := ffigo.NewHandleRegistry()
 
 	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
 		t.Fatal(err)
@@ -83,30 +81,5 @@ func TestFFIHandle(t *testing.T) {
 	err = prog.Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// 4. Test Proxy Direct Use
-	bridge := &MockOS_Bridge{Impl: mock, Registry: registry}
-	proxy := &MockOSProxy{bridge: bridge, registry: registry}
-
-	f, err := proxy.Open("proxy.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.Name != "proxy.txt" {
-		t.Fatal("wrong name")
-	}
-
-	name := proxy.Name(f)
-	if name != "proxy.txt" {
-		t.Fatal("wrong name")
-	}
-
-	err = proxy.Close(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if proxy.Name(f) != "closed" {
-		t.Fatal("close failed")
 	}
 }

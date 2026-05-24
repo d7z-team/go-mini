@@ -12,229 +12,29 @@ import (
 )
 
 const (
-	MethodID_MapTest_EchoMap    = 1
-	MethodID_MapTest_GetMap     = 2
-	MethodID_MapTest_ProcessMap = 3
-	MethodID_MapTest_EchoIntMap = 4
+	methodIDMapTestEchoMap    = 1
+	methodIDMapTestGetMap     = 2
+	methodIDMapTestProcessMap = 3
+	methodIDMapTestEchoIntMap = 4
 )
 
-type MapTestProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMapTestProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) MapTest {
-	return &MapTestProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MapTestProxy) EchoMap(ctx context.Context, m map[string]string) (map[string]string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(m)))
-	for k, v := range m {
-		wireBuf.WriteString(string(k))
-		wireBuf.WriteString(string(v))
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_EchoMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return map[string]string{}, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 map[string]string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make(map[string]string)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		var k string
-		var v string
-		k = string(retBuf.ReadString())
-		v = string(retBuf.ReadString())
-		v_0[k] = v
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MapTestProxy) GetMap(ctx context.Context) (map[string]int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_GetMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return map[string]int64{}, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 map[string]int64
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make(map[string]int64)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		var k string
-		var v int64
-		k = string(retBuf.ReadString())
-		{
-			tmp := retBuf.ReadVarint()
-			v = int64(tmp)
-		}
-		v_0[k] = v
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MapTestProxy) ProcessMap(ctx context.Context, m map[string]int64) (int64, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(m)))
-	for k, v := range m {
-		wireBuf.WriteString(string(k))
-		wireBuf.WriteVarint(int64(v))
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_ProcessMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return 0, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *MapTestProxy) EchoIntMap(ctx context.Context, m map[int64]string) (map[int64]string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(m)))
-	for k, v := range m {
-		wireBuf.WriteVarint(int64(k))
-		wireBuf.WriteString(string(v))
-	}
-
-	__ret, err := __p.bridge.Call(ctx, &ffigo.FFICallRequest{MethodID: MethodID_MapTest_EchoIntMap, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return map[int64]string{}, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 map[int64]string
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make(map[int64]string)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		var k int64
-		var v string
-		{
-			tmp := retBuf.ReadVarint()
-			k = int64(tmp)
-		}
-		v = string(retBuf.ReadString())
-		v_0[k] = v
-	}
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func mapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "EchoMap":
-			methodID = MethodID_MapTest_EchoMap
+			methodID = methodIDMapTestEchoMap
 		case "GetMap":
-			methodID = MethodID_MapTest_GetMap
+			methodID = methodIDMapTestGetMap
 		case "ProcessMap":
-			methodID = MethodID_MapTest_ProcessMap
+			methodID = methodIDMapTestProcessMap
 		case "EchoIntMap":
-			methodID = MethodID_MapTest_EchoIntMap
+			methodID = methodIDMapTestEchoIntMap
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_MapTest_EchoMap:
+	case methodIDMapTestEchoMap:
 		var m map[string]string
 		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[string]string)
@@ -262,7 +62,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MapTest_GetMap:
+	case methodIDMapTestGetMap:
 		r0, err := impl.GetMap(ctx)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
@@ -280,7 +80,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MapTest_ProcessMap:
+	case methodIDMapTestProcessMap:
 		var m map[string]int64
 		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[string]int64)
@@ -307,7 +107,7 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_MapTest_EchoIntMap:
+	case methodIDMapTestEchoIntMap:
 		var m map[int64]string
 		l_m := int(reqBuf.ReadUvarint())
 		m = make(map[int64]string)
@@ -343,54 +143,29 @@ func MapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	}
 }
 
-var MapTest_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"EchoMap", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, String>) tuple(Map<String, String>, Error)", runtime.FFIParamIn), ""},
-	{"GetMap", 2, runtime.MustParseRuntimeFuncSig("function() tuple(Map<String, Int64>, Error)"), ""},
-	{"ProcessMap", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, Int64>) tuple(Int64, Error)", runtime.FFIParamIn), ""},
-	{"EchoIntMap", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", runtime.FFIParamIn), ""},
-}
-
-type MapTest_Bridge struct {
-	Impl     MapTest
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *MapTest_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MapTestHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *MapTest_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MapTestHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *MapTest_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var mapTestRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "", MemberName: "EchoMap", RouteName: ".EchoMap", MethodID: methodIDMapTestEchoMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, String>) tuple(Map<String, String>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "", MemberName: "GetMap", RouteName: ".GetMap", MethodID: methodIDMapTestGetMap, Sig: runtime.MustParseRuntimeFuncSig("function() tuple(Map<String, Int64>, Error)"), Doc: ""},
+	{PackagePath: "", MemberName: "ProcessMap", RouteName: ".ProcessMap", MethodID: methodIDMapTestProcessMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, Int64>) tuple(Int64, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "", MemberName: "EchoIntMap", RouteName: ".EchoIntMap", MethodID: methodIDMapTestEchoIntMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMapTestLibrary(prefix string, impl MapTest) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	for _, m := range MapTest_FFI_Schemas {
-		schema.AddFunc(prefix, m.Name, prefix+"."+m.Name, m.MethodID, m.Sig, m.Doc)
+	routes := make([]runtime.FFIRouteDecl, 0, len(mapTestRoutes))
+	for _, route := range mapTestRoutes {
+		route.PackagePath = prefix
+		route.RouteName = prefix + "." + route.MemberName
+		routes = append(routes, route)
 	}
+	schema.AddRouteDecls(routes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &MapTest_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		for _, m := range MapTest_FFI_Schemas {
-			bound.AddRoute(prefix, m.Name, runtime.FFIRoute{Name: prefix + "." + m.Name, Bridge: bridge, MethodID: m.MethodID, FuncSig: m.Sig, Doc: m.Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return mapTestHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
 		}
 		return bound, nil
 	})

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	MethodID_ArrayRefAPI_Rewrite = 1
+	methodIDArrayRefAPIRewrite = 1
 )
 
 type ArrayRefAPIProxy struct {
@@ -37,7 +37,7 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 		}
 	}
 
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_ArrayRefAPI_Rewrite, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: methodIDArrayRefAPIRewrite, Args: append([]byte(nil), wireBuf.Bytes()...)})
 	retData, syncErr := ffigo.SyncBytes(__ret)
 	if err == nil {
 		err = syncErr
@@ -71,17 +71,17 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 	return v_0
 }
 
-func ArrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func arrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Rewrite":
-			methodID = MethodID_ArrayRefAPI_Rewrite
+			methodID = methodIDArrayRefAPIRewrite
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_ArrayRefAPI_Rewrite:
+	case methodIDArrayRefAPIRewrite:
 		var nums *ffigo.ArrayRef[int64]
 		var numsValue []int64
 		l_numsValue := int(reqBuf.ReadUvarint())
@@ -112,48 +112,21 @@ func ArrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffig
 	}
 }
 
-var ArrayRefAPI_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Rewrite", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), ""},
-}
-
-type ArrayRefAPI_Bridge struct {
-	Impl     ArrayRefAPI
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *ArrayRefAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *ArrayRefAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ArrayRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *ArrayRefAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var arrayRefAPIRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "copyback", MemberName: "Rewrite", RouteName: "copyback.Rewrite", MethodID: methodIDArrayRefAPIRewrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), Doc: ""},
 }
 
 func SurfaceArrayRefAPI(impl ArrayRefAPI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("copyback", "Rewrite", "copyback.Rewrite", ArrayRefAPI_FFI_Schemas[0].MethodID, ArrayRefAPI_FFI_Schemas[0].Sig, ArrayRefAPI_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(arrayRefAPIRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &ArrayRefAPI_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("copyback", "Rewrite", runtime.FFIRoute{Name: "copyback.Rewrite", Bridge: bridge, MethodID: ArrayRefAPI_FFI_Schemas[0].MethodID, FuncSig: ArrayRefAPI_FFI_Schemas[0].Sig, Doc: ArrayRefAPI_FFI_Schemas[0].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return arrayRefAPIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

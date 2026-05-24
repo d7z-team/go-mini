@@ -12,368 +12,88 @@ import (
 )
 
 const (
-	MethodID_Filepath_Base       = 1
-	MethodID_Filepath_Clean      = 2
-	MethodID_Filepath_Dir        = 3
-	MethodID_Filepath_Ext        = 4
-	MethodID_Filepath_IsAbs      = 5
-	MethodID_Filepath_Join       = 6
-	MethodID_Filepath_Match      = 7
-	MethodID_Filepath_Rel        = 8
-	MethodID_Filepath_Split      = 9
-	MethodID_Filepath_ToSlash    = 10
-	MethodID_Filepath_FromSlash  = 11
-	MethodID_Filepath_VolumeName = 12
+	methodIDFilepathBase       = 1
+	methodIDFilepathClean      = 2
+	methodIDFilepathDir        = 3
+	methodIDFilepathExt        = 4
+	methodIDFilepathIsAbs      = 5
+	methodIDFilepathJoin       = 6
+	methodIDFilepathMatch      = 7
+	methodIDFilepathRel        = 8
+	methodIDFilepathSplit      = 9
+	methodIDFilepathToSlash    = 10
+	methodIDFilepathFromSlash  = 11
+	methodIDFilepathVolumeName = 12
 )
 
-type FilepathProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewFilepathProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Filepath {
-	return &FilepathProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *FilepathProxy) Base(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Base, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) Clean(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Clean, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) Dir(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Dir, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) Ext(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Ext, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) IsAbs(path string) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_IsAbs, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *FilepathProxy) Join(elem ...string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(elem)))
-	for _, item := range elem {
-		wireBuf.WriteString(string(item))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Join, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) Match(pattern string, name string) (bool, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(pattern))
-	wireBuf.WriteString(string(name))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Match, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return false, err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *FilepathProxy) Rel(basepath string, targpath string) (string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(basepath))
-	wireBuf.WriteString(string(targpath))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Rel, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return "", err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *FilepathProxy) Split(path string) (string, string) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var v_1 string
-	v_1 = string(retBuf.ReadString())
-	return v_0, v_1
-}
-
-func (__p *FilepathProxy) ToSlash(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_ToSlash, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) FromSlash(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_FromSlash, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *FilepathProxy) VolumeName(path string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(path))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Filepath_VolumeName, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Base":
-			methodID = MethodID_Filepath_Base
+			methodID = methodIDFilepathBase
 		case "Clean":
-			methodID = MethodID_Filepath_Clean
+			methodID = methodIDFilepathClean
 		case "Dir":
-			methodID = MethodID_Filepath_Dir
+			methodID = methodIDFilepathDir
 		case "Ext":
-			methodID = MethodID_Filepath_Ext
+			methodID = methodIDFilepathExt
 		case "IsAbs":
-			methodID = MethodID_Filepath_IsAbs
+			methodID = methodIDFilepathIsAbs
 		case "Join":
-			methodID = MethodID_Filepath_Join
+			methodID = methodIDFilepathJoin
 		case "Match":
-			methodID = MethodID_Filepath_Match
+			methodID = methodIDFilepathMatch
 		case "Rel":
-			methodID = MethodID_Filepath_Rel
+			methodID = methodIDFilepathRel
 		case "Split":
-			methodID = MethodID_Filepath_Split
+			methodID = methodIDFilepathSplit
 		case "ToSlash":
-			methodID = MethodID_Filepath_ToSlash
+			methodID = methodIDFilepathToSlash
 		case "FromSlash":
-			methodID = MethodID_Filepath_FromSlash
+			methodID = methodIDFilepathFromSlash
 		case "VolumeName":
-			methodID = MethodID_Filepath_VolumeName
+			methodID = methodIDFilepathVolumeName
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Filepath_Base:
+	case methodIDFilepathBase:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.Base(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Clean:
+	case methodIDFilepathClean:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.Clean(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Dir:
+	case methodIDFilepathDir:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.Dir(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Ext:
+	case methodIDFilepathExt:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.Ext(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_IsAbs:
+	case methodIDFilepathIsAbs:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.IsAbs(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Join:
+	case methodIDFilepathJoin:
 		var elem []string
 		l_elem := int(reqBuf.ReadUvarint())
 		elem = make([]string, l_elem)
@@ -384,7 +104,7 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Match:
+	case methodIDFilepathMatch:
 		var pattern string
 		pattern = string(reqBuf.ReadString())
 		var name string
@@ -402,7 +122,7 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Rel:
+	case methodIDFilepathRel:
 		var basepath string
 		basepath = string(reqBuf.ReadString())
 		var targpath string
@@ -420,7 +140,7 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_Split:
+	case methodIDFilepathSplit:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0, r1 := impl.Split(path)
@@ -428,21 +148,21 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		resBuf.WriteString(string(r0))
 		resBuf.WriteString(string(r1))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_ToSlash:
+	case methodIDFilepathToSlash:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.ToSlash(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_FromSlash:
+	case methodIDFilepathFromSlash:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.FromSlash(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Filepath_VolumeName:
+	case methodIDFilepathVolumeName:
 		var path string
 		path = string(reqBuf.ReadString())
 		r0 := impl.VolumeName(path)
@@ -454,81 +174,32 @@ func FilepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 	}
 }
 
-var Filepath_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Base", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"Clean", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"Dir", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"Ext", 4, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"IsAbs", 5, runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), ""},
-	{"Join", 6, runtime.MustParseRuntimeFuncSigWithModes("function(...String) String", runtime.FFIParamIn), ""},
-	{"Match", 7, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Rel", 8, runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Split", 9, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, String)", runtime.FFIParamIn), ""},
-	{"ToSlash", 10, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"FromSlash", 11, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"VolumeName", 12, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-}
-
-type Filepath_Bridge struct {
-	Impl     Filepath
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Filepath_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FilepathHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Filepath_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FilepathHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Filepath_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var filepathRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "filepath", MemberName: "Base", RouteName: "filepath.Base", MethodID: methodIDFilepathBase, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Clean", RouteName: "filepath.Clean", MethodID: methodIDFilepathClean, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Dir", RouteName: "filepath.Dir", MethodID: methodIDFilepathDir, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Ext", RouteName: "filepath.Ext", MethodID: methodIDFilepathExt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "IsAbs", RouteName: "filepath.IsAbs", MethodID: methodIDFilepathIsAbs, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Join", RouteName: "filepath.Join", MethodID: methodIDFilepathJoin, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(...String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Match", RouteName: "filepath.Match", MethodID: methodIDFilepathMatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Rel", RouteName: "filepath.Rel", MethodID: methodIDFilepathRel, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(String, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "Split", RouteName: "filepath.Split", MethodID: methodIDFilepathSplit, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, String)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "ToSlash", RouteName: "filepath.ToSlash", MethodID: methodIDFilepathToSlash, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "FromSlash", RouteName: "filepath.FromSlash", MethodID: methodIDFilepathFromSlash, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "filepath", MemberName: "VolumeName", RouteName: "filepath.VolumeName", MethodID: methodIDFilepathVolumeName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceFilepath(impl Filepath) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("filepath", "Base", "filepath.Base", Filepath_FFI_Schemas[0].MethodID, Filepath_FFI_Schemas[0].Sig, Filepath_FFI_Schemas[0].Doc)
-	schema.AddFunc("filepath", "Clean", "filepath.Clean", Filepath_FFI_Schemas[1].MethodID, Filepath_FFI_Schemas[1].Sig, Filepath_FFI_Schemas[1].Doc)
-	schema.AddFunc("filepath", "Dir", "filepath.Dir", Filepath_FFI_Schemas[2].MethodID, Filepath_FFI_Schemas[2].Sig, Filepath_FFI_Schemas[2].Doc)
-	schema.AddFunc("filepath", "Ext", "filepath.Ext", Filepath_FFI_Schemas[3].MethodID, Filepath_FFI_Schemas[3].Sig, Filepath_FFI_Schemas[3].Doc)
-	schema.AddFunc("filepath", "IsAbs", "filepath.IsAbs", Filepath_FFI_Schemas[4].MethodID, Filepath_FFI_Schemas[4].Sig, Filepath_FFI_Schemas[4].Doc)
-	schema.AddFunc("filepath", "Join", "filepath.Join", Filepath_FFI_Schemas[5].MethodID, Filepath_FFI_Schemas[5].Sig, Filepath_FFI_Schemas[5].Doc)
-	schema.AddFunc("filepath", "Match", "filepath.Match", Filepath_FFI_Schemas[6].MethodID, Filepath_FFI_Schemas[6].Sig, Filepath_FFI_Schemas[6].Doc)
-	schema.AddFunc("filepath", "Rel", "filepath.Rel", Filepath_FFI_Schemas[7].MethodID, Filepath_FFI_Schemas[7].Sig, Filepath_FFI_Schemas[7].Doc)
-	schema.AddFunc("filepath", "Split", "filepath.Split", Filepath_FFI_Schemas[8].MethodID, Filepath_FFI_Schemas[8].Sig, Filepath_FFI_Schemas[8].Doc)
-	schema.AddFunc("filepath", "ToSlash", "filepath.ToSlash", Filepath_FFI_Schemas[9].MethodID, Filepath_FFI_Schemas[9].Sig, Filepath_FFI_Schemas[9].Doc)
-	schema.AddFunc("filepath", "FromSlash", "filepath.FromSlash", Filepath_FFI_Schemas[10].MethodID, Filepath_FFI_Schemas[10].Sig, Filepath_FFI_Schemas[10].Doc)
-	schema.AddFunc("filepath", "VolumeName", "filepath.VolumeName", Filepath_FFI_Schemas[11].MethodID, Filepath_FFI_Schemas[11].Sig, Filepath_FFI_Schemas[11].Doc)
+	schema.AddRouteDecls(filepathRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Filepath_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("filepath", "Base", runtime.FFIRoute{Name: "filepath.Base", Bridge: bridge, MethodID: Filepath_FFI_Schemas[0].MethodID, FuncSig: Filepath_FFI_Schemas[0].Sig, Doc: Filepath_FFI_Schemas[0].Doc})
-		bound.AddRoute("filepath", "Clean", runtime.FFIRoute{Name: "filepath.Clean", Bridge: bridge, MethodID: Filepath_FFI_Schemas[1].MethodID, FuncSig: Filepath_FFI_Schemas[1].Sig, Doc: Filepath_FFI_Schemas[1].Doc})
-		bound.AddRoute("filepath", "Dir", runtime.FFIRoute{Name: "filepath.Dir", Bridge: bridge, MethodID: Filepath_FFI_Schemas[2].MethodID, FuncSig: Filepath_FFI_Schemas[2].Sig, Doc: Filepath_FFI_Schemas[2].Doc})
-		bound.AddRoute("filepath", "Ext", runtime.FFIRoute{Name: "filepath.Ext", Bridge: bridge, MethodID: Filepath_FFI_Schemas[3].MethodID, FuncSig: Filepath_FFI_Schemas[3].Sig, Doc: Filepath_FFI_Schemas[3].Doc})
-		bound.AddRoute("filepath", "IsAbs", runtime.FFIRoute{Name: "filepath.IsAbs", Bridge: bridge, MethodID: Filepath_FFI_Schemas[4].MethodID, FuncSig: Filepath_FFI_Schemas[4].Sig, Doc: Filepath_FFI_Schemas[4].Doc})
-		bound.AddRoute("filepath", "Join", runtime.FFIRoute{Name: "filepath.Join", Bridge: bridge, MethodID: Filepath_FFI_Schemas[5].MethodID, FuncSig: Filepath_FFI_Schemas[5].Sig, Doc: Filepath_FFI_Schemas[5].Doc})
-		bound.AddRoute("filepath", "Match", runtime.FFIRoute{Name: "filepath.Match", Bridge: bridge, MethodID: Filepath_FFI_Schemas[6].MethodID, FuncSig: Filepath_FFI_Schemas[6].Sig, Doc: Filepath_FFI_Schemas[6].Doc})
-		bound.AddRoute("filepath", "Rel", runtime.FFIRoute{Name: "filepath.Rel", Bridge: bridge, MethodID: Filepath_FFI_Schemas[7].MethodID, FuncSig: Filepath_FFI_Schemas[7].Sig, Doc: Filepath_FFI_Schemas[7].Doc})
-		bound.AddRoute("filepath", "Split", runtime.FFIRoute{Name: "filepath.Split", Bridge: bridge, MethodID: Filepath_FFI_Schemas[8].MethodID, FuncSig: Filepath_FFI_Schemas[8].Sig, Doc: Filepath_FFI_Schemas[8].Doc})
-		bound.AddRoute("filepath", "ToSlash", runtime.FFIRoute{Name: "filepath.ToSlash", Bridge: bridge, MethodID: Filepath_FFI_Schemas[9].MethodID, FuncSig: Filepath_FFI_Schemas[9].Sig, Doc: Filepath_FFI_Schemas[9].Doc})
-		bound.AddRoute("filepath", "FromSlash", runtime.FFIRoute{Name: "filepath.FromSlash", Bridge: bridge, MethodID: Filepath_FFI_Schemas[10].MethodID, FuncSig: Filepath_FFI_Schemas[10].Sig, Doc: Filepath_FFI_Schemas[10].Doc})
-		bound.AddRoute("filepath", "VolumeName", runtime.FFIRoute{Name: "filepath.VolumeName", Bridge: bridge, MethodID: Filepath_FFI_Schemas[11].MethodID, FuncSig: Filepath_FFI_Schemas[11].Sig, Doc: Filepath_FFI_Schemas[11].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return filepathHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

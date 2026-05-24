@@ -10,8 +10,8 @@ import (
 
 func TestWaitGroup(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("sync", synclib.Module_FFI_Schemas),
-		testutil.FFISchema("sync.WaitGroup", synclib.WaitGroup_FFI_Schemas),
+		testutil.SurfaceFFISchema("sync", synclib.SurfaceModule(&synclib.ModuleHost{})),
+		testutil.SurfaceFFISchema("sync.WaitGroup", synclib.SurfaceWaitGroup()),
 	}, []testutil.Case{
 		{
 			Name:    "synchronizes-execution-contexts",

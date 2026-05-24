@@ -9,7 +9,7 @@ import (
 
 func TestSort(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("sort", sortlib.Sort_FFI_Schemas),
+		testutil.SurfaceFFISchema("sort", sortlib.SurfaceSort(&sortlib.SortHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "sorts-and-checks",

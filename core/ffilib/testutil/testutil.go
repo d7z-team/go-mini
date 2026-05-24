@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	gostrconv "strconv"
 	"strings"
@@ -171,18 +170,22 @@ func Schema(name string, methods ...string) MethodSchema {
 	return res
 }
 
-func FFISchema(name string, generated any) MethodSchema {
-	value := reflect.ValueOf(generated)
-	if value.Kind() != reflect.Slice && value.Kind() != reflect.Array {
-		panic(fmt.Sprintf("testutil.FFISchema: %s schema is %s, want slice", name, value.Kind()))
+func SurfaceFFISchema(name string, bundle *surface.Bundle) MethodSchema {
+	if bundle == nil || bundle.Schema == nil {
+		return Schema(name)
 	}
-	methods := make([]string, 0, value.Len())
-	for i := 0; i < value.Len(); i++ {
-		field := value.Index(i).FieldByName("Name")
-		if !field.IsValid() || field.Kind() != reflect.String {
-			panic(fmt.Sprintf("testutil.FFISchema: %s schema element %d has no string Name field", name, i))
+	methods := make([]string, 0)
+	if pkg := bundle.Schema.Packages[name]; pkg != nil {
+		for memberName, member := range pkg.Members {
+			if member != nil && member.Kind == runtime.FFIMemberFunc {
+				methods = append(methods, memberName)
+			}
 		}
-		methods = append(methods, field.String())
+	}
+	if typ := bundle.Schema.Types[name]; typ != nil {
+		for methodName := range typ.Methods {
+			methods = append(methods, methodName)
+		}
 	}
 	return Schema(name, methods...)
 }

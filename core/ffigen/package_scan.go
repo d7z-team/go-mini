@@ -230,6 +230,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 						moduleName:    mat.moduleName,
 						methodsPrefix: methodsPrefix,
 						methodsMarked: mat.methodsMarked,
+						proxyMarked:   mat.proxyMarked,
 						structTarget:  true,
 					}, defaultModule),
 				})

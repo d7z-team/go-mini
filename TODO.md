@@ -21,7 +21,7 @@
 - MethodID 0 / `Invoke` 只保留显式 schema route 与 typed interface method 调用；普通 `HostRef` 成员访问不再存在无 schema 动态 Invoke 兜底。
 - Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`，不再按 route/constant 前缀扫描。
 - Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
-- `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，不再生成 `RegisterXxx` / `RegisterXxxLibrary` 主入口；生成物直接构造 `FFISurfaceSchema` 和 `BoundFFISurface`，并通过 `ffigen:global` 生成只读 HostRef package value。
+- `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过 `FFIRouteDecl` 一次声明 schema route 并由 `RouterBridge + BindSchemaRoutes` 绑定，不再生成 `RegisterXxx` / `RegisterXxxLibrary` 主入口；Go 端 proxy 只在显式 `ffigen:proxy` 时生成，`ffigen:global` 继续生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
@@ -71,6 +71,14 @@
 - [ ] 明确 send/receive/select 与 async FFI completion 的调度关系。
 - [ ] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义。
 - [ ] 设计 lowering / bytecode / runtime payload 结构后再进入实现。
+
+### Runtime 阻塞检测与 FFI 健康检查
+
+- [ ] 设计并实现 VM all-blocked 检测：当所有执行上下文都不可运行，且没有可完成的内部事件时，返回明确 runtime error，避免静默挂起。
+- [ ] 区分“等待有效 async FFI completion”和“所有 VM 执行上下文永久阻塞”：调度器需要能观察 pending FFI 的可用状态。
+- [ ] 为 async FFI pending 调用设计健康检查机制，至少能表达 alive、failed、cancelled 或 timeout，并能被 VM 调度器安全查询。
+- [ ] all-blocked 错误需要包含阻塞中的执行上下文、等待原因、pending FFI route / method 信息，便于定位。
+- [ ] 补齐 runtime/e2e 测试：无可运行上下文报错、pending FFI 健康失败报错、健康正常的 pending FFI 不误报。
 
 ### Benchmark 与指标
 

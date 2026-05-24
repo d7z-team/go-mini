@@ -2,7 +2,10 @@
 package tests
 
 import (
+	"context"
 	"testing"
+
+	engine "gopkg.d7z.net/go-mini/core"
 )
 
 type Point struct {
@@ -32,15 +35,30 @@ func (m *MockShapeHost) Area(r Rect) int64 {
 
 func TestFFIStruct(t *testing.T) {
 	impl := &MockShapeHost{}
-	proxy := &MockShapeAPIProxy{bridge: &MockShapeAPI_Bridge{Impl: impl}}
-
-	rect := proxy.GetRect()
-	if rect.A.X != 10 || rect.A.Y != 20 || rect.B.X != 30 || rect.B.Y != 40 {
-		t.Fatalf("GetRect failed: %+v", rect)
+	executor := engine.NewMiniExecutor()
+	if err := executor.UseSurface(SurfaceMockShapeAPILibrary("shape", impl)); err != nil {
+		t.Fatal(err)
 	}
 
-	area := proxy.Area(rect)
-	if area != 400 {
-		t.Fatalf("Area failed: %d", area)
+	code := `
+	package main
+	import "shape"
+
+	func main() {
+		rect := shape.GetRect()
+		if rect.A.X != 10 || rect.A.Y != 20 || rect.B.X != 30 || rect.B.Y != 40 {
+			panic("GetRect failed")
+		}
+		if shape.Area(rect) != 400 {
+			panic("Area failed")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
 	}
 }

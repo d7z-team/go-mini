@@ -53,8 +53,8 @@ type BrowserModule interface {
 	if !strings.Contains(code, "func SurfacePage(") {
 		t.Fatalf("expected owned struct target to be generated")
 	}
-	if !strings.Contains(code, `bound.Routes["browser.Page.Title"]`) {
-		t.Fatalf("expected owned struct methods to use dotted method routes")
+	if !strings.Contains(code, `TypeName: "browser.Page", MethodName: "Title", RouteName: "browser.Page.Title"`) {
+		t.Fatalf("expected owned struct methods to use type method route descriptors")
 	}
 	if strings.Contains(code, "func RegisterBrowserModule(") || strings.Contains(code, "func RegisterPage(") {
 		t.Fatalf("generated code should not expose legacy RegisterXxx helpers")
@@ -345,6 +345,7 @@ func TestRunDirectoryModeGeneratesBytesRefCopyBackSupport(t *testing.T) {
 import "gopkg.d7z.net/go-mini/core/ffigo"
 
 // ffigen:module demo
+// ffigen:proxy
 type Mutator interface {
 	Mutate(buf *ffigo.BytesRef) []byte
 }
@@ -380,6 +381,7 @@ func TestRunDirectoryModeGeneratesArrayRefCopyBackSupport(t *testing.T) {
 import "gopkg.d7z.net/go-mini/core/ffigo"
 
 // ffigen:module demo
+// ffigen:proxy
 type Mutator interface {
 	Rewrite(nums *ffigo.ArrayRef[int64]) int64
 }
@@ -482,6 +484,7 @@ func TestRunDirPreservesGroupedResults(t *testing.T) {
 	writeTestFile(t, workspace, "pair.go", `package pkgmode
 
 // ffigen:module pair
+// ffigen:proxy
 type PairModule interface {
 	Pair() (left, right int64)
 }
@@ -588,8 +591,8 @@ type OrderService interface {
 	if count := strings.Count(code, `schema.AddStruct("order.Order",`); count != 1 {
 		t.Fatalf("expected one shared struct schema binding, got %d\n%s", count, code)
 	}
-	if count := strings.Count(code, `bound.AddStruct("order.Order",`); count != 1 {
-		t.Fatalf("expected one shared bound struct binding, got %d\n%s", count, code)
+	if strings.Contains(code, `bound.AddStruct("order.Order",`) {
+		t.Fatalf("shared struct binding should be derived from schema, got:\n%s", code)
 	}
 }
 
@@ -615,8 +618,8 @@ type Demo interface {
 		t.Fatalf("read generated output: %v", err)
 	}
 	code := string(content)
-	if !strings.Contains(code, "Load() *time.Time") {
-		t.Fatalf("expected unresolved import to fall back to alias form, got:\n%s", code)
+	if !strings.Contains(code, `registry.RegisterTyped(r0, "time.Time")`) {
+		t.Fatalf("expected unresolved import to fall back to alias form for host handles, got:\n%s", code)
 	}
 	if !strings.Contains(code, "HostRef<time.Time>") {
 		t.Fatalf("expected imported pointer to use HostRef alias fallback, got:\n%s", code)
@@ -674,6 +677,7 @@ func TestRunDirectoryModeGeneratesSignedWireForUnsignedGoTypes(t *testing.T) {
 	writeTestFile(t, workspace, "api.go", `package pkgmode
 
 // ffigen:module nums
+// ffigen:proxy
 type Numbers interface {
 	Echo(v uint8) uint8
 	Next() uint64

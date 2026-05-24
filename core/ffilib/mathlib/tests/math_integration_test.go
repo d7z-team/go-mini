@@ -9,7 +9,7 @@ import (
 
 func TestMath(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("math", mathlib.Math_FFI_Schemas),
+		testutil.SurfaceFFISchema("math", mathlib.SurfaceMath(&mathlib.MathHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "functions-and-constants",

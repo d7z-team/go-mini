@@ -17,8 +17,9 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../../ffilib/iolib/io_ffigen.go",
 			patterns: []string{
 				"func SurfaceIO(",
-				"schema.AddFunc(",
-				"bound.AddRoute(",
+				"var ioRoutes = []runtime.FFIRouteDecl{",
+				"schema.AddRouteDecls(ioRoutes)",
+				"bound.BindSchemaRoutes(schema, bridge)",
 			},
 		},
 		{
@@ -26,8 +27,9 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../e2e/canonicaltest/canonical_type_ffigen.go",
 			patterns: []string{
 				"func SurfaceTestCanonicalService(",
-				"schema.AddFunc(",
-				"runtime.NewBoundFFISurface(schema)",
+				"var testCanonicalServiceRoutes = []runtime.FFIRouteDecl{",
+				"schema.AddRouteDecls(testCanonicalServiceRoutes)",
+				"runtime.NewBoundFFISurfaceFromSchema(schema)",
 			},
 		},
 		{
@@ -35,7 +37,8 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../e2e/structtest/ffigen.go",
 			patterns: []string{
 				"schema.AddStruct(",
-				"bound.AddStruct(",
+				"TypeName: \"calc.Calculator\"",
+				"bound.BindSchemaRoutes(schema, bridge)",
 				"HostRef<calc.Calculator>",
 			},
 		},
@@ -43,10 +46,10 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			name: "BusinessServiceSchemaGeneration",
 			path: "ordertest/order_ffigen.go",
 			patterns: []string{
-				"var OrderService_FFI_Schemas = []struct {",
+				"var orderServiceRoutes = []runtime.FFIRouteDecl{",
 				"HostRef<order.Order>",
-				"bound.Routes[\"order.Order.AddItem\"]",
-				"schema.AddFunc(",
+				"TypeName: \"order.Order\", MethodName: \"AddItem\"",
+				"schema.AddRouteDecls(orderServiceRoutes)",
 			},
 		},
 		{
@@ -54,7 +57,8 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "importtest/ffigen.go",
 			patterns: []string{
 				"\"time\"",
-				"Sleep(ctx context.Context, d time.Duration) error",
+				"var d time.Duration",
+				"err := impl.Sleep(ctx, d)",
 				"runtime.MustParseRuntimeFuncSigWithModes(\"function(Int64) Error\", runtime.FFIParamIn)",
 			},
 		},
@@ -82,7 +86,18 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 					t.Fatalf("expected %s to contain %q", tt.path, pattern)
 				}
 			}
-			disallowed := []string{"legacyRegistrar", "func Register", "RegisterFFISchema(", "RegisterStructSpec(", "RegisterFFI(", "registrar.RegisterFFISchema(", "Value: &Encoding{Enc: base64.StdEncoding}"}
+			disallowed := []string{
+				"legacyRegistrar",
+				"func Register",
+				"RegisterFFISchema(",
+				"RegisterStructSpec(",
+				"RegisterFFI(",
+				"registrar.RegisterFFISchema(",
+				"_Bridge",
+				"_FFI_Schemas",
+				"MethodID_",
+				"Value: &Encoding{Enc: base64.StdEncoding}",
+			}
 			for _, pattern := range disallowed {
 				if strings.Contains(code, pattern) {
 					t.Fatalf("expected %s to drop legacy marker %q", tt.path, pattern)
@@ -120,7 +135,7 @@ func TestFFIGenStructMethodsVariadicHostRefReturn(t *testing.T) {
 	code := string(content)
 
 	required := []string{
-		"case MethodID_Page_GetByPlaceholder:",
+		"case methodIDPageGetByPlaceholder:",
 		"r0 := __recv.GetByPlaceholder(text, exact...)",
 		"if r0 == nil {",
 		"resBuf.WriteUvarint(0)",
@@ -145,16 +160,40 @@ func TestFFIGenDoesNotLeakSymbolsFromOtherGeneratedFiles(t *testing.T) {
 	code := string(content)
 
 	disallowed := []string{
-		"MethodID_AdvancedFFI_",
-		"MethodID_ContextMock_",
-		"MethodID_MapTest_",
-		"MethodID_MockOS_",
-		"MethodID_Page_GetByPlaceholder",
-		"MethodID_VariadicPointerMethods_",
+		"methodIDAdvancedFFI",
+		"methodIDContextMock",
+		"methodIDMapTest",
+		"methodIDMockOS",
+		"methodIDPageGetByPlaceholder",
+		"methodIDVariadicPointerMethods",
 	}
 	for _, pattern := range disallowed {
 		if strings.Contains(code, pattern) {
 			t.Fatalf("generated file leaked symbols from sibling ffigen output: %q", pattern)
 		}
+	}
+}
+
+func TestFFIGenProxyIsOptIn(t *testing.T) {
+	tests := []struct {
+		path      string
+		wantProxy bool
+	}{
+		{path: "array_ref_ffigen_test.go", wantProxy: true},
+		{path: "dummy_ffigen_test.go"},
+		{path: "ffi_struct_ffigen_test.go"},
+		{path: "ordertest/order_ffigen.go"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			content, err := os.ReadFile(tt.path)
+			if err != nil {
+				t.Fatalf("read %s: %v", tt.path, err)
+			}
+			hasProxy := strings.Contains(string(content), "Proxy struct {")
+			if hasProxy != tt.wantProxy {
+				t.Fatalf("proxy generation mismatch for %s: got %v want %v", tt.path, hasProxy, tt.wantProxy)
+			}
+		})
 	}
 }

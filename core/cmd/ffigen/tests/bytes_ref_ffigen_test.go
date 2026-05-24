@@ -12,63 +12,20 @@ import (
 )
 
 const (
-	MethodID_BytesRefAPI_Mutate = 1
+	methodIDBytesRefAPIMutate = 1
 )
 
-type BytesRefAPIProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewBytesRefAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) BytesRefAPI {
-	return &BytesRefAPIProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *BytesRefAPIProxy) Mutate(buf *ffigo.BytesRef) int64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	if buf == nil {
-		wireBuf.WriteBytes(nil)
-	} else {
-		wireBuf.WriteBytes(buf.Value)
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_BytesRefAPI_Mutate, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
-	if copyBackCount != 1 {
-		panic(fmt.Sprintf("ffigen: BytesRefAPI.Mutate copy-back mismatch: %d", copyBackCount))
-	}
-	if buf == nil {
-		panic("ffigen: nil BytesRef passed to BytesRefAPI.Mutate")
-	}
-	buf.Value = retBuf.ReadBytes()
-	var v_0 int64
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int64(tmp)
-	}
-	return v_0
-}
-
-func BytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func bytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Mutate":
-			methodID = MethodID_BytesRefAPI_Mutate
+			methodID = methodIDBytesRefAPIMutate
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_BytesRefAPI_Mutate:
+	case methodIDBytesRefAPIMutate:
 		var buf *ffigo.BytesRef
 		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
 		r0 := impl.Mutate(buf)
@@ -86,48 +43,21 @@ func BytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffig
 	}
 }
 
-var BytesRefAPI_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Mutate", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), ""},
-}
-
-type BytesRefAPI_Bridge struct {
-	Impl     BytesRefAPI
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *BytesRefAPI_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *BytesRefAPI_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BytesRefAPIHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *BytesRefAPI_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var bytesRefAPIRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "copyback", MemberName: "Mutate", RouteName: "copyback.Mutate", MethodID: methodIDBytesRefAPIMutate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), Doc: ""},
 }
 
 func SurfaceBytesRefAPI(impl BytesRefAPI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("copyback", "Mutate", "copyback.Mutate", BytesRefAPI_FFI_Schemas[0].MethodID, BytesRefAPI_FFI_Schemas[0].Sig, BytesRefAPI_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(bytesRefAPIRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &BytesRefAPI_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("copyback", "Mutate", runtime.FFIRoute{Name: "copyback.Mutate", Bridge: bridge, MethodID: BytesRefAPI_FFI_Schemas[0].MethodID, FuncSig: BytesRefAPI_FFI_Schemas[0].Sig, Doc: BytesRefAPI_FFI_Schemas[0].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return bytesRefAPIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

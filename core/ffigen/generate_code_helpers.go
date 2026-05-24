@@ -310,33 +310,29 @@ type copyBackParam struct {
 	expr   ast.Expr
 }
 
-func (g *Generator) writeGeneratedSurfaceRoutes(sb *strings.Builder, indent, schemaVar, boundVar, bridgeVar string, methods []generatedMethod, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool) {
-	for _, method := range methods {
-		routePrefix := fixedPrefix
-		packageMember := !isStruct && methodsPrefix == ""
-		if !isStruct && moduleName != "" && methodsPrefix != "" && !method.HasReceiver {
-			routePrefix = moduleName
-			packageMember = true
-		} else if methodsPrefix != "" || isStruct {
-			packageMember = false
-		}
-		routeName := routePrefix + "." + method.Name
-		item := fmt.Sprintf("%s_FFI_Schemas[%d]", name, method.SchemaIndex)
-		if schemaVar != "" && packageMember {
-			fmt.Fprintf(sb, "%s%s.AddFunc(%q, %q, %q, %s.MethodID, %s.Sig, %s.Doc)\n",
-				indent, schemaVar, routePrefix, method.Name, routeName, item, item, item)
-		}
-		if boundVar == "" {
-			continue
-		}
-		route := fmt.Sprintf("runtime.FFIRoute{Name: %q, Bridge: %s, MethodID: %s.MethodID, FuncSig: %s.Sig, Doc: %s.Doc}",
-			routeName, bridgeVar, item, item, item)
-		if packageMember {
-			fmt.Fprintf(sb, "%s%s.AddRoute(%q, %q, %s)\n", indent, boundVar, routePrefix, method.Name, route)
-			continue
-		}
-		fmt.Fprintf(sb, "%s%s.Routes[%q] = %s\n", indent, boundVar, routeName, route)
+func (g *Generator) generatedRouteDeclLiteral(method generatedMethod, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool) string {
+	routePrefix := fixedPrefix
+	packageMember := !isStruct && methodsPrefix == ""
+	if !isStruct && moduleName != "" && methodsPrefix != "" && !method.HasReceiver {
+		routePrefix = moduleName
+		packageMember = true
+	} else if methodsPrefix != "" || isStruct {
+		packageMember = false
 	}
+	routeName := routePrefix + "." + method.Name
+	methodID := methodIDConstName(name, method.Name)
+	if packageMember {
+		return fmt.Sprintf("{PackagePath: %q, MemberName: %q, RouteName: %q, MethodID: %s,", routePrefix, method.Name, routeName, methodID)
+	}
+	return fmt.Sprintf("{TypeName: %q, MethodName: %q, RouteName: %q, MethodID: %s,", routePrefix, method.Name, routeName, methodID)
+}
+
+func (g *Generator) writeSchemaRouteBinder(sb *strings.Builder, indent, name, implExpr string) {
+	fmt.Fprintf(sb, "%sbridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", indent)
+	fmt.Fprintf(sb, "%s\treturn %s(callCtx, %s, ctx.Registry, req.MethodID, req.Method, req.Args)\n", indent, hostRouterName(name), implExpr)
+	fmt.Fprintf(sb, "%s})\n", indent)
+	fmt.Fprintf(sb, "%sbound := runtime.NewBoundFFISurfaceFromSchema(schema)\n", indent)
+	fmt.Fprintf(sb, "%sif err := bound.BindSchemaRoutes(schema, bridge); err != nil { return nil, err }\n", indent)
 }
 
 func (g *Generator) buildGeneratedStructSchemaLiteral(iface *ast.InterfaceType, structs map[string]*ast.StructType, structName string, includeFields, includeMethods bool, displayTypeName func(string) string, funcSpec func(*ast.FuncType) string) string {
@@ -393,7 +389,11 @@ func (g *Generator) generateGlobalsCode(globals []globalValue) string {
 		if !ok {
 			panic("ffigen:global currently requires HostRef<T> canonical type")
 		}
-		fmt.Fprintf(&sb, "\t\tvalue%d, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec(%q), Value: %s, Bridge: &%s_Bridge{Registry: ctx.Registry}}).Bind(ctx)\n", i, elem, item.variable, localTypeName(elem))
+		routerName := hostRouterName(localTypeName(elem))
+		fmt.Fprintf(&sb, "\t\tbridge%d := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {\n", i)
+		fmt.Fprintf(&sb, "\t\t\treturn %s(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)\n", routerName)
+		fmt.Fprintf(&sb, "\t\t})\n")
+		fmt.Fprintf(&sb, "\t\tvalue%d, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec(%q), Value: %s, Bridge: bridge%d}).Bind(ctx)\n", i, elem, item.variable, i)
 		fmt.Fprintf(&sb, "\t\tif err != nil { return nil, err }\n")
 		fmt.Fprintf(&sb, "\t\tbound.AddPackageValue(%q, %q, spec%d, value%d)\n", item.meta.PackagePath, item.meta.Name, i, i)
 	}

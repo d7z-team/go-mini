@@ -16,8 +16,8 @@ func TestIO(t *testing.T) {
 	secondPath := filepath.Join(dir, "io-second.txt")
 
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("io", iolib.IO_FFI_Schemas),
-		testutil.FFISchema("io.File", iolib.File_FFI_Schemas),
+		testutil.SurfaceFFISchema("io", iolib.SurfaceIO(&iolib.IOHost{})),
+		testutil.SurfaceFFISchema("io.File", iolib.SurfaceFile()),
 	}, []testutil.Case{
 		{
 			Name:    "module-and-file-operations",

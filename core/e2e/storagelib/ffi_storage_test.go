@@ -7,18 +7,14 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/e2e/storagelib"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestFFIStorageOverflow(t *testing.T) {
 	impl := &storagelib.StorageImpl{}
 	executor := engine.NewMiniExecutor()
-
-	// 1. 手动注册 FFI 路由，避免点号带来的模块加载问题
-	// 直接模拟 RegisterStorageAPI 的核心逻辑，但改名以简化测试
-	bridge := &storagelib.StorageAPI_Bridge{Impl: impl, Registry: nil}
-	executor.RegisterFFISchema("StorageSetCapacity", bridge, storagelib.MethodID_StorageAPI_SetCapacity, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
-	executor.RegisterFFISchema("StorageGetStatus", bridge, storagelib.MethodID_StorageAPI_GetStatus, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
+	if err := executor.UseSurface(storagelib.SurfaceStorageAPI(impl)); err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name      string
@@ -28,19 +24,19 @@ func TestFFIStorageOverflow(t *testing.T) {
 	}{
 		{
 			"Uint32 Normal",
-			`package main; func main() { StorageSetCapacity(5000) }`,
+			`package main; import "storage"; func main() { storage.SetCapacity(5000) }`,
 			"",
 			5000,
 		},
 		{
 			"Uint32 Overflow",
-			`package main; func main() { StorageSetCapacity(-1) }`,
+			`package main; import "storage"; func main() { storage.SetCapacity(-1) }`,
 			"ffi: uint32 overflow: -1",
 			0,
 		},
 		{
 			"GetStatus Normal",
-			`package main; func main() { if StorageGetStatus() != 1024 { panic("wrong status") } }`,
+			`package main; import "storage"; func main() { if storage.GetStatus() != 1024 { panic("wrong status") } }`,
 			"",
 			0, // 不检查 Capacity，只通过上面的 panic 验证返回值
 		},

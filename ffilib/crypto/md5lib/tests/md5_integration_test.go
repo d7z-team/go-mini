@@ -10,7 +10,7 @@ import (
 
 func TestMD5Sum(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("crypto/md5", md5lib.MD5_FFI_Schemas),
+		testutil.SurfaceFFISchema("crypto/md5", md5lib.SurfaceMD5(&md5lib.MD5Host{})),
 	}, []testutil.Case{
 		{
 			Name:    "sum",

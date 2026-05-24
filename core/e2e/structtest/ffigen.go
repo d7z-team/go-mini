@@ -16,26 +16,26 @@ var calc_Calculator_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.
 var calc_Table_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("calc.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<calc.Table>, Int64, Int64, String) Void; GetString function(HostRef<calc.Table>, Int64, Int64) String; }")
 
 const (
-	MethodID_Calculator_Add      = 1
-	MethodID_Calculator_Multiply = 2
-	MethodID_Calculator_GetBase  = 3
+	methodIDCalculatorAdd      = 1
+	methodIDCalculatorMultiply = 2
+	methodIDCalculatorGetBase  = 3
 )
 
-func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Add":
-			methodID = MethodID_Calculator_Add
+			methodID = methodIDCalculatorAdd
 		case "Multiply":
-			methodID = MethodID_Calculator_Multiply
+			methodID = methodIDCalculatorMultiply
 		case "GetBase":
-			methodID = MethodID_Calculator_GetBase
+			methodID = methodIDCalculatorGetBase
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Calculator_Add:
+	case methodIDCalculatorAdd:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -54,7 +54,7 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Calculator_Multiply:
+	case methodIDCalculatorMultiply:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -78,7 +78,7 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Calculator_GetBase:
+	case methodIDCalculatorGetBase:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -97,75 +97,46 @@ func CalculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	}
 }
 
-var Calculator_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Add", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Multiply", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"GetBase", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>) Int64", runtime.FFIParamIn), ""},
-}
-
-type Calculator_Bridge struct {
-	Impl     *Calculator
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Calculator_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return CalculatorHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Calculator_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return CalculatorHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Calculator_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var calculatorRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "calc.Calculator", MethodName: "Add", RouteName: "calc.Calculator.Add", MethodID: methodIDCalculatorAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "calc.Calculator", MethodName: "Multiply", RouteName: "calc.Calculator.Multiply", MethodID: methodIDCalculatorMultiply, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "calc.Calculator", MethodName: "GetBase", RouteName: "calc.Calculator.GetBase", MethodID: methodIDCalculatorGetBase, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceCalculator() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(calculatorRoutes)
 	schema.AddStruct("calc.Calculator", calc_Calculator_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Calculator_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["calc.Calculator.Add"] = runtime.FFIRoute{Name: "calc.Calculator.Add", Bridge: bridge, MethodID: Calculator_FFI_Schemas[0].MethodID, FuncSig: Calculator_FFI_Schemas[0].Sig, Doc: Calculator_FFI_Schemas[0].Doc}
-		bound.Routes["calc.Calculator.Multiply"] = runtime.FFIRoute{Name: "calc.Calculator.Multiply", Bridge: bridge, MethodID: Calculator_FFI_Schemas[1].MethodID, FuncSig: Calculator_FFI_Schemas[1].Sig, Doc: Calculator_FFI_Schemas[1].Doc}
-		bound.Routes["calc.Calculator.GetBase"] = runtime.FFIRoute{Name: "calc.Calculator.GetBase", Bridge: bridge, MethodID: Calculator_FFI_Schemas[2].MethodID, FuncSig: Calculator_FFI_Schemas[2].Sig, Doc: Calculator_FFI_Schemas[2].Doc}
-		bound.AddStruct("calc.Calculator", calc_Calculator_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return calculatorHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_Table_SetString = 1
-	MethodID_Table_GetString = 2
+	methodIDTableSetString = 1
+	methodIDTableGetString = 2
 )
 
-func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func tableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "SetString":
-			methodID = MethodID_Table_SetString
+			methodID = methodIDTableSetString
 		case "GetString":
-			methodID = MethodID_Table_GetString
+			methodID = methodIDTableGetString
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Table_SetString:
+	case methodIDTableSetString:
 		var __recv *Table
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -190,7 +161,7 @@ func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 		__recv.SetString(row, col, val)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_Table_GetString:
+	case methodIDTableGetString:
 		var __recv *Table
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -219,73 +190,45 @@ func TableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 	}
 }
 
-var Table_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"SetString", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64, String) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"GetString", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Table_Bridge struct {
-	Impl     *Table
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Table_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TableHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Table_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return TableHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Table_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var tableRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "calc.Table", MethodName: "SetString", RouteName: "calc.Table.SetString", MethodID: methodIDTableSetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64, String) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "calc.Table", MethodName: "GetString", RouteName: "calc.Table.GetString", MethodID: methodIDTableGetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTable() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(tableRoutes)
 	schema.AddStruct("calc.Table", calc_Table_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Table_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["calc.Table.SetString"] = runtime.FFIRoute{Name: "calc.Table.SetString", Bridge: bridge, MethodID: Table_FFI_Schemas[0].MethodID, FuncSig: Table_FFI_Schemas[0].Sig, Doc: Table_FFI_Schemas[0].Doc}
-		bound.Routes["calc.Table.GetString"] = runtime.FFIRoute{Name: "calc.Table.GetString", Bridge: bridge, MethodID: Table_FFI_Schemas[1].MethodID, FuncSig: Table_FFI_Schemas[1].Sig, Doc: Table_FFI_Schemas[1].Doc}
-		bound.AddStruct("calc.Table", calc_Table_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return tableHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_Factory_New      = 1
-	MethodID_Factory_NewTable = 2
+	methodIDFactoryNew      = 1
+	methodIDFactoryNewTable = 2
 )
 
-func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func factoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "New":
-			methodID = MethodID_Factory_New
+			methodID = methodIDFactoryNew
 		case "NewTable":
-			methodID = MethodID_Factory_NewTable
+			methodID = methodIDFactoryNewTable
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Factory_New:
+	case methodIDFactoryNew:
 		var base int64
 		{
 			tmp := reqBuf.ReadVarint()
@@ -300,7 +243,7 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "calc.Calculator")))
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Factory_NewTable:
+	case methodIDFactoryNewTable:
 		r0 := impl.NewTable()
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -315,49 +258,22 @@ func FactoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	}
 }
 
-var Factory_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"New", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<calc.Calculator>", runtime.FFIParamIn), ""},
-	{"NewTable", 2, runtime.MustParseRuntimeFuncSig("function() HostRef<calc.Table>"), ""},
-}
-
-type Factory_Bridge struct {
-	Impl     *Factory
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Factory_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FactoryHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Factory_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return FactoryHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Factory_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var factoryRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "calc", MethodName: "New", RouteName: "calc.New", MethodID: methodIDFactoryNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<calc.Calculator>", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "calc", MethodName: "NewTable", RouteName: "calc.NewTable", MethodID: methodIDFactoryNewTable, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<calc.Table>"), Doc: ""},
 }
 
 func SurfaceFactory(impl *Factory) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(factoryRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Factory_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["calc.New"] = runtime.FFIRoute{Name: "calc.New", Bridge: bridge, MethodID: Factory_FFI_Schemas[0].MethodID, FuncSig: Factory_FFI_Schemas[0].Sig, Doc: Factory_FFI_Schemas[0].Doc}
-		bound.Routes["calc.NewTable"] = runtime.FFIRoute{Name: "calc.NewTable", Bridge: bridge, MethodID: Factory_FFI_Schemas[1].MethodID, FuncSig: Factory_FFI_Schemas[1].Sig, Doc: Factory_FFI_Schemas[1].Doc}
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return factoryHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

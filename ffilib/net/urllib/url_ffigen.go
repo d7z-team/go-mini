@@ -12,121 +12,33 @@ import (
 )
 
 const (
-	MethodID_URL_QueryEscape   = 1
-	MethodID_URL_QueryUnescape = 2
-	MethodID_URL_JoinPath      = 3
+	methodIDURLQueryEscape   = 1
+	methodIDURLQueryUnescape = 2
+	methodIDURLJoinPath      = 3
 )
 
-type URLProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewURLProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) URL {
-	return &URLProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *URLProxy) QueryEscape(s string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_QueryEscape, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func (__p *URLProxy) QueryUnescape(s string) (string, error) {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(s))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_QueryUnescape, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	if err != nil {
-		return "", err
-	}
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	var err_1 error
-	if retBuf.Available() > 0 {
-		ed := retBuf.ReadRawError()
-		if ed.Message != "" || ed.Handle != 0 {
-			if ed.Handle != 0 && __p.registry != nil {
-				if obj, ok := __p.registry.Get(ed.Handle); ok {
-					err_1 = obj.(error)
-				} else {
-					err_1 = ed
-				}
-			} else {
-				err_1 = ed
-			}
-		}
-	}
-	return v_0, err_1
-}
-
-func (__p *URLProxy) JoinPath(base string, elem ...string) string {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteString(string(base))
-	wireBuf.WriteUvarint(uint64(len(elem)))
-	for _, item := range elem {
-		wireBuf.WriteString(string(item))
-	}
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_URL_JoinPath, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 string
-	v_0 = string(retBuf.ReadString())
-	return v_0
-}
-
-func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func urlHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "QueryEscape":
-			methodID = MethodID_URL_QueryEscape
+			methodID = methodIDURLQueryEscape
 		case "QueryUnescape":
-			methodID = MethodID_URL_QueryUnescape
+			methodID = methodIDURLQueryUnescape
 		case "JoinPath":
-			methodID = MethodID_URL_JoinPath
+			methodID = methodIDURLJoinPath
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_URL_QueryEscape:
+	case methodIDURLQueryEscape:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0 := impl.QueryEscape(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_URL_QueryUnescape:
+	case methodIDURLQueryUnescape:
 		var s string
 		s = string(reqBuf.ReadString())
 		r0, err := impl.QueryUnescape(s)
@@ -142,7 +54,7 @@ func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 			resBuf.WriteRawError("", 0)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_URL_JoinPath:
+	case methodIDURLJoinPath:
 		var base string
 		base = string(reqBuf.ReadString())
 		var elem []string
@@ -160,54 +72,23 @@ func URLHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 	}
 }
 
-var URL_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"QueryEscape", 1, runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), ""},
-	{"QueryUnescape", 2, runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), ""},
-	{"JoinPath", 3, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...String) String", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type URL_Bridge struct {
-	Impl     URL
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *URL_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return URLHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *URL_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return URLHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *URL_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var urlRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "net/url", MemberName: "QueryEscape", RouteName: "net/url.QueryEscape", MethodID: methodIDURLQueryEscape, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "net/url", MemberName: "QueryUnescape", RouteName: "net/url.QueryUnescape", MethodID: methodIDURLQueryUnescape, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(String, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "net/url", MemberName: "JoinPath", RouteName: "net/url.JoinPath", MethodID: methodIDURLJoinPath, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, ...String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceURL(impl URL) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("net/url", "QueryEscape", "net/url.QueryEscape", URL_FFI_Schemas[0].MethodID, URL_FFI_Schemas[0].Sig, URL_FFI_Schemas[0].Doc)
-	schema.AddFunc("net/url", "QueryUnescape", "net/url.QueryUnescape", URL_FFI_Schemas[1].MethodID, URL_FFI_Schemas[1].Sig, URL_FFI_Schemas[1].Doc)
-	schema.AddFunc("net/url", "JoinPath", "net/url.JoinPath", URL_FFI_Schemas[2].MethodID, URL_FFI_Schemas[2].Sig, URL_FFI_Schemas[2].Doc)
+	schema.AddRouteDecls(urlRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &URL_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("net/url", "QueryEscape", runtime.FFIRoute{Name: "net/url.QueryEscape", Bridge: bridge, MethodID: URL_FFI_Schemas[0].MethodID, FuncSig: URL_FFI_Schemas[0].Sig, Doc: URL_FFI_Schemas[0].Doc})
-		bound.AddRoute("net/url", "QueryUnescape", runtime.FFIRoute{Name: "net/url.QueryUnescape", Bridge: bridge, MethodID: URL_FFI_Schemas[1].MethodID, FuncSig: URL_FFI_Schemas[1].Sig, Doc: URL_FFI_Schemas[1].Doc})
-		bound.AddRoute("net/url", "JoinPath", runtime.FFIRoute{Name: "net/url.JoinPath", Bridge: bridge, MethodID: URL_FFI_Schemas[2].MethodID, FuncSig: URL_FFI_Schemas[2].Sig, Doc: URL_FFI_Schemas[2].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return urlHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

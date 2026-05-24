@@ -12,362 +12,59 @@ import (
 )
 
 const (
-	MethodID_Bytes_Contains   = 1
-	MethodID_Bytes_Count      = 2
-	MethodID_Bytes_HasPrefix  = 3
-	MethodID_Bytes_HasSuffix  = 4
-	MethodID_Bytes_Index      = 5
-	MethodID_Bytes_LastIndex  = 6
-	MethodID_Bytes_ToLower    = 7
-	MethodID_Bytes_ToUpper    = 8
-	MethodID_Bytes_Trim       = 9
-	MethodID_Bytes_TrimSpace  = 10
-	MethodID_Bytes_Split      = 11
-	MethodID_Bytes_Join       = 12
-	MethodID_Bytes_Repeat     = 13
-	MethodID_Bytes_ReplaceAll = 14
+	methodIDBytesContains   = 1
+	methodIDBytesCount      = 2
+	methodIDBytesHasPrefix  = 3
+	methodIDBytesHasSuffix  = 4
+	methodIDBytesIndex      = 5
+	methodIDBytesLastIndex  = 6
+	methodIDBytesToLower    = 7
+	methodIDBytesToUpper    = 8
+	methodIDBytesTrim       = 9
+	methodIDBytesTrimSpace  = 10
+	methodIDBytesSplit      = 11
+	methodIDBytesJoin       = 12
+	methodIDBytesRepeat     = 13
+	methodIDBytesReplaceAll = 14
 )
 
-type BytesProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewBytesProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Bytes {
-	return &BytesProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *BytesProxy) Contains(b []byte, sub []byte) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(b)
-	wireBuf.WriteBytes(sub)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Contains, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *BytesProxy) Count(s []byte, sep []byte) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(sep)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Count, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *BytesProxy) HasPrefix(s []byte, prefix []byte) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(prefix)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_HasPrefix, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *BytesProxy) HasSuffix(s []byte, suffix []byte) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(suffix)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_HasSuffix, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *BytesProxy) Index(s []byte, sep []byte) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(sep)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Index, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *BytesProxy) LastIndex(s []byte, sep []byte) int {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(sep)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_LastIndex, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 int
-	{
-		tmp := retBuf.ReadVarint()
-		v_0 = int(tmp)
-	}
-	return v_0
-}
-
-func (__p *BytesProxy) ToLower(s []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ToLower, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) ToUpper(s []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ToUpper, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) Trim(s []byte, cutset string) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteString(string(cutset))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Trim, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) TrimSpace(s []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_TrimSpace, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) Split(s []byte, sep []byte) [][]byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(sep)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Split, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 [][]byte
-	l_v_0 := int(retBuf.ReadUvarint())
-	v_0 = make([][]byte, l_v_0)
-	for i_v_0 := 0; i_v_0 < l_v_0; i_v_0++ {
-		v_0[i_v_0] = retBuf.ReadBytes()
-	}
-	return v_0
-}
-
-func (__p *BytesProxy) Join(s [][]byte, sep []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteUvarint(uint64(len(s)))
-	for _, item := range s {
-		wireBuf.WriteBytes(item)
-	}
-	wireBuf.WriteBytes(sep)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Join, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) Repeat(b []byte, count int) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(b)
-	wireBuf.WriteVarint(int64(count))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_Repeat, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func (__p *BytesProxy) ReplaceAll(s []byte, old []byte, replacement []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(s)
-	wireBuf.WriteBytes(old)
-	wireBuf.WriteBytes(replacement)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Bytes_ReplaceAll, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func bytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Contains":
-			methodID = MethodID_Bytes_Contains
+			methodID = methodIDBytesContains
 		case "Count":
-			methodID = MethodID_Bytes_Count
+			methodID = methodIDBytesCount
 		case "HasPrefix":
-			methodID = MethodID_Bytes_HasPrefix
+			methodID = methodIDBytesHasPrefix
 		case "HasSuffix":
-			methodID = MethodID_Bytes_HasSuffix
+			methodID = methodIDBytesHasSuffix
 		case "Index":
-			methodID = MethodID_Bytes_Index
+			methodID = methodIDBytesIndex
 		case "LastIndex":
-			methodID = MethodID_Bytes_LastIndex
+			methodID = methodIDBytesLastIndex
 		case "ToLower":
-			methodID = MethodID_Bytes_ToLower
+			methodID = methodIDBytesToLower
 		case "ToUpper":
-			methodID = MethodID_Bytes_ToUpper
+			methodID = methodIDBytesToUpper
 		case "Trim":
-			methodID = MethodID_Bytes_Trim
+			methodID = methodIDBytesTrim
 		case "TrimSpace":
-			methodID = MethodID_Bytes_TrimSpace
+			methodID = methodIDBytesTrimSpace
 		case "Split":
-			methodID = MethodID_Bytes_Split
+			methodID = methodIDBytesSplit
 		case "Join":
-			methodID = MethodID_Bytes_Join
+			methodID = methodIDBytesJoin
 		case "Repeat":
-			methodID = MethodID_Bytes_Repeat
+			methodID = methodIDBytesRepeat
 		case "ReplaceAll":
-			methodID = MethodID_Bytes_ReplaceAll
+			methodID = methodIDBytesReplaceAll
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Bytes_Contains:
+	case methodIDBytesContains:
 		var b []byte
 		b = reqBuf.ReadBytes()
 		var sub []byte
@@ -376,7 +73,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Count:
+	case methodIDBytesCount:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var sep []byte
@@ -385,7 +82,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_HasPrefix:
+	case methodIDBytesHasPrefix:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var prefix []byte
@@ -394,7 +91,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_HasSuffix:
+	case methodIDBytesHasSuffix:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var suffix []byte
@@ -403,7 +100,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Index:
+	case methodIDBytesIndex:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var sep []byte
@@ -412,7 +109,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_LastIndex:
+	case methodIDBytesLastIndex:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var sep []byte
@@ -421,21 +118,21 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_ToLower:
+	case methodIDBytesToLower:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		r0 := impl.ToLower(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_ToUpper:
+	case methodIDBytesToUpper:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		r0 := impl.ToUpper(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Trim:
+	case methodIDBytesTrim:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var cutset string
@@ -444,14 +141,14 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_TrimSpace:
+	case methodIDBytesTrimSpace:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		r0 := impl.TrimSpace(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Split:
+	case methodIDBytesSplit:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var sep []byte
@@ -463,7 +160,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 			resBuf.WriteBytes(item)
 		}
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Join:
+	case methodIDBytesJoin:
 		var s [][]byte
 		l_s := int(reqBuf.ReadUvarint())
 		s = make([][]byte, l_s)
@@ -476,7 +173,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_Repeat:
+	case methodIDBytesRepeat:
 		var b []byte
 		b = reqBuf.ReadBytes()
 		var count int
@@ -488,7 +185,7 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
-	case MethodID_Bytes_ReplaceAll:
+	case methodIDBytesReplaceAll:
 		var s []byte
 		s = reqBuf.ReadBytes()
 		var old []byte
@@ -504,87 +201,34 @@ func BytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 	}
 }
 
-var Bytes_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Contains", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Count", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasPrefix", 3, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"HasSuffix", 4, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Index", 5, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"LastIndex", 6, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ToLower", 7, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
-	{"ToUpper", 8, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
-	{"Trim", 9, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, String) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"TrimSpace", 10, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
-	{"Split", 11, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Array<TypeBytes>", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Join", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Array<TypeBytes>, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Repeat", 13, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, Int64) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"ReplaceAll", 14, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Bytes_Bridge struct {
-	Impl     Bytes
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Bytes_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BytesHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Bytes_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return BytesHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Bytes_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var bytesRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "bytes", MemberName: "Contains", RouteName: "bytes.Contains", MethodID: methodIDBytesContains, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Count", RouteName: "bytes.Count", MethodID: methodIDBytesCount, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "HasPrefix", RouteName: "bytes.HasPrefix", MethodID: methodIDBytesHasPrefix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "HasSuffix", RouteName: "bytes.HasSuffix", MethodID: methodIDBytesHasSuffix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Index", RouteName: "bytes.Index", MethodID: methodIDBytesIndex, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "LastIndex", RouteName: "bytes.LastIndex", MethodID: methodIDBytesLastIndex, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "ToLower", RouteName: "bytes.ToLower", MethodID: methodIDBytesToLower, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "ToUpper", RouteName: "bytes.ToUpper", MethodID: methodIDBytesToUpper, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Trim", RouteName: "bytes.Trim", MethodID: methodIDBytesTrim, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, String) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "TrimSpace", RouteName: "bytes.TrimSpace", MethodID: methodIDBytesTrimSpace, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Split", RouteName: "bytes.Split", MethodID: methodIDBytesSplit, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes) Array<TypeBytes>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Join", RouteName: "bytes.Join", MethodID: methodIDBytesJoin, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<TypeBytes>, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "Repeat", RouteName: "bytes.Repeat", MethodID: methodIDBytesRepeat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, Int64) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "bytes", MemberName: "ReplaceAll", RouteName: "bytes.ReplaceAll", MethodID: methodIDBytesReplaceAll, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceBytes(impl Bytes) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("bytes", "Contains", "bytes.Contains", Bytes_FFI_Schemas[0].MethodID, Bytes_FFI_Schemas[0].Sig, Bytes_FFI_Schemas[0].Doc)
-	schema.AddFunc("bytes", "Count", "bytes.Count", Bytes_FFI_Schemas[1].MethodID, Bytes_FFI_Schemas[1].Sig, Bytes_FFI_Schemas[1].Doc)
-	schema.AddFunc("bytes", "HasPrefix", "bytes.HasPrefix", Bytes_FFI_Schemas[2].MethodID, Bytes_FFI_Schemas[2].Sig, Bytes_FFI_Schemas[2].Doc)
-	schema.AddFunc("bytes", "HasSuffix", "bytes.HasSuffix", Bytes_FFI_Schemas[3].MethodID, Bytes_FFI_Schemas[3].Sig, Bytes_FFI_Schemas[3].Doc)
-	schema.AddFunc("bytes", "Index", "bytes.Index", Bytes_FFI_Schemas[4].MethodID, Bytes_FFI_Schemas[4].Sig, Bytes_FFI_Schemas[4].Doc)
-	schema.AddFunc("bytes", "LastIndex", "bytes.LastIndex", Bytes_FFI_Schemas[5].MethodID, Bytes_FFI_Schemas[5].Sig, Bytes_FFI_Schemas[5].Doc)
-	schema.AddFunc("bytes", "ToLower", "bytes.ToLower", Bytes_FFI_Schemas[6].MethodID, Bytes_FFI_Schemas[6].Sig, Bytes_FFI_Schemas[6].Doc)
-	schema.AddFunc("bytes", "ToUpper", "bytes.ToUpper", Bytes_FFI_Schemas[7].MethodID, Bytes_FFI_Schemas[7].Sig, Bytes_FFI_Schemas[7].Doc)
-	schema.AddFunc("bytes", "Trim", "bytes.Trim", Bytes_FFI_Schemas[8].MethodID, Bytes_FFI_Schemas[8].Sig, Bytes_FFI_Schemas[8].Doc)
-	schema.AddFunc("bytes", "TrimSpace", "bytes.TrimSpace", Bytes_FFI_Schemas[9].MethodID, Bytes_FFI_Schemas[9].Sig, Bytes_FFI_Schemas[9].Doc)
-	schema.AddFunc("bytes", "Split", "bytes.Split", Bytes_FFI_Schemas[10].MethodID, Bytes_FFI_Schemas[10].Sig, Bytes_FFI_Schemas[10].Doc)
-	schema.AddFunc("bytes", "Join", "bytes.Join", Bytes_FFI_Schemas[11].MethodID, Bytes_FFI_Schemas[11].Sig, Bytes_FFI_Schemas[11].Doc)
-	schema.AddFunc("bytes", "Repeat", "bytes.Repeat", Bytes_FFI_Schemas[12].MethodID, Bytes_FFI_Schemas[12].Sig, Bytes_FFI_Schemas[12].Doc)
-	schema.AddFunc("bytes", "ReplaceAll", "bytes.ReplaceAll", Bytes_FFI_Schemas[13].MethodID, Bytes_FFI_Schemas[13].Sig, Bytes_FFI_Schemas[13].Doc)
+	schema.AddRouteDecls(bytesRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Bytes_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("bytes", "Contains", runtime.FFIRoute{Name: "bytes.Contains", Bridge: bridge, MethodID: Bytes_FFI_Schemas[0].MethodID, FuncSig: Bytes_FFI_Schemas[0].Sig, Doc: Bytes_FFI_Schemas[0].Doc})
-		bound.AddRoute("bytes", "Count", runtime.FFIRoute{Name: "bytes.Count", Bridge: bridge, MethodID: Bytes_FFI_Schemas[1].MethodID, FuncSig: Bytes_FFI_Schemas[1].Sig, Doc: Bytes_FFI_Schemas[1].Doc})
-		bound.AddRoute("bytes", "HasPrefix", runtime.FFIRoute{Name: "bytes.HasPrefix", Bridge: bridge, MethodID: Bytes_FFI_Schemas[2].MethodID, FuncSig: Bytes_FFI_Schemas[2].Sig, Doc: Bytes_FFI_Schemas[2].Doc})
-		bound.AddRoute("bytes", "HasSuffix", runtime.FFIRoute{Name: "bytes.HasSuffix", Bridge: bridge, MethodID: Bytes_FFI_Schemas[3].MethodID, FuncSig: Bytes_FFI_Schemas[3].Sig, Doc: Bytes_FFI_Schemas[3].Doc})
-		bound.AddRoute("bytes", "Index", runtime.FFIRoute{Name: "bytes.Index", Bridge: bridge, MethodID: Bytes_FFI_Schemas[4].MethodID, FuncSig: Bytes_FFI_Schemas[4].Sig, Doc: Bytes_FFI_Schemas[4].Doc})
-		bound.AddRoute("bytes", "LastIndex", runtime.FFIRoute{Name: "bytes.LastIndex", Bridge: bridge, MethodID: Bytes_FFI_Schemas[5].MethodID, FuncSig: Bytes_FFI_Schemas[5].Sig, Doc: Bytes_FFI_Schemas[5].Doc})
-		bound.AddRoute("bytes", "ToLower", runtime.FFIRoute{Name: "bytes.ToLower", Bridge: bridge, MethodID: Bytes_FFI_Schemas[6].MethodID, FuncSig: Bytes_FFI_Schemas[6].Sig, Doc: Bytes_FFI_Schemas[6].Doc})
-		bound.AddRoute("bytes", "ToUpper", runtime.FFIRoute{Name: "bytes.ToUpper", Bridge: bridge, MethodID: Bytes_FFI_Schemas[7].MethodID, FuncSig: Bytes_FFI_Schemas[7].Sig, Doc: Bytes_FFI_Schemas[7].Doc})
-		bound.AddRoute("bytes", "Trim", runtime.FFIRoute{Name: "bytes.Trim", Bridge: bridge, MethodID: Bytes_FFI_Schemas[8].MethodID, FuncSig: Bytes_FFI_Schemas[8].Sig, Doc: Bytes_FFI_Schemas[8].Doc})
-		bound.AddRoute("bytes", "TrimSpace", runtime.FFIRoute{Name: "bytes.TrimSpace", Bridge: bridge, MethodID: Bytes_FFI_Schemas[9].MethodID, FuncSig: Bytes_FFI_Schemas[9].Sig, Doc: Bytes_FFI_Schemas[9].Doc})
-		bound.AddRoute("bytes", "Split", runtime.FFIRoute{Name: "bytes.Split", Bridge: bridge, MethodID: Bytes_FFI_Schemas[10].MethodID, FuncSig: Bytes_FFI_Schemas[10].Sig, Doc: Bytes_FFI_Schemas[10].Doc})
-		bound.AddRoute("bytes", "Join", runtime.FFIRoute{Name: "bytes.Join", Bridge: bridge, MethodID: Bytes_FFI_Schemas[11].MethodID, FuncSig: Bytes_FFI_Schemas[11].Sig, Doc: Bytes_FFI_Schemas[11].Doc})
-		bound.AddRoute("bytes", "Repeat", runtime.FFIRoute{Name: "bytes.Repeat", Bridge: bridge, MethodID: Bytes_FFI_Schemas[12].MethodID, FuncSig: Bytes_FFI_Schemas[12].Sig, Doc: Bytes_FFI_Schemas[12].Doc})
-		bound.AddRoute("bytes", "ReplaceAll", runtime.FFIRoute{Name: "bytes.ReplaceAll", Bridge: bridge, MethodID: Bytes_FFI_Schemas[13].MethodID, FuncSig: Bytes_FFI_Schemas[13].Sig, Doc: Bytes_FFI_Schemas[13].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return bytesHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

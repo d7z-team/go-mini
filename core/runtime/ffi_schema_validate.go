@@ -149,6 +149,22 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 		if err := CheckPublicFFIInterfaceSchema(name, typ.Interface); err != nil {
 			return err
 		}
+		for methodName, method := range typ.Methods {
+			routeName := ExternalFullName(name, methodName)
+			route := FFIRoute{Name: routeName}
+			if method != nil {
+				route.Name = method.RouteName
+				if route.Name == "" {
+					route.Name = routeName
+				}
+				route.MethodID = method.MethodID
+				route.FuncSig = method.Sig
+				route.Doc = method.Doc
+			}
+			if err := CheckPublicFFIRouteSchema(routeName, route); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

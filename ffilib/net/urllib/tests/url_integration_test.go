@@ -10,7 +10,7 @@ import (
 
 func TestURL(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("net/url", urllib.URL_FFI_Schemas),
+		testutil.SurfaceFFISchema("net/url", urllib.SurfaceURL(&urllib.URLHost{})),
 	}, []testutil.Case{
 		{
 			Name:    "query-and-join-path",

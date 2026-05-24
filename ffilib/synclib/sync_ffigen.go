@@ -14,52 +14,19 @@ import (
 var sync_WaitGroup_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("sync.WaitGroup", runtime.StructOwnershipHostOpaque, "struct { Add function(HostRef<sync.WaitGroup>, Int64) Void; Done function(HostRef<sync.WaitGroup>) Void; Wait function(HostRef<sync.WaitGroup>) Void; }")
 
 const (
-	MethodID_Module_NewWaitGroup = 1
+	methodIDModuleNewWaitGroup = 1
 )
 
-type ModuleProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewModuleProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Module {
-	return &ModuleProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *ModuleProxy) NewWaitGroup() *WaitGroup {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Module_NewWaitGroup, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 *WaitGroup
-	// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-	if id := uint32(retBuf.ReadUvarint()); id != 0 {
-		if __p.registry != nil {
-			if obj, ok := __p.registry.GetTyped(id, "sync.WaitGroup"); ok {
-				v_0 = obj.(*WaitGroup)
-			}
-		}
-	}
-	return v_0
-}
-
-func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "NewWaitGroup":
-			methodID = MethodID_Module_NewWaitGroup
+			methodID = methodIDModuleNewWaitGroup
 		}
 	}
 
 	switch methodID {
-	case MethodID_Module_NewWaitGroup:
+	case methodIDModuleNewWaitGroup:
 		r0 := impl.NewWaitGroup()
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -74,73 +41,46 @@ func ModuleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	}
 }
 
-var Module_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"NewWaitGroup", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<sync.WaitGroup>"), ""},
-}
-
-type Module_Bridge struct {
-	Impl     Module
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Module_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Module_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return ModuleHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Module_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var moduleRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "sync", MemberName: "NewWaitGroup", RouteName: "sync.NewWaitGroup", MethodID: methodIDModuleNewWaitGroup, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<sync.WaitGroup>"), Doc: ""},
 }
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("sync", "NewWaitGroup", "sync.NewWaitGroup", Module_FFI_Schemas[0].MethodID, Module_FFI_Schemas[0].Sig, Module_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(moduleRoutes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Module_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("sync", "NewWaitGroup", runtime.FFIRoute{Name: "sync.NewWaitGroup", Bridge: bridge, MethodID: Module_FFI_Schemas[0].MethodID, FuncSig: Module_FFI_Schemas[0].Sig, Doc: Module_FFI_Schemas[0].Doc})
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }
 
 const (
-	MethodID_WaitGroup_Add  = 1
-	MethodID_WaitGroup_Done = 2
-	MethodID_WaitGroup_Wait = 3
+	methodIDWaitGroupAdd  = 1
+	methodIDWaitGroupDone = 2
+	methodIDWaitGroupWait = 3
 )
 
-func WaitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Add":
-			methodID = MethodID_WaitGroup_Add
+			methodID = methodIDWaitGroupAdd
 		case "Done":
-			methodID = MethodID_WaitGroup_Done
+			methodID = methodIDWaitGroupDone
 		case "Wait":
-			methodID = MethodID_WaitGroup_Wait
+			methodID = methodIDWaitGroupWait
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_WaitGroup_Add:
+	case methodIDWaitGroupAdd:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -158,7 +98,7 @@ func WaitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 		__recv.Add(delta)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_WaitGroup_Done:
+	case methodIDWaitGroupDone:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -171,7 +111,7 @@ func WaitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 		__recv.Done()
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
-	case MethodID_WaitGroup_Wait:
+	case methodIDWaitGroupWait:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
@@ -190,53 +130,24 @@ func WaitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 	}
 }
 
-var WaitGroup_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Add", 1, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Done", 2, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), ""},
-	{"Wait", 3, runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), ""},
-}
-
-type WaitGroup_Bridge struct {
-	Impl     *WaitGroup
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *WaitGroup_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return WaitGroupHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *WaitGroup_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return WaitGroupHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *WaitGroup_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var waitGroupRoutes = []runtime.FFIRouteDecl{
+	{TypeName: "sync.WaitGroup", MethodName: "Add", RouteName: "sync.WaitGroup.Add", MethodID: methodIDWaitGroupAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypeName: "sync.WaitGroup", MethodName: "Done", RouteName: "sync.WaitGroup.Done", MethodID: methodIDWaitGroupDone, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
+	{TypeName: "sync.WaitGroup", MethodName: "Wait", RouteName: "sync.WaitGroup.Wait", MethodID: methodIDWaitGroupWait, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceWaitGroup() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(waitGroupRoutes)
 	schema.AddStruct("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &WaitGroup_Bridge{Impl: nil, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.Routes["sync.WaitGroup.Add"] = runtime.FFIRoute{Name: "sync.WaitGroup.Add", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[0].MethodID, FuncSig: WaitGroup_FFI_Schemas[0].Sig, Doc: WaitGroup_FFI_Schemas[0].Doc}
-		bound.Routes["sync.WaitGroup.Done"] = runtime.FFIRoute{Name: "sync.WaitGroup.Done", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[1].MethodID, FuncSig: WaitGroup_FFI_Schemas[1].Sig, Doc: WaitGroup_FFI_Schemas[1].Doc}
-		bound.Routes["sync.WaitGroup.Wait"] = runtime.FFIRoute{Name: "sync.WaitGroup.Wait", Bridge: bridge, MethodID: WaitGroup_FFI_Schemas[2].MethodID, FuncSig: WaitGroup_FFI_Schemas[2].Sig, Doc: WaitGroup_FFI_Schemas[2].Doc}
-		bound.AddStruct("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return waitGroupHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

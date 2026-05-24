@@ -13,48 +13,20 @@ import (
 )
 
 const (
-	MethodID_SHA256_Sum256 = 1
+	methodIDSHA256Sum256 = 1
 )
 
-type SHA256Proxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewSHA256Proxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) SHA256 {
-	return &SHA256Proxy{bridge: bridge, registry: registry}
-}
-
-func (__p *SHA256Proxy) Sum256(data []byte) []byte {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteBytes(data)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_SHA256_Sum256, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 []byte
-	v_0 = retBuf.ReadBytes()
-	return v_0
-}
-
-func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func sha256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Sum256":
-			methodID = MethodID_SHA256_Sum256
+			methodID = methodIDSHA256Sum256
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_SHA256_Sum256:
+	case methodIDSHA256Sum256:
 		var data []byte
 		data = reqBuf.ReadBytes()
 		r0 := impl.Sum256(data)
@@ -66,52 +38,23 @@ func SHA256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 	}
 }
 
-var SHA256_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Sum256", 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), ""},
-}
-
-type SHA256_Bridge struct {
-	Impl     SHA256
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *SHA256_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return SHA256HostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *SHA256_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return SHA256HostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *SHA256_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var sha256Routes = []runtime.FFIRouteDecl{
+	{PackagePath: "crypto/sha256", MemberName: "Sum256", RouteName: "crypto/sha256.Sum256", MethodID: methodIDSHA256Sum256, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceSHA256(impl SHA256) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("crypto/sha256", "Sum256", "crypto/sha256.Sum256", SHA256_FFI_Schemas[0].MethodID, SHA256_FFI_Schemas[0].Sig, SHA256_FFI_Schemas[0].Doc)
+	schema.AddRouteDecls(sha256Routes)
 	schema.AddConst("crypto/sha256", "BlockSize", ffigo.ToConstantString(sha256.BlockSize))
 	schema.AddConst("crypto/sha256", "Size", ffigo.ToConstantString(sha256.Size))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &SHA256_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("crypto/sha256", "Sum256", runtime.FFIRoute{Name: "crypto/sha256.Sum256", Bridge: bridge, MethodID: SHA256_FFI_Schemas[0].MethodID, FuncSig: SHA256_FFI_Schemas[0].Sig, Doc: SHA256_FFI_Schemas[0].Doc})
-		bound.AddConst("crypto/sha256", "BlockSize", ffigo.ToConstantString(sha256.BlockSize))
-		bound.AddConst("crypto/sha256", "Size", ffigo.ToConstantString(sha256.Size))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return sha256HostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

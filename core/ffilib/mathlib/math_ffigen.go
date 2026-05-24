@@ -12,459 +12,106 @@ import (
 )
 
 const (
-	MethodID_Math_Abs   = 1
-	MethodID_Math_Ceil  = 2
-	MethodID_Math_Floor = 3
-	MethodID_Math_Round = 4
-	MethodID_Math_Sqrt  = 5
-	MethodID_Math_Pow   = 6
-	MethodID_Math_Min   = 7
-	MethodID_Math_Max   = 8
-	MethodID_Math_Sin   = 9
-	MethodID_Math_Cos   = 10
-	MethodID_Math_Tan   = 11
-	MethodID_Math_Exp   = 12
-	MethodID_Math_Log   = 13
-	MethodID_Math_Log10 = 14
-	MethodID_Math_NaN   = 15
-	MethodID_Math_IsNaN = 16
-	MethodID_Math_Inf   = 17
-	MethodID_Math_IsInf = 18
+	methodIDMathAbs   = 1
+	methodIDMathCeil  = 2
+	methodIDMathFloor = 3
+	methodIDMathRound = 4
+	methodIDMathSqrt  = 5
+	methodIDMathPow   = 6
+	methodIDMathMin   = 7
+	methodIDMathMax   = 8
+	methodIDMathSin   = 9
+	methodIDMathCos   = 10
+	methodIDMathTan   = 11
+	methodIDMathExp   = 12
+	methodIDMathLog   = 13
+	methodIDMathLog10 = 14
+	methodIDMathNaN   = 15
+	methodIDMathIsNaN = 16
+	methodIDMathInf   = 17
+	methodIDMathIsInf = 18
 )
 
-type MathProxy struct {
-	bridge   ffigo.FFIBridge
-	registry *ffigo.HandleRegistry
-}
-
-func NewMathProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) Math {
-	return &MathProxy{bridge: bridge, registry: registry}
-}
-
-func (__p *MathProxy) Abs(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Abs, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Ceil(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Ceil, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Floor(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Floor, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Round(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Round, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Sqrt(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Sqrt, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Pow(x float64, y float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-	wireBuf.WriteFloat64(float64(y))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Pow, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Min(x float64, y float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-	wireBuf.WriteFloat64(float64(y))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Min, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Max(x float64, y float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-	wireBuf.WriteFloat64(float64(y))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Max, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Sin(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Sin, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Cos(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Cos, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Tan(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Tan, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Exp(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Exp, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Log(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Log, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) Log10(x float64) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(x))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Log10, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) NaN() float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_NaN, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) IsNaN(f float64) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(f))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_IsNaN, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func (__p *MathProxy) Inf(sign int) float64 {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteVarint(int64(sign))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_Inf, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 float64
-	v_0 = float64(retBuf.ReadFloat64())
-	return v_0
-}
-
-func (__p *MathProxy) IsInf(f float64, sign int) bool {
-	wireBuf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(wireBuf)
-
-	wireBuf.WriteFloat64(float64(f))
-	wireBuf.WriteVarint(int64(sign))
-
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: MethodID_Math_IsInf, Args: append([]byte(nil), wireBuf.Bytes()...)})
-	retData, syncErr := ffigo.SyncBytes(__ret)
-	if err == nil {
-		err = syncErr
-	}
-	_ = retData
-	_ = err
-	retBuf := ffigo.NewReader(retData)
-	var v_0 bool
-	v_0 = bool(retBuf.ReadBool())
-	return v_0
-}
-
-func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
+func mathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
 	if methodID == 0 && methodName != "" {
 		switch methodName {
 		case "Abs":
-			methodID = MethodID_Math_Abs
+			methodID = methodIDMathAbs
 		case "Ceil":
-			methodID = MethodID_Math_Ceil
+			methodID = methodIDMathCeil
 		case "Floor":
-			methodID = MethodID_Math_Floor
+			methodID = methodIDMathFloor
 		case "Round":
-			methodID = MethodID_Math_Round
+			methodID = methodIDMathRound
 		case "Sqrt":
-			methodID = MethodID_Math_Sqrt
+			methodID = methodIDMathSqrt
 		case "Pow":
-			methodID = MethodID_Math_Pow
+			methodID = methodIDMathPow
 		case "Min":
-			methodID = MethodID_Math_Min
+			methodID = methodIDMathMin
 		case "Max":
-			methodID = MethodID_Math_Max
+			methodID = methodIDMathMax
 		case "Sin":
-			methodID = MethodID_Math_Sin
+			methodID = methodIDMathSin
 		case "Cos":
-			methodID = MethodID_Math_Cos
+			methodID = methodIDMathCos
 		case "Tan":
-			methodID = MethodID_Math_Tan
+			methodID = methodIDMathTan
 		case "Exp":
-			methodID = MethodID_Math_Exp
+			methodID = methodIDMathExp
 		case "Log":
-			methodID = MethodID_Math_Log
+			methodID = methodIDMathLog
 		case "Log10":
-			methodID = MethodID_Math_Log10
+			methodID = methodIDMathLog10
 		case "NaN":
-			methodID = MethodID_Math_NaN
+			methodID = methodIDMathNaN
 		case "IsNaN":
-			methodID = MethodID_Math_IsNaN
+			methodID = methodIDMathIsNaN
 		case "Inf":
-			methodID = MethodID_Math_Inf
+			methodID = methodIDMathInf
 		case "IsInf":
-			methodID = MethodID_Math_IsInf
+			methodID = methodIDMathIsInf
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
-	case MethodID_Math_Abs:
+	case methodIDMathAbs:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Abs(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Ceil:
+	case methodIDMathCeil:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Ceil(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Floor:
+	case methodIDMathFloor:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Floor(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Round:
+	case methodIDMathRound:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Round(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Sqrt:
+	case methodIDMathSqrt:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Sqrt(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Pow:
+	case methodIDMathPow:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		var y float64
@@ -473,7 +120,7 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Min:
+	case methodIDMathMin:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		var y float64
@@ -482,7 +129,7 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Max:
+	case methodIDMathMax:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		var y float64
@@ -491,61 +138,61 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Sin:
+	case methodIDMathSin:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Sin(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Cos:
+	case methodIDMathCos:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Cos(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Tan:
+	case methodIDMathTan:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Tan(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Exp:
+	case methodIDMathExp:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Exp(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Log:
+	case methodIDMathLog:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Log(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Log10:
+	case methodIDMathLog10:
 		var x float64
 		x = float64(reqBuf.ReadFloat64())
 		r0 := impl.Log10(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_NaN:
+	case methodIDMathNaN:
 		r0 := impl.NaN()
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_IsNaN:
+	case methodIDMathIsNaN:
 		var f float64
 		f = float64(reqBuf.ReadFloat64())
 		r0 := impl.IsNaN(f)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_Inf:
+	case methodIDMathInf:
 		var sign int
 		{
 			tmp := reqBuf.ReadVarint()
@@ -555,7 +202,7 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
-	case MethodID_Math_IsInf:
+	case methodIDMathIsInf:
 		var f float64
 		f = float64(reqBuf.ReadFloat64())
 		var sign int
@@ -572,103 +219,40 @@ func MathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 	}
 }
 
-var Math_FFI_Schemas = []struct {
-	Name     string
-	MethodID uint32
-	Sig      *runtime.RuntimeFuncSig
-	Doc      string
-}{
-	{"Abs", 1, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Ceil", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Floor", 3, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Round", 4, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Sqrt", 5, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Pow", 6, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Min", 7, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Max", 8, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-	{"Sin", 9, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Cos", 10, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Tan", 11, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Exp", 12, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Log", 13, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"Log10", 14, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), ""},
-	{"NaN", 15, runtime.MustParseRuntimeFuncSig("function() Float64"), ""},
-	{"IsNaN", 16, runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Bool", runtime.FFIParamIn), ""},
-	{"Inf", 17, runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Float64", runtime.FFIParamIn), ""},
-	{"IsInf", 18, runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64) Bool", runtime.FFIParamIn, runtime.FFIParamIn), ""},
-}
-
-type Math_Bridge struct {
-	Impl     Math
-	Registry *ffigo.HandleRegistry
-}
-
-func (b *Math_Bridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MathHostRouter(ctx, b.Impl, b.Registry, req.MethodID, "", req.Args)
-}
-
-func (b *Math_Bridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req == nil {
-		return nil, fmt.Errorf("ffigen: missing FFI request")
-	}
-	return MathHostRouter(ctx, b.Impl, b.Registry, 0, req.Method, req.Args)
-}
-
-func (b *Math_Bridge) DestroyHandle(handle uint32) error {
-	if b.Registry != nil {
-		b.Registry.Remove(handle)
-	}
-	return nil
+var mathRoutes = []runtime.FFIRouteDecl{
+	{PackagePath: "math", MemberName: "Abs", RouteName: "math.Abs", MethodID: methodIDMathAbs, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Ceil", RouteName: "math.Ceil", MethodID: methodIDMathCeil, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Floor", RouteName: "math.Floor", MethodID: methodIDMathFloor, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Round", RouteName: "math.Round", MethodID: methodIDMathRound, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Sqrt", RouteName: "math.Sqrt", MethodID: methodIDMathSqrt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Pow", RouteName: "math.Pow", MethodID: methodIDMathPow, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Min", RouteName: "math.Min", MethodID: methodIDMathMin, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Max", RouteName: "math.Max", MethodID: methodIDMathMax, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Float64) Float64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Sin", RouteName: "math.Sin", MethodID: methodIDMathSin, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Cos", RouteName: "math.Cos", MethodID: methodIDMathCos, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Tan", RouteName: "math.Tan", MethodID: methodIDMathTan, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Exp", RouteName: "math.Exp", MethodID: methodIDMathExp, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Log", RouteName: "math.Log", MethodID: methodIDMathLog, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Log10", RouteName: "math.Log10", MethodID: methodIDMathLog10, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "NaN", RouteName: "math.NaN", MethodID: methodIDMathNaN, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
+	{PackagePath: "math", MemberName: "IsNaN", RouteName: "math.IsNaN", MethodID: methodIDMathIsNaN, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64) Bool", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "Inf", RouteName: "math.Inf", MethodID: methodIDMathInf, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Float64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "math", MemberName: "IsInf", RouteName: "math.IsInf", MethodID: methodIDMathIsInf, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Float64, Int64) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMath(impl Math) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("math", "Abs", "math.Abs", Math_FFI_Schemas[0].MethodID, Math_FFI_Schemas[0].Sig, Math_FFI_Schemas[0].Doc)
-	schema.AddFunc("math", "Ceil", "math.Ceil", Math_FFI_Schemas[1].MethodID, Math_FFI_Schemas[1].Sig, Math_FFI_Schemas[1].Doc)
-	schema.AddFunc("math", "Floor", "math.Floor", Math_FFI_Schemas[2].MethodID, Math_FFI_Schemas[2].Sig, Math_FFI_Schemas[2].Doc)
-	schema.AddFunc("math", "Round", "math.Round", Math_FFI_Schemas[3].MethodID, Math_FFI_Schemas[3].Sig, Math_FFI_Schemas[3].Doc)
-	schema.AddFunc("math", "Sqrt", "math.Sqrt", Math_FFI_Schemas[4].MethodID, Math_FFI_Schemas[4].Sig, Math_FFI_Schemas[4].Doc)
-	schema.AddFunc("math", "Pow", "math.Pow", Math_FFI_Schemas[5].MethodID, Math_FFI_Schemas[5].Sig, Math_FFI_Schemas[5].Doc)
-	schema.AddFunc("math", "Min", "math.Min", Math_FFI_Schemas[6].MethodID, Math_FFI_Schemas[6].Sig, Math_FFI_Schemas[6].Doc)
-	schema.AddFunc("math", "Max", "math.Max", Math_FFI_Schemas[7].MethodID, Math_FFI_Schemas[7].Sig, Math_FFI_Schemas[7].Doc)
-	schema.AddFunc("math", "Sin", "math.Sin", Math_FFI_Schemas[8].MethodID, Math_FFI_Schemas[8].Sig, Math_FFI_Schemas[8].Doc)
-	schema.AddFunc("math", "Cos", "math.Cos", Math_FFI_Schemas[9].MethodID, Math_FFI_Schemas[9].Sig, Math_FFI_Schemas[9].Doc)
-	schema.AddFunc("math", "Tan", "math.Tan", Math_FFI_Schemas[10].MethodID, Math_FFI_Schemas[10].Sig, Math_FFI_Schemas[10].Doc)
-	schema.AddFunc("math", "Exp", "math.Exp", Math_FFI_Schemas[11].MethodID, Math_FFI_Schemas[11].Sig, Math_FFI_Schemas[11].Doc)
-	schema.AddFunc("math", "Log", "math.Log", Math_FFI_Schemas[12].MethodID, Math_FFI_Schemas[12].Sig, Math_FFI_Schemas[12].Doc)
-	schema.AddFunc("math", "Log10", "math.Log10", Math_FFI_Schemas[13].MethodID, Math_FFI_Schemas[13].Sig, Math_FFI_Schemas[13].Doc)
-	schema.AddFunc("math", "NaN", "math.NaN", Math_FFI_Schemas[14].MethodID, Math_FFI_Schemas[14].Sig, Math_FFI_Schemas[14].Doc)
-	schema.AddFunc("math", "IsNaN", "math.IsNaN", Math_FFI_Schemas[15].MethodID, Math_FFI_Schemas[15].Sig, Math_FFI_Schemas[15].Doc)
-	schema.AddFunc("math", "Inf", "math.Inf", Math_FFI_Schemas[16].MethodID, Math_FFI_Schemas[16].Sig, Math_FFI_Schemas[16].Doc)
-	schema.AddFunc("math", "IsInf", "math.IsInf", Math_FFI_Schemas[17].MethodID, Math_FFI_Schemas[17].Sig, Math_FFI_Schemas[17].Doc)
+	schema.AddRouteDecls(mathRoutes)
 	schema.AddConst("math", "E", ffigo.ToConstantString(2.71828182845904523536))
 	schema.AddConst("math", "Pi", ffigo.ToConstantString(3.14159265358979323846))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bridge := &Math_Bridge{Impl: impl, Registry: ctx.Registry}
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("math", "Abs", runtime.FFIRoute{Name: "math.Abs", Bridge: bridge, MethodID: Math_FFI_Schemas[0].MethodID, FuncSig: Math_FFI_Schemas[0].Sig, Doc: Math_FFI_Schemas[0].Doc})
-		bound.AddRoute("math", "Ceil", runtime.FFIRoute{Name: "math.Ceil", Bridge: bridge, MethodID: Math_FFI_Schemas[1].MethodID, FuncSig: Math_FFI_Schemas[1].Sig, Doc: Math_FFI_Schemas[1].Doc})
-		bound.AddRoute("math", "Floor", runtime.FFIRoute{Name: "math.Floor", Bridge: bridge, MethodID: Math_FFI_Schemas[2].MethodID, FuncSig: Math_FFI_Schemas[2].Sig, Doc: Math_FFI_Schemas[2].Doc})
-		bound.AddRoute("math", "Round", runtime.FFIRoute{Name: "math.Round", Bridge: bridge, MethodID: Math_FFI_Schemas[3].MethodID, FuncSig: Math_FFI_Schemas[3].Sig, Doc: Math_FFI_Schemas[3].Doc})
-		bound.AddRoute("math", "Sqrt", runtime.FFIRoute{Name: "math.Sqrt", Bridge: bridge, MethodID: Math_FFI_Schemas[4].MethodID, FuncSig: Math_FFI_Schemas[4].Sig, Doc: Math_FFI_Schemas[4].Doc})
-		bound.AddRoute("math", "Pow", runtime.FFIRoute{Name: "math.Pow", Bridge: bridge, MethodID: Math_FFI_Schemas[5].MethodID, FuncSig: Math_FFI_Schemas[5].Sig, Doc: Math_FFI_Schemas[5].Doc})
-		bound.AddRoute("math", "Min", runtime.FFIRoute{Name: "math.Min", Bridge: bridge, MethodID: Math_FFI_Schemas[6].MethodID, FuncSig: Math_FFI_Schemas[6].Sig, Doc: Math_FFI_Schemas[6].Doc})
-		bound.AddRoute("math", "Max", runtime.FFIRoute{Name: "math.Max", Bridge: bridge, MethodID: Math_FFI_Schemas[7].MethodID, FuncSig: Math_FFI_Schemas[7].Sig, Doc: Math_FFI_Schemas[7].Doc})
-		bound.AddRoute("math", "Sin", runtime.FFIRoute{Name: "math.Sin", Bridge: bridge, MethodID: Math_FFI_Schemas[8].MethodID, FuncSig: Math_FFI_Schemas[8].Sig, Doc: Math_FFI_Schemas[8].Doc})
-		bound.AddRoute("math", "Cos", runtime.FFIRoute{Name: "math.Cos", Bridge: bridge, MethodID: Math_FFI_Schemas[9].MethodID, FuncSig: Math_FFI_Schemas[9].Sig, Doc: Math_FFI_Schemas[9].Doc})
-		bound.AddRoute("math", "Tan", runtime.FFIRoute{Name: "math.Tan", Bridge: bridge, MethodID: Math_FFI_Schemas[10].MethodID, FuncSig: Math_FFI_Schemas[10].Sig, Doc: Math_FFI_Schemas[10].Doc})
-		bound.AddRoute("math", "Exp", runtime.FFIRoute{Name: "math.Exp", Bridge: bridge, MethodID: Math_FFI_Schemas[11].MethodID, FuncSig: Math_FFI_Schemas[11].Sig, Doc: Math_FFI_Schemas[11].Doc})
-		bound.AddRoute("math", "Log", runtime.FFIRoute{Name: "math.Log", Bridge: bridge, MethodID: Math_FFI_Schemas[12].MethodID, FuncSig: Math_FFI_Schemas[12].Sig, Doc: Math_FFI_Schemas[12].Doc})
-		bound.AddRoute("math", "Log10", runtime.FFIRoute{Name: "math.Log10", Bridge: bridge, MethodID: Math_FFI_Schemas[13].MethodID, FuncSig: Math_FFI_Schemas[13].Sig, Doc: Math_FFI_Schemas[13].Doc})
-		bound.AddRoute("math", "NaN", runtime.FFIRoute{Name: "math.NaN", Bridge: bridge, MethodID: Math_FFI_Schemas[14].MethodID, FuncSig: Math_FFI_Schemas[14].Sig, Doc: Math_FFI_Schemas[14].Doc})
-		bound.AddRoute("math", "IsNaN", runtime.FFIRoute{Name: "math.IsNaN", Bridge: bridge, MethodID: Math_FFI_Schemas[15].MethodID, FuncSig: Math_FFI_Schemas[15].Sig, Doc: Math_FFI_Schemas[15].Doc})
-		bound.AddRoute("math", "Inf", runtime.FFIRoute{Name: "math.Inf", Bridge: bridge, MethodID: Math_FFI_Schemas[16].MethodID, FuncSig: Math_FFI_Schemas[16].Sig, Doc: Math_FFI_Schemas[16].Doc})
-		bound.AddRoute("math", "IsInf", runtime.FFIRoute{Name: "math.IsInf", Bridge: bridge, MethodID: Math_FFI_Schemas[17].MethodID, FuncSig: Math_FFI_Schemas[17].Sig, Doc: Math_FFI_Schemas[17].Doc})
-		bound.AddConst("math", "E", ffigo.ToConstantString(2.71828182845904523536))
-		bound.AddConst("math", "Pi", ffigo.ToConstantString(3.14159265358979323846))
+		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+			return mathHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
+		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

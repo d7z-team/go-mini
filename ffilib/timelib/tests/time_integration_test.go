@@ -10,8 +10,8 @@ import (
 
 func TestTime(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.FFISchema("time", timelib.Module_FFI_Schemas),
-		testutil.FFISchema("time.Time", timelib.Time_FFI_Schemas),
+		testutil.SurfaceFFISchema("time", timelib.SurfaceModule(&timelib.TimeHost{})),
+		testutil.SurfaceFFISchema("time.Time", timelib.SurfaceTime()),
 	}, []testutil.Case{
 		{
 			Name:    "module-and-time-methods",
