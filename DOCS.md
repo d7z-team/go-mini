@@ -11,6 +11,7 @@
 - 调用模板在 compiler 阶段展开成真实代码，bytecode / runtime 不保留模板执行逻辑
 - 执行入口统一落在 `Artifact` / bytecode，runtime 只消费 prepared executable，AST 只保留在编译、分析和调试边界
 - canonical type 文本由 `core/typespec` 统一实现；AST 前端通过 `core/ast/ast_types.go` 使用，runtime/VM 通过 `core/runtime/schema.go` 使用
+- 异步 FFI 必须暴露等待来源，调度器会在所有 VM 执行上下文只剩内部互等时返回明确的 all-blocked 错误
 
 仓库采用多模块布局：
 
@@ -431,6 +432,30 @@ func main() {
 
 - 没有 `chan/select` 语义
 - 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前执行上下文并在 completion 时恢复
+
+### 异步 FFI 等待来源
+
+`ffigo.Async[T]` 启动后必须返回 `ffigo.WaitHandle`，用于告诉 VM 调度器这个挂起点是否还可能被 VM 外部事件唤醒。
+
+- `ffigo.WaitExternal`: completion 可由 timer、I/O、宿主 goroutine 或其它不依赖 VM 继续执行的外部事件触发。
+- `ffigo.WaitDependsOnVM`: completion 需要其它 VM 执行上下文继续运行才能发生，例如 VM 侧同步对象、等待另一个 VM action 释放的 gate。
+- 只有在 `Start` 返回前已经同步调用 `done.Complete(...)` 时，才可以返回 `nil` wait handle。
+- VM abort、context 取消或 fatal error 会调用 pending wait handle 的 `Cancel()`；正常 completion 不会额外调用 `Cancel()`。
+
+当没有可运行执行上下文，且所有 pending async FFI 都不是 `WaitExternal` 时，runtime 会返回 `*runtime.VMAllBlockedError`。错误中包含阻塞的执行上下文 ID、FFI route、method ID 和 wait reason，避免这类死等退化成静默挂起。
+
+最小 async FFI 形态：
+
+```go
+return ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
+    timer := time.AfterFunc(time.Millisecond, func() {
+        done.Complete(ffigo.Void{}, nil)
+    })
+    return ffigo.NewWaitHandle(ffigo.WaitExternal, "time.Sleep", func() {
+        timer.Stop()
+    }), nil
+})
+```
 
 ### 使用警告
 

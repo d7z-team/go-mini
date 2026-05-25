@@ -292,7 +292,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 			fmt.Fprintf(sb, "(%s) ", strings.Join(types, ", "))
 		}
 		if method.AsyncExpr != nil {
-			fmt.Fprintf(sb, "{\n\treturn ffigo.AsyncFunc[%s](func(ctx context.Context, done ffigo.Completion[%s]) (func(), error) {\n", method.AsyncGoType, method.AsyncGoType)
+			fmt.Fprintf(sb, "{\n\treturn ffigo.AsyncFunc[%s](func(ctx context.Context, done ffigo.Completion[%s]) (ffigo.WaitHandle, error) {\n", method.AsyncGoType, method.AsyncGoType)
 			fmt.Fprintf(sb, "\t\treturn nil, fmt.Errorf(\"ffigen: proxy async call %s.%s is not supported\")\n", name, method.Name)
 			fmt.Fprintf(sb, "\t})\n}\n\n")
 			continue

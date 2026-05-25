@@ -138,6 +138,8 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 - LSP / IDE 查询：基于源码 AST
 - 运行 / 反汇编 / 持久化：基于 bytecode / prepared program
 
+异步 FFI 的 wait-source 分类和 `VMAllBlockedError` 属于执行期调度语义。LSP 只通过 schema 暴露函数签名、类型和模板信息，不模拟 async completion，也不把运行时阻塞状态写入分析缓存。
+
 如果你的系统既要编辑又要运行，推荐双链设计：
 
 1. 编辑时走 `lspserv`

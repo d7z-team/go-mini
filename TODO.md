@@ -36,6 +36,8 @@
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
 - 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
+- 异步 FFI 启动后必须返回 `ffigo.WaitHandle` 描述等待来源；调度器区分 `WaitExternal` 与 `WaitDependsOnVM`，只有存在外部 wake source 时才会在全挂起状态继续等待。
+- 当所有 VM 执行上下文都不可运行，且 pending async FFI 都依赖 VM 继续执行时，runtime 返回 `VMAllBlockedError`，错误包含 execution context、FFI route、method ID 和 wait reason。
 - context 取消或 VM 致命错误会统一 abort 当前 run，取消 pending FFI，清理 module loading / waiters，并按 frame 错误路径执行必要 session 清理。
 - 同步 FFI 调用阻塞整个 VM；只有返回 `ffigo.Async[T]` 的 FFI 会挂起当前 VM 执行上下文。
 - FFI completion 时执行 copy-back；共享变量交错按 completion 处理顺序写回。
@@ -71,14 +73,6 @@
 - [ ] 明确 send/receive/select 与 async FFI completion 的调度关系。
 - [ ] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义。
 - [ ] 设计 lowering / bytecode / runtime payload 结构后再进入实现。
-
-### Runtime 阻塞检测与 FFI 健康检查
-
-- [ ] 设计并实现 VM all-blocked 检测：当所有执行上下文都不可运行，且没有可完成的内部事件时，返回明确 runtime error，避免静默挂起。
-- [ ] 区分“等待有效 async FFI completion”和“所有 VM 执行上下文永久阻塞”：调度器需要能观察 pending FFI 的可用状态。
-- [ ] 为 async FFI pending 调用设计健康检查机制，至少能表达 alive、failed、cancelled 或 timeout，并能被 VM 调度器安全查询。
-- [ ] all-blocked 错误需要包含阻塞中的执行上下文、等待原因、pending FFI route / method 信息，便于定位。
-- [ ] 补齐 runtime/e2e 测试：无可运行上下文报错、pending FFI 健康失败报错、健康正常的 pending FFI 不误报。
 
 ### Benchmark 与指标
 
@@ -130,3 +124,4 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 - 除 `core/typespec` 和 `core/ast/ast_types.go` 外，不得手动拼接 canonical type 文本；前端走 `ast_types` 构造器，VM/runtime 走 `runtime.TypeSpec` / schema 构造器。
 - VM 内部始终单线程执行，不新增宿主 goroutine 执行 VM 指令。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
+- 异步 FFI 必须通过 `ffigo.WaitHandle` 暴露等待来源；依赖 VM 继续执行才能完成的等待不得标记为 `WaitExternal`。

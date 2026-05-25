@@ -17,13 +17,57 @@ type Completion[T any] interface {
 	Complete(value T, err error) bool
 }
 
-type Async[T any] interface {
-	Start(ctx context.Context, done Completion[T]) (cancel func(), err error)
+// WaitKind tells the VM scheduler whether an async FFI wait can wake without
+// executing another VM context.
+type WaitKind uint8
+
+const (
+	// WaitDependsOnVM marks waits that need another VM context to make progress.
+	WaitDependsOnVM WaitKind = iota
+	// WaitExternal marks waits backed by host-side timers, I/O, or goroutines.
+	WaitExternal
+)
+
+// WaitSnapshot is a cheap, non-blocking view of an async FFI wait.
+type WaitSnapshot struct {
+	Kind   WaitKind
+	Reason string
 }
 
-type AsyncFunc[T any] func(context.Context, Completion[T]) (func(), error)
+// WaitHandle describes and cancels a pending async FFI wait.
+type WaitHandle interface {
+	Snapshot() WaitSnapshot
+	Cancel()
+}
 
-func (f AsyncFunc[T]) Start(ctx context.Context, done Completion[T]) (func(), error) {
+type waitHandle struct {
+	kind   WaitKind
+	reason string
+	cancel func()
+}
+
+// NewWaitHandle creates a static wait handle for an async FFI call.
+func NewWaitHandle(kind WaitKind, reason string, cancel func()) WaitHandle {
+	return waitHandle{kind: kind, reason: reason, cancel: cancel}
+}
+
+func (h waitHandle) Snapshot() WaitSnapshot {
+	return WaitSnapshot{Kind: h.kind, Reason: h.reason}
+}
+
+func (h waitHandle) Cancel() {
+	if h.cancel != nil {
+		h.cancel()
+	}
+}
+
+type Async[T any] interface {
+	Start(ctx context.Context, done Completion[T]) (WaitHandle, error)
+}
+
+type AsyncFunc[T any] func(context.Context, Completion[T]) (WaitHandle, error)
+
+func (f AsyncFunc[T]) Start(ctx context.Context, done Completion[T]) (WaitHandle, error) {
 	return f(ctx, done)
 }
 
@@ -33,7 +77,7 @@ type WireCompletion interface {
 
 type AsyncCall interface {
 	isAsyncCall()
-	StartWire(ctx context.Context, done WireCompletion) (cancel func(), err error)
+	StartWire(ctx context.Context, done WireCompletion) (WaitHandle, error)
 }
 
 type Encoder[T any] func(*Buffer, T) error
@@ -49,7 +93,7 @@ func AsyncValue[T any](async Async[T], encode Encoder[T]) AsyncCall {
 
 func (a asyncValue[T]) isAsyncCall() {}
 
-func (a asyncValue[T]) StartWire(ctx context.Context, done WireCompletion) (func(), error) {
+func (a asyncValue[T]) StartWire(ctx context.Context, done WireCompletion) (WaitHandle, error) {
 	if a.async == nil {
 		return nil, errors.New("missing async FFI value")
 	}

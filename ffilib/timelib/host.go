@@ -20,7 +20,7 @@ func (h *TimeHost) Unix(sec, nsec int64) *Time {
 }
 
 func (h *TimeHost) Sleep(ns int64) ffigo.Async[ffigo.Void] {
-	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 		if ns <= 0 {
 			done.Complete(ffigo.Void{}, nil)
 			return nil, nil
@@ -37,7 +37,7 @@ func (h *TimeHost) Sleep(ns int64) ffigo.Async[ffigo.Void] {
 			case <-cancelled:
 			}
 		}()
-		return func() {
+		cancel := func() {
 			once.Do(func() {
 				if !timer.Stop() {
 					select {
@@ -47,7 +47,8 @@ func (h *TimeHost) Sleep(ns int64) ffigo.Async[ffigo.Void] {
 				}
 				close(cancelled)
 			})
-		}, nil
+		}
+		return ffigo.NewWaitHandle(ffigo.WaitExternal, "time.Sleep", cancel), nil
 	})
 }
 

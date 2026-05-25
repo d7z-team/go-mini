@@ -110,14 +110,14 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		if err != nil {
 			return nil, err
 		}
-		cancel, err := v.StartWire(session.Context, sink)
+		wait, err := v.StartWire(session.Context, sink)
 		if err != nil {
 			e.scheduler.AbortFFI(token)
 			return nil, e.wrapFFIError(session, err)
 		}
-		if err := e.scheduler.CommitFFI(token, cancel); err != nil {
-			if cancel != nil {
-				cancel()
+		if err := e.scheduler.CommitFFI(token, wait); err != nil {
+			if wait != nil {
+				wait.Cancel()
 			}
 			e.scheduler.AbortFFI(token)
 			return nil, err

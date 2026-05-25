@@ -21,11 +21,11 @@ func (asyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFI
 	switch req.MethodID {
 	case 1:
 		return ffigo.AsyncValue[int64](
-			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (func(), error) {
+			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (ffigo.WaitHandle, error) {
 				timer := time.AfterFunc(time.Millisecond, func() {
 					done.Complete(42, nil)
 				})
-				return func() { timer.Stop() }, nil
+				return ffigo.NewWaitHandle(ffigo.WaitExternal, "async.Value", func() { timer.Stop() }), nil
 			}),
 			func(buf *ffigo.Buffer, value int64) error {
 				buf.WriteVarint(value)
@@ -35,11 +35,11 @@ func (asyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFI
 	case 2:
 		args := append([]byte(nil), req.Args...)
 		return ffigo.AsyncValue[ffigo.Void](
-			ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+			ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 				timer := time.AfterFunc(time.Millisecond, func() {
 					done.Complete(ffigo.Void{}, nil)
 				})
-				return func() { timer.Stop() }, nil
+				return ffigo.NewWaitHandle(ffigo.WaitExternal, "async.Mutate", func() { timer.Stop() }), nil
 			}),
 			func(buf *ffigo.Buffer, _ ffigo.Void) error {
 				reader := ffigo.NewReader(args)
@@ -119,7 +119,7 @@ func (b *burstAsyncBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 	switch req.MethodID {
 	case 1:
 		return ffigo.AsyncValue[ffigo.Void](
-			ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+			ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 				cancelled := make(chan struct{})
 				var cancelOnce sync.Once
 				b.started.Add(1)
@@ -134,20 +134,21 @@ func (b *burstAsyncBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 					case <-cancelled:
 					}
 				}()
-				return func() {
+				cancel := func() {
 					cancelOnce.Do(func() {
 						b.cancelled.Add(1)
 						close(cancelled)
 					})
-				}, nil
+				}
+				return ffigo.NewWaitHandle(ffigo.WaitDependsOnVM, "gate.Wait", cancel), nil
 			}),
 			func(*ffigo.Buffer, ffigo.Void) error { return nil },
 		), nil
 	case 2:
 		return ffigo.AsyncValue[int64](
-			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (func(), error) {
+			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (ffigo.WaitHandle, error) {
 				go done.Complete(b.started.Load(), nil)
-				return nil, nil
+				return ffigo.NewWaitHandle(ffigo.WaitExternal, "gate.Started", nil), nil
 			}),
 			func(buf *ffigo.Buffer, v int64) error {
 				buf.WriteVarint(v)
@@ -156,9 +157,10 @@ func (b *burstAsyncBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 		), nil
 	case 3:
 		return ffigo.AsyncValue[ffigo.Void](
-			ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+			ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 				b.releaseOnce.Do(func() { close(b.release) })
 				cancelled := make(chan struct{})
+				var cancelOnce sync.Once
 				go func() {
 					deadline := time.After(2 * time.Second)
 					for b.attempted.Load() < b.target {
@@ -177,7 +179,10 @@ func (b *burstAsyncBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 					}
 					done.Complete(ffigo.Void{}, nil)
 				}()
-				return func() { close(cancelled) }, nil
+				cancel := func() {
+					cancelOnce.Do(func() { close(cancelled) })
+				}
+				return ffigo.NewWaitHandle(ffigo.WaitExternal, "gate.Release", cancel), nil
 			}),
 			func(*ffigo.Buffer, ffigo.Void) error { return nil },
 		), nil
@@ -240,6 +245,8 @@ func main() {
 
 type blockingAsyncBridge struct {
 	cancelled atomic.Int64
+	kind      ffigo.WaitKind
+	reason    string
 }
 
 func (b *blockingAsyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -247,8 +254,8 @@ func (b *blockingAsyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest)
 		return nil, fmt.Errorf("unexpected method id %d", req.MethodID)
 	}
 	return ffigo.AsyncValue[ffigo.Void](
-		ffigo.AsyncFunc[ffigo.Void](func(context.Context, ffigo.Completion[ffigo.Void]) (func(), error) {
-			return func() { b.cancelled.Add(1) }, nil
+		ffigo.AsyncFunc[ffigo.Void](func(context.Context, ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
+			return ffigo.NewWaitHandle(b.kind, b.reason, func() { b.cancelled.Add(1) }), nil
 		}),
 		func(*ffigo.Buffer, ffigo.Void) error { return nil },
 	), nil
@@ -264,7 +271,7 @@ func (b *blockingAsyncBridge) DestroyHandle(uint32) error {
 
 func TestAsyncFFICancelledOnContextDeadline(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	bridge := &blockingAsyncBridge{}
+	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
 	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
@@ -285,6 +292,41 @@ func main() {
 	err = prog.Execute(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected context deadline, got %T %v", err, err)
+	}
+	if got := bridge.cancelled.Load(); got != 1 {
+		t.Fatalf("expected pending async FFI cancel once, got %d", got)
+	}
+}
+
+func TestAsyncFFIAllBlockedReportsWaits(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	bridge := &blockingAsyncBridge{kind: ffigo.WaitDependsOnVM, reason: "test blocked on VM"}
+	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "block"
+
+func main() {
+	block.Wait()
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = prog.Execute(context.Background())
+	var blocked *runtime.VMAllBlockedError
+	if !errors.As(err, &blocked) {
+		t.Fatalf("expected VM all-blocked error, got %T %v", err, err)
+	}
+	if len(blocked.Waits) != 1 {
+		t.Fatalf("expected one blocked wait, got %#v", blocked.Waits)
+	}
+	wait := blocked.Waits[0]
+	if wait.RouteName != "block.Wait" || wait.MethodID != 1 || wait.Reason != "test blocked on VM" {
+		t.Fatalf("unexpected blocked wait: %#v", wait)
 	}
 	if got := bridge.cancelled.Load(); got != 1 {
 		t.Fatalf("expected pending async FFI cancel once, got %d", got)

@@ -84,5 +84,16 @@ test.OutInt(values[0])
 			WantRunErr: "negative WaitGroup counter",
 			Covers:     []string{"NewWaitGroup", "Done"},
 		},
+		{
+			Name:    "unreleased-waitgroup-reports-all-blocked",
+			Imports: []string{"sync"},
+			Body: `
+wg := sync.NewWaitGroup()
+wg.Add(1)
+wg.Wait()
+`,
+			WantRunErr: "VM all blocked",
+			Covers:     []string{"NewWaitGroup", "Add", "Wait"},
+		},
 	}, testutil.WithSurface(ffilib.Surface()))
 }

@@ -2,6 +2,7 @@ package synclib
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -21,6 +22,33 @@ type WaitGroup struct {
 	count   int64
 	nextID  waiterID
 	waiters map[waiterID]ffigo.Completion[ffigo.Void]
+}
+
+type waitGroupWaitHandle struct {
+	group *WaitGroup
+	id    waiterID
+}
+
+func (h *waitGroupWaitHandle) Snapshot() ffigo.WaitSnapshot {
+	if h == nil || h.group == nil {
+		return ffigo.WaitSnapshot{Kind: ffigo.WaitDependsOnVM, Reason: "sync.WaitGroup"}
+	}
+	h.group.mu.Lock()
+	count := h.group.count
+	h.group.mu.Unlock()
+	return ffigo.WaitSnapshot{
+		Kind:   ffigo.WaitDependsOnVM,
+		Reason: fmt.Sprintf("sync.WaitGroup count=%d", count),
+	}
+}
+
+func (h *waitGroupWaitHandle) Cancel() {
+	if h == nil || h.group == nil {
+		return
+	}
+	h.group.mu.Lock()
+	delete(h.group.waiters, h.id)
+	h.group.mu.Unlock()
 }
 
 func (w *WaitGroup) Add(delta int64) {
@@ -62,7 +90,7 @@ func (w *WaitGroup) Wait() ffigo.Async[ffigo.Void] {
 	if w == nil {
 		panic("sync: nil WaitGroup")
 	}
-	return ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (func(), error) {
+	return ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 		w.mu.Lock()
 		if w.count == 0 {
 			w.mu.Unlock()
@@ -77,10 +105,6 @@ func (w *WaitGroup) Wait() ffigo.Async[ffigo.Void] {
 		w.waiters[id] = done
 		w.mu.Unlock()
 
-		return func() {
-			w.mu.Lock()
-			delete(w.waiters, id)
-			w.mu.Unlock()
-		}, nil
+		return &waitGroupWaitHandle{group: w, id: id}, nil
 	})
 }

@@ -27,6 +27,7 @@
 - 闭包运行时结构只保留执行必要信息，不重新引入 AST 函数字段作为执行依赖。
 - VM 内部始终按单线程协作式 VM 执行上下文调度，不新增 host goroutine 执行 VM task。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
+- 异步 FFI 必须返回 `ffigo.WaitHandle` 描述等待来源；依赖 VM 继续执行才能完成的等待不得标记为 `WaitExternal`，不得用无来源等待或 context timeout 掩盖 all-blocked。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。
 - 手写 AST 若出现非 canonical type，必须直接编译错误，不做兼容修复；不得恢复 AST 格式 JSON 装载或执行入口。

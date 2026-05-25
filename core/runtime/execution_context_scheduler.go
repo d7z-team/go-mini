@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -65,7 +67,38 @@ type suspendedExecutionContext struct {
 	ExecutionContext *VMExecutionContext
 	Frame            *ExecutionContextFrame
 	Resume           Task
-	Cancel           func()
+	Wait             ffigo.WaitHandle
+	RouteName        string
+	MethodID         uint32
+}
+
+// BlockedWait describes one VM execution context that cannot make progress.
+type BlockedWait struct {
+	ExecutionContextID uint32
+	RouteName          string
+	MethodID           uint32
+	Reason             string
+}
+
+// VMAllBlockedError is returned when every VM execution context is suspended
+// on waits that require VM progress and no external wake source remains.
+type VMAllBlockedError struct {
+	Waits []BlockedWait
+}
+
+func (e *VMAllBlockedError) Error() string {
+	if e == nil {
+		return ""
+	}
+	var msg strings.Builder
+	msg.WriteString("VM all blocked: no runnable execution contexts and no external wake source")
+	for _, wait := range e.Waits {
+		fmt.Fprintf(&msg, "\nctx=%d route=%s method=%d", wait.ExecutionContextID, wait.RouteName, wait.MethodID)
+		if wait.Reason != "" {
+			fmt.Fprintf(&msg, " reason=%q", wait.Reason)
+		}
+	}
+	return msg.String()
 }
 
 type schedulerQueue[T any] struct {
@@ -244,15 +277,23 @@ func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireC
 	}
 	s.nextToken++
 	token := (s.runID << 32) | s.nextToken
+	var routeName string
+	var methodID uint32
+	if data, ok := resume.Data.(*ResumeFFIData); ok && data != nil {
+		routeName = data.Route.Name
+		methodID = data.Route.MethodID
+	}
 	s.pending[token] = &suspendedExecutionContext{
 		ExecutionContext: s.current,
 		Frame:            frame,
 		Resume:           resume,
+		RouteName:        routeName,
+		MethodID:         methodID,
 	}
 	return token, ffiCompletionSink{scheduler: s, token: token}, nil
 }
 
-func (s *ExecutionContextScheduler) CommitFFI(token uint64, cancel func()) error {
+func (s *ExecutionContextScheduler) CommitFFI(token uint64, wait ffigo.WaitHandle) error {
 	if s == nil {
 		return errors.New("missing current VM execution context")
 	}
@@ -265,7 +306,13 @@ func (s *ExecutionContextScheduler) CommitFFI(token uint64, cancel func()) error
 	if pending == nil {
 		return errors.New("missing pending FFI execution context")
 	}
-	pending.Cancel = cancel
+	if wait == nil {
+		if _, accepted := s.accepted[token]; !accepted {
+			return fmt.Errorf("async FFI route %s returned no wait handle", pending.RouteName)
+		}
+	} else {
+		pending.Wait = wait
+	}
 	s.current = nil
 	return nil
 }
@@ -386,7 +433,10 @@ func (s *ExecutionContextScheduler) Next(ctx context.Context) (*VMExecutionConte
 		ctx = context.Background()
 	}
 	for {
-		execCtx, done, wake := s.nextReady()
+		execCtx, done, wake, err := s.nextReady()
+		if err != nil {
+			return nil, err
+		}
 		if execCtx != nil || done {
 			return execCtx, nil
 		}
@@ -398,11 +448,11 @@ func (s *ExecutionContextScheduler) Next(ctx context.Context) (*VMExecutionConte
 	}
 }
 
-func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-chan struct{}) {
+func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-chan struct{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return nil, true, nil
+		return nil, true, nil, nil
 	}
 	s.drainCompletionsLocked()
 	if s.runq.len() > 0 {
@@ -411,18 +461,57 @@ func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-ch
 			s.signalLocked()
 		}
 		s.current = execCtx
-		return execCtx, false, nil
+		return execCtx, false, nil, nil
 	}
 	if len(s.pending) == 0 {
-		return nil, true, nil
+		return nil, true, nil, nil
 	}
 	if s.completed.len() > 0 {
 		s.signalLocked()
 	}
+	if !s.pendingHasExternalWakeLocked() {
+		return nil, false, nil, s.allBlockedErrorLocked()
+	}
 	if s.wake == nil {
 		s.wake = make(chan struct{}, 1)
 	}
-	return nil, false, s.wake
+	return nil, false, s.wake, nil
+}
+
+func (s *ExecutionContextScheduler) pendingHasExternalWakeLocked() bool {
+	for _, pending := range s.pending {
+		if pending == nil || pending.Wait == nil {
+			continue
+		}
+		if pending.Wait.Snapshot().Kind == ffigo.WaitExternal {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *ExecutionContextScheduler) allBlockedErrorLocked() error {
+	waits := make([]BlockedWait, 0, len(s.pending))
+	for _, pending := range s.pending {
+		if pending == nil {
+			continue
+		}
+		var execCtxID uint32
+		if pending.ExecutionContext != nil {
+			execCtxID = pending.ExecutionContext.ID
+		}
+		reason := ""
+		if pending.Wait != nil {
+			reason = pending.Wait.Snapshot().Reason
+		}
+		waits = append(waits, BlockedWait{
+			ExecutionContextID: execCtxID,
+			RouteName:          pending.RouteName,
+			MethodID:           pending.MethodID,
+			Reason:             reason,
+		})
+	}
+	return &VMAllBlockedError{Waits: waits}
 }
 
 func (s *ExecutionContextScheduler) drainCompletionsLocked() {
@@ -454,8 +543,8 @@ func (s *ExecutionContextScheduler) completeLocked(completion ffiCompletion) {
 func (s *ExecutionContextScheduler) clearLocked() []func() {
 	cancels := make([]func(), 0, len(s.pending))
 	for _, pending := range s.pending {
-		if pending != nil && pending.Cancel != nil {
-			cancels = append(cancels, pending.Cancel)
+		if pending != nil && pending.Wait != nil {
+			cancels = append(cancels, pending.Wait.Cancel)
 		}
 	}
 	s.current = nil

@@ -9,7 +9,10 @@ func TestSchedulerRoundRobinFIFO(t *testing.T) {
 	scheduler.runq.push(first)
 	scheduler.runq.push(second)
 
-	execCtx, done, _ := scheduler.nextReady()
+	execCtx, done, _, err := scheduler.nextReady()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if done || execCtx != first {
 		t.Fatalf("expected first execution context first, got context=%v done=%v", execCtx, done)
 	}
@@ -17,7 +20,10 @@ func TestSchedulerRoundRobinFIFO(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	execCtx, done, _ = scheduler.nextReady()
+	execCtx, done, _, err = scheduler.nextReady()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if done || execCtx != second {
 		t.Fatalf("expected second execution context next, got context=%v done=%v", execCtx, done)
 	}
@@ -25,7 +31,10 @@ func TestSchedulerRoundRobinFIFO(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	execCtx, done, _ = scheduler.nextReady()
+	execCtx, done, _, err = scheduler.nextReady()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if done || execCtx != first {
 		t.Fatalf("expected first execution context to return after round robin, got context=%v done=%v", execCtx, done)
 	}
@@ -51,7 +60,10 @@ func TestSchedulerDrainBudgetFairness(t *testing.T) {
 		}
 	}
 
-	execCtx, done, _ := scheduler.nextReady()
+	execCtx, done, _, err := scheduler.nextReady()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if done || execCtx != ready {
 		t.Fatalf("expected existing runnable execution context first, got context=%v done=%v", execCtx, done)
 	}
@@ -69,7 +81,10 @@ func TestSchedulerDrainBudgetFairness(t *testing.T) {
 	}
 
 	scheduler.FinishCurrent()
-	execCtx, done, _ = scheduler.nextReady()
+	execCtx, done, _, err = scheduler.nextReady()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if done {
 		t.Fatal("scheduler should keep running after draining the first batch")
 	}
