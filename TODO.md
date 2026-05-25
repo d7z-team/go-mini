@@ -34,6 +34,9 @@
 - `core` 不得 import 或调用顶层 `ffilib`；除 `core/ffilib` 纯库测试外，`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试，不依赖顶层标准库装配。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - `core/surface.Bundle` 只保留声明式 schema、runtime bind 和 compiler-only templates，不再提供 registrar adapter；surface 冲突通过 `Bundle.Err` / `UseSurface` 返回错误。
+- `core/surface.Bundle` 可以携带纯 VM 源码库；engine 在 `UseSurface` 阶段解析源码用于校验与 resolved module hash，随后只保留规范化源码描述，后续 compiler / LSP / module 装载每次按需重新解析 fresh AST。
+- 纯 VM 源码库的可见成员来自 `ModuleExports` 显式导出表，不继承父程序 scope、内建函数或 FFI 注入常量；`TypeModule` 只表示模块对象，不再作为 `Any` 参与类型判断。
+- compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`，runtime 只校验 module hash 并通过 `ModulePlanLoader` 装载 `PreparedProgram`。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - 语言级 channel/select 已落到 Go frontend、AST 检查、lowering、bytecode payload 和 runtime；支持 `make(chan T[, cap])`、send/receive、二值 receive、`close`、`len`、`cap`、`select`、`default` 和 channel `for range`。
 - channel canonical type 为 `Chan<T>` / `RecvChan<T>` / `SendChan<T>`，同样由 `core/typespec`、AST 门面和 runtime schema 门面统一解析与渲染。

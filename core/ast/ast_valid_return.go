@@ -43,7 +43,7 @@ func (a *ReturnAnalyzer) Analyze(body Node) bool {
 	hasReturn := a.analyzeNode(body)
 
 	if !hasReturn {
-		a.addError("函数缺少返回语句或并非所有分支都有返回语句", body)
+		a.addError("function is missing a return statement or not all paths return", body)
 		return false
 	}
 
@@ -162,7 +162,7 @@ func (a *ReturnAnalyzer) analyzeReturn(returnStmt *ReturnStmt) bool {
 			}
 		}
 		if !a.compareReturnTypes(actualTypes, a.returnTypes) {
-			a.addError(fmt.Sprintf("返回类型不匹配: 期望 %v, 实际 %v", a.returnTypes, actualTypes), returnStmt)
+			a.addError(fmt.Sprintf("return type mismatch: expected %v, got %v", a.returnTypes, actualTypes), returnStmt)
 		}
 	}
 	return true

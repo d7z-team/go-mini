@@ -26,6 +26,7 @@ type Executor struct {
 	ffiPackages          map[string]*BoundFFIPackage
 	ffiChannels          ffigo.ChannelRegistry
 	externalRequirements []ExternalRequirement
+	moduleHashes         map[string]string
 
 	ModulePlanLoader func(path string) (*PreparedProgram, error)
 
@@ -123,6 +124,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		ffiPackages:          make(map[string]*BoundFFIPackage),
 		ffiChannels:          ffigo.NewChannelRegistry(),
 		externalRequirements: append([]ExternalRequirement(nil), prepared.ExternalRequirements...),
+		moduleHashes:         make(map[string]string),
 		interfaceCache:       make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:               NewSharedState(),
 		scheduler:            NewExecutionContextScheduler(),

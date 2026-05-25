@@ -481,7 +481,7 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 	if err := specType.ValidateCanonical(); err != nil {
 		return RuntimeType{}, err
 	}
-	if specType == typespec.Any || specType == typespec.Module || specType == typespec.Closure {
+	if specType == typespec.Any {
 		return RuntimeType{Kind: RuntimeTypeAny, Raw: specType, TypeID: CanonicalTypeID(string(specType))}, nil
 	}
 	if specType.IsPrimitive() {

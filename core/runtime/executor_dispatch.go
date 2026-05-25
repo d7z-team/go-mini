@@ -1281,7 +1281,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					}
 				}
 			}
-			res := &Var{VType: TypeModule, Ref: ffiMod}
+			res := &Var{VType: TypeModule, TypeInfo: MustParseRuntimeType(SpecModule), Ref: ffiMod}
 			waiters := session.Shared.finishModuleLoad(path, res)
 			session.ValueStack.Push(res)
 			e.scheduleModuleWaiters(waiters, res, nil)

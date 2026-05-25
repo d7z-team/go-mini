@@ -78,7 +78,7 @@ func TestReturnAnalyzerStillRejectsMissingReturn(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing return validation failure")
 	}
-	if !strings.Contains(err.Error(), "缺少返回语句") {
+	if !strings.Contains(err.Error(), "missing a return statement") {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }

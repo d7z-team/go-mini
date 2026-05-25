@@ -70,7 +70,7 @@ func (b *BadExpr) Check(ctx *SemanticContext) error {
 	cause := message
 	if message == "" {
 		message = "无法解析的表达式"
-		cause = "前置bad_expr存在错误，无法精确推导"
+		cause = "previous bad_expr has errors; cannot infer precisely"
 	}
 	ctx.AddErrorf("语法错误：%s", message)
 	b.Type = "Any"
@@ -99,7 +99,7 @@ func (b *BadStmt) Check(ctx *SemanticContext) error {
 	cause := message
 	if message == "" {
 		message = "无法解析的语句块"
-		cause = "前置bad_stmt存在错误，无法精确推导"
+		cause = "previous bad_stmt has errors; cannot infer precisely"
 	}
 	ctx.AddErrorf("语法错误：%s", message)
 	b.InvalidCause = cause

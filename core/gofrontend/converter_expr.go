@@ -85,11 +85,10 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 			switch ident.Name {
 			case "make", "new":
 				if len(ex.Args) == 0 {
-					return c.badExpr(ex, string(ident.Name)+" 至少需要一个类型参数")
+					return c.badExpr(ex, string(ident.Name)+" requires a type argument")
 				}
-				// 严格检测：Go 语言中 new/make 的第一个参数必须是类型标识符，不能是值字面量
 				if _, isLit := ex.Args[0].(*ast.BasicLit); isLit {
-					return c.badExpr(ex.Args[0], string(ident.Name)+" 第一个参数必须是类型，不能是字面量")
+					return c.badExpr(ex.Args[0], string(ident.Name)+" first argument must be a type, not a literal")
 				}
 
 				typeArg := c.typeToString(ex.Args[0])

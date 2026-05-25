@@ -33,7 +33,7 @@ func main() {
 	}
 	found := false
 	for _, log := range validator.Logs() {
-		if strings.Contains(log.Message, "包 os 已解析但未导入") {
+		if strings.Contains(log.Message, "package os resolved but not imported") {
 			found = true
 		}
 	}
@@ -112,8 +112,7 @@ func main() {
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	// 注意：converter 已经根据 import "my/math" 建立了 math -> my/math 的映射
 
 	// 在 "math." 之后触发补全 (Line 4, Col 6 是 '.', 尝试 Col 6 或 Col 7)
@@ -277,8 +276,7 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
-	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("mymath")
+	registerModuleExports(validator, "mymath", subValidator)
 
 	// 在 "mymath." 之后触发补全 (Line 3, Col 8 是 '.')
 	completions := ast.FindCompletionsAt(mainProg, 3, 8)
@@ -322,8 +320,7 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
-	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("mymath")
+	registerModuleExports(validator, "mymath", subValidator)
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -363,12 +360,11 @@ func main() {
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
 	// 模拟 Loader 已加载了该包，路径为 "my/math"
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
+	registerModuleExports(validator, "my/math", subValidator)
 
 	// 重新初始化以应用宽容模式下的 Package 注册逻辑 (实际上通常是在 Loader 填充后再创建 Validator，这里手动触发)
 	validator, _ = ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 
 	// 在 "math." 之后触发补全 (Line 3, Col 6 是 '.')
 	completions := ast.FindCompletionsAt(mainProg, 3, 6)
@@ -411,8 +407,7 @@ func main() {
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
-	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("mymath")
+	registerModuleExports(validator, "mymath", subValidator)
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -422,7 +417,7 @@ func main() {
 
 	foundMissingImport := false
 	for _, log := range validator.Logs() {
-		if strings.Contains(log.Message, "已解析但未导入") {
+		if strings.Contains(log.Message, "resolved but not imported") {
 			foundMissingImport = true
 			break
 		}
@@ -457,8 +452,7 @@ func main() {
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
-	validator.Root().ImportedRoots["mymath"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("mymath")
+	registerModuleExports(validator, "mymath", subValidator)
 
 	semanticCtx := ast.NewSemanticContext(validator)
 	err = mainProg.Check(semanticCtx)
@@ -528,7 +522,7 @@ func main() {
 
 	found := false
 	for _, log := range validator.Logs() {
-		if strings.Contains(log.Message, "包 time 已解析但未导入") {
+		if strings.Contains(log.Message, "package time resolved but not imported") {
 			found = true
 			break
 		}
@@ -566,8 +560,7 @@ func main() {
 	mainProg := mainNode.(*ast.ProgramStmt)
 
 	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	_ = mainProg.Check(ast.NewSemanticContext(validator))
 
 	completions := ast.FindCompletionsAt(mainProg, 4, 26)
@@ -612,8 +605,7 @@ func main() {
 	mainProg := mainNode.(*ast.ProgramStmt)
 
 	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	_ = mainProg.Check(ast.NewSemanticContext(validator))
 
 	completions := ast.FindCompletionsAt(mainProg, 4, 25)
@@ -659,8 +651,7 @@ func main() {
 	mainProg := mainNode.(*ast.ProgramStmt)
 
 	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	_ = mainProg.Check(ast.NewSemanticContext(validator))
 
 	completions := ast.FindCompletionsAt(mainProg, 4, 24)
@@ -710,8 +701,7 @@ func main() {
 	mainProg := mainNode.(*ast.ProgramStmt)
 
 	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	_ = mainProg.Check(ast.NewSemanticContext(validator))
 
 	completions := ast.FindCompletionsAt(mainProg, 4, 29)

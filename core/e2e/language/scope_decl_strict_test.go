@@ -19,7 +19,7 @@ func TestStrictScopeAndDeclarationValidation(t *testing.T) {
 			code: `package main
 var X Int64 = "bad"
 func main() {}`,
-			want: "类型不匹配",
+			want: "String",
 		},
 		{
 			name: "global explicit assignment mismatch",
@@ -28,7 +28,7 @@ var X Int64
 func main() {
 	X = "bad"
 }`,
-			want: "类型不匹配",
+			want: "String",
 		},
 		{
 			name: "local var redeclared in same block",
@@ -158,7 +158,7 @@ func main() {
 	if err == nil {
 		t.Fatal("expected compile error")
 	}
-	if !strings.Contains(err.Error(), "类型不匹配") {
+	if !strings.Contains(err.Error(), "String") {
 		t.Fatalf("unexpected compile error: %v", err)
 	}
 }

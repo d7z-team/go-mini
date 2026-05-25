@@ -26,7 +26,7 @@ func TestConvertSourceReportsUnsupportedConstructsWithoutPanic(t *testing.T) {
 func main() {
 	_ = new("Int64")
 }`,
-			want: "new 第一个参数必须是类型",
+			want: "new first argument must be a type",
 		},
 		{
 			name: "range key index target",
@@ -35,7 +35,7 @@ func main() {
 	arr := []Int64{1}
 	for arr[0] = range arr {}
 }`,
-			want: "range 的 key 目标只支持标识符",
+			want: "range key target must be an identifier",
 		},
 		{
 			name: "fallthrough",

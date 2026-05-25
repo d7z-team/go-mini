@@ -456,7 +456,7 @@ func main() {
 	trace.Line()
 }
 `)
-	if err == nil || !strings.Contains(err.Error(), "references missing package member trace.Line") {
+	if err == nil || !strings.Contains(err.Error(), "package trace has no member Line") {
 		t.Fatalf("expected missing package member compile error, got %v", err)
 	}
 }

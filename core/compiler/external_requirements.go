@@ -100,6 +100,20 @@ func (c *Compiler) externalRequirements(program *ast.ProgramStmt) []runtime.Exte
 		reqs:       make(map[string]runtime.ExternalRequirement),
 	}
 	ast.Walk(collector, program)
+	for _, imp := range program.Imports {
+		path := strings.TrimSpace(imp.Path)
+		if path == "" {
+			continue
+		}
+		if hash := c.cfg.ModuleHashes[path]; hash != "" {
+			collector.add(runtime.ExternalRequirement{
+				Version:     runtime.FFISurfaceHashVersion,
+				PackagePath: path,
+				Kind:        runtime.FFIMemberModule,
+				Hash:        hash,
+			})
+		}
+	}
 	out := make([]runtime.ExternalRequirement, 0, len(collector.reqs))
 	for _, req := range collector.reqs {
 		out = append(out, req)

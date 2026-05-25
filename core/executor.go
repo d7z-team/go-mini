@@ -8,6 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 type MiniExecutor struct {
@@ -17,17 +18,20 @@ type MiniExecutor struct {
 	routes          map[string]runtime.FFIRoute
 	constants       map[string]string
 
-	registry       *ffigo.HandleRegistry
-	moduleSources  map[string]*ast.ProgramStmt
-	modules        map[string]*runtime.PreparedProgram
-	funcSchemas    map[ast.Ident]*runtime.RuntimeFuncSig
-	valueSchemas   map[ast.Ident]*runtime.ValueSpec
-	packageValues  map[string]*runtime.BoundPackageValue
-	surfaceSchema  *runtime.FFISurfaceSchema
-	boundSurface   *runtime.BoundFFISurface
-	structsMeta    map[ast.Ident]*runtime.RuntimeStructSpec
-	interfacesMeta map[ast.Ident]*runtime.RuntimeInterfaceSpec
-	templates      *calltemplate.Registry
+	registry            *ffigo.HandleRegistry
+	moduleSources       map[string]*ast.ProgramStmt
+	sourceLibraries     map[string]surface.LibraryModule
+	modules             map[string]*runtime.PreparedProgram
+	librarySourceHashes map[string]string
+	libraryHashes       map[string]string
+	funcSchemas         map[ast.Ident]*runtime.RuntimeFuncSig
+	valueSchemas        map[ast.Ident]*runtime.ValueSpec
+	packageValues       map[string]*runtime.BoundPackageValue
+	surfaceSchema       *runtime.FFISurfaceSchema
+	boundSurface        *runtime.BoundFFISurface
+	structsMeta         map[ast.Ident]*runtime.RuntimeStructSpec
+	interfacesMeta      map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	templates           *calltemplate.Registry
 
 	MaxTypeDepth int // 递归类型检查深度限制
 }

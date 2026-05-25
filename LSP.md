@@ -13,6 +13,8 @@ LSP 展示的函数签名和类型文本使用项目统一的 canonical type ren
 
 编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`fmt.Errorf`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
 
+通过 `surface.Library(...)` 注册的纯 VM 源码库会作为 module loader 的源码输入参与语义分析和补全；它们仍属于 compiler/analysis 边界，runtime 装载 bytecode 时只校验 module hash 并请求 `PreparedProgram`。LSP 对源码库使用显式导出表，只展示库源码自身声明的函数、变量、常量、类型、结构体和接口，不把主程序 scope、内建函数或 FFI 注入常量混进 `pkg.` 成员补全。模块对象类型为独立的 `TypeModule`，不会按 `Any` 做宽泛成员推断。
+
 ## 1. 推荐后端接入
 
 Go-Mini 提供两类常见接入方式：

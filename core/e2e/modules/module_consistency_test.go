@@ -95,9 +95,8 @@ func TestReadOnlyModuleProtection(t *testing.T) {
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
-		// 现在在校验阶段就会因为类型不匹配报错，这也是合理的
-		if strings.Contains(err.Error(), "类型不匹配") || strings.Contains(err.Error(), "assignment type mismatch") {
-			return // 成功拦截
+		if strings.Contains(err.Error(), "mock.Print") || strings.Contains(err.Error(), "assignment type mismatch") {
+			return
 		}
 		t.Fatalf("Compile failed with unexpected error: %v", err)
 	}

@@ -239,6 +239,19 @@ func (e *Executor) RegisterConstant(name, val string) {
 	}
 }
 
+func (e *Executor) RegisterModuleHash(path, hash string) {
+	path = strings.TrimSpace(path)
+	if path == "" || hash == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.moduleHashes == nil {
+		e.moduleHashes = make(map[string]string)
+	}
+	e.moduleHashes[path] = hash
+}
+
 func (e *Executor) TryRegisterPackageValue(name string, spec *ValueSpec, value *Var) error {
 	if name == "" {
 		return errors.New("package value missing name")

@@ -64,7 +64,7 @@ func TestBadExprCallReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise inference error, got: %v", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestBadExprMemberReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "成员访问对象存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "member access object has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise member inference error, got: %v", err)
 	}
 }
@@ -167,7 +167,7 @@ func TestBadExprIndexReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "索引对象存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "index object has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise index inference error, got: %v", err)
 	}
 }
@@ -228,7 +228,7 @@ func TestBadExprIndexOperandReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "前置bad_expr存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "previous bad_expr has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise index operand error, got: %v", err)
 	}
 }
@@ -294,7 +294,7 @@ func TestBadExprSliceReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "前置bad_expr存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "previous bad_expr has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise slice inference error, got: %v", err)
 	}
 }
@@ -356,7 +356,7 @@ func TestBadExprStringSliceReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "前置bad_expr存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "previous bad_expr has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise string-slice inference error, got: %v", err)
 	}
 }
@@ -411,10 +411,10 @@ func TestInvalidCompositeMemberReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "成员访问对象存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "member access object has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise invalid composite member error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "复合字面量第 1 个元素的值存在错误") {
+	if !strings.Contains(err.Error(), "composite literal element 1 value has errors") {
 		t.Fatalf("expected composite source detail, got: %v", err)
 	}
 }
@@ -469,10 +469,10 @@ func TestInvalidCompositeIndexReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "索引对象存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "index object has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise invalid composite index error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "复合字面量第 1 个元素的值存在错误") {
+	if !strings.Contains(err.Error(), "composite literal element 1 value has errors") {
 		t.Fatalf("expected composite source detail, got: %v", err)
 	}
 }
@@ -531,10 +531,10 @@ func TestInvalidCompositeSliceReportsPreciseInferenceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected semantic error")
 	}
-	if !strings.Contains(err.Error(), "切片对象存在错误") && !strings.Contains(err.Error(), "无法精确推导") {
+	if !strings.Contains(err.Error(), "slice object has errors") && !strings.Contains(err.Error(), "cannot infer precisely") {
 		t.Fatalf("expected precise invalid composite slice error, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "复合字面量第 1 个元素的值存在错误") {
+	if !strings.Contains(err.Error(), "composite literal element 1 value has errors") {
 		t.Fatalf("expected composite source detail, got: %v", err)
 	}
 }
@@ -555,7 +555,7 @@ func TestStarExprRejectsOpaqueHostRefType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected dereference of HostRef to fail")
 	}
-	if !strings.Contains(err.Error(), "无法解引用 opaque host reference") {
+	if !strings.Contains(err.Error(), "cannot dereference opaque host reference") {
 		t.Fatalf("unexpected dereference error: %v", err)
 	}
 }
@@ -581,7 +581,7 @@ func TestConcreteArrayIndexRejectsAnyIndexType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected concrete array Any-index to fail")
 	}
-	if !strings.Contains(err.Error(), "数组索引只支持 Int64 类型") {
+	if !strings.Contains(err.Error(), "array index must be Int64") {
 		t.Fatalf("unexpected array index error: %v", err)
 	}
 }
@@ -607,7 +607,7 @@ func TestConcreteMapIndexRejectsAnyKeyType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected concrete map Any-key to fail")
 	}
-	if !strings.Contains(err.Error(), "Map 键类型不匹配") {
+	if !strings.Contains(err.Error(), "map key type mismatch") {
 		t.Fatalf("unexpected map index error: %v", err)
 	}
 }
@@ -628,7 +628,7 @@ func TestCompositeExprSkipsInvalidArrayChildren(t *testing.T) {
 	if expr.Type != "Array<Int64>" {
 		t.Fatalf("expected Array<Int64>, got %s", expr.Type)
 	}
-	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "复合字面量第 2 个元素的值存在错误") {
+	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "composite literal element 2 value has errors") {
 		t.Fatalf("expected precise invalid cause, got %q", expr.InvalidCause)
 	}
 }
@@ -655,7 +655,7 @@ func TestCompositeExprIgnoresInvalidChildrenForMapInference(t *testing.T) {
 	if expr.Type != "Map<String, Int64>" {
 		t.Fatalf("expected Map<String, Int64>, got %s", expr.Type)
 	}
-	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "复合字面量第 2 个元素的值存在错误") {
+	if !expr.IsInvalid() || !strings.Contains(expr.InvalidCause, "composite literal element 2 value has errors") {
 		t.Fatalf("expected precise invalid cause, got %q", expr.InvalidCause)
 	}
 }

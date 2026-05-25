@@ -25,7 +25,11 @@ func (e *Executor) unwrapValue(v *Var) *Var {
 				return out
 			} else if mod, ok := v.Ref.(*VMModule); ok {
 				out := &Var{VType: TypeModule, Ref: mod}
-				out.SetRuntimeType(v.RuntimeType())
+				if typ := v.RuntimeType(); !typ.IsEmpty() {
+					out.SetRuntimeType(typ)
+				} else {
+					out.SetRuntimeType(MustParseRuntimeType(SpecModule))
+				}
 				return out
 			} else if inter, ok := v.Ref.(*VMInterface); ok {
 				out := &Var{VType: TypeInterface, Ref: inter}

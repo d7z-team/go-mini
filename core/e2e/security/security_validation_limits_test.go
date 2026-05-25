@@ -20,7 +20,7 @@ func TestMapKeyDynamicValidation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected compile-time map key type rejection")
 	}
-	if !strings.Contains(err.Error(), "Map 键类型不匹配") {
+	if !strings.Contains(err.Error(), "map key type mismatch") {
 		t.Fatalf("unexpected compile error: %v", err)
 	}
 }

@@ -19,7 +19,7 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(i)
 	i.Type = "Void"
 	if i.Operand == nil {
-		err := errors.New("inc/dec 语句缺少操作数")
+		err := errors.New("inc/dec statement is missing an operand")
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
@@ -38,7 +38,7 @@ func (i *IncDecStmt) Check(ctx *SemanticContext) error {
 	// 验证操作数是否为数值类型
 	oType := i.Operand.GetBase().Type
 	if oType != TypeInt64 && oType != TypeFloat64 {
-		err := errors.New("inc/dec 语句的操作数必须是数值类型")
+		err := errors.New("inc/dec operand must be numeric")
 		ctx.AddErrorAt(i.Operand, "%s", err.Error())
 		return err
 	}

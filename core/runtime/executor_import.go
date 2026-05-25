@@ -48,7 +48,8 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 	}
 
 	return &Var{
-		VType: TypeModule,
+		VType:    TypeModule,
+		TypeInfo: MustParseRuntimeType(SpecModule),
 		Ref: &VMModule{
 			Name:    path,
 			Data:    exports,
@@ -71,6 +72,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	modExecutor.packageValues = e.packageValues
 	modExecutor.ffiPackages = e.ffiPackages
 	modExecutor.ffiChannels = e.channelRegistry()
+	modExecutor.moduleHashes = cloneStringMap(e.moduleHashes)
 	for name, value := range e.consts {
 		if _, exists := modExecutor.consts[name]; !exists {
 			modExecutor.consts[name] = value

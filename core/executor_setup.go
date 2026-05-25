@@ -15,20 +15,23 @@ import (
 
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
-		routes:         make(map[string]runtime.FFIRoute),
-		constants:      make(map[string]string),
-		registry:       ffigo.NewHandleRegistry(),
-		moduleSources:  make(map[string]*ast.ProgramStmt),
-		modules:        make(map[string]*runtime.PreparedProgram),
-		funcSchemas:    make(map[ast.Ident]*runtime.RuntimeFuncSig),
-		valueSchemas:   make(map[ast.Ident]*runtime.ValueSpec),
-		packageValues:  make(map[string]*runtime.BoundPackageValue),
-		surfaceSchema:  runtime.NewFFISurfaceSchema(),
-		boundSurface:   runtime.NewBoundFFISurface(runtime.NewFFISurfaceSchema()),
-		structsMeta:    make(map[ast.Ident]*runtime.RuntimeStructSpec),
-		interfacesMeta: make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
-		templates:      calltemplate.NewRegistry(),
-		MaxTypeDepth:   256,
+		routes:              make(map[string]runtime.FFIRoute),
+		constants:           make(map[string]string),
+		registry:            ffigo.NewHandleRegistry(),
+		moduleSources:       make(map[string]*ast.ProgramStmt),
+		sourceLibraries:     make(map[string]surface.LibraryModule),
+		modules:             make(map[string]*runtime.PreparedProgram),
+		librarySourceHashes: make(map[string]string),
+		libraryHashes:       make(map[string]string),
+		funcSchemas:         make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		valueSchemas:        make(map[ast.Ident]*runtime.ValueSpec),
+		packageValues:       make(map[string]*runtime.BoundPackageValue),
+		surfaceSchema:       runtime.NewFFISurfaceSchema(),
+		boundSurface:        runtime.NewBoundFFISurface(runtime.NewFFISurfaceSchema()),
+		structsMeta:         make(map[ast.Ident]*runtime.RuntimeStructSpec),
+		interfacesMeta:      make(map[ast.Ident]*runtime.RuntimeInterfaceSpec),
+		templates:           calltemplate.NewRegistry(),
+		MaxTypeDepth:        256,
 	}
 
 	// 默认注册 panic 签名以便通过验证
@@ -64,7 +67,11 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 	if err := runtime.CheckPublicFFISurfaceSchema(bundle.Schema); err != nil {
 		return err
 	}
-	if bundle.Schema != nil || bundle.Bind != nil || len(bundle.Templates) > 0 {
+	libraries, libraryASTs, librarySourceHashes, err := prepareSurfaceLibraryModules(bundle.Libraries)
+	if err != nil {
+		return err
+	}
+	if bundle.Schema != nil || bundle.Bind != nil || len(bundle.Templates) > 0 || len(libraries) > 0 {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 
@@ -74,6 +81,38 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 		}
 		if err := nextSchema.Merge(bundle.Schema); err != nil {
 			return err
+		}
+		if err := e.validateSurfaceLibrariesLocked(libraries, librarySourceHashes); err != nil {
+			return err
+		}
+		resolvedLibraryHashes := e.libraryHashes
+		if len(libraries) > 0 {
+			existingLibraryASTs := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes))
+			for path := range e.librarySourceHashes {
+				library, ok := e.sourceLibraries[path]
+				if !ok {
+					continue
+				}
+				program, err := parseSurfaceLibraryModule(library)
+				if err != nil {
+					return err
+				}
+				existingLibraryASTs[path] = program
+			}
+			allASTs := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes)+len(libraryASTs))
+			allSourceHashes := make(map[string]string, len(e.librarySourceHashes)+len(librarySourceHashes))
+			for path, hash := range e.librarySourceHashes {
+				allSourceHashes[path] = hash
+				allASTs[path] = existingLibraryASTs[path]
+			}
+			for path, hash := range librarySourceHashes {
+				allSourceHashes[path] = hash
+				allASTs[path] = libraryASTs[path]
+			}
+			resolvedLibraryHashes, err = resolveSurfaceLibraryHashes(allASTs, allSourceHashes)
+			if err != nil {
+				return err
+			}
 		}
 
 		var bound *runtime.BoundFFISurface
@@ -160,6 +199,9 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 		if bound != nil {
 			registryTx.Commit()
 		}
+		if len(libraries) > 0 {
+			e.applySurfaceLibrariesLocked(libraries, librarySourceHashes, resolvedLibraryHashes)
+		}
 		e.surfaceSchema = runtime.CloneFFISurfaceSchema(nextBound.Schema)
 		e.boundSurface = nextBound
 		if nextTemplates != nil {
@@ -172,9 +214,13 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
 	return func(path string) (*ast.ProgramStmt, error) {
 		e.mu.RLock()
+		library, hasLibrary := e.sourceLibraries[path]
 		astNode, ok := e.moduleSources[path]
 		loader := e.astModuleLoader
 		e.mu.RUnlock()
+		if hasLibrary {
+			return parseSurfaceLibraryModule(library)
+		}
 		if ok {
 			return astNode, nil
 		}
@@ -193,7 +239,7 @@ func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedPr
 			return prepared, nil
 		}
 		e.mu.RUnlock()
-		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
+		return e.prepareModuleFromSource(path)
 	}
 }
 
@@ -231,6 +277,9 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 	for name, val := range e.constants {
 		executor.RegisterConstant(name, val)
 	}
+	for path, hash := range e.libraryHashes {
+		executor.RegisterModuleHash(path, hash)
+	}
 	return nil
 }
 
@@ -238,6 +287,7 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 	schema := e.ExportedSchema()
 	e.mu.RLock()
 	surfaceSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
+	moduleHashes := cloneSurfaceLibraryHashes(e.libraryHashes)
 	e.mu.RUnlock()
 	return compiler.New(compiler.Config{
 		ModuleLoader:            e.moduleASTLoader(),
@@ -249,6 +299,7 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 		StructSchemas:           schema.Structs,
 		InterfaceSchemas:        schema.Interfaces,
 		Constants:               e.GetExportedConstants(),
+		ModuleHashes:            moduleHashes,
 		MaxTypeDepth:            e.MaxTypeDepth,
 		Templates:               e.templateRegistrySnapshot(),
 	})
@@ -288,7 +339,9 @@ func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error
 				continue
 			}
 			if prog := compiled.ImportedPrograms[path]; prog != nil {
-				e.moduleSources[path] = prog
+				if _, hasLibrary := e.sourceLibraries[path]; !hasLibrary {
+					e.moduleSources[path] = prog
+				}
 			}
 		}
 		e.mu.Unlock()
@@ -305,10 +358,18 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 
 		e.mu.RLock()
 		prepared := e.modules[path]
+		library, hasLibrary := e.sourceLibraries[path]
 		prog := e.moduleSources[path]
 		e.mu.RUnlock()
 		if prepared != nil {
 			continue
+		}
+		if hasLibrary {
+			var err error
+			prog, err = parseSurfaceLibraryModule(library)
+			if err != nil {
+				return err
+			}
 		}
 		if prog == nil && imported != nil {
 			prog = imported[path]
@@ -333,7 +394,7 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 
 		e.mu.Lock()
 		e.modules[path] = compiled.Bytecode.Executable
-		if prog != nil {
+		if prog != nil && !hasLibrary {
 			e.moduleSources[path] = prog
 		}
 		e.mu.Unlock()
@@ -368,6 +429,10 @@ func (e *MiniExecutor) RegisterModule(path string, prog *ExecutableProgram) {
 	if prog == nil {
 		delete(e.modules, path)
 		delete(e.moduleSources, path)
+		delete(e.sourceLibraries, path)
+		delete(e.librarySourceHashes, path)
+		delete(e.libraryHashes, path)
+		e.recomputeSurfaceLibraryHashesLocked()
 		return
 	}
 
@@ -376,9 +441,16 @@ func (e *MiniExecutor) RegisterModule(path string, prog *ExecutableProgram) {
 		prepared = compiled.Bytecode.Executable
 	}
 	delete(e.moduleSources, path)
+	delete(e.sourceLibraries, path)
 	if prepared != nil {
 		e.modules[path] = prepared
+		delete(e.librarySourceHashes, path)
+		delete(e.libraryHashes, path)
+		e.recomputeSurfaceLibraryHashesLocked()
 		return
 	}
 	delete(e.modules, path)
+	delete(e.librarySourceHashes, path)
+	delete(e.libraryHashes, path)
+	e.recomputeSurfaceLibraryHashesLocked()
 }

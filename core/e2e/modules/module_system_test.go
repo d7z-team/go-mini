@@ -152,7 +152,7 @@ func TestImportScope(t *testing.T) {
 	if err == nil {
 		t.Fatal("Should fail because import is inside function")
 	}
-	expectedErr := "import 只能在包级作用域中使用"
+	expectedErr := "import is only allowed at package scope"
 	if !strings.Contains(err.Error(), expectedErr) {
 		t.Fatalf("Expected error '%s', got: %v", expectedErr, err)
 	}

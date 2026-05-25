@@ -23,6 +23,7 @@ type Config struct {
 	StructSchemas           map[ast.Ident]*runtime.RuntimeStructSpec
 	InterfaceSchemas        map[ast.Ident]*runtime.RuntimeInterfaceSpec
 	Constants               map[string]string
+	ModuleHashes            map[string]string
 	MaxTypeDepth            int
 	// Templates contains compiler-only call templates. The compiler exposes
 	// their signatures during the first semantic check, expands matching calls,

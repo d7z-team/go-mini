@@ -163,7 +163,7 @@ func TestGoStyleTypes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			prog, err := executor.NewRuntimeByGoCode(tt.code)
 			if tt.name == "InvalidMakeType" {
-				if err == nil || !strings.Contains(err.Error(), "第一个参数必须是类型") {
+				if err == nil || !strings.Contains(err.Error(), "first argument must be a type") {
 					t.Fatalf("expected compile error for invalid make type, got %v", err)
 				}
 				return

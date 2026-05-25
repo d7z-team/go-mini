@@ -67,6 +67,8 @@ func MapKind(internalKind string) int {
 		return KindStruct
 	case "interface":
 		return KindInterface
+	case "constant":
+		return KindConstant
 	case "package":
 		return KindModule
 	case "keyword":

@@ -133,8 +133,7 @@ func main() {
 	}
 	mainProg := mainNode.(*ast.ProgramStmt)
 	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
-	validator.Root().ImportedRoots["my/math"] = subValidator.Root()
-	validator.Root().DiscoverImportedRoot("my/math")
+	registerModuleExports(validator, "my/math", subValidator)
 	_ = mainProg.Check(ast.NewSemanticContext(validator))
 
 	parentMap := ast.BuildParentMap(mainProg)

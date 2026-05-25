@@ -39,11 +39,11 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		if strings.TrimSpace(pkg) == "" {
 			return fmt.Errorf("external requirement %d missing package", i)
 		}
-		if strings.TrimSpace(member) == "" && req.TypeName == "" {
+		if req.Kind != FFIMemberModule && strings.TrimSpace(member) == "" && req.TypeName == "" {
 			return fmt.Errorf("external requirement %d missing member", i)
 		}
 		switch req.Kind {
-		case FFIMemberFunc, FFIMemberConst, FFIMemberValue, FFIMemberType:
+		case FFIMemberFunc, FFIMemberConst, FFIMemberValue, FFIMemberType, FFIMemberModule:
 		default:
 			return fmt.Errorf("external requirement %d has invalid kind %s", i, req.Kind)
 		}

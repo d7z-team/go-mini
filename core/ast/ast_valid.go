@@ -30,9 +30,11 @@ type ValidRoot struct {
 	Imports          map[string]string
 	vars             map[Ident]GoMiniType
 	readOnlyVars     map[Ident]bool
+	externalTypes    map[Ident]ExternalTypeSpec
+	externalConsts   map[string]string
 	ModuleLoader     func(path string) (*ProgramStmt, error)
 	Imported         map[string]bool
-	ImportedRoots    map[string]*ValidRoot
+	Modules          map[string]*ModuleExports
 	Discovered       map[Ident]string
 	KnownImports     map[string]struct{}
 	TemplateBuiltins map[string]GoMiniType
@@ -68,6 +70,22 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 		externalTypes[ident] = ExternalTypeSpec{Type: typ, Ownership: StructOwnershipVMValue}
 	}
 	return NewValidatorWithExternalTypes(node, externalTypes, externalConsts, tolerant)
+}
+
+func cloneExternalTypeSpecs(in map[Ident]ExternalTypeSpec) map[Ident]ExternalTypeSpec {
+	out := make(map[Ident]ExternalTypeSpec, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]ExternalTypeSpec, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
@@ -107,8 +125,10 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 			Imports:          imports,
 			vars:             make(map[Ident]GoMiniType),
 			readOnlyVars:     make(map[Ident]bool),
+			externalTypes:    cloneExternalTypeSpecs(externalTypes),
+			externalConsts:   cloneStringMap(externalConsts),
 			Imported:         make(map[string]bool),
-			ImportedRoots:    make(map[string]*ValidRoot),
+			Modules:          make(map[string]*ModuleExports),
 			Discovered:       make(map[Ident]string),
 			KnownImports:     make(map[string]struct{}),
 			TemplateBuiltins: make(map[string]GoMiniType),
@@ -258,7 +278,18 @@ func (r *ValidRoot) HasExternalImportPath(path string) bool {
 	return false
 }
 
-func (r *ValidRoot) DiscoverImportedRoot(path string) {
+func (r *ValidRoot) RegisterModuleExports(exports *ModuleExports) {
+	if r == nil || exports == nil || exports.Path == "" {
+		return
+	}
+	if r.Modules == nil {
+		r.Modules = make(map[string]*ModuleExports)
+	}
+	r.Modules[exports.Path] = exports
+	r.DiscoverModule(exports.Path)
+}
+
+func (r *ValidRoot) DiscoverModule(path string) {
 	if path == "" {
 		return
 	}
@@ -266,6 +297,55 @@ func (r *ValidRoot) DiscoverImportedRoot(path string) {
 	if idx := strings.LastIndex(path, "/"); idx != -1 && idx+1 < len(path) {
 		r.registerDiscoveredPackage(Ident(path[idx+1:]), path)
 	}
+}
+
+func (r *ValidRoot) ResolveModule(name Ident) (*ModuleExports, string, bool, bool) {
+	if r == nil {
+		return nil, "", false, false
+	}
+	path, known, imported := r.ResolvePackage(name)
+	if !known {
+		path = string(name)
+	}
+	if mod, resolvedPath, ok := r.ModuleByPathOrAlias(path); ok {
+		return mod, resolvedPath, true, imported
+	}
+	if !known {
+		return nil, path, false, false
+	}
+	return nil, path, known, imported
+}
+
+func (r *ValidRoot) ModuleByPathOrAlias(prefix string) (*ModuleExports, string, bool) {
+	if r == nil || prefix == "" {
+		return nil, "", false
+	}
+	if mod := r.Modules[prefix]; mod != nil {
+		return mod, prefix, true
+	}
+	if path, ok := r.Imports[prefix]; ok {
+		if mod := r.Modules[path]; mod != nil {
+			return mod, path, true
+		}
+	}
+	if path, ok := r.Discovered[Ident(prefix)]; ok {
+		if mod := r.Modules[path]; mod != nil {
+			return mod, path, true
+		}
+	}
+	dotted := strings.ReplaceAll(prefix, "/", ".")
+	slashed := strings.ReplaceAll(prefix, ".", "/")
+	for path, mod := range r.Modules {
+		switch {
+		case path == dotted || path == slashed:
+			return mod, path, true
+		case strings.ReplaceAll(path, "/", ".") == prefix:
+			return mod, path, true
+		case strings.HasSuffix(path, "/"+prefix):
+			return mod, path, true
+		}
+	}
+	return nil, "", false
 }
 
 func (r *ValidRoot) ResolvePackage(name Ident) (string, bool, bool) {
@@ -444,6 +524,20 @@ func positionContains(outer, inner *Position) bool {
 }
 
 func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
+	if prefix, member, ok := splitQualifiedMember(string(ident)); ok {
+		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
+			name := Ident(member)
+			if t, ok := mod.Types[name]; ok {
+				return t, true
+			}
+			if _, ok := mod.Structs[name]; ok {
+				return GoMiniType(mod.Path + "." + member), true
+			}
+			if _, ok := mod.Interfaces[name]; ok {
+				return GoMiniType(mod.Path + "." + member), true
+			}
+		}
+	}
 	ctx := c
 	for ctx != nil {
 		if t, ok := ctx.root.types[ident]; ok {
@@ -451,15 +545,25 @@ func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
 		}
 		ctx = ctx.parent
 	}
+	var resolved GoMiniType
+	for _, mod := range c.root.Modules {
+		if t, ok := mod.Types[ident]; ok {
+			if resolved != "" {
+				return "", false
+			}
+			resolved = t
+		}
+	}
+	if resolved != "" {
+		return resolved, true
+	}
 	return "", false
 }
 
 func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
-	s := string(ident)
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
-			if st, ok := root.structs[Ident(parts[1])]; ok {
+	if prefix, member, ok := splitQualifiedMember(string(ident)); ok {
+		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
+			if st, ok := mod.StructDefs[Ident(member)]; ok {
 				return st, true
 			}
 		}
@@ -474,8 +578,8 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 	}
 
 	var resolved *ValidStruct
-	for _, root := range c.root.ImportedRoots {
-		if st, ok := root.structs[ident]; ok {
+	for _, mod := range c.root.Modules {
+		if st, ok := mod.StructDefs[ident]; ok {
 			if resolved != nil {
 				return nil, false
 			}
@@ -580,11 +684,9 @@ func (c *ValidContext) containsHostOpaqueValue(t GoMiniType, depth int) bool {
 }
 
 func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
-	s := string(ident)
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
-			if it, ok := root.interfaces[Ident(parts[1])]; ok {
+	if prefix, member, ok := splitQualifiedMember(string(ident)); ok {
+		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
+			if it, ok := mod.Interfaces[Ident(member)]; ok {
 				return it, true
 			}
 		}
@@ -599,8 +701,8 @@ func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
 	}
 
 	var resolved *InterfaceStmt
-	for _, root := range c.root.ImportedRoots {
-		if it, ok := root.interfaces[ident]; ok {
+	for _, mod := range c.root.Modules {
+		if it, ok := mod.Interfaces[ident]; ok {
 			if resolved != nil {
 				return nil, false
 			}
@@ -770,15 +872,10 @@ func addCapture(f *FuncLitExpr, name string) {
 }
 
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
-	s := string(variable)
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
-			if vt, ok := root.vars[Ident(parts[1])]; ok {
+	if prefix, member, ok := splitQualifiedMember(string(variable)); ok {
+		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
+			if vt, ok := mod.MemberType(Ident(member)); ok {
 				return vt, true
-			}
-			if _, ok := root.program.Constants[parts[1]]; ok {
-				return "Constant", true
 			}
 		}
 	}
@@ -811,12 +908,11 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 }
 
 func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
-	s := string(fc)
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		if root, ok := c.root.ImportedRoots[parts[0]]; ok {
-			if fn, ok := root.Global.Methods[Ident(parts[1])]; ok {
-				return &fn, true
+	if prefix, member, ok := splitQualifiedMember(string(fc)); ok {
+		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
+			if fn := mod.Functions[Ident(member)]; fn != nil {
+				sig := fn.FunctionType.ToCallFunctionType()
+				return &sig, true
 			}
 		}
 	}
@@ -829,6 +925,14 @@ func (c *ValidContext) GetFunction(fc Ident) (*CallFunctionType, bool) {
 		ctx = ctx.parent
 	}
 	return nil, false
+}
+
+func splitQualifiedMember(name string) (prefix, member string, ok bool) {
+	idx := strings.LastIndex(name, ".")
+	if idx <= 0 || idx+1 >= len(name) {
+		return "", "", false
+	}
+	return name[:idx], name[idx+1:], true
 }
 
 func (c *ValidContext) Logs() []Logs { return c.root.logs }
@@ -943,20 +1047,8 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return err
 	}
 
-	externalSpecs := make(map[Ident]GoMiniType, len(c.root.vars))
-	for name, typ := range c.root.vars {
-		externalSpecs[name] = typ
-	}
-
-	externalConsts := make(map[string]string, len(prog.Constants))
-	if c.root.program != nil {
-		for name, val := range c.root.program.Constants {
-			externalConsts[name] = val
-		}
-	}
-
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidator(prog, externalSpecs, externalConsts, c.root.Tolerant)
+	v, _ := NewValidatorWithExternalTypes(prog, c.root.externalTypes, c.root.externalConsts, c.root.Tolerant)
 	v.root.Path = path
 	v.SetModuleLoader(c.root.ModuleLoader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
@@ -972,8 +1064,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 		return fmt.Errorf("failed to check package %s", path)
 	}
 
-	c.root.ImportedRoots[path] = v.root
-	c.root.DiscoverImportedRoot(path)
+	c.root.RegisterModuleExports(NewModuleExportsFromRoot(path, v.root))
 	return nil
 }
 
@@ -1034,9 +1125,9 @@ func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
 			if analyzer.ErrorCount() == 0 {
-				funcCtx.AddErrorAt(f.Body, "匿名函数缺少返回语句")
+				funcCtx.AddErrorAt(f.Body, "function literal is missing a return statement")
 			}
-			return errors.New("匿名函数返回路径校验失败")
+			return errors.New("function literal return path validation failed")
 		}
 	}
 

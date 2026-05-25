@@ -74,19 +74,21 @@ type Parsed struct {
 	Methods  []Method
 }
 
-func (t Type) String() string { return string(t) }
-func (t Type) IsEmpty() bool  { return strings.TrimSpace(string(t)) == "" }
-func (t Type) IsVoid() bool   { return t.IsEmpty() || t == Void }
-func (t Type) IsAny() bool    { return t == Any || t == Module || t == Closure }
-func (t Type) IsString() bool { return t == String }
-func (t Type) IsInt() bool    { return t == Int64 }
-func (t Type) IsBool() bool   { return t == Bool }
+func (t Type) String() string  { return string(t) }
+func (t Type) IsEmpty() bool   { return strings.TrimSpace(string(t)) == "" }
+func (t Type) IsVoid() bool    { return t.IsEmpty() || t == Void }
+func (t Type) IsAny() bool     { return t == Any || t == Closure }
+func (t Type) IsModule() bool  { return t == Module }
+func (t Type) IsClosure() bool { return t == Closure }
+func (t Type) IsString() bool  { return t == String }
+func (t Type) IsInt() bool     { return t == Int64 }
+func (t Type) IsBool() bool    { return t == Bool }
 func (t Type) IsNumeric() bool {
 	return t == Int64 || t == Float64
 }
 
 func (t Type) IsPrimitive() bool {
-	return t.IsAny() || t.IsString() || t.IsNumeric() || t.IsBool() || t == Bytes || t == Error
+	return t.IsAny() || t.IsModule() || t.IsClosure() || t.IsString() || t.IsNumeric() || t.IsBool() || t == Bytes || t == Error
 }
 
 func (t Type) IsPtr() bool {
@@ -604,7 +606,7 @@ func (t Type) IsCanonical() bool {
 }
 
 func (t Type) Equals(other Type) bool {
-	if t == other || t.IsAny() || other.IsAny() {
+	if t == other || t == Any || other == Any || t == Closure || other == Closure {
 		return true
 	}
 	if t.IsArray() && other.IsArray() {
@@ -648,7 +650,7 @@ func (t Type) IsAssignableTo(target Type) bool {
 }
 
 func (t Type) isAssignableTo(target Type) bool {
-	if target.IsAny() || t.IsAny() || t == "Constant" {
+	if target == Any || t == Any || target == Closure || t == Closure || t == "Constant" {
 		return true
 	}
 	if t.Equals(target) {
@@ -700,7 +702,7 @@ func (t Type) isAssignableTo(target Type) bool {
 }
 
 func (t Type) ZeroValue() interface{} {
-	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() || t.IsMap() || t.IsAny() || t == Bytes {
+	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() || t.IsMap() || t.IsAny() || t.IsModule() || t.IsClosure() || t == Bytes {
 		return nil
 	}
 	switch t {

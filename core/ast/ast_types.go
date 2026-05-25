@@ -47,10 +47,12 @@ func (o GoMiniType) ReadCallFunc() (*CallFunctionType, bool) {
 	return &res, true
 }
 
-func (o GoMiniType) IsAny() bool    { return typespec.Type(o).IsAny() }
-func (o GoMiniType) IsString() bool { return typespec.Type(o).IsString() }
-func (o GoMiniType) IsInt() bool    { return typespec.Type(o).IsInt() }
-func (o GoMiniType) IsBool() bool   { return typespec.Type(o).IsBool() }
+func (o GoMiniType) IsAny() bool     { return typespec.Type(o).IsAny() }
+func (o GoMiniType) IsModule() bool  { return typespec.Type(o).IsModule() }
+func (o GoMiniType) IsClosure() bool { return typespec.Type(o).IsClosure() }
+func (o GoMiniType) IsString() bool  { return typespec.Type(o).IsString() }
+func (o GoMiniType) IsInt() bool     { return typespec.Type(o).IsInt() }
+func (o GoMiniType) IsBool() bool    { return typespec.Type(o).IsBool() }
 func (o GoMiniType) IsNumeric() bool {
 	return typespec.Type(o).IsNumeric()
 }
@@ -285,7 +287,7 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 
 	// 1. 处理已有的规范化逻辑
-	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
 		return o
 	}
 	if o.IsArray() {
@@ -339,12 +341,13 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	s := string(o)
 	if strings.Contains(s, ".") {
 		resolved := o
-		parts := strings.SplitN(s, ".", 2)
 		if v != nil && v.root != nil {
-			if realPkg, ok := v.root.Imports[parts[0]]; ok {
-				resolved = GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
+			if prefix, member, ok := splitQualifiedMember(s); ok {
+				if realPkg, ok := v.root.Imports[prefix]; ok {
+					resolved = GoMiniType(fmt.Sprintf("%s.%s", realPkg, member))
+				}
 			}
-			if actual, ok := v.root.types[Ident(resolved)]; ok && !actual.IsStruct() {
+			if actual, ok := v.GetType(Ident(resolved)); ok && !actual.IsStruct() {
 				if actual == resolved {
 					return actual
 				}
@@ -379,7 +382,7 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	if !o.IsCanonical() {
 		return false
 	}
-	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
 		return true
 	}
 	if o.IsArray() {

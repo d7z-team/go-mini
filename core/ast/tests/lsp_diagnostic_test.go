@@ -191,13 +191,13 @@ func main() {
 			base := log.Node.GetBase()
 			if base.Loc != nil {
 				t.Logf("Error at %d:%d - %d:%d: %s", base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC, log.Message)
-				if base.Loc.L == 6 && log.Message == "函数第 2 个参数类型不匹配: 期望 Int64, 实际 String" {
+				if base.Loc.L == 6 && log.Message == "function argument 2 type mismatch: expected Int64, got String" {
 					if base.Meta != "literal" {
 						t.Fatalf("expected mismatch diagnostic on argument literal, got %s", base.Meta)
 					}
 					foundMismatch = true
 				}
-				if base.Loc.L == 7 && log.Message == "函数参数数量不足: 需至少 2, 实际 1" {
+				if base.Loc.L == 7 && log.Message == "not enough function arguments: need at least 2, got 1" {
 					if base.Meta != "call" {
 						t.Fatalf("expected arity diagnostic on call node, got %s", base.Meta)
 					}
@@ -269,12 +269,12 @@ func main() {
 		}
 		base := log.Node.GetBase()
 		switch log.Message {
-		case "数组索引只支持 Int64 类型 (String)":
+		case "array index must be Int64 (String)":
 			if base.Meta != "literal" || base.Loc.L != 4 {
 				t.Fatalf("expected index diagnostic on literal at line 4, got %s at %d", base.Meta, base.Loc.L)
 			}
 			foundIndex = true
-		case "slice high 索引必须是数值类型":
+		case "slice high index must be numeric":
 			if base.Meta != "literal" || base.Loc.L != 5 {
 				t.Fatalf("expected slice diagnostic on literal at line 5, got %s at %d", base.Meta, base.Loc.L)
 			}
@@ -306,7 +306,7 @@ func main() {
 	_ = prog.Check(ast.NewSemanticContext(validator))
 
 	for _, log := range validator.Logs() {
-		if log.Message != "类型不匹配: 无法将 String 赋值给 a (Int64)" {
+		if log.Message != "type mismatch: cannot assign String to a (Int64)" {
 			continue
 		}
 		if log.Node == nil || log.Node.GetBase() == nil || log.Node.GetBase().Loc == nil {
@@ -354,25 +354,25 @@ func main() {
 			base := log.Node.GetBase()
 			if base.Loc != nil {
 				t.Logf("Error at %d:%d - %d:%d: %s", base.Loc.L, base.Loc.C, base.Loc.EL, base.Loc.EC, log.Message)
-				if base.Loc.L == 6 && log.Message == "inc/dec 语句的操作数必须是数值类型" {
+				if base.Loc.L == 6 && log.Message == "inc/dec operand must be numeric" {
 					if base.Meta != "identifier" {
 						t.Fatalf("expected inc/dec diagnostic on operand identifier, got %s", base.Meta)
 					}
 					foundIncDecError = true
 				}
-				if base.Loc.L == 7 && log.Message == "And 运算符预期 Bool, 实际为 Int64" {
+				if base.Loc.L == 7 && log.Message == "And operator expects Bool, got Int64" {
 					if base.Meta != "literal" {
 						t.Fatalf("expected binary bool diagnostic on left literal, got %s", base.Meta)
 					}
 					foundBinaryBoolError = true
 				}
-				if base.Loc.L == 8 && log.Message == "Not 运算符预期 Bool, 实际为 Int64" {
+				if base.Loc.L == 8 && log.Message == "Not operator expects Bool, got Int64" {
 					if base.Meta != "literal" {
 						t.Fatalf("expected unary diagnostic on operand literal, got %s", base.Meta)
 					}
 					foundUnaryError = true
 				}
-				if base.Loc.L == 9 && log.Message == "Lsh 运算符预期 Int64, 实际为 String" {
+				if base.Loc.L == 9 && log.Message == "Lsh operator expects Int64, got String" {
 					if base.Meta != "literal" {
 						t.Fatalf("expected shift diagnostic on right literal, got %s", base.Meta)
 					}
@@ -469,10 +469,10 @@ func bad(a Bool) Int64 {
 
 	var foundSpecific bool
 	for _, log := range validator.Logs() {
-		if log.Message == "函数缺少返回语句或并非所有分支都有返回语句" {
+		if log.Message == "function is missing a return statement or not all paths return" {
 			foundSpecific = true
 		}
-		if strings.Contains(log.Message, "函数 bad 缺少返回语句") {
+		if strings.Contains(log.Message, "function bad is missing a return statement") {
 			t.Fatalf("unexpected generic function wrapper diagnostic: %s", log.Message)
 		}
 	}
@@ -524,7 +524,7 @@ func TestStructuredForwardingProgramBlockFunctionFallbacks(t *testing.T) {
 	}
 	found := false
 	for _, log := range logs {
-		if log.Message != "import 只能在包级作用域中使用" {
+		if log.Message != "import is only allowed at package scope" {
 			continue
 		}
 		if log.Node == nil || log.Node.GetBase() == nil {

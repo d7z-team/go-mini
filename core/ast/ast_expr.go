@@ -17,16 +17,16 @@ func invalidReason(node Node, fallback string) string {
 	if meta == "" {
 		meta = "表达式"
 	}
-	return fmt.Sprintf("前置%s存在错误，无法精确推导", meta)
+	return fmt.Sprintf("previous %s has errors; cannot infer precisely", meta)
 }
 
 func compositeInvalidCause(kind string, index int, child Node) string {
 	ordinal := index + 1
-	suffix := "值"
+	suffix := "value"
 	if kind == "key" {
-		suffix = "键"
+		suffix = "key"
 	}
-	base := fmt.Sprintf("复合字面量第 %d 个元素的%s存在错误，无法精确推导", ordinal, suffix)
+	base := fmt.Sprintf("composite literal element %d %s has errors; cannot infer precisely", ordinal, suffix)
 	childCause := invalidReason(child, "")
 	if childCause == "" || childCause == base {
 		return base
@@ -72,7 +72,7 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
-		err := fmt.Errorf("变量 %s 不存在", c.Name)
+		err := fmt.Errorf("variable %s does not exist", c.Name)
 		ctx.WithNode(c).AddErrorf("%s", err.Error())
 		return err
 	}
@@ -106,7 +106,7 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 	}
 	xType := s.X.GetBase().Type
 	if xType.IsHostRef() {
-		err := fmt.Errorf("无法解引用 opaque host reference: %s", xType)
+		err := fmt.Errorf("cannot dereference opaque host reference: %s", xType)
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	} else if xType.IsPtr() {
@@ -117,14 +117,14 @@ func (s *StarExpr) Check(ctx *SemanticContext) error {
 		}
 	} else if xType.IsAny() {
 		if s.X.GetBase().IsInvalid() {
-			err := errors.New(invalidReason(s.X, "前置表达式存在错误，无法精确推导解引用结果"))
+			err := errors.New(invalidReason(s.X, "previous expression has errors; cannot infer dereference result precisely"))
 			ctx.AddErrorf("%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
 		}
 		s.Type = "Any"
 	} else {
-		err := fmt.Errorf("无法解引用非指针类型: %s", xType)
+		err := fmt.Errorf("cannot dereference non-pointer type: %s", xType)
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
@@ -459,7 +459,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
 			if c.Func.GetBase().IsInvalid() {
-				err := errors.New(invalidReason(c.Func, "调用目标存在错误，无法精确推导返回类型"))
+				err := errors.New(invalidReason(c.Func, "call target has errors; cannot infer return type precisely"))
 				ctx.AddErrorf("%s", err.Error())
 				c.InvalidCause = err.Error()
 				return err
@@ -505,7 +505,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	}
 
 	if len(c.Args) < minParams {
-		err := fmt.Errorf("函数参数数量不足: 需至少 %d, 实际 %d", minParams, len(c.Args))
+		err := fmt.Errorf("not enough function arguments: need at least %d, got %d", minParams, len(c.Args))
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}
@@ -518,7 +518,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
 		if !ctx.IsAssignableTo(argType, sigParams[i]) {
-			err := fmt.Errorf("函数第 %d 个参数类型不匹配: 期望 %s, 实际 %s", i+1, sigParams[i], argType)
+			err := fmt.Errorf("function argument %d type mismatch: expected %s, got %s", i+1, sigParams[i], argType)
 			ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 			return err
 		}
@@ -539,7 +539,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		for i := fixedNum; i < len(c.Args); i++ {
 			argType := c.Args[i].GetBase().Type
 			if !ctx.IsAssignableTo(argType, targetElem) {
-				err := fmt.Errorf("函数变长参数部分第 %d 个元素类型不匹配: 期望 %s, 实际 %s", i-fixedNum+1, targetElem, argType)
+				err := fmt.Errorf("variadic argument %d type mismatch: expected %s, got %s", i-fixedNum+1, targetElem, argType)
 				ctx.AddErrorAt(c.Args[i], "%s", err.Error())
 				return err
 			}
@@ -654,7 +654,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 	objType := m.Object.GetBase().Type
 	if objType == "Any" {
 		if m.Object.GetBase().IsInvalid() {
-			err := errors.New(invalidReason(m.Object, "成员访问对象存在错误，无法精确推导成员类型"))
+			err := errors.New(invalidReason(m.Object, "member access object has errors; cannot infer member type precisely"))
 			ctx.WithNode(m).AddErrorf("%s", err.Error())
 			m.InvalidCause = err.Error()
 			return err
@@ -672,51 +672,27 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 
 	if objType == "Package" || objType == TypeModule {
 		if id, ok := m.Object.(*IdentifierExpr); ok {
-			path, knownPkg, explicitlyImported := ctx.root.ResolvePackage(id.Name)
+			module, path, knownPkg, explicitlyImported := ctx.root.ResolveModule(id.Name)
 			reportMissingImport := func() {
 				if !explicitlyImported {
-					ctx.WithNode(m).AddErrorf("包 %s 已解析但未导入", id.Name)
+					ctx.WithNode(m).AddErrorf("package %s resolved but not imported", id.Name)
 				}
 			}
-			if !knownPkg {
-				path = string(id.Name)
-				// 尝试查找后缀匹配的 ImportedRoot
-				for fullPath := range ctx.root.ImportedRoots {
-					if fullPath == path || strings.HasSuffix(fullPath, "/"+path) {
-						path = fullPath
-						break
-					}
-				}
-			}
-
-			// 尝试从 ImportedRoots 中直接获取成员 (Go-source 模块)
-			if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
+			if module != nil {
 				reportMissingImport()
-				prop := string(m.Property)
-				// 1. 变量/函数
-				if t, ok := srcRoot.vars[Ident(prop)]; ok {
+				if t, ok := module.MemberType(m.Property); ok {
 					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = Ident(path + "." + prop)
+					m.ResolvedPackageName = Ident(path + "." + string(m.Property))
 					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
 				}
-				// 2. 结构体
-				if _, ok := srcRoot.structs[Ident(prop)]; ok {
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = Ident(path + "." + prop)
-					m.ResolvedPackageMember = true
-					m.Type = GoMiniType(prop) // 或者需要包含包路径?
-					return nil
-				}
-				// 3. 接口
-				if _, ok := srcRoot.interfaces[Ident(prop)]; ok {
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = Ident(path + "." + prop)
-					m.ResolvedPackageMember = true
-					m.Type = GoMiniType(prop)
-					return nil
-				}
+				err := fmt.Errorf("package %s has no member %s", id.Name, m.Property)
+				ctx.WithNode(m).AddErrorf("%s", err.Error())
+				return err
+			}
+			if !knownPkg {
+				path = string(id.Name)
 			}
 
 			// 尝试多种路径格式
@@ -769,7 +745,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				}
 			}
 
-			err := fmt.Errorf("包 %s 不存在成员 %s", id.Name, m.Property)
+			err := fmt.Errorf("package %s has no member %s", id.Name, m.Property)
 			ctx.WithNode(m).AddErrorf("%s", err.Error())
 			return err
 		}
@@ -806,7 +782,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		_, vType, ok := objType.GetMapKeyValueTypes()
 		if ok {
 			if m.Object.GetBase().IsInvalid() && vType.IsAny() {
-				err := errors.New(invalidReason(m.Object, "成员访问对象存在错误，无法精确推导成员类型"))
+				err := errors.New(invalidReason(m.Object, "member access object has errors; cannot infer member type precisely"))
 				ctx.WithNode(m).AddErrorf("%s", err.Error())
 				m.InvalidCause = err.Error()
 				return err
@@ -1199,13 +1175,13 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 	objType := i.Object.GetBase().Type
 
 	if i.Object.GetBase().IsInvalid() && objType.IsAny() {
-		err := errors.New(invalidReason(i.Object, "索引对象存在前置错误，无法精确推导索引结果"))
+		err := errors.New(invalidReason(i.Object, "index object has previous errors; cannot infer index result precisely"))
 		ctx.AddErrorf("%s", err.Error())
 		i.InvalidCause = err.Error()
 		return err
 	}
 	if i.Index.GetBase().IsInvalid() && i.Index.GetBase().Type.IsAny() {
-		err := errors.New(invalidReason(i.Index, "索引表达式存在前置错误，无法精确推导索引结果"))
+		err := errors.New(invalidReason(i.Index, "index expression has previous errors; cannot infer index result precisely"))
 		ctx.AddErrorf("%s", err.Error())
 		i.InvalidCause = err.Error()
 		return err
@@ -1233,14 +1209,14 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			return err
 		}
 		if i.Index.GetBase().Type != "Int64" {
-			err := fmt.Errorf("数组索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
+			err := fmt.Errorf("array index must be Int64 (%s)", i.Index.GetBase().Type)
 			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 
 		if elemType, ok := objType.ReadArrayItemType(); ok {
 			if i.Object.GetBase().IsInvalid() && elemType.IsAny() {
-				err := errors.New(invalidReason(i.Object, "索引对象存在错误，无法精确推导索引结果"))
+				err := errors.New(invalidReason(i.Object, "index object has errors; cannot infer index result precisely"))
 				ctx.AddErrorf("%s", err.Error())
 				i.InvalidCause = err.Error()
 				return err
@@ -1289,12 +1265,12 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 			return err
 		}
 		if i.Index.GetBase().Type.IsAny() || !i.Index.GetBase().Type.IsAssignableTo(keyType) {
-			err := fmt.Errorf("Map 键类型不匹配: 期望 %s, 实际 %s", keyType, i.Index.GetBase().Type)
+			err := fmt.Errorf("map key type mismatch: expected %s, got %s", keyType, i.Index.GetBase().Type)
 			ctx.AddErrorAt(i.Index, "%s", err.Error())
 			return err
 		}
 		if i.Object.GetBase().IsInvalid() && valType.IsAny() {
-			err := errors.New(invalidReason(i.Object, "索引对象存在错误，无法精确推导索引结果"))
+			err := errors.New(invalidReason(i.Object, "index object has errors; cannot infer index result precisely"))
 			ctx.AddErrorf("%s", err.Error())
 			i.InvalidCause = err.Error()
 			return err
@@ -1358,14 +1334,14 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 	if xType.IsAny() && s.X.GetBase().IsInvalid() {
-		err := errors.New("切片对象存在前置错误，无法精确推导切片类型")
+		err := errors.New("slice object has previous errors; cannot infer slice type precisely")
 		ctx.AddErrorAt(s.X, "%s", err.Error())
 		s.InvalidCause = err.Error()
 		return err
 	}
 	if s.X.GetBase().IsInvalid() && xType.IsArray() {
 		if elemType, ok := xType.ReadArrayItemType(); ok && elemType.IsAny() {
-			err := errors.New(invalidReason(s.X, "切片对象存在错误，无法精确推导切片类型"))
+			err := errors.New(invalidReason(s.X, "slice object has errors; cannot infer slice type precisely"))
 			ctx.AddErrorAt(s.X, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
@@ -1377,7 +1353,7 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 			return err
 		}
 		if s.Low.GetBase().IsInvalid() && s.Low.GetBase().Type.IsAny() {
-			err := errors.New(invalidReason(s.Low, "slice low 索引存在前置错误，无法精确推导切片范围"))
+			err := errors.New(invalidReason(s.Low, "slice low index has previous errors; cannot infer slice range precisely"))
 			ctx.AddErrorAt(s.Low, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
@@ -1393,13 +1369,13 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 			return err
 		}
 		if s.High.GetBase().IsInvalid() && s.High.GetBase().Type.IsAny() {
-			err := errors.New(invalidReason(s.High, "slice high 索引存在前置错误，无法精确推导切片范围"))
+			err := errors.New(invalidReason(s.High, "slice high index has previous errors; cannot infer slice range precisely"))
 			ctx.AddErrorAt(s.High, "%s", err.Error())
 			s.InvalidCause = err.Error()
 			return err
 		}
 		if !s.High.GetBase().Type.IsNumeric() {
-			err := errors.New("slice high 索引必须是数值类型")
+			err := errors.New("slice high index must be numeric")
 			ctx.AddErrorAt(s.High, "%s", err.Error())
 			return err
 		}

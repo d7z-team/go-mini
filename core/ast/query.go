@@ -400,7 +400,7 @@ func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 	}
 
 	objType := inferLSPObjectType(ctx, inferLSPType(ctx, t.Object), 0)
-	if objType == "" || objType.IsVoid() || objType.IsAny() {
+	if objType == "" || objType.IsVoid() || (objType.IsAny() && objType != "Package" && objType != TypeModule) {
 		return nil
 	}
 
@@ -441,22 +441,8 @@ func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 
 	if objType == "Package" || objType == TypeModule {
 		if id, ok := t.Object.(*IdentifierExpr); ok {
-			path, known, _ := ctx.root.ResolvePackage(id.Name)
-			if !known {
-				path = string(id.Name)
-			}
-			if subRoot, ok := ctx.root.ImportedRoots[path]; ok {
-				if def := findInProgram(subRoot.program, objType, t.Property); def != nil {
-					return def
-				}
-			}
-			dotted := strings.ReplaceAll(path, "/", ".")
-			for importedPath, subRoot := range ctx.root.ImportedRoots {
-				if importedPath == path || strings.ReplaceAll(importedPath, "/", ".") == dotted || strings.HasSuffix(importedPath, "/"+path) {
-					if def := findInProgram(subRoot.program, objType, t.Property); def != nil {
-						return def
-					}
-				}
+			if module, _, _, _ := ctx.root.ResolveModule(id.Name); module != nil {
+				return module.Definition(t.Property)
 			}
 		}
 	}
@@ -473,10 +459,19 @@ func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 			}
 		}
 	}
-	for _, subRoot := range ctx.root.ImportedRoots {
+	for _, module := range ctx.root.Modules {
 		for _, candidate := range candidates {
-			if def := findInProgram(subRoot.program, candidate, t.Property); def != nil {
+			if def := module.MethodDefinition(candidate, t.Property); def != nil {
 				return def
+			}
+			if st := module.Structs[Ident(candidate.BaseName())]; st != nil {
+				if fieldDef := virtualFieldDefinition(st, t.Property); fieldDef != nil {
+					return fieldDef
+				}
+				return st
+			}
+			if it := module.Interfaces[Ident(candidate.BaseName())]; it != nil {
+				return it
 			}
 		}
 	}
@@ -1291,47 +1286,56 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 		// 检查是否是包名
 		if id, ok := obj.(*IdentifierExpr); ok {
 			pkgName := string(id.Name)
-			realPath, knownPkg, _ := ctx.root.ResolvePackage(id.Name)
-			if !knownPkg {
+			module, realPath, knownPkg, _ := ctx.root.ResolveModule(id.Name)
+			if !knownPkg && module == nil {
 				realPath = pkgName
-				// 尝试在 ImportedRoots 中查找后缀匹配的真实路径
-				for fullPath := range ctx.root.ImportedRoots {
-					if fullPath == pkgName || strings.HasSuffix(fullPath, "/"+pkgName) {
-						realPath = fullPath
-						break
-					}
-				}
 			}
 
 			// 尝试多种路径格式 (例如 net/http 或 net.http)
 			targets := []string{pkgName + ".", realPath + ".", strings.ReplaceAll(realPath, "/", ".") + "."}
 			seenSymbols := make(map[string]bool)
 
-			// 1. 查找 Go-source 模块成员 (从导入的子 Root 中提取)
-			if srcRoot, ok := ctx.root.ImportedRoots[realPath]; ok {
-				for name, t := range srcRoot.vars {
-					kind := "var"
-					if strings.HasPrefix(string(t), "function") {
-						kind = "func"
+			// 1. 查找 Go-source 模块显式导出成员
+			if module != nil {
+				for name, fn := range module.Functions {
+					t := TypeAny
+					if fn != nil {
+						t = fn.FunctionType.MiniType()
 					}
-					items = append(items, CompletionItem{Label: string(name), Kind: kind, Type: t})
+					items = append(items, CompletionItem{Label: string(name), Kind: "func", Type: t})
 					seenSymbols[string(name)] = true
 				}
-				for name := range srcRoot.program.Constants {
+				for name, t := range module.Vars {
+					if seenSymbols[string(name)] {
+						continue
+					}
+					if _, isConst := module.Constants[string(name)]; isConst {
+						continue
+					}
+					items = append(items, CompletionItem{Label: string(name), Kind: "var", Type: t})
+					seenSymbols[string(name)] = true
+				}
+				for name := range module.Constants {
 					if !seenSymbols[name] {
 						items = append(items, CompletionItem{Label: name, Kind: "constant", Type: "Constant"})
 						seenSymbols[name] = true
 					}
 				}
-				for name := range srcRoot.structs {
+				for name := range module.Structs {
 					if !seenSymbols[string(name)] {
 						items = append(items, CompletionItem{Label: string(name), Kind: "struct"})
 						seenSymbols[string(name)] = true
 					}
 				}
-				for name := range srcRoot.interfaces {
+				for name := range module.Interfaces {
 					if !seenSymbols[string(name)] {
 						items = append(items, CompletionItem{Label: string(name), Kind: "interface"})
+						seenSymbols[string(name)] = true
+					}
+				}
+				for name, t := range module.Types {
+					if !seenSymbols[string(name)] {
+						items = append(items, CompletionItem{Label: string(name), Kind: "type", Type: t})
 						seenSymbols[string(name)] = true
 					}
 				}
@@ -1380,31 +1384,25 @@ func resolveLSPType(ctx *ValidContext, t GoMiniType, depth int) GoMiniType {
 		return resolveLSPType(ctx, resolved, depth+1)
 	}
 	if ctx != nil && ctx.root != nil {
-		lookupImported := func(root *ValidRoot, name Ident) (GoMiniType, bool) {
-			if root == nil {
-				return "", false
-			}
-			if actual, ok := root.types[name]; ok {
-				subCtx := &ValidContext{root: root}
-				return actual.Resolve(subCtx), true
-			}
-			return "", false
-		}
 		s := string(t)
-		if strings.Contains(s, ".") {
-			parts := strings.SplitN(s, ".", 2)
-			for path, root := range ctx.root.ImportedRoots {
-				if path == parts[0] || strings.ReplaceAll(path, "/", ".") == parts[0] || strings.HasSuffix(path, "/"+parts[0]) {
-					if actual, ok := lookupImported(root, Ident(parts[1])); ok {
-						return resolveLSPType(ctx, actual, depth+1)
-					}
+		if prefix, member, ok := splitQualifiedMember(s); ok {
+			if module, _, ok := ctx.root.ModuleByPathOrAlias(prefix); ok {
+				if actual, ok := module.Types[Ident(member)]; ok {
+					return resolveLSPType(ctx, actual, depth+1)
 				}
 			}
 		}
-		for _, root := range ctx.root.ImportedRoots {
-			if actual, ok := lookupImported(root, Ident(t)); ok {
-				return resolveLSPType(ctx, actual, depth+1)
+		var resolved GoMiniType
+		for _, module := range ctx.root.Modules {
+			if actual, ok := module.Types[Ident(t)]; ok {
+				if resolved != "" {
+					return t
+				}
+				resolved = actual
 			}
+		}
+		if resolved != "" {
+			return resolveLSPType(ctx, resolved, depth+1)
 		}
 	}
 	if t.IsTuple() {
@@ -1535,19 +1533,19 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 		// 3. 处理包成员
 		if objType == "Package" || objType == TypeModule {
 			if id, ok := e.Object.(*IdentifierExpr); ok {
-				path, ok, _ := ctx.root.ResolvePackage(id.Name)
-				if !ok {
-					path = string(id.Name)
-				}
-				if srcRoot, ok := ctx.root.ImportedRoots[path]; ok {
-					if t, ok := srcRoot.vars[e.Property]; ok {
+				if module, path, known, _ := ctx.root.ResolveModule(id.Name); module != nil {
+					if t, ok := module.MemberType(e.Property); ok {
 						return resolveLSPType(ctx, t, depth+1)
 					}
-				}
-				// FFI 包成员推导
-				fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
-				if t, ok := ctx.GetVariable(fullPath); ok {
-					return resolveLSPType(ctx, t, depth+1)
+				} else {
+					if !known {
+						path = string(id.Name)
+					}
+					// FFI 包成员推导
+					fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
+					if t, ok := ctx.GetVariable(fullPath); ok {
+						return resolveLSPType(ctx, t, depth+1)
+					}
 				}
 			}
 		}

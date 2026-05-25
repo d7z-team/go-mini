@@ -207,7 +207,7 @@ func main() {
 		t.Fatalf("expected one debounced diagnostics publish, got %+v", published)
 	}
 	current := published[0][uri]
-	if len(current) == 0 || !strings.Contains(current[0].Message, "new 第一个参数必须是类型") {
+	if len(current) == 0 || !strings.Contains(current[0].Message, "new first argument must be a type") {
 		t.Fatalf("expected latest diagnostics only, got %+v", published[0])
 	}
 }
@@ -499,7 +499,7 @@ func main() {
 	if len(current) == 0 {
 		t.Fatalf("expected converter diagnostic, got %+v", diags)
 	}
-	if !strings.Contains(current[0].Message, "new 第一个参数必须是类型") {
+	if !strings.Contains(current[0].Message, "new first argument must be a type") {
 		t.Fatalf("unexpected diagnostic message: %+v", current[0])
 	}
 	if current[0].Range.Start.Line != 2 {

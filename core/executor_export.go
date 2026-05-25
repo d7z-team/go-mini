@@ -112,14 +112,13 @@ func (e *MiniExecutor) ExportMetadata() string {
 		}
 	}
 
-	// 3. 处理已加载的 Modules (脚本模块)
-	for modName, prog := range e.moduleSources {
+	exportProgramModule := func(modName string, prog *ast.ProgramStmt) {
+		if prog == nil {
+			return
+		}
 		mod := getModule(modName)
-		// 导出函数
 		for fnName, fnStmt := range prog.Functions {
 			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' {
-				// 我们需要一种方式导出函数文档，目前 ExportedModule.Functions 只是 map[string]string (name -> sig)
-
 				sig := string(fnStmt.FunctionType.MiniType())
 				if fnStmt.Doc != "" {
 					sig = sig + " // " + strings.ReplaceAll(fnStmt.Doc, "\n", " ")
@@ -127,7 +126,6 @@ func (e *MiniExecutor) ExportMetadata() string {
 				mod.Functions[string(fnName)] = sig
 			}
 		}
-		// 导出结构体
 		for stName, stStmt := range prog.Structs {
 			if len(stName) > 0 && stName[0] >= 'A' && stName[0] <= 'Z' {
 				st := getStruct(modName, string(stName))
@@ -142,15 +140,29 @@ func (e *MiniExecutor) ExportMetadata() string {
 				mod.Interfaces[string(ifaceName)] = string(ifaceStmt.Type)
 			}
 		}
-		// 导出常量
 		for cName, cVal := range prog.Constants {
 			if len(cName) > 0 && cName[0] >= 'A' && cName[0] <= 'Z' {
 				mod.Constants[cName] = cVal
 			}
 		}
 	}
+
+	// 3. 处理已加载的 Modules (脚本模块)
+	for modName, prog := range e.moduleSources {
+		exportProgramModule(modName, prog)
+	}
+	for modName, library := range e.sourceLibraries {
+		prog, err := parseSurfaceLibraryModule(library)
+		if err != nil {
+			continue
+		}
+		exportProgramModule(modName, prog)
+	}
 	for modName, prepared := range e.modules {
 		if _, hasSourceModule := e.moduleSources[modName]; hasSourceModule || prepared == nil {
+			continue
+		}
+		if _, hasSourceLibrary := e.sourceLibraries[modName]; hasSourceLibrary {
 			continue
 		}
 		mod := getModule(modName)

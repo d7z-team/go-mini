@@ -141,7 +141,7 @@ func (c *Converter) convertStmt(s ast.Stmt) miniast.Stmt {
 		if st.Key != nil {
 			key, ok := st.Key.(*ast.Ident)
 			if !ok {
-				return c.badStmt(st.Key, "range 的 key 目标只支持标识符")
+				return c.badStmt(st.Key, "range key target must be an identifier")
 			}
 			res.Key = miniast.Ident(key.Name)
 		}

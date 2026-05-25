@@ -24,7 +24,7 @@ func TestImportStrictnessRegression(t *testing.T) {
 			t.Fatal("expected error for missing import 'mock', but got none")
 		}
 
-		expected := "变量 mock 不存在"
+		expected := "variable mock does not exist"
 		if !strings.Contains(err.Error(), expected) {
 			t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expected)
 		}
@@ -43,7 +43,7 @@ func TestImportStrictnessRegression(t *testing.T) {
 			t.Fatal("expected error for missing member in package 'mock', but got none")
 		}
 
-		expected := "包 mock 不存在成员 NonExistentFunc"
+		expected := "package mock has no member NonExistentFunc"
 		if !strings.Contains(err.Error(), expected) {
 			t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expected)
 		}

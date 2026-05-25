@@ -225,7 +225,7 @@ func TestMultiAssignment(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected compile error for short declaration RHS reading newly declared y")
 		}
-		if !strings.Contains(err.Error(), "变量 y 不存在") {
+		if !strings.Contains(err.Error(), "variable y does not exist") {
 			t.Fatalf("unexpected compile error: %v", err)
 		}
 	})

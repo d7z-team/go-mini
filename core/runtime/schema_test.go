@@ -120,6 +120,16 @@ func TestParseRuntimeTypeAndCanonicalID(t *testing.T) {
 	if got := CanonicalTypeID("HostRef<demo.Type>"); got != "demo.Type" {
 		t.Fatalf("unexpected host ref canonical id helper result: %s", got)
 	}
+	module, err := ParseRuntimeType("TypeModule")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType TypeModule failed: %v", err)
+	}
+	if module.IsAny() || module.Kind == RuntimeTypeAny {
+		t.Fatalf("TypeModule must not behave as Any: %+v", module)
+	}
+	if module.Kind != RuntimeTypePrimitive {
+		t.Fatalf("unexpected TypeModule kind: %+v", module)
+	}
 }
 
 func TestParseRuntimeTypeRejectsNonCanonicalTypes(t *testing.T) {

@@ -11,6 +11,7 @@
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，`go-mini-bytecode` / `PreparedProgram` 是唯一执行装载工件。
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
+- 纯 VM 源码库只能作为 `surface.Bundle` 的 compiler/engine 侧输入；executor 状态只保留源码描述并按需重新解析 fresh AST，导出成员必须来自显式 `ModuleExports`，不得复用已语义检查改写过的 AST 或继承父程序/FFI 注入 scope；bytecode 必须记录 module requirement，runtime 只校验 module hash 并装载 `PreparedProgram`，不得解析源码或引入 AST。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
@@ -56,6 +57,7 @@
 - 涉及 CLI、序列化或持久化时，默认接入 bytecode-first 主链。
 - 涉及 FFI 时，先确认改动属于 `ffigen`、runtime schema 注册还是标准库模块测试。
 - 所有 `ffilib` FFI 模块测试（含 `core/ffilib` 与顶层 `ffilib`）统一使用表达式/代码块测试框架，通过 `test.Out*` 与 `test.Done()` 校验执行完成和输出，并覆盖对应 schema 方法。
+- 测试失败说明、断言说明和期望错误描述必须使用简洁专业的英文；不要在测试中硬编码中文诊断文案。只有明确测试 Unicode/UTF-16/字符集行为时，才允许中文作为被测数据。
 - 每完成一块能力立刻补测试。
 - 架构约束的外部命令检查（如 `go list -deps`、`rg`、`make`）属于提交前人工/代理检查，不要塞进普通包单元测试；单元测试只保留不依赖外部命令的轻量源码或行为检查。
 

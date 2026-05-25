@@ -1164,7 +1164,7 @@ func (r *ReturnStmt) Check(ctx *SemanticContext) error {
 		}
 
 		if !tType.IsAssignableTo(expectedReturn) {
-			err := fmt.Errorf("返回类型错误 (return:%s != function:%s)", expectedReturn, tType)
+			err := fmt.Errorf("return type mismatch: return %s != function %s", expectedReturn, tType)
 			if len(r.Results) == 1 {
 				ctx.AddErrorAt(r.Results[0], "%s", err.Error())
 			} else {
@@ -1516,7 +1516,7 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
 			} else if !keyType.IsAssignableTo(existingType) {
-				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", keyType, r.Key, existingType)
+				err := fmt.Errorf("type mismatch: cannot assign %s to %s (%s)", keyType, r.Key, existingType)
 				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
 			}
@@ -1533,7 +1533,7 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
 			} else if !valueType.IsAssignableTo(existingType) {
-				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", valueType, r.Value, existingType)
+				err := fmt.Errorf("type mismatch: cannot assign %s to %s (%s)", valueType, r.Value, existingType)
 				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
 			}
@@ -1741,7 +1741,7 @@ func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) erro
 			hasError = true
 		} else {
 			if !expr.GetBase().Type.IsAssignableTo(tagType) {
-				err := fmt.Errorf("case 类型不匹配: 期望 %s, 实际 %s", tagType, expr.GetBase().Type)
+				err := fmt.Errorf("case type mismatch: expected %s, got %s", tagType, expr.GetBase().Type)
 				ctx.AddErrorAt(expr, "%s", err.Error())
 				hasError = true
 			}
@@ -1913,7 +1913,7 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 		if !analyzer.Analyze(f.Body) {
 			analyzer.AddReturnPathErrorsToContext(funcCtx.ValidContext)
 			if analyzer.ErrorCount() == 0 {
-				err := fmt.Errorf("函数 %s 缺少返回语句", f.Name)
+				err := fmt.Errorf("function %s is missing a return statement", f.Name)
 				funcCtx.AddErrorAt(f.Body, "%s", err.Error())
 			}
 			hasError = true
@@ -2410,7 +2410,7 @@ func (g *GenDeclStmt) resolveValueTypes(ctx *SemanticContext, infos []resolvedVa
 			continue
 		}
 		if !valueType.IsAssignableTo(info.kind) {
-			ctx.AddErrorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", valueType, info.name, info.kind)
+			ctx.AddErrorf("type mismatch: cannot assign %s to %s (%s)", valueType, info.name, info.kind)
 			ok = false
 			continue
 		}
@@ -2500,7 +2500,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 					return err
 				}
 				if !miniType.IsAssignableTo(vType) {
-					err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+					err := fmt.Errorf("type mismatch: cannot assign %s to %s (%s)", miniType, ident.Name, vType)
 					ctx.AddErrorAt(a.Value, "%s", err.Error())
 					return err
 				}
@@ -2575,7 +2575,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 				return err
 			}
 			if !miniType.IsAssignableTo(vType) {
-				err := fmt.Errorf("类型不匹配: 无法将 %s 赋值给 %s (%s)", miniType, ident.Name, vType)
+				err := fmt.Errorf("type mismatch: cannot assign %s to %s (%s)", miniType, ident.Name, vType)
 				ctx.AddErrorAt(a.Value, "%s", err.Error())
 				return err
 			}
@@ -2616,7 +2616,7 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 		return err
 	}
 	if !valType.IsAssignableTo(lhsType) {
-		err := fmt.Errorf("赋值类型不匹配: 左值类型为 %s，右值类型为 %s", lhsType, valType)
+		err := fmt.Errorf("assignment type mismatch: lhs %s, rhs %s", lhsType, valType)
 		ctx.AddErrorf("%s", err.Error())
 		return err
 	}

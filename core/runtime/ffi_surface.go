@@ -16,10 +16,11 @@ const FFISurfaceHashVersion = "ffi-surface-v1"
 type FFIMemberKind string
 
 const (
-	FFIMemberFunc  FFIMemberKind = "func"
-	FFIMemberConst FFIMemberKind = "const"
-	FFIMemberValue FFIMemberKind = "value"
-	FFIMemberType  FFIMemberKind = "type"
+	FFIMemberFunc   FFIMemberKind = "func"
+	FFIMemberConst  FFIMemberKind = "const"
+	FFIMemberValue  FFIMemberKind = "value"
+	FFIMemberType   FFIMemberKind = "type"
+	FFIMemberModule FFIMemberKind = "module"
 )
 
 type ExternalRequirement struct {
@@ -853,6 +854,14 @@ func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) er
 	}
 	name := ExternalFullName(pkg, member)
 	switch req.Kind {
+	case FFIMemberModule:
+		got := e.moduleHashes[pkg]
+		if got == "" {
+			return fmt.Errorf("missing external VM module %s", pkg)
+		}
+		if req.Hash != "" && got != req.Hash {
+			return fmt.Errorf("external VM module %s schema mismatch", pkg)
+		}
 	case FFIMemberFunc:
 		route, ok := e.routes[name]
 		if !ok {

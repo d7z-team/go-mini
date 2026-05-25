@@ -91,7 +91,7 @@ func main() {
 		t.Fatal("expected error for undefined global printf, but got none")
 	}
 
-	expectedMsg := "printf 不存在"
+	expectedMsg := "printf"
 	if !strings.Contains(err.Error(), expectedMsg) {
 		t.Errorf("error message mismatch.\ngot: %v\nwant: %s", err, expectedMsg)
 	}

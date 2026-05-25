@@ -18,7 +18,7 @@ func TestInvalidMakeCompileError(t *testing.T) {
 		}
 		`
 		_, err := executor.NewRuntimeByGoCode(code)
-		if err == nil || !strings.Contains(err.Error(), "第一个参数必须是类型") {
+		if err == nil || !strings.Contains(err.Error(), "first argument must be a type") {
 			t.Fatalf("expected compile error for string literal in make, got %v", err)
 		}
 	})
@@ -35,7 +35,7 @@ func TestNewBuiltinCompileError(t *testing.T) {
 		}
 		`
 		_, err := executor.NewRuntimeByGoCode(code)
-		if err == nil || !strings.Contains(err.Error(), "第一个参数必须是类型") {
+		if err == nil || !strings.Contains(err.Error(), "first argument must be a type") {
 			t.Fatalf("expected compile error for string literal in new, got %v", err)
 		}
 	})

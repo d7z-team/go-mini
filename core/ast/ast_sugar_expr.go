@@ -178,34 +178,34 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 	switch b.Operator {
 	case "And", "Or":
 		if isKnown(leftType) && leftType != TypeBool {
-			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, leftType)
+			err := fmt.Errorf("%s operator expects Bool, got %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
 		if isKnown(rightType) && rightType != TypeBool {
-			err := fmt.Errorf("%s 运算符预期 Bool, 实际为 %s", b.Operator, rightType)
+			err := fmt.Errorf("%s operator expects Bool, got %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
 	case "Minus", "Mult", "Div", "Mod":
 		if isKnown(leftType) && !leftType.IsNumeric() {
-			err := fmt.Errorf("%s 运算符预期数值类型, 实际为 %s", b.Operator, leftType)
+			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
 		if isKnown(rightType) && !rightType.IsNumeric() {
-			err := fmt.Errorf("%s 运算符预期数值类型, 实际为 %s", b.Operator, rightType)
+			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
 	case "BitAnd", "BitOr", "BitXor", "Lsh", "Rsh":
 		if isKnown(leftType) && !isBitwiseInt(leftType) {
-			err := fmt.Errorf("%s 运算符预期 Int64, 实际为 %s", b.Operator, leftType)
+			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
 		if isKnown(rightType) && !isBitwiseInt(rightType) {
-			err := fmt.Errorf("%s 运算符预期 Int64, 实际为 %s", b.Operator, rightType)
+			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
@@ -285,16 +285,16 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 	switch u.Operator {
 	case "Not":
 		if u.Type != TypeBool && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "Not 运算符预期 Bool, 实际为 %s", u.Type)
+			ctx.AddErrorAt(u.Operand, "Not operator expects Bool, got %s", u.Type)
 		}
 		u.Type = TypeBool
 	case "Sub", "Plus":
 		if u.Type != TypeInt64 && u.Type != TypeFloat64 && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "%s 运算符预期数值类型, 实际为 %s", u.Operator, u.Type)
+			ctx.AddErrorAt(u.Operand, "%s operator expects a numeric type, got %s", u.Operator, u.Type)
 		}
 	case "BitXor":
 		if u.Type != TypeInt64 && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "BitXor 运算符预期 Int64, 实际为 %s", u.Type)
+			ctx.AddErrorAt(u.Operand, "BitXor operator expects Int64, got %s", u.Type)
 		}
 	}
 
@@ -355,7 +355,7 @@ func (i *ImportExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(i)
 	i.Type = TypeModule
 	if ctx.parent != nil {
-		return errors.New("import 只能在包级作用域中使用")
+		return errors.New("import is only allowed at package scope")
 	}
 	return nil
 }
