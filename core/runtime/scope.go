@@ -793,6 +793,11 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 		return MustParseRuntimeType("TypeBytes")
 	case TypeBool:
 		return MustParseRuntimeType("Bool")
+	case TypeChannel:
+		if !declared.IsEmpty() {
+			return declared
+		}
+		return MustParseRuntimeType("Any")
 	case TypeError:
 		return MustParseRuntimeType("Error")
 	case TypeStruct:
@@ -843,6 +848,8 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 		return NewVarWithRuntimeType(target, TypeHandle), nil
 	case target.IsHostRef():
 		return NewVarWithRuntimeType(target, TypeHostRef), nil
+	case target.IsChan():
+		return NewVarWithRuntimeType(target, TypeChannel), nil
 	case target.IsArray():
 		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: nil}}, nil
 	case target.IsMap():

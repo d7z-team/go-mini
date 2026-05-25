@@ -67,6 +67,16 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 			return string(miniast.TypeBytes)
 		}
 		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
+	case *ast.ChanType:
+		elem := miniast.GoMiniType(c.typeToStringWithDepth(t.Value, depth+1))
+		switch t.Dir {
+		case ast.RECV:
+			return string(miniast.CreateRecvChanType(elem))
+		case ast.SEND:
+			return string(miniast.CreateSendChanType(elem))
+		default:
+			return string(miniast.CreateChanType(elem))
+		}
 	case *ast.StarExpr:
 		return string(miniast.GoMiniType(c.typeToStringWithDepth(t.X, depth+1)).ToPtr())
 	case *ast.MapType:
@@ -80,6 +90,12 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
 	case *ast.InterfaceType:
 		return c.expandInterface(t, depth+1)
+	case *ast.StructType:
+		if t.Fields == nil || len(t.Fields.List) == 0 {
+			return string(miniast.TypeVoid)
+		}
+		c.addError(e, "Go struct type literals are only supported for empty struct{} channel signals")
+		return string(miniast.TypeAny)
 	case *ast.FuncType:
 		var params []miniast.FunctionParam
 		if t.Params != nil {

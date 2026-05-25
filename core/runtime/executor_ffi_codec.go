@@ -247,6 +247,13 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			}
 		}
 		return nil
+	case RuntimeTypeChannel:
+		id := uint64(0)
+		if ch, ok := asVMChannel(v); ok {
+			id = e.registerVMChannelEndpoint(ch, typ)
+		}
+		buf.WriteUvarint(id)
+		return nil
 	case RuntimeTypeTuple:
 		if v == nil || v.VType != TypeArray {
 			for range typ.Params {
@@ -352,6 +359,8 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 		return errors.New("FFI Any cannot carry VM pointer")
 	case TypeHostRef:
 		return errors.New("FFI Any cannot carry host reference")
+	case TypeChannel:
+		return errors.New("FFI Any cannot carry channel")
 	case TypeArray:
 		arr := v.Ref.(*VMArray)
 		items := arr.Snapshot()
@@ -527,6 +536,29 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			mapData[k] = val
 		}
 		res = &Var{VType: TypeMap, Ref: &VMMap{Data: mapData}}
+	case RuntimeTypeChannel:
+		id := reader.ReadUvarint()
+		if id == 0 {
+			res = &Var{VType: TypeChannel}
+			break
+		}
+		endpoint, ok := e.channelRegistry().LookupChannel(id)
+		if !ok || endpoint == nil {
+			err = fmt.Errorf("unknown FFI channel endpoint %d", id)
+			break
+		}
+		elem, elemOK := typ.ReadChanElemType()
+		if !elemOK {
+			err = fmt.Errorf("invalid FFI channel type %s", typ.Raw)
+			break
+		}
+		if endpointElem := strings.TrimSpace(endpoint.ElemType()); endpointElem != "" {
+			if parsedElem, parseErr := ParseRuntimeType(TypeSpec(endpointElem)); parseErr == nil && !parsedElem.Raw.IsAssignableTo(elem.Raw) && !elem.Raw.IsAssignableTo(parsedElem.Raw) {
+				err = fmt.Errorf("FFI channel element mismatch: endpoint %s, schema %s", parsedElem.Raw, elem.Raw)
+				break
+			}
+		}
+		res = &Var{VType: TypeChannel, Ref: NewExternalVMChannel(elem, endpoint)}
 	case RuntimeTypeTuple:
 		tupleData := make([]*Var, len(typ.Params))
 		for i, t := range typ.Params {

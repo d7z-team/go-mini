@@ -20,6 +20,7 @@ const (
 	RuntimeTypeNamed
 	RuntimeTypePointer
 	RuntimeTypeHostRef
+	RuntimeTypeChannel
 	RuntimeTypeArray
 	RuntimeTypeMap
 	RuntimeTypeTuple
@@ -45,7 +46,15 @@ const (
 
 func PtrType(elem TypeSpec) TypeSpec     { return typespec.Ptr(elem) }
 func HostRefType(elem TypeSpec) TypeSpec { return typespec.HostRef(elem) }
-func ArrayType(elem TypeSpec) TypeSpec   { return typespec.Array(elem) }
+func ChanType(elem TypeSpec) TypeSpec    { return typespec.Chan(elem) }
+func RecvChanType(elem TypeSpec) TypeSpec {
+	return typespec.RecvChan(elem)
+}
+
+func SendChanType(elem TypeSpec) TypeSpec {
+	return typespec.SendChan(elem)
+}
+func ArrayType(elem TypeSpec) TypeSpec { return typespec.Array(elem) }
 func MapType(key, value TypeSpec) TypeSpec {
 	return typespec.Map(key, value)
 }
@@ -379,6 +388,18 @@ func (t RuntimeType) IsHostRef() bool {
 	return t.Kind == RuntimeTypeHostRef || t.Raw.IsHostRef()
 }
 
+func (t RuntimeType) IsChan() bool {
+	return t.Kind == RuntimeTypeChannel || t.Raw.IsChan()
+}
+
+func (t RuntimeType) IsRecvChan() bool {
+	return t.Raw.IsRecvChan()
+}
+
+func (t RuntimeType) IsSendChan() bool {
+	return t.Raw.IsSendChan()
+}
+
 func (t RuntimeType) IsArray() bool {
 	return t.Kind == RuntimeTypeArray || t.Raw.IsArray()
 }
@@ -404,6 +425,21 @@ func (t RuntimeType) ReadArrayItemType() (RuntimeType, bool) {
 		return *t.Elem, true
 	}
 	elem, ok := t.Raw.ReadArrayItemType()
+	if !ok {
+		return RuntimeType{}, false
+	}
+	elemInfo, err := ParseRuntimeType(elem)
+	if err != nil {
+		return RuntimeType{}, false
+	}
+	return elemInfo, true
+}
+
+func (t RuntimeType) ReadChanElemType() (RuntimeType, bool) {
+	if t.Elem != nil {
+		return *t.Elem, true
+	}
+	elem, ok := t.Raw.ChanElement()
 	if !ok {
 		return RuntimeType{}, false
 	}
@@ -478,6 +514,22 @@ func ParseRuntimeType[S ~string](spec S) (RuntimeType, error) {
 		}
 		return RuntimeType{
 			Kind:   RuntimeTypeHostRef,
+			Raw:    specType,
+			TypeID: elemType.TypeID,
+			Elem:   &elemType,
+		}, nil
+	}
+	if specType.IsChan() {
+		elem, ok := specType.ChanElement()
+		if !ok {
+			return RuntimeType{}, fmt.Errorf("invalid channel type: %s", specType)
+		}
+		elemType, err := ParseRuntimeType(elem)
+		if err != nil {
+			return RuntimeType{}, err
+		}
+		return RuntimeType{
+			Kind:   RuntimeTypeChannel,
 			Raw:    specType,
 			TypeID: elemType.TypeID,
 			Elem:   &elemType,

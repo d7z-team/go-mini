@@ -196,6 +196,65 @@ func (t *TypeAssertExpr) Optimize(ctx *OptimizeContext) Node {
 	return t
 }
 
+// ReceiveExpr 表示 channel 接收表达式 (<-ch)。
+type ReceiveExpr struct {
+	BaseNode
+	Channel Expr `json:"channel"`
+	Multi   bool `json:"multi,omitempty"`
+}
+
+func (r *ReceiveExpr) GetBase() *BaseNode { return &r.BaseNode }
+func (r *ReceiveExpr) exprNode()          {}
+
+func (r *ReceiveExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(r)
+	if r.Channel == nil {
+		err := errors.New("channel receive 缺少 channel 表达式")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	if err := r.Channel.Check(ctx.WithNode(r.Channel)); err != nil {
+		return err
+	}
+	chType := r.Channel.GetBase().Type
+	if chType.IsAny() {
+		if r.Multi {
+			r.Type = CreateTupleType(TypeAny, TypeBool)
+		} else {
+			r.Type = TypeAny
+		}
+		return nil
+	}
+	if !chType.IsChan() || chType.IsSendChan() {
+		err := fmt.Errorf("cannot receive from non-receive channel type: %s", chType)
+		ctx.AddErrorAt(r.Channel, "%s", err.Error())
+		return err
+	}
+	elem, ok := chType.ReadChanElemType()
+	if !ok {
+		err := fmt.Errorf("invalid channel type: %s", chType)
+		ctx.AddErrorAt(r.Channel, "%s", err.Error())
+		return err
+	}
+	if r.Multi {
+		r.Type = CreateTupleType(elem, TypeBool)
+	} else {
+		r.Type = elem
+	}
+	return nil
+}
+
+func (r *ReceiveExpr) Optimize(ctx *OptimizeContext) Node {
+	if r.Channel != nil {
+		if opt := r.Channel.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				r.Channel = val
+			}
+		}
+	}
+	return r
+}
+
 func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(c)
 	c.Name = c.Name.Resolve(ctx.ValidContext)
@@ -276,7 +335,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 			if lit, ok2 := c.Args[0].(*LiteralExpr); ok2 && lit.Type == "String" {
 				t := GoMiniType(lit.Value).Resolve(ctx.ValidContext)
 				declaredType := func(tt GoMiniType) bool {
-					if tt.IsPrimitive() || tt.IsArray() || tt.IsMap() || tt.IsPtr() || tt.IsInterface() || tt.IsStruct() {
+					if tt.IsPrimitive() || tt.IsArray() || tt.IsMap() || tt.IsChan() || tt.IsPtr() || tt.IsInterface() || tt.IsStruct() {
 						return true
 					}
 					if _, ok := ctx.GetType(Ident(tt)); ok {
@@ -445,11 +504,29 @@ done:
 			c.Type = "Int64"
 			if len(c.Args) > 0 {
 				argType := c.Args[0].GetBase().Type
-				if !argType.IsArray() && !argType.IsMap() && argType != "String" && argType != "TypeBytes" && !argType.IsAny() {
+				if !argType.IsArray() && !argType.IsMap() && !argType.IsChan() && argType != "String" && argType != "TypeBytes" && !argType.IsAny() {
 					err := fmt.Errorf("%s: 不支持类型 %s", ident.Name, argType)
 					ctx.AddErrorAt(c.Args[0], "%s", err.Error())
 					return err
 				}
+			}
+		case "close":
+			c.Type = "Void"
+			if len(c.Args) != 1 {
+				err := fmt.Errorf("close: 需要 1 个参数，实际 %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			argType := c.Args[0].GetBase().Type
+			if !argType.IsChan() && !argType.IsAny() {
+				err := fmt.Errorf("close: 不支持类型 %s", argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			if argType.IsRecvChan() {
+				err := fmt.Errorf("close: cannot close receive-only channel type %s", argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
 			}
 		}
 	}

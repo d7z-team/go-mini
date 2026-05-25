@@ -52,6 +52,7 @@ const (
 	KindNamed
 	KindPtr
 	KindHostRef
+	KindChan
 	KindArray
 	KindMap
 	KindTuple
@@ -98,6 +99,21 @@ func (t Type) IsHostRef() bool {
 	return strings.HasPrefix(s, "HostRef<") && strings.HasSuffix(s, ">")
 }
 
+func (t Type) IsChan() bool {
+	s := strings.TrimSpace(string(t))
+	return (strings.HasPrefix(s, "Chan<") || strings.HasPrefix(s, "RecvChan<") || strings.HasPrefix(s, "SendChan<")) && strings.HasSuffix(s, ">")
+}
+
+func (t Type) IsRecvChan() bool {
+	s := strings.TrimSpace(string(t))
+	return strings.HasPrefix(s, "RecvChan<") && strings.HasSuffix(s, ">")
+}
+
+func (t Type) IsSendChan() bool {
+	s := strings.TrimSpace(string(t))
+	return strings.HasPrefix(s, "SendChan<") && strings.HasSuffix(s, ">")
+}
+
 func (t Type) IsArray() bool {
 	s := strings.TrimSpace(string(t))
 	return strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">")
@@ -136,6 +152,14 @@ func Map(key, value Type) Type {
 }
 func Ptr(elem Type) Type     { return Type(fmt.Sprintf("Ptr<%s>", elem)) }
 func HostRef(elem Type) Type { return Type(fmt.Sprintf("HostRef<%s>", elem)) }
+func Chan(elem Type) Type    { return Type(fmt.Sprintf("Chan<%s>", elem)) }
+func RecvChan(elem Type) Type {
+	return Type(fmt.Sprintf("RecvChan<%s>", elem))
+}
+
+func SendChan(elem Type) Type {
+	return Type(fmt.Sprintf("SendChan<%s>", elem))
+}
 
 func Tuple(items ...Type) Type {
 	if len(items) == 0 {
@@ -202,6 +226,12 @@ func (t Type) Element() (Type, bool) {
 		return Type(strings.TrimSpace(s[4 : len(s)-1])), true
 	case strings.HasPrefix(s, "HostRef<") && strings.HasSuffix(s, ">"):
 		return Type(strings.TrimSpace(s[8 : len(s)-1])), true
+	case strings.HasPrefix(s, "RecvChan<") && strings.HasSuffix(s, ">"):
+		return Type(strings.TrimSpace(s[9 : len(s)-1])), true
+	case strings.HasPrefix(s, "SendChan<") && strings.HasSuffix(s, ">"):
+		return Type(strings.TrimSpace(s[9 : len(s)-1])), true
+	case strings.HasPrefix(s, "Chan<") && strings.HasSuffix(s, ">"):
+		return Type(strings.TrimSpace(s[5 : len(s)-1])), true
 	case strings.HasPrefix(s, "Array<") && strings.HasSuffix(s, ">"):
 		return Type(strings.TrimSpace(s[6 : len(s)-1])), true
 	case strings.HasPrefix(s, "..."):
@@ -229,6 +259,26 @@ func (t Type) RefElement() (Type, bool) {
 		return "", false
 	}
 	return t.Element()
+}
+
+func (t Type) ChanElement() (Type, bool) {
+	if !t.IsChan() {
+		return "", false
+	}
+	return t.Element()
+}
+
+func (t Type) ChanDir() string {
+	switch {
+	case t.IsRecvChan():
+		return "recv"
+	case t.IsSendChan():
+		return "send"
+	case t.IsChan():
+		return "both"
+	default:
+		return ""
+	}
 }
 
 func (t Type) ReadArrayItemType() (Type, bool) {
@@ -406,6 +456,9 @@ func Parse[S ~string](spec S) (Parsed, error) {
 	case raw.IsHostRef():
 		elem, _ := raw.Element()
 		return Parsed{Kind: KindHostRef, Raw: raw, TypeID: CanonicalTypeID(elem.String()), Elem: elem}, nil
+	case raw.IsChan():
+		elem, _ := raw.Element()
+		return Parsed{Kind: KindChan, Raw: raw, TypeID: CanonicalTypeID(elem.String()), Elem: elem}, nil
 	case raw.IsArray():
 		elem, _ := raw.Element()
 		return Parsed{Kind: KindArray, Raw: raw, TypeID: CanonicalTypeID(elem.String()), Elem: elem}, nil
@@ -444,6 +497,15 @@ func CanonicalTypeID(name string) string {
 	if strings.HasPrefix(name, "HostRef<") && strings.HasSuffix(name, ">") {
 		return CanonicalTypeID(name[8 : len(name)-1])
 	}
+	if strings.HasPrefix(name, "RecvChan<") && strings.HasSuffix(name, ">") {
+		return CanonicalTypeID(name[9 : len(name)-1])
+	}
+	if strings.HasPrefix(name, "SendChan<") && strings.HasSuffix(name, ">") {
+		return CanonicalTypeID(name[9 : len(name)-1])
+	}
+	if strings.HasPrefix(name, "Chan<") && strings.HasSuffix(name, ">") {
+		return CanonicalTypeID(name[5 : len(name)-1])
+	}
 	return name
 }
 
@@ -452,6 +514,9 @@ func (t Type) BaseName() Type {
 		return elem.BaseName()
 	}
 	if elem, ok := t.HostRefElement(); ok {
+		return elem.BaseName()
+	}
+	if elem, ok := t.ChanElement(); ok {
 		return elem.BaseName()
 	}
 	if elem, ok := t.ReadArrayItemType(); ok {
@@ -487,7 +552,7 @@ func (t Type) IsCanonical() bool {
 		}
 		return true
 	}
-	if t.IsPtr() || t.IsHostRef() || t.IsArray() {
+	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() {
 		elem, ok := t.Element()
 		return ok && elem.IsCanonical()
 	}
@@ -557,6 +622,11 @@ func (t Type) Equals(other Type) bool {
 		otherElem, _ := other.Element()
 		return elem.Equals(otherElem)
 	}
+	if t.IsChan() && other.IsChan() && t.ChanDir() == other.ChanDir() {
+		elem, _ := t.Element()
+		otherElem, _ := other.Element()
+		return elem.Equals(otherElem)
+	}
 	if t.IsTuple() && other.IsTuple() {
 		items, _ := t.TupleTypes()
 		otherItems, _ := other.TupleTypes()
@@ -600,8 +670,18 @@ func (t Type) isAssignableToRecursive(target Type, depth, maxDepth int) bool {
 	if target.IsNumeric() && t.IsNumeric() {
 		return true
 	}
-	if t.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsHostRef() && !target.IsInterface() {
+	if t.IsMap() && !target.IsPrimitive() && !target.IsArray() && !target.IsMap() && !target.IsPtr() && !target.IsHostRef() && !target.IsChan() && !target.IsInterface() {
 		return true
+	}
+	if t.IsChan() && target.IsChan() {
+		sourceElem, _ := t.ChanElement()
+		targetElem, _ := target.ChanElement()
+		if !sourceElem.Equals(targetElem) {
+			return false
+		}
+		sourceDir := t.ChanDir()
+		targetDir := target.ChanDir()
+		return sourceDir == targetDir || sourceDir == "both"
 	}
 	if target.IsInterface() {
 		if t.IsInterface() {
@@ -644,7 +724,7 @@ func (t Type) isAssignableToRecursive(target Type, depth, maxDepth int) bool {
 }
 
 func (t Type) ZeroValue() interface{} {
-	if t.IsPtr() || t.IsHostRef() || t.IsArray() || t.IsMap() || t.IsAny() || t == Bytes {
+	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() || t.IsMap() || t.IsAny() || t == Bytes {
 		return nil
 	}
 	switch t {
@@ -707,7 +787,7 @@ func WalkNamedTypes(t Type, visit func(Type)) {
 	}
 	if parsed, err := Parse(t); err == nil {
 		switch parsed.Kind {
-		case KindPtr, KindHostRef, KindArray:
+		case KindPtr, KindHostRef, KindChan, KindArray:
 			WalkNamedTypes(parsed.Elem, visit)
 			return
 		case KindMap:

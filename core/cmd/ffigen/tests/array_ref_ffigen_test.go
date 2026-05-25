@@ -18,10 +18,18 @@ const (
 type ArrayRefAPIProxy struct {
 	bridge   ffigo.FFIBridge
 	registry *ffigo.HandleRegistry
+	channels ffigo.ChannelRegistry
 }
 
 func NewArrayRefAPIProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) ArrayRefAPI {
 	return &ArrayRefAPIProxy{bridge: bridge, registry: registry}
+}
+
+func (__p *ArrayRefAPIProxy) channelRegistry() ffigo.ChannelRegistry {
+	if __p.channels == nil {
+		__p.channels = ffigo.NewChannelRegistry()
+	}
+	return __p.channels
 }
 
 func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
@@ -37,7 +45,7 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 		}
 	}
 
-	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: methodIDArrayRefAPIRewrite, Args: append([]byte(nil), wireBuf.Bytes()...)})
+	__ret, err := __p.bridge.Call(context.Background(), &ffigo.FFICallRequest{MethodID: methodIDArrayRefAPIRewrite, Args: append([]byte(nil), wireBuf.Bytes()...), Channels: __p.channelRegistry()})
 	retData, syncErr := ffigo.SyncBytes(__ret)
 	if err == nil {
 		err = syncErr

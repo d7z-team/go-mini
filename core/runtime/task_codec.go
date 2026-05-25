@@ -85,6 +85,12 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 		return marshalTaskDataValue("for", data)
 	case OpRangeInit, OpRangeIter:
 		return marshalTaskDataValue("range", data)
+	case OpChanRecv:
+		return marshalTaskDataValue("chan_recv", data)
+	case OpChanSend:
+		return "", nil, nil
+	case OpSelect:
+		return marshalTaskDataValue("select", data)
 	case OpJumpIf:
 		return marshalTaskDataValue("jump", data)
 	case OpBranchIf:
@@ -181,6 +187,12 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return decodeTaskData[*ForData](raw)
 	case OpRangeInit, OpRangeIter:
 		return decodeTaskData[*RangeData](raw)
+	case OpChanRecv:
+		return decodeTaskData[*ChanRecvData](raw)
+	case OpChanSend:
+		return nil, nil
+	case OpSelect:
+		return decodeTaskData[*SelectData](raw)
 	case OpJumpIf:
 		return decodeTaskData[*JumpData](raw)
 	case OpBranchIf:

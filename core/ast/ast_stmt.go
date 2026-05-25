@@ -730,6 +730,8 @@ func (p *ProgramStmt) collectGlobalDependencies(expr Expr, deps map[Ident]struct
 		p.collectGlobalDependencies(n.X, deps)
 	case *TypeAssertExpr:
 		p.collectGlobalDependencies(n.X, deps)
+	case *ReceiveExpr:
+		p.collectGlobalDependencies(n.Channel, deps)
 	case *CallExprStmt:
 		if _, ok := n.Func.(*ConstRefExpr); !ok {
 			p.collectGlobalDependencies(n.Func, deps)
@@ -1258,6 +1260,184 @@ func (g *GoStmt) Optimize(ctx *OptimizeContext) Node {
 	return g
 }
 
+// SendStmt 表示 channel 发送语句 (ch <- value)。
+type SendStmt struct {
+	BaseNode
+	Channel Expr `json:"channel"`
+	Value   Expr `json:"value"`
+}
+
+func (s *SendStmt) GetBase() *BaseNode { return &s.BaseNode }
+func (s *SendStmt) stmtNode()          {}
+
+func (s *SendStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(s)
+	s.Type = TypeVoid
+	var hasError bool
+	if s.Channel == nil {
+		ctx.AddErrorf("channel send 缺少 channel 表达式")
+		hasError = true
+	} else if err := s.Channel.Check(ctx.WithNode(s.Channel)); err != nil {
+		hasError = true
+	}
+	if s.Value == nil {
+		ctx.AddErrorf("channel send 缺少发送值")
+		hasError = true
+	} else if err := s.Value.Check(ctx.WithNode(s.Value)); err != nil {
+		hasError = true
+	}
+	if hasError {
+		return errors.New("send statement validation failed")
+	}
+	chType := s.Channel.GetBase().Type
+	if chType.IsAny() {
+		return nil
+	}
+	if !chType.IsChan() || chType.IsRecvChan() {
+		err := fmt.Errorf("cannot send to non-send channel type: %s", chType)
+		ctx.AddErrorAt(s.Channel, "%s", err.Error())
+		return err
+	}
+	elem, ok := chType.ReadChanElemType()
+	if !ok {
+		err := fmt.Errorf("invalid channel type: %s", chType)
+		ctx.AddErrorAt(s.Channel, "%s", err.Error())
+		return err
+	}
+	valueType := s.Value.GetBase().Type
+	if elem.IsVoid() {
+		return nil
+	}
+	if !valueType.IsAssignableTo(elem) {
+		err := fmt.Errorf("channel send type mismatch: cannot send %s to %s", valueType, chType)
+		ctx.AddErrorAt(s.Value, "%s", err.Error())
+		return err
+	}
+	return nil
+}
+
+func (s *SendStmt) Optimize(ctx *OptimizeContext) Node {
+	if s.Channel != nil {
+		if opt := s.Channel.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				s.Channel = val
+			}
+		}
+	}
+	if s.Value != nil {
+		if opt := s.Value.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				s.Value = val
+			}
+		}
+	}
+	return s
+}
+
+// SelectStmt 表示 channel select 语句。
+type SelectStmt struct {
+	BaseNode
+	Cases []SelectCase `json:"cases"`
+}
+
+type SelectCase struct {
+	BaseNode
+	Comm Stmt   `json:"comm,omitempty"`
+	Body []Stmt `json:"body,omitempty"`
+}
+
+func (c *SelectCase) GetBase() *BaseNode             { return &c.BaseNode }
+func (c *SelectCase) Check(_ *SemanticContext) error { return nil }
+func (c *SelectCase) Optimize(_ *OptimizeContext) Node {
+	return c
+}
+
+func (s *SelectStmt) GetBase() *BaseNode { return &s.BaseNode }
+func (s *SelectStmt) stmtNode()          {}
+
+func (s *SelectStmt) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(s)
+	s.Type = TypeVoid
+	var hasError bool
+	seenDefault := false
+	for i := range s.Cases {
+		c := &s.Cases[i]
+		caseCtx := ctx.Child(c)
+		if c.Comm == nil {
+			if seenDefault {
+				caseCtx.AddErrorf("select has multiple default cases")
+				hasError = true
+			}
+			seenDefault = true
+		} else {
+			switch comm := c.Comm.(type) {
+			case *SendStmt:
+				if err := comm.Check(caseCtx); err != nil {
+					hasError = true
+				}
+			case *AssignmentStmt:
+				if _, ok := comm.Value.(*ReceiveExpr); !ok {
+					caseCtx.AddErrorf("select receive assignment must use <-channel")
+					hasError = true
+				} else if err := comm.Check(caseCtx); err != nil {
+					hasError = true
+				}
+			case *MultiAssignmentStmt:
+				if len(comm.Values) != 1 {
+					caseCtx.AddErrorf("select receive assignment must use one receive expression")
+					hasError = true
+				} else if _, ok := comm.Values[0].(*ReceiveExpr); !ok {
+					caseCtx.AddErrorf("select receive assignment must use <-channel")
+					hasError = true
+				} else if err := comm.Check(caseCtx); err != nil {
+					hasError = true
+				}
+			case *ExpressionStmt:
+				if _, ok := comm.X.(*ReceiveExpr); !ok {
+					caseCtx.AddErrorf("select expression case must be <-channel")
+					hasError = true
+				} else if err := comm.Check(caseCtx); err != nil {
+					hasError = true
+				}
+			default:
+				caseCtx.AddErrorf("unsupported select case statement %T", comm)
+				hasError = true
+			}
+		}
+		body := &BlockStmt{Children: c.Body, Inner: true}
+		if err := body.Check(caseCtx); err != nil {
+			hasError = true
+		}
+	}
+	if hasError {
+		return errors.New("select statement validation failed")
+	}
+	return nil
+}
+
+func (s *SelectStmt) Optimize(ctx *OptimizeContext) Node {
+	for i := range s.Cases {
+		if s.Cases[i].Comm != nil {
+			if opt := s.Cases[i].Comm.Optimize(ctx); opt != nil {
+				if stmt, ok := opt.(Stmt); ok {
+					s.Cases[i].Comm = stmt
+				}
+			}
+		}
+		for j, stmt := range s.Cases[i].Body {
+			if stmt == nil {
+				continue
+			}
+			if opt := stmt.Optimize(ctx); opt != nil {
+				if st, ok := opt.(Stmt); ok {
+					s.Cases[i].Body[j] = st
+				}
+			}
+		}
+	}
+	return s
+}
+
 // RangeStmt 表示 range 遍历语句
 type RangeStmt struct {
 	BaseNode
@@ -1285,7 +1465,7 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 			hasError = true
 		} else {
 			objType := r.X.GetBase().Type
-			if !objType.IsArray() && !objType.IsMap() && !objType.IsAny() {
+			if !objType.IsArray() && !objType.IsMap() && !objType.IsChan() && !objType.IsAny() {
 				err := fmt.Errorf("range 语句不支持类型 %s", objType)
 				rangeCtx.AddErrorf("%s", err.Error())
 				hasError = true
@@ -1304,6 +1484,17 @@ func (r *RangeStmt) Check(ctx *SemanticContext) error {
 		keyType, valueType, _ = objType.GetMapKeyValueTypes()
 	} else if objType.IsArray() {
 		valueType, _ = objType.ReadArrayItemType()
+	} else if objType.IsChan() {
+		if objType.IsSendChan() {
+			rangeCtx.AddErrorf("range cannot receive from send-only channel type %s", objType)
+			hasError = true
+		}
+		keyType, _ = objType.ReadChanElemType()
+		valueType = TypeVoid
+		if r.Value != "" && r.Value != "_" {
+			rangeCtx.AddErrorf("range over channel permits only one iteration variable")
+			hasError = true
+		}
 	}
 
 	r.Key = r.Key.Resolve(ctx.ValidContext)

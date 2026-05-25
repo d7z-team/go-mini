@@ -140,7 +140,7 @@ type generatedMethod struct {
 	AsyncGoType string
 }
 
-func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct bool, methodsPrefix string, displayTypeName func(string) string, vmType func(ast.Expr) string, interfaceSchemas map[string]string, moduleName string) []generatedMethod {
+func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct bool, methodsPrefix string, displayTypeName func(string) string, vmType func(ast.Expr) string, interfaceSchemas map[string]string, moduleName string, proxyMarked bool) []generatedMethod {
 	if iface == nil || iface.Methods == nil {
 		return nil
 	}
@@ -171,6 +171,9 @@ func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct boo
 		if funcType.Params != nil {
 			for paramIdx, param := range funcType.Params.List {
 				rawType := g.typeToString(param.Type)
+				if isBidirectionalChannelType(rawType) {
+					panic(fmt.Sprintf("ffigen: bidirectional channel parameter %s.%s is not supported; use <-chan or chan<- in generated FFI signatures", methodName, rawType))
+				}
 				paramIsContext := paramIdx == 0 && isContextType(rawType)
 				if !paramIsContext && g.unsupportedInterfaceExpr(param.Type) {
 					if _, _, ok := g.interfaceSchemaForType(rawType, moduleName, interfaceSchemas); !ok {
@@ -230,6 +233,9 @@ func (g *Generator) buildGeneratedMethods(iface *ast.InterfaceType, isStruct boo
 		if funcType.Results != nil {
 			for _, result := range funcType.Results.List {
 				rawType := g.typeToString(result.Type)
+				if proxyMarked && isBidirectionalChannelType(rawType) {
+					panic(fmt.Sprintf("ffigen: proxy cannot return bidirectional channel %s.%s; use <-chan or chan<- for generated Go proxies", methodName, rawType))
+				}
 				if rawType != "error" && g.unsupportedInterfaceExpr(result.Type) {
 					if _, _, ok := g.interfaceSchemaForType(rawType, moduleName, interfaceSchemas); !ok {
 						panic(fmt.Sprintf("ffigen: interface result %s.%s is not supported; use any, *T/HostRef<T>, or a named ffigen interface", methodName, rawType))

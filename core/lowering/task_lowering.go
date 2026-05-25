@@ -490,6 +490,14 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 		out := []runtime.Task{{Op: runtime.OpIncDec, Data: string(n.Operator)}}
 		out = append(out, b.tasksForLHSInScope(n.Operand, scope)...)
 		return out, true
+	case *ast.SendStmt:
+		if n == nil {
+			return nil, true
+		}
+		out := []runtime.Task{{Op: runtime.OpChanSend}}
+		out = append(out, b.tasksForExprInScope(n.Value, scope)...)
+		out = append(out, b.tasksForExprInScope(n.Channel, scope)...)
+		return out, true
 	case *ast.ReturnStmt:
 		if n == nil {
 			return nil, true
@@ -599,6 +607,11 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 				if elemT, ok := objType.ReadArrayItemType(); ok {
 					valType = b.runtimeType(elemT, n.X, "range array item type")
 				}
+			} else if objType.IsChan() {
+				if elemT, ok := objType.ReadChanElemType(); ok {
+					keyType = b.runtimeType(elemT, n.X, "range channel item type")
+					valType = b.runtimeType(ast.TypeVoid, n.X, "range channel value type")
+				}
 			}
 		}
 		rData := &runtime.RangeData{
@@ -684,6 +697,114 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 			out = append(out, b.tasksForExprInScope(member.Object, scope)...)
 		} else if data.Mode == runtime.CallByValue {
 			out = append(out, b.tasksForExprInScope(call.Func, scope)...)
+		}
+		return out, true
+	case *ast.SelectStmt:
+		if n == nil {
+			return nil, true
+		}
+		selectScope := scope.childBlock()
+		plan := &runtime.SelectData{Cases: make([]runtime.SelectCaseData, 0, len(n.Cases))}
+		operandTasksByCase := make([][]runtime.Task, len(n.Cases))
+		for i := range n.Cases {
+			c := n.Cases[i]
+			caseScope := selectScope.childBlock()
+			caseData := runtime.SelectCaseData{
+				Kind: runtime.SelectCommDefault,
+			}
+			switch comm := c.Comm.(type) {
+			case nil:
+			case *ast.SendStmt:
+				caseData.Kind = runtime.SelectCommSend
+				tasks := []runtime.Task{}
+				tasks = append(tasks, b.tasksForExprInScope(comm.Value, selectScope)...)
+				tasks = append(tasks, b.tasksForExprInScope(comm.Channel, selectScope)...)
+				operandTasksByCase[i] = tasks
+			case *ast.ExpressionStmt:
+				recv, ok := comm.X.(*ast.ReceiveExpr)
+				if !ok {
+					return nil, false
+				}
+				caseData.Kind = runtime.SelectCommRecv
+				if elem, ok := recv.GetBase().Type.ReadChanElemType(); ok {
+					caseData.RecvType = b.runtimeType(elem, recv, "select receive type")
+				} else {
+					caseData.RecvType = b.runtimeType(recv.GetBase().Type, recv, "select receive type")
+				}
+				operandTasksByCase[i] = b.tasksForExprInScope(recv.Channel, selectScope)
+			case *ast.AssignmentStmt:
+				recv, ok := comm.Value.(*ast.ReceiveExpr)
+				if !ok {
+					return nil, false
+				}
+				caseData.Kind = runtime.SelectCommRecv
+				caseData.Define = comm.Kind == ast.AssignDefine
+				if ident, ok := comm.LHS.(*ast.IdentifierExpr); ok && ident != nil {
+					caseData.RecvName = string(ident.Name)
+					if caseData.RecvName != "" && caseData.RecvName != "_" {
+						if caseData.Define {
+							caseData.RecvSym = caseScope.declare(caseData.RecvName)
+						} else {
+							caseData.RecvSym = selectScope.resolveOrImplicit(caseData.RecvName)
+						}
+					}
+				}
+				caseData.RecvType = b.runtimeType(recv.GetBase().Type, recv, "select receive type")
+				operandTasksByCase[i] = b.tasksForExprInScope(recv.Channel, selectScope)
+			case *ast.MultiAssignmentStmt:
+				if len(comm.Values) != 1 {
+					return nil, false
+				}
+				recv, ok := comm.Values[0].(*ast.ReceiveExpr)
+				if !ok {
+					return nil, false
+				}
+				caseData.Kind = runtime.SelectCommRecv
+				caseData.Define = comm.Kind == ast.AssignDefine
+				if len(comm.LHS) > 0 {
+					if ident, ok := comm.LHS[0].(*ast.IdentifierExpr); ok && ident != nil {
+						caseData.RecvName = string(ident.Name)
+						if caseData.RecvName != "" && caseData.RecvName != "_" {
+							if caseData.Define {
+								caseData.RecvSym = caseScope.declare(caseData.RecvName)
+							} else {
+								caseData.RecvSym = selectScope.resolveOrImplicit(caseData.RecvName)
+							}
+						}
+					}
+				}
+				if len(comm.LHS) > 1 {
+					if ident, ok := comm.LHS[1].(*ast.IdentifierExpr); ok && ident != nil {
+						caseData.RecvOK = string(ident.Name)
+						if caseData.RecvOK != "" && caseData.RecvOK != "_" {
+							if caseData.Define {
+								caseData.RecvOKSym = caseScope.declare(caseData.RecvOK)
+							} else {
+								caseData.RecvOKSym = selectScope.resolveOrImplicit(caseData.RecvOK)
+							}
+						}
+					}
+				}
+				if recvType := recv.GetBase().Type; recvType.IsTuple() {
+					items, _ := recvType.ReadTuple()
+					if len(items) > 0 {
+						caseData.RecvType = b.runtimeType(items[0], recv, "select receive value type")
+					}
+				}
+				if caseData.RecvType.IsEmpty() {
+					caseData.RecvType = b.runtimeType(ast.TypeAny, recv, "select receive value type")
+				}
+				caseData.OKType = b.runtimeType(ast.TypeBool, recv, "select receive ok type")
+				operandTasksByCase[i] = b.tasksForExprInScope(recv.Channel, selectScope)
+			default:
+				return nil, false
+			}
+			caseData.Body = b.tasksForStmtInScope(&ast.BlockStmt{Children: c.Body, Inner: true}, nil, caseScope)
+			plan.Cases = append(plan.Cases, caseData)
+		}
+		out := []runtime.Task{{Op: runtime.OpSelect, Data: plan}}
+		for i := len(operandTasksByCase) - 1; i >= 0; i-- {
+			out = append(out, operandTasksByCase[i]...)
 		}
 		return out, true
 	case *ast.SwitchStmt:
@@ -895,6 +1016,20 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 			ResultType: b.runtimeType(resultType, n, "type assertion result"),
 		}}}
 		out = append(out, b.tasksForExprInScope(n.X, scope)...)
+		return out, true
+	case *ast.ReceiveExpr:
+		if n == nil {
+			return []runtime.Task{{Op: runtime.OpPush}}, true
+		}
+		resultType := n.GetBase().Type
+		if resultType.IsEmpty() {
+			resultType = ast.GoMiniType(runtime.SpecAny)
+		}
+		out := []runtime.Task{{Op: runtime.OpChanRecv, Data: &runtime.ChanRecvData{
+			Multi:      n.Multi,
+			ResultType: b.runtimeType(resultType, n, "channel receive result"),
+		}}}
+		out = append(out, b.tasksForExprInScope(n.Channel, scope)...)
 		return out, true
 	case *ast.CompositeExpr:
 		if n == nil {

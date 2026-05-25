@@ -33,6 +33,8 @@ func (v VarType) String() string {
 		return "Handle"
 	case TypeHostRef:
 		return "HostRef"
+	case TypeChannel:
+		return "Channel"
 	case TypeModule:
 		return "Module"
 	case TypeClosure:
@@ -59,6 +61,7 @@ const (
 	TypeArray   // Internal VM Array ([]*Var)
 	TypeHandle  // Internal VM pointer
 	TypeHostRef // Host resource ID (uint32)
+	TypeChannel
 	TypeModule  // Dynamic module object
 	TypeClosure // Anonymous function with captured environment
 	TypeAny     // Placeholder for unknown/dynamic
@@ -668,6 +671,11 @@ func (v *Var) String() string {
 		return fmt.Sprintf("handle(%d)", v.Handle)
 	case TypeHostRef:
 		return fmt.Sprintf("hostref(%d)", v.Handle)
+	case TypeChannel:
+		if ch, ok := v.Ref.(*VMChannel); ok && ch != nil {
+			return fmt.Sprintf("chan(%d/%d)", ch.Len(), ch.Cap())
+		}
+		return "chan(nil)"
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
 			return fmt.Sprintf("array(%d)", arr.Len())
@@ -717,6 +725,8 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 		return v.Handle
 	case TypeHostRef:
 		return v.Handle
+	case TypeChannel:
+		return nil
 	case TypeArray:
 		if arr, ok := v.Ref.(*VMArray); ok {
 			items := arr.Snapshot()

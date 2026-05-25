@@ -901,6 +901,30 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if err := session.Context.Err(); err != nil {
 			return err
 		}
+		if rData.Obj != nil && rData.Obj.VType == TypeChannel {
+			ch, _ := asVMChannel(rData.Obj)
+			if ch == nil {
+				return e.parkRangeChannel(session, task, rData, nil)
+			}
+			val, recvOK, ready, errText := ch.TryRecv()
+			if !ready {
+				return e.parkRangeChannel(session, task, rData, ch)
+			}
+			if errText != "" {
+				return &VMError{Message: errText, IsPanic: true}
+			}
+			if !recvOK {
+				return nil
+			}
+			session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
+			session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
+			session.TaskStack = append(session.TaskStack, rData.Body...)
+			session.TaskStack = append(session.TaskStack, Task{
+				Op:   OpRangeScopeEnter,
+				Data: &RangeScopeData{Range: rData, Key: val},
+			})
+			return nil
+		}
 		if rData.Index >= rData.Length {
 			return nil
 		}
@@ -969,6 +993,40 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 		}
 		return nil
+	case OpRangeChanCommit:
+		data, ok := task.Data.(*RangeChanCommitData)
+		if !ok || data == nil || data.Range == nil {
+			return errors.New("OpRangeChanCommit missing RangeChanCommitData")
+		}
+		if data.Err != "" {
+			return &VMError{Message: data.Err, IsPanic: true}
+		}
+		if !data.OK {
+			return nil
+		}
+		rData := data.Range
+		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
+		session.TaskStack = append(session.TaskStack, Task{Op: OpScopeExit})
+		session.TaskStack = append(session.TaskStack, rData.Body...)
+		session.TaskStack = append(session.TaskStack, Task{
+			Op:   OpRangeScopeEnter,
+			Data: &RangeScopeData{Range: rData, Key: data.Value},
+		})
+		return nil
+	case OpChanRecv:
+		return e.dispatchChanRecv(session, task)
+	case OpChanRecvCommit:
+		return e.dispatchChanRecvCommit(session, task)
+	case OpChanSend:
+		return e.dispatchChanSend(session, task)
+	case OpChanSendCommit:
+		return e.dispatchChanSendCommit(session, task)
+	case OpSelect:
+		return e.dispatchSelect(session, task)
+	case OpSelectCommit:
+		return e.dispatchSelectCommit(session, task)
+	case OpSelectScopeEnter:
+		return e.dispatchSelectScopeEnter(session, task)
 	case OpSwitchTag:
 		if plan, ok := task.Data.(*SwitchData); ok {
 			tag := NewBool(true)

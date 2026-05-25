@@ -63,6 +63,18 @@ func (o GoMiniType) IsHostRef() bool {
 	return typespec.Type(o).IsHostRef()
 }
 
+func (o GoMiniType) IsChan() bool {
+	return typespec.Type(o).IsChan()
+}
+
+func (o GoMiniType) IsRecvChan() bool {
+	return typespec.Type(o).IsRecvChan()
+}
+
+func (o GoMiniType) IsSendChan() bool {
+	return typespec.Type(o).IsSendChan()
+}
+
 func (o GoMiniType) IsArray() bool {
 	return typespec.Type(o).IsArray()
 }
@@ -129,6 +141,23 @@ func (o GoMiniType) GetHostRefElementType() (GoMiniType, bool) {
 
 func (o GoMiniType) ToHostRef() GoMiniType {
 	return GoMiniType(typespec.HostRef(typespec.Type(o)))
+}
+
+func (o GoMiniType) ReadChanElemType() (GoMiniType, bool) {
+	elem, ok := typespec.Type(o).ChanElement()
+	return GoMiniType(elem), ok
+}
+
+func CreateChanType(elementType GoMiniType) GoMiniType {
+	return GoMiniType(typespec.Chan(typespec.Type(elementType)))
+}
+
+func CreateRecvChanType(elementType GoMiniType) GoMiniType {
+	return GoMiniType(typespec.RecvChan(typespec.Type(elementType)))
+}
+
+func CreateSendChanType(elementType GoMiniType) GoMiniType {
+	return GoMiniType(typespec.SendChan(typespec.Type(elementType)))
 }
 
 func (o GoMiniType) GetMapKeyValueTypes() (keyType, valueType GoMiniType, ok bool) {
@@ -267,6 +296,18 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		elem, _ := o.GetHostRefElementType()
 		return elem.Resolve(v).ToHostRef()
 	}
+	if o.IsChan() {
+		elem, _ := o.ReadChanElemType()
+		resolved := elem.Resolve(v)
+		switch {
+		case o.IsRecvChan():
+			return CreateRecvChanType(resolved)
+		case o.IsSendChan():
+			return CreateSendChanType(resolved)
+		default:
+			return CreateChanType(resolved)
+		}
+	}
 	if o.IsTuple() {
 		types, _ := o.ReadTuple()
 		resolved := make([]GoMiniType, len(types))
@@ -316,6 +357,10 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	}
 	if o.IsHostRef() {
 		elem, ok := o.GetHostRefElementType()
+		return ok && elem.Resolve(v).Valid(v)
+	}
+	if o.IsChan() {
+		elem, ok := o.ReadChanElemType()
 		return ok && elem.Resolve(v).Valid(v)
 	}
 	if o.IsTuple() {

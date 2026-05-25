@@ -10,6 +10,13 @@ import (
 )
 
 func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr ast.Expr, structs map[string]*ast.StructType, bufName, moduleName string, interfaceSchemas map[string]string, isHost bool) {
+	if pType == "Void" {
+		return
+	}
+	if elemType, ok := readChanElemType(pType); ok {
+		g.emitChannelWrite(sb, prefix, pType, elemType, structs, bufName, moduleName, interfaceSchemas, isHost)
+		return
+	}
 	if isBytesRefTypeString(pType) {
 		fmt.Fprintf(sb, "\tif %s == nil {\n\t\t%s.WriteBytes(nil)\n\t} else {\n\t\t%s.WriteBytes(%s.Value)\n\t}\n", prefix, bufName, bufName, prefix)
 		return
@@ -93,6 +100,14 @@ func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr as
 }
 
 func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, expr ast.Expr, structs map[string]*ast.StructType, readerName, moduleName string, interfaceSchemas map[string]string, isHost bool) {
+	if pType == "Void" {
+		fmt.Fprintf(sb, "\t%s = ffigo.Void{}\n", varName)
+		return
+	}
+	if elemType, ok := readChanElemType(pType); ok {
+		g.emitChannelReadAssign(sb, varName, pType, elemType, structs, readerName, moduleName, interfaceSchemas, isHost)
+		return
+	}
 	if isBytesRefTypeString(pType) {
 		fmt.Fprintf(sb, "\t%s = &ffigo.BytesRef{Value: %s.ReadBytes()}\n", varName, readerName)
 		return
@@ -204,6 +219,160 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 	}
 }
 
+func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemType string, structs map[string]*ast.StructType, bufName, moduleName string, interfaceSchemas map[string]string, isHost bool) {
+	elemType = g.newDisplayTypeResolver(moduleName).NormalizeTypeString(elemType)
+	suffix := generatedIdentSuffix(prefix + "_" + bufName)
+	registryExpr := "__p.channelRegistry()"
+	if isHost {
+		registryExpr = "ffigo.ChannelRegistryFromContext(ctx)"
+	}
+	dir := channelDirectionLiteral(pType)
+	canRecv := channelTypeCanRecv(pType)
+	canSend := channelTypeCanSend(pType)
+	elemGoType := g.toGoType(elemType)
+	fmt.Fprintf(sb, "\t{\n")
+	fmt.Fprintf(sb, "\t\tchannelID_%s := uint64(0)\n", suffix)
+	fmt.Fprintf(sb, "\t\tif %s != nil {\n", prefix)
+	fmt.Fprintf(sb, "\t\t\tif channels_%s := %s; channels_%s != nil {\n", suffix, registryExpr, suffix)
+	fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s := ffigo.ChannelEndpointFuncs{Elem: %q, Dir: %s}\n", suffix, elemType, dir)
+	if canRecv {
+		valueVar := "channelValue_" + suffix
+		payloadVar := "channelPayload_" + suffix
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnRecv = func(channelCtx context.Context) ([]byte, bool, error) {\n", suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase %s, ok := <-%s:\n", valueVar, prefix)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { return nil, false, nil }\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\t%s := ffigo.GetBuffer()\n", payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tdefer ffigo.ReleaseBuffer(%s)\n", payloadVar)
+		g.emitWrite(sb, valueVar, elemType, nil, structs, payloadVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn append([]byte(nil), %s.Bytes()...), true, nil\n", payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\tcase <-channelCtx.Done():\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn nil, false, channelCtx.Err()\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnTryRecv = func() ([]byte, bool, bool, error) {\n", suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase %s, ok := <-%s:\n", valueVar, prefix)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { return nil, false, true, nil }\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\t%s := ffigo.GetBuffer()\n", payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tdefer ffigo.ReleaseBuffer(%s)\n", payloadVar)
+		g.emitWrite(sb, valueVar, elemType, nil, structs, payloadVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn append([]byte(nil), %s.Bytes()...), true, true, nil\n", payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\tdefault:\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn nil, false, false, nil\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+	}
+	if canSend {
+		valueVar := "channelValue_" + suffix
+		readerVar := "channelReader_" + suffix
+		payloadVar := "channelPayload_" + suffix
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnSend = func(channelCtx context.Context, data []byte) error {\n", suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
+		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(data)\n", readerVar)
+		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase %s <- %s:\n", prefix, valueVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn nil\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase <-channelCtx.Done():\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn channelCtx.Err()\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnTrySend = func(data []byte) (bool, error) {\n", suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
+		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(data)\n", readerVar)
+		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase %s <- %s:\n", prefix, valueVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn true, nil\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tdefault:\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn false, nil\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnClose = func() error { close(%s); return nil }\n", suffix, prefix)
+		_ = payloadVar
+	}
+	fmt.Fprintf(sb, "\t\t\t\tchannelID_%s = channels_%s.RegisterChannel(channelEndpoint_%s)\n", suffix, suffix, suffix)
+	fmt.Fprintf(sb, "\t\t\t}\n")
+	fmt.Fprintf(sb, "\t\t}\n")
+	fmt.Fprintf(sb, "\t\t%s.WriteUvarint(channelID_%s)\n", bufName, suffix)
+	fmt.Fprintf(sb, "\t}\n")
+}
+
+func (g *Generator) emitChannelReadAssign(sb *strings.Builder, varName, pType, elemType string, structs map[string]*ast.StructType, readerName, moduleName string, interfaceSchemas map[string]string, isHost bool) {
+	elemType = g.newDisplayTypeResolver(moduleName).NormalizeTypeString(elemType)
+	suffix := generatedIdentSuffix(varName + "_" + readerName)
+	registryExpr := "__p.channelRegistry()"
+	ctxExpr := "context.Background()"
+	if isHost {
+		registryExpr = "ffigo.ChannelRegistryFromContext(ctx)"
+		ctxExpr = "ctx"
+	}
+	elemGoType := g.toGoType(elemType)
+	canRecv := channelTypeCanRecv(pType)
+	canSend := channelTypeCanSend(pType)
+	fmt.Fprintf(sb, "\t{\n")
+	fmt.Fprintf(sb, "\t\tchannelID_%s := %s.ReadUvarint()\n", suffix, readerName)
+	fmt.Fprintf(sb, "\t\tif channelID_%s != 0 {\n", suffix)
+	fmt.Fprintf(sb, "\t\t\tchannels_%s := %s\n", suffix, registryExpr)
+	if isHost {
+		fmt.Fprintf(sb, "\t\t\tif channels_%s == nil { return nil, fmt.Errorf(\"FFI channel param '%%s' failed: missing channel registry\", %q) }\n", suffix, varName)
+		fmt.Fprintf(sb, "\t\t\tendpoint_%s, ok := channels_%s.LookupChannel(channelID_%s)\n", suffix, suffix, suffix)
+		fmt.Fprintf(sb, "\t\t\tif !ok { return nil, fmt.Errorf(\"FFI channel param '%%s' failed: unknown channel endpoint %%d\", %q, channelID_%s) }\n", varName, suffix)
+	} else {
+		fmt.Fprintf(sb, "\t\t\tif channels_%s == nil { panic(fmt.Sprintf(\"FFI channel result '%s' failed: missing channel registry\")) }\n", suffix, varName)
+		fmt.Fprintf(sb, "\t\t\tendpoint_%s, ok := channels_%s.LookupChannel(channelID_%s)\n", suffix, suffix, suffix)
+		fmt.Fprintf(sb, "\t\t\tif !ok { panic(fmt.Sprintf(\"FFI channel result '%s' failed: unknown channel endpoint %%d\", channelID_%s)) }\n", varName, suffix)
+	}
+	fmt.Fprintf(sb, "\t\t\tbridgeChan_%s := make(chan %s)\n", suffix, elemGoType)
+	fmt.Fprintf(sb, "\t\t\t%s = bridgeChan_%s\n", varName, suffix)
+	if canRecv {
+		valueVar := "channelValue_" + suffix
+		payloadVar := "channelPayload_" + suffix
+		readerVar := "channelReader_" + suffix
+		closeLine := "\t\t\t\tdefer close(bridgeChan_" + suffix + ")\n"
+		if canSend {
+			closeLine = ""
+		}
+		fmt.Fprintf(sb, "\t\t\tgo func() {\n")
+		sb.WriteString(closeLine)
+		fmt.Fprintf(sb, "\t\t\t\tfor {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t%s, ok, err := endpoint_%s.Recv(%s)\n", payloadVar, suffix, ctxExpr)
+		fmt.Fprintf(sb, "\t\t\t\t\tif err != nil || !ok { return }\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
+		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(%s)\n", readerVar, payloadVar)
+		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase bridgeChan_%s <- %s:\n", suffix, valueVar)
+		fmt.Fprintf(sb, "\t\t\t\t\tcase <-%s.Done():\n", ctxExpr)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t}()\n")
+	}
+	if canSend {
+		valueVar := "channelValue_" + suffix
+		payloadVar := "channelPayload_" + suffix
+		fmt.Fprintf(sb, "\t\t\tgo func() {\n")
+		fmt.Fprintf(sb, "\t\t\t\tfor {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
+		fmt.Fprintf(sb, "\t\t\t\t\tcase %s, ok := <-bridgeChan_%s:\n", valueVar, suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { _ = endpoint_%s.Close(); return }\n", suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\t\t%s := ffigo.GetBuffer()\n", payloadVar)
+		g.emitWrite(sb, valueVar, elemType, nil, structs, payloadVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tchannelBytes_%s := append([]byte(nil), %s.Bytes()...)\n", suffix, payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tffigo.ReleaseBuffer(%s)\n", payloadVar)
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif err := endpoint_%s.Send(%s, channelBytes_%s); err != nil { return }\n", suffix, ctxExpr, suffix)
+		fmt.Fprintf(sb, "\t\t\t\t\tcase <-%s.Done():\n", ctxExpr)
+		fmt.Fprintf(sb, "\t\t\t\t\t\treturn\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t\t}\n")
+		fmt.Fprintf(sb, "\t\t\t}()\n")
+	}
+	fmt.Fprintf(sb, "\t\t}\n")
+	fmt.Fprintf(sb, "\t}\n")
+}
+
 func buildInterfaceSchemaVars(interfaceFFI map[string]bool, displayTypeName func(string) string) map[string]string {
 	if len(interfaceFFI) == 0 {
 		return nil
@@ -255,6 +424,10 @@ func (g *Generator) collectReferencedInterfaceNames(methods []generatedMethod, m
 		if kType, vType, ok := readMapKeyValueTypes(typeName); ok {
 			visit(kType)
 			visit(vType)
+			return
+		}
+		if elemType, ok := readChanElemType(typeName); ok {
+			visit(elemType)
 		}
 	}
 	for _, method := range methods {

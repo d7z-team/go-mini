@@ -78,7 +78,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	if methodsPrefix != "" {
 		fixedPrefix = displayTypeName(methodsPrefix)
 	}
-	methods := g.buildGeneratedMethods(iface, isStruct, methodsPrefix, displayTypeName, vmType, interfaceSchemaVars, moduleName)
+	methods := g.buildGeneratedMethods(iface, isStruct, methodsPrefix, displayTypeName, vmType, interfaceSchemaVars, moduleName, meta.proxyMarked)
 	if methodsPrefix != "" {
 		for _, method := range methods {
 			if method.HasReceiver || moduleName != "" {
@@ -270,8 +270,9 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 }
 
 func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []generatedMethod, structs map[string]*ast.StructType, moduleName string, interfaceSchemaVars map[string]string) {
-	fmt.Fprintf(sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n}\n\n", name)
+	fmt.Fprintf(sb, "type %sProxy struct {\n\tbridge ffigo.FFIBridge\n\tregistry *ffigo.HandleRegistry\n\tchannels ffigo.ChannelRegistry\n}\n\n", name)
 	fmt.Fprintf(sb, "func New%sProxy(bridge ffigo.FFIBridge, registry *ffigo.HandleRegistry) %s {\n\treturn &%sProxy{bridge: bridge, registry: registry}\n}\n\n", name, name, name)
+	fmt.Fprintf(sb, "func (__p *%sProxy) channelRegistry() ffigo.ChannelRegistry {\n\tif __p.channels == nil { __p.channels = ffigo.NewChannelRegistry() }\n\treturn __p.channels\n}\n\n", name)
 
 	for _, method := range methods {
 		fmt.Fprintf(sb, "func (__p *%sProxy) %s(", name, method.Name)
@@ -325,7 +326,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 			g.emitWrite(sb, param.Name, param.RawType, param.Expr, structs, wireBufName, moduleName, interfaceSchemaVars, false)
 		}
 
-		fmt.Fprintf(sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: %s, Args: append([]byte(nil), %s.Bytes()...)})\n", method.ContextVar, methodIDConstName(name, method.Name), wireBufName)
+		fmt.Fprintf(sb, "\n\t__ret, err := __p.bridge.Call(%s, &ffigo.FFICallRequest{MethodID: %s, Args: append([]byte(nil), %s.Bytes()...), Channels: __p.channelRegistry()})\n", method.ContextVar, methodIDConstName(name, method.Name), wireBufName)
 		if needsRetBuf || method.HasError || method.HasCopyBack {
 			fmt.Fprintf(sb, "\tretData, syncErr := ffigo.SyncBytes(__ret)\n")
 			fmt.Fprintf(sb, "\tif err == nil { err = syncErr }\n")

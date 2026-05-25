@@ -35,6 +35,16 @@ func (g *Generator) typeToString(expr ast.Expr) string {
 			miniast.GoMiniType(g.typeToString(t.Key)),
 			miniast.GoMiniType(g.typeToString(t.Value)),
 		))
+	case *ast.ChanType:
+		elem := miniast.GoMiniType(g.typeToString(t.Value))
+		switch t.Dir {
+		case ast.RECV:
+			return string(miniast.CreateRecvChanType(elem))
+		case ast.SEND:
+			return string(miniast.CreateSendChanType(elem))
+		default:
+			return string(miniast.CreateChanType(elem))
+		}
 	case *ast.StarExpr:
 		return string(miniast.GoMiniType(g.typeToString(t.X)).ToHostRef())
 	case *ast.SelectorExpr:
@@ -61,6 +71,11 @@ func (g *Generator) typeToString(expr ast.Expr) string {
 			return "Any"
 		}
 		return "interface{}"
+	case *ast.StructType:
+		if t.Fields == nil || len(t.Fields.List) == 0 {
+			return "Void"
+		}
+		return "Any"
 	case *ast.Ellipsis:
 		return string(miniast.CreateArrayType(miniast.GoMiniType(g.typeToString(t.Elt))))
 	default:
@@ -101,6 +116,17 @@ func (g *Generator) toGoType(pType string) string {
 		return "*" + g.toGoType(inner)
 	}
 	miniType := miniast.GoMiniType(pType)
+	if elem, ok := miniType.ReadChanElemType(); ok {
+		goElem := g.toGoType(string(elem))
+		switch {
+		case miniType.IsRecvChan():
+			return "<-chan " + goElem
+		case miniType.IsSendChan():
+			return "chan<- " + goElem
+		default:
+			return "chan " + goElem
+		}
+	}
 	if innerType, ok := miniType.ReadArrayItemType(); ok {
 		inner := string(innerType)
 		if inner == "Uint8" || inner == "byte" || inner == "uint8" {
@@ -282,6 +308,10 @@ func walkNestedTypeNames(typeName string, asHostRef bool, visit func(string, boo
 		walkNestedTypeNames(string(value), asHostRef, visit)
 		return
 	}
+	if elem, ok := miniType.ReadChanElemType(); ok {
+		walkNestedTypeNames(string(elem), asHostRef, visit)
+		return
+	}
 	if items, ok := miniType.ReadTuple(); ok {
 		for _, item := range items {
 			walkNestedTypeNames(string(item), asHostRef, visit)
@@ -324,9 +354,40 @@ func readMapKeyValueTypes(pType string) (string, string, bool) {
 	return ffigo.ReadMapKeyValueTypes(pType)
 }
 
+func readChanElemType(pType string) (string, bool) {
+	return ffigo.ReadChanElemType(pType)
+}
+
+func channelDirectionLiteral(pType string) string {
+	pType = strings.TrimSpace(pType)
+	switch {
+	case strings.HasPrefix(pType, "RecvChan<"):
+		return "ffigo.ChannelRecv"
+	case strings.HasPrefix(pType, "SendChan<"):
+		return "ffigo.ChannelSend"
+	default:
+		return "ffigo.ChannelBoth"
+	}
+}
+
+func channelTypeCanRecv(pType string) bool {
+	pType = strings.TrimSpace(pType)
+	return !strings.HasPrefix(pType, "SendChan<")
+}
+
+func channelTypeCanSend(pType string) bool {
+	pType = strings.TrimSpace(pType)
+	return !strings.HasPrefix(pType, "RecvChan<")
+}
+
+func isBidirectionalChannelType(pType string) bool {
+	miniType := miniast.GoMiniType(pType)
+	return miniType.IsChan() && !miniType.IsRecvChan() && !miniType.IsSendChan()
+}
+
 func zeroValue(t string) string {
 	miniType := miniast.GoMiniType(t)
-	if isRefTypeString(t) || miniType.IsArray() || miniType.IsMap() || miniType.IsAny() || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
+	if isRefTypeString(t) || miniType.IsArray() || miniType.IsMap() || miniType.IsChan() || miniType.IsAny() || t == "any" || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "[]") || t == "error" {
 		return "nil"
 	}
 	switch t {

@@ -293,6 +293,68 @@ func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireC
 	return token, ffiCompletionSink{scheduler: s, token: token}, nil
 }
 
+func (s *ExecutionContextScheduler) ParkVM(resume Task, wait ffigo.WaitHandle, routeName string, methodID uint32) (uint64, error) {
+	if s == nil {
+		return 0, errors.New("missing current VM execution context")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil {
+		return 0, errors.New("missing current VM execution context")
+	}
+	frame := s.current.CurrentFrame()
+	if frame == nil {
+		return 0, errors.New("missing current VM execution context frame")
+	}
+	s.nextToken++
+	token := (s.runID << 32) | s.nextToken
+	s.pending[token] = &suspendedExecutionContext{
+		ExecutionContext: s.current,
+		Frame:            frame,
+		Resume:           resume,
+		Wait:             wait,
+		RouteName:        routeName,
+		MethodID:         methodID,
+	}
+	s.current = nil
+	return token, nil
+}
+
+func (s *ExecutionContextScheduler) SetVMWait(token uint64, wait ffigo.WaitHandle) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pending := s.pending[token]
+	if pending == nil {
+		return false
+	}
+	pending.Wait = wait
+	return true
+}
+
+func (s *ExecutionContextScheduler) WakeVM(token uint64) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped || token>>32 != s.runID {
+		return false
+	}
+	pending := s.pending[token]
+	if pending == nil {
+		return false
+	}
+	delete(s.pending, token)
+	delete(s.accepted, token)
+	pending.Frame.Session.TaskStack = append(pending.Frame.Session.TaskStack, pending.Resume)
+	s.runq.push(pending.ExecutionContext)
+	s.signalLocked()
+	return true
+}
+
 func (s *ExecutionContextScheduler) CommitFFI(token uint64, wait ffigo.WaitHandle) error {
 	if s == nil {
 		return errors.New("missing current VM execution context")

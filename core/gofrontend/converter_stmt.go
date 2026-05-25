@@ -30,6 +30,12 @@ func (c *Converter) convertStmt(s ast.Stmt) miniast.Stmt {
 			res.Results = append(res.Results, c.convertExpr(r))
 		}
 		return res
+	case *ast.SendStmt:
+		return &miniast.SendStmt{
+			BaseNode: miniast.BaseNode{ID: c.genID(st, "send"), Meta: "send", Loc: c.extractLoc(st)},
+			Channel:  c.convertExpr(st.Chan),
+			Value:    c.convertExpr(st.Value),
+		}
 	case *ast.AssignStmt:
 		rhsExprs := c.convertAssignRHS(st)
 		if len(rhsExprs) == 0 {
@@ -175,6 +181,27 @@ func (c *Converter) convertStmt(s ast.Stmt) miniast.Stmt {
 		}
 		if st.Init != nil {
 			return res
+		}
+		return res
+	case *ast.SelectStmt:
+		res := &miniast.SelectStmt{BaseNode: miniast.BaseNode{ID: c.genID(st, "select"), Meta: "select", Loc: c.extractLoc(st)}}
+		if st.Body != nil {
+			for _, stmt := range st.Body.List {
+				clause, ok := stmt.(*ast.CommClause)
+				if !ok {
+					continue
+				}
+				cCase := miniast.SelectCase{BaseNode: miniast.BaseNode{ID: c.genID(clause, "select_case"), Meta: "select_case", Loc: c.extractLoc(clause)}}
+				if clause.Comm != nil {
+					cCase.Comm = c.convertStmt(clause.Comm)
+				}
+				for _, bodyStmt := range clause.Body {
+					if converted := c.convertStmt(bodyStmt); converted != nil {
+						cCase.Body = append(cCase.Body, converted)
+					}
+				}
+				res.Cases = append(res.Cases, cCase)
+			}
 		}
 		return res
 	case *ast.TypeSwitchStmt:

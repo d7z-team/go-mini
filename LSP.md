@@ -9,7 +9,7 @@
 
 IDE 能力基于 `AnalysisProgram` 持有的源码 AST，执行链基于 `ExecutableProgram` / prepared program / bytecode。
 
-LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
+LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`、`RecvChan<Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
 
 编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
 
@@ -138,7 +138,7 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 - LSP / IDE 查询：基于源码 AST
 - 运行 / 反汇编 / 持久化：基于 bytecode / prepared program
 
-异步 FFI 的 wait-source 分类和 `VMAllBlockedError` 属于执行期调度语义。LSP 只通过 schema 暴露函数签名、类型和模板信息，不模拟 async completion，也不把运行时阻塞状态写入分析缓存。
+channel/select 阻塞、FFI channel endpoint wake、异步 FFI 的 wait-source 分类和 `VMAllBlockedError` 都属于执行期调度语义。LSP 只通过 AST 与 schema 暴露函数签名、channel 方向、类型和模板信息，不模拟 select 调度、channel readiness 或 async completion，也不把运行时阻塞状态写入分析缓存。
 
 如果你的系统既要编辑又要运行，推荐双链设计：
 

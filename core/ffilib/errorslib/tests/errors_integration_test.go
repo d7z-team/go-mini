@@ -3,12 +3,13 @@ package errorslib_test
 import (
 	"testing"
 
+	"gopkg.d7z.net/go-mini/core/ffilib"
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
 func TestNewAndIs(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.Schema("errors", "New", "Is"),
+		testutil.SurfaceFFISchema("errors", ffilib.Surface()),
 	}, []testutil.Case{
 		{
 			Name:    "new-and-is",

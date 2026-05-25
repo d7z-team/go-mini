@@ -707,6 +707,92 @@ type Numbers interface {
 	}
 }
 
+func TestRunDirectoryModeGeneratesChannelSupport(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module chanmod
+// ffigen:proxy
+type ChanModule interface {
+	Source() <-chan int64
+	Sink() chan<- int64
+	Forward(in <-chan int64, out chan<- int64)
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	for _, required := range []string{
+		`runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>")`,
+		`runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>")`,
+		`runtime.MustParseRuntimeFuncSigWithModes("function(RecvChan<Int64>, SendChan<Int64>) Void", runtime.FFIParamIn, runtime.FFIParamIn)`,
+		`ffigo.ChannelEndpointFuncs`,
+		`ChannelRegistryFromContext(ctx)`,
+		`__p.channelRegistry()`,
+		`RegisterChannel(`,
+	} {
+		if !strings.Contains(code, required) {
+			t.Fatalf("expected generated channel support to contain %q, got:\n%s", required, code)
+		}
+	}
+}
+
+func TestRunDirectoryModeGeneratesBidirectionalChannelReturn(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module chanmod
+type ChanModule interface {
+	Open() chan int64
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	code := string(content)
+	for _, required := range []string{
+		`runtime.MustParseRuntimeFuncSig("function() Chan<Int64>")`,
+		`ffigo.ChannelEndpointFuncs{Elem: "Int64", Dir: ffigo.ChannelBoth}`,
+	} {
+		if !strings.Contains(code, required) {
+			t.Fatalf("expected generated bidirectional channel return to contain %q, got:\n%s", required, code)
+		}
+	}
+}
+
+func TestRunRejectsBidirectionalChannelParameter(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "api.go", `package pkgmode
+
+// ffigen:module chanmod
+type ChanModule interface {
+	Use(ch chan int64)
+}
+`)
+
+	err := Run(Options{
+		PackageName: "pkgmode",
+		Output:      filepath.Join(workspace, "gen"),
+		Args:        []string{workspace},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bidirectional channel parameter") {
+		t.Fatalf("expected bidirectional channel parameter rejection, got %v", err)
+	}
+}
+
 func TestRunRejectsMalformedInterfaceDirective(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "api.go", `package pkgmode

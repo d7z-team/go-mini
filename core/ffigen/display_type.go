@@ -42,6 +42,17 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 			miniast.GoMiniType(r.NormalizeTypeString(string(value))),
 		))
 	}
+	if elem, ok := miniType.ReadChanElemType(); ok {
+		elemType := miniast.GoMiniType(r.NormalizeTypeString(string(elem)))
+		switch {
+		case miniType.IsRecvChan():
+			return string(miniast.CreateRecvChanType(elemType))
+		case miniType.IsSendChan():
+			return string(miniast.CreateSendChanType(elemType))
+		default:
+			return string(miniast.CreateChanType(elemType))
+		}
+	}
 	if tupleItems, ok := miniType.ReadTuple(); ok {
 		items := make([]miniast.GoMiniType, 0, len(tupleItems))
 		for _, item := range tupleItems {
@@ -110,6 +121,16 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 		return string(miniast.CreateArrayType(miniast.GoMiniType(r.VMType(t.Elt))))
 	case *ast.MapType:
 		return string(miniast.CreateMapType(miniast.GoMiniType(r.VMType(t.Key)), miniast.GoMiniType(r.VMType(t.Value))))
+	case *ast.ChanType:
+		elemType := miniast.GoMiniType(r.VMType(t.Value))
+		switch t.Dir {
+		case ast.RECV:
+			return string(miniast.CreateRecvChanType(elemType))
+		case ast.SEND:
+			return string(miniast.CreateSendChanType(elemType))
+		default:
+			return string(miniast.CreateChanType(elemType))
+		}
 	case *ast.StarExpr:
 		return string(miniast.GoMiniType(r.VMType(t.X)).ToHostRef())
 	case *ast.Ellipsis:

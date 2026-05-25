@@ -24,6 +24,7 @@ type Executor struct {
 	routes               map[string]FFIRoute
 	packageValues        map[string]*BoundPackageValue
 	ffiPackages          map[string]*BoundFFIPackage
+	ffiChannels          ffigo.ChannelRegistry
 	externalRequirements []ExternalRequirement
 
 	ModulePlanLoader func(path string) (*PreparedProgram, error)
@@ -120,6 +121,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		routes:               make(map[string]FFIRoute),
 		packageValues:        make(map[string]*BoundPackageValue),
 		ffiPackages:          make(map[string]*BoundFFIPackage),
+		ffiChannels:          ffigo.NewChannelRegistry(),
 		externalRequirements: append([]ExternalRequirement(nil), prepared.ExternalRequirements...),
 		interfaceCache:       make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:               NewSharedState(),
@@ -127,6 +129,16 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
+}
+
+func (e *Executor) channelRegistry() ffigo.ChannelRegistry {
+	if e == nil {
+		return nil
+	}
+	if e.ffiChannels == nil {
+		e.ffiChannels = ffigo.NewChannelRegistry()
+	}
+	return e.ffiChannels
 }
 
 func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {

@@ -129,3 +129,12 @@ func ReadMapKeyValueTypes(typeName string) (string, string, bool) {
 	}
 	return key.String(), value.String(), true
 }
+
+// ReadChanElemType returns the element type for Chan<T>, RecvChan<T>, or SendChan<T>.
+func ReadChanElemType(typeName string) (string, bool) {
+	elem, ok := typespec.Type(strings.TrimSpace(typeName)).ChanElement()
+	if !ok {
+		return "", false
+	}
+	return elem.String(), true
+}

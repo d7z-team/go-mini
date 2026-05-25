@@ -129,6 +129,7 @@ type FFICallRequest struct {
 	MethodID uint32
 	Method   string
 	Args     []byte
+	Channels ChannelRegistry
 }
 
 func SyncBytes(ret FFIReturn) ([]byte, error) {
@@ -169,6 +170,9 @@ func (b *RouterBridge) Call(ctx context.Context, req *FFICallRequest) (FFIReturn
 	}
 	if b == nil || b.Router == nil {
 		return nil, errors.New("ffigo: missing FFI router")
+	}
+	if req.Channels != nil {
+		ctx = ContextWithChannelRegistry(ctx, req.Channels)
 	}
 	return b.Router(ctx, req)
 }

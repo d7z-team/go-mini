@@ -531,6 +531,10 @@ func (c *ValidContext) containsHostOpaqueValue(t GoMiniType, depth int) bool {
 	if t.IsHostRef() {
 		return false
 	}
+	if t.IsChan() {
+		elem, _ := t.ReadChanElemType()
+		return c.containsHostOpaqueValue(elem.Resolve(c), depth+1)
+	}
 	if t.IsPtr() {
 		elem, _ := t.GetPtrElementType()
 		return c.IsHostOpaqueNamedType(elem) || c.containsHostOpaqueValue(elem.Resolve(c), depth+1)

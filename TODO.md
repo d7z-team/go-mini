@@ -34,9 +34,12 @@
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - `core/surface.Bundle` 只保留声明式 schema、runtime bind 和 compiler-only templates，不再提供 registrar adapter；surface 冲突通过 `Bundle.Err` / `UseSurface` 返回错误。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
+- 语言级 channel/select 已落到 Go frontend、AST 检查、lowering、bytecode payload 和 runtime；支持 `make(chan T[, cap])`、send/receive、二值 receive、`close`、`len`、`cap`、`select`、`default` 和 channel `for range`。
+- channel canonical type 为 `Chan<T>` / `RecvChan<T>` / `SendChan<T>`，同样由 `core/typespec`、AST 门面和 runtime schema 门面统一解析与渲染。
 - VM 侧不暴露公开 yield API；上下文切换来自内部 safe point 或异步 FFI completion。
 - 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
 - 异步 FFI 启动后必须返回 `ffigo.WaitHandle` 描述等待来源；调度器区分 `WaitExternal` 与 `WaitDependsOnVM`，只有存在外部 wake source 时才会在全挂起状态继续等待。
+- FFI schema 支持 channel endpoint：wire 上传递 channel endpoint ID，host 端通过 `ffigo.ChannelRegistry` / `ChannelEndpoint` 收发 payload；FFI bridge 或 endpoint goroutine 只能等待 host channel、唤醒调度器或完成 wire 编解码，不能执行 VM task。`ffigen` 对 channel 参数只生成方向类型代理，避免 bidirectional Go channel 代理歧义。
 - 当所有 VM 执行上下文都不可运行，且 pending async FFI 都依赖 VM 继续执行时，runtime 返回 `VMAllBlockedError`，错误包含 execution context、FFI route、method ID 和 wait reason。
 - context 取消或 VM 致命错误会统一 abort 当前 run，取消 pending FFI，清理 module loading / waiters，并按 frame 错误路径执行必要 session 清理。
 - 同步 FFI 调用阻塞整个 VM；只有返回 `ffigo.Async[T]` 的 FFI 会挂起当前 VM 执行上下文。
@@ -66,13 +69,13 @@
 - [x] 补齐 debugger 执行上下文标识与 all-stop 多上下文调试回归测试。
 - [ ] 如后续需要 non-stop 多上下文调试，再单独设计 per-context pause 集合、命令路由和事件顺序。
 
-### Channel / Select 语义评估
+### Channel / Select 语义
 
-- [ ] 评估是否需要语言级 channel/select。
-- [ ] 若需要，先完成基于单线程 VM 调度器的语义设计。
-- [ ] 明确 send/receive/select 与 async FFI completion 的调度关系。
-- [ ] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义。
-- [ ] 设计 lowering / bytecode / runtime payload 结构后再进入实现。
+- [x] 评估并确认需要语言级 channel/select，以支持 `context.Context.Done()` 这类 receive-only channel FFI 形态。
+- [x] 完成基于单线程 VM 调度器的语义设计，不新增 host goroutine 执行 VM task。
+- [x] 明确 send/receive/select 与 async FFI completion 的调度关系：VM 内部 channel 等待是 `WaitDependsOnVM`，FFI channel endpoint 等待是外部 wake source。
+- [x] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义，并补齐 all-blocked 错误路径。
+- [x] 实现 lowering / bytecode / runtime payload、Go frontend、FFI schema、`ffigen` 和 e2e 回归测试。
 
 ### Benchmark 与指标
 
@@ -125,3 +128,4 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 - VM 内部始终单线程执行，不新增宿主 goroutine 执行 VM 指令。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
 - 异步 FFI 必须通过 `ffigo.WaitHandle` 暴露等待来源；依赖 VM 继续执行才能完成的等待不得标记为 `WaitExternal`。
+- FFI channel endpoint 只允许通过 schema 声明和 endpoint ID 参与 wire 编解码；`Any` 不得承载 channel，host endpoint 不得持有 VM pointer 或执行 VM task。

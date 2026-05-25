@@ -923,10 +923,12 @@ var miniKeywords = []string{
 
 var miniBuiltins = map[string]string{
 	"len":    string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeInt64, false)),
+	"cap":    string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeInt64, false)),
 	"append": string(CreateFunctionType([]FunctionParam{{Type: CreateArrayType(TypeAny)}, {Type: TypeAny}}, CreateArrayType(TypeAny), false)),
 	"make":   string(CreateFunctionType([]FunctionParam{{Type: "Type"}, {Type: TypeInt64}}, TypeAny, true)),
 	"new":    string(CreateFunctionType([]FunctionParam{{Type: "Type"}}, TypeAny.ToPtr(), false)),
 	"panic":  string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, false)),
+	"close":  string(CreateFunctionType([]FunctionParam{{Type: TypeAny}}, TypeVoid, false)),
 }
 
 // FindCompletionsAt 获取指定位置的代码补全建议

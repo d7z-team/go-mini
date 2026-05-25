@@ -39,7 +39,7 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 			return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.TypeBool, Loc: c.extractLoc(ex)}, Value: ex.Name}
 		}
 		switch ex.Name {
-		case "panic", "make", "append", "delete", "len", "require":
+		case "panic", "make", "append", "delete", "len", "cap", "close", "require":
 			return &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex)}, Name: miniast.Ident(ex.Name)}
 		}
 		if builtin := c.canonicalBuiltinTypeName(ex.Name); builtin != ex.Name {
@@ -49,6 +49,9 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 	case *ast.BinaryExpr:
 		return &miniast.BinaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "binary"), Meta: "binary", Loc: c.extractLoc(ex)}, Left: c.convertExpr(ex.X), Operator: miniast.Ident(c.convertOp(ex.Op)), Right: c.convertExpr(ex.Y)}
 	case *ast.UnaryExpr:
+		if ex.Op == token.ARROW {
+			return &miniast.ReceiveExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "recv"), Meta: "recv", Loc: c.extractLoc(ex)}, Channel: c.convertExpr(ex.X)}
+		}
 		return &miniast.UnaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "unary"), Meta: "unary", Loc: c.extractLoc(ex)}, Operator: miniast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
 	case *ast.TypeAssertExpr:
 		return &miniast.TypeAssertExpr{

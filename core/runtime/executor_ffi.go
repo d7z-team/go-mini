@@ -80,6 +80,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 			MethodID: route.MethodID,
 			Method:   route.Name,
 			Args:     ownedArgs,
+			Channels: e.channelRegistry(),
 		}
 		if route.MethodID == 0 {
 			ret, err = route.Bridge.Invoke(session.Context, req)

@@ -13,10 +13,12 @@
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
-- FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle 或 VM pointer。
+- FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
+- FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，bridge 不得持有 VM pointer 或执行 VM task。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
 - `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
+- `ffigen` 对 channel 参数必须使用 `<-chan T` 或 `chan<- T` 这种方向类型；不要生成 bidirectional `chan T` 参数代理。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
 - `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。
@@ -27,6 +29,7 @@
 - 闭包运行时结构只保留执行必要信息，不重新引入 AST 函数字段作为执行依赖。
 - VM 内部始终按单线程协作式 VM 执行上下文调度，不新增 host goroutine 执行 VM task。
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
+- Channel / select 必须保持 lowering / bytecode / runtime 闭环；FFI channel endpoint 的宿主 goroutine 只能等待 endpoint、完成 wire 编解码并唤醒调度器，不能执行 VM 指令。
 - 异步 FFI 必须返回 `ffigo.WaitHandle` 描述等待来源；依赖 VM 继续执行才能完成的等待不得标记为 `WaitExternal`，不得用无来源等待或 context timeout 掩盖 all-blocked。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。

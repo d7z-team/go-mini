@@ -194,6 +194,10 @@ func checkPublicFFIType(scope string, typ RuntimeType) error {
 		if typ.Value != nil {
 			return checkPublicFFIType(scope+" map value", *typ.Value)
 		}
+	case RuntimeTypeChannel:
+		if typ.Elem != nil {
+			return checkPublicFFIType(scope+" channel element", *typ.Elem)
+		}
 	case RuntimeTypeTuple:
 		for i := range typ.Params {
 			if err := checkPublicFFIType(fmt.Sprintf("%s tuple item %d", scope, i), typ.Params[i]); err != nil {

@@ -219,6 +219,23 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 			return fmt.Errorf("%s carries runtime range state", plan)
 		}
 		return validatePreparedTaskPlan(plan+".range_body", data.Body, depth+1)
+	case OpChanRecv:
+		data, ok := task.Data.(*ChanRecvData)
+		if !ok || data == nil {
+			return fmt.Errorf("%s missing ChanRecvData", plan)
+		}
+		return validateRuntimeType(plan+".result", data.ResultType)
+	case OpChanSend:
+		if task.Data != nil {
+			return fmt.Errorf("%s must not carry payload", plan)
+		}
+		return nil
+	case OpSelect:
+		data, ok := task.Data.(*SelectData)
+		if !ok || data == nil {
+			return fmt.Errorf("%s missing SelectData", plan)
+		}
+		return validateSelectData(plan, data, depth)
 	case OpJumpIf:
 		data, ok := task.Data.(*JumpData)
 		if !ok || data == nil || data.Operator == "" {
@@ -422,6 +439,43 @@ func validateSwitchData(plan string, data *SwitchData, depth int) error {
 	return validatePreparedTaskPlan(plan+".switch_default", data.DefaultBody, depth+1)
 }
 
+func validateSelectData(plan string, data *SelectData, depth int) error {
+	defaults := 0
+	for i, c := range data.Cases {
+		switch c.Kind {
+		case SelectCommDefault:
+			defaults++
+			if defaults > 1 {
+				return fmt.Errorf("%s has multiple default cases", plan)
+			}
+		case SelectCommRecv:
+			if !c.RecvType.IsEmpty() {
+				if err := validateRuntimeType(fmt.Sprintf("%s.case_%d_recv", plan, i), c.RecvType); err != nil {
+					return err
+				}
+			}
+			if !c.OKType.IsEmpty() {
+				if err := validateRuntimeType(fmt.Sprintf("%s.case_%d_ok", plan, i), c.OKType); err != nil {
+					return err
+				}
+			}
+			if err := validateSymbolRef(fmt.Sprintf("%s.case_%d_recv_sym", plan, i), c.RecvSym); err != nil {
+				return err
+			}
+			if err := validateSymbolRef(fmt.Sprintf("%s.case_%d_ok_sym", plan, i), c.RecvOKSym); err != nil {
+				return err
+			}
+		case SelectCommSend:
+		default:
+			return fmt.Errorf("%s.case_%d has unknown select comm kind %q", plan, i, c.Kind)
+		}
+		if err := validatePreparedTaskPlan(fmt.Sprintf("%s.case_%d_body", plan, i), c.Body, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func validateRuntimeType(plan string, typ RuntimeType) error {
 	if typ.Kind == RuntimeTypeInvalid && typ.Raw.IsEmpty() {
 		return fmt.Errorf("%s missing runtime type", plan)
@@ -524,7 +578,7 @@ func startsDirectUnwind(op OpCode) bool {
 
 func isScopeEnterOp(op OpCode) bool {
 	switch op {
-	case OpScopeEnter, OpForScopeEnter, OpRangeScopeEnter, OpCatchScopeEnter:
+	case OpScopeEnter, OpForScopeEnter, OpRangeScopeEnter, OpSelectScopeEnter, OpCatchScopeEnter:
 		return true
 	default:
 		return false

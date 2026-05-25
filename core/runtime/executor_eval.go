@@ -216,7 +216,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	if op == "==" || op == "Eq" {
 		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
-			case TypeArray, TypeMap, TypeModule, TypeClosure:
+			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
 				return NewBool(l.Ref == r.Ref), nil
 			case TypeHandle, TypeHostRef:
 				return NewBool(l.Handle == r.Handle), nil
@@ -227,7 +227,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	if op == "!=" || op == "Neq" {
 		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
-			case TypeArray, TypeMap, TypeModule, TypeClosure:
+			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
 				return NewBool(l.Ref != r.Ref), nil
 			case TypeHandle, TypeHostRef:
 				return NewBool(l.Handle != r.Handle), nil
@@ -564,6 +564,26 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				v.SetRawType(tStr)
 				session.ValueStack.Push(v)
 				return nil
+			} else if targetType.IsChan() {
+				capacity := 0
+				if len(args) > 1 && args[1] != nil {
+					cInt, _ := args[1].ToInt()
+					if cInt < 0 {
+						return &VMError{Message: fmt.Sprintf("negative channel capacity in make: %d", cInt), IsPanic: true}
+					}
+					if cInt > 10000000 {
+						return &VMError{Message: fmt.Sprintf("requested channel capacity too large: %d", cInt), IsPanic: true}
+					}
+					capacity = int(cInt)
+				}
+				elemType, ok := targetType.ReadChanElemType()
+				if !ok {
+					return &VMError{Message: fmt.Sprintf("invalid channel type %s", targetType.Raw), IsPanic: true}
+				}
+				v := &Var{VType: TypeChannel, Ref: NewVMChannel(elemType, capacity)}
+				v.SetRawType(tStr)
+				session.ValueStack.Push(v)
+				return nil
 			} else if targetType.IsArray() || targetType.Raw == SpecBytes {
 				length := 0
 				capacity := 0
@@ -638,6 +658,13 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case TypeMap:
 				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMMap).Len())))
 				return nil
+			case TypeChannel:
+				if ch, ok := obj.Ref.(*VMChannel); ok && ch != nil {
+					session.ValueStack.Push(NewInt(int64(ch.Len())))
+					return nil
+				}
+				session.ValueStack.Push(NewInt(0))
+				return nil
 			}
 			return &VMError{Message: fmt.Sprintf("invalid argument for len: %v", obj.VType), IsPanic: true}
 		case "cap":
@@ -657,8 +684,32 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case TypeArray:
 				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMArray).Cap())))
 				return nil
+			case TypeChannel:
+				if ch, ok := obj.Ref.(*VMChannel); ok && ch != nil {
+					session.ValueStack.Push(NewInt(int64(ch.Cap())))
+					return nil
+				}
+				session.ValueStack.Push(NewInt(0))
+				return nil
 			}
 			return &VMError{Message: fmt.Sprintf("invalid argument for cap: %v", obj.VType), IsPanic: true}
+		case "close":
+			if len(args) != 1 || args[0] == nil {
+				return &VMError{Message: "close requires exactly 1 channel argument", IsPanic: true}
+			}
+			obj := e.unwrapValue(args[0])
+			ch, ok := asVMChannel(obj)
+			if !ok {
+				return &VMError{Message: fmt.Sprintf("close requires channel, got %v", runtimeTypeForAssignment(obj).Raw), IsPanic: true}
+			}
+			if obj.RuntimeType().IsRecvChan() {
+				return &VMError{Message: fmt.Sprintf("close of receive-only channel %s", obj.RuntimeType().Raw), IsPanic: true}
+			}
+			if err := ch.Close(); err != nil {
+				return &VMError{Message: err.Error(), IsPanic: true}
+			}
+			session.ValueStack.Push(nil)
+			return nil
 		case "append":
 			if len(args) < 2 || args[0] == nil {
 				return &VMError{Message: "append requires at least 2 arguments", IsPanic: true}
@@ -1179,6 +1230,12 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 		return v, nil
 	}
 
+	if shape.IsChan() {
+		v := &Var{VType: TypeChannel}
+		v.SetRuntimeType(t)
+		return v, nil
+	}
+
 	if shape.IsInterface() {
 		v := &Var{VType: TypeInterface, Ref: nil}
 		v.SetRuntimeType(t)
@@ -1262,6 +1319,10 @@ func (e *Executor) runtimeTypeContainsHostOpaqueValue(t RuntimeType, depth int) 
 			return e.runtimeTypeContainsHostOpaqueValue(*t.Elem, depth+1)
 		}
 		return false
+	}
+	if t.IsChan() {
+		elem, ok := t.ReadChanElemType()
+		return ok && e.runtimeTypeContainsHostOpaqueValue(elem, depth+1)
 	}
 	if t.IsArray() {
 		elem, ok := t.ReadArrayItemType()

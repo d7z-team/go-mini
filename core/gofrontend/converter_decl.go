@@ -14,6 +14,8 @@ func (c *Converter) convertAssignRHS(st *ast.AssignStmt) []miniast.Expr {
 				ta.Multi = true
 			} else if ie, ok := rhsExpr.(*miniast.IndexExpr); ok {
 				ie.Multi = true
+			} else if recv, ok := rhsExpr.(*miniast.ReceiveExpr); ok {
+				recv.Multi = true
 			}
 		}
 		return []miniast.Expr{rhsExpr}
@@ -41,7 +43,13 @@ func (c *Converter) convertValueSpecDecl(s *ast.ValueSpec) *miniast.GenDeclStmt 
 	}
 	values := make([]miniast.Expr, 0, len(s.Values))
 	for _, value := range s.Values {
-		values = append(values, c.convertExpr(value))
+		expr := c.convertExpr(value)
+		if len(s.Names) == 2 && len(s.Values) == 1 {
+			if recv, ok := expr.(*miniast.ReceiveExpr); ok {
+				recv.Multi = true
+			}
+		}
+		values = append(values, expr)
 	}
 	return &miniast.GenDeclStmt{
 		BaseNode: miniast.BaseNode{ID: c.genID(s, "decl"), Meta: "decl", Loc: c.extractLoc(s)},

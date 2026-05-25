@@ -25,6 +25,14 @@ const (
 	OpRangeInit
 	OpRangeIter
 	OpRangeScopeEnter
+	OpRangeChanCommit
+	OpChanRecv
+	OpChanRecvCommit
+	OpChanSend
+	OpChanSendCommit
+	OpSelect
+	OpSelectCommit
+	OpSelectScopeEnter
 	OpCallBoundary
 	OpJumpIf
 	OpBranchIf
@@ -110,6 +118,22 @@ func (op OpCode) String() string {
 		return "RANGE_ITER"
 	case OpRangeScopeEnter:
 		return "RANGE_SCOPE_ENTER"
+	case OpRangeChanCommit:
+		return "RANGE_CHAN_COMMIT"
+	case OpChanRecv:
+		return "CHAN_RECV"
+	case OpChanRecvCommit:
+		return "CHAN_RECV_COMMIT"
+	case OpChanSend:
+		return "CHAN_SEND"
+	case OpChanSendCommit:
+		return "CHAN_SEND_COMMIT"
+	case OpSelect:
+		return "SELECT"
+	case OpSelectCommit:
+		return "SELECT_COMMIT"
+	case OpSelectScopeEnter:
+		return "SELECT_SCOPE_ENTER"
 	case OpCallBoundary:
 		return "CALL_BOUNDARY"
 	case OpJumpIf:
@@ -435,6 +459,67 @@ type RangeData struct {
 	Index   int
 }
 
+type ChanRecvData struct {
+	Multi      bool
+	ResultType RuntimeType
+}
+
+type ChanRecvCommitData struct {
+	Multi      bool
+	ResultType RuntimeType
+	Value      *Var
+	OK         bool
+	Err        string
+}
+
+type ChanSendCommitData struct {
+	Err string
+}
+
+type SelectCommKind string
+
+const (
+	SelectCommRecv    SelectCommKind = "recv"
+	SelectCommSend    SelectCommKind = "send"
+	SelectCommDefault SelectCommKind = "default"
+)
+
+type SelectCaseData struct {
+	Kind      SelectCommKind
+	Define    bool
+	RecvName  string
+	RecvOK    string
+	RecvSym   SymbolRef
+	RecvOKSym SymbolRef
+	RecvType  RuntimeType
+	OKType    RuntimeType
+	Body      []Task
+}
+
+type SelectData struct {
+	Cases []SelectCaseData
+}
+
+type SelectOperand struct {
+	Chan  *Var
+	Value *Var
+}
+
+type SelectCommitData struct {
+	Plan      *SelectData
+	CaseIndex int
+	Value     *Var
+	OK        bool
+	Err       string
+}
+
+type SelectScopeData struct {
+	Plan      *SelectData
+	CaseIndex int
+	Value     *Var
+	OK        bool
+}
+
 type ImportData struct {
 	Path          string
 	OldExecutor   *Executor
@@ -449,6 +534,13 @@ type RangeScopeData struct {
 	Range *RangeData
 	Key   *Var
 	Val   *Var
+}
+
+type RangeChanCommitData struct {
+	Range *RangeData
+	Value *Var
+	OK    bool
+	Err   string
 }
 
 // ValueStack represents a stack of values for expression evaluation
@@ -474,6 +566,13 @@ func (vs *ValueStack) Peek() *Var {
 		return nil
 	}
 	return vs.data[len(vs.data)-1]
+}
+
+func (vs *ValueStack) PeekN(n int) *Var {
+	if n < 0 || n >= len(vs.data) {
+		return nil
+	}
+	return vs.data[len(vs.data)-1-n]
 }
 
 func (vs *ValueStack) Len() int {
