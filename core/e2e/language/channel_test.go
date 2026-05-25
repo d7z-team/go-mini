@@ -79,6 +79,54 @@ func send(ch chan Int64) {
 `,
 		},
 		{
+			Name: "range-closed-empty-channel",
+			Body: `
+	ch := make(chan Int64)
+	close(ch)
+	count := 0
+	for v := range ch {
+		_ = v
+		count = count + 1
+	}
+	if count != 0 {
+		panic("closed empty channel range should not run")
+	}
+`,
+		},
+		{
+			Name: "buffered-receive-fills-slot-from-blocked-sender",
+			Decls: `
+func bufferedSender(data chan Int64, ready chan Int64, done chan Int64) {
+	ready <- 1
+	data <- 2
+	done <- 1
+}
+`,
+			Body: `
+	data := make(chan Int64, 1)
+	ready := make(chan Int64)
+	done := make(chan Int64)
+	data <- 1
+	go bufferedSender(data, ready, done)
+	<-ready
+	select {
+	case <-done:
+		panic("sender should still be blocked")
+	default:
+	}
+	if <-data != 1 {
+		panic("buffered channel lost queued value")
+	}
+	if len(data) != 1 {
+		panic("blocked sender did not refill buffer slot")
+	}
+	if <-data != 2 {
+		panic("buffered channel lost blocked sender value")
+	}
+	<-done
+`,
+		},
+		{
 			Name: "select-channel-cases",
 			Body: `
 	empty := make(chan Int64)
@@ -212,6 +260,93 @@ func sendClosedPanics() {
 `,
 		},
 		{
+			Name: "close-wakes-blocked-receiver",
+			Decls: `
+func closedReceiver(ch chan Int64, done chan Int64) {
+	v, ok := <-ch
+	if v != 0 || ok {
+		panic("closed receive did not return zero,false")
+	}
+	done <- 1
+}
+`,
+			Body: `
+	ch := make(chan Int64)
+	done := make(chan Int64)
+	go closedReceiver(ch, done)
+	close(ch)
+	<-done
+`,
+		},
+		{
+			Name: "close-wakes-blocked-sender-with-panic",
+			Decls: `
+func blockedSender(ch chan Int64, ready chan Int64, done chan Int64) {
+	recovered := false
+	defer func() {
+		if recover() != nil {
+			recovered = true
+		}
+		if !recovered {
+			panic("blocked sender did not panic after close")
+		}
+		done <- 1
+	}()
+	ready <- 1
+	ch <- 7
+}
+`,
+			Body: `
+	ch := make(chan Int64)
+	ready := make(chan Int64)
+	done := make(chan Int64)
+	go blockedSender(ch, ready, done)
+	<-ready
+	close(ch)
+	<-done
+`,
+		},
+		{
+			Name: "close-nil-channel-panics",
+			Body: `
+	recovered := false
+	defer func() {
+		if recover() != nil {
+			recovered = true
+		}
+		if !recovered {
+			panic("close nil channel did not panic")
+		}
+		test.Done()
+	}()
+	var ch chan Int64
+	close(ch)
+`,
+		},
+		{
+			Name: "select-send-closed-channel-panics",
+			Body: `
+	recovered := false
+	defer func() {
+		if recover() != nil {
+			recovered = true
+		}
+		if !recovered {
+			panic("select send on closed channel did not panic")
+		}
+		test.Done()
+	}()
+	ch := make(chan Int64, 1)
+	close(ch)
+	select {
+	case ch <- 1:
+		panic("closed send case body should not run")
+	default:
+		panic("default selected over closed send")
+	}
+`,
+		},
+		{
 			Name: "direction-send-recv-only",
 			Body: `
 	ch := make(chan Int64)
@@ -243,15 +378,57 @@ func sendClosedPanics() {
 }
 
 func TestChannelAllBlockedReturnsError(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	prog, err := executor.NewRuntimeByGoCode(`
+	expectChannelAllBlocked(t, `
 package main
 
 func main() {
 	ch := make(chan Int64)
 	<-ch
 }
-`)
+`, "")
+}
+
+func TestNilChannelSelectAllBlocked(t *testing.T) {
+	expectChannelAllBlocked(t, `
+package main
+
+func main() {
+	var ch chan Int64
+	select {
+	case <-ch:
+	}
+}
+`, "select")
+}
+
+func TestNilChannelSendAllBlocked(t *testing.T) {
+	expectChannelAllBlocked(t, `
+package main
+
+func main() {
+	var ch chan Int64
+	ch <- 1
+}
+`, "nil channel send")
+}
+
+func TestNilChannelRangeAllBlocked(t *testing.T) {
+	expectChannelAllBlocked(t, `
+package main
+
+func main() {
+	var ch chan Int64
+	for v := range ch {
+		_ = v
+	}
+}
+`, "nil channel range")
+}
+
+func expectChannelAllBlocked(t *testing.T, code, reason string) {
+	t.Helper()
+	executor := engine.NewMiniExecutor()
+	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,32 +439,9 @@ func main() {
 		t.Fatalf("expected VM all-blocked error, got %T %v", err, err)
 	}
 	if len(blocked.Waits) != 1 {
-		t.Fatalf("expected one blocked context, got %#v", blocked.Waits)
+		t.Fatalf("expected one blocked wait, got %#v", blocked.Waits)
 	}
-}
-
-func TestNilChannelSelectAllBlocked(t *testing.T) {
-	executor := engine.NewMiniExecutor()
-	prog, err := executor.NewRuntimeByGoCode(`
-package main
-
-func main() {
-	var ch chan Int64
-	select {
-	case <-ch:
-	}
-}
-`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = prog.Execute(context.Background())
-	var blocked *runtime.VMAllBlockedError
-	if !errors.As(err, &blocked) {
-		t.Fatalf("expected VM all-blocked error, got %T %v", err, err)
-	}
-	if len(blocked.Waits) != 1 || !strings.Contains(blocked.Waits[0].Reason, "select") {
-		t.Fatalf("expected select blocked wait, got %#v", blocked.Waits)
+	if reason != "" && !strings.Contains(blocked.Waits[0].Reason, reason) {
+		t.Fatalf("expected blocked wait reason containing %q, got %#v", reason, blocked.Waits)
 	}
 }

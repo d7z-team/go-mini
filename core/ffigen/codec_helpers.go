@@ -178,7 +178,7 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
-			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase uint32:\n\t\treturn nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host reference handle\", \"%s\")\n\tcase ffigo.InterfaceData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host interface handle\", \"%s\") }\n\t\t%s = rv\n\tcase ffigo.ErrorData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host error handle\", \"%s\") }\n\t\t%s = rv\n\tcase *ffigo.VMPointer:\n\t\treturn nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry VM pointer\", \"%s\")\n\tdefault:\n\t\t%s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName, varName, varName)
+			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase ffigo.InterfaceData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host interface handle\", \"%s\") }\n\t\t%s = rv\n\tcase ffigo.ErrorData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host error handle\", \"%s\") }\n\t\t%s = rv\n\tdefault:\n\t\t%s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName)
 		} else {
 			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
 		}

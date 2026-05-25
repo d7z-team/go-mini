@@ -676,7 +676,7 @@ func TestResolveAddressSupportsWrappedTargets(t *testing.T) {
 		t.Fatalf("unexpected wrapped member value: %#v", got)
 	}
 
-	ptr := &Var{VType: TypeHandle, Handle: 7, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewSlot(MustParseRuntimeType("Int64"), NewInt(3))}
+	ptr := &Var{VType: TypePointer, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewSlot(MustParseRuntimeType("Int64"), NewInt(3))}
 	anyPtr := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: ptr}
 	deref := &LHSDeref{Target: anyPtr}
 

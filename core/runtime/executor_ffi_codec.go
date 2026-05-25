@@ -165,10 +165,8 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			handle := uint32(0)
 			if v != nil {
 				msg, _ = v.ToError()
-				if v.VType == TypeError {
-					if err, ok := v.Ref.(*VMError); ok {
-						handle = err.Handle
-					}
+				if host := hostErrorFromError(goErrorFromVar(v)); host != nil {
+					handle = host.Handle
 				}
 			}
 			buf.WriteRawError(msg, handle)
@@ -212,10 +210,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		buf.WriteUvarint(uint64(v.Handle))
 		return nil
 	case RuntimeTypePointer:
-		if _, ok := e.vmPointerTarget(v); !ok && v != nil {
-			return fmt.Errorf("cannot pass %v as VM pointer %s", v.VType, typ.Raw)
-		}
-		return e.serializeVarToAny(buf, v)
+		return fmt.Errorf("FFI cannot accept VM pointer type %s", typ.Raw)
 	case RuntimeTypeArray:
 		if v == nil || v.VType != TypeArray {
 			buf.WriteUvarint(0)
@@ -346,16 +341,20 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 	case TypeBool:
 		buf.WriteAny(v.Bool)
 	case TypeError:
-		if err, ok := v.Ref.(*VMError); ok {
-			if err.Handle != 0 {
+		if err := goErrorFromVar(v); err != nil {
+			handle := uint32(0)
+			if host := hostErrorFromError(err); host != nil {
+				handle = host.Handle
+			}
+			if handle != 0 {
 				return errors.New("FFI Any cannot carry host error handle")
 			}
 			_ = buf.WriteByte(ffigo.TypeTagError)
-			buf.WriteRawError(err.Message, err.Handle)
+			buf.WriteRawError(err.Error(), 0)
 		} else {
 			buf.WriteAny(nil)
 		}
-	case TypeHandle:
+	case TypePointer:
 		return errors.New("FFI Any cannot carry VM pointer")
 	case TypeHostRef:
 		return errors.New("FFI Any cannot carry host reference")
@@ -610,8 +609,6 @@ func rejectHostIdentityInAny(v interface{}) error {
 			return errors.New("FFI Any cannot carry host error handle")
 		}
 		return nil
-	case *ffigo.VMPointer:
-		return errors.New("FFI Any cannot carry VM pointer")
 	case *ffigo.VMStruct:
 		for _, field := range val.Fields {
 			if err := rejectHostIdentityInAny(field.Value); err != nil {

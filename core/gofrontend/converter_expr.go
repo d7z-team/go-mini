@@ -52,6 +52,9 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 		if ex.Op == token.ARROW {
 			return &miniast.ReceiveExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "recv"), Meta: "recv", Loc: c.extractLoc(ex)}, Channel: c.convertExpr(ex.X)}
 		}
+		if ex.Op == token.AND {
+			return &miniast.AddressExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "address"), Meta: "address", Loc: c.extractLoc(ex)}, Target: c.convertExpr(ex.X)}
+		}
 		return &miniast.UnaryExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "unary"), Meta: "unary", Loc: c.extractLoc(ex)}, Operator: miniast.Ident(c.convertOp(ex.Op)), Operand: c.convertExpr(ex.X)}
 	case *ast.TypeAssertExpr:
 		return &miniast.TypeAssertExpr{

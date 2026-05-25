@@ -142,6 +142,68 @@ func (s *StarExpr) Optimize(ctx *OptimizeContext) Node {
 	return s
 }
 
+// AddressExpr 表示取地址表达式 (&x)。它只暴露 VM 内部 slot pointer，不表示宿主地址。
+type AddressExpr struct {
+	BaseNode
+	Target Expr `json:"target"`
+}
+
+func (a *AddressExpr) GetBase() *BaseNode { return &a.BaseNode }
+func (a *AddressExpr) exprNode()          {}
+
+func (a *AddressExpr) Check(ctx *SemanticContext) error {
+	ctx = ctx.WithNode(a)
+	if a.Target == nil {
+		err := errors.New("取地址表达式缺少目标")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	if err := a.Target.Check(ctx.WithNode(a.Target)); err != nil {
+		return err
+	}
+	targetType := a.Target.GetBase().Type
+	if targetType.IsHostRef() || ctx.ContainsHostOpaqueValue(targetType) {
+		err := fmt.Errorf("无法对 host identity 或 opaque host value 取地址: %s", targetType)
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	if _, ok := a.Target.(*CompositeExpr); !ok && !addressTargetIsSlotBacked(a.Target) {
+		err := fmt.Errorf("表达式不可取地址: %s", a.Target.GetBase().Meta)
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	a.Type = targetType.ToPtr()
+	return nil
+}
+
+func addressTargetIsSlotBacked(expr Expr) bool {
+	switch n := expr.(type) {
+	case *IdentifierExpr:
+		return n.Type != "Package" && n.Type != TypeModule
+	case *StarExpr:
+		return true
+	case *MemberExpr:
+		if n.Object == nil {
+			return false
+		}
+		objType := n.Object.GetBase().Type
+		return !objType.IsMap() && objType != "Package" && objType != TypeModule && !objType.IsHostRef()
+	default:
+		return false
+	}
+}
+
+func (a *AddressExpr) Optimize(ctx *OptimizeContext) Node {
+	if a.Target != nil {
+		if opt := a.Target.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				a.Target = val
+			}
+		}
+	}
+	return a
+}
+
 type ConstRefExpr struct {
 	BaseNode
 	Name Ident `json:"name"`
@@ -548,23 +610,6 @@ func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 		}
 	}
 
-	if c.Func != nil && c.Func.GetBase() != nil {
-		fType, ok := c.Func.GetBase().Type.ReadCallFunc()
-		if ok && fType != nil {
-			sigParams := fType.Params
-			for i, param := range sigParams {
-				if i < len(c.Args) && c.Args[i] != nil {
-					arg := c.Args[i]
-					if ptr, b2 := param.AutoPtr(arg); b2 {
-						c.Args[i] = ptr
-					} else {
-						c.Args[i] = arg
-					}
-				}
-			}
-		}
-	}
-
 	return c
 }
 
@@ -794,6 +839,29 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 
+	memberStructType := objType
+	if objType.IsPtr() {
+		if elem, ok := objType.GetPtrElementType(); ok {
+			memberStructType = elem
+		}
+	}
+	if memberStructType.IsStruct() {
+		fields, ok := memberStructType.ReadStructFields()
+		if !ok {
+			err := fmt.Errorf("invalid struct type %s", memberStructType)
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			return err
+		}
+		fieldType, ok := fields[string(m.Property)]
+		if !ok {
+			err := fmt.Errorf("type %s does not support member access to %s", objType, m.Property)
+			ctx.WithNode(m).AddErrorf("%s", err.Error())
+			return err
+		}
+		m.Type = fieldType
+		return nil
+	}
+
 	// 尝试作为结构体访问
 	typeName := objType.BaseName()
 	if typeName != "" {
@@ -1001,10 +1069,26 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 		keyType, valType, _ = c.Type.GetMapKeyValueTypes()
 	}
 
-	var miniStruct *ValidStruct
 	var hasStruct bool
-	if !isMap && !isArray && c.Kind != "" {
-		miniStruct, hasStruct = ctx.GetStruct(c.Kind)
+	structFields := make(map[Ident]GoMiniType)
+	var structOrder []StructMemberType
+	if !isMap && !isArray {
+		if c.Type.IsStruct() {
+			if fields, ok := c.Type.ReadStructFieldList(); ok {
+				hasStruct = true
+				structOrder = fields
+				for _, field := range fields {
+					structFields[Ident(field.Name)] = field.Type
+				}
+			}
+		} else if c.Kind != "" {
+			if miniStruct, ok := ctx.GetStruct(c.Kind); ok {
+				hasStruct = true
+				for name, fieldType := range miniStruct.Fields {
+					structFields[name] = fieldType
+				}
+			}
+		}
 	}
 
 	for idx, elem := range c.Values {
@@ -1017,7 +1101,7 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 				// 结构体 Key 必须是字段名
 				if ident, ok := elem.Key.(*IdentifierExpr); ok {
 					if hasStruct {
-						if fieldType, ok2 := miniStruct.Fields[ident.Name]; ok2 {
+						if fieldType, ok2 := structFields[ident.Name]; ok2 {
 							// 记录字段类型以便后续 Value 校验
 							if sub, ok3 := elem.Value.(*CompositeExpr); ok3 && sub.Kind == "" {
 								sub.BaseNode.Type = fieldType
@@ -1050,6 +1134,8 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 				sub.BaseNode.Type = elemType
 			} else if isMap {
 				sub.BaseNode.Type = valType
+			} else if hasStruct && idx < len(structOrder) {
+				sub.BaseNode.Type = structOrder[idx].Type
 			}
 		}
 		if err := elem.Value.Check(ctx); err != nil {

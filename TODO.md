@@ -17,13 +17,14 @@
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面，runtime 不再通过 AST 类型 API 拼接或解析 VM 类型文本。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
-- 公开 FFI schema 会统一拒绝 `Ptr<T>`、`HostRef<Any>`、缺失函数 schema 和非法 inout mode；`Any` 只能承载纯值数据，不能承载 host ref、host handle、host error/interface handle 或 VM pointer。
+- 公开 FFI schema 会统一拒绝 `Ptr<T>`、`HostRef<Any>`、缺失函数 schema 和非法 inout mode；`Any` 只能承载纯值数据，不能承载 host ref、host handle、host error/interface handle 或 VM pointer；FFI wire 不保留 VM pointer tag。
 - MethodID 0 / `Invoke` 只保留显式 schema route 与 typed interface method 调用；普通 `HostRef` 成员访问不再存在无 schema 动态 Invoke 兜底。
 - Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`，不再按 route/constant 前缀扫描。
 - Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
 - `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过 `FFIRouteDecl` 一次声明 schema route 并由 `RouterBridge + BindSchemaRoutes` 绑定，不再生成 `RegisterXxx` / `RegisterXxxLibrary` 主入口；Go 端 proxy 只在显式 `ffigen:proxy` 时生成，`ffigen:global` 继续生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
-- 只处理原生值类型且无系统资源能力的标准库 FFI 子集位于 `core/ffilib`，当前包括 `errors`、`strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
+- 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
+- VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
@@ -47,7 +48,8 @@
 - VM 变量存储统一为 `Slot{Decl, Value}`；声明类型属于 slot，赋值只规范化并更新 slot value。
 - VM struct 是独立 `TypeStruct` / `VMStruct`，不再复用 map；struct 赋值、参数传递、返回值和 value receiver 按值复制字段 slot。
 - VM array/map、VM pointer、closure、module、interface 和 host handle 按引用语义共享；VM 内部不并行执行，因此无宿主级数据竞争。
-- VM pointer 指向 VM slot，不是宿主地址；解引用写入统一走 slot assignment 和声明类型校验。
+- VM pointer 是 runtime-only `TypePointer`，只保存 VM slot 引用，不使用 host handle ID，也不是宿主地址；解引用写入统一走 slot assignment 和声明类型校验，`Ptr<T>` 与 `T` 之间不做隐式互转。
+- Go 前端支持 `&x`、`&T{...}` 和 `&struct{...}{...}`；取地址仅允许 VM 可寻址 slot，map index、host reference、opaque host value 和 FFI 返回值不能取地址。
 - map key 保留 primitive key 类型，避免 string/int/bool/float key 在运行时被同一个字符串键混淆。
 - FFI struct schema 区分 `VMValue` 和 `HostOpaque`；`HostOpaque` 只能以 `HostRef<T>` 形式进入 VM。
 - VM 不能创建 opaque host object；`T{}`、`var x T`、`new(T)` 以及直接包含 opaque value 的 VM 值类型会被编译/运行时拒绝。
@@ -116,7 +118,7 @@ timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
 - 非调试执行主路径不得重新引入 AST 节点依赖。
 - runtime 包及其依赖图不得引入 `core/ast`；AST 相关转换必须停留在 `core/frontend` 实现、`core/gofrontend`、`core/lowering`、compiler 或分析/调试边界。
 - `core/ffigo` 不得 import `core/ast`、`go/ast`、`go/parser`、`go/scanner`、`go/token`；Go 前端转换只允许在 `core/gofrontend`。
-- `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
+- `core` 不得 import 顶层 `ffilib`；`core/ffilib` 只承载并默认注册 native error/fmt.Errorf 与纯原生类型标准库子集，完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，不恢复 AST 格式 JSON 装载入口。
 - FFI 只走 schema-only，不引入 spec/registrar 双轨。

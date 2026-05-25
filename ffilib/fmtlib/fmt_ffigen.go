@@ -43,8 +43,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
-			case uint32:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
@@ -55,8 +53,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
 				args[i_args] = rv
-			case *ffigo.VMPointer:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -71,8 +67,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
-			case uint32:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
@@ -83,8 +77,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
 				args[i_args] = rv
-			case *ffigo.VMPointer:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -101,8 +93,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
-			case uint32:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
@@ -113,8 +103,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
 				args[i_args] = rv
-			case *ffigo.VMPointer:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}
@@ -131,8 +119,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 		for i_args := 0; i_args < l_args; i_args++ {
 			rawVal = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
-			case uint32:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host reference handle", "args[i_args]")
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "args[i_args]")
@@ -143,8 +129,6 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 					return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "args[i_args]")
 				}
 				args[i_args] = rv
-			case *ffigo.VMPointer:
-				return nil, fmt.Errorf("FFI Any param '%s' cannot carry VM pointer", "args[i_args]")
 			default:
 				args[i_args] = rawVal
 			}

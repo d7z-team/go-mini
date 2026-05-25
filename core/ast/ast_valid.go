@@ -514,7 +514,7 @@ func (c *ValidContext) IsHostOpaqueNamedType(t GoMiniType) bool {
 	}
 	if resolved.IsHostRef() {
 		elem, _ := resolved.GetHostRefElementType()
-		resolved = elem.Resolve(c)
+		resolved = elem
 	}
 	st, ok := c.GetStruct(Ident(resolved))
 	return ok && st.IsHostOpaque()

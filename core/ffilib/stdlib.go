@@ -1,7 +1,6 @@
 package ffilib
 
 import (
-	"gopkg.d7z.net/go-mini/core/ffilib/errorslib"
 	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
@@ -12,8 +11,7 @@ import (
 
 func Surface() *surface.Bundle {
 	return surface.Merge(
-		errorslib.SurfaceErrors(&errorslib.ErrorsHost{}),
-		errorsIsSurface(),
+		nativeErrorSurface(),
 		stringslib.SurfaceStrings(&stringslib.StringsHost{}),
 		mathlib.SurfaceMath(&mathlib.MathHost{}),
 		strconvlib.SurfaceStrconv(&strconvlib.StrconvHost{}),
@@ -21,21 +19,87 @@ func Surface() *surface.Bundle {
 	)
 }
 
-func errorsIsSurface() *surface.Bundle {
-	const name = "errors.Is"
-	sig := runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecError, runtime.SpecError)
-	doc := "Check whether an error matches a target error"
+func nativeErrorSurface() *surface.Bundle {
+	type nativeRoute struct {
+		pkg      string
+		member   string
+		route    string
+		methodID uint32
+		sig      *runtime.RuntimeFuncSig
+		fn       runtime.NativeFunc
+		doc      string
+	}
+	routes := []nativeRoute{
+		{
+			pkg:      "errors",
+			member:   "New",
+			route:    "errors.New",
+			methodID: 1,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecError, false, runtime.SpecString),
+			fn:       runtime.NativeErrorsNew,
+			doc:      "Create a VM error backed by a Go error",
+		},
+		{
+			pkg:      "errors",
+			member:   "Is",
+			route:    "errors.Is",
+			methodID: 2,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecError, runtime.SpecError),
+			fn:       runtime.NativeErrorsIs,
+			doc:      "Report whether an error matches a target",
+		},
+		{
+			pkg:      "errors",
+			member:   "As",
+			route:    "errors.As",
+			methodID: 3,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecError, runtime.SpecAny),
+			fn:       runtime.NativeErrorsAs,
+			doc:      "Assign the first matching error in an error chain",
+		},
+		{
+			pkg:      "errors",
+			member:   "Unwrap",
+			route:    "errors.Unwrap",
+			methodID: 4,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecError, false, runtime.SpecError),
+			fn:       runtime.NativeErrorsUnwrap,
+			doc:      "Return the next wrapped error",
+		},
+		{
+			pkg:      "errors",
+			member:   "Stack",
+			route:    "errors.Stack",
+			methodID: 5,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecString, false, runtime.SpecError),
+			fn:       runtime.NativeErrorsStack,
+			doc:      "Return VM stack text attached to an error",
+		},
+		{
+			pkg:      "fmt",
+			member:   "Errorf",
+			route:    "fmt.Errorf",
+			methodID: 1,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecError, true, runtime.SpecString, runtime.SpecAny),
+			fn:       runtime.NativeFmtErrorf,
+			doc:      "Format an error using Go fmt.Errorf semantics",
+		},
+	}
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("errors", "Is", name, methodIDErrorsIs, sig, doc)
-	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+	for _, r := range routes {
+		schema.AddFunc(r.pkg, r.member, r.route, r.methodID, r.sig, r.doc)
+	}
+	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("errors", "Is", runtime.FFIRoute{
-			Name:     name,
-			Bridge:   &errorsIsBridge{registry: ctx.Registry},
-			MethodID: methodIDErrorsIs,
-			FuncSig:  sig,
-			Doc:      doc,
-		})
+		for _, r := range routes {
+			bound.AddRoute(r.pkg, r.member, runtime.FFIRoute{
+				Name:     r.route,
+				Native:   r.fn,
+				MethodID: r.methodID,
+				FuncSig:  r.sig,
+				Doc:      r.doc,
+			})
+		}
 		return bound, nil
 	})
 }

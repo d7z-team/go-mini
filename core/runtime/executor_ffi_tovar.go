@@ -83,24 +83,7 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 			Bridge: bridge,
 		}
 	case ffigo.ErrorData:
-		if v.Message == "" && v.Handle == 0 {
-			return nil
-		}
-		errObj := &VMError{
-			Message: v.Message,
-			Handle:  v.Handle,
-			Bridge:  bridge,
-		}
-		if v.Handle != 0 {
-			NewVMHandle(v.Handle, bridge)
-		}
-		res = &Var{
-			VType:  TypeError,
-			Ref:    errObj,
-			Bridge: bridge,
-			Handle: v.Handle,
-		}
-		res.SetRawType("Error")
+		res = newHostErrorVar(v, bridge)
 	case map[string]interface{}:
 		resMap := make(map[string]*Var)
 		for k, raw := range v {
@@ -129,10 +112,6 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		}
 		spec := &RuntimeStructSpec{Spec: "struct", TypeInfo: MustParseRuntimeType("Any"), Fields: specFields}
 		res = &Var{VType: TypeStruct, Ref: &VMStruct{Spec: spec, Fields: fields, ByName: byName}}
-	case *ffigo.VMPointer:
-		inner := e.ToVar(session, v.Value, bridge)
-		res = &Var{VType: TypeHandle, Ref: NewSlot(MustParseRuntimeType("Any"), inner)}
-		res.SetRawType(PtrType(SpecAny).String())
 	default:
 		res = &Var{VType: TypeAny, Ref: v}
 	}
@@ -184,10 +163,6 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	if _, ok := val.(*ffigo.VMStruct); ok {
 		return val, nil
 	}
-	if _, ok := val.(*ffigo.VMPointer); ok {
-		return val, nil
-	}
-
 	v := reflect.ValueOf(val)
 	// 处理指针：自动追踪到基元值
 	for v.Kind() == reflect.Ptr {

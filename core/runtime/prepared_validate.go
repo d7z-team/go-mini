@@ -266,6 +266,17 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 			return fmt.Errorf("%s missing CompositeData", plan)
 		}
 		return validateRuntimeType(plan+".type", data.Type)
+	case OpAddressOf:
+		if task.Data != nil {
+			return fmt.Errorf("%s must not carry payload", plan)
+		}
+		return nil
+	case OpAddressAlloc:
+		data, ok := task.Data.(RuntimeType)
+		if !ok {
+			return fmt.Errorf("%s missing RuntimeType", plan)
+		}
+		return validateRuntimeType(plan+".type", data)
 	case OpIndex:
 		data, ok := task.Data.(*IndexData)
 		if !ok || data == nil {

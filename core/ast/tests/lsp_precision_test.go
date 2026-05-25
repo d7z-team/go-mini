@@ -539,9 +539,9 @@ func TestInvalidCompositeSliceReportsPreciseInferenceError(t *testing.T) {
 	}
 }
 
-func TestStarExprRejectsOpaqueHandleType(t *testing.T) {
+func TestStarExprRejectsOpaqueHostRefType(t *testing.T) {
 	ctx := newTestSemanticContext(t)
-	ctx.AddVariable("h", "TypeHandle")
+	ctx.AddVariable("h", "HostRef<demo.Handle>")
 
 	expr := &ast.StarExpr{
 		BaseNode: ast.BaseNode{Meta: "star"},
@@ -553,9 +553,9 @@ func TestStarExprRejectsOpaqueHandleType(t *testing.T) {
 
 	err := expr.Check(ctx)
 	if err == nil {
-		t.Fatal("expected dereference of TypeHandle to fail")
+		t.Fatal("expected dereference of HostRef to fail")
 	}
-	if !strings.Contains(err.Error(), "无法解引用非指针类型") {
+	if !strings.Contains(err.Error(), "无法解引用 opaque host reference") {
 		t.Fatalf("unexpected dereference error: %v", err)
 	}
 }

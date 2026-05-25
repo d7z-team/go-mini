@@ -101,6 +101,8 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 		return marshalTaskDataValue("call", data)
 	case OpComposite:
 		return marshalTaskDataValue("composite", data)
+	case OpAddressAlloc:
+		return marshalTaskDataValue("runtime_type", data)
 	case OpIndex:
 		return marshalTaskDataValue("index", data)
 	case OpSlice:
@@ -203,6 +205,8 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return decodeTaskData[*CallData](raw)
 	case OpComposite:
 		return decodeTaskData[*CompositeData](raw)
+	case OpAddressAlloc:
+		return decodeTaskData[RuntimeType](raw)
 	case OpIndex:
 		return decodeTaskData[*IndexData](raw)
 	case OpSlice:
@@ -242,7 +246,7 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 		return decodeTaskData[*ClosureData](raw)
 	case OpEvalLHS:
 		return decodeTaskData[*LHSData](raw)
-	case OpLineStep, OpAssign, OpPop, OpScopeExit, OpLoopContinue:
+	case OpLineStep, OpAssign, OpPop, OpScopeExit, OpLoopContinue, OpAddressOf:
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("opcode %s is not deserializable", op.String())

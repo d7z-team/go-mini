@@ -781,7 +781,10 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 			continue
 		}
 
-		if err := e.dispatch(session, task); err != nil {
+		session.CurrentTask = &task
+		err := e.dispatch(session, task)
+		session.CurrentTask = nil
+		if err != nil {
 			if errors.Is(err, errExecutionContextYield) {
 				return runStopYield, nil
 			}
@@ -796,8 +799,18 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 				}
 				if vme.IsPanic {
 					panicVal := vme.Value
-					if panicVal == nil && vme.Message != "" {
-						panicVal = NewString(vme.Message)
+					if goErr := goErrorFromVar(e.unwrapValue(panicVal)); goErr != nil {
+						panicVal = newErrorVar(wrapErrorWithStack(goErr, vme.Frames))
+					} else {
+						message := vme.Message
+						if panicVal != nil {
+							if text, err := panicVal.ToError(); err == nil && text != "" {
+								message = text
+							}
+						}
+						if message != "" {
+							panicVal = newErrorVar(wrapErrorWithStack(errors.New(message), vme.Frames))
+						}
 					}
 					session.PanicVar = panicVal
 					session.PanicMessage = vme.Message

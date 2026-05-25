@@ -184,7 +184,6 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		}
 		if c.cfg.MaxTypeDepth > 0 {
 			validator.Root().MaxTypeDepth = c.cfg.MaxTypeDepth
-			ast.DefaultMaxTypeDepth = c.cfg.MaxTypeDepth
 		}
 		if c.cfg.ModuleLoader != nil {
 			validator.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {

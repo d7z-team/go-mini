@@ -61,20 +61,8 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	}
 }
 
-func TestToVarDecodesPointerAndStructAnyValues(t *testing.T) {
+func TestToVarDecodesStructAnyValues(t *testing.T) {
 	exec := &Executor{}
-
-	ptrVal := exec.ToVar(nil, &ffigo.VMPointer{Value: int64(7)}, nil)
-	if ptrVal == nil || ptrVal.VType != TypeHandle {
-		t.Fatalf("expected handle-like pointer, got %#v", ptrVal)
-	}
-	slot, ok := ptrVal.Ref.(*Slot)
-	if !ok || slot.Value == nil || slot.Value.VType != TypeInt || slot.Value.I64 != 7 {
-		t.Fatalf("unexpected pointer payload: %#v", ptrVal.Ref)
-	}
-	if ptrVal.Bridge != nil {
-		t.Fatalf("vm pointer should not carry host bridge: %#v", ptrVal)
-	}
 
 	structVal := exec.ToVar(nil, &ffigo.VMStruct{Fields: []ffigo.StructField{
 		{Name: "Msg", Value: "ok"},
@@ -123,16 +111,26 @@ func TestSerializeVarToAnyRejectsHostRef(t *testing.T) {
 	}
 }
 
-func TestDeserializeAnyRejectsHostReferenceHandle(t *testing.T) {
+func TestSerializeVarToAnyRejectsSlotPointer(t *testing.T) {
 	exec := &Executor{}
+	v := exec.newSlotPointer(MustParseRuntimeType("Int64"), NewSlot(MustParseRuntimeType("Int64"), NewInt(1)))
+
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	err := exec.serializeVarToAny(buf, v)
+	if err == nil || !strings.Contains(err.Error(), "cannot carry VM pointer") {
+		t.Fatalf("expected VM pointer rejection, got %v", err)
+	}
+}
+
+func TestAnyWireDoesNotEncodeHostReferenceHandle(t *testing.T) {
 	buf := ffigo.GetBuffer()
 	buf.WriteAny(uint32(42))
 	reader := ffigo.NewReader(buf.Bytes())
 	ffigo.ReleaseBuffer(buf)
 
-	_, err := exec.deserializeParsedType(nil, reader, MustParseRuntimeType("Any"), testFFIBridge{})
-	if err == nil || !strings.Contains(err.Error(), "cannot carry host reference handle") {
-		t.Fatalf("expected host reference handle rejection, got %v", err)
+	if got := reader.ReadAny(); got != nil {
+		t.Fatalf("expected uint32 to be omitted from Any wire, got %T %#v", got, got)
 	}
 }
 

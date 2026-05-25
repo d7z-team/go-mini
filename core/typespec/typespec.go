@@ -644,20 +644,10 @@ func (t Type) Equals(other Type) bool {
 }
 
 func (t Type) IsAssignableTo(target Type) bool {
-	return t.isAssignableToRecursive(target, 0, 256)
+	return t.isAssignableTo(target)
 }
 
-func (t Type) IsAssignableToWithMaxDepth(target Type, maxDepth int) bool {
-	if maxDepth <= 0 {
-		maxDepth = 256
-	}
-	return t.isAssignableToRecursive(target, 0, maxDepth)
-}
-
-func (t Type) isAssignableToRecursive(target Type, depth, maxDepth int) bool {
-	if depth > maxDepth {
-		return false
-	}
+func (t Type) isAssignableTo(target Type) bool {
 	if target.IsAny() || t.IsAny() || t == "Constant" {
 		return true
 	}
@@ -700,25 +690,11 @@ func (t Type) isAssignableToRecursive(target Type, depth, maxDepth int) bool {
 		}
 		return true
 	}
-	if target.IsPtr() && t.IsHostRef() {
-		targetElem, _ := target.Element()
-		hostElem, _ := t.Element()
-		return hostElem.Equals(targetElem)
-	}
 	if t.IsHostRef() || target.IsHostRef() {
 		return t.Equals(target)
 	}
-	if target.IsPtr() && !t.IsPtr() {
-		elem, _ := target.Element()
-		if elem.isAssignableToRecursive(t, depth+1, maxDepth) {
-			return true
-		}
-	}
-	if t.IsPtr() && !target.IsPtr() {
-		elem, _ := t.Element()
-		if elem.isAssignableToRecursive(target, depth+1, maxDepth) {
-			return true
-		}
+	if t.IsPtr() || target.IsPtr() {
+		return t.Equals(target)
 	}
 	return t.Equals(target)
 }

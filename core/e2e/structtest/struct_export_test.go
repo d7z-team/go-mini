@@ -63,6 +63,24 @@ func TestStructExport(t *testing.T) {
 	}
 }
 
+func TestAddressOfHostRefRejected(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	useCalculatorSurface(t, executor)
+
+	code := `
+	package main
+	import "calc"
+
+	func main() {
+		c := calc.New(100)
+		_ = &c
+	}
+	`
+	if _, err := executor.NewRuntimeByGoCode(code); err == nil {
+		t.Fatal("expected address-of host reference to be rejected")
+	}
+}
+
 func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 

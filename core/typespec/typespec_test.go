@@ -136,7 +136,7 @@ func TestModulePathNamedTypeIsCanonical(t *testing.T) {
 	}
 }
 
-func TestCanonicalIDBaseNameAndAssignabilityDepth(t *testing.T) {
+func TestCanonicalIDBaseNameAndPointerAssignability(t *testing.T) {
 	if got := CanonicalTypeID("Ptr<HostRef<demo.Type>>"); got != "demo.Type" {
 		t.Fatalf("CanonicalTypeID() = %q, want demo.Type", got)
 	}
@@ -144,10 +144,10 @@ func TestCanonicalIDBaseNameAndAssignabilityDepth(t *testing.T) {
 		t.Fatalf("BaseName() = %q, want demo.Type", got)
 	}
 	deepPtr := Ptr(Ptr(Int64))
-	if deepPtr.IsAssignableToWithMaxDepth(Int64, 1) {
-		t.Fatalf("%q unexpectedly assignable to Int64 with depth 1", deepPtr)
+	if deepPtr.IsAssignableTo(Int64) {
+		t.Fatalf("%q unexpectedly assignable to Int64", deepPtr)
 	}
-	if !deepPtr.IsAssignableToWithMaxDepth(Int64, 2) {
-		t.Fatalf("%q should be assignable to Int64 with depth 2", deepPtr)
+	if !deepPtr.IsAssignableTo(Ptr(Ptr(Int64))) {
+		t.Fatalf("%q should be assignable to identical pointer type", deepPtr)
 	}
 }

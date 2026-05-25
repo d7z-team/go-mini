@@ -14,13 +14,14 @@
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
+- VM pointer 只能是 runtime-only slot 引用，不得使用 host handle ID 表示，也不得进入 FFI wire、`Any` 或 host identity 路径；`Ptr<T>` 与 `T` 之间不得恢复隐式互转。
 - FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，bridge 不得持有 VM pointer 或执行 VM task。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
 - `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
 - `ffigen` 对 channel 参数必须使用 `<-chan T` 或 `chan<- T` 这种方向类型；不要生成 bidirectional `chan T` 参数代理。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
-- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
+- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载 native error/fmt.Errorf 与纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。

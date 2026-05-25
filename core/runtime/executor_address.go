@@ -136,13 +136,13 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return mod.Context.Store(desc.Property, val)
 				},
 			}, nil
-		case TypeHandle:
+		case TypePointer:
 			if obj.Ref == nil {
 				return nil, errors.New("member access on nil pointer")
 			}
-			ref, ok := e.vmPointerTarget(obj)
+			ref, ok := e.slotPointerTarget(obj)
 			if !ok {
-				return nil, errors.New("type Handle does not support member access")
+				return nil, errors.New("type Pointer does not support member access")
 			}
 			return e.resolveAddress(session, &LHSMember{Obj: ref, Property: desc.Property})
 		}
@@ -152,7 +152,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		if target == nil {
 			return nil, errors.New("dereference of nil pointer")
 		}
-		if !e.isVMPointer(target) {
+		if !e.isSlotPointer(target) {
 			return nil, fmt.Errorf("type %v does not support dereference", target.VType)
 		}
 		return &resolvedAddress{
@@ -160,7 +160,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 				return e.dereferenceValue(target)
 			},
 			store: func(val *Var) error {
-				slot, _ := e.vmPointerSlot(target)
+				slot, _ := e.slotPointerSlot(target)
 				return session.Assign(slot, val)
 			},
 		}, nil
@@ -210,6 +210,90 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		return nil, fmt.Errorf("type %v does not support slice access", obj.VType)
 	}
 	return nil, &VMError{Message: fmt.Sprintf("unsupported LHS descriptor: %T", lhs), IsPanic: true}
+}
+
+func (e *Executor) resolvePointerSlot(session *StackContext, lhs LHSValue) (*Slot, error) {
+	switch desc := lhs.(type) {
+	case nil:
+		return nil, errors.New("cannot take address of empty target")
+	case *LHSEnv:
+		if desc.Sym.Kind == SymbolBuiltin {
+			return nil, fmt.Errorf("cannot take address of builtin %s", desc.Name)
+		}
+		var (
+			slot *Slot
+			err  error
+		)
+		if desc.Sym.Kind != SymbolUnknown {
+			slot, err = session.CaptureSymbol(desc.Sym)
+		} else {
+			slot, err = session.CaptureVar(desc.Name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := e.validatePointerSlot(slot); err != nil {
+			return nil, err
+		}
+		return slot, nil
+	case *LHSMember:
+		obj := e.unwrapAddressVar(desc.Obj)
+		if obj == nil {
+			return nil, errors.New("member access on nil object")
+		}
+		switch obj.VType {
+		case TypeStruct:
+			st := obj.Ref.(*VMStruct)
+			field, ok := st.Field(desc.Property)
+			if !ok {
+				return nil, fmt.Errorf("unknown field %s", desc.Property)
+			}
+			if err := e.validatePointerSlot(field); err != nil {
+				return nil, err
+			}
+			return field, nil
+		case TypePointer:
+			target, ok := e.slotPointerTarget(obj)
+			if !ok {
+				return nil, errors.New("member access on nil pointer")
+			}
+			return e.resolvePointerSlot(session, &LHSMember{Obj: target, Property: desc.Property})
+		default:
+			return nil, fmt.Errorf("type %v is not addressable by member access", obj.VType)
+		}
+	case *LHSDeref:
+		target := e.unwrapAddressVar(desc.Target)
+		slot, ok := e.slotPointerSlot(target)
+		if !ok || slot == nil {
+			return nil, errors.New("cannot take address of non-pointer dereference")
+		}
+		if err := e.validatePointerSlot(slot); err != nil {
+			return nil, err
+		}
+		return slot, nil
+	case *LHSIndex:
+		return nil, errors.New("index expression is not addressable")
+	case *LHSSlice:
+		return nil, errors.New("slice expression is not addressable")
+	default:
+		return nil, &VMError{Message: fmt.Sprintf("unsupported address target: %T", lhs), IsPanic: true}
+	}
+}
+
+func (e *Executor) validatePointerSlot(slot *Slot) error {
+	if slot == nil {
+		return errors.New("cannot take address of nil slot")
+	}
+	if slot.Decl.IsHostRef() || e.runtimeTypeContainsHostOpaqueValue(slot.Decl, 0) {
+		return fmt.Errorf("cannot take address of host identity or opaque host value: %s", slot.Decl.Raw)
+	}
+	if slot.Value != nil {
+		v := e.unwrapAddressVar(slot.Value)
+		if v != nil && (v.VType == TypeHostRef || e.runtimeTypeContainsHostOpaqueValue(v.RuntimeType(), 0)) {
+			return fmt.Errorf("cannot take address of host identity or opaque host value: %s", v.RuntimeType().Raw)
+		}
+	}
+	return nil
 }
 
 func (e *Executor) resolveSliceBoundsForAddress(obj, lowVar, highVar *Var) (int, int, error) {

@@ -1076,6 +1076,23 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		out := []runtime.Task{{Op: runtime.OpApplyUnary, Data: "Dereference"}}
 		out = append(out, b.tasksForExprInScope(n.X, scope)...)
 		return out, true
+	case *ast.AddressExpr:
+		if n == nil || n.Target == nil {
+			return []runtime.Task{{Op: runtime.OpPush}}, true
+		}
+		if _, ok := n.Target.(*ast.CompositeExpr); ok {
+			targetTasks := b.tasksForExprInScope(n.Target, scope)
+			out := []runtime.Task{{Op: runtime.OpAddressAlloc, Data: b.runtimeType(n.Target.GetBase().Type, n.Target, "address target")}}
+			out = append(out, targetTasks...)
+			return out, true
+		}
+		lhsTasks, ok := b.lowerLHSTasks(n.Target, scope)
+		if !ok {
+			return nil, false
+		}
+		out := []runtime.Task{{Op: runtime.OpAddressOf}}
+		out = append(out, lhsTasks...)
+		return out, true
 	case *ast.CallExprStmt:
 		if n == nil {
 			return []runtime.Task{{Op: runtime.OpPush}}, true

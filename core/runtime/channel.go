@@ -470,7 +470,7 @@ func zeroVarForRuntimeType(typ RuntimeType) *Var {
 	case typ.IsHostRef():
 		return NewVarWithRuntimeType(typ, TypeHostRef)
 	case typ.IsPtr():
-		return NewVarWithRuntimeType(typ, TypeHandle)
+		return NewVarWithRuntimeType(typ, TypePointer)
 	case typ.IsInterface():
 		return NewVarWithRuntimeType(typ, TypeInterface)
 	case typ.Kind == RuntimeTypeTuple:

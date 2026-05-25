@@ -31,7 +31,7 @@ func (e *Executor) unwrapValue(v *Var) *Var {
 				out := &Var{VType: TypeInterface, Ref: inter}
 				out.SetRuntimeType(v.RuntimeType())
 				return out
-			} else if errObj, ok := v.Ref.(*VMError); ok {
+			} else if errObj, ok := v.Ref.(error); ok {
 				out := &Var{VType: TypeError, Ref: errObj}
 				out.SetRuntimeType(v.RuntimeType())
 				return out
@@ -45,8 +45,8 @@ func (e *Executor) unwrapValue(v *Var) *Var {
 	return nil
 }
 
-func (e *Executor) vmPointerSlot(v *Var) (*Slot, bool) {
-	if v == nil || v.VType != TypeHandle || v.Ref == nil || v.Bridge != nil {
+func (e *Executor) slotPointerSlot(v *Var) (*Slot, bool) {
+	if v == nil || v.VType != TypePointer || v.Ref == nil || v.Bridge != nil {
 		return nil, false
 	}
 	target, ok := v.Ref.(*Slot)
@@ -56,16 +56,31 @@ func (e *Executor) vmPointerSlot(v *Var) (*Slot, bool) {
 	return target, true
 }
 
-func (e *Executor) vmPointerTarget(v *Var) (*Var, bool) {
-	slot, ok := e.vmPointerSlot(v)
+func (e *Executor) newSlotPointer(targetType RuntimeType, slot *Slot) *Var {
+	if targetType.IsEmpty() {
+		if slot != nil && !slot.Decl.IsEmpty() {
+			targetType = slot.Decl
+		} else if slot != nil && slot.Value != nil && !slot.Value.RuntimeType().IsEmpty() {
+			targetType = slot.Value.RuntimeType()
+		} else {
+			targetType = MustParseRuntimeType(SpecAny)
+		}
+	}
+	res := &Var{VType: TypePointer, Ref: slot}
+	res.SetRawType(PtrType(targetType.Raw).String())
+	return res
+}
+
+func (e *Executor) slotPointerTarget(v *Var) (*Var, bool) {
+	slot, ok := e.slotPointerSlot(v)
 	if !ok || slot == nil {
 		return nil, false
 	}
 	return slot.Value, true
 }
 
-func (e *Executor) isVMPointer(v *Var) bool {
-	_, ok := e.vmPointerSlot(v)
+func (e *Executor) isSlotPointer(v *Var) bool {
+	_, ok := e.slotPointerSlot(v)
 	return ok
 }
 
@@ -97,7 +112,7 @@ func (e *Executor) dereferenceValue(v *Var) (*Var, error) {
 	if v == nil {
 		return nil, errors.New("dereference of nil pointer")
 	}
-	target, ok := e.vmPointerTarget(v)
+	target, ok := e.slotPointerTarget(v)
 	if !ok {
 		return nil, &VMError{Message: fmt.Sprintf("cannot dereference type %v", v.VType), IsPanic: true}
 	}

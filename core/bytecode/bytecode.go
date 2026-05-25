@@ -489,6 +489,8 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 			return ""
 		}
 		return fmt.Sprintf("%s entries=%d", data.Type, len(data.Entries))
+	case runtime.RuntimeType:
+		return data.String()
 	case *runtime.Var:
 		return formatRuntimeVarInline(data)
 	case *runtime.DoCallData:
@@ -641,8 +643,11 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 		return "false"
 	case runtime.TypeBytes:
 		return fmt.Sprintf("bytes[%d]", len(v.B))
-	case runtime.TypeHandle:
-		return fmt.Sprintf("handle(%d)", v.Handle)
+	case runtime.TypePointer:
+		if v.Ref == nil {
+			return "ptr(nil)"
+		}
+		return "ptr"
 	case runtime.TypeArray:
 		if arr, ok := v.Ref.(*runtime.VMArray); ok && arr != nil {
 			return fmt.Sprintf("array(len=%d)", len(arr.Data))

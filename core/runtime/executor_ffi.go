@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"runtime"
-	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -69,7 +68,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		defer func() {
 			if r := recover(); r != nil {
 				msg := fmt.Sprintf("FFI panic: %v", r)
-				err = &VMError{Value: NewString(msg), Message: msg, IsPanic: true}
+				err = e.newPanicError(session, msg)
 			}
 		}()
 		if route.Bridge == nil {
@@ -135,13 +134,11 @@ func (e *Executor) wrapFFIError(session *StackContext, err error) error {
 		return vme
 	}
 	frames := session.GenerateStackTrace(nil)
-	var stackStr strings.Builder
-	for i, f := range frames {
-		fmt.Fprintf(&stackStr, "\n  #%d %s (%s:%d:%d)", i, f.Function, f.Filename, f.Line, f.Column)
-	}
+	stackErr := wrapErrorWithStack(err, frames)
 	return &VMError{
-		Message: fmt.Sprintf("%v\n\nVM Stack Trace:%s", err.Error(), stackStr.String()),
-		Value:   NewString(err.Error()),
+		Message: stackErr.Error(),
+		Value:   newErrorVar(stackErr),
+		Frames:  frames,
 		IsPanic: true,
 		Cause:   err,
 	}

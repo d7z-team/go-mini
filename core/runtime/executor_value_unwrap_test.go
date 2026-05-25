@@ -10,7 +10,7 @@ func TestEvalUnaryDereferenceUnwrapsAnyPointer(t *testing.T) {
 	exec := newEmptyExecutor(t)
 
 	ptr := &Var{
-		VType:    TypeHandle,
+		VType:    TypePointer,
 		Handle:   1,
 		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
 		Ref:      NewSlot(MustParseRuntimeType("Int64"), NewInt(7)),

@@ -119,6 +119,8 @@ func Walk(v Visitor, node Node) {
 		Walk(v, n.Right)
 	case *UnaryExpr:
 		Walk(v, n.Operand)
+	case *AddressExpr:
+		Walk(v, n.Target)
 	case *IndexExpr:
 		Walk(v, n.Object)
 		Walk(v, n.Index)

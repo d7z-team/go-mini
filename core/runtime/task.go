@@ -42,6 +42,8 @@ const (
 	OpReturn
 	OpInterrupt
 	OpComposite
+	OpAddressOf
+	OpAddressAlloc
 	OpIndex
 	OpSlice
 	OpMember
@@ -152,6 +154,10 @@ func (op OpCode) String() string {
 		return "INTERRUPT"
 	case OpComposite:
 		return "COMPOSITE"
+	case OpAddressOf:
+		return "ADDRESS_OF"
+	case OpAddressAlloc:
+		return "ADDRESS_ALLOC"
 	case OpIndex:
 		return "INDEX"
 	case OpSlice:

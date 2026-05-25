@@ -29,8 +29,8 @@ func (v VarType) String() string {
 		return "Map"
 	case TypeArray:
 		return "Array"
-	case TypeHandle:
-		return "Handle"
+	case TypePointer:
+		return "Pointer"
 	case TypeHostRef:
 		return "HostRef"
 	case TypeChannel:
@@ -59,7 +59,7 @@ const (
 	TypeBool
 	TypeMap     // Internal VM Map (string keys only)
 	TypeArray   // Internal VM Array ([]*Var)
-	TypeHandle  // Internal VM pointer
+	TypePointer // Internal VM slot pointer
 	TypeHostRef // Host resource ID (uint32)
 	TypeChannel
 	TypeModule  // Dynamic module object
@@ -194,17 +194,6 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 			Spec:   CloneRuntimeInterfaceSpec(ref.Spec),
 			VTable: vtable,
 		}
-	case *VMError:
-		frames := append([]StackFrame(nil), ref.Frames...)
-		res.Ref = &VMError{
-			Message: ref.Message,
-			Value:   ref.Value.deepCopy(seen),
-			Frames:  frames,
-			IsPanic: ref.IsPanic,
-			Cause:   ref.Cause,
-			Handle:  ref.Handle,
-			Bridge:  ref.Bridge,
-		}
 	case *VMClosure:
 		upvalues := make([]*Slot, len(ref.UpvalueSlots))
 		for i, item := range ref.UpvalueSlots {
@@ -250,7 +239,7 @@ type Var struct {
 	Bool     bool
 	Handle   uint32
 	Bridge   ffigo.FFIBridge
-	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMStruct, *VMHandle, *Slot, *VMModule, *VMClosure, *VMInterface
+	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMStruct, *VMHandle, *Slot, *VMModule, *VMClosure, *VMInterface, error
 
 	stack weak.Pointer[Stack]
 }
@@ -618,8 +607,8 @@ func (v *Var) ToHandle() (uint32, error) {
 	if v == nil {
 		return 0, errors.New("accessing nil variable")
 	}
-	if v.VType != TypeHandle && v.VType != TypeHostRef {
-		return 0, fmt.Errorf("type mismatch: expected handle-compatible value, got %v", v.VType)
+	if v.VType != TypeHostRef {
+		return 0, fmt.Errorf("type mismatch: expected host reference, got %v", v.VType)
 	}
 	return v.Handle, nil
 }
@@ -630,8 +619,8 @@ func (v *Var) ToError() (string, error) {
 	}
 	switch v.VType {
 	case TypeError:
-		if err, ok := v.Ref.(*VMError); ok {
-			return err.Message, nil
+		if err := goErrorFromVar(v); err != nil {
+			return err.Error(), nil
 		}
 	case TypeString:
 		return v.Str, nil
@@ -667,8 +656,11 @@ func (v *Var) String() string {
 		return strconv.FormatBool(v.Bool)
 	case TypeBytes:
 		return fmt.Sprintf("bytes(%d)", len(v.B))
-	case TypeHandle:
-		return fmt.Sprintf("handle(%d)", v.Handle)
+	case TypePointer:
+		if v.Ref == nil {
+			return "ptr(nil)"
+		}
+		return "ptr"
 	case TypeHostRef:
 		return fmt.Sprintf("hostref(%d)", v.Handle)
 	case TypeChannel:
@@ -721,8 +713,8 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 		return v.B
 	case TypeBool:
 		return v.Bool
-	case TypeHandle:
-		return v.Handle
+	case TypePointer:
+		return nil
 	case TypeHostRef:
 		return v.Handle
 	case TypeChannel:
@@ -757,7 +749,7 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 			return res
 		}
 	case TypeError:
-		if err, ok := v.Ref.(*VMError); ok {
+		if err, ok := v.Ref.(error); ok {
 			return err
 		}
 	}

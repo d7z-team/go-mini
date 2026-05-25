@@ -43,6 +43,7 @@
 | `ast.CompositeExpr` | **Lowered** | 转换为 `OpComposite` + `CompositeData` |
 | `ast.TypeAssertExpr` | **Lowered** | 转换为 `OpAssert` + `AssertData` |
 | `ast.StarExpr` | **Lowered** | 转换为 `OpApplyUnary` (Dereference) |
+| `ast.AddressExpr` | **Lowered** | slot 目标转换为 `OpAddressOf`，composite 目标转换为 `OpAddressAlloc` |
 | `ast.ImportExpr` | **Lowered** | 转换为 `OpImportInit` |
 | `ast.FuncLitExpr` | **Lowered** | 转换为 `OpMakeClosure` + `ClosureData` |
 | `ast.BadExpr` | **Explicitly Rejected** | 非法节点在 lowering 阶段返回错误 |

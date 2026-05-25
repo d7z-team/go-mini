@@ -9,9 +9,9 @@
 
 IDE 能力基于 `AnalysisProgram` 持有的源码 AST，执行链基于 `ExecutableProgram` / prepared program / bytecode。
 
-LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`、`RecvChan<Int64>`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留。
+LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`、`RecvChan<Int64>`、`Ptr<Int64>` 和 `struct { Name String; }`。Go 风格类型只在 `core/gofrontend` 输入层出现，进入 Mini AST 后不再保留；`&x` 与 `&struct{...}{...}` 在分析层表现为 VM slot pointer，不表示宿主地址。
 
-编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
+编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`fmt.Errorf`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板和自定义全局模板会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
 
 ## 1. 推荐后端接入
 

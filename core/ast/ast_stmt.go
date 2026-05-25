@@ -728,6 +728,8 @@ func (p *ProgramStmt) collectGlobalDependencies(expr Expr, deps map[Ident]struct
 		}
 	case *StarExpr:
 		p.collectGlobalDependencies(n.X, deps)
+	case *AddressExpr:
+		p.collectGlobalDependencies(n.Target, deps)
 	case *TypeAssertExpr:
 		p.collectGlobalDependencies(n.X, deps)
 	case *ReceiveExpr:
@@ -1837,10 +1839,16 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 			ctx.AddErrorf("函数 %s 已被定义为 %s (新定义: %s)", f.Name, t, sig)
 			return nil, false
 		}
+		if !isMethod {
+			ctx.root.vars[fnName] = f.FunctionType.MiniType()
+		}
 		return structType, true
 	}
 
 	structType.Methods[fnName] = sig
+	if !isMethod {
+		ctx.root.vars[fnName] = f.FunctionType.MiniType()
+	}
 
 	return structType, true
 }
@@ -2632,15 +2640,6 @@ func (a *AssignmentStmt) Optimize(ctx *OptimizeContext) Node {
 		}
 	}
 
-	lhsType := a.LHS.GetBase().Type
-	valType := a.Value.GetBase().Type
-
-	if !lhsType.Equals(valType) {
-		if ptr, ok := lhsType.AutoPtr(a.Value); ok {
-			a.Value = ptr
-		}
-	}
-
 	return a
 }
 
@@ -2708,7 +2707,7 @@ func (t *TryStmt) Check(ctx *SemanticContext) error {
 	if t.Catch != nil {
 		inner := ctx.Child(t.Catch).WithNode(t.Catch)
 		if t.Catch.VarName != "" {
-			inner.AddVariable(t.Catch.VarName, "Any")
+			inner.AddVariable(t.Catch.VarName, TypeError)
 		}
 		if err := t.Catch.Body.Check(inner.WithNode(t.Catch.Body)); err != nil {
 			hasError = true

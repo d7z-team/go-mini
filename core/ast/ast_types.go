@@ -99,6 +99,18 @@ func (o GoMiniType) ReadStructFields() (map[string]GoMiniType, bool) {
 	return res, true
 }
 
+func (o GoMiniType) ReadStructFieldList() ([]StructMemberType, bool) {
+	fields, ok := typespec.Type(o).StructFields()
+	if !ok {
+		return nil, false
+	}
+	res := make([]StructMemberType, 0, len(fields))
+	for _, field := range fields {
+		res = append(res, StructMemberType{Name: field.Name, Type: GoMiniType(field.Type)})
+	}
+	return res, true
+}
+
 func (o GoMiniType) ReadInterfaceMethods() (map[string]*FunctionType, bool) {
 	methods, ok := typespec.Type(o).InterfaceMethods()
 	if !ok {
@@ -287,6 +299,9 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	if o.IsPtr() {
 		elem, _ := o.GetPtrElementType()
 		resolved := elem.Resolve(v)
+		if resolved.IsHostRef() {
+			return resolved
+		}
 		if v != nil && v.IsHostOpaqueNamedType(resolved) {
 			return resolved.ToHostRef()
 		}
@@ -294,7 +309,11 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 	if o.IsHostRef() {
 		elem, _ := o.GetHostRefElementType()
-		return elem.Resolve(v).ToHostRef()
+		resolved := elem.Resolve(v)
+		if resolved.IsHostRef() {
+			return resolved
+		}
+		return resolved.ToHostRef()
 	}
 	if o.IsChan() {
 		elem, _ := o.ReadChanElemType()
@@ -326,6 +345,14 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 				resolved = GoMiniType(fmt.Sprintf("%s.%s", realPkg, parts[1]))
 			}
 			if actual, ok := v.root.types[Ident(resolved)]; ok && !actual.IsStruct() {
+				if actual == resolved {
+					return actual
+				}
+				if actual.IsHostRef() {
+					if elem, ok := actual.GetHostRefElementType(); ok && elem == resolved {
+						return actual
+					}
+				}
 				return actual.Resolve(v)
 			}
 		}
@@ -334,6 +361,14 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 	if v != nil && v.root != nil {
 		if actual, ok := v.root.types[Ident(o)]; ok {
+			if actual == o {
+				return actual
+			}
+			if actual.IsHostRef() {
+				if elem, ok := actual.GetHostRefElementType(); ok && elem == o {
+					return actual
+				}
+			}
 			return actual.Resolve(v)
 		}
 	}
@@ -357,7 +392,30 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	}
 	if o.IsHostRef() {
 		elem, ok := o.GetHostRefElementType()
-		return ok && elem.Resolve(v).Valid(v)
+		if !ok {
+			return false
+		}
+		resolved := elem.Resolve(v)
+		if resolved.IsHostRef() {
+			hostElem, ok := resolved.GetHostRefElementType()
+			if !ok {
+				return false
+			}
+			if v == nil {
+				return hostElem.IsCanonical()
+			}
+			if _, ok := v.GetType(Ident(hostElem)); ok {
+				return true
+			}
+			if _, ok := v.GetStruct(Ident(hostElem)); ok {
+				return true
+			}
+			if _, ok := v.GetInterface(Ident(hostElem)); ok {
+				return true
+			}
+			return false
+		}
+		return resolved.Valid(v)
 	}
 	if o.IsChan() {
 		elem, ok := o.ReadChanElemType()
@@ -403,33 +461,9 @@ func (ft *FunctionType) String() string {
 	return string(CreateFunctionType(ft.Params, ft.Return, ft.Variadic))
 }
 
-func (o GoMiniType) AutoPtr(pVar Expr) (Expr, bool) {
-	vType := pVar.GetBase().Type
-	if o.IsAny() || vType.IsAny() {
-		return pVar, true
-	}
-	if o.Equals(vType) {
-		return pVar, true
-	}
-	if o.IsPtr() && !vType.IsPtr() {
-		unPtr, _ := o.GetPtrElementType()
-		if unPtr.Equals(vType) {
-			// 在隔离架构下不使用真实的指针，直接返回原表达式，复合类型按引用传递
-			return pVar, true
-		}
-	}
-	// 接口兼容性由 IsAssignableTo 在赋值或参数校验时更深入判断
-	if o.IsInterface() {
-		return pVar, true
-	}
-	return pVar, o.Equals(vType)
-}
-
 func (o GoMiniType) IsAssignableTo(target GoMiniType) bool {
-	return typespec.Type(o).IsAssignableToWithMaxDepth(typespec.Type(target), DefaultMaxTypeDepth)
+	return typespec.Type(o).IsAssignableTo(typespec.Type(target))
 }
-
-var DefaultMaxTypeDepth = 256
 
 // IsValid 检查类型字符串是否符合规范（基础类型、规范容器格式或带点包路径）
 func (o GoMiniType) IsValid() bool {

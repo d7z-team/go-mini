@@ -89,10 +89,11 @@ type StackContext struct {
 	Debugger *debugger.Session
 
 	// 迭代执行器状态 (Iterative Executor State)
-	TaskStack  []Task
-	ValueStack *ValueStack
-	LHSStack   *LHSStack
-	UnwindMode UnwindMode
+	TaskStack   []Task
+	ValueStack  *ValueStack
+	LHSStack    *LHSStack
+	CurrentTask *Task
+	UnwindMode  UnwindMode
 
 	// skippedScopeEnters tracks scope-enter tasks skipped during any unwind so
 	// their orphaned scope-exit tasks are skipped as well.

@@ -49,6 +49,19 @@ func (asyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFI
 				return nil
 			},
 		), nil
+	case 3:
+		return ffigo.AsyncValue[int64](
+			ffigo.AsyncFunc[int64](func(_ context.Context, done ffigo.Completion[int64]) (ffigo.WaitHandle, error) {
+				timer := time.AfterFunc(time.Millisecond, func() {
+					done.Complete(0, errors.New("async failure"))
+				})
+				return ffigo.NewWaitHandle(ffigo.WaitExternal, "async.Fail", func() { timer.Stop() }), nil
+			}),
+			func(buf *ffigo.Buffer, value int64) error {
+				buf.WriteVarint(value)
+				return nil
+			},
+		), nil
 	default:
 		return nil, fmt.Errorf("unexpected method id %d", req.MethodID)
 	}
@@ -96,6 +109,29 @@ func main() {
 	}
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAsyncFFICompletionErrorPropagates(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	bridge := asyncBridge{}
+	executor.RegisterFFISchema("async.Fail", bridge, 3, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "async"
+
+func main() {
+	_ = async.Fail()
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = prog.Execute(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "async failure") {
+		t.Fatalf("expected async completion error, got %T %v", err, err)
 	}
 }
 
@@ -292,6 +328,41 @@ func main() {
 	err = prog.Execute(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected context deadline, got %T %v", err, err)
+	}
+	if got := bridge.cancelled.Load(); got != 1 {
+		t.Fatalf("expected pending async FFI cancel once, got %d", got)
+	}
+}
+
+func TestAsyncFFICancelledOnVMPanic(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
+	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "block"
+
+func waiter(ready chan Int64) {
+	ready <- 1
+	block.Wait()
+}
+
+func main() {
+	ready := make(chan Int64)
+	go waiter(ready)
+	<-ready
+	panic("fatal after async wait started")
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = prog.Execute(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "fatal after async wait started") {
+		t.Fatalf("expected VM panic, got %T %v", err, err)
 	}
 	if got := bridge.cancelled.Load(); got != 1 {
 		t.Fatalf("expected pending async FFI cancel once, got %d", got)

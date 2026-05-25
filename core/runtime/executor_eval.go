@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 )
 
 // isEmptyVar is already defined in executor.go, but we can reuse it since it doesn't have a receiver.
@@ -175,13 +174,12 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			}
 		}
 		if l.VType == TypeError && r.VType == TypeError {
-			lStr, _ := l.ToError()
-			rStr, _ := r.ToError()
+			eq := sameGoError(goErrorFromVar(l), goErrorFromVar(r))
 			switch op {
 			case "==", "Eq":
-				return NewBool(lStr == rStr), nil
+				return NewBool(eq), nil
 			case "!=", "Neq":
-				return NewBool(lStr != rStr), nil
+				return NewBool(!eq), nil
 			}
 		}
 		if l.VType == TypeBool && r.VType == TypeBool {
@@ -218,8 +216,10 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
 				return NewBool(l.Ref == r.Ref), nil
-			case TypeHandle, TypeHostRef:
+			case TypeHostRef:
 				return NewBool(l.Handle == r.Handle), nil
+			case TypePointer:
+				return NewBool(l.Ref == r.Ref), nil
 			}
 		}
 		return NewBool(l == r), nil
@@ -229,8 +229,10 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
 				return NewBool(l.Ref != r.Ref), nil
-			case TypeHandle, TypeHostRef:
+			case TypeHostRef:
 				return NewBool(l.Handle != r.Handle), nil
+			case TypePointer:
+				return NewBool(l.Ref != r.Ref), nil
 			}
 		}
 		return NewBool(l != r), nil
@@ -418,9 +420,9 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 			}
 		}
 		return nil, nil
-	case TypeHandle:
+	case TypePointer:
 		// Check if it's a pointer to something that has fields (like a struct in Ref)
-		if valVar, ok := e.vmPointerTarget(obj); ok {
+		if valVar, ok := e.slotPointerTarget(obj); ok {
 			return e.evalMemberExprDirect(nil, valVar, property)
 		}
 	case TypeHostRef:
@@ -537,8 +539,8 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var, argLHS []LHSValue) error {
 	// 0. 特殊类型方法 (Built-in methods on Error)
 	if receiver != nil && receiver.VType == TypeError && name == "Error" {
-		if errObj, ok := receiver.Ref.(*VMError); ok {
-			session.ValueStack.Push(NewString(errObj.Message))
+		if errObj := goErrorFromVar(receiver); errObj != nil {
+			session.ValueStack.Push(NewString(errObj.Error()))
 			return nil
 		}
 	}
@@ -764,8 +766,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			} else {
 				val = NewString("panic")
 			}
-			msg, _ := val.ToError()
-			return &VMError{Value: val, Message: msg, IsPanic: true}
+			panicVal := e.errorVarForPanic(session, val)
+			msg, _ := panicVal.ToError()
+			return &VMError{Value: panicVal, Message: msg, IsPanic: true}
 		case "recover":
 			res := session.PanicVar
 			session.PanicVar = nil
@@ -796,6 +799,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					return nil
 				case TypeBool:
 					session.ValueStack.Push(NewString(strconv.FormatBool(arg.Bool)))
+					return nil
+				case TypeError:
+					text, _ := arg.ToError()
+					session.ValueStack.Push(NewString(text))
 					return nil
 				}
 			}
@@ -896,16 +903,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return err
 			}
 
-			// For internal "heap" simulation, we can use a non-zero handle ID.
-			// Since we only need it to be non-nil for the test, and ideally it should
-			// point to something that can be dereferenced or used later.
-			internalID := uint32(1000000 + time.Now().UnixNano()%1000000)
-
-			res := &Var{
-				VType:  TypeHandle,
-				Handle: internalID,
-				Ref:    NewSlot(innerType, val),
-			}
+			res := e.newSlotPointer(innerType, NewSlot(innerType, val))
 			res.SetRawType(PtrType(innerType.Raw).String())
 			session.ValueStack.Push(res)
 			return nil
@@ -930,8 +928,8 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return e.setupFuncCall(session, "closure", nil, args, ref)
 			case *VMMethodValue:
 				if !ref.DynamicInvoke && ref.Receiver != nil && ref.Receiver.VType == TypeError && ref.Method == "Error" {
-					if errObj, ok := ref.Receiver.Ref.(*VMError); ok {
-						session.ValueStack.Push(NewString(errObj.Message))
+					if errObj := goErrorFromVar(ref.Receiver); errObj != nil {
+						session.ValueStack.Push(NewString(errObj.Error()))
 						return nil
 					}
 				}
@@ -1190,7 +1188,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 }
 
 func (e *Executor) evalFFIAndPush(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) error {
-	res, err := e.evalFFI(session, route, args, argLHS)
+	res, err := e.evalRoute(session, route, args, argLHS)
 	if err != nil {
 		return err
 	}
@@ -1225,7 +1223,7 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 	}
 
 	if shape.IsPtr() {
-		v := &Var{VType: TypeHandle, Handle: 0}
+		v := &Var{VType: TypePointer}
 		v.SetRuntimeType(t)
 		return v, nil
 	}

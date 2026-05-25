@@ -69,6 +69,9 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
 	case *ast.ChanType:
 		elem := miniast.GoMiniType(c.typeToStringWithDepth(t.Value, depth+1))
+		if isEmptyStructType(t.Value) {
+			elem = miniast.TypeVoid
+		}
 		switch t.Dir {
 		case ast.RECV:
 			return string(miniast.CreateRecvChanType(elem))
@@ -91,11 +94,7 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	case *ast.InterfaceType:
 		return c.expandInterface(t, depth+1)
 	case *ast.StructType:
-		if t.Fields == nil || len(t.Fields.List) == 0 {
-			return string(miniast.TypeVoid)
-		}
-		c.addError(e, "Go struct type literals are only supported for empty struct{} channel signals")
-		return string(miniast.TypeAny)
+		return string(c.structTypeToMini(t, depth+1))
 	case *ast.FuncType:
 		var params []miniast.FunctionParam
 		if t.Params != nil {
@@ -106,6 +105,7 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 						pType = elem
 					}
 				}
+
 				count := len(p.Names)
 				if count == 0 {
 					count = 1
@@ -136,6 +136,29 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 	}
 	c.addError(e, fmt.Sprintf("不支持的类型语法: %T", e))
 	return string(miniast.TypeAny)
+}
+
+func isEmptyStructType(e ast.Expr) bool {
+	t, ok := e.(*ast.StructType)
+	return ok && (t.Fields == nil || len(t.Fields.List) == 0)
+}
+
+func (c *Converter) structTypeToMini(t *ast.StructType, depth int) miniast.GoMiniType {
+	if t == nil || t.Fields == nil || len(t.Fields.List) == 0 {
+		return miniast.CreateStructType(nil)
+	}
+	fields := make([]miniast.StructMemberType, 0, len(t.Fields.List))
+	for _, field := range t.Fields.List {
+		fieldType := miniast.GoMiniType(c.typeToStringWithDepth(field.Type, depth+1))
+		if len(field.Names) == 0 {
+			c.addError(field.Type, "anonymous struct fields are not supported in VM struct literals")
+			continue
+		}
+		for _, name := range field.Names {
+			fields = append(fields, miniast.StructMemberType{Name: name.Name, Type: fieldType})
+		}
+	}
+	return miniast.CreateStructType(fields)
 }
 
 func (c *Converter) expandInterface(t *ast.InterfaceType, depth int) string {

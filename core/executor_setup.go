@@ -32,8 +32,8 @@ func NewMiniExecutor() *MiniExecutor {
 	}
 
 	// 默认注册 panic 签名以便通过验证
-	res.mustAddFuncSchemaLocked("panic", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString))
-	res.mustAddFuncSchemaLocked("recover", runtime.MustRuntimeFuncSig(runtime.SpecAny, false))
+	res.mustAddFuncSchemaLocked("panic", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("recover", runtime.MustRuntimeFuncSig(runtime.SpecError, false))
 	res.mustAddFuncSchemaLocked("String", runtime.MustRuntimeFuncSig(runtime.SpecString, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("TypeBytes", runtime.MustRuntimeFuncSig(runtime.SpecBytes, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("len", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))

@@ -18,13 +18,11 @@ const (
 	TypeTagString    byte = 3
 	TypeTagBytes     byte = 4
 	TypeTagBool      byte = 5
-	TypeTagHandle    byte = 6
 	TypeTagMap       byte = 7
 	TypeTagArray     byte = 8
 	TypeTagInterface byte = 9
 	TypeTagError     byte = 10
 	TypeTagStruct    byte = 11
-	TypeTagPointer   byte = 12
 )
 
 // Buffer - Raw & Tagged Serializer
@@ -127,9 +125,6 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case bool:
 		_ = b.WriteByte(TypeTagBool)
 		b.WriteBool(val)
-	case uint32:
-		_ = b.WriteByte(TypeTagHandle)
-		b.WriteUvarint(uint64(val))
 	case map[string]interface{}:
 		_ = b.WriteByte(TypeTagMap)
 		b.WriteUvarint(uint64(len(val)))
@@ -257,8 +252,6 @@ func (r *Reader) ReadAny() interface{} {
 		return r.ReadBytes()
 	case TypeTagBool:
 		return r.ReadBool()
-	case TypeTagHandle:
-		return uint32(r.ReadUvarint())
 	case TypeTagMap:
 		count := int(r.ReadUvarint())
 		m := make(map[string]interface{})
@@ -287,8 +280,6 @@ func (r *Reader) ReadAny() interface{} {
 			fields[i].Value = r.ReadAny()
 		}
 		return &VMStruct{Fields: fields}
-	case TypeTagPointer:
-		return &VMPointer{Value: r.ReadAny()}
 	default:
 		return nil
 	}
@@ -318,14 +309,6 @@ func (s *VMStruct) String() string {
 	}
 	buf.WriteString("}")
 	return buf.String()
-}
-
-type VMPointer struct {
-	Value interface{}
-}
-
-func (p *VMPointer) String() string {
-	return "&" + fmt.Sprintf("%v", p.Value)
 }
 
 type InterfaceData struct {

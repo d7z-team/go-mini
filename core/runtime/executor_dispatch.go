@@ -326,6 +326,26 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 
 		return errors.New("OpEvalLHS missing LHSData")
+	case OpAddressOf:
+		if session.LHSStack == nil {
+			return errors.New("address-of missing LHS stack")
+		}
+		lhs := session.LHSStack.Pop()
+		slot, err := e.resolvePointerSlot(session, lhs)
+		if err != nil {
+			return err
+		}
+		session.ValueStack.Push(e.newSlotPointer(slot.Decl, slot))
+		return nil
+	case OpAddressAlloc:
+		typ, ok := task.Data.(RuntimeType)
+		if !ok {
+			return errors.New("OpAddressAlloc missing RuntimeType")
+		}
+		val := e.normalizeTypedValue(session.ValueStack.Pop(), typ)
+		slot := NewSlot(typ, val)
+		session.ValueStack.Push(e.newSlotPointer(typ, slot))
+		return nil
 	case OpIndex:
 		idx := session.ValueStack.Pop()
 		obj := session.ValueStack.Pop()
@@ -1116,10 +1136,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		if varName != "" {
 			if varSym.Kind == SymbolLocal {
-				_ = session.DeclareSymbol(varSym, MustParseRuntimeType("Any"))
+				_ = session.DeclareSymbol(varSym, MustParseRuntimeType("Error"))
 				_ = session.StoreSymbol(varSym, panicVar)
 			} else {
-				_ = session.NewVar(varName, MustParseRuntimeType("Any"))
+				_ = session.NewVar(varName, MustParseRuntimeType("Error"))
 				_ = session.Store(varName, panicVar)
 			}
 		}

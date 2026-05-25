@@ -845,7 +845,7 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 	case target.IsInterface():
 		return NewVarWithRuntimeType(target, TypeInterface), nil
 	case target.IsPtr():
-		return NewVarWithRuntimeType(target, TypeHandle), nil
+		return NewVarWithRuntimeType(target, TypePointer), nil
 	case target.IsHostRef():
 		return NewVarWithRuntimeType(target, TypeHostRef), nil
 	case target.IsChan():
@@ -1000,8 +1000,8 @@ func isEmptyVar(v *Var) bool {
 			return m == nil
 		}
 		return v.Ref == nil
-	case TypeHandle:
-		return v.Handle == 0
+	case TypePointer:
+		return v.Ref == nil
 	case TypeHostRef:
 		return v.Handle == 0
 	case TypeAny:
