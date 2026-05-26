@@ -7,6 +7,7 @@ type PreparedProgram struct {
 	NamedTypes           map[string]RuntimeType           `json:"named_types,omitempty"`
 	StructSchemas        map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
 	InterfaceSchemas     map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
+	Exports              map[string]PreparedExport        `json:"exports,omitempty"`
 	ExternalRequirements []ExternalRequirement            `json:"external_requirements,omitempty"`
 
 	GlobalInitOrder  []string                     `json:"global_init_order"`
@@ -14,6 +15,24 @@ type PreparedProgram struct {
 	Globals          map[string]*PreparedGlobal   `json:"globals"`
 	Functions        map[string]*PreparedFunction `json:"functions"`
 	MainTasks        []Task                       `json:"main_tasks"`
+}
+
+type PreparedExportKind string
+
+const (
+	PreparedExportFunc      PreparedExportKind = "func"
+	PreparedExportGlobal    PreparedExportKind = "global"
+	PreparedExportConst     PreparedExportKind = "const"
+	PreparedExportType      PreparedExportKind = "type"
+	PreparedExportStruct    PreparedExportKind = "struct"
+	PreparedExportInterface PreparedExportKind = "interface"
+)
+
+type PreparedExport struct {
+	Name       string             `json:"name"`
+	Kind       PreparedExportKind `json:"kind"`
+	Type       RuntimeType        `json:"type,omitempty"`
+	TargetName string             `json:"target_name,omitempty"`
 }
 
 type PreparedGlobal struct {
@@ -46,6 +65,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		NamedTypes:           cloneRuntimeTypeMap(plan.NamedTypes),
 		StructSchemas:        cloneRuntimeStructSpecMap(plan.StructSchemas),
 		InterfaceSchemas:     cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
+		Exports:              clonePreparedExportMap(plan.Exports),
 		ExternalRequirements: append([]ExternalRequirement(nil), plan.ExternalRequirements...),
 		GlobalInitOrder:      append([]string(nil), plan.GlobalInitOrder...),
 		GlobalInitGroups:     make([]*PreparedGlobalInit, 0, len(plan.GlobalInitGroups)),
@@ -89,6 +109,17 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 	}
 
 	return cloned
+}
+
+func clonePreparedExportMap(in map[string]PreparedExport) map[string]PreparedExport {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]PreparedExport, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func cloneStringMap(in map[string]string) map[string]string {

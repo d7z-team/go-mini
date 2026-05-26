@@ -113,29 +113,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			}, nil
 		case TypeModule:
 			mod := obj.Ref.(*VMModule)
-			if mod.Context == nil {
-				return nil, &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
-			}
-			return &resolvedAddress{
-				load: func() (*Var, error) {
-					if mod.Context.Shared != nil {
-						if v, ok := mod.Context.Shared.LoadGlobal(desc.Property); ok {
-							return v, nil
-						}
-					}
-					return mod.Context.Load(desc.Property)
-				},
-				store: func(val *Var) error {
-					if mod.Context.Shared != nil && mod.Context.Shared.HasGlobal(desc.Property) {
-						return (&StackContext{
-							Executor: mod.Context.Executor,
-							Shared:   mod.Context.Shared,
-							Stack:    mod.Context.Stack,
-						}).StoreSymbol(SymbolRef{Name: desc.Property, Kind: SymbolGlobal, Slot: -1}, val)
-					}
-					return mod.Context.Store(desc.Property, val)
-				},
-			}, nil
+			return nil, &VMError{Message: fmt.Sprintf("module %s is read-only", mod.Name), IsPanic: true}
 		case TypePointer:
 			if obj.Ref == nil {
 				return nil, errors.New("member access on nil pointer")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/internal/miniident"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -99,6 +100,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		NamedTypes:       make(map[string]runtime.RuntimeType, len(program.Types)),
 		StructSchemas:    make(map[string]*runtime.RuntimeStructSpec, len(program.Structs)),
 		InterfaceSchemas: make(map[string]*runtime.RuntimeInterfaceSpec, len(program.Interfaces)),
+		Exports:          make(map[string]runtime.PreparedExport),
 		GlobalInitOrder:  identSliceToStrings(order),
 		GlobalInitGroups: make([]*runtime.PreparedGlobalInit, 0, len(groups)),
 		Globals:          make(map[string]*runtime.PreparedGlobal, len(program.Variables)),
@@ -251,10 +253,94 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 	if b.err != nil {
 		return nil, b.err
 	}
+	populatePreparedExports(prepared, program)
 	if err := runtime.ValidatePreparedProgram(prepared); err != nil {
 		return nil, err
 	}
 	return prepared, nil
+}
+
+func populatePreparedExports(prepared *runtime.PreparedProgram, program *ast.ProgramStmt) {
+	if prepared == nil || program == nil {
+		return
+	}
+	for name, val := range program.Constants {
+		if !isExportedIdent(name) {
+			continue
+		}
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
+			Kind:       runtime.PreparedExportConst,
+			Type:       literalToVar(val).RuntimeType(),
+			TargetName: name,
+		}
+	}
+	for name, typ := range prepared.NamedTypes {
+		if !isExportedIdent(name) {
+			continue
+		}
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
+			Kind:       runtime.PreparedExportType,
+			Type:       typ,
+			TargetName: name,
+		}
+	}
+	for ident, spec := range prepared.StructSchemas {
+		if !isExportedIdent(ident) || spec == nil {
+			continue
+		}
+		prepared.Exports[ident] = runtime.PreparedExport{
+			Name:       ident,
+			Kind:       runtime.PreparedExportStruct,
+			Type:       spec.TypeInfo,
+			TargetName: ident,
+		}
+	}
+	for ident, spec := range prepared.InterfaceSchemas {
+		if !isExportedIdent(ident) || spec == nil {
+			continue
+		}
+		prepared.Exports[ident] = runtime.PreparedExport{
+			Name:       ident,
+			Kind:       runtime.PreparedExportInterface,
+			Type:       spec.TypeInfo,
+			TargetName: ident,
+		}
+	}
+	for name, global := range prepared.Globals {
+		if !isExportedIdent(name) || global == nil {
+			continue
+		}
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
+			Kind:       runtime.PreparedExportGlobal,
+			Type:       global.Kind,
+			TargetName: name,
+		}
+	}
+	for name, fn := range prepared.Functions {
+		if !isExportedIdent(name) || fn == nil || fn.FunctionSig == nil {
+			continue
+		}
+		typ, err := runtime.ParseRuntimeType(fn.FunctionSig.Spec)
+		if err != nil || typ.IsEmpty() {
+			typ, _ = runtime.ParseRuntimeType(runtime.TypeSpec(fn.FunctionSig.SignatureString()))
+		}
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
+			Kind:       runtime.PreparedExportFunc,
+			Type:       typ,
+			TargetName: name,
+		}
+	}
+	if len(prepared.Exports) == 0 {
+		prepared.Exports = nil
+	}
+}
+
+func isExportedIdent(name string) bool {
+	return miniident.IsExported(name)
 }
 
 func funcSigFromFunction(fn ast.FunctionType) (*runtime.RuntimeFuncSig, error) {

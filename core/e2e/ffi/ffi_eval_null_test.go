@@ -7,6 +7,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // TestFFIEvalQuerySelectorNull 复现 1.mgo 中的 panic 场景：
@@ -22,7 +23,7 @@ import (
 func TestFFIEvalQuerySelectorNull(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &querySelectorNullBridge{}
-	executor.RegisterFFISchema("page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
+	testsurface.UseRoute(t, executor, "page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -50,7 +51,7 @@ func main() {
 func TestFFIEvalQuerySelectorNullRecovered(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &querySelectorNullBridge{}
-	executor.RegisterFFISchema("page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
+	testsurface.UseRoute(t, executor, "page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

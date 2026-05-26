@@ -319,7 +319,10 @@ type copyBackParam struct {
 func (g *Generator) generatedRouteDeclLiteral(method generatedMethod, name, fixedPrefix, moduleName, methodsPrefix string, isStruct bool) string {
 	routePrefix := fixedPrefix
 	packageMember := !isStruct && methodsPrefix == ""
-	if !isStruct && moduleName != "" && methodsPrefix != "" && !method.HasReceiver {
+	if isStruct && moduleName != "" && methodsPrefix == "" && !method.HasReceiver {
+		routePrefix = moduleName
+		packageMember = true
+	} else if !isStruct && moduleName != "" && methodsPrefix != "" && !method.HasReceiver {
 		routePrefix = moduleName
 		packageMember = true
 	} else if methodsPrefix != "" || isStruct {

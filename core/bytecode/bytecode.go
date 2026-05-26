@@ -13,7 +13,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 5
+	CurrentVersion       = 6
 )
 
 type Location struct {

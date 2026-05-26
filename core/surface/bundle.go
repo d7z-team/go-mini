@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/calltemplate"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -37,6 +38,22 @@ func New(schema *runtime.FFISurfaceSchema, bind BindFunc, templates ...calltempl
 		Bind:      bind,
 		Templates: append([]calltemplate.FunctionTemplate(nil), templates...),
 	}
+}
+
+func Router(schema *runtime.FFISurfaceSchema, bridge ffigo.FFIBridge) *Bundle {
+	return New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
+		return bound, nil
+	})
+}
+
+func Routes(bridge ffigo.FFIBridge, routes ...runtime.FFIRouteDecl) *Bundle {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddRouteDecls(routes)
+	return Router(schema, bridge)
 }
 
 func GoFile(filename, code string) LibraryFile {

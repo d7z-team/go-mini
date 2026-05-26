@@ -7,12 +7,13 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestFFIPanicCanBeRecoveredInScript(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &panicInterceptBridge{}
-	executor.RegisterFFISchema("sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -45,7 +46,7 @@ func main() {
 func TestFFIPanicInvokeRouteCanBeRecoveredInScript(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &panicInterceptBridge{}
-	executor.RegisterFFISchema("sandbox.InvokeBoom", bridge, 0, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "sandbox.InvokeBoom", bridge, 0, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -78,7 +79,7 @@ func main() {
 func TestFFIPanicBubblesWhenUnhandled(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &panicInterceptBridge{}
-	executor.RegisterFFISchema("sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

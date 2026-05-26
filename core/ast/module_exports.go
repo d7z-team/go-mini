@@ -2,6 +2,8 @@ package ast
 
 import "strings"
 
+import "gopkg.d7z.net/go-mini/core/internal/miniident"
+
 type ModuleExports struct {
 	Path         string
 	Functions    map[Ident]*FunctionStmt
@@ -41,7 +43,12 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 			continue
 		}
 		if fn.ReceiverType != "" || strings.Contains(string(name), ".") {
-			exports.Methods[name] = fn
+			if isExportedModuleMethod(name) {
+				exports.Methods[name] = fn
+			}
+			continue
+		}
+		if !isExportedModuleMember(name) {
 			continue
 		}
 		exports.Functions[name] = fn
@@ -49,6 +56,9 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 	}
 	for name, expr := range prog.Variables {
 		if _, ok := expr.(*ImportExpr); ok {
+			continue
+		}
+		if !isExportedModuleMember(name) {
 			continue
 		}
 		if t, ok := root.vars[name]; ok {
@@ -60,6 +70,9 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 		if _, injected := root.externalConsts[name]; injected {
 			continue
 		}
+		if !isExportedModuleMember(Ident(name)) {
+			continue
+		}
 		exports.Constants[name] = val
 		exports.Vars[Ident(name)] = "Constant"
 		if prog.ConstantLocs != nil {
@@ -67,6 +80,9 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 		}
 	}
 	for name := range prog.Types {
+		if !isExportedModuleMember(name) {
+			continue
+		}
 		if t, ok := root.types[name]; ok {
 			exports.Types[name] = t
 		} else {
@@ -80,6 +96,9 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 		if st == nil {
 			continue
 		}
+		if !isExportedModuleMember(name) {
+			continue
+		}
 		exports.Structs[name] = st
 		if def, ok := root.structs[name]; ok {
 			exports.StructDefs[name] = def
@@ -89,10 +108,21 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 		if it == nil {
 			continue
 		}
+		if !isExportedModuleMember(name) {
+			continue
+		}
 		exports.Interfaces[name] = it
 		exports.Types[name] = it.Type
 	}
 	return exports
+}
+
+func isExportedModuleMember(name Ident) bool {
+	return miniident.IsExported(string(name))
+}
+
+func isExportedModuleMethod(name Ident) bool {
+	return miniident.IsExportedQualifiedMember(string(name))
 }
 
 func (m *ModuleExports) MemberType(name Ident) (GoMiniType, bool) {

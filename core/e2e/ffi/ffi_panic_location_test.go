@@ -8,12 +8,13 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestFFIPanicCarriesSourceLine(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &panicInterceptBridge{}
-	executor.RegisterFFISchema("sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	code := `package main
 import "sandbox"

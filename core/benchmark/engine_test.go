@@ -9,6 +9,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // 1. Fibonacci (递归性能测试 - 函数调用开销)
@@ -100,7 +101,7 @@ func BenchmarkFFINative(b *testing.B) {
 
 func BenchmarkFFIMini(b *testing.B) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema("bench.Sprintf", benchBridge{}, 1, runtime.MustParseRuntimeFuncSig("function(String, Int64) String"), "")
+	testsurface.UseRoute(b, executor, "bench.Sprintf", benchBridge{}, 1, runtime.MustParseRuntimeFuncSig("function(String, Int64) String"), "")
 	code := `
 	package main
 	import "bench"

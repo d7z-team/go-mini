@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -24,6 +25,42 @@ func channelEndpointCanRecv(endpoint ffigo.ChannelEndpoint) bool {
 
 func channelEndpointCanSend(endpoint ffigo.ChannelEndpoint) bool {
 	return endpoint != nil && endpoint.Direction().CanSend()
+}
+
+func validateChannelEndpointDirection(typ RuntimeType, endpoint ffigo.ChannelEndpoint) error {
+	if endpoint == nil {
+		return errors.New("missing FFI channel endpoint")
+	}
+	required := channelDirectionFromRuntimeType(typ)
+	actual := endpoint.Direction()
+	switch required {
+	case ffigo.ChannelRecv:
+		if !actual.CanRecv() {
+			return fmt.Errorf("FFI channel direction mismatch: endpoint %s cannot satisfy schema %s", channelDirectionName(actual), channelDirectionName(required))
+		}
+	case ffigo.ChannelSend:
+		if !actual.CanSend() {
+			return fmt.Errorf("FFI channel direction mismatch: endpoint %s cannot satisfy schema %s", channelDirectionName(actual), channelDirectionName(required))
+		}
+	default:
+		if !actual.CanRecv() || !actual.CanSend() {
+			return fmt.Errorf("FFI channel direction mismatch: endpoint %s cannot satisfy schema %s", channelDirectionName(actual), channelDirectionName(required))
+		}
+	}
+	return nil
+}
+
+func channelDirectionName(direction ffigo.ChannelDirection) string {
+	switch direction {
+	case ffigo.ChannelRecv:
+		return "RecvChan"
+	case ffigo.ChannelSend:
+		return "SendChan"
+	case ffigo.ChannelBoth:
+		return "Chan"
+	default:
+		return "unknown"
+	}
 }
 
 func (e *Executor) encodeChannelPayload(value *Var, elem RuntimeType) ([]byte, error) {
@@ -49,6 +86,13 @@ func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uin
 		elem = ch.ElemType()
 	}
 	direction := channelDirectionFromRuntimeType(typ)
+	registry := e.channelRegistry()
+	var endpointID uint64
+	unregister := func() {
+		if registry != nil && endpointID != 0 {
+			registry.UnregisterChannel(endpointID)
+		}
+	}
 	endpoint := ffigo.ChannelEndpointFuncs{
 		Elem: elem.Raw.String(),
 		Dir:  direction,
@@ -57,6 +101,9 @@ func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uin
 		endpoint.OnRecv = func(ctx context.Context) ([]byte, bool, error) {
 			value, ok, err := ch.RecvExternal(ctx)
 			if err != nil || !ok {
+				if !ok {
+					unregister()
+				}
 				return nil, ok, err
 			}
 			payload, err := e.encodeChannelPayload(value, elem)
@@ -71,6 +118,7 @@ func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uin
 				return nil, false, true, fmt.Errorf("%s", errText)
 			}
 			if !ok {
+				unregister()
 				return nil, false, true, nil
 			}
 			payload, err := e.encodeChannelPayload(value, elem)
@@ -83,7 +131,11 @@ func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uin
 			if err != nil {
 				return err
 			}
-			return ch.SendExternal(ctx, value)
+			err = ch.SendExternal(ctx, value)
+			if err != nil && err.Error() == "send on closed channel" {
+				unregister()
+			}
+			return err
 		}
 		endpoint.OnTrySend = func(payload []byte) (bool, error) {
 			value, err := e.decodeChannelPayload(payload, elem)
@@ -92,13 +144,20 @@ func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uin
 			}
 			ready, errText := ch.TrySend(value)
 			if errText != "" {
+				if errText == "send on closed channel" {
+					unregister()
+				}
 				return ready, fmt.Errorf("%s", errText)
 			}
 			return ready, nil
 		}
-		endpoint.OnClose = ch.Close
+		endpoint.OnClose = func() error {
+			defer unregister()
+			return ch.Close()
+		}
 	}
-	return e.channelRegistry().RegisterChannel(endpoint)
+	endpointID = registry.RegisterChannel(endpoint)
+	return endpointID
 }
 
 func (e *Executor) tryExternalRecv(endpoint ffigo.ChannelEndpoint, elem RuntimeType) (*Var, bool, bool, string) {

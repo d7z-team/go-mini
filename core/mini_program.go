@@ -89,21 +89,6 @@ func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
 	return []*runtime.Var{res}
 }
 
-func initEvalReturnSlot(session *runtime.StackContext, expr ast.Expr) error {
-	if session == nil {
-		return errors.New("missing eval session")
-	}
-	typ := ast.GoMiniType("Any")
-	if expr != nil && expr.GetBase() != nil && !expr.GetBase().Type.IsEmpty() {
-		typ = expr.GetBase().Type
-	}
-	typeInfo, err := runtime.ParseRuntimeType(typ)
-	if err != nil {
-		typeInfo = runtime.MustParseRuntimeType("Any")
-	}
-	return session.InitReturn(typeInfo)
-}
-
 // Eval 在当前程序的语境下执行单个 Go 表达式
 // 这允许你调用程序中定义的函数或访问全局变量
 func (p *ExecutableProgram) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
@@ -112,30 +97,11 @@ func (p *ExecutableProgram) Eval(ctx context.Context, exprStr string, env map[st
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
 
-	// 创建基于当前程序蓝图的 session
-	session := p.executor.NewSession(ctx, "eval")
-	defer p.executor.CleanupSession(session)
-
-	if err := p.executor.EnsureSharedStateInitialized(ctx, nil); err != nil {
-		return nil, err
-	}
-
-	// 注入环境
-	for k, v := range env {
-		_ = session.AddVariable(k, p.executor.ToVar(session, v, nil))
-	}
-	if err := initEvalReturnSlot(session, expr); err != nil {
-		return nil, err
-	}
-
-	tasks, err := compiler.CompileEvalTasks(expr)
+	fn, err := compiler.CompileEvalFunction("__eval__", expr)
 	if err != nil {
 		return nil, err
 	}
-	if err := p.executor.ExecuteTasks(session, tasks); err != nil {
-		return nil, err
-	}
-	res, err := session.LoadReturn()
+	res, err := p.executor.EvalPreparedFunction(ctx, fn, env)
 	if err != nil {
 		return nil, err
 	}

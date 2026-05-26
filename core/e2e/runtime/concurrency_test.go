@@ -3,14 +3,11 @@ package tests
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func TestConcurrencySafety(t *testing.T) {
@@ -48,16 +45,8 @@ func main() {
 
 func TestConcurrentModuleImportSingleflight(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	var loads atomic.Int32
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path != "sharedmod" {
-			return nil, nil
-		}
-		loads.Add(1)
-		time.Sleep(20 * time.Millisecond)
-		converter := gofrontend.NewConverter()
-		node, err := converter.ConvertSource("sharedmod.mgo", `
+	if err := executor.UseSurface(surface.Library("sharedmod", surface.GoFile("sharedmod.mgo", `
 package sharedmod
 
 var Value = 1
@@ -65,12 +54,9 @@ var Value = 1
 func Get() int {
 	return Value
 }
-`)
-		if err != nil {
-			return nil, err
-		}
-		return node.(*ast.ProgramStmt), nil
-	})
+`))); err != nil {
+		t.Fatalf("register sharedmod surface: %v", err)
+	}
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -85,10 +71,6 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := loads.Load(); got != 1 {
-		t.Fatalf("module loader invoked %d times during compile, want 1", got)
-	}
-
 	const goroutines = 8
 	var wg sync.WaitGroup
 	errCh := make(chan error, goroutines)
@@ -107,20 +89,12 @@ func main() {
 			t.Fatalf("concurrent execute failed: %v", err)
 		}
 	}
-	if got := loads.Load(); got != 1 {
-		t.Fatalf("module loader invoked %d times after runtime executes, want 1", got)
-	}
 }
 
 func TestConcurrentSharedMapMutationDoesNotPanic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path != "counter" {
-			return nil, nil
-		}
-		converter := gofrontend.NewConverter()
-		node, err := converter.ConvertSource("counter.mgo", `
+	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
 package counter
 
 var Stats = map[string]int{"n": 0}
@@ -128,12 +102,9 @@ var Stats = map[string]int{"n": 0}
 func Bump() {
 	Stats["n"] = Stats["n"] + 1
 }
-`)
-		if err != nil {
-			return nil, err
-		}
-		return node.(*ast.ProgramStmt), nil
-	})
+`))); err != nil {
+		t.Fatalf("register counter surface: %v", err)
+	}
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

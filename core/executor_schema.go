@@ -33,18 +33,6 @@ func (e *MiniExecutor) RuntimeExecutor() (*runtime.Executor, error) {
 	return executor, nil
 }
 
-func (e *MiniExecutor) RegisterFFISchema(name string, bridge ffigo.FFIBridge, methodID uint32, sig *runtime.RuntimeFuncSig, doc string) {
-	if err := e.TryRegisterFFISchema(name, bridge, methodID, sig, doc); err != nil {
-		panic(err)
-	}
-}
-
-func (e *MiniExecutor) TryRegisterFFISchema(name string, bridge ffigo.FFIBridge, methodID uint32, sig *runtime.RuntimeFuncSig, doc string) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.registerFFISchemaLocked(name, bridge, methodID, sig, doc)
-}
-
 // RegisterFunctionTemplate registers a compiler-only call template.
 //
 // Templates participate in semantic checking and are expanded before bytecode
@@ -71,14 +59,6 @@ func (e *MiniExecutor) RegisterFunctionTemplate(tpl calltemplate.FunctionTemplat
 	return nil
 }
 
-// RegisterConstant 注册一个全局常量到执行器
-func (e *MiniExecutor) RegisterConstant(name, val string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.mustNotConflictGlobalTemplateLocked(name, "constant")
-	e.constants[name] = val
-}
-
 func (e *MiniExecutor) GetExportedConstants() map[string]string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -87,62 +67,6 @@ func (e *MiniExecutor) GetExportedConstants() map[string]string {
 		res[k] = v
 	}
 	return res
-}
-
-// DeclareFuncSchema 仅用于在验证阶段声明一个合法的外部函数。
-func (e *MiniExecutor) DeclareFuncSchema(name string, sig *runtime.RuntimeFuncSig) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if sig == nil {
-		delete(e.funcSchemas, ast.Ident(name))
-		return
-	}
-	if err := runtime.CheckPublicRuntimeFuncSig("declared ffi function "+name, sig); err != nil {
-		panic(err)
-	}
-	e.mustNotConflictGlobalTemplateLocked(name, "function")
-	e.funcSchemas[ast.Ident(name)] = sig
-}
-
-func (e *MiniExecutor) RegisterStructSchema(name string, spec *runtime.RuntimeStructSpec) {
-	if err := e.TryRegisterStructSchema(name, spec); err != nil {
-		panic(err)
-	}
-}
-
-func (e *MiniExecutor) TryRegisterStructSchema(name string, spec *runtime.RuntimeStructSpec) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.registerStructSchemaLocked(name, spec)
-}
-
-func (e *MiniExecutor) RegisterInterfaceSchema(name string, spec *runtime.RuntimeInterfaceSpec) {
-	if err := e.TryRegisterInterfaceSchema(name, spec); err != nil {
-		panic(err)
-	}
-}
-
-func (e *MiniExecutor) TryRegisterInterfaceSchema(name string, spec *runtime.RuntimeInterfaceSpec) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.registerInterfaceSchemaLocked(name, spec)
-}
-
-// DeclareStructSchema 仅用于在验证阶段声明一个合法的外部结构体 schema。
-func (e *MiniExecutor) DeclareStructSchema(name string, spec *runtime.RuntimeStructSpec) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err := e.registerStructSchemaLocked(name, spec); err != nil {
-		panic(err)
-	}
-}
-
-func (e *MiniExecutor) DeclareInterfaceSchema(name string, spec *runtime.RuntimeInterfaceSpec) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err := e.registerInterfaceSchemaLocked(name, spec); err != nil {
-		panic(err)
-	}
 }
 
 func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
@@ -212,51 +136,6 @@ func (e *MiniExecutor) globalSymbolExistsLocked(name string) bool {
 		return true
 	}
 	return false
-}
-
-func (e *MiniExecutor) RegisterPackageValue(name string, spec *runtime.ValueSpec, provider runtime.PackageValueProvider) {
-	if err := e.TryRegisterPackageValue(name, spec, provider); err != nil {
-		panic(err)
-	}
-}
-
-func (e *MiniExecutor) TryRegisterPackageValue(name string, spec *runtime.ValueSpec, provider runtime.PackageValueProvider) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if spec == nil {
-		return fmt.Errorf("package value %s missing schema", name)
-	}
-	if err := runtime.CheckPublicFFIValueSpec(name, spec); err != nil {
-		return err
-	}
-	if provider == nil {
-		return fmt.Errorf("package value %s missing provider", name)
-	}
-	if err := e.checkGlobalTemplateConflictLocked(name, "package value"); err != nil {
-		return err
-	}
-	if existing, ok := e.valueSchemas[ast.Ident(name)]; ok && existing.Type.Raw != spec.Type.Raw {
-		return &runtime.SchemaConflictError{
-			Kind:     "package value",
-			Name:     name,
-			Existing: existing.Type.Raw.String(),
-			New:      spec.Type.Raw.String(),
-		}
-	}
-
-	registryTx := e.registry.BeginTransaction()
-	defer registryTx.Rollback()
-	value, err := provider.Bind(runtime.FFIBindContext{Registry: registryTx.Registry, PinnedRegistry: registryTx.Registry})
-	if err != nil {
-		return fmt.Errorf("bind package value %s: %w", name, err)
-	}
-	if value == nil {
-		return fmt.Errorf("bind package value %s returned nil value", name)
-	}
-	registryTx.Commit()
-	e.valueSchemas[ast.Ident(name)] = spec
-	e.packageValues[name] = &runtime.BoundPackageValue{Name: name, Spec: spec, Value: value}
-	return nil
 }
 
 func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface) error {
@@ -386,86 +265,6 @@ func (e *MiniExecutor) applyBoundSurfaceChangesLocked(bound *runtime.BoundFFISur
 	for name, val := range bound.Consts {
 		e.constants[name] = val
 	}
-}
-
-func (e *MiniExecutor) registerFFISchemaLocked(name string, bridge ffigo.FFIBridge, methodID uint32, funcSig *runtime.RuntimeFuncSig, doc string) error {
-	if funcSig != nil {
-		if err := e.checkGlobalTemplateConflictLocked(name, "function"); err != nil {
-			return err
-		}
-	}
-	next := runtime.FFIRoute{
-		Name:     name,
-		Bridge:   bridge,
-		MethodID: methodID,
-		Doc:      doc,
-		FuncSig:  funcSig,
-	}
-	if err := runtime.CheckPublicFFIRouteSchema(name, next); err != nil {
-		return err
-	}
-	if existing, ok := e.routes[name]; ok {
-		if err := runtime.CheckRouteCompatible(name, existing, next); err != nil {
-			return err
-		}
-	}
-	if funcSig != nil {
-		if existing, ok := e.funcSchemas[ast.Ident(name)]; ok && !runtime.SameRuntimeFuncSchema(existing, funcSig) {
-			return &runtime.SchemaConflictError{
-				Kind:     "schema",
-				Name:     name,
-				Existing: string(existing.Spec),
-				New:      string(funcSig.Spec),
-			}
-		}
-	}
-	e.routes[name] = next
-	if funcSig != nil {
-		e.funcSchemas[ast.Ident(name)] = funcSig
-	}
-	return nil
-}
-
-func (e *MiniExecutor) registerStructSchemaLocked(name string, spec *runtime.RuntimeStructSpec) error {
-	if spec != nil {
-		if err := runtime.CheckPublicFFIStructSchema(name, spec); err != nil {
-			return err
-		}
-		if err := e.checkGlobalTemplateConflictLocked(name, "struct"); err != nil {
-			return err
-		}
-		if existing, ok := e.structsMeta[ast.Ident(name)]; ok {
-			merged, err := runtime.MergeStructSchema(name, existing, spec)
-			if err != nil {
-				return err
-			}
-			spec = merged
-		}
-		e.structsMeta[ast.Ident(name)] = spec
-		return nil
-	}
-	delete(e.structsMeta, ast.Ident(name))
-	return nil
-}
-
-func (e *MiniExecutor) registerInterfaceSchemaLocked(name string, spec *runtime.RuntimeInterfaceSpec) error {
-	if spec != nil {
-		if err := runtime.CheckPublicFFIInterfaceSchema(name, spec); err != nil {
-			return err
-		}
-		if err := e.checkGlobalTemplateConflictLocked(name, "interface"); err != nil {
-			return err
-		}
-		if existing, ok := e.interfacesMeta[ast.Ident(name)]; ok {
-			if err := runtime.CheckInterfaceSchemaCompatible(name, existing, spec); err != nil {
-				return err
-			}
-		}
-		e.interfacesMeta[ast.Ident(name)] = spec
-		return nil
-	}
-	delete(e.interfacesMeta, ast.Ident(name))
-	return nil
 }
 
 func (e *MiniExecutor) mustAddFuncSchemaLocked(name string, sig *runtime.RuntimeFuncSig) {

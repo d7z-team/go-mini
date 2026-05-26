@@ -9,30 +9,30 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/core/surface"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
-
-type packageValueProviderFunc func(runtime.FFIBindContext) (*runtime.Var, error)
-
-func (f packageValueProviderFunc) Bind(ctx runtime.FFIBindContext) (*runtime.Var, error) {
-	return f(ctx)
-}
 
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
-	exec.RegisterInterfaceSchema("demo.Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}"))
+	ffiSchema := runtime.NewFFISurfaceSchema()
+	ffiSchema.AddRouteDecls([]runtime.FFIRouteDecl{
+		testsurface.Route("demo.Call", 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route"),
+	})
+	ffiSchema.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	ffiSchema.AddInterface("demo.Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}"))
+	if err := exec.UseSurface(testsurface.SchemaBundle(ffiSchema, nil)); err != nil {
+		t.Fatal(err)
+	}
 
-	schema := exec.ExportedSchema()
-	if schema == nil {
+	snapshot := exec.ExportedSchema()
+	if snapshot == nil {
 		t.Fatal("expected schema snapshot")
 	}
 
-	funcSig := schema.Funcs["demo.Call"]
+	funcSig := snapshot.Funcs["demo.Call"]
 	if funcSig == nil {
 		t.Fatal("expected parsed function schema")
 	}
@@ -43,7 +43,7 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 		t.Fatalf("unexpected return type: %s", got)
 	}
 
-	structSpec := schema.Structs["demo.Payload"]
+	structSpec := snapshot.Structs["demo.Payload"]
 	if structSpec == nil {
 		t.Fatal("expected parsed struct schema")
 	}
@@ -54,13 +54,13 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 		t.Fatalf("unexpected struct field order: %+v", structSpec.Fields)
 	}
 
-	if got := schema.Funcs["demo.Call"].Spec; got != "function(String, ...Any) tuple(Void, String)" {
+	if got := snapshot.Funcs["demo.Call"].Spec; got != "function(String, ...Any) tuple(Void, String)" {
 		t.Fatalf("unexpected exported function spec: %s", got)
 	}
-	if got := schema.Structs["demo.Payload"].Spec; got != "struct { Msg String; Count Int64; }" {
+	if got := snapshot.Structs["demo.Payload"].Spec; got != "struct { Msg String; Count Int64; }" {
 		t.Fatalf("unexpected exported struct spec: %s", got)
 	}
-	if got := schema.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
+	if got := snapshot.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
 		t.Fatalf("unexpected exported interface spec: %s", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestMiniExecutorRuntimeExecutorReturnsErrorAPI(t *testing.T) {
 
 func TestExportMetadataIncludesRegisteredFFISignatures(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
+	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
 
 	meta := exec.ExportMetadata()
 	if !strings.Contains(meta, `"Call": "function(String, ...Any) tuple(Void, String) // demo route"`) {
@@ -280,54 +280,41 @@ func main() { counter = counter + 1 }
 
 func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.RegisterFFISchema("demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
-	defer func() {
-		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi route conflict") {
-			t.Fatalf("expected ffi route conflict panic, got %v", r)
-		}
-	}()
-
-	exec.RegisterFFISchema("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
-}
-
-func TestMiniExecutorTryRegisterReportsSchemaConflict(t *testing.T) {
-	exec := engine.NewMiniExecutor()
-	if err := exec.TryRegisterFFISchema("demo.Mutate", nil, 1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), ""); err != nil {
-		t.Fatalf("register schema failed: %v", err)
-	}
-
-	err := exec.TryRegisterFFISchema("demo.Mutate", nil, 1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), "")
+	err := exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), ""))
 	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "route" {
-		t.Fatalf("expected route schema conflict error, got %T %v", err, err)
+	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
+		t.Fatalf("expected surface member conflict, got %T %v", err, err)
 	}
 }
 
-func TestTryRegisterFFISchemaConflictDoesNotPolluteRoutes(t *testing.T) {
+func TestMiniExecutorUseSurfaceReportsSchemaConflict(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	testsurface.UseRoute(t, exec, "demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), "")
+
+	err := exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), ""))
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
+		t.Fatalf("expected surface member conflict error, got %T %v", err, err)
+	}
+}
+
+func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	sigA := runtime.MustParseRuntimeFuncSig("function(String) Void")
 	sigB := runtime.MustParseRuntimeFuncSig("function(Int64) Void")
-	exec.DeclareFuncSchema("demo.Call", sigA)
+	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, sigA, "")
 
-	err := exec.TryRegisterFFISchema("demo.Call", nil, 7, sigB, "")
+	err := exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 7, sigB, ""))
 	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "schema" {
-		t.Fatalf("expected schema conflict error, got %T %v", err, err)
+	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
+		t.Fatalf("expected surface member conflict error, got %T %v", err, err)
 	}
 
 	schema := exec.ExportedSchema()
-	if schema.RegisteredFuncs["demo.Call"] {
-		t.Fatalf("failed registration polluted registered route state: %+v", schema.RegisteredFuncs)
-	}
 	if got := schema.Funcs["demo.Call"]; got == nil || !runtime.SameRuntimeFuncSchema(got, sigA) {
-		t.Fatalf("declared schema should remain unchanged, got %#v", got)
-	}
-
-	if err := exec.TryRegisterFFISchema("demo.Call", nil, 1, sigA, ""); err != nil {
-		t.Fatalf("valid registration after failed conflict should succeed: %v", err)
+		t.Fatalf("schema should remain unchanged, got %#v", got)
 	}
 }
 
@@ -335,21 +322,23 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 	exec := engine.NewMiniExecutor()
 	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
 	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
-	if err := exec.TryRegisterPackageValue("demo.Value", stringSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
-		return runtime.NewString("old"), nil
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddValue("demo", "Value", stringSpec)
+	if err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		bound.AddPackageValue("demo", "Value", stringSpec, runtime.NewString("old"))
+		return bound, nil
 	})); err != nil {
 		t.Fatalf("register existing package value failed: %v", err)
 	}
 
-	schema := runtime.NewFFISurfaceSchema()
-	schema.AddValue("demo", "Value", intSpec)
 	var handle uint32
 	err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		if ctx.PinnedRegistry == nil {
 			return nil, errors.New("missing pinned registry")
 		}
 		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
-		bound := runtime.NewBoundFFISurface(schema)
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		bound.AddPackageValue("demo", "Value", intSpec, runtime.NewInt(1))
 		return bound, nil
 	}))
@@ -394,66 +383,21 @@ func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
 	}
 }
 
-func TestTryRegisterPackageValueConflictDoesNotBindProvider(t *testing.T) {
-	exec := engine.NewMiniExecutor()
-	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
-	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
-	if err := exec.TryRegisterPackageValue("demo.Value", stringSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
-		return runtime.NewString("old"), nil
-	})); err != nil {
-		t.Fatalf("register existing package value failed: %v", err)
-	}
-
-	called := false
-	err := exec.TryRegisterPackageValue("demo.Value", intSpec, packageValueProviderFunc(func(runtime.FFIBindContext) (*runtime.Var, error) {
-		called = true
-		return runtime.NewInt(1), nil
-	}))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
-		t.Fatalf("expected package value conflict, got %T %v", err, err)
-	}
-	if called {
-		t.Fatal("conflicting package value provider should not be bound")
-	}
-}
-
-func TestTryRegisterPackageValueBindErrorRollsBackPinnedHandles(t *testing.T) {
-	exec := engine.NewMiniExecutor()
-	spec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
-	var handle uint32
-	err := exec.TryRegisterPackageValue("demo.Value", spec, packageValueProviderFunc(func(ctx runtime.FFIBindContext) (*runtime.Var, error) {
-		if ctx.PinnedRegistry == nil {
-			return nil, errors.New("missing pinned registry")
-		}
-		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
-		return nil, errors.New("bind failed")
-	}))
-	if err == nil || !strings.Contains(err.Error(), "bind failed") {
-		t.Fatalf("expected bind error, got %v", err)
-	}
-	if handle == 0 {
-		t.Fatal("expected bind to allocate a pinned handle")
-	}
-	if _, ok := exec.HandleRegistry().Get(handle); ok {
-		t.Fatalf("failed package value bind error polluted pinned handle %d", handle)
-	}
-	if got := exec.ExportedSchema().Values["demo.Value"]; got != nil {
-		t.Fatalf("failed package value registration polluted schema: %#v", got)
-	}
-}
-
 func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 	exec := engine.NewMiniExecutor()
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
+	left := runtime.NewFFISurfaceSchema()
+	left.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
+	if err := exec.UseSurface(surface.Router(left, nil)); err != nil {
+		t.Fatal(err)
+	}
 
-	defer func() {
-		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
-			t.Fatalf("expected ffi struct schema conflict panic, got %v", r)
-		}
-	}()
-
-	exec.RegisterStructSchema("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	right := runtime.NewFFISurfaceSchema()
+	right.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	err := exec.UseSurface(surface.Router(right, nil))
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "surface type" {
+		t.Fatalf("expected surface type conflict, got %T %v", err, err)
+	}
 }
 
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
@@ -588,36 +532,10 @@ func Answer() Int64 { return 40 }
 		t.Fatal("prepared helper runtime should not retain analysis AST")
 	}
 
-	exec.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path == "helper" {
-			return helperCompiled.Program, nil
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	})
 	exec.RegisterModule("helper", helperRuntime)
 	metadata := exec.ExportMetadata()
 	if !strings.Contains(metadata, `"helper"`) || !strings.Contains(metadata, `"Answer": "function() Int64"`) {
 		t.Fatalf("expected prepared module metadata, got: %s", metadata)
-	}
-
-	mainProg, err := exec.NewRuntimeByGoCode(`
-package main
-import "helper"
-var Result Int64
-func main() { Result = helper.Answer() + 2 }
-`)
-	if err != nil {
-		t.Fatalf("compile main failed: %v", err)
-	}
-	if err := mainProg.Execute(context.Background()); err != nil {
-		t.Fatalf("execute main failed: %v", err)
-	}
-	result, ok := mainProg.SharedState().LoadGlobal("Result")
-	if !ok || result == nil || result.I64 != 42 {
-		t.Fatalf("unexpected Result global: %#v", result)
-	}
-	if !mainProg.SharedState().HasModule("helper") {
-		t.Fatal("expected helper module loaded from prepared executable")
 	}
 }
 

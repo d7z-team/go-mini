@@ -68,7 +68,7 @@ func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
 	})
 
 	spec := MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }")
-	exec.RegisterStructSchema("demo.Type", spec)
+	exec.metadata.registerStructSchema("demo.Type", spec)
 
 	resolved, ok := exec.resolveStructSchema("Ptr<demo.Type>")
 	if !ok {

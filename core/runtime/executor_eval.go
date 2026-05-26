@@ -438,24 +438,8 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		}
 	case TypeModule:
 		mod := obj.Ref.(*VMModule)
-		if mod.Context != nil && mod.Context.Shared != nil {
-			if val, ok := mod.Context.Shared.LoadGlobal(property); ok {
-				return val, nil
-			}
-		}
 		if val, ok := mod.Load(property); ok {
 			return val, nil
-		}
-		if mod.Context != nil {
-			val, err := mod.Context.Load(property)
-			if err == nil {
-				return val, nil
-			}
-		}
-		// Fallback to FFI routes
-		routeKey := fmt.Sprintf("%s.%s", mod.Name, property)
-		if route, ok := e.routes[routeKey]; ok {
-			return &Var{VType: TypeAny, Ref: route}, nil
 		}
 		return nil, &VMError{Message: fmt.Sprintf("module member %s not found in %s", property, mod.Name), IsPanic: true}
 	case TypeAny:

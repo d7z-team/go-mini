@@ -259,8 +259,8 @@ func factoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 }
 
 var factoryRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "calc", MethodName: "New", RouteName: "calc.New", MethodID: methodIDFactoryNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<calc.Calculator>", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "calc", MethodName: "NewTable", RouteName: "calc.NewTable", MethodID: methodIDFactoryNewTable, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<calc.Table>"), Doc: ""},
+	{PackagePath: "calc", MemberName: "New", RouteName: "calc.New", MethodID: methodIDFactoryNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<calc.Calculator>", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "calc", MemberName: "NewTable", RouteName: "calc.NewTable", MethodID: methodIDFactoryNewTable, Sig: runtime.MustParseRuntimeFuncSig("function() HostRef<calc.Table>"), Doc: ""},
 }
 
 func SurfaceFactory(impl *Factory) *surface.Bundle {

@@ -10,6 +10,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // MockResource 模拟一个宿主侧的句柄资源
@@ -76,18 +77,25 @@ func TestHandleGCLifecycleRegression(t *testing.T) {
 	registry := ffigo.NewHandleRegistry()
 	bridge := &lifecycleMockBridge{registry: registry, t: t}
 
-	executor.RegisterStructSchema("mock.Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }"))
-	executor.RegisterFFISchema("Screenshot", bridge, 1, miniruntime.MustParseRuntimeFuncSig("function() HostRef<mock.Resource>"), "")
-	executor.RegisterFFISchema("GetWidth", bridge, 2, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Resource>) Int64"), "")
-	executor.RegisterFFISchema("TriggerGC", bridge, 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), "")
+	schema := miniruntime.NewFFISurfaceSchema()
+	schema.AddStruct("mock.Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }"))
+	schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
+		testsurface.Route("mock.Screenshot", 1, miniruntime.MustParseRuntimeFuncSig("function() HostRef<mock.Resource>"), ""),
+		testsurface.Route("mock.GetWidth", 2, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Resource>) Int64"), ""),
+		testsurface.Route("mock.TriggerGC", 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), ""),
+	})
+	if err := executor.UseSurface(testsurface.SchemaBundle(schema, bridge)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 		package main
+		import "mock"
 		func main() {
-			img := Screenshot()
+			img := mock.Screenshot()
 			imgCopy := img
-			TriggerGC() 
-			w := GetWidth(imgCopy)
+			mock.TriggerGC()
+			w := mock.GetWidth(imgCopy)
 			if w != 12 { panic("wrong width") }
 		}
 	`

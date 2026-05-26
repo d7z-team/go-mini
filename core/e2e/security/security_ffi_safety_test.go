@@ -9,6 +9,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type securitySimpleBridge struct {
@@ -39,7 +40,7 @@ func TestFFIOverflowCheck(t *testing.T) {
 			return nil, nil
 		},
 	}
-	e.RegisterFFISchema("test.int8", bridge, 1001, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "Test int8 overflow")
+	testsurface.UseRoute(t, e, "test.int8", bridge, 1001, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "Test int8 overflow")
 
 	code := `package main
 		import "test"
@@ -80,7 +81,7 @@ func TestFFIReturnBytesAreDeepCopied(t *testing.T) {
 			return buf.Bytes(), nil
 		},
 	}
-	e.RegisterFFISchema("test.getBytes", bridge, 1002, runtime.MustParseRuntimeFuncSig("function() TypeBytes"), "Test deep copy")
+	testsurface.UseRoute(t, e, "test.getBytes", bridge, 1002, runtime.MustParseRuntimeFuncSig("function() TypeBytes"), "Test deep copy")
 
 	code := `package main
 		import "test"

@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type nestedRangeOuterLoopBridge struct{}
@@ -48,11 +49,12 @@ func (b *nestedRangeOuterLoopBridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func registerNestedRangeOuterLoopSchemas(exec *engine.MiniExecutor, bridge *nestedRangeOuterLoopBridge) {
-	exec.RegisterFFISchema("mock.Rows", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), "")
-	exec.RegisterFFISchema("mock.Day", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Int64"), "")
+func registerNestedRangeOuterLoopSchemas(t *testing.T, exec *engine.MiniExecutor, bridge *nestedRangeOuterLoopBridge) {
+	t.Helper()
+	testsurface.UseRoutes(t, exec, bridge,
+		testsurface.Route("mock.Rows", 1, runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), ""),
+		testsurface.Route("mock.Day", 2, runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Int64"), ""),
+	)
 }
 
 func TestRangeContinueKeepsOuterLocalAllLoaders(t *testing.T) {
@@ -110,7 +112,7 @@ func main() {
 		t.Run(loader.name, func(t *testing.T) {
 			exec := engine.NewMiniExecutor()
 			bridge := &nestedRangeOuterLoopBridge{}
-			registerNestedRangeOuterLoopSchemas(exec, bridge)
+			registerNestedRangeOuterLoopSchemas(t, exec, bridge)
 
 			prog, err := loader.load(exec)
 			if err != nil {

@@ -14,9 +14,8 @@ import (
 type MiniExecutor struct {
 	mu sync.RWMutex
 
-	astModuleLoader func(path string) (*ast.ProgramStmt, error)
-	routes          map[string]runtime.FFIRoute
-	constants       map[string]string
+	routes    map[string]runtime.FFIRoute
+	constants map[string]string
 
 	registry            *ffigo.HandleRegistry
 	moduleSources       map[string]*ast.ProgramStmt

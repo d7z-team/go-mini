@@ -2,17 +2,20 @@ package engine_test
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
+	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func TestSurfaceLibraryRunCases(t *testing.T) {
-	bundle := surface.Merge(mathxLibrary(2), labelsLibrary(), multiFileLibrary(), leakyLibrary())
+	bundle := surface.Merge(mathxLibrary(2), labelsLibrary(), multiFileLibrary(), privateLibrary(), leakyLibrary())
 	testutil.RunCases(t, nil, []testutil.Case{
 		{
 			Name:    "call exported function",
@@ -44,6 +47,19 @@ func TestSurfaceLibraryRunCases(t *testing.T) {
 			WantCompileErr: "package mathx has no member len",
 		},
 		{
+			Name:    "library can use private helper internally",
+			Imports: []string{"private"},
+			Expr:    "private.Value()",
+			Output:  testutil.OutputInt,
+			Want:    "7",
+		},
+		{
+			Name:           "library hides private member from importers",
+			Imports:        []string{"private"},
+			Expr:           "private.hidden()",
+			WantCompileErr: "package private has no member hidden",
+		},
+		{
 			Name:           "library cannot read main scope",
 			Imports:        []string{"leaky"},
 			Decls:          "var secret = 7",
@@ -51,6 +67,37 @@ func TestSurfaceLibraryRunCases(t *testing.T) {
 			WantCompileErr: "variable secret does not exist",
 		},
 	}, testutil.WithSurface(bundle))
+}
+
+func TestBytecodeRejectsInvalidPreparedExport(t *testing.T) {
+	exec := engine.NewMiniExecutor()
+	payload, err := exec.CompileGoCodeToBytecodeJSON(`
+package main
+
+func main() {}
+`)
+	if err != nil {
+		t.Fatalf("compile bytecode: %v", err)
+	}
+	program, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		t.Fatalf("unmarshal bytecode: %v", err)
+	}
+	program.Executable.Exports = map[string]miniruntime.PreparedExport{
+		"Missing": {
+			Name:       "Missing",
+			Kind:       miniruntime.PreparedExportFunc,
+			Type:       miniruntime.MustParseRuntimeType(miniruntime.FuncType(nil, miniruntime.SpecVoid, false)),
+			TargetName: "Missing",
+		},
+	}
+	tampered, err := json.Marshal(program)
+	if err != nil {
+		t.Fatalf("marshal tampered bytecode: %v", err)
+	}
+	if _, err := exec.NewRuntimeByBytecodeJSON(tampered); err == nil || !strings.Contains(err.Error(), "targets missing function Missing") {
+		t.Fatalf("expected invalid export error, got %v", err)
+	}
 }
 
 func TestSurfaceLibraryBytecodeLoadRequiresMatchingSourceHash(t *testing.T) {
@@ -242,6 +289,20 @@ package leaky
 
 func Value() int {
 	return secret
+}
+`))
+}
+
+func privateLibrary() *surface.Bundle {
+	return surface.Library("private", surface.GoFile("private.mgo", `
+package private
+
+func Value() int {
+	return hidden()
+}
+
+func hidden() int {
+	return 7
 }
 `))
 }

@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type rangeContinueHandleBridge struct {
@@ -67,15 +68,14 @@ func (b *rangeContinueHandleBridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func registerRangeContinueHandleSchemas(exec *engine.MiniExecutor, bridge *rangeContinueHandleBridge) {
-	exec.RegisterFFISchema("mock.Rows", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), "")
-	exec.RegisterFFISchema("mock.Published", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) String"), "")
-	exec.RegisterFFISchema("mock.Day", bridge, 3,
-		runtime.MustParseRuntimeFuncSig("function(String) Int64"), "")
-	exec.RegisterFFISchema("mock.Download", bridge, 4,
-		runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Void"), "")
+func registerRangeContinueHandleSchemas(t *testing.T, exec *engine.MiniExecutor, bridge *rangeContinueHandleBridge) {
+	t.Helper()
+	testsurface.UseRoutes(t, exec, bridge,
+		testsurface.Route("mock.Rows", 1, runtime.MustParseRuntimeFuncSig("function() Array<HostRef<mock.Row>>"), ""),
+		testsurface.Route("mock.Published", 2, runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) String"), ""),
+		testsurface.Route("mock.Day", 3, runtime.MustParseRuntimeFuncSig("function(String) Int64"), ""),
+		testsurface.Route("mock.Download", 4, runtime.MustParseRuntimeFuncSig("function(HostRef<mock.Row>) Void"), ""),
+	)
 }
 
 func TestRangeContinueSkipsFFITailAcrossAllLoaders(t *testing.T) {
@@ -124,7 +124,7 @@ func main() {
 		t.Run(loader.name, func(t *testing.T) {
 			exec := engine.NewMiniExecutor()
 			bridge := &rangeContinueHandleBridge{}
-			registerRangeContinueHandleSchemas(exec, bridge)
+			registerRangeContinueHandleSchemas(t, exec, bridge)
 
 			prog, err := loader.load(exec)
 			if err != nil {

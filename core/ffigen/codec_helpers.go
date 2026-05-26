@@ -241,7 +241,7 @@ func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemTyp
 		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnRecv = func(channelCtx context.Context) ([]byte, bool, error) {\n", suffix)
 		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\tcase %s, ok := <-%s:\n", valueVar, prefix)
-		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { return nil, false, nil }\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { channels_%s.UnregisterChannel(channelID_%s); return nil, false, nil }\n", suffix, suffix)
 		fmt.Fprintf(sb, "\t\t\t\t\t\t%s := ffigo.GetBuffer()\n", payloadVar)
 		fmt.Fprintf(sb, "\t\t\t\t\t\tdefer ffigo.ReleaseBuffer(%s)\n", payloadVar)
 		g.emitWrite(sb, valueVar, elemType, nil, structs, payloadVar, moduleName, interfaceSchemas, isHost)
@@ -253,7 +253,7 @@ func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemTyp
 		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnTryRecv = func() ([]byte, bool, bool, error) {\n", suffix)
 		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\tcase %s, ok := <-%s:\n", valueVar, prefix)
-		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { return nil, false, true, nil }\n")
+		fmt.Fprintf(sb, "\t\t\t\t\t\tif !ok { channels_%s.UnregisterChannel(channelID_%s); return nil, false, true, nil }\n", suffix, suffix)
 		fmt.Fprintf(sb, "\t\t\t\t\t\t%s := ffigo.GetBuffer()\n", payloadVar)
 		fmt.Fprintf(sb, "\t\t\t\t\t\tdefer ffigo.ReleaseBuffer(%s)\n", payloadVar)
 		g.emitWrite(sb, valueVar, elemType, nil, structs, payloadVar, moduleName, interfaceSchemas, isHost)
@@ -289,8 +289,12 @@ func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemTyp
 		fmt.Fprintf(sb, "\t\t\t\t\t\treturn false, nil\n")
 		fmt.Fprintf(sb, "\t\t\t\t\t}\n")
 		fmt.Fprintf(sb, "\t\t\t\t}\n")
-		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnClose = func() error { close(%s); return nil }\n", suffix, prefix)
 		_ = payloadVar
+	}
+	if canSend {
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnClose = func() error { defer channels_%s.UnregisterChannel(channelID_%s); close(%s); return nil }\n", suffix, suffix, suffix, prefix)
+	} else {
+		fmt.Fprintf(sb, "\t\t\t\tchannelEndpoint_%s.OnClose = func() error { channels_%s.UnregisterChannel(channelID_%s); return nil }\n", suffix, suffix, suffix)
 	}
 	fmt.Fprintf(sb, "\t\t\t\tchannelID_%s = channels_%s.RegisterChannel(channelEndpoint_%s)\n", suffix, suffix, suffix)
 	fmt.Fprintf(sb, "\t\t\t}\n")

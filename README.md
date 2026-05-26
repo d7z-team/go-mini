@@ -10,7 +10,8 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 - Embeddable Go API
 - CLI for running scripts and bytecode
 - Compile-time call templates for lightweight builtins
-- Surface-packaged VM source libraries with bytecode hash validation
+- Surface bundles for FFI and VM source libraries
+- Surface-packaged VM source libraries with explicit exports and bytecode hash validation
 - Language-level `chan` / `select` with cooperative VM scheduling
 - VM-only pointer semantics with `new`, `&`, dereference, and struct literals
 - FFI binding generator
@@ -86,7 +87,7 @@ Generate bindings from Go interfaces:
 go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
-Generated bindings expose `SurfaceXxx(...) *surface.Bundle` for `executor.UseSurface(...)`. Go-side proxies are generated only when the source interface is marked with `// ffigen:proxy`.
+Generated bindings expose `SurfaceXxx(...) *surface.Bundle` for `executor.UseSurface(...)`. Go-side proxies are generated when the source interface is marked with `// ffigen:proxy`.
 
 For examples and runtime integration details, see [DOCS.md](./DOCS.md).
 

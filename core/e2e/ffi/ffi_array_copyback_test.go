@@ -7,6 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type arrayCopyBackBridge struct{}
@@ -48,13 +49,7 @@ func (arrayCopyBackBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIArrayCopyBackUpdatesWholeArray(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Rewrite",
-		arrayCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Rewrite", arrayCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), "")
 
 	code := `
 	package main
@@ -85,13 +80,7 @@ func TestFFIArrayCopyBackUpdatesWholeArray(t *testing.T) {
 
 func TestFFIArrayCopyBackUpdatesSliceWindow(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Rewrite",
-		arrayCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Rewrite", arrayCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), "")
 
 	code := `
 	package main

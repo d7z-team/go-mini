@@ -179,8 +179,9 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 	case *Slot:
 		res.Ref = ref.DeepCopy(seen)
 	case *VMModule:
-		cloned := make(map[string]*Var, len(ref.Data))
-		for k, item := range ref.Data {
+		snapshot := ref.Snapshot()
+		cloned := make(map[string]*Var, len(snapshot))
+		for k, item := range snapshot {
 			cloned[k] = item.deepCopy(seen)
 		}
 		res.Ref = &VMModule{Name: ref.Name, Data: cloned}

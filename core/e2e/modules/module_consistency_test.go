@@ -2,23 +2,20 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
-// TestModuleConsistency 验证跨模块变量修改的强一致性
+// TestModuleConsistency 验证导出变量读取来自显式模块导出表，并反映模块内部更新
 func TestModuleConsistency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path == "counter" {
-			code := `
+	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
 			package counter
 			
 			var Val = 0
@@ -30,13 +27,9 @@ func TestModuleConsistency(t *testing.T) {
 			func Inc() {
 				Val++
 			}
-			`
-			converter := gofrontend.NewConverter()
-			node, _ := converter.ConvertSource("snippet", code)
-			return node.(*ast.ProgramStmt), nil
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	})
+			`))); err != nil {
+		t.Fatalf("register counter surface: %v", err)
+	}
 
 	code := `
 	package main
@@ -48,22 +41,22 @@ func TestModuleConsistency(t *testing.T) {
 			panic("initial value should be 0")
 		}
 
-		// 2. 跨模块直接修改
-		counter.Val = 100
-		
-		// 3. 验证导出读取
-		if counter.Val != 100 {
-			panic("direct read failed")
+		// 2. 模块内部函数修改导出变量
+		counter.Inc()
+
+		// 3. 验证导出读取看到模块内部更新
+		if counter.Val != 1 {
+			panic("exported read failed")
 		}
 
-		// 4. 验证模块内部函数读取 (证明 Context 同步成功)
-		if counter.GetVal() != 100 {
+		// 4. 验证模块内部函数读取一致
+		if counter.GetVal() != 1 {
 			panic("internal function read failed")
 		}
 
-		// 5. 验证模块内部修改
+		// 5. 再次验证模块内部修改
 		counter.Inc()
-		if counter.Val != 101 {
+		if counter.Val != 2 {
 			panic("increment sync failed")
 		}
 	}
@@ -82,7 +75,7 @@ func TestModuleConsistency(t *testing.T) {
 // TestReadOnlyModuleProtection 验证 FFI 等虚拟模块的只读属性
 func TestReadOnlyModuleProtection(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.DeclareFuncSchema("mock.Print", runtime.MustParseRuntimeFuncSig("function(String) Void"))
+	testsurface.UseRoute(t, executor, "mock.Print", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
 	code := `
 	package main
@@ -111,13 +104,39 @@ func TestReadOnlyModuleProtection(t *testing.T) {
 	}
 }
 
-// TestModuleClosureConsistency 验证被闭包捕获的变量在跨模块修改时的表现
+func TestSourceModuleExportsAreReadOnly(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
+package counter
+
+var Val = 0
+`))); err != nil {
+		t.Fatalf("register counter surface: %v", err)
+	}
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "counter"
+
+func main() {
+	counter.Val = 1
+}
+`)
+	if err != nil {
+		t.Fatalf("compile source module assignment: %v", err)
+	}
+	err = prog.Execute(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "module counter is read-only") {
+		t.Fatalf("expected source module export assignment to be read-only, got %v", err)
+	}
+}
+
+// TestModuleClosureConsistency 验证被闭包捕获的变量在模块内部修改时的表现
 func TestModuleClosureConsistency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path == "auth" {
-			code := `
+	if err := executor.UseSurface(surface.Library("auth", surface.GoFile("auth.mgo", `
 			package auth
 			var Token = "guest"
 			
@@ -127,13 +146,13 @@ func TestModuleClosureConsistency(t *testing.T) {
 					return Token
 				}
 			}
-			`
-			converter := gofrontend.NewConverter()
-			node, _ := converter.ConvertSource("snippet", code)
-			return node.(*ast.ProgramStmt), nil
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	})
+
+			func SetToken(v string) {
+				Token = v
+			}
+			`))); err != nil {
+		t.Fatalf("register auth surface: %v", err)
+	}
 
 	code := `
 	package main
@@ -145,8 +164,8 @@ func TestModuleClosureConsistency(t *testing.T) {
 			panic("initial closure value wrong")
 		}
 
-		// 修改模块变量
-		auth.Token = "admin"
+		// 通过模块导出函数修改模块变量
+		auth.SetToken("admin")
 
 		// 验证闭包是否看到了更新 (证明 Cell 同步成功)
 		if f() != "admin" {

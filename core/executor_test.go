@@ -2,7 +2,6 @@ package engine
 
 import (
 	"testing"
-	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
@@ -43,38 +42,6 @@ func TestUnpackEvalResultTupleValue(t *testing.T) {
 	}
 	if got[1] == nil || got[1].Str != "ok" {
 		t.Fatalf("unexpected second result: %#v", got[1])
-	}
-}
-
-func TestModuleASTLoaderDoesNotHoldLockDuringExternalLoader(t *testing.T) {
-	exec := NewMiniExecutor()
-	exec.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		exec.RegisterConstant("loaderTouched", "1")
-		return &ast.ProgramStmt{
-			BaseNode:   ast.BaseNode{ID: "module", Meta: "boot"},
-			Package:    path,
-			Constants:  map[string]string{},
-			Variables:  map[ast.Ident]ast.Expr{},
-			Types:      map[ast.Ident]ast.GoMiniType{},
-			Structs:    map[ast.Ident]*ast.StructStmt{},
-			Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
-			Functions:  map[ast.Ident]*ast.FunctionStmt{},
-		}, nil
-	})
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := exec.moduleASTLoader()("dep")
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("module loader failed: %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("module loader appears to hold executor lock while invoking external loader")
 	}
 }
 

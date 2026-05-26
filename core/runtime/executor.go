@@ -16,6 +16,7 @@ type Executor struct {
 	consts           map[string]string
 	globals          map[string]*RuntimeGlobal
 	functions        map[string]*RuntimeFunction
+	exports          map[string]PreparedExport
 	mainTasks        []Task
 	globalInitOrder  []string
 	globalInitGroups []*RuntimeGlobalInit
@@ -118,6 +119,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		metadata:             newRuntimeMetadataRegistry(),
 		globals:              make(map[string]*RuntimeGlobal),
 		functions:            make(map[string]*RuntimeFunction),
+		exports:              clonePreparedExportMap(prepared.Exports),
 		consts:               make(map[string]string),
 		routes:               make(map[string]FFIRoute),
 		packageValues:        make(map[string]*BoundPackageValue),
@@ -152,6 +154,7 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneStringMap(prepared.Constants)
+	e.exports = clonePreparedExportMap(prepared.Exports)
 	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
 	for name, typeInfo := range prepared.NamedTypes {
 		e.metadata.registerNamedType(name, typeInfo)
@@ -326,6 +329,70 @@ func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
 	return res, nil
 }
 
+func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunction, env map[string]interface{}) (*Var, error) {
+	if e == nil {
+		return nil, errors.New("missing executor")
+	}
+	if fn == nil {
+		return nil, errors.New("missing prepared function")
+	}
+	name := fn.Name
+	if name == "" {
+		name = "__eval__"
+	}
+	if fn.FunctionSig == nil {
+		return nil, fmt.Errorf("prepared function %s missing signature", name)
+	}
+	if err := validateRuntimeFuncSig("prepared function "+name, fn.FunctionSig); err != nil {
+		return nil, err
+	}
+	if err := validatePreparedTaskPlan("prepared function "+name, fn.BodyTasks, 0); err != nil {
+		return nil, err
+	}
+	if err := e.EnsureSharedStateInitialized(ctx, nil); err != nil {
+		return nil, err
+	}
+
+	session := e.NewSession(ctx, "eval")
+	session.StepLimit = e.StepLimit
+	defer e.CleanupSession(session)
+	for k, v := range env {
+		_ = session.AddVariable(k, session.Executor.ToVar(session, v, nil))
+	}
+
+	call := &DoCallData{
+		Name:        name,
+		FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
+		BodyTasks:   cloneTasks(fn.BodyTasks),
+	}
+	if err := e.setupFuncCall(session, name, call, nil, nil); err != nil {
+		return nil, err
+	}
+
+	var err error
+	if e.scheduler != nil && e.scheduler.Current() == nil {
+		e.runMu.Lock()
+		root, resetErr := e.scheduler.Reset(session, e)
+		if resetErr != nil {
+			e.runMu.Unlock()
+			err = resetErr
+		} else {
+			err = e.runExecutionContexts(ctx, root)
+			e.scheduler.Stop()
+			e.runMu.Unlock()
+		}
+	} else {
+		err = e.Run(session)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if fn.FunctionSig.ReturnType.IsVoid() || session.ValueStack.Len() == 0 {
+		return nil, nil
+	}
+	return session.ValueStack.Pop(), nil
+}
+
 func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 	session := &StackContext{
 		Context:      ctx,
@@ -489,22 +556,8 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 	case TypeModule:
 		if mod, ok := val.Ref.(*VMModule); ok {
-			if mod.Context != nil && mod.Context.Shared != nil {
-				if v, ok := mod.Context.Shared.LoadGlobal(name); ok && v != nil {
-					return v, true
-				}
-			}
 			if v, ok := mod.Load(name); ok && v != nil {
 				return v, true
-			}
-			if mod.Context != nil {
-				if v, err := mod.Context.Load(name); err == nil && v != nil {
-					return v, true
-				}
-			}
-			routeKey := fmt.Sprintf("%s.%s", mod.Name, name)
-			if route, ok := e.routes[routeKey]; ok {
-				return &Var{VType: TypeAny, Ref: route}, true
 			}
 		}
 	case TypeInterface:
@@ -863,40 +916,4 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 		}
 	}
 	return runStopDone, nil
-}
-
-func (e *Executor) ExecuteTasks(session *StackContext, tasks []Task) error {
-	oldTasks := session.TaskStack
-	oldValues := session.ValueStack
-	oldLHS := session.LHSStack
-	oldUnwind := session.UnwindMode
-
-	session.TaskStack = []Task{}
-	session.ValueStack = &ValueStack{}
-	session.LHSStack = &LHSStack{}
-	setUnwindMode(session, UnwindNone)
-
-	session.TaskStack = append(session.TaskStack, cloneTasks(tasks)...)
-
-	var err error
-	if e.scheduler != nil && e.scheduler.Current() == nil {
-		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(session, e)
-		if resetErr != nil {
-			e.runMu.Unlock()
-			err = resetErr
-		} else {
-			err = e.runExecutionContexts(session.Context, root)
-			e.scheduler.Stop()
-			e.runMu.Unlock()
-		}
-	} else {
-		err = e.Run(session)
-	}
-
-	session.TaskStack = oldTasks
-	session.ValueStack = oldValues
-	session.LHSStack = oldLHS
-	session.UnwindMode = oldUnwind
-	return err
 }

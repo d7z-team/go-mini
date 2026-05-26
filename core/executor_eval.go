@@ -9,15 +9,6 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-func (e *MiniExecutor) injectEnv(session *runtime.StackContext, env map[string]interface{}) {
-	if env == nil {
-		return
-	}
-	for k, v := range env {
-		_ = session.AddVariable(k, session.Executor.ToVar(session, v, nil))
-	}
-}
-
 // Eval 执行单个 Go 表达式字符串
 func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
 	expr, err := e.newCompiler().CompileExprSource(exprStr)
@@ -34,22 +25,11 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 		return nil, err
 	}
 
-	session := executor.NewSession(ctx, "eval")
-	defer executor.CleanupSession(session)
-
-	e.injectEnv(session, env)
-	if err := initEvalReturnSlot(session, expr); err != nil {
-		return nil, err
-	}
-
-	tasks, err := compiler.CompileEvalTasks(expr)
+	fn, err := compiler.CompileEvalFunction("__eval__", expr)
 	if err != nil {
 		return nil, err
 	}
-	if err := executor.ExecuteTasks(session, tasks); err != nil {
-		return nil, err
-	}
-	res, err := session.LoadReturn()
+	res, err := executor.EvalPreparedFunction(ctx, fn, env)
 	if err != nil {
 		return nil, err
 	}

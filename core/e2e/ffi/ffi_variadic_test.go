@@ -9,6 +9,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // PrinterAPI 演示变长参数
@@ -42,10 +43,10 @@ func (m *MockPrinter) Log(prefix string, args ...any) error {
 }
 
 // 模拟 ffigen 生成的注册逻辑
-func RegisterPrinter(executor *engine.MiniExecutor, impl PrinterAPI) {
+func RegisterPrinter(t *testing.T, executor *engine.MiniExecutor, impl PrinterAPI) {
+	t.Helper()
 	bridge := &PrinterBridge{impl: impl}
-	// 注意：FFI spec 中的变长参数由 ... 前缀标识
-	executor.RegisterFFISchema("printer.Log", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "Log with variadic args")
+	testsurface.UseRoute(t, executor, "printer.Log", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "Log with variadic args")
 }
 
 type PrinterBridge struct {
@@ -83,7 +84,7 @@ func (b *PrinterBridge) DestroyHandle(uint32) error { return nil }
 func TestFFIVariadic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	printer := &MockPrinter{}
-	RegisterPrinter(executor, printer)
+	RegisterPrinter(t, executor, printer)
 
 	code := `
 	package main

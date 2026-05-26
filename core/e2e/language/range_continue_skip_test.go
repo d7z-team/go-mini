@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type mockContinueBridge struct{}
@@ -112,10 +113,10 @@ func TestRangeContinueWithFFICall(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	bridge := &mockContinueBridge{}
-	executor.RegisterFFISchema("mock.ShouldContinue", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function(Int64) Bool"), "")
-	executor.RegisterFFISchema("mock.DoFFICall", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	testsurface.UseRoutes(t, executor, bridge,
+		testsurface.Route("mock.ShouldContinue", 1, runtime.MustParseRuntimeFuncSig("function(Int64) Bool"), ""),
+		testsurface.Route("mock.DoFFICall", 2, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
+	)
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -154,10 +155,10 @@ func TestRangeContinueWithFFICallInIfBlock(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
 	bridge := &mockContinueBridge{}
-	executor.RegisterFFISchema("mock.ShouldContinue", bridge, 1,
-		runtime.MustParseRuntimeFuncSig("function(Int64) Bool"), "")
-	executor.RegisterFFISchema("mock.DoFFICall", bridge, 2,
-		runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	testsurface.UseRoutes(t, executor, bridge,
+		testsurface.Route("mock.ShouldContinue", 1, runtime.MustParseRuntimeFuncSig("function(Int64) Bool"), ""),
+		testsurface.Route("mock.DoFFICall", 2, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
+	)
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

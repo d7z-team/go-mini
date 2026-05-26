@@ -2,22 +2,17 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 // TestModulePrivateScope 验证跨模块调用时，被调模块的私有变量作用域是否丢失
 func TestModulePrivateScope(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	// 模拟 service 模块，它引用了一个未导出的私有变量 utils
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path == "service" {
-			code := `
+	if err := executor.UseSurface(surface.Library("service", surface.GoFile("service.mgo", `
 			package service
 			
 			// 私有变量 (未导出)
@@ -27,13 +22,9 @@ func TestModulePrivateScope(t *testing.T) {
 				// 这里应该能访问到 utils，即便是在 main 中被调用
 				return "Result: " + utils
 			}
-			`
-			converter := gofrontend.NewConverter()
-			node, _ := converter.ConvertSource("snippet", code)
-			return node.(*ast.ProgramStmt), nil
-		}
-		return nil, fmt.Errorf("module not found: %s", path)
-	})
+			`))); err != nil {
+		t.Fatalf("register service surface: %v", err)
+	}
 
 	code := `
 	package main

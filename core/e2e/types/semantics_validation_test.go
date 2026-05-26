@@ -5,6 +5,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestStrictMapKeyValidation(t *testing.T) {
@@ -34,12 +35,13 @@ func TestInvalidCapArgument(t *testing.T) {
 
 func TestErrorToStringAssignmentValidation(t *testing.T) {
 	e := engine.NewMiniExecutor()
-	e.DeclareFuncSchema("getErr", runtime.MustParseRuntimeFuncSig("function() Error"))
+	testsurface.UseRoute(t, e, "test.getErr", nil, 1, runtime.MustParseRuntimeFuncSig("function() Error"), "")
 
 	code := `package main
+		import "test"
 		func main() string {
 			var s string
-			s = getErr()
+			s = test.getErr()
 			return s
 		}`
 	_, err := e.NewRuntimeByGoCode(code)

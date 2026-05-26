@@ -193,7 +193,13 @@ func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedPr
 		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
 	}
 
-	compiled, _, err := e.newCompiler().CompileProgram(path, "", program, false)
+	stagedPrepared := make(map[string]*runtime.PreparedProgram)
+	stagedSources := make(map[string]*ast.ProgramStmt)
+	if !hasLibrary {
+		stagedSources[path] = program
+	}
+
+	compiled, _, err := e.newCompilerWithModuleSources(stagedSources, nil).CompileProgram(path, "", program, false)
 	if err != nil {
 		return nil, fmt.Errorf("compile module %s: %w", path, err)
 	}
@@ -202,16 +208,12 @@ func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedPr
 	}
 
 	prepared := compiled.Bytecode.Executable
-	e.mu.Lock()
-	e.modules[path] = prepared
-	if !hasLibrary {
-		e.moduleSources[path] = program
-	}
-	e.mu.Unlock()
+	stagedPrepared[path] = prepared
 
-	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{path: true}); err != nil {
+	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{path: true}, stagedPrepared, stagedSources); err != nil {
 		return nil, err
 	}
+	e.commitPreparedModuleStage(stagedPrepared, stagedSources)
 	return prepared, nil
 }
 

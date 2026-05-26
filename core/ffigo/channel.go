@@ -90,6 +90,7 @@ func (c ChannelEndpointFuncs) Close() error {
 type ChannelRegistry interface {
 	RegisterChannel(ChannelEndpoint) uint64
 	LookupChannel(uint64) (ChannelEndpoint, bool)
+	UnregisterChannel(uint64) bool
 }
 
 type channelRegistry struct {
@@ -122,6 +123,19 @@ func (r *channelRegistry) LookupChannel(id uint64) (ChannelEndpoint, bool) {
 	defer r.mu.RUnlock()
 	endpoint, ok := r.items[id]
 	return endpoint, ok
+}
+
+func (r *channelRegistry) UnregisterChannel(id uint64) bool {
+	if r == nil || id == 0 {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.items[id]; !ok {
+		return false
+	}
+	delete(r.items, id)
+	return true
 }
 
 type channelRegistryContextKey struct{}

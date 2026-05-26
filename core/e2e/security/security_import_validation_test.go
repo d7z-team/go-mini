@@ -6,15 +6,11 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func TestPathTraversalSecurity(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		return nil, nil
-	})
 
 	testCases := []string{
 		"../etc/passwd",
@@ -37,15 +33,22 @@ func TestPathTraversalSecurity(t *testing.T) {
 func TestImportDepthLimit(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	depth := 0
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		depth++
-		next := fmt.Sprintf("m%d", depth)
-		code := fmt.Sprintf("package %s; import \"%s\"; func Run() {}", path, next)
-		converter := gofrontend.NewConverter()
-		node, _ := converter.ConvertSource("snippet", code)
-		return node.(*ast.ProgramStmt), nil
-	})
+	modules := make([]surface.LibraryModule, 0, 111)
+	for i := 0; i <= 110; i++ {
+		path := fmt.Sprintf("m%d", i)
+		code := fmt.Sprintf("package %s; func Run() {}", path)
+		if i < 110 {
+			next := fmt.Sprintf("m%d", i+1)
+			code = fmt.Sprintf("package %s; import %q; func Run() {}", path, next)
+		}
+		modules = append(modules, surface.LibraryModule{
+			Path:  path,
+			Files: []surface.LibraryFile{surface.GoFile(path+".mgo", code)},
+		})
+	}
+	if err := executor.UseSurface(surface.Libraries(modules...)); err != nil {
+		t.Fatalf("register deep import libraries: %v", err)
+	}
 
 	code := "package main; import \"m0\"; func main() {}"
 	_, err := executor.NewRuntimeByGoCode(code)

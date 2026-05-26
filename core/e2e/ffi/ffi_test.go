@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // MockFmtBridge 模拟 fmt 包的 Bridge
@@ -38,8 +39,7 @@ func TestFFIPrintln(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &MockFmtBridge{}
 
-	// 注册 FFI 路由
-	executor.RegisterFFISchema("sandbox.Println", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
+	testsurface.UseRoute(t, executor, "sandbox.Println", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
 	code := `
 	package main

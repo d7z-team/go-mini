@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type bytesCopyBackBridge struct{}
@@ -34,13 +35,7 @@ func (bytesCopyBackBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Mutate",
-		bytesCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
@@ -67,13 +62,7 @@ func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Mutate",
-		bytesCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
@@ -112,13 +101,7 @@ func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Mutate",
-		bytesCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
@@ -147,13 +130,7 @@ func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesSliceWindow(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema(
-		"demo.Mutate",
-		bytesCopyBackBridge{},
-		1,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes),
-		"",
-	)
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main

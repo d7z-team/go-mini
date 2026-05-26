@@ -79,8 +79,15 @@ func buildBytecode(program *ast.ProgramStmt, globalInitOrder []string) (*bytecod
 	return bc, nil
 }
 
-// CompileEvalTasks lowers a single expression into a prepared return task plan.
-func CompileEvalTasks(expr ast.Expr) ([]runtime.Task, error) {
+// CompileEvalFunction lowers a single expression into a prepared function.
+func CompileEvalFunction(name string, expr ast.Expr) (*runtime.PreparedFunction, error) {
+	if name == "" {
+		name = "__eval__"
+	}
+	ret := ast.TypeAny
+	if expr != nil && expr.GetBase() != nil && !expr.GetBase().Type.IsEmpty() {
+		ret = expr.GetBase().Type
+	}
 	prepared, err := lowering.PrepareProgram(&ast.ProgramStmt{
 		BaseNode:   ast.BaseNode{ID: "eval", Meta: "boot"},
 		Constants:  map[string]string{},
@@ -88,15 +95,28 @@ func CompileEvalTasks(expr ast.Expr) ([]runtime.Task, error) {
 		Types:      map[ast.Ident]ast.GoMiniType{},
 		Structs:    map[ast.Ident]*ast.StructStmt{},
 		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
-		Functions:  map[ast.Ident]*ast.FunctionStmt{},
-		Main: []ast.Stmt{
-			&ast.ReturnStmt{Results: []ast.Expr{expr}},
+		Functions: map[ast.Ident]*ast.FunctionStmt{
+			ast.Ident(name): {
+				BaseNode:     ast.BaseNode{ID: "eval_fn", Meta: "function"},
+				Name:         ast.Ident(name),
+				FunctionType: ast.FunctionType{Return: ret},
+				Body: &ast.BlockStmt{
+					BaseNode: ast.BaseNode{ID: "eval_body", Meta: "block"},
+					Children: []ast.Stmt{
+						&ast.ReturnStmt{Results: []ast.Expr{expr}},
+					},
+				},
+			},
 		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return prepared.MainTasks, nil
+	fn := prepared.Functions[name]
+	if fn == nil {
+		return nil, fmt.Errorf("eval function %s was not prepared", name)
+	}
+	return fn, nil
 }
 
 type bytecodeBuilder struct {

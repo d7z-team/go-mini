@@ -10,6 +10,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // NumericSafetyAPI 定义测试接口
@@ -84,10 +85,11 @@ func TestFFINumericSafety(t *testing.T) {
 	bridge := &NumericSafetyBridge{impl: impl}
 	executor := engine.NewMiniExecutor()
 
-	// 注册全局 FFI 函数 (不带 api. 前缀，省去 import 麻烦)
-	executor.RegisterFFISchema("AcceptInt8", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
-	executor.RegisterFFISchema("AcceptUint16", bridge, 2, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
-	executor.RegisterFFISchema("AcceptInt32", bridge, 3, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
+	testsurface.UseRoutes(t, executor, bridge,
+		testsurface.Route("numeric.AcceptInt8", 1, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
+		testsurface.Route("numeric.AcceptUint16", 2, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
+		testsurface.Route("numeric.AcceptInt32", 3, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
+	)
 
 	tests := []struct {
 		name      string
@@ -97,43 +99,43 @@ func TestFFINumericSafety(t *testing.T) {
 	}{
 		{
 			"Int8 Normal",
-			`package main; func main() { AcceptInt8(100) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptInt8(100) }`,
 			"",
 			100,
 		},
 		{
 			"Int8 Overflow Positive",
-			`package main; func main() { AcceptInt8(200) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptInt8(200) }`,
 			"ffi: int8 overflow: 200",
 			0,
 		},
 		{
 			"Int8 Overflow Negative",
-			`package main; func main() { AcceptInt8(-129) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptInt8(-129) }`,
 			"ffi: int8 overflow: -129",
 			0,
 		},
 		{
 			"Uint16 Normal",
-			`package main; func main() { AcceptUint16(60000) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptUint16(60000) }`,
 			"",
 			60000,
 		},
 		{
 			"Uint16 Overflow Negative",
-			`package main; func main() { AcceptUint16(-1) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptUint16(-1) }`,
 			"ffi: uint16 overflow: -1",
 			0,
 		},
 		{
 			"Int32 Normal",
-			`package main; func main() { AcceptInt32(1000000) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptInt32(1000000) }`,
 			"",
 			1000000,
 		},
 		{
 			"Int32 Overflow",
-			`package main; func main() { AcceptInt32(3000000000) }`,
+			`package main; import "numeric"; func main() { numeric.AcceptInt32(3000000000) }`,
 			"ffi: int32 overflow: 3000000000",
 			0,
 		},

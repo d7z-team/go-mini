@@ -13,6 +13,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type asyncBridge struct{}
@@ -78,13 +79,9 @@ func (asyncBridge) DestroyHandle(uint32) error {
 func TestAsyncFFIResumesWithReturnAndCopyBack(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := asyncBridge{}
-	executor.RegisterFFISchema("async.Value", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
-	executor.RegisterFFISchema(
-		"async.Mutate",
-		bridge,
-		2,
-		runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes),
-		"",
+	testsurface.UseRoutes(t, executor, bridge,
+		testsurface.Route("async.Value", 1, runtime.MustParseRuntimeFuncSig("function() Int64"), ""),
+		testsurface.Route("async.Mutate", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), ""),
 	)
 
 	prog, err := executor.NewRuntimeByGoCode(`
@@ -115,7 +112,7 @@ func main() {
 func TestAsyncFFICompletionErrorPropagates(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := asyncBridge{}
-	executor.RegisterFFISchema("async.Fail", bridge, 3, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
+	testsurface.UseRoute(t, executor, "async.Fail", bridge, 3, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -240,9 +237,11 @@ func TestAsyncFFICompletionBurstDoesNotDropTokens(t *testing.T) {
 
 	executor := engine.NewMiniExecutor()
 	bridge := newBurstAsyncBridge(workers)
-	executor.RegisterFFISchema("gate.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
-	executor.RegisterFFISchema("gate.Started", bridge, 2, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
-	executor.RegisterFFISchema("gate.Release", bridge, 3, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoutes(t, executor, bridge,
+		testsurface.Route("gate.Wait", 1, runtime.MustParseRuntimeFuncSig("function() Void"), ""),
+		testsurface.Route("gate.Started", 2, runtime.MustParseRuntimeFuncSig("function() Int64"), ""),
+		testsurface.Route("gate.Release", 3, runtime.MustParseRuntimeFuncSig("function() Void"), ""),
+	)
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -308,7 +307,7 @@ func (b *blockingAsyncBridge) DestroyHandle(uint32) error {
 func TestAsyncFFICancelledOnContextDeadline(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
-	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -337,7 +336,7 @@ func main() {
 func TestAsyncFFICancelledOnVMPanic(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
-	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -372,7 +371,7 @@ func main() {
 func TestAsyncFFIAllBlockedReportsWaits(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitDependsOnVM, reason: "test blocked on VM"}
-	executor.RegisterFFISchema("block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
+	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

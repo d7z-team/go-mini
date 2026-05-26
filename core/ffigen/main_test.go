@@ -333,6 +333,9 @@ func (f *Factory) New(base int64) *Factory {
 	if !strings.Contains(code, "r0 := impl.New(base)") {
 		t.Fatalf("expected module-only struct method to remain impl-based, got:\n%s", code)
 	}
+	if !strings.Contains(code, `PackagePath: "calc", MemberName: "New", RouteName: "calc.New"`) {
+		t.Fatalf("expected module-only struct methods to generate package member route descriptors, got:\n%s", code)
+	}
 	if strings.Contains(code, "registerStructSchema(\"calc.Factory\"") {
 		t.Fatalf("module-only struct should not self-register a struct schema, got:\n%s", code)
 	}
@@ -445,6 +448,9 @@ func (f *Factory) New(base int64) *Factory {
 	}
 	if !strings.Contains(code, "r0 := impl.New(base)") {
 		t.Fatalf("expected file mode module-only struct method to remain impl-based, got:\n%s", code)
+	}
+	if !strings.Contains(code, `PackagePath: "calc", MemberName: "New", RouteName: "calc.New"`) {
+		t.Fatalf("expected file mode module-only struct methods to generate package member route descriptors, got:\n%s", code)
 	}
 	if strings.Contains(code, "registerStructSchema(\"calc.Factory\"") {
 		t.Fatalf("file mode module-only struct should not self-register a struct schema, got:\n%s", code)
@@ -737,6 +743,7 @@ type ChanModule interface {
 		`ChannelRegistryFromContext(ctx)`,
 		`__p.channelRegistry()`,
 		`RegisterChannel(`,
+		`UnregisterChannel(`,
 	} {
 		if !strings.Contains(code, required) {
 			t.Fatalf("expected generated channel support to contain %q, got:\n%s", required, code)

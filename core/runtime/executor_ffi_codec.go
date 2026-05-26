@@ -546,6 +546,10 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			err = fmt.Errorf("unknown FFI channel endpoint %d", id)
 			break
 		}
+		if directionErr := validateChannelEndpointDirection(typ, endpoint); directionErr != nil {
+			err = directionErr
+			break
+		}
 		elem, elemOK := typ.ReadChanElemType()
 		if !elemOK {
 			err = fmt.Errorf("invalid FFI channel type %s", typ.Raw)

@@ -11,6 +11,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type ffiChannelBridge struct {
@@ -170,7 +171,7 @@ func (b *ffiChannelBridge) DestroyHandle(uint32) error {
 func TestFFIChannelReceiveWaitsOnHostEndpoint(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -202,7 +203,7 @@ func main() {
 func TestFFIChannelSendWaitsOnHostEndpoint(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -236,7 +237,7 @@ func TestFFIChannelSelectUsesHostEndpoint(t *testing.T) {
 	bridge := newFFIChannelBridge()
 	bridge.values = make(chan int64, 1)
 	bridge.values <- 8
-	executor.RegisterFFISchema("chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -267,7 +268,7 @@ func main() {
 func TestFFIChannelSelectWaitsOnHostEndpoint(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -302,7 +303,7 @@ func main() {
 func TestFFIChannelForRangeWaitsUntilHostClose(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -341,7 +342,7 @@ func main() {
 func TestFFIChannelHostReceivesVMChannelArgument(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Sum", bridge, 3, runtime.MustParseRuntimeFuncSig("function(RecvChan<Int64>) Int64"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Sum", bridge, 3, runtime.MustParseRuntimeFuncSig("function(RecvChan<Int64>) Int64"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -374,7 +375,7 @@ func main() {
 func TestFFIChannelHostSendsToVMChannelArgument(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Fill", bridge, 4, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Fill", bridge, 4, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -408,7 +409,7 @@ func main() {
 func TestFFIChannelHostClosesVMChannelArgument(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Close", bridge, 5, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Close", bridge, 5, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -435,7 +436,7 @@ func main() {
 func TestFFIChannelSelectCancelsUnchosenHostReceive(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -475,7 +476,7 @@ func main() {
 func TestFFIChannelSelectCancelsUnchosenHostSend(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := newFFIChannelBridge()
-	executor.RegisterFFISchema("chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
+	testsurface.UseRoute(t, executor, "chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
 package main

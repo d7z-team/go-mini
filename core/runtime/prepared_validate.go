@@ -27,15 +27,14 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 			return err
 		}
 	}
+	for name, export := range plan.Exports {
+		if err := validatePreparedExport(plan, name, export); err != nil {
+			return err
+		}
+	}
 	for i, req := range plan.ExternalRequirements {
 		pkg := req.PackagePath
-		if pkg == "" {
-			pkg = req.Package
-		}
 		member := req.MemberName
-		if member == "" {
-			member = req.Member
-		}
 		if strings.TrimSpace(pkg) == "" {
 			return fmt.Errorf("external requirement %d missing package", i)
 		}
@@ -93,6 +92,56 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		}
 	}
 	return validatePreparedTaskPlan("main", plan.MainTasks, 0)
+}
+
+func validatePreparedExport(plan *PreparedProgram, mapName string, export PreparedExport) error {
+	if strings.TrimSpace(mapName) == "" {
+		return errors.New("prepared export has empty map key")
+	}
+	if strings.TrimSpace(export.Name) == "" {
+		return fmt.Errorf("prepared export %s missing name", mapName)
+	}
+	if export.Name != mapName {
+		return fmt.Errorf("prepared export %s name mismatch: %s", mapName, export.Name)
+	}
+	target := export.TargetName
+	if strings.TrimSpace(target) == "" {
+		target = export.Name
+	}
+	if !export.Type.IsEmpty() {
+		if err := validateRuntimeType("prepared export "+export.Name+" type", export.Type); err != nil {
+			return err
+		}
+	}
+	switch export.Kind {
+	case PreparedExportFunc:
+		if plan.Functions[target] == nil {
+			return fmt.Errorf("prepared export %s targets missing function %s", export.Name, target)
+		}
+	case PreparedExportGlobal:
+		if plan.Globals[target] == nil {
+			return fmt.Errorf("prepared export %s targets missing global %s", export.Name, target)
+		}
+	case PreparedExportConst:
+		if _, ok := plan.Constants[target]; !ok {
+			return fmt.Errorf("prepared export %s targets missing constant %s", export.Name, target)
+		}
+	case PreparedExportType:
+		if _, ok := plan.NamedTypes[target]; !ok {
+			return fmt.Errorf("prepared export %s targets missing named type %s", export.Name, target)
+		}
+	case PreparedExportStruct:
+		if plan.StructSchemas[target] == nil {
+			return fmt.Errorf("prepared export %s targets missing struct schema %s", export.Name, target)
+		}
+	case PreparedExportInterface:
+		if plan.InterfaceSchemas[target] == nil {
+			return fmt.Errorf("prepared export %s targets missing interface schema %s", export.Name, target)
+		}
+	default:
+		return fmt.Errorf("prepared export %s has invalid kind %s", export.Name, export.Kind)
+	}
+	return nil
 }
 
 func validatePreparedTaskPlan(path string, tasks []Task, depth int) error {

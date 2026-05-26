@@ -4,56 +4,73 @@ import "fmt"
 
 func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modSession *StackContext) *Var {
 	exports := make(map[string]*Var)
-	for name := range modExec.globals {
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			if modSession != nil {
-				if modSession.Shared != nil {
-					if v, ok := modSession.Shared.LoadGlobal(name); ok {
-						exports[name] = v
-						continue
+	if modExec != nil {
+		for name, export := range modExec.exports {
+			target := export.TargetName
+			if target == "" {
+				target = export.Name
+			}
+			if target == "" {
+				target = name
+			}
+			switch export.Kind {
+			case PreparedExportGlobal:
+				if modSession != nil && modSession.Shared != nil {
+					exports[name] = &Var{
+						VType:    TypeAny,
+						TypeInfo: export.Type,
+						Ref: &vmModuleGlobalRef{
+							Shared: modSession.Shared,
+							Name:   target,
+						},
 					}
 				}
-				if v, err := modSession.Load(name); err == nil {
-					exports[name] = v
+			case PreparedExportFunc:
+				fn := modExec.functions[target]
+				if fn == nil || modSession == nil {
+					continue
 				}
-			}
-		}
-	}
-	for name, fn := range modExec.functions {
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			exports[name] = &Var{
-				VType: TypeClosure,
-				Ref: &VMClosure{
-					FunctionSig:  CloneRuntimeFuncSig(fn.FunctionSig),
-					BodyTasks:    cloneTasks(fn.BodyTasks),
-					UpvalueSlots: nil,
-					UpvalueNames: nil,
-					Context:      &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack},
-				},
-			}
-		}
-	}
-	for name, val := range modExec.consts {
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			exports[name] = NewString(val)
-		}
-	}
-	for name, s := range modExec.metadata.structsByName {
-		if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-			exports[name] = &Var{
-				VType: TypeAny,
-				Ref:   CloneRuntimeStructSpec(s),
+				exports[name] = &Var{
+					VType: TypeClosure,
+					Ref: &VMClosure{
+						FunctionSig:  CloneRuntimeFuncSig(fn.FunctionSig),
+						BodyTasks:    cloneTasks(fn.BodyTasks),
+						UpvalueSlots: nil,
+						UpvalueNames: nil,
+						Context:      &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack},
+					},
+				}
+			case PreparedExportConst:
+				if val, ok := modExec.consts[target]; ok {
+					exports[name] = modExec.evalLiteralToVar(val)
+				}
+			case PreparedExportType:
+				if typ, ok := modExec.metadata.namedTypesByName[target]; ok {
+					exports[name] = &Var{VType: TypeString, TypeInfo: MustParseRuntimeType(SpecString), Str: typ.Raw.String()}
+				}
+			case PreparedExportStruct:
+				if spec := modExec.metadata.structsByName[target]; spec != nil {
+					exports[name] = &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType(SpecAny), Ref: CloneRuntimeStructSpec(spec)}
+				}
+			case PreparedExportInterface:
+				if spec := modExec.metadata.interfacesByName[target]; spec != nil {
+					exports[name] = &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType(SpecAny), Ref: CloneRuntimeInterfaceSpec(spec)}
+				}
 			}
 		}
 	}
 
+	var moduleContext *LexicalContext
+	if modSession != nil {
+		moduleContext = &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack}
+	}
 	return &Var{
 		VType:    TypeModule,
 		TypeInfo: MustParseRuntimeType(SpecModule),
 		Ref: &VMModule{
 			Name:    path,
 			Data:    exports,
-			Context: &LexicalContext{Executor: modSession.Executor, Shared: modSession.Shared, Stack: modSession.Stack},
+			Context: moduleContext,
 		},
 	}
 }

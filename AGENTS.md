@@ -8,15 +8,17 @@
 - runtime 包及其依赖图不得引入 `core/ast`；Go source 到 Mini AST 的转换只允许在 `core/gofrontend`，其他语言只能通过 `core/frontend.Frontend` 输出 Mini AST，AST 到执行计划的转换只允许在 `core/lowering`。
 - 执行对象必须保持 bytecode/runtime-only；AST、模板 hover 预览和 LSP 缓存只允许存在于分析对象或 compiler artifact。
 - 新能力必须先落到 lowering / compiler / bytecode payload，再由 runtime 消费。
+- Eval / snippet 类便捷入口也必须先由 compiler/lowering 产出 prepared executable artifact，再由 runtime 执行；不得恢复公开 task 直跑入口。
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，`go-mini-bytecode` / `PreparedProgram` 是唯一执行装载工件。
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
-- 纯 VM 源码库只能作为 `surface.Bundle` 的 compiler/engine 侧输入；executor 状态只保留源码描述并按需重新解析 fresh AST，导出成员必须来自显式 `ModuleExports`，不得复用已语义检查改写过的 AST 或继承父程序/FFI 注入 scope；bytecode 必须记录 module requirement，runtime 只校验 module hash 并装载 `PreparedProgram`，不得解析源码或引入 AST。
+- 纯 VM 源码库只能作为 `surface.Bundle` 的 compiler/engine 侧输入；executor 状态只保留源码描述并按需重新解析 fresh AST，导出成员必须来自显式 `ModuleExports` / `PreparedProgram.Exports`，不得复用已语义检查改写过的 AST 或继承父程序/FFI 注入 scope；bytecode 必须记录 module requirement 和 prepared exports，runtime 只校验 module hash 并装载 `PreparedProgram`，不得解析源码或引入 AST。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
+- 对外 FFI / 源码库装配只通过 `executor.UseSurface(...)`；不要恢复 executor/runtime 上的直接 route、schema、constant、package value 注册 API，也不要恢复公开 AST module loader。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
 - VM pointer 只能是 runtime-only slot 引用，不得使用 host handle ID 表示，也不得进入 FFI wire、`Any` 或 host identity 路径；`Ptr<T>` 与 `T` 之间不得恢复隐式互转。
-- FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，bridge 不得持有 VM pointer 或执行 VM task。
+- FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，decode 必须校验 endpoint 方向，bridge 不得持有 VM pointer 或执行 VM task。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
 - `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。

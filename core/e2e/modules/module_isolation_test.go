@@ -3,39 +3,25 @@ package tests
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
-	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		switch path {
-		case "broken":
-			code := `
+	if err := executor.UseSurface(surface.Library("broken", surface.GoFile("broken.mgo", `
 			package broken
 
 			var Exported = "partial"
 			var Trigger = 1 / 0
-			`
-			converter := gofrontend.NewConverter()
-			node, err := converter.ConvertSource("snippet", code)
-			if err != nil {
-				return nil, err
-			}
-			return node.(*ast.ProgramStmt), nil
-		default:
-			return nil, fmt.Errorf("module not found: %s", path)
-		}
-	})
+			`))); err != nil {
+		t.Fatalf("register broken surface: %v", err)
+	}
 
 	runtime, err := executor.NewRuntimeByGoCode(`
 	package main
@@ -71,10 +57,7 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		switch path {
-		case "panicmod":
-			code := `
+	if err := executor.UseSurface(surface.Library("panicmod", surface.GoFile("panicmod.mgo", `
 			package panicmod
 
 			func fail() string {
@@ -83,17 +66,9 @@ func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 
 			var Exported = "partial"
 			var Trigger = fail()
-			`
-			converter := gofrontend.NewConverter()
-			node, err := converter.ConvertSource("snippet", code)
-			if err != nil {
-				return nil, err
-			}
-			return node.(*ast.ProgramStmt), nil
-		default:
-			return nil, fmt.Errorf("module not found: %s", path)
-		}
-	})
+			`))); err != nil {
+		t.Fatalf("register panicmod surface: %v", err)
+	}
 
 	runtime, err := executor.NewRuntimeByGoCode(`
 	package main
@@ -129,34 +104,23 @@ func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		var code string
-		switch path {
-		case "childbroken":
-			code = `
+	if err := executor.UseSurface(surface.Libraries(
+		surface.LibraryModule{Path: "childbroken", Files: []surface.LibraryFile{surface.GoFile("childbroken.mgo", `
 			package childbroken
 
 			var Exported = "child-partial"
 			var Trigger = 1 / 0
-			`
-		case "parentbroken":
-			code = `
+			`)}},
+		surface.LibraryModule{Path: "parentbroken", Files: []surface.LibraryFile{surface.GoFile("parentbroken.mgo", `
 			package parentbroken
 			import "childbroken"
 
 			var ParentExported = "parent-partial"
 			var ChildValue = childbroken.Exported
-			`
-		default:
-			return nil, fmt.Errorf("module not found: %s", path)
-		}
-		converter := gofrontend.NewConverter()
-		node, err := converter.ConvertSource("snippet", code)
-		if err != nil {
-			return nil, err
-		}
-		return node.(*ast.ProgramStmt), nil
-	})
+			`)}},
+	)); err != nil {
+		t.Fatalf("register parent/child surface: %v", err)
+	}
 
 	runtime, err := executor.NewRuntimeByGoCode(`
 	package main
@@ -199,12 +163,7 @@ func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		if path != "slowmod" {
-			return nil, fmt.Errorf("%w: %s", miniruntime.ErrModuleNotFound, path)
-		}
-		converter := gofrontend.NewConverter()
-		node, err := converter.ConvertSource("slowmod.mgo", `
+	if err := executor.UseSurface(surface.Library("slowmod", surface.GoFile("slowmod.mgo", `
 package slowmod
 
 var Exported = wait()
@@ -214,12 +173,9 @@ func wait() int {
 	}
 	return 1
 }
-`)
-		if err != nil {
-			return nil, err
-		}
-		return node.(*ast.ProgramStmt), nil
-	})
+`))); err != nil {
+		t.Fatalf("register slowmod surface: %v", err)
+	}
 
 	runtime, err := executor.NewRuntimeByGoCode(`
 package main

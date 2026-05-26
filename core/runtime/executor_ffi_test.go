@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -168,91 +167,114 @@ func TestDeserializeHostRefCreatesHostRefValue(t *testing.T) {
 	}
 }
 
-func TestRegisterRouteRejectsConflictingDefinitions(t *testing.T) {
+func TestDeserializeChannelRejectsDirectionMismatch(t *testing.T) {
+	exec, err := NewExecutorFromPrepared(&PreparedProgram{
+		Globals:   map[string]*PreparedGlobal{},
+		Functions: map[string]*PreparedFunction{},
+		MainTasks: []Task{},
+	})
+	if err != nil {
+		t.Fatalf("new executor: %v", err)
+	}
+	id := exec.channelRegistry().RegisterChannel(ffigo.ChannelEndpointFuncs{
+		Elem: "Int64",
+		Dir:  ffigo.ChannelSend,
+	})
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	buf.WriteUvarint(id)
+
+	typ := MustParseRuntimeType(RecvChanType(SpecInt64))
+	_, err = exec.deserializeParsedType(nil, ffigo.NewReader(buf.Bytes()), typ, nil)
+	if err == nil || !strings.Contains(err.Error(), "FFI channel direction mismatch") {
+		t.Fatalf("expected direction mismatch, got %v", err)
+	}
+}
+
+func TestApplyBoundFFISurfaceRejectsConflictingRouteDefinitions(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 		routes:   make(map[string]FFIRoute),
 	}
-	exec.RegisterRoute("demo.Call", FFIRoute{
+	first := NewBoundFFISurface(nil)
+	first.AddRoute("demo", "Call", FFIRoute{
 		Name:     "demo.Call",
 		MethodID: 1,
 		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
 	})
+	if err := exec.ApplyBoundFFISurface(first); err != nil {
+		t.Fatalf("apply first route failed: %v", err)
+	}
 
-	defer func() {
-		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi route conflict") {
-			t.Fatalf("expected ffi route conflict panic, got %v", r)
-		}
-	}()
-
-	exec.RegisterRoute("demo.Call", FFIRoute{
+	second := NewBoundFFISurface(nil)
+	second.AddRoute("demo", "Call", FFIRoute{
 		Name:     "demo.Call",
 		MethodID: 2,
 		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
 	})
+	err := exec.ApplyBoundFFISurface(second)
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "route" {
+		t.Fatalf("expected route conflict, got %T %v", err, err)
+	}
 }
 
-func TestRegisterStructSchemaRejectsConflictingDefinitions(t *testing.T) {
+func TestApplyBoundFFISurfaceRejectsConflictingStructDefinitions(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }"))
+	exec.metadata.registerStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }"))
 
-	defer func() {
-		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "ffi struct schema conflict") {
-			t.Fatalf("expected ffi struct schema conflict panic, got %v", r)
-		}
-	}()
-
-	exec.RegisterStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
+	surface := NewBoundFFISurface(nil)
+	surface.AddStruct("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
+	err := exec.ApplyBoundFFISurface(surface)
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != "struct schema" {
+		t.Fatalf("expected struct schema conflict, got %T %v", err, err)
+	}
 }
 
-func TestTryRegisterStructSchemaNilClearsCanonicalIndex(t *testing.T) {
+func TestRuntimeMetadataNilStructSchemaClearsCanonicalIndex(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
 	schema := MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }")
-	if err := exec.TryRegisterStructSchema("demo.Type", schema); err != nil {
-		t.Fatalf("register struct schema failed: %v", err)
-	}
-	if err := exec.TryRegisterStructSchema("demo.Type", nil); err != nil {
-		t.Fatalf("clear struct schema failed: %v", err)
-	}
+	exec.metadata.registerStructSchema("demo.Type", schema)
+	exec.metadata.registerStructSchema("demo.Type", nil)
 
 	if resolved, ok := exec.lookupStructSchema(MustParseRuntimeType("demo.Type")); ok || resolved != nil {
 		t.Fatalf("expected struct schema canonical index to be cleared, got %#v", resolved)
 	}
 }
 
-func TestTryRegisterRouteReportsParamModeConflict(t *testing.T) {
+func TestApplyBoundFFISurfaceReportsParamModeConflict(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 		routes:   make(map[string]FFIRoute),
 	}
-	if err := exec.TryRegisterRoute("demo.Mutate", FFIRoute{
+	first := NewBoundFFISurface(nil)
+	first.AddRoute("demo", "Mutate", FFIRoute{
 		Name:    "demo.Mutate",
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamInOutBytes),
-	}); err != nil {
+	})
+	if err := exec.ApplyBoundFFISurface(first); err != nil {
 		t.Fatalf("register route failed: %v", err)
 	}
 
-	err := exec.TryRegisterRoute("demo.Mutate", FFIRoute{
+	second := NewBoundFFISurface(nil)
+	second.AddRoute("demo", "Mutate", FFIRoute{
 		Name:    "demo.Mutate",
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamIn),
 	})
+	err := exec.ApplyBoundFFISurface(second)
 	var conflict *SchemaConflictError
 	if !errors.As(err, &conflict) || conflict.Kind != "route" {
 		t.Fatalf("expected route conflict error, got %T %v", err, err)
 	}
 }
 
-func TestTryRegisterRouteRejectsPublicSchemaEscapes(t *testing.T) {
-	exec := &Executor{
-		metadata: newRuntimeMetadataRegistry(),
-		routes:   make(map[string]FFIRoute),
-	}
-
-	err := exec.TryRegisterRoute("demo.Ptr", FFIRoute{
+func TestCheckPublicFFIRouteSchemaRejectsPublicSchemaEscapes(t *testing.T) {
+	err := CheckPublicFFIRouteSchema("demo.Ptr", FFIRoute{
 		Name:    "demo.Ptr",
 		FuncSig: MustParseRuntimeFuncSig("function(Ptr<Int64>) Void"),
 	})
@@ -260,7 +282,7 @@ func TestTryRegisterRouteRejectsPublicSchemaEscapes(t *testing.T) {
 		t.Fatalf("expected Ptr<T> rejection, got %v", err)
 	}
 
-	err = exec.TryRegisterRoute("demo.AnyRef", FFIRoute{
+	err = CheckPublicFFIRouteSchema("demo.AnyRef", FFIRoute{
 		Name:    "demo.AnyRef",
 		FuncSig: MustParseRuntimeFuncSig("function(HostRef<Any>) Void"),
 	})
@@ -268,7 +290,7 @@ func TestTryRegisterRouteRejectsPublicSchemaEscapes(t *testing.T) {
 		t.Fatalf("expected HostRef<Any> rejection, got %v", err)
 	}
 
-	err = exec.TryRegisterRoute("demo.Unschematized", FFIRoute{Name: "demo.Unschematized"})
+	err = CheckPublicFFIRouteSchema("demo.Unschematized", FFIRoute{Name: "demo.Unschematized"})
 	if err == nil || !strings.Contains(err.Error(), "missing schema") {
 		t.Fatalf("expected missing schema rejection, got %v", err)
 	}

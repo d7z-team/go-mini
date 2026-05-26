@@ -7,14 +7,19 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestLSPHostFFICompletion(t *testing.T) {
 	testExecutor := engine.NewMiniExecutor()
-	testExecutor.DeclareStructSchema("hostfs.File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }"))
-
-	// 模拟返回该结构体的函数
-	testExecutor.DeclareFuncSchema("hostfs.Open", runtime.MustParseRuntimeFuncSig("function(String) tuple(HostRef<hostfs.File>, Error)"))
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("hostfs.File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }"))
+	schema.AddRouteDecls([]runtime.FFIRouteDecl{
+		testsurface.Route("hostfs.Open", 1, runtime.MustParseRuntimeFuncSig("function(String) tuple(HostRef<hostfs.File>, Error)"), ""),
+	})
+	if err := testExecutor.UseSurface(testsurface.SchemaBundle(schema, nil)); err != nil {
+		t.Fatal(err)
+	}
 
 	sourceSnippet := `package main
 import "hostfs"

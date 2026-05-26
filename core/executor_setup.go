@@ -211,21 +211,23 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 	return nil
 }
 
-func (e *MiniExecutor) moduleASTLoader() func(path string) (*ast.ProgramStmt, error) {
+func (e *MiniExecutor) moduleASTLoaderWithStaged(stagedSources, importedPrograms map[string]*ast.ProgramStmt) func(path string) (*ast.ProgramStmt, error) {
 	return func(path string) (*ast.ProgramStmt, error) {
+		if prog := stagedSources[path]; prog != nil {
+			return prog, nil
+		}
+		if prog := importedPrograms[path]; prog != nil {
+			return prog, nil
+		}
 		e.mu.RLock()
 		library, hasLibrary := e.sourceLibraries[path]
 		astNode, ok := e.moduleSources[path]
-		loader := e.astModuleLoader
 		e.mu.RUnlock()
 		if hasLibrary {
 			return parseSurfaceLibraryModule(library)
 		}
 		if ok {
 			return astNode, nil
-		}
-		if loader != nil {
-			return loader(path)
 		}
 		return nil, fmt.Errorf("module not found: %s", path)
 	}
@@ -251,31 +253,8 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	for name, route := range e.routes {
-		if err := executor.TryRegisterRoute(name, route); err != nil {
-			return err
-		}
-	}
-	for name, spec := range e.structsMeta {
-		if err := executor.TryRegisterStructSchema(string(name), spec); err != nil {
-			return err
-		}
-	}
-	for name, spec := range e.interfacesMeta {
-		if err := executor.TryRegisterInterfaceSchema(string(name), spec); err != nil {
-			return err
-		}
-	}
-	for name, value := range e.packageValues {
-		if value == nil {
-			continue
-		}
-		if err := executor.TryRegisterPackageValue(name, value.Spec, value.Value); err != nil {
-			return err
-		}
-	}
-	for name, val := range e.constants {
-		executor.RegisterConstant(name, val)
+	if err := executor.ApplyBoundFFISurface(e.boundSurface); err != nil {
+		return err
 	}
 	for path, hash := range e.libraryHashes {
 		executor.RegisterModuleHash(path, hash)
@@ -284,13 +263,17 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 }
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
+	return e.newCompilerWithModuleSources(nil, nil)
+}
+
+func (e *MiniExecutor) newCompilerWithModuleSources(stagedSources, importedPrograms map[string]*ast.ProgramStmt) *compiler.Compiler {
 	schema := e.ExportedSchema()
 	e.mu.RLock()
 	surfaceSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
 	moduleHashes := cloneSurfaceLibraryHashes(e.libraryHashes)
 	e.mu.RUnlock()
 	return compiler.New(compiler.Config{
-		ModuleLoader:            e.moduleASTLoader(),
+		ModuleLoader:            e.moduleASTLoaderWithStaged(stagedSources, importedPrograms),
 		Surface:                 surfaceSchema,
 		FuncSchemas:             schema.Funcs,
 		RegisteredFuncs:         schema.RegisteredFuncs,
@@ -331,48 +314,50 @@ func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error
 	if compiled == nil || compiled.Program == nil {
 		return nil
 	}
-	if len(compiled.ImportedPrograms) > 0 {
-		e.mu.Lock()
-		for _, imp := range compiled.Program.Imports {
-			path := strings.TrimSpace(imp.Path)
-			if path == "" {
-				continue
-			}
-			if prog := compiled.ImportedPrograms[path]; prog != nil {
-				if _, hasLibrary := e.sourceLibraries[path]; !hasLibrary {
-					e.moduleSources[path] = prog
-				}
-			}
-		}
-		e.mu.Unlock()
+	stagedPrepared := make(map[string]*runtime.PreparedProgram)
+	stagedSources := make(map[string]*ast.ProgramStmt)
+	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{}, stagedPrepared, stagedSources); err != nil {
+		return err
 	}
-	return e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{})
+	e.commitPreparedModuleStage(stagedPrepared, stagedSources)
+	return nil
 }
 
-func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported map[string]*ast.ProgramStmt, visiting map[string]bool) error {
+func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported map[string]*ast.ProgramStmt, visiting map[string]bool, stagedPrepared map[string]*runtime.PreparedProgram, stagedSources map[string]*ast.ProgramStmt) error {
+	if program == nil {
+		return nil
+	}
 	for _, imp := range program.Imports {
 		path := strings.TrimSpace(imp.Path)
 		if path == "" {
 			continue
 		}
+		if stagedPrepared[path] != nil {
+			continue
+		}
+		if stagedSources[path] != nil && visiting[path] {
+			return fmt.Errorf("circular module dependency while preparing %s", path)
+		}
 
 		e.mu.RLock()
 		prepared := e.modules[path]
 		library, hasLibrary := e.sourceLibraries[path]
-		prog := e.moduleSources[path]
+		registeredSource := e.moduleSources[path]
 		e.mu.RUnlock()
 		if prepared != nil {
 			continue
 		}
+		prog := stagedSources[path]
 		if hasLibrary {
 			var err error
 			prog, err = parseSurfaceLibraryModule(library)
 			if err != nil {
 				return err
 			}
-		}
-		if prog == nil && imported != nil {
+		} else if prog == nil && imported != nil {
 			prog = imported[path]
+		} else if prog == nil {
+			prog = registeredSource
 		}
 		if prog == nil {
 			continue
@@ -382,7 +367,10 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 		}
 
 		visiting[path] = true
-		compiled, _, err := e.newCompiler().CompileProgram(path, "", prog, false)
+		if !hasLibrary {
+			stagedSources[path] = prog
+		}
+		compiled, _, err := e.newCompilerWithModuleSources(stagedSources, imported).CompileProgram(path, "", prog, false)
 		if err != nil {
 			delete(visiting, path)
 			return fmt.Errorf("compile module %s: %w", path, err)
@@ -392,14 +380,9 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 			return fmt.Errorf("module %s did not produce executable bytecode", path)
 		}
 
-		e.mu.Lock()
-		e.modules[path] = compiled.Bytecode.Executable
-		if prog != nil && !hasLibrary {
-			e.moduleSources[path] = prog
-		}
-		e.mu.Unlock()
+		stagedPrepared[path] = compiled.Bytecode.Executable
 
-		if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, visiting); err != nil {
+		if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, visiting, stagedPrepared, stagedSources); err != nil {
 			delete(visiting, path)
 			return err
 		}
@@ -408,18 +391,34 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 	return nil
 }
 
+func (e *MiniExecutor) commitPreparedModuleStage(stagedPrepared map[string]*runtime.PreparedProgram, stagedSources map[string]*ast.ProgramStmt) {
+	if len(stagedPrepared) == 0 && len(stagedSources) == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for path, prepared := range stagedPrepared {
+		if prepared != nil {
+			e.modules[path] = prepared
+		}
+	}
+	for path, prog := range stagedSources {
+		if prog == nil {
+			continue
+		}
+		if _, hasLibrary := e.sourceLibraries[path]; hasLibrary {
+			continue
+		}
+		e.moduleSources[path] = prog
+	}
+}
+
 func newEmptyRuntimeExecutor() (*runtime.Executor, error) {
 	return runtime.NewExecutorFromPrepared(&runtime.PreparedProgram{
 		Globals:   map[string]*runtime.PreparedGlobal{},
 		Functions: map[string]*runtime.PreparedFunction{},
 		MainTasks: []runtime.Task{},
 	})
-}
-
-func (e *MiniExecutor) SetModuleLoader(loader func(path string) (*ast.ProgramStmt, error)) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.astModuleLoader = loader
 }
 
 // RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用

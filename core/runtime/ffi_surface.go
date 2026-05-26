@@ -25,9 +25,7 @@ const (
 
 type ExternalRequirement struct {
 	Version     string        `json:"version,omitempty"`
-	Package     string        `json:"package,omitempty"`
 	PackagePath string        `json:"package_path,omitempty"`
-	Member      string        `json:"member,omitempty"`
 	MemberName  string        `json:"member_name,omitempty"`
 	Kind        FFIMemberKind `json:"kind"`
 	Type        TypeSpec      `json:"type,omitempty"`
@@ -845,13 +843,7 @@ func (e *Executor) ValidateExternalRequirements() error {
 
 func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) error {
 	pkg := req.PackagePath
-	if pkg == "" {
-		pkg = req.Package
-	}
 	member := req.MemberName
-	if member == "" {
-		member = req.Member
-	}
 	name := ExternalFullName(pkg, member)
 	switch req.Kind {
 	case FFIMemberModule:
@@ -921,21 +913,6 @@ func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) er
 		return fmt.Errorf("unsupported external requirement kind %s for %s", req.Kind, name)
 	}
 	return nil
-}
-
-func (e *Executor) registerBoundPackageMemberLocked(pkg string, member *BoundFFIMember) {
-	if pkg == "" || member == nil || member.Name == "" || strings.Contains(member.Name, ".") {
-		return
-	}
-	if e.ffiPackages == nil {
-		e.ffiPackages = make(map[string]*BoundFFIPackage)
-	}
-	item := e.ffiPackages[pkg]
-	if item == nil {
-		item = &BoundFFIPackage{Path: pkg, Members: make(map[string]*BoundFFIMember)}
-		e.ffiPackages[pkg] = item
-	}
-	item.Members[member.Name] = member
 }
 
 func (e *Executor) lookupFFIPackage(path string) (*BoundFFIPackage, bool) {

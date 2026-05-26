@@ -8,6 +8,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestVariadic(t *testing.T) {
@@ -50,7 +51,7 @@ func TestVariadic(t *testing.T) {
 
 func TestFFIVariadicEllipsis(t *testing.T) {
 	executor := engine.NewMiniExecutor()
-	executor.RegisterFFISchema("mock.Printf", emptyVariadicBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), "")
+	testsurface.UseRoute(t, executor, "mock.Printf", emptyVariadicBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), "")
 	code := `
 	package main
 	import "mock"

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/internal/miniident"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // LSP Metadata Export
@@ -118,7 +120,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 		}
 		mod := getModule(modName)
 		for fnName, fnStmt := range prog.Functions {
-			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' {
+			if miniident.IsExported(string(fnName)) {
 				sig := string(fnStmt.FunctionType.MiniType())
 				if fnStmt.Doc != "" {
 					sig = sig + " // " + strings.ReplaceAll(fnStmt.Doc, "\n", " ")
@@ -127,7 +129,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 			}
 		}
 		for stName, stStmt := range prog.Structs {
-			if len(stName) > 0 && stName[0] >= 'A' && stName[0] <= 'Z' {
+			if miniident.IsExported(string(stName)) {
 				st := getStruct(modName, string(stName))
 				st.Doc = stStmt.Doc
 				for fName, fType := range stStmt.Fields {
@@ -136,13 +138,50 @@ func (e *MiniExecutor) ExportMetadata() string {
 			}
 		}
 		for ifaceName, ifaceStmt := range prog.Interfaces {
-			if len(ifaceName) > 0 && ifaceName[0] >= 'A' && ifaceName[0] <= 'Z' {
+			if miniident.IsExported(string(ifaceName)) {
 				mod.Interfaces[string(ifaceName)] = string(ifaceStmt.Type)
 			}
 		}
 		for cName, cVal := range prog.Constants {
-			if len(cName) > 0 && cName[0] >= 'A' && cName[0] <= 'Z' {
+			if miniident.IsExported(cName) {
 				mod.Constants[cName] = cVal
+			}
+		}
+	}
+	exportPreparedModule := func(modName string, prepared *runtime.PreparedProgram) {
+		if prepared == nil {
+			return
+		}
+		mod := getModule(modName)
+		for exportName, export := range prepared.Exports {
+			target := export.TargetName
+			if target == "" {
+				target = exportName
+			}
+			switch export.Kind {
+			case runtime.PreparedExportFunc:
+				if fn := prepared.Functions[target]; fn != nil && fn.FunctionSig != nil {
+					mod.Functions[export.Name] = string(fn.FunctionSig.Spec)
+				} else {
+					mod.Functions[export.Name] = export.Type.Raw.String()
+				}
+			case runtime.PreparedExportConst:
+				if val, ok := prepared.Constants[target]; ok {
+					mod.Constants[export.Name] = val
+				}
+			case runtime.PreparedExportStruct:
+				st := getStruct(modName, export.Name)
+				if spec := prepared.StructSchemas[target]; spec != nil {
+					for _, field := range spec.Fields {
+						st.Fields[field.Name] = string(field.Type)
+					}
+				}
+			case runtime.PreparedExportInterface:
+				if spec := prepared.InterfaceSchemas[target]; spec != nil {
+					mod.Interfaces[export.Name] = string(spec.Spec)
+				}
+			case runtime.PreparedExportGlobal, runtime.PreparedExportType:
+				mod.Constants[export.Name] = export.Type.Raw.String()
 			}
 		}
 	}
@@ -165,31 +204,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 		if _, hasSourceLibrary := e.sourceLibraries[modName]; hasSourceLibrary {
 			continue
 		}
-		mod := getModule(modName)
-		for fnName, fn := range prepared.Functions {
-			if len(fnName) > 0 && fnName[0] >= 'A' && fnName[0] <= 'Z' && fn != nil && fn.FunctionSig != nil {
-				mod.Functions[fnName] = string(fn.FunctionSig.Spec)
-			}
-		}
-		for structName, spec := range prepared.StructSchemas {
-			if len(structName) == 0 || structName[0] < 'A' || structName[0] > 'Z' || spec == nil {
-				continue
-			}
-			st := getStruct(modName, structName)
-			for _, field := range spec.Fields {
-				st.Fields[field.Name] = string(field.Type)
-			}
-		}
-		for ifaceName, spec := range prepared.InterfaceSchemas {
-			if len(ifaceName) > 0 && ifaceName[0] >= 'A' && ifaceName[0] <= 'Z' && spec != nil {
-				mod.Interfaces[ifaceName] = string(spec.Spec)
-			}
-		}
-		for constName, constVal := range prepared.Constants {
-			if len(constName) > 0 && constName[0] >= 'A' && constName[0] <= 'Z' {
-				mod.Constants[constName] = constVal
-			}
-		}
+		exportPreparedModule(modName, prepared)
 	}
 
 	data, _ := json.MarshalIndent(meta, "", "  ")

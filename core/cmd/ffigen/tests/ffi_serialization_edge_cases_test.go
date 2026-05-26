@@ -7,6 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 type ComplexNested struct {
@@ -55,9 +56,15 @@ func TestFFISerializationEdgeCases(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	bridge := &ComplexBridge{t: t}
 
-	executor.RegisterStructSchema("test.Handle", runtime.MustParseRuntimeStructSpec("test.Handle", runtime.StructOwnershipHostOpaque, "struct {}"))
-	executor.RegisterFFISchema("test.Zero", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, HostRef<test.Handle>) Void"), "")
-	executor.RegisterFFISchema("test.Nested", bridge, 2, runtime.MustParseRuntimeFuncSig("function(Map<String, Array<Int64>>) Void"), "")
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddStruct("test.Handle", runtime.MustParseRuntimeStructSpec("test.Handle", runtime.StructOwnershipHostOpaque, "struct {}"))
+	schema.AddRouteDecls([]runtime.FFIRouteDecl{
+		testsurface.Route("test.Zero", 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, HostRef<test.Handle>) Void"), ""),
+		testsurface.Route("test.Nested", 2, runtime.MustParseRuntimeFuncSig("function(Map<String, Array<Int64>>) Void"), ""),
+	})
+	if err := executor.UseSurface(testsurface.SchemaBundle(schema, bridge)); err != nil {
+		t.Fatal(err)
+	}
 
 	code := `
 package main

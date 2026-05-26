@@ -10,6 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 )
 
@@ -27,21 +28,9 @@ func newFFILibTemplateExecutor() *engine.MiniExecutor {
 
 func registerTemplateModule(t *testing.T, executor *engine.MiniExecutor, path, source string) {
 	t.Helper()
-	compiled, err := executor.CompileGoCode(source)
-	if err != nil {
-		t.Fatalf("compile module %s failed: %v", path, err)
+	if err := executor.UseSurface(surface.Library(path, surface.GoFile(path+".mgo", source))); err != nil {
+		t.Fatalf("register module %s failed: %v", path, err)
 	}
-	prog, err := executor.NewRuntimeByCompiled(compiled)
-	if err != nil {
-		t.Fatalf("load module %s failed: %v", path, err)
-	}
-	executor.SetModuleLoader(func(request string) (*ast.ProgramStmt, error) {
-		if request == path {
-			return compiled.Program, nil
-		}
-		return nil, runtime.ErrModuleNotFound
-	})
-	executor.RegisterModule(path, prog)
 }
 
 func hasImportAlias(aliases map[string]string, path, prefix string) bool {
@@ -792,17 +781,14 @@ func main() {
 }
 
 func TestRealSymbolCannotBeRegisteredAfterGlobalTemplate(t *testing.T) {
-	expectPanic := func(t *testing.T, fn func()) {
+	executor := newFFILibTemplateExecutor()
+	expectConflict := func(t *testing.T, bundle *surface.Bundle) {
 		t.Helper()
-		defer func() {
-			if recover() == nil {
-				t.Fatal("expected template conflict panic")
-			}
-		}()
-		fn()
+		if err := executor.UseSurface(bundle); err == nil {
+			t.Fatal("expected template conflict")
+		}
 	}
 
-	executor := newFFILibTemplateExecutor()
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:        "custom.later",
 		Name:      "later",
@@ -812,18 +798,13 @@ func TestRealSymbolCannotBeRegisteredAfterGlobalTemplate(t *testing.T) {
 		t.Fatalf("register template failed: %v", err)
 	}
 
-	expectPanic(t, func() {
-		executor.DeclareFuncSchema("later", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false))
-	})
-	expectPanic(t, func() {
-		executor.RegisterConstant("later", "1")
-	})
-	expectPanic(t, func() {
-		executor.RegisterStructSchema("later", runtime.MustParseRuntimeStructSpec("later", runtime.StructOwnershipVMValue, "struct { V Int64; }"))
-	})
-	expectPanic(t, func() {
-		executor.RegisterInterfaceSchema("later", runtime.MustParseRuntimeInterfaceSpec("interface{Do() Void;}"))
-	})
+	structSchema := runtime.NewFFISurfaceSchema()
+	structSchema.AddStruct("later", runtime.MustParseRuntimeStructSpec("later", runtime.StructOwnershipVMValue, "struct { V Int64; }"))
+	expectConflict(t, surface.Router(structSchema, nil))
+
+	interfaceSchema := runtime.NewFFISurfaceSchema()
+	interfaceSchema.AddInterface("later", runtime.MustParseRuntimeInterfaceSpec("interface{Do() Void;}"))
+	expectConflict(t, surface.Router(interfaceSchema, nil))
 }
 
 func TestCompilerRejectsDirectTemplateSchemaConflict(t *testing.T) {

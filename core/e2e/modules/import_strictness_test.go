@@ -6,11 +6,12 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 func TestImportStrictnessRegression(t *testing.T) {
 	e := engine.NewMiniExecutor()
-	e.DeclareFuncSchema("mock.Getenv", runtime.MustParseRuntimeFuncSig("function(String) String"))
+	testsurface.UseRoute(t, e, "mock.Getenv", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
 	t.Run("Missing Import Should Fail", func(t *testing.T) {
 		code := `

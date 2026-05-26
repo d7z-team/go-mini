@@ -2,28 +2,23 @@ package tests
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
+	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
 // TestModuleComprehensive 综合测试：函数、变量、常量、结构体导出
 func TestModuleComprehensive(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		switch path {
-		case "lib":
-			code := `
+	if err := executor.UseSurface(surface.Library("lib", surface.GoFile("lib.mgo", `
 			package lib
 			
-			const PI = "3.14"
+			const PI = 314
 			var Version = "1.0.0"
 
 			type Point struct {
@@ -34,17 +29,9 @@ func TestModuleComprehensive(t *testing.T) {
 			func NewPoint(x int, y int) Point {
 				return Point{X: x, Y: y}
 			}
-			`
-			converter := gofrontend.NewConverter()
-			node, err := converter.ConvertSource("snippet", code)
-			if err != nil {
-				return nil, err
-			}
-			return node.(*ast.ProgramStmt), nil
-		default:
-			return nil, fmt.Errorf("module not found: %s", path)
-		}
-	})
+			`))); err != nil {
+		t.Fatalf("register lib surface: %v", err)
+	}
 
 	code := `
 	package main
@@ -52,8 +39,8 @@ func TestModuleComprehensive(t *testing.T) {
 
 	func main() {
 		// 1. 常量导出测试
-		if lib.PI != "3.14" {
-			panic("const export failed: " + string(lib.PI))
+		if lib.PI != 314 {
+			panic("const export failed")
 		}
 
 		// 2. 变量导出测试
@@ -89,27 +76,14 @@ func TestModuleComprehensive(t *testing.T) {
 func TestCircularDependency(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	executor.SetModuleLoader(func(path string) (*ast.ProgramStmt, error) {
-		var code string
-		switch path {
-		case "a":
-			code = "package a; import \"b\"; func Run() {}"
-		case "b":
-			code = "package b; import \"a\"; func Run() {}"
-		default:
-			return nil, errors.New("not found")
-		}
-		converter := gofrontend.NewConverter()
-		node, _ := converter.ConvertSource("snippet", code)
-		return node.(*ast.ProgramStmt), nil
-	})
-
-	code := "package main; import \"a\"; func main() { a.Run() }"
-	_, err := executor.NewRuntimeByGoCode(code)
+	err := executor.UseSurface(surface.Libraries(
+		surface.LibraryModule{Path: "a", Files: []surface.LibraryFile{surface.GoFile("a.mgo", "package a; import \"b\"; func Run() {}")}},
+		surface.LibraryModule{Path: "b", Files: []surface.LibraryFile{surface.GoFile("b.mgo", "package b; import \"a\"; func Run() {}")}},
+	))
 	if err == nil {
 		t.Fatal("Should fail due to circular dependency")
 	}
-	expectedErr := "circular dependency detected"
+	expectedErr := "circular import dependency"
 	if !strings.Contains(err.Error(), expectedErr) {
 		t.Fatalf("Expected error containing '%s', got: %v", expectedErr, err)
 	}
@@ -119,8 +93,7 @@ func TestCircularDependency(t *testing.T) {
 func TestNestedFFIPath(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 
-	// 模拟注册一个嵌套路径的 FFI；FFI route 使用 canonical import path。
-	executor.RegisterFFISchema("net/http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
+	testsurface.UseRoute(t, executor, "net/http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
 	code := `
 	package main

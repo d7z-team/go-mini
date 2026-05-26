@@ -18,6 +18,11 @@ type VMModule struct {
 	Context *LexicalContext
 }
 
+type vmModuleGlobalRef struct {
+	Shared *SharedState
+	Name   string
+}
+
 func (m *VMModule) Load(name string) (*Var, bool) {
 	if m == nil {
 		return nil, false
@@ -25,6 +30,12 @@ func (m *VMModule) Load(name string) (*Var, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	v, ok := m.Data[name]
+	if !ok || v == nil {
+		return v, ok
+	}
+	if ref, ok := v.Ref.(*vmModuleGlobalRef); ok && ref != nil {
+		return ref.Shared.LoadGlobal(ref.Name)
+	}
 	return v, ok
 }
 
@@ -45,10 +56,17 @@ func (m *VMModule) Snapshot() map[string]*Var {
 		return nil
 	}
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make(map[string]*Var, len(m.Data))
-	for k, v := range m.Data {
-		out[k] = v
+	names := make([]string, 0, len(m.Data))
+	for name := range m.Data {
+		names = append(names, name)
+	}
+	m.mu.RUnlock()
+
+	out := make(map[string]*Var, len(names))
+	for _, name := range names {
+		if v, ok := m.Load(name); ok {
+			out[name] = v
+		}
 	}
 	return out
 }
