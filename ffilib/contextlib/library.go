@@ -115,6 +115,9 @@ func WithValue(parent Context, key any, val any) Context {
 	if key == nil {
 		panic("nil context key")
 	}
+	if !internal.ValidValueKey(key) {
+		panic("context key is not comparable")
+	}
 	return &valueCtx{parent: parent, key: key, val: val}
 }
 

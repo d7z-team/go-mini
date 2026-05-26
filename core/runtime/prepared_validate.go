@@ -118,25 +118,25 @@ func validatePreparedFunctionReceiver(name string, fn *PreparedFunction) error {
 	if receiver.Kind != RuntimeTypeNamed {
 		return fmt.Errorf("function %s receiver must be a named type", name)
 	}
-	expected := normalizeMethodReceiverType(receiver.Raw.String())
+	expected := receiver.Raw.String()
 	if expected == "" || expected == "Any" {
 		return fmt.Errorf("function %s receiver must be a concrete type", name)
 	}
-	if receiver.Raw.String() != expected {
-		return fmt.Errorf("function %s receiver metadata must use base receiver type, got %s", name, receiver.Raw)
-	}
-	nameReceiver := normalizeMethodReceiverType(receiverNameFromFunctionName(name))
+	nameReceiver := receiverNameFromFunctionName(name)
 	if nameReceiver != expected {
 		return fmt.Errorf("function %s receiver name %s does not match receiver %s", name, nameReceiver, expected)
 	}
 	if len(fn.FunctionSig.ParamTypes) == 0 {
 		return fmt.Errorf("function %s receiver requires first parameter", name)
 	}
-	actual := normalizeMethodReceiverType(fn.FunctionSig.ParamTypes[0].Raw.String())
-	if actual != expected {
-		return fmt.Errorf("function %s receiver %s does not match first parameter %s", name, expected, actual)
+	actual := fn.FunctionSig.ParamTypes[0]
+	if actual.Kind == RuntimeTypeNamed && actual.Raw.String() == expected {
+		return nil
 	}
-	return nil
+	if actual.Kind == RuntimeTypePointer && actual.Elem != nil && actual.Elem.Kind == RuntimeTypeNamed && actual.Elem.Raw.String() == expected {
+		return nil
+	}
+	return fmt.Errorf("function %s receiver first parameter must be %s or Ptr<%s>, got %s", name, expected, expected, actual.Raw)
 }
 
 func validatePreparedMethodConflict(pkg, name string, fn *PreparedFunction, bindings map[string]string) error {

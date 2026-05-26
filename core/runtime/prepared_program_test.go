@@ -45,8 +45,47 @@ func TestNewExecutorFromPreparedRejectsInvalidMethodReceiver(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid receiver error")
 	}
-	if !strings.Contains(err.Error(), "does not match first parameter") {
+	if !strings.Contains(err.Error(), "receiver first parameter must be Box or Ptr<Box>, got Ptr<Other>") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewExecutorFromPreparedRejectsHostRefMethodReceiverParam(t *testing.T) {
+	prepared := &PreparedProgram{
+		Functions: map[string]*PreparedFunction{
+			"Box.Call": {
+				Name:        "Box.Call",
+				Receiver:    TypeSpec("Box"),
+				FunctionSig: MustParseRuntimeFuncSig("function(HostRef<Box>) Void"),
+			},
+		},
+	}
+	_, err := NewExecutorFromPrepared(prepared)
+	if err == nil {
+		t.Fatal("expected host reference receiver parameter error")
+	}
+	if !strings.Contains(err.Error(), "receiver first parameter must be Box or Ptr<Box>, got HostRef<Box>") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewExecutorFromPreparedAcceptsValueAndPointerMethodReceivers(t *testing.T) {
+	prepared := &PreparedProgram{
+		Functions: map[string]*PreparedFunction{
+			"ValueBox.Call": {
+				Name:        "ValueBox.Call",
+				Receiver:    TypeSpec("ValueBox"),
+				FunctionSig: MustParseRuntimeFuncSig("function(ValueBox) Void"),
+			},
+			"PointerBox.Call": {
+				Name:        "PointerBox.Call",
+				Receiver:    TypeSpec("PointerBox"),
+				FunctionSig: MustParseRuntimeFuncSig("function(Ptr<PointerBox>) Void"),
+			},
+		},
+	}
+	if _, err := NewExecutorFromPrepared(prepared); err != nil {
+		t.Fatalf("expected method receiver parameters to be accepted: %v", err)
 	}
 }
 
@@ -112,13 +151,13 @@ func TestEvalPreparedFunctionRejectsMethodReceiver(t *testing.T) {
 	fn := &PreparedFunction{
 		Name:        "Box.Call",
 		Receiver:    TypeSpec("Box"),
-		FunctionSig: MustParseRuntimeFuncSig("function(Ptr<Other>) Void"),
+		FunctionSig: MustParseRuntimeFuncSig("function(Ptr<Box>) Void"),
 	}
 	_, err := exec.EvalPreparedFunction(context.Background(), fn, nil)
 	if err == nil {
-		t.Fatal("expected invalid receiver error")
+		t.Fatal("expected method receiver rejection")
 	}
-	if !strings.Contains(err.Error(), "does not match first parameter") {
+	if !strings.Contains(err.Error(), "does not accept method receiver") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

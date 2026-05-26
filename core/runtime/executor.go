@@ -93,11 +93,6 @@ func normalizeMethodReceiverType(typeName string) string {
 	return typeName
 }
 
-type methodCandidate struct {
-	name       string
-	allowRoute bool
-}
-
 func methodNameFromFunctionName(name string) string {
 	if idx := strings.LastIndex(name, "."); idx >= 0 && idx < len(name)-1 {
 		return name[idx+1:]
@@ -124,30 +119,33 @@ func methodFunctionReceiverKeys(pkg string, receiver TypeSpec) []string {
 	return keys
 }
 
-func (e *Executor) resolveMethodRoute(typeName, method string, staticTypes ...RuntimeType) (string, bool) {
-	candidates := e.methodCandidates(typeName, method, staticTypes...)
-	for _, candidate := range candidates {
-		if candidate.allowRoute {
-			if _, ok := e.routes[candidate.name]; ok {
-				return candidate.name, true
-			}
-		}
-		if _, ok := e.lookupFunction(candidate.name); ok {
-			return candidate.name, true
+func (e *Executor) resolveVMMethodRoute(typeName, method string, staticTypes ...RuntimeType) (string, bool) {
+	for _, name := range e.vmMethodCandidates(typeName, method, staticTypes...) {
+		if _, ok := e.lookupFunction(name); ok {
+			return name, true
 		}
 	}
 	return "", false
 }
 
-func (e *Executor) methodCandidates(typeName, method string, staticTypes ...RuntimeType) []methodCandidate {
+func (e *Executor) resolveHostMethodRoute(typeName, method string, staticTypes ...RuntimeType) (string, bool) {
+	for _, name := range hostMethodCandidates(typeName, method, staticTypes...) {
+		if _, ok := e.routes[name]; ok {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+func (e *Executor) vmMethodCandidates(typeName, method string, staticTypes ...RuntimeType) []string {
 	seen := make(map[string]struct{})
-	var candidates []methodCandidate
-	addCandidate := func(name string, allowRoute bool) {
+	var candidates []string
+	addCandidate := func(name string) {
 		if _, ok := seen[name]; ok {
 			return
 		}
 		seen[name] = struct{}{}
-		candidates = append(candidates, methodCandidate{name: name, allowRoute: allowRoute})
+		candidates = append(candidates, name)
 	}
 	addName := func(name string) {
 		normalized := normalizeMethodReceiverType(name)
@@ -156,13 +154,37 @@ func (e *Executor) methodCandidates(typeName, method string, staticTypes ...Runt
 		}
 		if methods := e.methodFunctions[normalized]; methods != nil {
 			if fnName := methods[method]; fnName != "" {
-				addCandidate(fnName, false)
+				addCandidate(fnName)
 			}
 		}
-		addCandidate(normalized+"."+method, true)
 		if e.packageName != "" && !strings.Contains(normalized, ".") {
-			addCandidate(e.packageName+"."+normalized+"."+method, false)
+			addCandidate(e.packageName + "." + normalized + "." + method)
 		}
+	}
+	addName(typeName)
+	for _, typ := range staticTypes {
+		if typ.IsEmpty() {
+			continue
+		}
+		addName(typ.Raw.String())
+	}
+	return candidates
+}
+
+func hostMethodCandidates(typeName, method string, staticTypes ...RuntimeType) []string {
+	seen := make(map[string]struct{})
+	var candidates []string
+	addName := func(name string) {
+		normalized := normalizeMethodReceiverType(name)
+		if normalized == "" || normalized == "Any" {
+			return
+		}
+		candidate := normalized + "." + method
+		if _, ok := seen[candidate]; ok {
+			return
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
 	}
 	addName(typeName)
 	for _, typ := range staticTypes {
@@ -436,6 +458,9 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 	if fn.FunctionSig == nil {
 		return nil, fmt.Errorf("prepared function %s missing signature", name)
 	}
+	if !fn.Receiver.IsEmpty() {
+		return nil, fmt.Errorf("eval prepared function %s does not accept method receiver", name)
+	}
 	if err := validateRuntimeFuncSig("prepared function "+name, fn.FunctionSig); err != nil {
 		return nil, err
 	}
@@ -633,7 +658,7 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
 		}
 	case TypeHostRef:
-		if methodName, ok := e.resolveMethodRoute(string(val.RawType()), name, staticType); ok {
+		if methodName, ok := e.resolveHostMethodRoute(string(val.RawType()), name, staticType); ok {
 			return e.methodClosure(val, methodName), true
 		}
 	case TypeMap:
@@ -650,7 +675,7 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 			}
 		}
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, name, staticType); ok {
+			if methodName, ok := e.resolveVMMethodRoute(tName, name, staticType); ok {
 				return e.methodClosure(val, methodName), true
 			}
 		}
@@ -665,7 +690,7 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 		}
 		tName := string(val.RawType())
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, name, staticType); ok {
+			if methodName, ok := e.resolveVMMethodRoute(tName, name, staticType); ok {
 				return e.methodClosure(val, methodName), true
 			}
 		}

@@ -129,7 +129,8 @@ test.OutBool(withValue.Value("key") == "child")
 test.Out("|")
 test.OutBool(withValue.Value("missing") == nil)
 `,
-			Want: "true|true|true",
+			Want:   "true|true|true",
+			Covers: []string{"ValidValueKey"},
 		},
 		{
 			Name:    "deadline-forwarding-cancel-context",
@@ -183,11 +184,40 @@ test.OutBool(errors.Is(childB.Err(), context.Canceled))
 			Want: "true|true",
 		},
 		{
+			Name:    "child-cancel-remains-stable-after-parent-cancel",
+			Imports: []string{"context", "errors"},
+			Body: `
+parent, cancelParent := context.WithCancel(context.Background())
+child, cancelChild := context.WithCancel(parent)
+cancelChild()
+<-child.Done()
+cancelParent()
+test.OutBool(errors.Is(child.Err(), context.Canceled))
+`,
+			Want: "true",
+		},
+		{
 			Name:       "with-value-rejects-nil-key",
 			Imports:    []string{"context"},
 			WantRunErr: "nil context key",
 			Body: `
 context.WithValue(context.Background(), nil, "value")
+`,
+		},
+		{
+			Name:       "with-value-rejects-array-key",
+			Imports:    []string{"context"},
+			WantRunErr: "context key is not comparable",
+			Body: `
+context.WithValue(context.Background(), []Int64{1}, "value")
+`,
+		},
+		{
+			Name:       "with-value-rejects-map-key",
+			Imports:    []string{"context"},
+			WantRunErr: "context key is not comparable",
+			Body: `
+context.WithValue(context.Background(), map[String]Int64{"a": 1}, "value")
 `,
 		},
 		{

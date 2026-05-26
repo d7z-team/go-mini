@@ -104,7 +104,7 @@ func TestResolveMethodRouteUsesReceiverMetadata(t *testing.T) {
 		FuncSig:  MustParseRuntimeFuncSig("function(HostRef<demo.Type>) Void"),
 	}
 
-	methodName, ok := exec.resolveMethodRoute("HostRef<demo.Type>", "Call")
+	methodName, ok := exec.resolveHostMethodRoute("HostRef<demo.Type>", "Call")
 	if !ok {
 		t.Fatal("expected dotted method route to resolve")
 	}
@@ -112,7 +112,7 @@ func TestResolveMethodRouteUsesReceiverMetadata(t *testing.T) {
 		t.Fatalf("unexpected method route: %s", methodName)
 	}
 
-	methodName, ok = exec.resolveMethodRoute("", "call", MustParseRuntimeType("Ptr<context.localType>"))
+	methodName, ok = exec.resolveVMMethodRoute("", "call", MustParseRuntimeType("Ptr<context.localType>"))
 	if !ok {
 		t.Fatal("expected module-qualified VM type method to resolve through receiver metadata")
 	}
@@ -120,8 +120,25 @@ func TestResolveMethodRouteUsesReceiverMetadata(t *testing.T) {
 		t.Fatalf("unexpected local method route: %s", methodName)
 	}
 
-	if methodName, ok = exec.resolveMethodRoute("other.localType", "call"); ok {
+	if methodName, ok = exec.resolveVMMethodRoute("other.localType", "call"); ok {
 		t.Fatalf("qualified foreign receiver resolved through short fallback: %s", methodName)
+	}
+}
+
+func TestHostRefMethodRouteDoesNotUseVMMethod(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	exec.functions["demo.Type.Call"] = &RuntimeFunction{
+		Name:        "demo.Type.Call",
+		Receiver:    TypeSpec("demo.Type"),
+		FunctionSig: MustParseRuntimeFuncSig("function(Ptr<demo.Type>) Void"),
+	}
+	exec.methodFunctions["demo.Type"] = map[string]string{"Call": "demo.Type.Call"}
+
+	if methodName, ok := exec.resolveHostMethodRoute("HostRef<demo.Type>", "Call"); ok {
+		t.Fatalf("host receiver resolved VM method without FFI route: %s", methodName)
+	}
+	if methodName, ok := exec.resolveVMMethodRoute("Ptr<demo.Type>", "Call"); !ok || methodName != "demo.Type.Call" {
+		t.Fatalf("VM receiver did not resolve prepared method: %s ok=%t", methodName, ok)
 	}
 }
 

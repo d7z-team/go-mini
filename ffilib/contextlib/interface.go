@@ -8,6 +8,7 @@ type Module interface {
 	Canceled() error
 	DeadlineExceeded() error
 	NewTimer(ns int64) *Timer
+	ValidValueKey(key any) bool
 }
 
 // ffigen:methods

@@ -419,7 +419,7 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 		}
 		tName := string(obj.RawType())
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+			if methodName, ok := e.resolveVMMethodRoute(tName, property, staticType); ok {
 				return e.methodClosure(obj, methodName), nil
 			}
 		}
@@ -432,7 +432,7 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 			}
 		}
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+			if methodName, ok := e.resolveVMMethodRoute(tName, property, staticType); ok {
 				return e.methodClosure(obj, methodName), nil
 			}
 		}
@@ -448,7 +448,7 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 		if tName == "" {
 			tName = obj.VType.String()
 		}
-		if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+		if methodName, ok := e.resolveHostMethodRoute(tName, property, staticType); ok {
 			return e.methodClosure(obj, methodName), nil
 		}
 	case TypeModule:
@@ -472,8 +472,10 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 	if tName == "" {
 		tName = obj.VType.String()
 	}
-	if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
-		return e.methodClosure(obj, methodName), nil
+	if obj.VType != TypeHostRef {
+		if methodName, ok := e.resolveVMMethodRoute(tName, property, staticType); ok {
+			return e.methodClosure(obj, methodName), nil
+		}
 	}
 
 	if obj.RuntimeType().IsAny() {

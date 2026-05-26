@@ -577,7 +577,7 @@ host goroutine 可以由 FFI channel endpoint 用来等待宿主 channel 或 I/O
 - `WithValue(parent Context, key any, val any) Context`
 - `Canceled` / `DeadlineExceeded`
 
-`Context` 接口包含 `Deadline() (*time.Time, bool)`、`Done() <-chan struct{}`、`Err() error` 和 `Value(key any) any`。`Done()` 返回 VM receive-only channel，取消传播、deadline timer 和 value chain 都在 VM 源码库里完成；`WithTimeout` 的 timeout 单位是纳秒，和 `time.Duration` 的底层表示一致。已过期的 deadline / timeout 会在创建时同步关闭 `Done()` 并设置 `DeadlineExceeded`；`WithValue` 会拒绝 nil key。
+`Context` 接口包含 `Deadline() (*time.Time, bool)`、`Done() <-chan struct{}`、`Err() error` 和 `Value(key any) any`。`Done()` 返回 VM receive-only channel，取消传播、deadline timer 和 value chain 都在 VM 源码库里完成；`WithTimeout` 的 timeout 单位是纳秒，和 `time.Duration` 的底层表示一致。已过期的 deadline / timeout 会在创建时同步关闭 `Done()` 并设置 `DeadlineExceeded`；`WithValue` 会拒绝 nil 和不可比较 key。
 
 deadline 依赖 `time.Time` host opaque 类型，timer 等待通过内部异步 FFI 暴露为 `WaitExternal`。取消 deadline context 时会调用内部 timer `Stop()`，并完成已挂起的 timer waiter。VM context 父子关系通过 child 注册表同步传播取消；只有非 VM context 形态才退回到等待父 `Done()` 的传播执行上下文。
 

@@ -17,6 +17,7 @@ const (
 	methodIDModuleCanceled         = 1
 	methodIDModuleDeadlineExceeded = 2
 	methodIDModuleNewTimer         = 3
+	methodIDModuleValidValueKey    = 4
 )
 
 func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRegistry, methodID uint32, methodName string, args []byte) (ffigo.FFIReturn, error) {
@@ -28,10 +29,14 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			methodID = methodIDModuleDeadlineExceeded
 		case "NewTimer":
 			methodID = methodIDModuleNewTimer
+		case "ValidValueKey":
+			methodID = methodIDModuleValidValueKey
 		}
 	}
 
 	reqBuf := ffigo.NewReader(args)
+	var rawVal any
+	_ = rawVal
 	switch methodID {
 	case methodIDModuleCanceled:
 		err := impl.Canceled()
@@ -74,6 +79,27 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "context/internal.Timer")))
 		}
 		return resBuf.Bytes(), nil
+	case methodIDModuleValidValueKey:
+		var key any
+		rawVal = reqBuf.ReadAny()
+		switch rv := rawVal.(type) {
+		case ffigo.InterfaceData:
+			if rv.Handle != 0 {
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host interface handle", "key")
+			}
+			key = rv
+		case ffigo.ErrorData:
+			if rv.Handle != 0 {
+				return nil, fmt.Errorf("FFI Any param '%s' cannot carry host error handle", "key")
+			}
+			key = rv
+		default:
+			key = rawVal
+		}
+		r0 := impl.ValidValueKey(key)
+		resBuf := ffigo.GetBuffer()
+		resBuf.WriteBool(bool(r0))
+		return resBuf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("unknown method ID %d", methodID)
 	}
@@ -83,6 +109,7 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 	{PackagePath: "context/internal", MemberName: "Canceled", RouteName: "context/internal.Canceled", MethodID: methodIDModuleCanceled, Sig: runtime.MustParseRuntimeFuncSig("function() Error"), Doc: ""},
 	{PackagePath: "context/internal", MemberName: "DeadlineExceeded", RouteName: "context/internal.DeadlineExceeded", MethodID: methodIDModuleDeadlineExceeded, Sig: runtime.MustParseRuntimeFuncSig("function() Error"), Doc: ""},
 	{PackagePath: "context/internal", MemberName: "NewTimer", RouteName: "context/internal.NewTimer", MethodID: methodIDModuleNewTimer, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) HostRef<context/internal.Timer>", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "context/internal", MemberName: "ValidValueKey", RouteName: "context/internal.ValidValueKey", MethodID: methodIDModuleValidValueKey, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Any) Bool", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceModule(impl Module) *surface.Bundle {
