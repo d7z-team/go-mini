@@ -26,7 +26,7 @@
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
 - VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
-- 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
+- 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
@@ -39,6 +39,9 @@
 - 纯 VM 源码库的可见成员来自 `ModuleExports` / `PreparedProgram.Exports` 显式导出表，导出范围限定为 ASCII 大写开头的 Go-style exported identifier；runtime `TypeModule` 成员访问读取 `VMModule.Data`。
 - executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再提交 `PreparedProgram` / source cache，避免依赖失败留下半成品 module cache。
 - compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`，runtime 只校验 module hash 并通过 `ModulePlanLoader` 装载 `PreparedProgram`。
+- `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
+- 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
+- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 提供 sentinel error 与 timer；`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播。
 - Eval 便捷入口先由 compiler/lowering 产出临时 `PreparedFunction`，runtime 执行 prepared function。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - 语言级 channel/select 已落到 Go frontend、AST 检查、lowering、bytecode payload 和 runtime；支持 `make(chan T[, cap])`、send/receive、二值 receive、`close`、`len`、`cap`、`select`、`default` 和 channel `for range`。

@@ -79,13 +79,23 @@ func TestResolveStructSchemaUsesCanonicalTypeID(t *testing.T) {
 	}
 }
 
-func TestResolveMethodRouteSupportsDottedMethodKeys(t *testing.T) {
+func TestResolveMethodRouteUsesReceiverMetadata(t *testing.T) {
 	exec := newExecutor(t, &ast.ProgramStmt{
+		Package:   "context",
 		Constants: make(map[string]string),
 		Variables: make(map[ast.Ident]ast.Expr),
 		Types:     make(map[ast.Ident]ast.GoMiniType),
 		Structs:   make(map[ast.Ident]*ast.StructStmt),
-		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+		Functions: map[ast.Ident]*ast.FunctionStmt{
+			"localType.call": {
+				Name:         "call",
+				ReceiverType: "localType",
+				FunctionType: ast.FunctionType{
+					Params: []ast.FunctionParam{{Name: "c", Type: "Ptr<localType>"}},
+					Return: ast.TypeVoid,
+				},
+			},
+		},
 	})
 
 	exec.routes["demo.Type.Call"] = FFIRoute{
@@ -100,6 +110,46 @@ func TestResolveMethodRouteSupportsDottedMethodKeys(t *testing.T) {
 	}
 	if methodName != "demo.Type.Call" {
 		t.Fatalf("unexpected method route: %s", methodName)
+	}
+
+	methodName, ok = exec.resolveMethodRoute("", "call", MustParseRuntimeType("Ptr<context.localType>"))
+	if !ok {
+		t.Fatal("expected module-qualified VM type method to resolve through receiver metadata")
+	}
+	if methodName != "localType.call" {
+		t.Fatalf("unexpected local method route: %s", methodName)
+	}
+
+	if methodName, ok = exec.resolveMethodRoute("other.localType", "call"); ok {
+		t.Fatalf("qualified foreign receiver resolved through short fallback: %s", methodName)
+	}
+}
+
+func TestMethodClosureCarriesPreparedBody(t *testing.T) {
+	exec := newExecutor(t, &ast.ProgramStmt{
+		Constants: make(map[string]string),
+		Variables: make(map[ast.Ident]ast.Expr),
+		Types:     make(map[ast.Ident]ast.GoMiniType),
+		Structs:   make(map[ast.Ident]*ast.StructStmt),
+		Functions: make(map[ast.Ident]*ast.FunctionStmt),
+	})
+	exec.functions["localType.call"] = &RuntimeFunction{
+		Name:        "localType.call",
+		FunctionSig: MustParseRuntimeFuncSig("function(Ptr<localType>) Void"),
+		BodyTasks:   []Task{{Op: OpPop}},
+	}
+
+	receiver := &Var{VType: TypePointer}
+	method := exec.methodClosure(receiver, "localType.call")
+	if method == nil || method.VType != TypeClosure {
+		t.Fatalf("expected method closure, got %#v", method)
+	}
+	ref, ok := method.Ref.(*VMMethodValue)
+	if !ok {
+		t.Fatalf("expected VMMethodValue, got %#v", method.Ref)
+	}
+	if ref.FuncSig == nil || len(ref.BodyTasks) != 1 || ref.BodyTasks[0].Op != OpPop {
+		t.Fatalf("method body was not captured: %#v", ref)
 	}
 }
 

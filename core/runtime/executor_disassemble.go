@@ -114,6 +114,8 @@ func (e *Executor) disassembleTasks(sb *strings.Builder, indent string, tasks []
 				}
 			} else if cd, ok := task.Data.(*CallData); ok {
 				dataStr = cd.Name
+			} else if md, ok := task.Data.(*MemberData); ok {
+				dataStr = md.Property
 			} else if ld, ok := task.Data.(*LoadVarData); ok {
 				dataStr = ld.Name
 			} else if sym, ok := task.Data.(SymbolRef); ok {

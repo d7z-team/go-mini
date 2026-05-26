@@ -337,6 +337,35 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		}
 		return CreateTupleType(resolved...)
 	}
+	if fn, ok := o.ReadFunc(); ok {
+		params := make([]FunctionParam, len(fn.Params))
+		for i, p := range fn.Params {
+			params[i] = FunctionParam{Name: p.Name, Type: p.Type.Resolve(v)}
+		}
+		return CreateFunctionType(params, fn.Return.Resolve(v), fn.Variadic)
+	}
+	if o.IsInterface() {
+		methods, ok := o.ReadInterfaceMethods()
+		if !ok {
+			return o
+		}
+		resolved := make(map[string]*FunctionType, len(methods))
+		for name, sig := range methods {
+			if sig == nil {
+				continue
+			}
+			params := make([]FunctionParam, len(sig.Params))
+			for i, p := range sig.Params {
+				params[i] = FunctionParam{Name: p.Name, Type: p.Type.Resolve(v)}
+			}
+			resolved[name] = &FunctionType{
+				Params:   params,
+				Return:   sig.Return.Resolve(v),
+				Variadic: sig.Variadic,
+			}
+		}
+		return CreateInterfaceType(resolved)
+	}
 
 	s := string(o)
 	if strings.Contains(s, ".") {

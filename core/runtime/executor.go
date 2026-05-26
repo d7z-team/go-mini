@@ -12,10 +12,12 @@ import (
 )
 
 type Executor struct {
+	packageName      string
 	metadata         *runtimeMetadataRegistry
 	consts           map[string]string
 	globals          map[string]*RuntimeGlobal
 	functions        map[string]*RuntimeFunction
+	methodFunctions  map[string]map[string]string
 	exports          map[string]PreparedExport
 	mainTasks        []Task
 	globalInitOrder  []string
@@ -71,6 +73,7 @@ type RuntimeGlobalInit struct {
 
 type RuntimeFunction struct {
 	Name        string
+	Receiver    TypeSpec
 	FunctionSig *RuntimeFuncSig
 	BodyTasks   []Task
 }
@@ -90,19 +93,85 @@ func normalizeMethodReceiverType(typeName string) string {
 	return typeName
 }
 
-func methodRouteName(typeName, method string) string {
-	return normalizeMethodReceiverType(typeName) + "." + method
+type methodCandidate struct {
+	name       string
+	allowRoute bool
 }
 
-func (e *Executor) resolveMethodRoute(typeName, method string) (string, bool) {
-	methodName := methodRouteName(typeName, method)
-	if _, ok := e.routes[methodName]; ok {
-		return methodName, true
+func methodNameFromFunctionName(name string) string {
+	if idx := strings.LastIndex(name, "."); idx >= 0 && idx < len(name)-1 {
+		return name[idx+1:]
 	}
-	if _, ok := e.lookupFunction(methodName); ok {
-		return methodName, true
+	return name
+}
+
+func receiverNameFromFunctionName(name string) string {
+	if idx := strings.LastIndex(name, "."); idx > 0 {
+		return name[:idx]
+	}
+	return ""
+}
+
+func methodFunctionReceiverKeys(pkg string, receiver TypeSpec) []string {
+	normalized := normalizeMethodReceiverType(receiver.String())
+	if normalized == "" {
+		return nil
+	}
+	keys := []string{normalized}
+	if pkg != "" && !strings.Contains(normalized, ".") {
+		keys = append(keys, pkg+"."+normalized)
+	}
+	return keys
+}
+
+func (e *Executor) resolveMethodRoute(typeName, method string, staticTypes ...RuntimeType) (string, bool) {
+	candidates := e.methodCandidates(typeName, method, staticTypes...)
+	for _, candidate := range candidates {
+		if candidate.allowRoute {
+			if _, ok := e.routes[candidate.name]; ok {
+				return candidate.name, true
+			}
+		}
+		if _, ok := e.lookupFunction(candidate.name); ok {
+			return candidate.name, true
+		}
 	}
 	return "", false
+}
+
+func (e *Executor) methodCandidates(typeName, method string, staticTypes ...RuntimeType) []methodCandidate {
+	seen := make(map[string]struct{})
+	var candidates []methodCandidate
+	addCandidate := func(name string, allowRoute bool) {
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		candidates = append(candidates, methodCandidate{name: name, allowRoute: allowRoute})
+	}
+	addName := func(name string) {
+		normalized := normalizeMethodReceiverType(name)
+		if normalized == "" || normalized == "Any" {
+			return
+		}
+		if methods := e.methodFunctions[normalized]; methods != nil {
+			if fnName := methods[method]; fnName != "" {
+				addCandidate(fnName, false)
+			}
+		}
+		addCandidate(normalized+"."+method, true)
+		if e.packageName != "" && !strings.Contains(normalized, ".") {
+			addCandidate(e.packageName+"."+normalized+"."+method, false)
+		}
+	}
+	addName(typeName)
+	for _, typ := range staticTypes {
+		if typ.IsEmpty() {
+			continue
+		}
+		addName(typ.Raw.String())
+	}
+	return candidates
 }
 
 func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
@@ -113,12 +182,14 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		return nil, err
 	}
 	result := &Executor{
+		packageName:          prepared.Package,
 		globalInitOrder:      append([]string(nil), prepared.GlobalInitOrder...),
 		globalInitGroups:     cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
 		importAliases:        make(map[string]string, len(prepared.ImportAliases)),
 		metadata:             newRuntimeMetadataRegistry(),
 		globals:              make(map[string]*RuntimeGlobal),
 		functions:            make(map[string]*RuntimeFunction),
+		methodFunctions:      make(map[string]map[string]string),
 		exports:              clonePreparedExportMap(prepared.Exports),
 		consts:               make(map[string]string),
 		routes:               make(map[string]FFIRoute),
@@ -151,11 +222,13 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 		return
 	}
 	e.globalInitOrder = append([]string(nil), prepared.GlobalInitOrder...)
+	e.packageName = prepared.Package
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneStringMap(prepared.Constants)
 	e.exports = clonePreparedExportMap(prepared.Exports)
 	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
+	e.methodFunctions = make(map[string]map[string]string)
 	for name, typeInfo := range prepared.NamedTypes {
 		e.metadata.registerNamedType(name, typeInfo)
 	}
@@ -183,12 +256,32 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 			rf = &RuntimeFunction{Name: name}
 		}
 		if fn != nil {
+			rf.Receiver = fn.Receiver
 			rf.FunctionSig = CloneRuntimeFuncSig(fn.FunctionSig)
 			rf.BodyTasks = cloneTasks(fn.BodyTasks)
 		}
 		e.functions[name] = rf
+		e.registerMethodFunction(prepared.Package, name, rf)
 	}
 	e.mainTasks = cloneTasks(prepared.MainTasks)
+}
+
+func (e *Executor) registerMethodFunction(pkg, name string, fn *RuntimeFunction) {
+	if e == nil || fn == nil || fn.Receiver.IsEmpty() || fn.FunctionSig == nil {
+		return
+	}
+	methodName := methodNameFromFunctionName(name)
+	for _, receiverName := range methodFunctionReceiverKeys(pkg, fn.Receiver) {
+		if e.methodFunctions == nil {
+			e.methodFunctions = make(map[string]map[string]string)
+		}
+		methods := e.methodFunctions[receiverName]
+		if methods == nil {
+			methods = make(map[string]string)
+			e.methodFunctions[receiverName] = methods
+		}
+		methods[methodName] = name
+	}
 }
 
 func (e *Executor) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
@@ -344,6 +437,9 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 		return nil, fmt.Errorf("prepared function %s missing signature", name)
 	}
 	if err := validateRuntimeFuncSig("prepared function "+name, fn.FunctionSig); err != nil {
+		return nil, err
+	}
+	if err := validatePreparedFunctionReceiver(name, fn); err != nil {
 		return nil, err
 	}
 	if err := validatePreparedTaskPlan("prepared function "+name, fn.BodyTasks, 0); err != nil {
@@ -522,6 +618,10 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 }
 
 func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
+	return e.resolveMethodValueWithStaticType(val, name, RuntimeType{})
+}
+
+func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, staticType RuntimeType) (*Var, bool) {
 	val = e.unwrapValue(val)
 	if val == nil {
 		return nil, false
@@ -533,14 +633,29 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: "Error"}}, true
 		}
 	case TypeHostRef:
-		if methodName, ok := e.resolveMethodRoute(string(val.RawType()), name); ok {
-			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
+		if methodName, ok := e.resolveMethodRoute(string(val.RawType()), name, staticType); ok {
+			return e.methodClosure(val, methodName), true
 		}
 	case TypeMap:
 		if m, ok := val.Ref.(*VMMap); ok {
 			if v, ok := m.Load(name); ok {
 				return v, true
 			}
+		}
+	case TypePointer:
+		tName := string(val.RawType())
+		if tName == "" || tName == "Any" {
+			if slot, ok := e.slotPointerSlot(val); ok && slot != nil && !slot.Decl.IsEmpty() {
+				tName = PtrType(slot.Decl.Raw).String()
+			}
+		}
+		if tName != "" && tName != "Any" {
+			if methodName, ok := e.resolveMethodRoute(tName, name, staticType); ok {
+				return e.methodClosure(val, methodName), true
+			}
+		}
+		if target, ok := e.slotPointerTarget(val); ok {
+			return e.resolveMethodValueWithStaticType(target, name, staticType)
 		}
 	case TypeStruct:
 		if st, ok := val.Ref.(*VMStruct); ok {
@@ -550,8 +665,8 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 		tName := string(val.RawType())
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, name); ok {
-				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: val, Method: methodName}}, true
+			if methodName, ok := e.resolveMethodRoute(tName, name, staticType); ok {
+				return e.methodClosure(val, methodName), true
 			}
 		}
 	case TypeModule:
@@ -568,6 +683,15 @@ func (e *Executor) resolveMethodValue(val *Var, name string) (*Var, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (e *Executor) methodClosure(receiver *Var, methodName string) *Var {
+	method := &VMMethodValue{Receiver: receiver, Method: methodName}
+	if fn, ok := e.lookupFunction(methodName); ok && fn != nil {
+		method.FuncSig = CloneRuntimeFuncSig(fn.FunctionSig)
+		method.BodyTasks = cloneTasks(fn.BodyTasks)
+	}
+	return &Var{VType: TypeClosure, Ref: method}
 }
 
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *RuntimeFuncSig) bool {

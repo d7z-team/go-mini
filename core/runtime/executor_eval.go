@@ -363,6 +363,10 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 }
 
 func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property string) (*Var, error) {
+	return e.evalMemberExprDirectWithType(obj, property, RuntimeType{})
+}
+
+func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, staticType RuntimeType) (*Var, error) {
 	obj = e.unwrapValue(obj)
 	if obj == nil || isEmptyVar(obj) {
 		return nil, &VMError{Message: "member access on nil object: " + property, IsPanic: true}
@@ -415,15 +419,26 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		}
 		tName := string(obj.RawType())
 		if tName != "" && tName != "Any" {
-			if methodName, ok := e.resolveMethodRoute(tName, property); ok {
-				return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+			if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+				return e.methodClosure(obj, methodName), nil
 			}
 		}
 		return nil, nil
 	case TypePointer:
+		tName := string(obj.RawType())
+		if tName == "" || tName == "Any" {
+			if slot, ok := e.slotPointerSlot(obj); ok && slot != nil && !slot.Decl.IsEmpty() {
+				tName = PtrType(slot.Decl.Raw).String()
+			}
+		}
+		if tName != "" && tName != "Any" {
+			if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+				return e.methodClosure(obj, methodName), nil
+			}
+		}
 		// Check if it's a pointer to something that has fields (like a struct in Ref)
 		if valVar, ok := e.slotPointerTarget(obj); ok {
-			return e.evalMemberExprDirect(nil, valVar, property)
+			return e.evalMemberExprDirectWithType(valVar, property, staticType)
 		}
 	case TypeHostRef:
 		if obj.Handle == 0 {
@@ -433,8 +448,8 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 		if tName == "" {
 			tName = obj.VType.String()
 		}
-		if methodName, ok := e.resolveMethodRoute(tName, property); ok {
-			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+		if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+			return e.methodClosure(obj, methodName), nil
 		}
 	case TypeModule:
 		mod := obj.Ref.(*VMModule)
@@ -457,8 +472,8 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 	if tName == "" {
 		tName = obj.VType.String()
 	}
-	if methodName, ok := e.resolveMethodRoute(tName, property); ok {
-		return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: methodName}}, nil
+	if methodName, ok := e.resolveMethodRoute(tName, property, staticType); ok {
+		return e.methodClosure(obj, methodName), nil
 	}
 
 	if obj.RuntimeType().IsAny() {
@@ -937,6 +952,14 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 							Name:        ref.Method,
 							FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 							BodyTasks:   cloneTasks(fn.BodyTasks),
+							Args:        callArgs,
+						}, callArgs, nil)
+					}
+					if ref.FuncSig != nil && len(ref.BodyTasks) > 0 {
+						return e.setupFuncCall(session, ref.Method, &DoCallData{
+							Name:        ref.Method,
+							FunctionSig: CloneRuntimeFuncSig(ref.FuncSig),
+							BodyTasks:   cloneTasks(ref.BodyTasks),
 							Args:        callArgs,
 						}, callArgs, nil)
 					}

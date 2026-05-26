@@ -49,6 +49,7 @@ type PreparedGlobalInit struct {
 
 type PreparedFunction struct {
 	Name        string          `json:"name"`
+	Receiver    TypeSpec        `json:"receiver,omitempty"`
 	FunctionSig *RuntimeFuncSig `json:"function_sig,omitempty"`
 	BodyTasks   []Task          `json:"body_tasks,omitempty"`
 }
@@ -103,6 +104,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		}
 		cloned.Functions[name] = &PreparedFunction{
 			Name:        fn.Name,
+			Receiver:    fn.Receiver,
 			FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 			BodyTasks:   cloneTasks(fn.BodyTasks),
 		}

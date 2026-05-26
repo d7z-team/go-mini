@@ -155,7 +155,12 @@ func (a *ReturnAnalyzer) analyzeReturn(returnStmt *ReturnStmt) bool {
 	if len(a.returnTypes) > 0 {
 		var actualTypes []GoMiniType
 		if len(returnStmt.Results) == 1 {
-			actualTypes = []GoMiniType{returnStmt.Results[0].GetBase().Type}
+			resultType := returnStmt.Results[0].GetBase().Type
+			if items, ok := resultType.ReadTuple(); ok && len(a.returnTypes) > 1 {
+				actualTypes = append(actualTypes, items...)
+			} else {
+				actualTypes = []GoMiniType{resultType}
+			}
 		} else if len(returnStmt.Results) > 1 {
 			for _, result := range returnStmt.Results {
 				actualTypes = append(actualTypes, result.GetBase().Type)

@@ -134,13 +134,10 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
 				fn := c.convertFunc(d)
-				key := fn.Name
-				if fn.ReceiverType != "" {
-					key = miniast.Ident(string(fn.ReceiverType) + "." + string(fn.Name))
-				} else if !declareTopLevel(string(fn.Name), "function", d.Name) {
+				if fn.ReceiverType == "" && !declareTopLevel(string(fn.Name), "function", d.Name) {
 					continue
 				}
-				program.Functions[key] = fn
+				program.Functions[fn.RegistryName()] = fn
 			case *ast.GenDecl:
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {

@@ -79,6 +79,7 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 		}
 		prepared.Functions[string(ident)] = &PreparedFunction{
 			Name:        string(ident),
+			Receiver:    TypeSpec(fn.ReceiverType),
 			FunctionSig: MustParseRuntimeFuncSig(fn.FunctionType.MiniType()),
 			BodyTasks:   []Task{},
 		}

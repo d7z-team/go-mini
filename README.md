@@ -17,6 +17,7 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 - FFI binding generator
 - Cooperative VM scheduling with async FFI all-blocked diagnostics
 - Built-in core standard-library subset for errors and pure value helpers
+- Full FFI surface with packages such as `fmt`, `time`, `context`, `io`, and `os`
 - LSP helpers for editor integrations
 
 ## Install

@@ -391,9 +391,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpMember:
-		prop := task.Data.(string)
+		data := task.Data.(*MemberData)
 		obj := session.ValueStack.Pop()
-		res, err := e.evalMemberExprDirect(session, obj, prop)
+		exec := e
+		if session.Executor != nil {
+			exec = session.Executor
+		}
+		res, err := exec.evalMemberExprDirectWithType(obj, data.Property, data.ObjectType)
 		if err != nil {
 			return err
 		}
@@ -539,6 +543,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ValueStack.Push(res)
 		return nil
 	case OpCall:
+		exec := e
+		if session.Executor != nil {
+			exec = session.Executor
+		}
 		var name string
 		var receiver *Var
 		var mod *VMModule
@@ -583,7 +591,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				return errors.New("calling method on nil object")
 			}
 
-			res, err := e.evalMemberExprDirect(session, obj, data.Name)
+			res, err := exec.evalMemberExprDirectWithType(obj, data.Name, data.ReceiverType)
 			if err != nil {
 				return err
 			}
@@ -634,8 +642,12 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			copy(finalArgLHS[offset:], argLHS)
 		}
 
-		return e.invokeCall(session, name, receiver, mod, callable, finalArgs, finalArgLHS)
+		return exec.invokeCall(session, name, receiver, mod, callable, finalArgs, finalArgLHS)
 	case OpGo:
+		exec := e
+		if session.Executor != nil {
+			exec = session.Executor
+		}
 		var name string
 		var receiver *Var
 		var mod *VMModule
@@ -669,7 +681,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				return errors.New("calling method on nil object")
 			}
 
-			res, err := e.evalMemberExprDirect(session, obj, data.Name)
+			res, err := exec.evalMemberExprDirectWithType(obj, data.Name, data.ReceiverType)
 			if err != nil {
 				return err
 			}
@@ -710,7 +722,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		copy(finalArgs[offset:], args)
 
-		err := e.goCall(session, name, receiver, mod, callable, finalArgs)
+		err := exec.goCall(session, name, receiver, mod, callable, finalArgs)
 		return err
 	case OpInvokeDirect:
 		data := task.Data.(*DirectCallData)

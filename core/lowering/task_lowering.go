@@ -687,6 +687,7 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 		case *ast.MemberExpr:
 			data.Mode = runtime.CallByMember
 			data.Name = string(fn.Property)
+			data.ReceiverType = b.runtimeType(fn.Object.GetBase().Type, fn.Object, "method receiver type")
 		}
 
 		out := []runtime.Task{{Op: runtime.OpGo, Data: data}}
@@ -999,7 +1000,10 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		if n == nil {
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
-		out := []runtime.Task{{Op: runtime.OpMember, Data: string(n.Property)}}
+		out := []runtime.Task{{Op: runtime.OpMember, Data: &runtime.MemberData{
+			Property:   string(n.Property),
+			ObjectType: b.runtimeType(n.Object.GetBase().Type, n.Object, "member object type"),
+		}}}
 		out = append(out, b.tasksForExprInScope(n.Object, scope)...)
 		return out, true
 	case *ast.TypeAssertExpr:
@@ -1115,6 +1119,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		case *ast.MemberExpr:
 			data.Mode = runtime.CallByMember
 			data.Name = string(fn.Property)
+			data.ReceiverType = b.runtimeType(fn.Object.GetBase().Type, fn.Object, "method receiver type")
 		}
 
 		out := []runtime.Task{{Op: runtime.OpCall, Data: data}}

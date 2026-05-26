@@ -234,6 +234,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		}
 		prepared.Functions[name] = &runtime.PreparedFunction{
 			Name:        name,
+			Receiver:    runtime.TypeSpec(fn.ReceiverType),
 			FunctionSig: sig,
 			BodyTasks:   b.tasksForStmtInScope(fn.Body, nil, fnScope),
 		}

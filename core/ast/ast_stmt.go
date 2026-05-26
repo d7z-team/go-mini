@@ -446,11 +446,7 @@ func (p *ProgramStmt) Optimize(ctx *OptimizeContext) Node {
 
 		// 如果是 FunctionStmt 或 StructStmt，将其移至全局表并从 Main 中移除
 		if fn, ok := optimized.(*FunctionStmt); ok {
-			key := fn.Name
-			if fn.ReceiverType != "" {
-				key = Ident(string(fn.ReceiverType) + "." + string(fn.Name))
-			}
-			p.Functions[key] = fn
+			p.Functions[fn.RegistryName()] = fn
 			continue
 		}
 		if st, ok := optimized.(*StructStmt); ok {
@@ -849,11 +845,7 @@ func (b *BlockStmt) Optimize(ctx *OptimizeContext) Node {
 
 		// 移除定义语句并确保已注册
 		if fn, ok := optimized.(*FunctionStmt); ok {
-			key := fn.Name
-			if fn.ReceiverType != "" {
-				key = Ident(string(fn.ReceiverType) + "." + string(fn.Name))
-			}
-			ctx.root.program.Functions[key] = fn
+			ctx.root.program.Functions[fn.RegistryName()] = fn
 			continue
 		}
 		if st, ok := optimized.(*StructStmt); ok {
@@ -1781,6 +1773,16 @@ type FunctionStmt struct {
 	Doc          string     `json:"doc,omitempty"`
 }
 
+func (f *FunctionStmt) RegistryName() Ident {
+	if f == nil {
+		return ""
+	}
+	if f.ReceiverType == "" {
+		return f.Name
+	}
+	return Ident(string(f.ReceiverType) + "." + string(f.Name))
+}
+
 // PreRegister 预注册函数签名 (用于支持相互递归)
 func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 	var structType *ValidStruct
@@ -1897,7 +1899,7 @@ func (f *FunctionStmt) Check(ctx *SemanticContext) error {
 
 	// 3. 注册到程序中
 	f.Type = "Void"
-	ctx.root.program.Functions[f.Name] = f
+	ctx.root.program.Functions[f.RegistryName()] = f
 
 	// 4. 校验函数体
 	semBodyCtx := bodyCtx

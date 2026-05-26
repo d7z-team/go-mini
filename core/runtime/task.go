@@ -348,6 +348,11 @@ type SliceData struct {
 	HasHigh bool
 }
 
+type MemberData struct {
+	Property   string
+	ObjectType RuntimeType
+}
+
 type AssertData struct {
 	TargetType RuntimeType
 	Multi      bool
@@ -416,6 +421,7 @@ type CallData struct {
 	ArgCount      int
 	Ellipsis      bool
 	Sym           SymbolRef
+	ReceiverType  RuntimeType
 	CaptureArgLHS bool
 }
 

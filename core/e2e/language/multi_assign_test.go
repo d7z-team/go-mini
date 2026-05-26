@@ -105,6 +105,32 @@ func TestMultiAssignment(t *testing.T) {
 		}
 	})
 
+	t.Run("FFITupleReturnForwarding", func(t *testing.T) {
+		bridge := &mockTupleBridge{}
+		testsurface.UseRoute(t, executor, "calc.DivModForward", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
+
+		code := `
+		package main
+		import "calc"
+		func divmod(a int, b int) (int, int) {
+			return calc.DivModForward(a, b)
+		}
+		func main() {
+			q, r := divmod(17, 5)
+			if q != 3 || r != 2 {
+				panic("FFI tuple forwarding failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
 	t.Run("ComplexDestructuring", func(t *testing.T) {
 		code := `
 		package main

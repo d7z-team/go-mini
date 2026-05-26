@@ -3,6 +3,7 @@ package ffilib
 import (
 	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib/byteslib"
+	"gopkg.d7z.net/go-mini/ffilib/contextlib"
 	"gopkg.d7z.net/go-mini/ffilib/crypto/md5lib"
 	"gopkg.d7z.net/go-mini/ffilib/crypto/sha256lib"
 	"gopkg.d7z.net/go-mini/ffilib/encoding/base64lib"
@@ -26,6 +27,7 @@ func Surface() *surface.Bundle {
 		jsonlib.SurfaceJSON(&jsonlib.JSONHost{}),
 		timelib.SurfaceModule(&timelib.TimeHost{}),
 		timelib.SurfaceTime(),
+		contextlib.Surface(),
 		filepathlib.SurfaceFilepath(&filepathlib.FilepathHost{}),
 		byteslib.SurfaceBytes(&byteslib.BytesHost{}),
 		regexplib.SurfaceRegexp(&regexplib.RegexpHost{}),

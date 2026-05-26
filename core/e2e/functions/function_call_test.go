@@ -94,6 +94,74 @@ func TestFunctionValuesAndHigherOrderCalls(t *testing.T) {
 	}
 }
 
+func TestTupleReturnForwarding(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	func pair() (int, string) {
+		return 7, "ok"
+	}
+
+	func wrap() (int, string) {
+		return pair()
+	}
+
+	func main() {
+		n, s := wrap()
+		if n != 7 || s != "ok" {
+			panic("tuple return forwarding failed")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestPrivatePointerMethodValueInClosure(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	type counter struct {
+		value int
+	}
+
+	func (c *counter) add(delta int) {
+		c.value = c.value + delta
+	}
+
+	func makeRunner() func() int {
+		c := &counter{}
+		return func() int {
+			add := c.add
+			add(2)
+			c.add(3)
+			return c.value
+		}
+	}
+
+	func main() {
+		run := makeRunner()
+		if run() != 5 {
+			panic("private pointer method value in closure failed")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
 func TestRecursiveAndMutualFunctionCalls(t *testing.T) {
 	executor := engine.NewMiniExecutor()
 	code := `

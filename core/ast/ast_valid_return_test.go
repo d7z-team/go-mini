@@ -82,3 +82,29 @@ func TestReturnAnalyzerStillRejectsMissingReturn(t *testing.T) {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
+
+func TestReturnAnalyzerAllowsTupleForwarding(t *testing.T) {
+	analyzer := NewReturnAnalyzer(nil, CreateTupleType("Int64", "String"))
+	body := &BlockStmt{Children: []Stmt{
+		&ReturnStmt{Results: []Expr{
+			&IdentifierExpr{BaseNode: BaseNode{Type: CreateTupleType("Int64", "String")}, Name: "pair"},
+		}},
+	}}
+
+	if !analyzer.Analyze(body) {
+		t.Fatalf("tuple forwarding should satisfy return analysis: %+v", analyzer.GetErrors())
+	}
+}
+
+func TestReturnAnalyzerRejectsTupleForwardingToScalar(t *testing.T) {
+	analyzer := NewReturnAnalyzer(nil, "Int64")
+	body := &BlockStmt{Children: []Stmt{
+		&ReturnStmt{Results: []Expr{
+			&IdentifierExpr{BaseNode: BaseNode{Type: CreateTupleType("Int64", "String")}, Name: "pair"},
+		}},
+	}}
+
+	if analyzer.Analyze(body) {
+		t.Fatal("expected tuple forwarding to scalar return to fail")
+	}
+}

@@ -121,6 +121,7 @@ func cloneVarForAssign(v *Var) *Var {
 				Receiver:      cloneVarForAssign(method.Receiver),
 				Method:        method.Method,
 				FuncSig:       CloneRuntimeFuncSig(method.FuncSig),
+				BodyTasks:     cloneTasks(method.BodyTasks),
 				DynamicInvoke: method.DynamicInvoke,
 			}
 		}
@@ -227,6 +228,7 @@ type VMMethodValue struct {
 	Receiver      *Var
 	Method        string // Full FFI method name or internal function name
 	FuncSig       *RuntimeFuncSig
+	BodyTasks     []Task
 	DynamicInvoke bool
 }
 

@@ -74,6 +74,7 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 			return err
 		}
 	}
+	methodBindings := make(map[string]string)
 	for name, fn := range plan.Functions {
 		if fn == nil {
 			return fmt.Errorf("function %s is nil", name)
@@ -81,10 +82,19 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		if fn.Name == "" {
 			return fmt.Errorf("function %s missing name", name)
 		}
+		if fn.Name != name {
+			return fmt.Errorf("function %s name mismatch: %s", name, fn.Name)
+		}
 		if fn.FunctionSig == nil {
 			return fmt.Errorf("function %s missing signature", name)
 		}
 		if err := validateRuntimeFuncSig("function "+name+" signature", fn.FunctionSig); err != nil {
+			return err
+		}
+		if err := validatePreparedFunctionReceiver(name, fn); err != nil {
+			return err
+		}
+		if err := validatePreparedMethodConflict(plan.Package, name, fn, methodBindings); err != nil {
 			return err
 		}
 		if err := validatePreparedTaskPlan("function "+name, fn.BodyTasks, 0); err != nil {
@@ -92,6 +102,56 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 		}
 	}
 	return validatePreparedTaskPlan("main", plan.MainTasks, 0)
+}
+
+func validatePreparedFunctionReceiver(name string, fn *PreparedFunction) error {
+	if fn.Receiver.IsEmpty() {
+		return nil
+	}
+	if !strings.Contains(name, ".") {
+		return fmt.Errorf("function %s receiver requires method-qualified name", name)
+	}
+	receiver, err := ParseRuntimeType(fn.Receiver)
+	if err != nil {
+		return fmt.Errorf("function %s receiver: %w", name, err)
+	}
+	if receiver.Kind != RuntimeTypeNamed {
+		return fmt.Errorf("function %s receiver must be a named type", name)
+	}
+	expected := normalizeMethodReceiverType(receiver.Raw.String())
+	if expected == "" || expected == "Any" {
+		return fmt.Errorf("function %s receiver must be a concrete type", name)
+	}
+	if receiver.Raw.String() != expected {
+		return fmt.Errorf("function %s receiver metadata must use base receiver type, got %s", name, receiver.Raw)
+	}
+	nameReceiver := normalizeMethodReceiverType(receiverNameFromFunctionName(name))
+	if nameReceiver != expected {
+		return fmt.Errorf("function %s receiver name %s does not match receiver %s", name, nameReceiver, expected)
+	}
+	if len(fn.FunctionSig.ParamTypes) == 0 {
+		return fmt.Errorf("function %s receiver requires first parameter", name)
+	}
+	actual := normalizeMethodReceiverType(fn.FunctionSig.ParamTypes[0].Raw.String())
+	if actual != expected {
+		return fmt.Errorf("function %s receiver %s does not match first parameter %s", name, expected, actual)
+	}
+	return nil
+}
+
+func validatePreparedMethodConflict(pkg, name string, fn *PreparedFunction, bindings map[string]string) error {
+	if fn == nil || fn.Receiver.IsEmpty() {
+		return nil
+	}
+	methodName := methodNameFromFunctionName(name)
+	for _, receiverName := range methodFunctionReceiverKeys(pkg, fn.Receiver) {
+		key := receiverName + "." + methodName
+		if prev := bindings[key]; prev != "" && prev != name {
+			return fmt.Errorf("method %s registered by both %s and %s", key, prev, name)
+		}
+		bindings[key] = name
+	}
+	return nil
 }
 
 func validatePreparedExport(plan *PreparedProgram, mapName string, export PreparedExport) error {
@@ -217,10 +277,19 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 			return fmt.Errorf("%s missing VarDeclData", plan)
 		}
 		return validateVarDeclData(plan, data)
-	case OpApplyBinary, OpApplyUnary, OpIncDec, OpInterrupt, OpMember, OpScopeEnter:
+	case OpApplyBinary, OpApplyUnary, OpIncDec, OpInterrupt, OpScopeEnter:
 		value, ok := task.Data.(string)
 		if !ok || value == "" {
 			return fmt.Errorf("%s missing string payload", plan)
+		}
+		return nil
+	case OpMember:
+		data, ok := task.Data.(*MemberData)
+		if !ok || data == nil || data.Property == "" {
+			return fmt.Errorf("%s missing MemberData", plan)
+		}
+		if !data.ObjectType.IsEmpty() {
+			return validateRuntimeType(plan+".object", data.ObjectType)
 		}
 		return nil
 	case OpMultiAssign:
@@ -307,6 +376,9 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 		}
 		if data.ArgCount < 0 {
 			return fmt.Errorf("%s has negative arg count", plan)
+		}
+		if !data.ReceiverType.IsEmpty() {
+			return validateRuntimeType(plan+".receiver", data.ReceiverType)
 		}
 		return nil
 	case OpComposite:
