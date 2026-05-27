@@ -22,7 +22,7 @@ type Config struct {
 	ValueSchemas            map[ast.Ident]*runtime.ValueSpec
 	StructSchemas           map[ast.Ident]*runtime.RuntimeStructSpec
 	InterfaceSchemas        map[ast.Ident]*runtime.RuntimeInterfaceSpec
-	Constants               map[string]string
+	Constants               map[string]runtime.FFIConstValue
 	ModuleHashes            map[string]string
 	MaxTypeDepth            int
 	// Templates contains compiler-only call templates. The compiler exposes
@@ -179,7 +179,8 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		if err != nil {
 			return nil, err
 		}
-		validator, err := ast.NewValidatorWithExternalTypes(target, specs, c.cfg.Constants, tolerant)
+		_, _, _, _, _, constants := c.externalSchemaMaps()
+		validator, err := ast.NewValidatorWithExternalTypesAndConstTypes(target, specs, ffiConstValuesToStrings(constants), ffiConstValuesToAST(constants), tolerant)
 		if err != nil {
 			return nil, err
 		}

@@ -42,7 +42,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 				}
 			case PreparedExportConst:
 				if val, ok := modExec.consts[target]; ok {
-					exports[name] = modExec.evalLiteralToVarWithType(val, modExec.constTypes[target])
+					exports[name] = val.ToVar()
 				}
 			case PreparedExportType:
 				if typ, ok := modExec.metadata.namedTypesByName[target]; ok {

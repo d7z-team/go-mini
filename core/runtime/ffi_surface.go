@@ -65,7 +65,7 @@ type FFIRouteSpec struct {
 }
 
 type FFIConstSpec struct {
-	Value string `json:"value"`
+	Value FFIConstValue `json:"value"`
 }
 
 type FFIValueSpec struct {
@@ -100,20 +100,20 @@ type BoundFFIPackage struct {
 }
 
 type BoundFFIMember struct {
-	Name       string
-	Kind       FFIMemberKind
-	Type       RuntimeType
-	ReadOnly   bool
-	RouteName  string
-	ConstValue string
-	Value      *Var
+	Name      string
+	Kind      FFIMemberKind
+	Type      RuntimeType
+	ReadOnly  bool
+	RouteName string
+	Const     FFIConstValue
+	Value     *Var
 }
 
 type BoundFFISurface struct {
 	Schema        *FFISurfaceSchema
 	Packages      map[string]*BoundFFIPackage
 	Routes        map[string]FFIRoute
-	Consts        map[string]string
+	Consts        map[string]FFIConstValue
 	PackageValues map[string]*BoundPackageValue
 	Structs       map[string]*RuntimeStructSpec
 	Interfaces    map[string]*RuntimeInterfaceSpec
@@ -173,7 +173,8 @@ func cloneFFIMemberSchema(member *FFIMemberSchema) *FFIMemberSchema {
 		}
 	}
 	if member.Const != nil {
-		out.Const = &FFIConstSpec{Value: member.Const.Value}
+		value := member.Const.Value
+		out.Const = &FFIConstSpec{Value: value}
 	}
 	if member.Value != nil {
 		out.Value = &FFIValueSpec{Spec: cloneValueSpec(member.Value.Spec)}
@@ -266,7 +267,7 @@ func (s *FFISurfaceSchema) AddFunc(pkgPath, member, routeName string, methodID u
 	}
 }
 
-func (s *FFISurfaceSchema) AddConst(pkgPath, member, value string) {
+func (s *FFISurfaceSchema) AddConst(pkgPath, member string, value FFIConstValue) {
 	pkg := s.EnsurePackage(pkgPath)
 	if pkg == nil || member == "" {
 		return
@@ -425,11 +426,11 @@ func (m *FFIMemberSchema) Hash() string {
 		}
 		return VersionedExternalRequirementHash("func", m.Name, routeName, methodID, sigHash, m.Doc)
 	case FFIMemberConst:
-		value := ""
+		value := FFIConstValue{}
 		if m.Const != nil {
 			value = m.Const.Value
 		}
-		return VersionedExternalRequirementHash("const", m.Name, value)
+		return VersionedExternalRequirementHash("const", m.Name, value.Hash())
 	case FFIMemberValue:
 		specHash := ""
 		if m.Value != nil {
@@ -489,7 +490,7 @@ func NewBoundFFISurface(schema *FFISurfaceSchema) *BoundFFISurface {
 		Schema:        CloneFFISurfaceSchema(schema),
 		Packages:      make(map[string]*BoundFFIPackage),
 		Routes:        make(map[string]FFIRoute),
-		Consts:        make(map[string]string),
+		Consts:        make(map[string]FFIConstValue),
 		PackageValues: make(map[string]*BoundPackageValue),
 		Structs:       make(map[string]*RuntimeStructSpec),
 		Interfaces:    make(map[string]*RuntimeInterfaceSpec),
@@ -643,17 +644,17 @@ func (b *BoundFFISurface) AddRoute(pkgPath, member string, route FFIRoute) {
 	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberFunc, ReadOnly: true, RouteName: route.Name}
 }
 
-func (b *BoundFFISurface) AddConst(pkgPath, member, value string) {
+func (b *BoundFFISurface) AddConst(pkgPath, member string, value FFIConstValue) {
 	pkg := b.EnsurePackage(pkgPath)
 	if pkg == nil || member == "" {
 		return
 	}
 	name := ExternalFullName(pkgPath, member)
 	if b.Consts == nil {
-		b.Consts = make(map[string]string)
+		b.Consts = make(map[string]FFIConstValue)
 	}
 	b.Consts[name] = value
-	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberConst, ReadOnly: true, ConstValue: value}
+	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberConst, ReadOnly: true, Const: value}
 }
 
 func (b *BoundFFISurface) AddPackageValue(pkgPath, member string, spec *ValueSpec, value *Var) {
@@ -809,8 +810,8 @@ func ValueSchemaHash(spec *ValueSpec) string {
 	return VersionedExternalRequirementHash("value", spec.Type.Raw.String(), strconv.FormatBool(spec.ReadOnly))
 }
 
-func ConstSchemaHash(value string) string {
-	return VersionedExternalRequirementHash("const", value)
+func ConstSchemaHash(value FFIConstValue) string {
+	return value.Hash()
 }
 
 func StructSchemaHash(spec *RuntimeStructSpec) string {
@@ -869,6 +870,9 @@ func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) er
 		value, ok := e.consts[name]
 		if !ok {
 			return fmt.Errorf("missing external FFI constant %s", name)
+		}
+		if err := value.Validate(); err != nil {
+			return fmt.Errorf("invalid external FFI constant %s: %w", name, err)
 		}
 		if got := ConstSchemaHash(value); req.Hash != "" && got != req.Hash {
 			return fmt.Errorf("external FFI constant %s schema mismatch", name)
@@ -938,7 +942,10 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 	stagedRoutes := cloneFFIRouteMap(e.routes)
 	stagedMetadata := cloneRuntimeMetadataRegistry(e.metadata)
 	stagedPackageValues := cloneBoundPackageValueMap(e.packageValues)
-	stagedConsts := cloneStringMap(e.consts)
+	stagedConsts := cloneFFIConstValueMap(e.consts)
+	if stagedConsts == nil {
+		stagedConsts = make(map[string]FFIConstValue)
+	}
 	stagedPackages := cloneBoundFFIPackageMap(e.ffiPackages)
 
 	for name, route := range surface.Routes {
@@ -1002,6 +1009,17 @@ func (e *Executor) ApplyBoundFFISurface(surface *BoundFFISurface) error {
 		stagedPackageValues[name] = cloneBoundPackageValue(value)
 	}
 	for name, value := range surface.Consts {
+		if err := value.Validate(); err != nil {
+			return fmt.Errorf("invalid external FFI constant %s: %w", name, err)
+		}
+		if existing, ok := stagedConsts[name]; ok && existing.Hash() != value.Hash() {
+			return &SchemaConflictError{
+				Kind:     "constant",
+				Name:     name,
+				Existing: existing.Hash(),
+				New:      value.Hash(),
+			}
+		}
 		stagedConsts[name] = value
 	}
 	for path, pkg := range surface.Packages {

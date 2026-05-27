@@ -2,55 +2,67 @@ package runtime
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
-func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) *Var {
+func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) (*Var, error) {
 	if val == nil {
-		return nil
+		return nil, nil
 	}
 
-	// 1. 规范化处理 (处理数组、指针穿透、FFI struct 等)
 	norm, err := e.normalizeValue(val)
 	if err != nil {
-		// 规范化失败时，为了安全起见返回 Any 包装的原始值或 Nil
-		return &Var{VType: TypeAny, Ref: val}
+		return nil, err
 	}
-	val = norm
+	if norm == nil {
+		return nil, nil
+	}
 
-	// 2. 核心转换逻辑
-	var res *Var
+	res, err := e.hostValueToVar(session, norm, bridge)
+	if err != nil {
+		return nil, err
+	}
+	if res != nil && session != nil && session.Stack != nil {
+		res.stack = weak.Make(session.Stack)
+	}
+	return res, nil
+}
+
+func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) (*Var, error) {
 	switch v := val.(type) {
 	case *Var:
-		res = v
+		return v, nil
 	case int:
-		res = NewInt(int64(v))
+		return NewInt(int64(v)), nil
 	case int64:
-		res = NewInt(v)
+		return NewInt(v), nil
 	case float64:
-		res = NewFloat(v)
+		return NewFloat(v), nil
 	case string:
-		res = NewString(v)
+		return NewString(v), nil
 	case []byte:
 		if v == nil {
-			return nil
+			return nil, nil
 		}
 		buf := make([]byte, len(v))
 		copy(buf, v)
-		res = NewBytes(buf)
+		return NewBytes(buf), nil
 	case bool:
-		res = NewBool(v)
+		return NewBool(v), nil
 	case uint32:
 		var h *VMHandle
 		if v != 0 {
 			h = NewVMHandle(v, bridge)
 		}
-		res = &Var{VType: TypeHostRef, Handle: v, Bridge: bridge, Ref: h}
+		res := &Var{VType: TypeHostRef, Handle: v, Bridge: bridge, Ref: h}
 		res.SetRawType(HostRefType(SpecAny).String())
+		return res, nil
 	case ffigo.InterfaceData:
 		methods := make([]RuntimeInterfaceMethod, 0, len(v.Methods))
 		for k, sig := range v.Methods {
@@ -71,60 +83,123 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 		target := &Var{VType: TypeHostRef, Handle: v.Handle, Bridge: bridge}
 		target.SetRawType(HostRefType(SpecAny).String())
 		if v.Handle != 0 {
-			h := NewVMHandle(v.Handle, bridge)
-			target.Ref = h
+			target.Ref = NewVMHandle(v.Handle, bridge)
 		}
-		res = &Var{
+		return &Var{
 			VType: TypeInterface,
 			Ref: &VMInterface{
 				Target: target,
 				Spec:   ifaceSpec,
 			},
 			Bridge: bridge,
-		}
+		}, nil
 	case ffigo.ErrorData:
-		res = newHostErrorVar(v, bridge)
+		return newHostErrorVar(v, bridge), nil
 	case map[string]interface{}:
-		resMap := make(map[string]*Var)
+		vmMap := &VMMap{Data: make(map[string]*Var), KeyVars: make(map[string]*Var)}
 		for k, raw := range v {
-			resMap[k] = e.ToVar(session, raw, bridge)
+			inner, err := e.ToVar(session, raw, bridge)
+			if err != nil {
+				return nil, fmt.Errorf("map value %q: %w", k, err)
+			}
+			vmMap.StoreWithKey(k, NewString(k), e.wrapAnyVar(session, inner))
 		}
-		res = &Var{VType: TypeMap, Ref: &VMMap{Data: resMap}}
+		res := &Var{VType: TypeMap, Ref: vmMap}
+		res.SetRawType(MapType(SpecString, SpecAny).String())
+		return res, nil
 	case []interface{}:
 		resArr := make([]*Var, len(v))
 		for i, raw := range v {
-			resArr[i] = e.ToVar(session, raw, bridge)
-		}
-		res = &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
-	case *ffigo.VMStruct:
-		fields := make([]*Slot, len(v.Fields))
-		byName := make(map[string]int, len(v.Fields))
-		specFields := make([]RuntimeStructField, len(v.Fields))
-		for i, field := range v.Fields {
-			val := e.ToVar(session, field.Value, bridge)
-			fieldType := MustParseRuntimeType("Any")
-			if val != nil && !val.RuntimeType().IsEmpty() {
-				fieldType = val.RuntimeType()
+			inner, err := e.ToVar(session, raw, bridge)
+			if err != nil {
+				return nil, fmt.Errorf("array item %d: %w", i, err)
 			}
-			fields[i] = NewSlot(fieldType, val)
-			byName[field.Name] = i
-			specFields[i] = RuntimeStructField{Name: field.Name, TypeInfo: fieldType}
+			resArr[i] = e.wrapAnyVar(session, inner)
 		}
-		spec := &RuntimeStructSpec{Spec: "struct", TypeInfo: MustParseRuntimeType("Any"), Fields: specFields}
-		res = &Var{VType: TypeStruct, Ref: &VMStruct{Spec: spec, Fields: fields, ByName: byName}}
+		res := &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
+		res.SetRawType(ArrayType(SpecAny).String())
+		return res, nil
+	case *ffigo.VMStruct:
+		if e.metadata != nil && v.TypeName != "" {
+			if schema, ok := e.resolveStructSchema(TypeSpec(v.TypeName)); ok && schema != nil {
+				if schema.Ownership != StructOwnershipVMValue {
+					return nil, fmt.Errorf("FFI struct %s is not VMValue", v.TypeName)
+				}
+				return e.decodeKnownVMStruct(session, v, bridge, schema)
+			}
+		}
+		return e.decodeAnonymousVMStruct(session, v, bridge)
 	default:
-		res = &Var{VType: TypeAny, Ref: v}
+		return nil, fmt.Errorf("unsupported host value %T", v)
 	}
+}
 
-	if res != nil && session != nil && session.Stack != nil {
-		res.stack = weak.Make(session.Stack)
+func (e *Executor) decodeKnownVMStruct(session *StackContext, raw *ffigo.VMStruct, bridge ffigo.FFIBridge, schema *RuntimeStructSpec) (*Var, error) {
+	fields := make([]*Slot, len(schema.Fields))
+	byName := make(map[string]int, len(schema.Fields))
+	for i, field := range schema.Fields {
+		var fieldVal *Var
+		for _, rawField := range raw.Fields {
+			if rawField.Name != field.Name {
+				continue
+			}
+			decoded, err := e.ToVar(session, rawField.Value, bridge)
+			if err != nil {
+				return nil, fmt.Errorf("struct %s field %s: %w", schema.TypeID, field.Name, err)
+			}
+			fieldVal = decoded
+			break
+		}
+		if fieldVal != nil {
+			prepared, err := e.prepareValueForType(session, fieldVal, field.TypeInfo)
+			if err != nil {
+				return nil, fmt.Errorf("struct %s field %s: %w", schema.TypeID, field.Name, err)
+			}
+			fieldVal = prepared
+		}
+		fields[i] = NewSlot(field.TypeInfo, fieldVal)
+		byName[field.Name] = i
 	}
-	return res
+	res := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: schema, Fields: fields, ByName: byName}}
+	res.SetRuntimeType(schema.TypeInfo)
+	return res, nil
+}
+
+func (e *Executor) decodeAnonymousVMStruct(session *StackContext, raw *ffigo.VMStruct, bridge ffigo.FFIBridge) (*Var, error) {
+	fields := make([]*Slot, len(raw.Fields))
+	byName := make(map[string]int, len(raw.Fields))
+	specFields := make([]RuntimeStructField, len(raw.Fields))
+	for i, field := range raw.Fields {
+		val, err := e.ToVar(session, field.Value, bridge)
+		if err != nil {
+			return nil, fmt.Errorf("struct field %s: %w", field.Name, err)
+		}
+		fieldType := MustParseRuntimeType("Any")
+		if val != nil && !val.RuntimeType().IsEmpty() {
+			fieldType = val.RuntimeType()
+		}
+		fields[i] = NewSlot(fieldType, val)
+		byName[field.Name] = i
+		specFields[i] = RuntimeStructField{Name: field.Name, TypeInfo: fieldType}
+	}
+	members := make([]typespec.Member, 0, len(specFields))
+	for _, field := range specFields {
+		members = append(members, typespec.Member{Name: field.Name, Type: field.TypeInfo.Raw})
+	}
+	specType := typespec.Struct(members)
+	spec := &RuntimeStructSpec{Spec: specType, TypeInfo: MustParseRuntimeType(specType), Fields: specFields}
+	res := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: spec, Fields: fields, ByName: byName}}
+	res.SetRuntimeType(spec.TypeInfo)
+	return res, nil
 }
 
 func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 	if inner == nil {
-		return nil
+		res := NewVarWithRuntimeType(MustParseRuntimeType(SpecAny), TypeAny)
+		if session != nil && session.Stack != nil {
+			res.stack = weak.Make(session.Stack)
+		}
+		return res
 	}
 	if inner.VType == TypeAny {
 		return inner
@@ -142,18 +217,20 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 	return res
 }
 
-// normalizeValue 将复杂的宿主对象（如 struct）规范化为 VM 可直接处理的类型（map/slice/primitives）。
+func normalizeHostUint(raw uint64, typ interface{}) (int64, error) {
+	if raw > math.MaxInt64 {
+		return 0, fmt.Errorf("host value %T overflows Int64: %d", typ, raw)
+	}
+	return int64(raw), nil
+}
+
 func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	if val == nil {
 		return nil, nil
 	}
-
-	// 检查是否已经是引擎原生变量，若是则直接穿透
 	if _, ok := val.(*Var); ok {
 		return val, nil
 	}
-
-	// 穿透支持 FFI 基础数据结构
 	if _, ok := val.(ffigo.InterfaceData); ok {
 		return val, nil
 	}
@@ -163,8 +240,8 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	if _, ok := val.(*ffigo.VMStruct); ok {
 		return val, nil
 	}
+
 	v := reflect.ValueOf(val)
-	// 处理指针：自动追踪到基元值
 	for v.Kind() == reflect.Ptr {
 		if v.IsNil() {
 			return nil, nil
@@ -176,8 +253,7 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int(), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		// 注意：uint64 可能会在转 int64 时溢出，但符合 go-mini 降维映射原则
-		return int64(v.Uint()), nil
+		return normalizeHostUint(v.Uint(), val)
 	case reflect.Float32, reflect.Float64:
 		return v.Float(), nil
 	case reflect.String:
@@ -185,12 +261,10 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 	case reflect.Bool:
 		return v.Bool(), nil
 	case reflect.Slice, reflect.Array:
-		// 特殊处理 []byte 和 [N]byte
 		if v.Type().Elem().Kind() == reflect.Uint8 {
 			if v.Kind() == reflect.Slice {
 				return v.Bytes(), nil
 			}
-			// 对于不可寻址的数组，执行手动拷贝
 			res := make([]byte, v.Len())
 			for i := 0; i < v.Len(); i++ {
 				res[i] = uint8(v.Index(i).Uint())
@@ -199,24 +273,24 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 		}
 		res := make([]interface{}, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			var err error
-			res[i], err = e.normalizeValue(v.Index(i).Interface())
+			item, err := e.normalizeValue(v.Index(i).Interface())
 			if err != nil {
 				return nil, err
 			}
+			res[i] = item
 		}
 		return res, nil
 	case reflect.Map:
-		res := make(map[string]interface{})
+		res := make(map[string]interface{}, v.Len())
 		for _, key := range v.MapKeys() {
 			if key.Kind() != reflect.String {
-				return nil, fmt.Errorf("不支持非字符串类型的 Map Key: %v", key.Kind())
+				return nil, fmt.Errorf("unsupported non-string map key kind %v", key.Kind())
 			}
-			var err error
-			res[key.String()], err = e.normalizeValue(v.MapIndex(key).Interface())
+			item, err := e.normalizeValue(v.MapIndex(key).Interface())
 			if err != nil {
 				return nil, err
 			}
+			res[key.String()] = item
 		}
 		return res, nil
 	case reflect.Struct:
@@ -224,24 +298,21 @@ func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
 		t := v.Type()
 		for i := 0; i < v.NumField(); i++ {
 			field := t.Field(i)
-			// 仅处理导出的字段
 			if field.PkgPath != "" {
 				continue
 			}
 			name := field.Name
-			// 优先使用 json 标签作为键名 (保持与原有逻辑一致)
 			if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
 				name = strings.Split(tag, ",")[0]
 			}
-			var err error
-			res[name], err = e.normalizeValue(v.Field(i).Interface())
+			item, err := e.normalizeValue(v.Field(i).Interface())
 			if err != nil {
 				return nil, err
 			}
+			res[name] = item
 		}
 		return res, nil
 	default:
-		// 其他类型作为 Any 穿透，由 ToVar 进一步处理
-		return val, nil
+		return nil, fmt.Errorf("unsupported host value %T", val)
 	}
 }

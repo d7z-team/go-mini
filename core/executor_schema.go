@@ -59,10 +59,10 @@ func (e *MiniExecutor) RegisterFunctionTemplate(tpl calltemplate.FunctionTemplat
 	return nil
 }
 
-func (e *MiniExecutor) GetExportedConstants() map[string]string {
+func (e *MiniExecutor) GetExportedConstants() map[string]runtime.FFIConstValue {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	res := make(map[string]string)
+	res := make(map[string]runtime.FFIConstValue)
 	for k, v := range e.constants {
 		res[k] = v
 	}
@@ -80,6 +80,7 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 		Values:                  make(map[ast.Ident]*runtime.ValueSpec, len(e.valueSchemas)),
 		Structs:                 make(map[ast.Ident]*runtime.RuntimeStructSpec, len(e.structsMeta)),
 		Interfaces:              make(map[ast.Ident]*runtime.RuntimeInterfaceSpec, len(e.interfacesMeta)),
+		Constants:               make(map[string]runtime.FFIConstValue, len(e.constants)),
 	}
 	for k, v := range e.funcSchemas {
 		res.Funcs[k] = runtime.CloneRuntimeFuncSig(v)
@@ -103,6 +104,9 @@ func (e *MiniExecutor) ExportedSchema() *ExportedSchemaSnapshot {
 	}
 	for k, v := range e.interfacesMeta {
 		res.Interfaces[k] = runtime.CloneRuntimeInterfaceSpec(v)
+	}
+	for k, v := range e.constants {
+		res.Constants[k] = v
 	}
 	return res
 }
@@ -220,9 +224,28 @@ func (e *MiniExecutor) validateBoundSurfaceLocked(bound *runtime.BoundFFISurface
 		}
 	}
 	for name, val := range bound.Consts {
-		_ = val
+		if err := val.Validate(); err != nil {
+			return fmt.Errorf("constant %s invalid: %w", name, err)
+		}
 		if err := e.checkGlobalTemplateConflictLocked(name, "constant"); err != nil {
 			return err
+		}
+		if existing, ok := e.constants[name]; ok && existing.Hash() != val.Hash() {
+			return &runtime.SchemaConflictError{
+				Kind:     "constant",
+				Name:     name,
+				Existing: existing.Hash(),
+				New:      val.Hash(),
+			}
+		}
+		typ, _ := runtime.ParseRuntimeType(val.Type)
+		if existing, ok := e.constTypes[name]; ok && existing.Raw != typ.Raw {
+			return &runtime.SchemaConflictError{
+				Kind:     "constant",
+				Name:     name,
+				Existing: existing.Raw.String(),
+				New:      typ.Raw.String(),
+			}
 		}
 	}
 	return nil
@@ -264,6 +287,9 @@ func (e *MiniExecutor) applyBoundSurfaceChangesLocked(bound *runtime.BoundFFISur
 	}
 	for name, val := range bound.Consts {
 		e.constants[name] = val
+		if typ, err := runtime.ParseRuntimeType(val.Type); err == nil && !typ.IsEmpty() {
+			e.constTypes[name] = typ
+		}
 	}
 }
 

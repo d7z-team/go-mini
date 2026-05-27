@@ -138,7 +138,10 @@ func TestFFIInterfaceReturn(t *testing.T) {
 	// 我们需要一个能构造 Var 的临时 session 或者直接用 nil。
 	// 幸运的是 ToVar 已经改进，我们可以利用临时 session。
 	tempSession := &runtime.StackContext{Executor: runtimeObj.Executor()}
-	v := runtimeObj.ToVar(tempSession, ifaceData, bridge)
+	v, err := runtimeObj.ToVar(tempSession, ifaceData, bridge)
+	if err != nil {
+		t.Fatalf("ToVar failed: %v", err)
+	}
 
 	env := map[string]*runtime.Var{
 		"hostLogger": v,

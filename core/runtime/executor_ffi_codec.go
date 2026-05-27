@@ -3,7 +3,6 @@ package runtime
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"weak"
 
@@ -69,29 +68,46 @@ func (e *Executor) deserializeStructSchema(session *StackContext, reader *ffigo.
 	return v, nil
 }
 
-func (e *Executor) serializeKey(buf *ffigo.Buffer, key string, kType RuntimeType) error {
+func (e *Executor) serializeKey(buf *ffigo.Buffer, key *Var, kType RuntimeType) error {
+	key = e.unwrapFFIValue(key)
 	switch kType.Raw {
 	case "String":
-		buf.WriteString(key)
+		if key == nil {
+			buf.WriteString("")
+			return nil
+		}
+		if key.VType != TypeString {
+			return fmt.Errorf("FFI encode map key String: expected String, got %v", key.VType)
+		}
+		buf.WriteString(key.Str)
 	case "Int64", "Int", "int", "int64":
-		key = strings.TrimPrefix(key, "i:")
-		v, err := strconv.ParseInt(key, 10, 64)
+		if key == nil {
+			buf.WriteVarint(0)
+			return nil
+		}
+		v, err := key.ToInt()
 		if err != nil {
-			return fmt.Errorf("failed to parse map key '%s' as Int64: %w", key, err)
+			return fmt.Errorf("FFI encode map key Int64: %w", err)
 		}
 		buf.WriteVarint(v)
 	case "Bool", "bool":
-		key = strings.TrimPrefix(key, "b:")
-		v, err := strconv.ParseBool(key)
+		if key == nil {
+			buf.WriteBool(false)
+			return nil
+		}
+		v, err := key.ToBool()
 		if err != nil {
-			return fmt.Errorf("failed to parse map key '%s' as Bool: %w", key, err)
+			return fmt.Errorf("FFI encode map key Bool: %w", err)
 		}
 		buf.WriteBool(v)
 	case "Float64", "float64":
-		key = strings.TrimPrefix(key, "f:")
-		v, err := strconv.ParseFloat(key, 64)
+		if key == nil {
+			buf.WriteFloat64(0)
+			return nil
+		}
+		v, err := key.ToFloat()
 		if err != nil {
-			return fmt.Errorf("failed to parse map key '%s' as Float64: %w", key, err)
+			return fmt.Errorf("FFI encode map key Float64: %w", err)
 		}
 		buf.WriteFloat64(v)
 	default:
@@ -245,7 +261,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			buf.WriteUvarint(0)
 			return nil
 		}
-		arr := v.Ref.(*VMArray)
+		arr := arrayRef(v)
 		items := arr.Snapshot()
 		buf.WriteUvarint(uint64(len(items)))
 		for _, item := range items {
@@ -259,14 +275,18 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			buf.WriteUvarint(0)
 			return nil
 		}
-		vmMap := v.Ref.(*VMMap)
-		snapshot := vmMap.Snapshot()
-		buf.WriteUvarint(uint64(len(snapshot)))
-		for k, val := range snapshot {
-			if err := e.serializeKey(buf, k, *typ.Key); err != nil {
+		vmMap := mapRef(v)
+		entries := vmMap.Entries()
+		buf.WriteUvarint(uint64(len(entries)))
+		for _, entry := range entries {
+			keyVar := entry.Key
+			if keyVar == nil && typ.Key != nil && typ.Key.IsString() {
+				keyVar = NewString(entry.Encoded)
+			}
+			if err := e.serializeKey(buf, keyVar, *typ.Key); err != nil {
 				return err
 			}
-			if err := e.serializeParsedType(buf, val, *typ.Value); err != nil {
+			if err := e.serializeParsedType(buf, entry.Value, *typ.Value); err != nil {
 				return err
 			}
 		}
@@ -285,7 +305,7 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			}
 			return nil
 		}
-		arr := v.Ref.(*VMArray)
+		arr := arrayRef(v)
 		items := arr.Snapshot()
 		for i, t := range typ.Params {
 			var arg *Var
@@ -353,7 +373,7 @@ func (e *Executor) serializeInterfaceValue(buf *ffigo.Buffer, v *Var, interfaceT
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
-	if err := e.validateAnyValue(v); err != nil {
+	if err := e.validateFFIAnyValue(v); err != nil {
 		return err
 	}
 	v = e.unwrapFFIValue(v)
@@ -393,7 +413,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 	case TypeChannel:
 		return errors.New("FFI Any cannot carry channel")
 	case TypeArray:
-		arr := v.Ref.(*VMArray)
+		arr := arrayRef(v)
 		items := arr.Snapshot()
 		_ = buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUvarint(uint64(len(items)))
@@ -403,19 +423,36 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 			}
 		}
 	case TypeMap:
-		vmMap := v.Ref.(*VMMap)
+		vmMap := mapRef(v)
 		_ = buf.WriteByte(ffigo.TypeTagMap)
-		snapshot := vmMap.Snapshot()
-		buf.WriteUvarint(uint64(len(snapshot)))
-		for k, val := range snapshot {
-			buf.WriteString(k)
-			if err := e.serializeVarToAny(buf, val); err != nil {
+		entries := vmMap.Entries()
+		buf.WriteUvarint(uint64(len(entries)))
+		for _, entry := range entries {
+			key := entry.Key
+			if key == nil {
+				key = NewString(entry.Encoded)
+			}
+			rawKey, err := e.ffiMapStringKey(key)
+			if err != nil {
+				return err
+			}
+			buf.WriteString(rawKey)
+			if err := e.serializeVarToAny(buf, entry.Value); err != nil {
 				return err
 			}
 		}
 	case TypeStruct:
 		st := v.Ref.(*VMStruct)
 		_ = buf.WriteByte(ffigo.TypeTagStruct)
+		typeName := ""
+		if st.Spec != nil {
+			if st.Spec.TypeID != "" {
+				typeName = st.Spec.TypeID
+			} else if !st.Spec.TypeInfo.IsEmpty() {
+				typeName = st.Spec.TypeInfo.Raw.String()
+			}
+		}
+		buf.WriteString(typeName)
 		if st.Spec == nil {
 			buf.WriteUvarint(0)
 			return nil
@@ -432,29 +469,7 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 			}
 		}
 	case TypeInterface:
-		if v.Ref == nil {
-			_ = buf.WriteByte(ffigo.TypeTagInterface)
-			buf.WriteRawInterface(0, nil)
-			return nil
-		}
-		if iface, ok := v.Ref.(*VMInterface); ok {
-			if iface.Target != nil && iface.Target.Handle != 0 {
-				return errors.New("FFI Any cannot carry host interface reference")
-			}
-			_ = buf.WriteByte(ffigo.TypeTagInterface)
-			handle := uint32(0)
-			if iface.Target != nil {
-				handle = iface.Target.Handle
-			}
-			var methods map[string]string
-			if iface.Spec != nil {
-				methods = iface.Spec.MethodStringMap()
-			}
-			buf.WriteRawInterface(handle, methods)
-		} else {
-			_ = buf.WriteByte(ffigo.TypeTagInterface)
-			buf.WriteRawInterface(0, nil)
-		}
+		return errors.New("FFI Any cannot carry interface")
 	case TypeClosure:
 		return errors.New("FFI Any cannot carry closure")
 	default:
@@ -463,18 +478,18 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 	return nil
 }
 
-func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (string, error) {
+func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (*Var, error) {
 	switch kType.Raw {
 	case "String":
-		return reader.ReadString(), nil
+		return NewString(reader.ReadString()), nil
 	case "Int64", "Int", "int", "int64":
-		return "i:" + strconv.FormatInt(reader.ReadVarint(), 10), nil
+		return NewInt(reader.ReadVarint()), nil
 	case "Bool", "bool":
-		return "b:" + strconv.FormatBool(reader.ReadBool()), nil
+		return NewBool(reader.ReadBool()), nil
 	case "Float64", "float64":
-		return "f:" + strconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64), nil
+		return NewFloat(reader.ReadFloat64()), nil
 	default:
-		return "", fmt.Errorf("unsupported map key type: %s", kType.Raw)
+		return nil, fmt.Errorf("unsupported map key type: %s", kType.Raw)
 	}
 }
 
@@ -495,7 +510,12 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	case RuntimeTypeAny:
 		raw := reader.ReadAny()
 		if err = rejectHostIdentityInAny(raw); err == nil {
-			res = e.wrapAnyVar(session, e.ToVar(session, raw, bridge))
+			decoded, convErr := e.ToVar(session, raw, bridge)
+			if convErr != nil {
+				err = convErr
+				break
+			}
+			res = e.wrapAnyVar(session, decoded)
 		}
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
@@ -510,7 +530,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		case "Bool":
 			res = NewBool(reader.ReadBool())
 		case "Error", "error":
-			res = e.ToVar(session, reader.ReadRawError(), bridge)
+			res, err = e.ToVar(session, reader.ReadRawError(), bridge)
 		case "TypeBytes":
 			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
 		default:
@@ -528,7 +548,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			}
 			if typ.Kind == RuntimeTypeNamed {
 				if _, ok := e.resolveInterfaceSpec(typ.Raw); ok {
-					res = e.ToVar(session, reader.ReadRawInterface(), bridge)
+					res, err = e.ToVar(session, reader.ReadRawInterface(), bridge)
 					break
 				}
 			}
@@ -556,9 +576,9 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: arrData}}
 	case RuntimeTypeMap:
 		count := int(reader.ReadUvarint())
-		mapData := make(map[string]*Var, count)
+		vmMap := &VMMap{Data: make(map[string]*Var, count), KeyVars: make(map[string]*Var, count)}
 		for i := 0; i < count; i++ {
-			k, err := e.deserializeKey(reader, *typ.Key)
+			keyVar, err := e.deserializeKey(reader, *typ.Key)
 			if err != nil {
 				return nil, err
 			}
@@ -566,9 +586,13 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			if err != nil {
 				return nil, err
 			}
-			mapData[k] = val
+			encodedKey, storedKey, err := e.comparableMapKey(keyVar, *typ.Key)
+			if err != nil {
+				return nil, err
+			}
+			vmMap.StoreWithKey(encodedKey, storedKey, val)
 		}
-		res = &Var{VType: TypeMap, Ref: &VMMap{Data: mapData}}
+		res = &Var{VType: TypeMap, Ref: vmMap}
 	case RuntimeTypeChannel:
 		id := reader.ReadUvarint()
 		if id == 0 {
@@ -607,13 +631,18 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
 	case RuntimeTypeInterface:
-		res = e.ToVar(session, reader.ReadRawInterface(), bridge)
+		res, err = e.ToVar(session, reader.ReadRawInterface(), bridge)
 	case RuntimeTypeStruct:
 		res, err = e.deserializeStructSchema(session, reader, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields}, bridge)
 	case RuntimeTypeFunction:
 		raw := reader.ReadAny()
 		if err = rejectHostIdentityInAny(raw); err == nil {
-			res = e.wrapAnyVar(session, e.ToVar(session, raw, bridge))
+			decoded, convErr := e.ToVar(session, raw, bridge)
+			if convErr != nil {
+				err = convErr
+				break
+			}
+			res = e.wrapAnyVar(session, decoded)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported FFI return type: %s", typ.Raw)
@@ -638,10 +667,7 @@ func rejectHostIdentityInAny(v interface{}) error {
 	case uint32:
 		return errors.New("FFI Any cannot carry host reference handle")
 	case ffigo.InterfaceData:
-		if val.Handle != 0 {
-			return errors.New("FFI Any cannot carry host interface handle")
-		}
-		return nil
+		return errors.New("FFI Any cannot carry interface")
 	case ffigo.ErrorData:
 		if val.Handle != 0 {
 			return errors.New("FFI Any cannot carry host error handle")

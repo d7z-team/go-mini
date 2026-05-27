@@ -152,7 +152,7 @@ var fmtRoutes = []runtime.FFIRouteDecl{
 func SurfaceFmt(impl Fmt) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddRouteDecls(fmtRoutes)
-	schema.AddConst("fmt", "FMTKey", ffigo.ToConstantString("gomini.fmt.Outputter"))
+	schema.AddConst("fmt", "FMTKey", runtime.MustConstantValue("gomini.fmt.Outputter"))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return fmtHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

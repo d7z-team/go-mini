@@ -21,7 +21,7 @@ type ExecutableProgram struct {
 type StackContext = runtime.StackContext
 
 // ToVar 将 Go 侧数据转换为脚本侧 Var。主要用于宿主注入。
-func (p *ExecutableProgram) ToVar(ctx *runtime.StackContext, val interface{}, bridge ffigo.FFIBridge) *runtime.Var {
+func (p *ExecutableProgram) ToVar(ctx *runtime.StackContext, val interface{}, bridge ffigo.FFIBridge) (*runtime.Var, error) {
 	return p.executor.ToVar(ctx, val, bridge)
 }
 

@@ -179,13 +179,40 @@ func EqualityComparable(left, right Type) bool {
 	if left.IsNumeric() && right.IsNumeric() {
 		return true
 	}
-	if left == right {
-		return left == Bool || left == String || left == Error ||
-			left.IsPtr() || left.IsHostRef() || left.IsChan() ||
-			left.IsArray() || left.IsMap() || left.IsModule() ||
-			left.IsClosure() || left.IsFunction() || left.IsInterface()
+	if left != right {
+		return false
 	}
-	return false
+	if left == Bool || left == String || left == Error {
+		return true
+	}
+	if left.IsPtr() || left.IsHostRef() || left.IsChan() || left.IsInterface() {
+		return true
+	}
+	if left.IsArray() {
+		return true
+	}
+	if left.IsMap() {
+		return true
+	}
+	if left.IsModule() || left.IsClosure() {
+		return true
+	}
+	if left.IsStruct() {
+		fields, ok := left.StructFields()
+		if !ok {
+			return false
+		}
+		for _, field := range fields {
+			if !EqualityComparable(field.Type, field.Type) {
+				return false
+			}
+		}
+		return true
+	}
+	if left.IsFunction() {
+		return false
+	}
+	return left.IsPrimitive()
 }
 
 func OrderedComparable(left, right Type) bool {

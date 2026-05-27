@@ -42,7 +42,7 @@ func TestAddressAssignmentEnforcesMapKeyAndValueTypes(t *testing.T) {
 	}
 
 	err := exec.assignAddress(session, &LHSIndex{Obj: m, Index: NewString("1")}, NewString("bad"))
-	if err == nil || !strings.Contains(err.Error(), "expected Int64") {
+	if err == nil || !strings.Contains(err.Error(), "cannot assign String to Int64") {
 		t.Fatalf("expected map key type rejection, got %v", err)
 	}
 

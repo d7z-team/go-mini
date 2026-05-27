@@ -181,6 +181,14 @@ func mergeProgram(dest, src *ast.ProgramStmt) error {
 		}
 		dest.Constants[k] = v
 	}
+	if len(src.ConstantTypes) > 0 {
+		if dest.ConstantTypes == nil {
+			dest.ConstantTypes = make(map[string]ast.GoMiniType, len(src.ConstantTypes))
+		}
+		for k, v := range src.ConstantTypes {
+			dest.ConstantTypes[k] = v
+		}
+	}
 	mergeStringPositionMap(&dest.ConstantLocs, src.ConstantLocs)
 	for k, v := range src.Types {
 		if _, exists := dest.Types[k]; exists {

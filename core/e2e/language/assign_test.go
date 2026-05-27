@@ -214,3 +214,24 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 		`, "undefined identifier in assignment: i")
 	})
 }
+
+func TestAssignToNilMapFailsAtRuntime(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+func main() {
+	var m map[string]int
+	m["x"] = 1
+}
+`)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	err = prog.Execute(context.Background())
+	if err == nil {
+		t.Fatal("expected assignment to nil map to fail")
+	}
+	if !strings.Contains(err.Error(), "assignment to nil map") {
+		t.Fatalf("unexpected runtime error: %v", err)
+	}
+}

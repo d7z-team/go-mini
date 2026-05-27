@@ -68,8 +68,9 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	}
 	prog.Entry = []Instruction{{Op: "CALL", Operand: "main", Comment: "call main"}}
 	prog.Executable = &runtime.PreparedProgram{
-		Package:   "demo",
-		Constants: map[string]string{"Version": "v1"},
+		Package:       "demo",
+		Constants:     map[string]runtime.FFIConstValue{"Version": runtime.ConstString("v1")},
+		ConstantTypes: map[string]runtime.RuntimeType{"Version": runtime.MustParseRuntimeType("String")},
 		NamedTypes: map[string]runtime.RuntimeType{
 			"Alias": runtime.MustParseRuntimeType("String"),
 		},
@@ -200,7 +201,7 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 func TestBytecodeJSONRejectsNonCanonicalExecutableType(t *testing.T) {
 	payload := []byte(`{
 		"format":"go-mini-bytecode",
-		"version":5,
+		"version":7,
 		"opcode_set":"runtime.opcode.v4",
 		"executable":{
 			"global_init_order":[],

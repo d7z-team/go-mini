@@ -251,36 +251,32 @@ func literalDirect(n *ast.LiteralExpr) (*runtime.Var, error) {
 	return nil, fmt.Errorf("unknown literal %s", n.Type)
 }
 
-func typedLiteralToVar(val string, typ runtime.RuntimeType) *runtime.Var {
+func parseTypedConstLiteral(val string, typ runtime.RuntimeType) (runtime.FFIConstValue, error) {
 	switch {
 	case typ.IsString():
-		return runtime.NewString(val)
+		return runtime.ConstString(val), nil
 	case typ.IsInt():
-		if v, err := strconv.ParseInt(val, 0, 64); err == nil {
-			return runtime.NewInt(v)
+		v, err := strconv.ParseInt(val, 0, 64)
+		if err != nil {
+			return runtime.FFIConstValue{}, err
 		}
-		return runtime.NewInt(0)
+		return runtime.ConstInt64(v), nil
 	case typ.Raw == runtime.SpecFloat64:
-		if v, err := strconv.ParseFloat(val, 64); err == nil {
-			return runtime.NewFloat(v)
+		v, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return runtime.FFIConstValue{}, err
 		}
-		return runtime.NewFloat(0)
+		return runtime.ConstFloat64(v), nil
 	case typ.IsBool():
-		return runtime.NewBool(val == "true")
+		if val == "true" {
+			return runtime.ConstBool(true), nil
+		}
+		if val == "false" {
+			return runtime.ConstBool(false), nil
+		}
+		return runtime.FFIConstValue{}, fmt.Errorf("invalid bool literal %q", val)
 	}
-	if v, err := strconv.ParseInt(val, 0, 64); err == nil {
-		return runtime.NewInt(v)
-	}
-	if v, err := strconv.ParseFloat(val, 64); err == nil {
-		return runtime.NewFloat(v)
-	}
-	if val == "true" {
-		return runtime.NewBool(true)
-	}
-	if val == "false" {
-		return runtime.NewBool(false)
-	}
-	return runtime.NewString(val)
+	return runtime.FFIConstValue{}, fmt.Errorf("unsupported constant type %s", typ.Raw)
 }
 
 func (b *builder) tasksForStmt(stmt ast.Stmt, data interface{}) []runtime.Task {
@@ -970,7 +966,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
 		if val, ok := b.consts[string(n.Name)]; ok {
-			return []runtime.Task{{Op: runtime.OpPush, Data: typedLiteralToVar(val, b.constTypes[string(n.Name)])}}, true
+			return []runtime.Task{{Op: runtime.OpPush, Data: val.ToVar()}}, true
 		}
 		return nil, false
 	case *ast.UnaryExpr:

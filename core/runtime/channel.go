@@ -468,9 +468,9 @@ func zeroVarForRuntimeType(typ RuntimeType) *Var {
 		v.SetRuntimeType(typ)
 		return v
 	case typ.IsArray():
-		return &Var{TypeInfo: typ, VType: TypeArray, Ref: &VMArray{Data: nil}}
+		return &Var{TypeInfo: typ, VType: TypeArray}
 	case typ.IsMap():
-		return &Var{TypeInfo: typ, VType: TypeMap, Ref: &VMMap{Data: nil}}
+		return &Var{TypeInfo: typ, VType: TypeMap}
 	case typ.IsChan():
 		return &Var{TypeInfo: typ, VType: TypeChannel}
 	case typ.IsHostRef():

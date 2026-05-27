@@ -3,7 +3,7 @@ package runtime
 type PreparedProgram struct {
 	Package              string                           `json:"package,omitempty"`
 	ImportAliases        map[string]string                `json:"import_aliases,omitempty"`
-	Constants            map[string]string                `json:"constants,omitempty"`
+	Constants            map[string]FFIConstValue         `json:"constants,omitempty"`
 	ConstantTypes        map[string]RuntimeType           `json:"constant_types,omitempty"`
 	NamedTypes           map[string]RuntimeType           `json:"named_types,omitempty"`
 	StructSchemas        map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
@@ -63,7 +63,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 	cloned := &PreparedProgram{
 		Package:              plan.Package,
 		ImportAliases:        cloneStringMap(plan.ImportAliases),
-		Constants:            cloneStringMap(plan.Constants),
+		Constants:            cloneFFIConstValueMap(plan.Constants),
 		ConstantTypes:        cloneRuntimeTypeMap(plan.ConstantTypes),
 		NamedTypes:           cloneRuntimeTypeMap(plan.NamedTypes),
 		StructSchemas:        cloneRuntimeStructSpecMap(plan.StructSchemas),

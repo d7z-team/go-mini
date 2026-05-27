@@ -110,3 +110,32 @@ func TestControlFlow(t *testing.T) {
 		}
 	})
 }
+
+func TestSwitchMatchesAnyWrappedValue(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+package main
+func main() {
+	var v any = 2
+	matched := false
+	switch v {
+	case 1:
+		panic("wrong case")
+	case 2:
+		matched = true
+	default:
+		panic("default case")
+	}
+	if !matched {
+		panic("any switch failed")
+	}
+}
+`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if err := prog.Execute(t.Context()); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+}

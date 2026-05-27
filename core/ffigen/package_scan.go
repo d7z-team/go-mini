@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+type constBinding struct {
+	Expr string
+}
+
 func (g *Generator) parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
 	if g.fset == nil {
 		g.fset = token.NewFileSet()
@@ -96,7 +100,7 @@ type packageData struct {
 	structs       map[string]*ast.StructType
 	interfaces    map[string]*ast.InterfaceType
 	interfaceFFI  map[string]bool
-	constants     map[string]string
+	constants     map[string]constBinding
 	globals       []globalValue
 	ownedStructs  map[string]bool
 }
@@ -127,7 +131,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 	g.moduleCache = make(map[string]string)
 	structs := make(map[string]*ast.StructType)
 	interfaces := make(map[string]*ast.InterfaceType)
-	globalConsts := make(map[string]string)
+	globalConsts := make(map[string]constBinding)
 	var globals []globalValue
 
 	for _, node := range allFiles {
@@ -165,8 +169,9 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 							if !name.IsExported() || i >= len(valSpec.Values) {
 								continue
 							}
-							if val := exprToString(valSpec.Values[i]); val != "" {
-								globalConsts[name.Name] = val
+							expr := valSpec.Values[i]
+							if val := exprToString(expr); val != "" {
+								globalConsts[name.Name] = constBinding{Expr: val}
 							}
 						}
 					}

@@ -5,46 +5,23 @@ import (
 	"fmt"
 )
 
+type anyValidationMode uint8
+
+const (
+	anyValidationVM anyValidationMode = iota
+	anyValidationFFI
+)
+
 func (e *Executor) unwrapValue(v *Var) *Var {
 	for v != nil {
-		switch v.VType {
-		case TypeAny:
-			if inner, ok := v.Ref.(*Var); ok {
-				v = inner
-			} else if m, ok := v.Ref.(*VMMap); ok {
-				out := &Var{VType: TypeMap, Ref: m}
-				out.SetRuntimeType(v.RuntimeType())
-				return out
-			} else if st, ok := v.Ref.(*VMStruct); ok {
-				out := &Var{VType: TypeStruct, Ref: st}
-				out.SetRuntimeType(v.RuntimeType())
-				return out
-			} else if arr, ok := v.Ref.(*VMArray); ok {
-				out := &Var{VType: TypeArray, Ref: arr}
-				out.SetRuntimeType(v.RuntimeType())
-				return out
-			} else if mod, ok := v.Ref.(*VMModule); ok {
-				out := &Var{VType: TypeModule, Ref: mod}
-				if typ := v.RuntimeType(); !typ.IsEmpty() {
-					out.SetRuntimeType(typ)
-				} else {
-					out.SetRuntimeType(MustParseRuntimeType(SpecModule))
-				}
-				return out
-			} else if inter, ok := v.Ref.(*VMInterface); ok {
-				out := &Var{VType: TypeInterface, Ref: inter}
-				out.SetRuntimeType(v.RuntimeType())
-				return out
-			} else if errObj, ok := v.Ref.(error); ok {
-				out := &Var{VType: TypeError, Ref: errObj}
-				out.SetRuntimeType(v.RuntimeType())
-				return out
-			} else {
-				return v
-			}
-		default:
+		if v.VType != TypeAny {
 			return v
 		}
+		inner, ok := v.Ref.(*Var)
+		if !ok || inner == nil {
+			return v
+		}
+		v = inner
 	}
 	return nil
 }
@@ -107,6 +84,14 @@ func (e *Executor) prepareValueForType(session *StackContext, v *Var, targetType
 }
 
 func (e *Executor) validateAnyValue(v *Var) error {
+	return e.validateAnyValueMode(v, anyValidationVM)
+}
+
+func (e *Executor) validateFFIAnyValue(v *Var) error {
+	return e.validateAnyValueMode(v, anyValidationFFI)
+}
+
+func (e *Executor) validateAnyValueMode(v *Var, mode anyValidationMode) error {
 	v = e.unwrapValue(v)
 	if v == nil {
 		return nil
@@ -125,7 +110,7 @@ func (e *Executor) validateAnyValue(v *Var) error {
 			return nil
 		}
 		for _, item := range arr.Snapshot() {
-			if err := e.validateAnyValue(item); err != nil {
+			if err := e.validateAnyValueMode(item, mode); err != nil {
 				return err
 			}
 		}
@@ -135,8 +120,19 @@ func (e *Executor) validateAnyValue(v *Var) error {
 		if !ok || m == nil {
 			return nil
 		}
-		for _, item := range m.Snapshot() {
-			if err := e.validateAnyValue(item); err != nil {
+		for _, entry := range m.Entries() {
+			key := entry.Key
+			if key == nil {
+				key = NewString(entry.Encoded)
+			}
+			if mode == anyValidationFFI {
+				if _, err := e.ffiMapStringKey(key); err != nil {
+					return err
+				}
+			} else if err := e.validateAnyValueMode(key, mode); err != nil {
+				return err
+			}
+			if err := e.validateAnyValueMode(entry.Value, mode); err != nil {
 				return err
 			}
 		}
@@ -146,9 +142,12 @@ func (e *Executor) validateAnyValue(v *Var) error {
 		if !ok || st == nil {
 			return nil
 		}
+		if mode == anyValidationFFI && st.Spec != nil && st.Spec.Ownership == StructOwnershipHostOpaque {
+			return errors.New("FFI Any cannot carry host opaque struct")
+		}
 		for _, field := range st.Fields {
 			if field != nil {
-				if err := e.validateAnyValue(field.Value); err != nil {
+				if err := e.validateAnyValueMode(field.Value, mode); err != nil {
 					return err
 				}
 			}
@@ -156,7 +155,7 @@ func (e *Executor) validateAnyValue(v *Var) error {
 		return nil
 	case TypeAny:
 		if inner, ok := v.Ref.(*Var); ok {
-			return e.validateAnyValue(inner)
+			return e.validateAnyValueMode(inner, mode)
 		}
 		if v.Ref == nil {
 			return nil
@@ -169,17 +168,42 @@ func (e *Executor) validateAnyValue(v *Var) error {
 	case TypeChannel:
 		return errors.New("Any cannot carry channel")
 	case TypeInterface:
-		if iface, ok := v.Ref.(*VMInterface); ok && iface != nil && iface.Target != nil && iface.Target.Handle != 0 {
-			return errors.New("Any cannot carry host interface handle")
+		if mode == anyValidationFFI {
+			return errors.New("FFI Any cannot carry interface")
+		}
+		if iface, ok := v.Ref.(*VMInterface); ok && iface != nil && iface.Target != nil {
+			if iface.Target.Handle != 0 {
+				return errors.New("Any cannot carry host interface handle")
+			}
+			return e.validateAnyValueMode(iface.Target, mode)
 		}
 		return nil
 	case TypeModule:
 		return errors.New("Any cannot carry module")
 	case TypeClosure:
+		if mode == anyValidationFFI {
+			return errors.New("FFI Any cannot carry closure")
+		}
 		return nil
 	default:
 		return fmt.Errorf("Any cannot carry %s", v.VType)
 	}
+}
+
+func arrayRef(v *Var) *VMArray {
+	if v == nil || v.VType != TypeArray {
+		return nil
+	}
+	arr, _ := v.Ref.(*VMArray)
+	return arr
+}
+
+func mapRef(v *Var) *VMMap {
+	if v == nil || v.VType != TypeMap {
+		return nil
+	}
+	m, _ := v.Ref.(*VMMap)
+	return m
 }
 
 func (e *Executor) unwrapAddressVar(v *Var) *Var {

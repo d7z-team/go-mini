@@ -7,7 +7,8 @@ import (
 
 func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 	exec, err := NewExecutorFromPrepared(&PreparedProgram{
-		Constants:       map[string]string{"Answer": "42"},
+		Constants:       map[string]FFIConstValue{"Answer": ConstInt64(42)},
+		ConstantTypes:   map[string]RuntimeType{"Answer": MustParseRuntimeType(SpecInt64)},
 		GlobalInitOrder: []string{"counter"},
 		Globals: map[string]*PreparedGlobal{
 			"counter": {
@@ -58,7 +59,7 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		t.Fatalf("unexpected function result: %#v", result)
 	}
 
-	if exec.consts["Answer"] != "42" {
+	if got := exec.consts["Answer"].DisplayString(); got != "42" {
 		t.Fatalf("prepared constants were not cached: %#v", exec.consts)
 	}
 }

@@ -45,8 +45,8 @@ var md5Routes = []runtime.FFIRouteDecl{
 func SurfaceMD5(impl MD5) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddRouteDecls(md5Routes)
-	schema.AddConst("crypto/md5", "BlockSize", ffigo.ToConstantString(md5.BlockSize))
-	schema.AddConst("crypto/md5", "Size", ffigo.ToConstantString(md5.Size))
+	schema.AddConst("crypto/md5", "BlockSize", runtime.MustConstantValue(md5.BlockSize))
+	schema.AddConst("crypto/md5", "Size", runtime.MustConstantValue(md5.Size))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return md5HostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

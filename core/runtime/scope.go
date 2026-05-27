@@ -799,6 +799,11 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 		return MustParseRuntimeType("TypeBytes")
 	case TypeBool:
 		return MustParseRuntimeType("Bool")
+	case TypeAny:
+		if inner, ok := v.Ref.(*Var); ok {
+			return runtimeTypeForAssignment(inner)
+		}
+		return declared
 	case TypeChannel:
 		if !declared.IsEmpty() {
 			return declared
@@ -857,9 +862,9 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 	case target.IsChan():
 		return NewVarWithRuntimeType(target, TypeChannel), nil
 	case target.IsArray():
-		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: nil}}, nil
+		return &Var{TypeInfo: target, VType: TypeArray}, nil
 	case target.IsMap():
-		return &Var{TypeInfo: target, VType: TypeMap, Ref: &VMMap{Data: nil}}, nil
+		return &Var{TypeInfo: target, VType: TypeMap}, nil
 	case target.Kind == RuntimeTypeTuple:
 		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: make([]*Var, len(target.Params))}}, nil
 	case target.Kind == RuntimeTypeFunction:
@@ -994,25 +999,40 @@ func (ctx *StackContext) GenerateStackTrace(current *Task) []StackFrame {
 }
 
 func isEmptyVar(v *Var) bool {
+	return isNilValue(v)
+}
+
+func isNilValue(v *Var) bool {
 	if v == nil {
 		return true
 	}
 	switch v.VType {
-	case TypeArray:
-		if arr, ok := v.Ref.(*VMArray); ok {
-			return arr == nil
+	case TypeAny:
+		if inner, ok := v.Ref.(*Var); ok {
+			return isNilValue(inner)
 		}
 		return v.Ref == nil
+	case TypeArray:
+		return v.Ref == nil
 	case TypeMap:
-		if m, ok := v.Ref.(*VMMap); ok {
-			return m == nil
-		}
 		return v.Ref == nil
 	case TypePointer:
 		return v.Ref == nil
 	case TypeHostRef:
 		return v.Handle == 0
-	case TypeAny:
+	case TypeChannel, TypeClosure:
+		return v.Ref == nil
+	case TypeInterface:
+		if v.Ref == nil {
+			return true
+		}
+		if iface, ok := v.Ref.(*VMInterface); ok {
+			return iface == nil || iface.Target == nil
+		}
+		return false
+	case TypeBytes:
+		return v.B == nil
+	case TypeError:
 		return v.Ref == nil
 	}
 	return false

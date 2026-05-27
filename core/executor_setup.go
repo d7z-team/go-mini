@@ -16,7 +16,8 @@ import (
 func NewMiniExecutor() *MiniExecutor {
 	res := &MiniExecutor{
 		routes:              make(map[string]runtime.FFIRoute),
-		constants:           make(map[string]string),
+		constants:           make(map[string]runtime.FFIConstValue),
+		constTypes:          make(map[string]runtime.RuntimeType),
 		registry:            ffigo.NewHandleRegistry(),
 		moduleSources:       make(map[string]*ast.ProgramStmt),
 		sourceLibraries:     make(map[string]surface.LibraryModule),

@@ -26,6 +26,38 @@ func TestAssignAnyRejectsSlotPointer(t *testing.T) {
 	}
 }
 
+func TestAnyValidationRejectsHostInterfaceHandle(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	iface := &Var{
+		VType: TypeInterface,
+		Ref: &VMInterface{
+			Target: &Var{VType: TypeString, TypeInfo: MustParseRuntimeType("String"), Str: "host", Handle: 7},
+		},
+	}
+	err := exec.validateAnyValue(iface)
+	if err == nil {
+		t.Fatal("expected Any validation to reject host interface identity")
+	}
+	if !strings.Contains(err.Error(), "host interface handle") {
+		t.Fatalf("unexpected Any validation error: %v", err)
+	}
+}
+
+func TestFFIAnyRejectsInterfaceWrapper(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	iface := &Var{
+		VType: TypeInterface,
+		Ref:   &VMInterface{Target: NewString("vm")},
+	}
+	err := exec.validateFFIAnyValue(iface)
+	if err == nil {
+		t.Fatal("expected FFI Any validation to reject interface")
+	}
+	if !strings.Contains(err.Error(), "FFI Any cannot carry interface") {
+		t.Fatalf("unexpected FFI Any validation error: %v", err)
+	}
+}
+
 func TestEvalMemberAndBuiltinLenUnwrapAnyContainers(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")

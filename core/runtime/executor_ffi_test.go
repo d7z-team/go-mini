@@ -63,10 +63,13 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 func TestToVarDecodesStructAnyValues(t *testing.T) {
 	exec := &Executor{}
 
-	structVal := exec.ToVar(nil, &ffigo.VMStruct{Fields: []ffigo.StructField{
+	structVal, err := exec.ToVar(nil, &ffigo.VMStruct{Fields: []ffigo.StructField{
 		{Name: "Msg", Value: "ok"},
 		{Name: "Count", Value: int64(2)},
 	}}, nil)
+	if err != nil {
+		t.Fatalf("ToVar failed: %v", err)
+	}
 	if structVal == nil || structVal.VType != TypeStruct {
 		t.Fatalf("expected VM struct, got %#v", structVal)
 	}
@@ -296,12 +299,24 @@ func TestCheckPublicFFIRouteSchemaRejectsPublicSchemaEscapes(t *testing.T) {
 	}
 }
 
+func TestCheckPublicFFISurfaceSchemaRequiresConstType(t *testing.T) {
+	schema := NewFFISurfaceSchema()
+	schema.AddConst("demo", "Value", FFIConstValue{})
+	err := CheckPublicFFISurfaceSchema(schema)
+	if err == nil {
+		t.Fatal("expected FFI constant without type to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid ffi const type") {
+		t.Fatalf("unexpected FFI constant validation error: %v", err)
+	}
+}
+
 func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPolluteRoutes(t *testing.T) {
 	exec := &Executor{
 		metadata:      newRuntimeMetadataRegistry(),
 		routes:        make(map[string]FFIRoute),
 		packageValues: make(map[string]*BoundPackageValue),
-		consts:        make(map[string]string),
+		consts:        make(map[string]FFIConstValue),
 		ffiPackages:   make(map[string]*BoundFFIPackage),
 	}
 	exec.metadata.registerStructSchema("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; }"))
@@ -331,7 +346,7 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPollutePackageMembers(t *test
 		metadata:      newRuntimeMetadataRegistry(),
 		routes:        make(map[string]FFIRoute),
 		packageValues: make(map[string]*BoundPackageValue),
-		consts:        make(map[string]string),
+		consts:        make(map[string]FFIConstValue),
 		ffiPackages:   make(map[string]*BoundFFIPackage),
 	}
 	exec.packageValues["demo.Value"] = &BoundPackageValue{

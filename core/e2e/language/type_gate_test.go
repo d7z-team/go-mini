@@ -109,3 +109,25 @@ func main() {
 		t.Fatalf("unexpected runtime error: %v", err)
 	}
 }
+
+func TestAnyWrappedScalarCanCompareWithNil(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+func main() {
+	var key any = "k"
+	if key == nil {
+		panic("any scalar should not be nil")
+	}
+	if !(key != nil) {
+		panic("any scalar nil inequality failed")
+	}
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}

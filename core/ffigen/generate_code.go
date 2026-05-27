@@ -37,7 +37,7 @@ func hostRouterName(typeName string) string {
 	return privateIdent(typeName) + "HostRouter"
 }
 
-func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]string, schemas *schemaRegistry, ownedStructs map[string]bool) string {
+func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]constBinding, schemas *schemaRegistry, ownedStructs map[string]bool) string {
 	name := spec.Name.Name
 	iface, err := g.flattenInterfaceType(name, spec.Type.(*ast.InterfaceType), interfaces)
 	if err != nil {
@@ -157,7 +157,8 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, ffigo.ToConstantString(%s))\n", fixedPrefix, key, constants[key])
+			c := constants[key]
+			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, runtime.MustConstantValue(%s))\n", fixedPrefix, key, c.Expr)
 		}
 	}
 	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)

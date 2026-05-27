@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-27
+更新时间: 2026-05-28
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -18,6 +18,7 @@
 - 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
 - Go 前端保留常量值类型，lowering 写入 `PreparedProgram.ConstantTypes`；常量比较、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
+- FFI 常量在 schema、bound surface、compiler 外部依赖与 bytecode requirement 中携带 canonical primitive 类型；缺失或不支持的常量类型会在装配或装载前失败。
 - 公开扩展入口统一为 `executor.UseSurface(...)`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
 - 公开 FFI schema 使用具体 `HostRef<T>`、typed interface schema、`Error` 和 channel endpoint 表达宿主身份、错误与 channel；`Any` 面向纯值数据。

@@ -49,7 +49,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			if idx.VType != TypeInt {
 				return nil, &VMError{Message: fmt.Sprintf("array index must be Int64, got %v", idx.VType), IsPanic: true}
 			}
-			arr := obj.Ref.(*VMArray)
+			arr := arrayRef(obj)
 			i := int(idx.I64)
 			if _, ok := arr.Load(i); !ok {
 				return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
@@ -73,13 +73,12 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 				},
 			}, nil
 		case TypeMap:
-			m := obj.Ref.(*VMMap)
+			m := mapRef(obj)
 			keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
 			if !ok {
-				keyType = MustParseRuntimeType(SpecAny)
-				valType = MustParseRuntimeType(SpecAny)
+				return nil, &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
 			}
-			key, err := e.varToTypedMapKey(idx, keyType)
+			key, keyVar, err := e.comparableMapKey(idx, keyType)
 			if err != nil {
 				return nil, err
 			}
@@ -89,11 +88,14 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
+					if m == nil {
+						return &VMError{Message: "assignment to nil map", IsPanic: true}
+					}
 					prepared, err := e.prepareValueForType(session, val, valType)
 					if err != nil {
 						return err
 					}
-					m.Store(key, prepared)
+					m.StoreWithKey(key, keyVar, prepared)
 					return nil
 				},
 			}, nil
@@ -106,13 +108,12 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		}
 		switch obj.VType {
 		case TypeMap:
-			m := obj.Ref.(*VMMap)
+			m := mapRef(obj)
 			keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
 			if !ok {
-				keyType = MustParseRuntimeType("String")
-				valType = MustParseRuntimeType(SpecAny)
+				return nil, &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
 			}
-			key, err := e.varToTypedMapKey(NewString(desc.Property), keyType)
+			key, keyVar, err := e.comparableMapKey(NewString(desc.Property), keyType)
 			if err != nil {
 				return nil, err
 			}
@@ -122,11 +123,14 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
+					if m == nil {
+						return &VMError{Message: "assignment to nil map", IsPanic: true}
+					}
 					prepared, err := e.prepareValueForType(session, val, valType)
 					if err != nil {
 						return err
 					}
-					m.Store(key, prepared)
+					m.StoreWithKey(key, keyVar, prepared)
 					return nil
 				},
 			}, nil
@@ -199,7 +203,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 				},
 			}, nil
 		case TypeArray:
-			arr := obj.Ref.(*VMArray)
+			arr := arrayRef(obj)
 			return &resolvedAddress{
 				load: func() (*Var, error) {
 					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Slice(low, high)}}
@@ -210,7 +214,7 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					if val == nil || val.VType != TypeArray {
 						return fmt.Errorf("slice copy-back expects Array, got %v", valueTypeOf(val))
 					}
-					items := val.Ref.(*VMArray).Snapshot()
+					items := arrayRef(val).Snapshot()
 					if !arr.ReplaceSlice(low, high, items) {
 						return fmt.Errorf("slice bounds out of range [%d:%d]", low, high)
 					}
@@ -326,7 +330,7 @@ func (e *Executor) resolveSliceBoundsForAddress(obj, lowVar, highVar *Var) (int,
 	case TypeBytes:
 		length = len(obj.B)
 	case TypeArray:
-		length = obj.Ref.(*VMArray).Len()
+		length = arrayRef(obj).Len()
 	default:
 		return 0, 0, fmt.Errorf("type %v does not support slice access", obj.VType)
 	}

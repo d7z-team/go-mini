@@ -14,9 +14,9 @@ func (c *Compiler) buildTemplatePlan(imported map[string]*ast.ProgramStmt) (*cal
 		FuncSchemas:      funcs,
 		StructSchemas:    structs,
 		InterfaceSchemas: interfaces,
-		Constants:        constants,
+		Constants:        ffiConstValuesToStrings(constants),
 		PackageExists: func(path string) (bool, error) {
-			return c.templatePackageExists(path, values, funcs, structs, interfaces, constants, imported)
+			return c.templatePackageExists(path, values, funcs, structs, interfaces, ffiConstValuesToStrings(constants), imported)
 		},
 		PackageMemberSig: func(path, member string) (*runtime.RuntimeFuncSig, bool, error) {
 			return c.templatePackageMemberSig(path, member, funcs, imported)

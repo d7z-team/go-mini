@@ -273,13 +273,14 @@ func (r *Reader) ReadAny() interface{} {
 	case TypeTagError:
 		return r.ReadRawError()
 	case TypeTagStruct:
+		typeName := r.ReadString()
 		count := int(r.ReadUvarint())
 		fields := make([]StructField, count)
 		for i := 0; i < count; i++ {
 			fields[i].Name = r.ReadString()
 			fields[i].Value = r.ReadAny()
 		}
-		return &VMStruct{Fields: fields}
+		return &VMStruct{TypeName: typeName, Fields: fields}
 	default:
 		return nil
 	}
@@ -293,7 +294,8 @@ type StructField struct {
 }
 
 type VMStruct struct {
-	Fields []StructField
+	TypeName string
+	Fields   []StructField
 }
 
 func (s *VMStruct) String() string {

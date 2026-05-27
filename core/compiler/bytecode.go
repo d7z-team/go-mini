@@ -89,12 +89,13 @@ func CompileEvalFunction(name string, expr ast.Expr) (*runtime.PreparedFunction,
 		ret = expr.GetBase().Type
 	}
 	prepared, err := lowering.PrepareProgram(&ast.ProgramStmt{
-		BaseNode:   ast.BaseNode{ID: "eval", Meta: "boot"},
-		Constants:  map[string]string{},
-		Variables:  map[ast.Ident]ast.Expr{},
-		Types:      map[ast.Ident]ast.GoMiniType{},
-		Structs:    map[ast.Ident]*ast.StructStmt{},
-		Interfaces: map[ast.Ident]*ast.InterfaceStmt{},
+		BaseNode:      ast.BaseNode{ID: "eval", Meta: "boot"},
+		Constants:     map[string]string{},
+		ConstantTypes: map[string]ast.GoMiniType{},
+		Variables:     map[ast.Ident]ast.Expr{},
+		Types:         map[ast.Ident]ast.GoMiniType{},
+		Structs:       map[ast.Ident]*ast.StructStmt{},
+		Interfaces:    map[ast.Ident]*ast.InterfaceStmt{},
 		Functions: map[ast.Ident]*ast.FunctionStmt{
 			ast.Ident(name): {
 				BaseNode:     ast.BaseNode{ID: "eval_fn", Meta: "function"},

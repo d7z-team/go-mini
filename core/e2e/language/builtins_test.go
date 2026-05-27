@@ -120,3 +120,46 @@ func TestBuiltins(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 }
+
+func TestNilMapBuiltinsAndIndexing(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+
+	func main() {
+		var m map[string]int
+		if m != nil {
+			panic("nil map comparison failed")
+		}
+		if len(m) != 0 {
+			panic("nil map len failed")
+		}
+		delete(m, "missing")
+		if m["missing"] != 0 {
+			panic("nil map missing value failed")
+		}
+		total := 0
+		for _, v := range m {
+			total = total + v
+		}
+		if total != 0 {
+			panic("nil map range failed")
+		}
+
+		var a []int
+		if a != nil {
+			panic("nil array comparison failed")
+		}
+		if len(a) != 0 || cap(a) != 0 {
+			panic("nil array len cap failed")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+}

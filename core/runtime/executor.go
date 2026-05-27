@@ -13,7 +13,7 @@ import (
 type Executor struct {
 	packageName      string
 	metadata         *runtimeMetadataRegistry
-	consts           map[string]string
+	consts           map[string]FFIConstValue
 	constTypes       map[string]RuntimeType
 	globals          map[string]*RuntimeGlobal
 	functions        map[string]*RuntimeFunction
@@ -213,7 +213,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		functions:            make(map[string]*RuntimeFunction),
 		methodFunctions:      make(map[string]map[string]string),
 		exports:              clonePreparedExportMap(prepared.Exports),
-		consts:               make(map[string]string),
+		consts:               make(map[string]FFIConstValue),
 		constTypes:           make(map[string]RuntimeType),
 		routes:               make(map[string]FFIRoute),
 		packageValues:        make(map[string]*BoundPackageValue),
@@ -248,10 +248,18 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.packageName = prepared.Package
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
-	e.consts = cloneStringMap(prepared.Constants)
+	e.consts = cloneFFIConstValueMap(prepared.Constants)
+	if e.consts == nil {
+		e.consts = make(map[string]FFIConstValue)
+	}
 	e.constTypes = cloneRuntimeTypeMap(prepared.ConstantTypes)
 	if e.constTypes == nil {
 		e.constTypes = make(map[string]RuntimeType)
+	}
+	for name, value := range e.consts {
+		if typ, err := ParseRuntimeType(value.Type); err == nil && !typ.IsEmpty() {
+			e.constTypes[name] = typ
+		}
 	}
 	e.exports = clonePreparedExportMap(prepared.Exports)
 	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
@@ -467,7 +475,11 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 	session := e.NewSession(ctx, "eval")
 	session.StepLimit = e.StepLimit
 	for k, v := range env {
-		_ = session.AddVariable(k, session.Executor.ToVar(session, v, nil))
+		converted, err := session.Executor.ToVar(session, v, nil)
+		if err != nil {
+			return nil, err
+		}
+		_ = session.AddVariable(k, converted)
 	}
 
 	call := &DoCallData{
@@ -694,10 +706,19 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 			return e.methodClosure(val, methodName), true
 		}
 	case TypeMap:
-		if m, ok := val.Ref.(*VMMap); ok {
-			if v, ok := m.Load(name); ok {
+		keyType, _, ok := val.RuntimeType().GetMapKeyValueTypes()
+		if !ok {
+			if v, ok := mapRef(val).Load(name); ok {
 				return v, true
 			}
+			return nil, false
+		}
+		key, _, err := e.comparableMapKey(NewString(name), keyType)
+		if err != nil {
+			return nil, false
+		}
+		if v, ok := mapRef(val).Load(key); ok {
+			return v, true
 		}
 	case TypePointer:
 		tName := string(val.RawType())

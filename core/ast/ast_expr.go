@@ -531,6 +531,11 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 				ctx.AddErrorf("%s", err.Error())
 				return err
 			}
+			if ident.Name == "new" && len(c.Args) != 1 {
+				err := fmt.Errorf("new: requires exactly 1 argument, got %d", len(c.Args))
+				ctx.AddErrorAt(c, "%s", err.Error())
+				return err
+			}
 			lit, ok := c.Args[0].(*LiteralExpr)
 			if !ok || lit.Type != "String" {
 				err := fmt.Errorf("%s: first argument must be a type literal", ident.Name)
@@ -571,9 +576,9 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 				return err
 			}
 			argType := c.Args[0].GetBase().Type
-			valid := argType == TypeAny || argType.IsArray() || argType.IsChan() || argType == TypeBytes || argType == TypeString
+			valid := argType == TypeAny || argType.IsArray() || argType.IsChan() || argType == TypeBytes
 			if ident.Name == "len" {
-				valid = valid || argType.IsMap()
+				valid = valid || argType.IsMap() || argType == TypeString
 			}
 			if !valid {
 				err := fmt.Errorf("%s: unsupported argument type %s", ident.Name, argType)
@@ -777,13 +782,22 @@ done:
 					c.Type = GoMiniType(lit.Value)
 				}
 			}
+			if ident.Name == "new" && len(c.Args) != 1 {
+				err := fmt.Errorf("new: requires exactly 1 argument, got %d", len(c.Args))
+				ctx.AddErrorAt(c, "%s", err.Error())
+				return err
+			}
 		case "append":
 			return checkAppendBuiltin(ctx, c)
 		case "len", "cap":
 			c.Type = "Int64"
 			if len(c.Args) > 0 {
 				argType := c.Args[0].GetBase().Type
-				if !argType.IsArray() && !argType.IsMap() && !argType.IsChan() && argType != "String" && argType != "TypeBytes" && !argType.IsAny() {
+				valid := argType.IsArray() || argType.IsChan() || argType == TypeBytes || argType.IsAny()
+				if ident.Name == "len" {
+					valid = valid || argType.IsMap() || argType == TypeString
+				}
+				if !valid {
 					err := fmt.Errorf("%s: 不支持类型 %s", ident.Name, argType)
 					ctx.AddErrorAt(c.Args[0], "%s", err.Error())
 					return err

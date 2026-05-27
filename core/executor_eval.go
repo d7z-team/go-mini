@@ -53,11 +53,12 @@ func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, err
 
 	// 构建临时程序以便验证
 	program := &ast.ProgramStmt{
-		BaseNode:   ast.BaseNode{ID: "snippet", Meta: "boot"},
-		Main:       stmts,
-		Structs:    make(map[ast.Ident]*ast.StructStmt),
-		Interfaces: make(map[ast.Ident]*ast.InterfaceStmt),
-		Constants:  make(map[string]string),
+		BaseNode:      ast.BaseNode{ID: "snippet", Meta: "boot"},
+		Main:          stmts,
+		Structs:       make(map[ast.Ident]*ast.StructStmt),
+		Interfaces:    make(map[ast.Ident]*ast.InterfaceStmt),
+		Constants:     make(map[string]string),
+		ConstantTypes: make(map[string]ast.GoMiniType),
 	}
 	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
 	e.mu.RLock()
@@ -70,6 +71,11 @@ func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, err
 		}
 		for name, cDef := range s.Constants {
 			program.Constants[name] = cDef
+			if s.ConstantTypes != nil {
+				if typ := s.ConstantTypes[name]; typ != "" {
+					program.ConstantTypes[name] = typ
+				}
+			}
 		}
 	}
 	e.mu.RUnlock()
@@ -95,7 +101,11 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 	}
 	runtimeEnv := make(map[string]*runtime.Var, len(env))
 	for k, v := range env {
-		runtimeEnv[k] = executor.executor.ToVar(nil, v, nil)
+		converted, err := executor.executor.ToVar(nil, v, nil)
+		if err != nil {
+			return err
+		}
+		runtimeEnv[k] = converted
 	}
 	return executor.ExecuteWithEnv(ctx, runtimeEnv)
 }
@@ -107,7 +117,11 @@ func (e *MiniExecutor) StartExecute(ctx context.Context, code string, env map[st
 	}
 	runtimeEnv := make(map[string]*runtime.Var, len(env))
 	for k, v := range env {
-		runtimeEnv[k] = executor.executor.ToVar(nil, v, nil)
+		converted, err := executor.executor.ToVar(nil, v, nil)
+		if err != nil {
+			return nil, err
+		}
+		runtimeEnv[k] = converted
 	}
 	return executor.StartWithEnv(ctx, runtimeEnv)
 }

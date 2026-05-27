@@ -14,8 +14,9 @@ import (
 type MiniExecutor struct {
 	mu sync.RWMutex
 
-	routes    map[string]runtime.FFIRoute
-	constants map[string]string
+	routes     map[string]runtime.FFIRoute
+	constants  map[string]runtime.FFIConstValue
+	constTypes map[string]runtime.RuntimeType
 
 	registry            *ffigo.HandleRegistry
 	moduleSources       map[string]*ast.ProgramStmt
@@ -48,6 +49,7 @@ type ExportedSchemaSnapshot struct {
 	Values                  map[ast.Ident]*runtime.ValueSpec
 	Structs                 map[ast.Ident]*runtime.RuntimeStructSpec
 	Interfaces              map[ast.Ident]*runtime.RuntimeInterfaceSpec
+	Constants               map[string]runtime.FFIConstValue
 }
 
 func (e *MiniExecutor) SetMaxTypeDepth(depth int) {

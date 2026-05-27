@@ -379,15 +379,15 @@ func TestLookupFrameVarByNameUsesSlotIndexes(t *testing.T) {
 
 func TestMapKeysPreservePrimitiveType(t *testing.T) {
 	exec := newEmptyExecutor(t)
-	intKey, err := exec.varToMapKey(NewInt(1))
+	intKey, _, err := exec.comparableMapKey(NewInt(1), MustParseRuntimeType("Any"))
 	if err != nil {
 		t.Fatalf("int key failed: %v", err)
 	}
-	stringKey, err := exec.varToMapKey(NewString("1"))
+	stringKey, _, err := exec.comparableMapKey(NewString("1"), MustParseRuntimeType("Any"))
 	if err != nil {
 		t.Fatalf("string key failed: %v", err)
 	}
-	boolKey, err := exec.varToMapKey(NewBool(true))
+	boolKey, _, err := exec.comparableMapKey(NewBool(true), MustParseRuntimeType("Any"))
 	if err != nil {
 		t.Fatalf("bool key failed: %v", err)
 	}
@@ -503,7 +503,14 @@ func TestOpCallBoundaryTruncatesTemporaryStacks(t *testing.T) {
 	}
 
 	session.ValueStack.Push(NewInt(99))
-	session.LHSStack.Push(&LHSMember{Obj: &Var{VType: TypeMap, Ref: &VMMap{Data: map[string]*Var{"x": NewInt(1)}}}, Property: "x"})
+	session.LHSStack.Push(&LHSMember{
+		Obj: &Var{
+			VType:    TypeMap,
+			TypeInfo: MustParseRuntimeType("Map<String,Int64>"),
+			Ref:      &VMMap{Data: map[string]*Var{"x": NewInt(1)}},
+		},
+		Property: "x",
+	})
 	if err := session.StoreReturn(NewInt(7)); err != nil {
 		t.Fatalf("store return failed: %v", err)
 	}

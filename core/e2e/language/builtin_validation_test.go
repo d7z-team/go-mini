@@ -54,4 +54,31 @@ func TestNewBuiltinCompileError(t *testing.T) {
 			t.Fatalf("expected error for dynamic variable as type")
 		}
 	})
+
+	t.Run("Extra Argument", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			_ = new(int64, 1)
+		}
+		`
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil || !strings.Contains(err.Error(), "new: requires exactly 1 argument") {
+			t.Fatalf("expected arity error for new, got %v", err)
+		}
+	})
+}
+
+func TestCapRejectsStringCompileError(t *testing.T) {
+	executor := engine.NewMiniExecutor()
+	code := `
+	package main
+	func main() {
+		_ = cap("abc")
+	}
+	`
+	_, err := executor.NewRuntimeByGoCode(code)
+	if err == nil {
+		t.Fatal("expected cap string compile error")
+	}
 }

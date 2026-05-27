@@ -57,7 +57,7 @@ const (
 	TypeString
 	TypeBytes // Raw buffer
 	TypeBool
-	TypeMap     // Internal VM Map (string keys only)
+	TypeMap     // Internal VM Map
 	TypeArray   // Internal VM Array ([]*Var)
 	TypePointer // Internal VM slot pointer
 	TypeHostRef // Host resource ID (uint32)
@@ -174,7 +174,16 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 		for k, item := range snapshot {
 			cloned[k] = item.deepCopy(seen)
 		}
-		res.Ref = &VMMap{Data: cloned}
+		keyVars := make(map[string]*Var)
+		for k := range snapshot {
+			if key := ref.KeyVar(k); key != nil {
+				keyVars[k] = key.deepCopy(seen)
+			}
+		}
+		if len(keyVars) == 0 {
+			keyVars = nil
+		}
+		res.Ref = &VMMap{Data: cloned, KeyVars: keyVars}
 	case *VMStruct:
 		res.Ref = ref.DeepCopy(seen)
 	case *Slot:
@@ -492,9 +501,16 @@ func (a *VMArray) ReplaceSlice(low, high int, items []*Var) bool {
 	return true
 }
 
+type VMMapEntry struct {
+	Encoded string
+	Key     *Var
+	Value   *Var
+}
+
 type VMMap struct {
-	mu   sync.RWMutex
-	Data map[string]*Var
+	mu      sync.RWMutex
+	Data    map[string]*Var
+	KeyVars map[string]*Var
 }
 
 func (m *VMMap) Load(key string) (*Var, bool) {
@@ -508,6 +524,10 @@ func (m *VMMap) Load(key string) (*Var, bool) {
 }
 
 func (m *VMMap) Store(key string, v *Var) {
+	m.StoreWithKey(key, nil, v)
+}
+
+func (m *VMMap) StoreWithKey(key string, keyVar, v *Var) {
 	if m == nil {
 		return
 	}
@@ -517,6 +537,14 @@ func (m *VMMap) Store(key string, v *Var) {
 		m.Data = make(map[string]*Var)
 	}
 	m.Data[key] = v
+	if keyVar != nil {
+		if m.KeyVars == nil {
+			m.KeyVars = make(map[string]*Var)
+		}
+		m.KeyVars[key] = cloneVarForAssign(keyVar)
+	} else if m.KeyVars != nil {
+		delete(m.KeyVars, key)
+	}
 }
 
 func (m *VMMap) Delete(key string) {
@@ -526,6 +554,9 @@ func (m *VMMap) Delete(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.Data, key)
+	if m.KeyVars != nil {
+		delete(m.KeyVars, key)
+	}
 }
 
 func (m *VMMap) Len() int {
@@ -559,6 +590,37 @@ func (m *VMMap) Snapshot() map[string]*Var {
 	out := make(map[string]*Var, len(m.Data))
 	for k, v := range m.Data {
 		out[k] = v
+	}
+	return out
+}
+
+func (m *VMMap) KeyVar(key string) *Var {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.KeyVars != nil {
+		if v := m.KeyVars[key]; v != nil {
+			return cloneVarForAssign(v)
+		}
+	}
+	return nil
+}
+
+func (m *VMMap) Entries() []VMMapEntry {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]VMMapEntry, 0, len(m.Data))
+	for encoded, value := range m.Data {
+		var key *Var
+		if m.KeyVars != nil {
+			key = cloneVarForAssign(m.KeyVars[encoded])
+		}
+		out = append(out, VMMapEntry{Encoded: encoded, Key: key, Value: value})
 	}
 	return out
 }

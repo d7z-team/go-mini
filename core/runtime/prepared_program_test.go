@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+func ptrString(v string) *string { return &v }
+
 func TestNewExecutorFromPreparedRequiresPreparedProgram(t *testing.T) {
 	_, err := NewExecutorFromPrepared(nil)
 	if err == nil {
@@ -27,6 +29,30 @@ func TestNewExecutorFromPreparedRejectsOrphanScopeExit(t *testing.T) {
 		t.Fatal("expected invalid prepared program error")
 	}
 	if !strings.Contains(err.Error(), "exits without matching scope enter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewExecutorFromPreparedRejectsMissingConstantType(t *testing.T) {
+	prepared := &PreparedProgram{
+		Constants: map[string]FFIConstValue{"Answer": ConstInt64(42)},
+	}
+	if _, err := NewExecutorFromPrepared(prepared); err != nil {
+		t.Fatalf("expected typed constant payload to provide its own type: %v", err)
+	}
+}
+
+func TestNewExecutorFromPreparedRejectsUnsupportedConstantType(t *testing.T) {
+	prepared := &PreparedProgram{
+		Constants: map[string]FFIConstValue{
+			"Data": {Type: SpecAny, String: ptrString("x")},
+		},
+	}
+	_, err := NewExecutorFromPrepared(prepared)
+	if err == nil {
+		t.Fatal("expected unsupported constant type error")
+	}
+	if !strings.Contains(err.Error(), "constant Data invalid: unsupported ffi const type Any") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

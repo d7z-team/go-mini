@@ -136,6 +136,13 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 						return err
 					}
 				}
+			case FFIMemberConst:
+				if member.Const == nil {
+					return fmt.Errorf("FFI constant %s missing schema", name)
+				}
+				if err := member.Const.Value.Validate(); err != nil {
+					return fmt.Errorf("FFI constant %s invalid: %w", name, err)
+				}
 			}
 		}
 	}

@@ -143,8 +143,12 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	if normalized, ok := typespec.NormalizeBinaryOperator(op); ok {
 		op = string(normalized)
 	}
-	lEmpty := isEmptyVar(l)
-	rEmpty := isEmptyVar(r)
+	origL := l
+	origR := r
+	l = e.unwrapValue(l)
+	r = e.unwrapValue(r)
+	lEmpty := comparisonNilOperand(origL, l)
+	rEmpty := comparisonNilOperand(origR, r)
 	eqOp := op == string(typespec.OpEq)
 	neqOp := op == string(typespec.OpNeq)
 
@@ -153,6 +157,9 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			return NewBool(true), nil
 		}
 		if lEmpty || rEmpty {
+			if (origL != nil && origL.VType == TypeAny && origL.Ref != nil) || (origR != nil && origR.VType == TypeAny && origR.Ref != nil) {
+				return NewBool(false), nil
+			}
 			if !runtimeValueNilComparable(nonEmptyVar(l, r)) {
 				return nil, &VMError{Message: fmt.Sprintf("cannot compare %s and nil", runtimeTypeForAssignment(nonEmptyVar(l, r)).Raw), IsPanic: true}
 			}
@@ -164,6 +171,9 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 			return NewBool(false), nil
 		}
 		if lEmpty || rEmpty {
+			if (origL != nil && origL.VType == TypeAny && origL.Ref != nil) || (origR != nil && origR.VType == TypeAny && origR.Ref != nil) {
+				return NewBool(true), nil
+			}
 			if !runtimeValueNilComparable(nonEmptyVar(l, r)) {
 				return nil, &VMError{Message: fmt.Sprintf("cannot compare %s and nil", runtimeTypeForAssignment(nonEmptyVar(l, r)).Raw), IsPanic: true}
 			}
@@ -227,31 +237,19 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	}
 
 	if eqOp {
-		if l != nil && r != nil && l.VType == r.VType {
-			switch l.VType {
-			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
-				return NewBool(l.Ref == r.Ref), nil
-			case TypeHostRef:
-				return NewBool(l.Handle == r.Handle), nil
-			case TypePointer:
-				return NewBool(l.Ref == r.Ref), nil
-			case TypeInterface:
-				return NewBool(interfaceIdentity(l) == interfaceIdentity(r)), nil
+		if l != nil && r != nil {
+			eq, err := comparableValuesEqual(l, r)
+			if err == nil {
+				return NewBool(eq), nil
 			}
 		}
 		return nil, &VMError{Message: fmt.Sprintf("unsupported equality comparison between %s and %s", runtimeTypeForAssignment(l).Raw, runtimeTypeForAssignment(r).Raw), IsPanic: true}
 	}
 	if neqOp {
-		if l != nil && r != nil && l.VType == r.VType {
-			switch l.VType {
-			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
-				return NewBool(l.Ref != r.Ref), nil
-			case TypeHostRef:
-				return NewBool(l.Handle != r.Handle), nil
-			case TypePointer:
-				return NewBool(l.Ref != r.Ref), nil
-			case TypeInterface:
-				return NewBool(interfaceIdentity(l) != interfaceIdentity(r)), nil
+		if l != nil && r != nil {
+			eq, err := comparableValuesEqual(l, r)
+			if err == nil {
+				return NewBool(!eq), nil
 			}
 		}
 		return nil, &VMError{Message: fmt.Sprintf("unsupported equality comparison between %s and %s", runtimeTypeForAssignment(l).Raw, runtimeTypeForAssignment(r).Raw), IsPanic: true}
@@ -261,7 +259,7 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 }
 
 func nonEmptyVar(a, b *Var) *Var {
-	if !isEmptyVar(a) {
+	if !comparisonNilOperand(a, a) {
 		return a
 	}
 	return b
@@ -276,20 +274,6 @@ func runtimeValueNilComparable(v *Var) bool {
 		return true
 	}
 	return false
-}
-
-func interfaceIdentity(v *Var) interface{} {
-	if v == nil || v.VType != TypeInterface {
-		return nil
-	}
-	inter, _ := v.Ref.(*VMInterface)
-	if inter == nil {
-		return nil
-	}
-	if inter.Target != nil {
-		return inter.Target
-	}
-	return inter
 }
 
 func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
@@ -336,47 +320,11 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 	return nil, &VMError{Message: "unsupported unary op " + operator, IsPanic: true}
 }
 
-func (e *Executor) evalLiteralToVar(val string) *Var {
-	return e.evalLiteralToVarWithType(val, RuntimeType{})
-}
-
-func (e *Executor) evalLiteralToVarWithType(val string, typ RuntimeType) *Var {
-	switch {
-	case typ.IsString():
-		return NewString(val)
-	case typ.IsInt():
-		if v, err := strconv.ParseInt(val, 0, 64); err == nil {
-			return NewInt(v)
-		}
-		return NewInt(0)
-	case typ.Raw == SpecFloat64:
-		if v, err := strconv.ParseFloat(val, 64); err == nil {
-			return NewFloat(v)
-		}
-		return NewFloat(0)
-	case typ.IsBool():
-		return NewBool(val == "true")
-	}
-	if v, err := strconv.ParseInt(val, 0, 64); err == nil {
-		return NewInt(v)
-	}
-	if v, err := strconv.ParseFloat(val, 64); err == nil {
-		return NewFloat(v)
-	}
-	if val == "true" {
-		return NewBool(true)
-	}
-	if val == "false" {
-		return NewBool(false)
-	}
-	return NewString(val)
-}
-
-func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, error) {
+func (e *Executor) evalIndexExprDirect(_ *StackContext, obj, idx *Var) (*Var, error) {
 	obj = e.unwrapValue(obj)
 	idx = e.unwrapValue(idx)
 
-	if obj == nil || isEmptyVar(obj) {
+	if obj == nil {
 		return nil, &VMError{Message: "index access on nil", IsPanic: true}
 	}
 
@@ -407,7 +355,7 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		if idx.VType != TypeInt {
 			return nil, &VMError{Message: fmt.Sprintf("array index must be Int64, got %v", idx.VType), IsPanic: true}
 		}
-		arr := obj.Ref.(*VMArray)
+		arr := arrayRef(obj)
 		i := int(idx.I64)
 		val, ok := arr.Load(i)
 		if !ok {
@@ -415,32 +363,19 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 		}
 		return val, nil
 	case TypeMap:
-		m := obj.Ref.(*VMMap)
-		// Dynamic Key Type Validation
-		keyType, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
-		if !keyType.IsAny() {
-			if keyType.IsInt() && idx.VType != TypeInt {
-				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Int64, got %v", idx.VType), IsPanic: true}
-			}
-			if keyType.IsString() && idx.VType != TypeString {
-				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected String, got %v", idx.VType), IsPanic: true}
-			}
-			if keyType.IsBool() && idx.VType != TypeBool {
-				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Bool, got %v", idx.VType), IsPanic: true}
-			}
-			if keyType.Raw == SpecFloat64 && idx.VType != TypeFloat {
-				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Float64, got %v", idx.VType), IsPanic: true}
-			}
+		m := mapRef(obj)
+		keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
+		if !ok {
+			return nil, &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
 		}
-
-		key, err := e.varToTypedMapKey(idx, keyType)
+		key, _, err := e.comparableMapKey(idx, keyType)
 		if err != nil {
 			return nil, err
 		}
 		if val, ok := m.Load(key); ok {
 			return val, nil
 		}
-		return e.ToVar(ctx, valType.ZeroVar(), nil), nil
+		return zeroVarForRuntimeType(valType), nil
 	}
 	return nil, &VMError{Message: fmt.Sprintf("type %v does not support indexing", obj.VType), IsPanic: true}
 }
@@ -451,12 +386,15 @@ func (e *Executor) evalMemberExprDirect(_ *StackContext, obj *Var, property stri
 
 func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, staticType RuntimeType) (*Var, error) {
 	obj = e.unwrapValue(obj)
-	if obj == nil || isEmptyVar(obj) {
+	if obj == nil || (isNilValue(obj) && obj.VType != TypeMap) {
 		return nil, &VMError{Message: "member access on nil object: " + property, IsPanic: true}
 	}
 
 	if obj.VType == TypeInterface {
-		inter := obj.Ref.(*VMInterface)
+		inter, _ := obj.Ref.(*VMInterface)
+		if inter == nil || inter.Target == nil {
+			return nil, &VMError{Message: "member access on nil interface: " + property, IsPanic: true}
+		}
 		if inter.Spec == nil {
 			return nil, &VMError{Message: fmt.Sprintf("interface contract missing for %s", obj.RawType()), IsPanic: true}
 		}
@@ -490,8 +428,16 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 			return &Var{VType: TypeClosure, Ref: &VMMethodValue{Receiver: obj, Method: "Error"}}, nil
 		}
 	case TypeMap:
-		m := obj.Ref.(*VMMap)
-		if val, ok := m.Load(property); ok {
+		m := mapRef(obj)
+		keyType, _, ok := obj.RuntimeType().GetMapKeyValueTypes()
+		if !ok {
+			return nil, &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
+		}
+		key, _, err := e.comparableMapKey(NewString(property), keyType)
+		if err != nil {
+			return nil, err
+		}
+		if val, ok := m.Load(key); ok {
 			return val, nil
 		}
 		return nil, nil
@@ -540,15 +486,6 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 			return val, nil
 		}
 		return nil, &VMError{Message: fmt.Sprintf("module member %s not found in %s", property, mod.Name), IsPanic: true}
-	case TypeAny:
-		if obj.Ref != nil {
-			if m, ok := obj.Ref.(*VMMap); ok {
-				if val, ok := m.Load(property); ok {
-					return val, nil
-				}
-			}
-		}
-		return nil, nil
 	}
 
 	tName := string(obj.RawType())
@@ -611,7 +548,7 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 		}
 		return NewString(obj.Str[low:high]), nil
 	case TypeArray:
-		arr := obj.Ref.(*VMArray)
+		arr := arrayRef(obj)
 		l := arr.Len()
 		if high == -1 {
 			high = l
@@ -650,6 +587,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			targetType, err := ParseRuntimeType(tStr)
 			if err != nil {
 				return &VMError{Message: fmt.Sprintf("invalid make type %q: %v", tStr, err), IsPanic: true}
+			}
+			if len(args) > 3 || (targetType.IsMap() || targetType.IsChan()) && len(args) > 2 {
+				return &VMError{Message: fmt.Sprintf("make: invalid argument count for %s", targetType.Raw), IsPanic: true}
 			}
 			if targetType.IsMap() {
 				v := &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}}
@@ -754,10 +694,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				session.ValueStack.Push(NewInt(int64(len(obj.B))))
 				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMArray).Len())))
+				session.ValueStack.Push(NewInt(int64(arrayRef(obj).Len())))
 				return nil
 			case TypeMap:
-				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMMap).Len())))
+				session.ValueStack.Push(NewInt(int64(mapRef(obj).Len())))
 				return nil
 			case TypeChannel:
 				if ch, ok := obj.Ref.(*VMChannel); ok && ch != nil {
@@ -783,7 +723,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				session.ValueStack.Push(NewInt(int64(cap(obj.B))))
 				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(obj.Ref.(*VMArray).Cap())))
+				session.ValueStack.Push(NewInt(int64(arrayRef(obj).Cap())))
 				return nil
 			case TypeChannel:
 				if ch, ok := obj.Ref.(*VMChannel); ok && ch != nil {
@@ -799,6 +739,9 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: "close requires exactly 1 channel argument", IsPanic: true}
 			}
 			obj := e.unwrapValue(args[0])
+			if obj != nil && obj.VType == TypeChannel && isNilValue(obj) {
+				return &VMError{Message: "close of nil channel", IsPanic: true}
+			}
 			ch, ok := asVMChannel(obj)
 			if !ok {
 				return &VMError{Message: fmt.Sprintf("close requires channel, got %v", runtimeTypeForAssignment(obj).Raw), IsPanic: true}
@@ -821,7 +764,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			}
 			switch base.VType {
 			case TypeArray:
-				arr := base.Ref.(*VMArray)
+				arr := arrayRef(base)
 				items := arr.Snapshot()
 				newArr := make([]*Var, len(items), len(items)+len(args)-1)
 				for i, item := range items {
@@ -872,9 +815,12 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			obj = e.unwrapValue(obj)
 			keyArg := e.unwrapValue(args[1])
 			if obj.VType == TypeMap {
-				m := obj.Ref.(*VMMap)
-				keyType, _, _ := obj.RuntimeType().GetMapKeyValueTypes()
-				key, err := e.varToTypedMapKey(keyArg, keyType)
+				m := mapRef(obj)
+				keyType, _, ok := obj.RuntimeType().GetMapKeyValueTypes()
+				if !ok {
+					return &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
+				}
+				key, _, err := e.comparableMapKey(keyArg, keyType)
 				if err != nil {
 					return err
 				}
@@ -1023,7 +969,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			session.ValueStack.Push(NewBool(false))
 			return nil
 		case "new":
-			if len(args) < 1 || args[0] == nil || (args[0].VType != TypeString && !args[0].RuntimeType().IsString()) {
+			if len(args) != 1 || args[0] == nil || (args[0].VType != TypeString && !args[0].RuntimeType().IsString()) {
 				return &VMError{Message: "new requires a type string as argument", IsPanic: true}
 			}
 			tStr := args[0].Str
@@ -1126,8 +1072,16 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 
 	// 3a. Dynamic Method Call for Maps (Interfaces)
 	if receiver != nil && receiver.VType == TypeMap && name != "" {
-		m := receiver.Ref.(*VMMap)
-		if val, ok := m.Load(name); ok {
+		m := mapRef(receiver)
+		keyType, _, ok := receiver.RuntimeType().GetMapKeyValueTypes()
+		if !ok {
+			return &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", receiver.RuntimeType().Raw), IsPanic: true}
+		}
+		key, _, err := e.comparableMapKey(NewString(name), keyType)
+		if err != nil {
+			return err
+		}
+		if val, ok := m.Load(key); ok {
 			// Found it! It could be a closure stored in the map.
 			// IMPORTANT: If we found the method via a receiver, we should strip the receiver
 			// from args if it was automatically prepended by OpCall.
@@ -1394,18 +1348,27 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 	}
 
 	if shape.IsArray() {
-		v := &Var{VType: TypeArray, Ref: &VMArray{Data: nil}}
+		v := &Var{VType: TypeArray}
 		v.SetRuntimeType(t)
 		return v, nil
 	}
 
-	if shape.IsMap() || shape.IsAny() {
+	if shape.IsMap() {
+		v := &Var{VType: TypeMap}
+		v.SetRuntimeType(t)
+		return v, nil
+	}
+
+	if shape.IsAny() {
 		return NewVarWithRuntimeType(t, TypeAny), nil
 	}
 
 	// 基础类型初始化
 	zero := shape.ZeroVar()
-	res := e.ToVar(ctx, zero, nil)
+	res, err := e.ToVar(ctx, zero, nil)
+	if err != nil {
+		return nil, err
+	}
 	if res != nil {
 		res.SetRuntimeType(t) // 还原为用户请求的命名类型
 		return res, nil

@@ -10,7 +10,7 @@ import (
 )
 
 type builder struct {
-	consts     map[string]string
+	consts     map[string]runtime.FFIConstValue
 	constTypes map[string]runtime.RuntimeType
 	globals    map[string]struct{}
 	functions  map[string]struct{}
@@ -53,9 +53,9 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-func newBuilder(constants map[string]string, constantTypes map[string]runtime.RuntimeType, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
+func newBuilder(constants map[string]runtime.FFIConstValue, constantTypes map[string]runtime.RuntimeType, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
 	b := &builder{
-		consts:     cloneStringMap(constants),
+		consts:     cloneFFIConstValueMap(constants),
 		constTypes: cloneRuntimeTypeMap(constantTypes),
 		globals:    make(map[string]struct{}, len(variables)),
 		functions:  make(map[string]struct{}, len(functions)),
@@ -98,7 +98,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 	prepared := &runtime.PreparedProgram{
 		Package:          program.Package,
 		ImportAliases:    importAliases,
-		Constants:        make(map[string]string, len(program.Constants)),
+		Constants:        make(map[string]runtime.FFIConstValue, len(program.Constants)),
 		ConstantTypes:    make(map[string]runtime.RuntimeType, len(program.ConstantTypes)),
 		NamedTypes:       make(map[string]runtime.RuntimeType, len(program.Types)),
 		StructSchemas:    make(map[string]*runtime.RuntimeStructSpec, len(program.Structs)),
@@ -110,9 +110,24 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		Functions:        make(map[string]*runtime.PreparedFunction, len(program.Functions)),
 	}
 	for name, val := range program.Constants {
-		prepared.Constants[name] = val
+		if program.ConstantTypes == nil || program.ConstantTypes[name] == "" {
+			return nil, fmt.Errorf("constant %s missing type", name)
+		}
+		typeInfo, err := runtime.ParseRuntimeType(program.ConstantTypes[name])
+		if err != nil {
+			return nil, err
+		}
+		constValue, err := parseTypedConstLiteral(val, typeInfo)
+		if err != nil {
+			return nil, fmt.Errorf("constant %s invalid: %w", name, err)
+		}
+		prepared.Constants[name] = constValue
+		prepared.ConstantTypes[name] = typeInfo
 	}
 	for name, typ := range program.ConstantTypes {
+		if _, ok := prepared.ConstantTypes[name]; ok {
+			continue
+		}
 		typeInfo, err := runtime.ParseRuntimeType(typ)
 		if err != nil {
 			return nil, err
@@ -275,14 +290,14 @@ func populatePreparedExports(prepared *runtime.PreparedProgram, program *ast.Pro
 	if prepared == nil || program == nil {
 		return
 	}
-	for name, val := range program.Constants {
+	for name, val := range prepared.Constants {
 		if !isExportedIdent(name) {
 			continue
 		}
 		prepared.Exports[name] = runtime.PreparedExport{
 			Name:       name,
 			Kind:       runtime.PreparedExportConst,
-			Type:       typedLiteralToVar(val, prepared.ConstantTypes[name]).RuntimeType(),
+			Type:       val.ToVar().RuntimeType(),
 			TargetName: name,
 		}
 	}
@@ -430,8 +445,8 @@ func importAliasFromPath(path string) string {
 	return alias
 }
 
-func cloneStringMap(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
+func cloneFFIConstValueMap(in map[string]runtime.FFIConstValue) map[string]runtime.FFIConstValue {
+	out := make(map[string]runtime.FFIConstValue, len(in))
 	for k, v := range in {
 		out[k] = v
 	}

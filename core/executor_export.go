@@ -167,7 +167,7 @@ func (e *MiniExecutor) ExportMetadata() string {
 				}
 			case runtime.PreparedExportConst:
 				if val, ok := prepared.Constants[target]; ok {
-					mod.Constants[export.Name] = val
+					mod.Constants[export.Name] = val.DisplayString()
 				}
 			case runtime.PreparedExportStruct:
 				st := getStruct(modName, export.Name)

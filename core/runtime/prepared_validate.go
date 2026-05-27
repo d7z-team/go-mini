@@ -17,6 +17,24 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 			return err
 		}
 	}
+	for name, value := range plan.Constants {
+		if err := value.Validate(); err != nil {
+			return fmt.Errorf("constant %s invalid: %w", name, err)
+		}
+		typ, err := ParseRuntimeType(value.Type)
+		if err != nil {
+			return fmt.Errorf("constant %s type: %w", name, err)
+		}
+		if err := validateRuntimeType("constant "+name+" type", typ); err != nil {
+			return err
+		}
+		if !(typ.IsInt() || typ.Raw == SpecFloat64 || typ.IsBool() || typ.IsString()) {
+			return fmt.Errorf("constant %s has unsupported type %s", name, typ.Raw)
+		}
+		if explicit, ok := plan.ConstantTypes[name]; ok && explicit.Raw != typ.Raw {
+			return fmt.Errorf("constant %s type mismatch: %s vs %s", name, explicit.Raw, typ.Raw)
+		}
+	}
 	for name, typ := range plan.ConstantTypes {
 		if _, ok := plan.Constants[name]; !ok {
 			return fmt.Errorf("constant type %s targets missing constant", name)
@@ -194,10 +212,13 @@ func validatePreparedExport(plan *PreparedProgram, mapName string, export Prepar
 		if _, ok := plan.Constants[target]; !ok {
 			return fmt.Errorf("prepared export %s targets missing constant %s", export.Name, target)
 		}
-		if typ, ok := plan.ConstantTypes[target]; ok {
-			if err := validateRuntimeType("prepared constant "+target+" type", typ); err != nil {
-				return err
-			}
+		value := plan.Constants[target]
+		typ, ok := plan.ConstantTypes[target]
+		if !ok {
+			typ, _ = ParseRuntimeType(value.Type)
+		}
+		if err := validateRuntimeType("prepared constant "+target+" type", typ); err != nil {
+			return err
 		}
 	case PreparedExportType:
 		if _, ok := plan.NamedTypes[target]; !ok {

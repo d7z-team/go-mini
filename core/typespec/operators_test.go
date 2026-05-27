@@ -21,3 +21,15 @@ func TestArrayTypesAreInvariant(t *testing.T) {
 		t.Fatal("expected Array<Int64> to be rejected for Array<Any>")
 	}
 }
+
+func TestEqualityComparableAllowsIdentityTypes(t *testing.T) {
+	for _, pair := range [][2]Type{
+		{Type("Map<String,Int64>"), Type("Map<String,Int64>")},
+		{Module, Module},
+		{Closure, Closure},
+	} {
+		if !EqualityComparable(pair[0], pair[1]) {
+			t.Fatalf("expected %s and %s to be equality comparable", pair[0], pair[1])
+		}
+	}
+}

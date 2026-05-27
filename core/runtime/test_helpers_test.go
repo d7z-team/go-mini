@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -26,7 +27,7 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 	}
 	prepared := &PreparedProgram{
 		Package:          program.Package,
-		Constants:        cloneStringMap(program.Constants),
+		Constants:        make(map[string]FFIConstValue, len(program.Constants)),
 		ConstantTypes:    make(map[string]RuntimeType, len(program.ConstantTypes)),
 		NamedTypes:       make(map[string]RuntimeType, len(program.Types)),
 		StructSchemas:    make(map[string]*RuntimeStructSpec, len(program.Structs)),
@@ -41,6 +42,17 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 			return nil, err
 		}
 		prepared.ConstantTypes[name] = parsed
+	}
+	for name, val := range program.Constants {
+		typ, ok := prepared.ConstantTypes[name]
+		if !ok {
+			return nil, fmt.Errorf("constant %s missing type", name)
+		}
+		parsed, err := parseTestConstLiteral(val, typ)
+		if err != nil {
+			return nil, err
+		}
+		prepared.Constants[name] = parsed
 	}
 	for ident, typ := range program.Types {
 		parsed, err := ParseRuntimeType(typ)
@@ -93,4 +105,33 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 		}
 	}
 	return prepared, ValidatePreparedProgram(prepared)
+}
+
+func parseTestConstLiteral(val string, typ RuntimeType) (FFIConstValue, error) {
+	switch {
+	case typ.IsString():
+		return ConstString(val), nil
+	case typ.IsInt():
+		var parsed int64
+		if _, err := fmt.Sscan(val, &parsed); err != nil {
+			return FFIConstValue{}, err
+		}
+		return ConstInt64(parsed), nil
+	case typ.Raw == SpecFloat64:
+		var parsed float64
+		if _, err := fmt.Sscan(val, &parsed); err != nil {
+			return FFIConstValue{}, err
+		}
+		return ConstFloat64(parsed), nil
+	case typ.IsBool():
+		if val == "true" {
+			return ConstBool(true), nil
+		}
+		if val == "false" {
+			return ConstBool(false), nil
+		}
+		return FFIConstValue{}, fmt.Errorf("invalid bool literal %q", val)
+	default:
+		return FFIConstValue{}, fmt.Errorf("unsupported constant type %s", typ.Raw)
+	}
 }

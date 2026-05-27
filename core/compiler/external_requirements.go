@@ -14,14 +14,14 @@ func (c *Compiler) externalSchemaMaps() (
 	map[ast.Ident]*runtime.ValueSpec,
 	map[ast.Ident]*runtime.RuntimeStructSpec,
 	map[ast.Ident]*runtime.RuntimeInterfaceSpec,
-	map[string]string,
+	map[string]runtime.FFIConstValue,
 ) {
 	funcs := cloneFuncSchemaMap(c.cfg.FuncSchemas)
 	methodIDs := cloneFuncMethodIDMap(c.cfg.RegisteredFuncMethodIDs)
 	values := cloneValueSchemaMap(c.cfg.ValueSchemas)
 	structs := cloneStructSchemaMap(c.cfg.StructSchemas)
 	interfaces := cloneInterfaceSchemaMap(c.cfg.InterfaceSchemas)
-	constants := cloneStringMap(c.cfg.Constants)
+	constants := cloneFFIConstValueMap(c.cfg.Constants)
 	if c.cfg.Surface == nil {
 		return funcs, methodIDs, values, structs, interfaces, constants
 	}
@@ -144,7 +144,7 @@ type externalUsageCollector struct {
 	values     map[ast.Ident]*runtime.ValueSpec
 	structs    map[ast.Ident]*runtime.RuntimeStructSpec
 	interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec
-	constants  map[string]string
+	constants  map[string]runtime.FFIConstValue
 	reqs       map[string]runtime.ExternalRequirement
 }
 
@@ -200,6 +200,7 @@ func (v *externalUsageCollector) recordPackageMember(member *ast.MemberExpr) {
 			PackagePath: pkg,
 			MemberName:  memberName,
 			Kind:        runtime.FFIMemberConst,
+			Type:        value.Type,
 			Hash:        runtime.ConstSchemaHash(value),
 		})
 		return
@@ -401,10 +402,28 @@ func cloneInterfaceSchemaMap(in map[ast.Ident]*runtime.RuntimeInterfaceSpec) map
 	return out
 }
 
-func cloneStringMap(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
+func cloneFFIConstValueMap(in map[string]runtime.FFIConstValue) map[string]runtime.FFIConstValue {
+	out := make(map[string]runtime.FFIConstValue, len(in))
 	for k, v := range in {
 		out[k] = v
+	}
+	return out
+}
+
+func ffiConstValuesToStrings(in map[string]runtime.FFIConstValue) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v.DisplayString()
+	}
+	return out
+}
+
+func ffiConstValuesToAST(in map[string]runtime.FFIConstValue) map[string]ast.GoMiniType {
+	out := make(map[string]ast.GoMiniType, len(in))
+	for k, v := range in {
+		if v.Type != "" {
+			out[k] = ast.GoMiniType(v.Type)
+		}
 	}
 	return out
 }

@@ -18,29 +18,30 @@ const (
 )
 
 type ValidRoot struct {
-	logs             []Logs
-	types            map[Ident]GoMiniType
-	structs          map[Ident]*ValidStruct
-	interfaces       map[Ident]*InterfaceStmt
-	program          *ProgramStmt
-	Global           *ValidStruct
-	id               uint64
-	Path             string // 模块的导入路径
-	Package          string
-	Imports          map[string]string
-	vars             map[Ident]GoMiniType
-	readOnlyVars     map[Ident]bool
-	externalTypes    map[Ident]ExternalTypeSpec
-	externalConsts   map[string]string
-	ModuleLoader     func(path string) (*ProgramStmt, error)
-	Imported         map[string]bool
-	Modules          map[string]*ModuleExports
-	Discovered       map[Ident]string
-	KnownImports     map[string]struct{}
-	TemplateBuiltins map[string]GoMiniType
-	importStack      []string
-	MaxTypeDepth     int  // 递归类型检查深度限制
-	Tolerant         bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
+	logs               []Logs
+	types              map[Ident]GoMiniType
+	structs            map[Ident]*ValidStruct
+	interfaces         map[Ident]*InterfaceStmt
+	program            *ProgramStmt
+	Global             *ValidStruct
+	id                 uint64
+	Path               string // 模块的导入路径
+	Package            string
+	Imports            map[string]string
+	vars               map[Ident]GoMiniType
+	readOnlyVars       map[Ident]bool
+	externalTypes      map[Ident]ExternalTypeSpec
+	externalConsts     map[string]string
+	externalConstTypes map[string]GoMiniType
+	ModuleLoader       func(path string) (*ProgramStmt, error)
+	Imported           map[string]bool
+	Modules            map[string]*ModuleExports
+	Discovered         map[Ident]string
+	KnownImports       map[string]struct{}
+	TemplateBuiltins   map[string]GoMiniType
+	importStack        []string
+	MaxTypeDepth       int  // 递归类型检查深度限制
+	Tolerant           bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
 }
 
 type ValidContext struct {
@@ -69,7 +70,7 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 	for ident, typ := range externalSpecs {
 		externalTypes[ident] = ExternalTypeSpec{Type: typ, Ownership: StructOwnershipVMValue}
 	}
-	return NewValidatorWithExternalTypes(node, externalTypes, externalConsts, tolerant)
+	return NewValidatorWithExternalTypesAndConstTypes(node, externalTypes, externalConsts, nil, tolerant)
 }
 
 func cloneExternalTypeSpecs(in map[Ident]ExternalTypeSpec) map[Ident]ExternalTypeSpec {
@@ -88,7 +89,19 @@ func cloneStringMap(in map[string]string) map[string]string {
 	return out
 }
 
+func cloneGoMiniTypeMap(in map[string]GoMiniType) map[string]GoMiniType {
+	out := make(map[string]GoMiniType, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]ExternalTypeSpec, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
+	return NewValidatorWithExternalTypesAndConstTypes(node, externalTypes, externalConsts, nil, tolerant)
+}
+
+func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes map[Ident]ExternalTypeSpec, externalConsts map[string]string, externalConstTypes map[string]GoMiniType, tolerant bool) (*ValidContext, error) {
 	imports := make(map[string]string)
 	if node.Imports != nil {
 		for _, imp := range node.Imports {
@@ -120,21 +133,22 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 				Methods:   make(map[Ident]CallFunctionType),
 				Ownership: StructOwnershipVMValue,
 			},
-			Package:          pkgName,
-			Path:             pkgName, // 默认为包名
-			Imports:          imports,
-			vars:             make(map[Ident]GoMiniType),
-			readOnlyVars:     make(map[Ident]bool),
-			externalTypes:    cloneExternalTypeSpecs(externalTypes),
-			externalConsts:   cloneStringMap(externalConsts),
-			Imported:         make(map[string]bool),
-			Modules:          make(map[string]*ModuleExports),
-			Discovered:       make(map[Ident]string),
-			KnownImports:     make(map[string]struct{}),
-			TemplateBuiltins: make(map[string]GoMiniType),
-			importStack:      make([]string, 0),
-			MaxTypeDepth:     256,
-			Tolerant:         tolerant,
+			Package:            pkgName,
+			Path:               pkgName, // 默认为包名
+			Imports:            imports,
+			vars:               make(map[Ident]GoMiniType),
+			readOnlyVars:       make(map[Ident]bool),
+			externalTypes:      cloneExternalTypeSpecs(externalTypes),
+			externalConsts:     cloneStringMap(externalConsts),
+			externalConstTypes: cloneGoMiniTypeMap(externalConstTypes),
+			Imported:           make(map[string]bool),
+			Modules:            make(map[string]*ModuleExports),
+			Discovered:         make(map[Ident]string),
+			KnownImports:       make(map[string]struct{}),
+			TemplateBuiltins:   make(map[string]GoMiniType),
+			importStack:        make([]string, 0),
+			MaxTypeDepth:       256,
+			Tolerant:           tolerant,
 		},
 		parent:  nil,
 		current: node,
@@ -150,8 +164,14 @@ func NewValidatorWithExternalTypes(node *ProgramStmt, externalTypes map[Ident]Ex
 			if node.Constants == nil {
 				node.Constants = make(map[string]string)
 			}
+			if node.ConstantTypes == nil {
+				node.ConstantTypes = make(map[string]GoMiniType)
+			}
 			if _, ok := node.Constants[name]; !ok {
 				node.Constants[name] = val
+			}
+			if typ := externalConstTypes[name]; typ != "" {
+				node.ConstantTypes[name] = typ
 			}
 		}
 	}
@@ -1002,17 +1022,6 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 	return nil
 }
 
-func (c *ValidContext) ConstStore(value string) Ident {
-	constID := fmt.Sprintf("__const__%04d", c.NextID())
-	for s, s2 := range c.root.program.Constants {
-		if s2 == value {
-			return Ident(s)
-		}
-	}
-	c.root.program.Constants[constID] = value
-	return Ident(constID)
-}
-
 func (c *ValidContext) ImportPackage(path string) error {
 	// 1. 路径规范化，防止 "../" 注入
 	path = strings.Trim(path, " \t\n\r")
@@ -1053,7 +1062,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 	}
 
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
-	v, _ := NewValidatorWithExternalTypes(prog, c.root.externalTypes, c.root.externalConsts, c.root.Tolerant)
+	v, _ := NewValidatorWithExternalTypesAndConstTypes(prog, c.root.externalTypes, c.root.externalConsts, c.root.externalConstTypes, c.root.Tolerant)
 	v.root.Path = path
 	v.SetModuleLoader(c.root.ModuleLoader)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈

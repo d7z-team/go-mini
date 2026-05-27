@@ -201,7 +201,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			switch val.VType {
 			case TypeArray:
-				rawElements := val.Ref.(*VMArray).Snapshot()
+				rawElements := arrayRef(val).Snapshot()
 				elements = make([]*Var, len(rawElements))
 				for i, v := range rawElements {
 					if v != nil {
@@ -360,16 +360,19 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if data.Multi {
 			obj = e.unwrapValue(obj)
 			idx = e.unwrapValue(idx)
-			if obj == nil || isEmptyVar(obj) {
+			if obj == nil {
 				return errors.New("index access on nil")
 			}
 			if idx == nil {
 				return errors.New("index access with nil index")
 			}
 			if obj.VType == TypeMap {
-				m := obj.Ref.(*VMMap)
-				keyType, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
-				key, err := e.varToTypedMapKey(idx, keyType)
+				m := mapRef(obj)
+				keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
+				if !ok {
+					return &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", obj.RuntimeType().Raw), IsPanic: true}
+				}
+				key, _, err := e.comparableMapKey(idx, keyType)
 				if err != nil {
 					return err
 				}
@@ -378,7 +381,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					tuple[0] = val
 					tuple[1] = NewBool(true)
 				} else {
-					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
+					tuple[0] = zeroVarForRuntimeType(valType)
 					tuple[1] = NewBool(false)
 				}
 				v := &Var{VType: TypeArray, Ref: &VMArray{Data: tuple}}
@@ -503,10 +506,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return nil
 		}
 
-		res := make(map[string]*Var)
+		vmMap := &VMMap{Data: make(map[string]*Var)}
 		var keyType RuntimeType
 		var valType RuntimeType
-		keyType, valType, _ = typ.GetMapKeyValueTypes()
+		var ok bool
+		keyType, valType, ok = typ.GetMapKeyValueTypes()
+		if !ok {
+			return &VMError{Message: fmt.Sprintf("invalid map runtime type: %s", typ.Raw), IsPanic: true}
+		}
 
 		// Values are pushed as [..., K_i, V_i]
 		// So we must pop in reverse order: V_i then K_i
@@ -518,20 +525,21 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 
 			keyName := ""
+			var keyVar *Var
 			if entries[i].IdentKey != "" {
 				keyName = entries[i].IdentKey
+				keyVar = NewString(entries[i].IdentKey)
 			} else if entries[i].HasExprKey {
 				keyVal := session.ValueStack.Pop()
 				var err error
-				keyName, err = exec.varToTypedMapKey(keyVal, keyType)
+				keyName, keyVar, err = exec.comparableMapKey(keyVal, keyType)
 				if err != nil {
 					return err
 				}
 			}
-
-			res[keyName] = preparedVal
+			vmMap.StoreWithKey(keyName, keyVar, preparedVal)
 		}
-		v := &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
+		v := &Var{VType: TypeMap, Ref: vmMap}
 		v.SetRuntimeType(typ)
 		session.ValueStack.Push(v)
 		return nil
@@ -583,7 +591,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if ellipsis && len(args) > 0 {
 			last := e.unwrapValue(args[len(args)-1])
 			if last != nil && last.VType == TypeArray {
-				arr := last.Ref.(*VMArray)
+				arr := arrayRef(last)
 				items := arr.Snapshot()
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
@@ -680,7 +688,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if data.Ellipsis && len(args) > 0 {
 			last := e.unwrapValue(args[len(args)-1])
 			if last != nil && last.VType == TypeArray {
-				arr := last.Ref.(*VMArray)
+				arr := arrayRef(last)
 				items := arr.Snapshot()
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
@@ -943,9 +951,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		switch obj.VType {
 		case TypeArray:
-			rData.Length = obj.Ref.(*VMArray).Len()
+			rData.Length = arrayRef(obj).Len()
 		case TypeMap:
-			m := obj.Ref.(*VMMap)
+			m := mapRef(obj)
 			rData.Keys = m.Keys()
 			rData.Length = len(rData.Keys)
 		case TypeChannel:
@@ -990,12 +998,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		var key, val *Var
 		if rData.Obj.VType == TypeArray {
 			key = NewInt(int64(rData.Index))
-			val, _ = rData.Obj.Ref.(*VMArray).Load(rData.Index)
+			val, _ = arrayRef(rData.Obj).Load(rData.Index)
 		} else {
 			k := rData.Keys[rData.Index]
-			keyType, _, _ := rData.Obj.RuntimeType().GetMapKeyValueTypes()
-			key = e.mapKeyToVar(k, keyType)
-			val, _ = rData.Obj.Ref.(*VMMap).Load(k)
+			key = mapRef(rData.Obj).KeyVar(k)
+			if key == nil {
+				key = NewString(k)
+			}
+			val, _ = mapRef(rData.Obj).Load(k)
 		}
 		rData.Index++
 
@@ -1316,7 +1326,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 						})
 					}
 				case FFIMemberConst:
-					ffiMod.Store(member.Name, e.evalLiteralToVar(member.ConstValue))
+					if err := member.Const.Validate(); err != nil {
+						err := &VMError{Message: "external FFI constant " + member.Name + " invalid: " + err.Error(), IsPanic: true}
+						waiters := session.Shared.finishModuleLoad(path, nil)
+						e.scheduleModuleWaiters(waiters, nil, err)
+						return err
+					}
+					ffiMod.Store(member.Name, member.Const.ToVar())
 				case FFIMemberValue:
 					if member.Value != nil {
 						ffiMod.Store(member.Name, cloneVarForAssign(member.Value))

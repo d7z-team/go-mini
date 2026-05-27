@@ -205,7 +205,7 @@ func main() {
 		t.Fatal("expected executable bytecode")
 	}
 	executable := compiled.Bytecode.Executable
-	if executable.Constants["Version"] != "v1" {
+	if executable.Constants["Version"].DisplayString() != "v1" {
 		t.Fatalf("unexpected executable constants: %#v", executable.Constants)
 	}
 	if executable.StructSchemas["Payload"] == nil {
@@ -581,7 +581,7 @@ func main() {}
 	if artifact.Program != nil {
 		t.Fatal("bytecode artifact should not contain analysis AST")
 	}
-	if artifact.Bytecode.Executable.Constants["Version"] != "v1" {
+	if artifact.Bytecode.Executable.Constants["Version"].DisplayString() != "v1" {
 		t.Fatalf("unexpected executable constants: %#v", artifact.Bytecode.Executable.Constants)
 	}
 }

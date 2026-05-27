@@ -3,73 +3,7 @@ package runtime
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 )
-
-// 供解卷状态恢复使用
-func (e *Executor) varToMapKey(v *Var) (string, error) {
-	if v == nil {
-		return "", errors.New("map key is nil")
-	}
-	switch v.VType {
-	case TypeString:
-		return v.Str, nil
-	case TypeInt:
-		return "i:" + strconv.FormatInt(v.I64, 10), nil
-	case TypeBool:
-		return "b:" + strconv.FormatBool(v.Bool), nil
-	case TypeFloat:
-		return "f:" + strconv.FormatFloat(v.F64, 'f', -1, 64), nil
-	}
-	return "", fmt.Errorf("unsupported map key type: %v", v.VType)
-}
-
-func (e *Executor) varToTypedMapKey(v *Var, keyType RuntimeType) (string, error) {
-	if v == nil {
-		return "", errors.New("map key is nil")
-	}
-	switch {
-	case keyType.IsInt():
-		if v.VType == TypeInt {
-			return "i:" + strconv.FormatInt(v.I64, 10), nil
-		}
-	case keyType.IsBool():
-		if v.VType == TypeBool {
-			return "b:" + strconv.FormatBool(v.Bool), nil
-		}
-	case keyType.IsNumeric() && !keyType.IsInt():
-		if v.VType == TypeFloat {
-			return "f:" + strconv.FormatFloat(v.F64, 'f', -1, 64), nil
-		}
-	case keyType.IsString():
-		if v.VType == TypeString {
-			return v.Str, nil
-		}
-	case keyType.IsAny():
-		return e.varToMapKey(v)
-	}
-	return "", fmt.Errorf("invalid map key type: expected %s, got %v", keyType.Raw, v.VType)
-}
-
-func (e *Executor) mapKeyToVar(k string, keyType RuntimeType) *Var {
-	if keyType.IsInt() {
-		k = strings.TrimPrefix(k, "i:")
-		val, _ := strconv.ParseInt(k, 10, 64)
-		return NewInt(val)
-	}
-	if keyType.IsBool() {
-		k = strings.TrimPrefix(k, "b:")
-		val, _ := strconv.ParseBool(k)
-		return NewBool(val)
-	}
-	if keyType.IsNumeric() && !keyType.IsInt() {
-		k = strings.TrimPrefix(k, "f:")
-		val, _ := strconv.ParseFloat(k, 64)
-		return NewFloat(val)
-	}
-	return NewString(k)
-}
 
 func pruneRangeContinueResidualTasks(session *StackContext) {
 	for i := len(session.TaskStack) - 1; i >= 0; i-- {
@@ -107,7 +41,7 @@ func (e *Executor) declareInitVars(session *StackContext, data *VarDeclData) err
 		if value.VType != TypeArray {
 			return &VMError{Message: fmt.Sprintf("cannot destructure type %v", value.VType), IsPanic: true}
 		}
-		raw := value.Ref.(*VMArray).Snapshot()
+		raw := arrayRef(value).Snapshot()
 		if len(raw) != len(data.Bindings) {
 			return &VMError{Message: fmt.Sprintf("var declaration: destructure count mismatch (need %d, got %d)", len(data.Bindings), len(raw)), IsPanic: true}
 		}
