@@ -6,60 +6,67 @@ import (
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // TimeHost 实现 Module 接口
 type TimeHost struct{}
 
-func (h *TimeHost) Now() *Time {
-	return &Time{T: time.Now()}
-}
-
 func (h *TimeHost) Unix(sec, nsec int64) *Time {
 	return &Time{T: time.Unix(sec, nsec)}
 }
 
-func (h *TimeHost) Sleep(ns int64) ffigo.Async[ffigo.Void] {
-	return ffigo.AsyncFunc[ffigo.Void](func(ctx context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
-		if ns <= 0 {
+func (h *TimeHost) NowContext(ctx context.Context) *Time {
+	_ = ctx
+	return &Time{T: time.Now()}
+}
+
+func (h *TimeHost) Now(ctx context.Context) *Time {
+	return h.NowContext(ctx)
+}
+
+func (h *TimeHost) Sleep(ctx context.Context, ns int64) ffigo.Async[ffigo.Void] {
+	if ns <= 0 {
+		return ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
 			done.Complete(ffigo.Void{}, nil)
 			return nil, nil
-		}
-		timer := time.NewTimer(time.Duration(ns))
-		cancelled := make(chan struct{})
-		var once sync.Once
-		go func() {
-			select {
-			case <-timer.C:
-				done.Complete(ffigo.Void{}, nil)
-			case <-ctx.Done():
-				done.Complete(ffigo.Void{}, ctx.Err())
-			case <-cancelled:
+		})
+	}
+	service := runtime.VMTimerServiceFromContext(ctx)
+	if service == nil {
+		return ffigo.AsyncFunc[ffigo.Void](func(_ context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
+			var once sync.Once
+			finish := func(err error) {
+				once.Do(func() {
+					done.Complete(ffigo.Void{}, err)
+				})
 			}
-		}()
-		cancel := func() {
-			once.Do(func() {
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				close(cancelled)
+			hostTimer := time.AfterFunc(time.Duration(ns), func() {
+				finish(nil)
 			})
-		}
-		return ffigo.NewWaitHandle(ffigo.WaitExternal, "time.Sleep", cancel), nil
+			cancel := func() {
+				hostTimer.Stop()
+				finish(nil)
+			}
+			return ffigo.NewWaitHandle(ffigo.WaitExternal, "time.Sleep", cancel), nil
+		})
+	}
+	timer := runtime.NewVMTimer(service, time.Duration(ns))
+	return ffigo.AsyncFunc[ffigo.Void](func(waitCtx context.Context, done ffigo.Completion[ffigo.Void]) (ffigo.WaitHandle, error) {
+		return timer.Wait().Start(waitCtx, voidCompletion{done: done})
 	})
 }
 
-func (h *TimeHost) Since(t *Time) int64 {
+func (h *TimeHost) Since(ctx context.Context, t *Time) int64 {
+	_ = ctx
 	if t == nil {
 		return 0
 	}
 	return int64(time.Since(t.T))
 }
 
-func (h *TimeHost) Until(t *Time) int64 {
+func (h *TimeHost) Until(ctx context.Context, t *Time) int64 {
+	_ = ctx
 	if t == nil {
 		return 0
 	}
@@ -93,6 +100,17 @@ func (t *Time) Year() int64 {
 		return 0
 	}
 	return int64(t.T.Year())
+}
+
+type voidCompletion struct {
+	done ffigo.Completion[ffigo.Void]
+}
+
+func (c voidCompletion) Complete(_ bool, err error) bool {
+	if c.done == nil {
+		return false
+	}
+	return c.done.Complete(ffigo.Void{}, err)
 }
 
 func (t *Time) Month() int64 {

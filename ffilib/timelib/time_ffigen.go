@@ -47,7 +47,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	reqBuf := ffigo.NewReader(args)
 	switch methodID {
 	case methodIDModuleNow:
-		r0 := impl.Now()
+		r0 := impl.Now(ctx)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {
@@ -82,7 +82,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			tmp := reqBuf.ReadVarint()
 			ns = int64(tmp)
 		}
-		r0 := impl.Sleep(ns)
+		r0 := impl.Sleep(ctx, ns)
 		return ffigo.AsyncValue[ffigo.Void](r0, func(resBuf *ffigo.Buffer, value ffigo.Void) error {
 			return nil
 		}), nil
@@ -96,7 +96,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
 		}
-		r0 := impl.Since(t)
+		r0 := impl.Since(ctx, t)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
@@ -110,7 +110,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
 		}
-		r0 := impl.Until(t)
+		r0 := impl.Until(ctx, t)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil

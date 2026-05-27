@@ -1,11 +1,6 @@
 package runtime
 
-import (
-	"context"
-	"sync/atomic"
-
-	"gopkg.d7z.net/go-mini/core/debugger"
-)
+import "context"
 
 type SlotFrame struct {
 	Locals       []*Slot
@@ -65,13 +60,10 @@ func (s *Stack) RunDefers() {
 
 type StackContext struct {
 	// Context is the host-provided context, strictly for FFI use.
-	// VM kernel should check 'status' instead of Context.Err() for performance.
-	Context context.Context
-	Stack   *Stack
-
-	// status represents the execution state (Fake Context)
-	// 0: Running, 1: Aborted/Cancelled, 2: Paused
-	status int32
+	// VM kernel should check the run controller for pause/resume semantics.
+	Context    context.Context
+	Stack      *Stack
+	Controller *RunController
 
 	PanicVar       *Var         // 用于存储当前 VM 执行上下文中正在冒泡的 panic 对象
 	PanicMessage   string       // 存储发生 panic 时的文本消息
@@ -86,7 +78,7 @@ type StackContext struct {
 	StepCount int64
 	StepLimit int64
 
-	Debugger *debugger.Session
+	Debugger Debugger
 
 	// 迭代执行器状态 (Iterative Executor State)
 	TaskStack   []Task
@@ -98,34 +90,6 @@ type StackContext struct {
 	// skippedScopeEnters tracks scope-enter tasks skipped during any unwind so
 	// their orphaned scope-exit tasks are skipped as well.
 	skippedScopeEnters int
-
-	// resumeSignal is used to unblock the execution loop after a pause.
-	resumeSignal chan struct{}
-}
-
-func (ctx *StackContext) Abort() {
-	atomic.StoreInt32(&ctx.status, 1)
-}
-
-func (ctx *StackContext) Aborted() bool {
-	return atomic.LoadInt32(&ctx.status) == 1
-}
-
-func (ctx *StackContext) Pause() {
-	atomic.CompareAndSwapInt32(&ctx.status, 0, 2)
-}
-
-func (ctx *StackContext) Resume() {
-	if atomic.CompareAndSwapInt32(&ctx.status, 2, 0) {
-		select {
-		case ctx.resumeSignal <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (ctx *StackContext) IsPaused() bool {
-	return atomic.LoadInt32(&ctx.status) == 2
 }
 
 func (ctx *StackContext) Done() <-chan struct{} {
@@ -136,11 +100,16 @@ func (ctx *StackContext) Done() <-chan struct{} {
 }
 
 func (ctx *StackContext) Err() error {
-	if ctx.Aborted() {
-		if ctx.Context != nil {
-			return ctx.Context.Err()
+	if ctx == nil {
+		return nil
+	}
+	if ctx.Context != nil {
+		if err := ctx.Context.Err(); err != nil {
+			return err
 		}
-		return context.Canceled
+	}
+	if ctx.Controller != nil {
+		return ctx.Controller.Err()
 	}
 	return nil
 }

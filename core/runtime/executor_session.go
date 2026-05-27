@@ -12,22 +12,31 @@ func (e *Executor) Execute(ctx context.Context) (err error) {
 	return e.ExecuteWithEnv(ctx, nil)
 }
 
-func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
-	e.runMu.Lock()
-	defer e.runMu.Unlock()
+func (e *Executor) Start(ctx context.Context) (*RunHandle, error) {
+	return e.StartWithEnv(ctx, nil)
+}
 
+func (e *Executor) StartWithEnv(ctx context.Context, env map[string]*Var) (*RunHandle, error) {
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
-	defer e.CleanupSession(session)
 	if err := e.prepareSession(session, env, true); err != nil {
-		return err
+		e.CleanupSession(session)
+		return nil, err
 	}
-	root, err := e.scheduler.Reset(session, e)
+	run, err := e.startRun(ctx, session, true)
+	if err != nil {
+		e.CleanupSession(session)
+		return nil, err
+	}
+	return run, nil
+}
+
+func (e *Executor) ExecuteWithEnv(ctx context.Context, env map[string]*Var) (err error) {
+	run, err := e.StartWithEnv(ctx, env)
 	if err != nil {
 		return err
 	}
-	defer e.scheduler.Stop()
-	return e.runExecutionContexts(ctx, root)
+	return run.Wait()
 }
 
 func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var, invokeMain bool) (err error) {
@@ -35,16 +44,11 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 		return err
 	}
 	if e.scheduler != nil && e.scheduler.Current() == nil {
-		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(session, e)
-		if resetErr != nil {
-			e.runMu.Unlock()
-			return resetErr
+		run, startErr := e.startRun(session.Context, session, false)
+		if startErr != nil {
+			return startErr
 		}
-		err = e.runExecutionContexts(session.Context, root)
-		e.scheduler.Stop()
-		e.runMu.Unlock()
-		return err
+		return run.Wait()
 	}
 	return e.Run(session)
 }

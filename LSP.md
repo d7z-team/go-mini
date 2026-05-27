@@ -142,7 +142,7 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 - LSP / IDE 查询：基于源码 AST
 - 运行 / 反汇编 / 持久化：基于 bytecode / prepared program
 
-channel/select 阻塞、FFI channel endpoint wake、异步 FFI 的 wait-source 分类和 `VMAllBlockedError` 都属于执行期调度语义。LSP 只通过 AST 与 schema 暴露函数签名、channel 方向、类型和模板信息，不模拟 select 调度、channel readiness 或 async completion，也不把运行时阻塞状态写入分析缓存。
+channel/select 阻塞、FFI channel endpoint wake、异步 FFI 的 wait-source 分类、`RunController` pause/resume、`VMClock` 冻结和 `VMAllBlockedError` 都属于执行期调度语义。LSP 只通过 AST 与 schema 暴露函数签名、channel 方向、类型和模板信息，不模拟 select 调度、channel readiness、async completion 或运行时 pause/time 状态，也不把这些状态写入分析缓存。
 
 如果你的系统既要编辑又要运行，推荐双链设计：
 

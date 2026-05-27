@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-26
+更新时间: 2026-05-27
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -41,7 +41,9 @@
 - compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`，runtime 只校验 module hash 并通过 `ModulePlanLoader` 装载 `PreparedProgram`。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
-- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 提供 sentinel error、timer 与 value key 可比较性校验；`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播。
+- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 提供 sentinel error、timer 与 value key 可比较性校验；`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。
+- runtime run 统一挂载 `RunController`；独立 pause/resume、debugger breakpoint pause 和 continue/step 共用同一控制面，`ExecutableProgram.Start(...)` / `MiniExecutor.StartExecute(...)` 返回 `RunHandle` 供宿主控制当前 run。
+- VM timer 统一来自 `VMClock` / `VMTimer`；pause 会冻结 `time.Sleep` 这类脚本等待，但 `time.Now` / `Since` / `Until`、`context.WithTimeout`、`context.WithDeadline` 和宿主 `context.Context` 的取消/截止时间继续使用真实时间。
 - Eval 便捷入口先由 compiler/lowering 产出临时 `PreparedFunction`，runtime 执行 prepared function。
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - 语言级 channel/select 已落到 Go frontend、AST 检查、lowering、bytecode payload 和 runtime；支持 `make(chan T[, cap])`、send/receive、二值 receive、`close`、`len`、`cap`、`select`、`default` 和 channel `for range`。
@@ -63,12 +65,12 @@
 - FFI struct schema 区分 `VMValue` 和 `HostOpaque`；`HostOpaque` 以 `HostRef<T>` 形式进入 VM。
 - Opaque host object 由 FFI factory/return 形成。
 - root `main` 返回后，未完成子执行上下文立即停止；子执行上下文 panic 默认失败整个 VM，除非在子上下文内部 recover。
-- Debugger pause event 显式暴露 `ExecutionContextID`；该字段表示 VM 执行上下文 ID，root 通常为 1，子上下文为后续递增 ID。
+- Debugger pause event 显式暴露 `RunID` 和 `ExecutionContextID`；前者标识当前 run，后者表示触发暂停的 VM 执行上下文，root 通常为 1，子上下文为后续递增 ID。
 - 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表只服务调试和必要兼容查找。
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链；bytecode 装载执行使用 `Executable`。
 - 对外 JSON / 持久化 / CLI 装载使用 `go-mini-bytecode`。
-- Debugger session 的断点、单步、事件和命令通道均封装在并发安全方法后，运行中增删断点不会直接读写公开 map。
+- Debugger session 的断点、按 run ID 绑定的单步策略和 `NextEvent(ctx)` 事件拉取均封装在并发安全方法后，运行中增删断点不会直接读写公开 map；debugger 事件在 VM 已进入 `Paused` 后投递，恢复执行和单步控制由 `RunHandle` 提供。
 - stdio LSP 声明 full text sync；didOpen/didChange 进入 server 侧 diagnostics debounce，didSave 立即 flush pending diagnostics，didClose 取消 pending diagnostics 并清理旧诊断。
 
 ## 剩余工作
@@ -76,7 +78,7 @@
 ### Debugger 执行上下文标识与暂停策略
 
 - [x] 决定调试事件显式暴露 VM 执行上下文标识。
-- [x] 当前 debugger pause 策略固定为 all-stop；任一执行上下文命中断点或人工暂停时，整个 VM 暂停等待全局 command。
+- [x] 当前 debugger pause 策略固定为 all-stop；任一执行上下文命中断点或人工暂停时，整个 VM 通过统一 `RunController` 进入暂停。
 - [x] 补齐 debugger 执行上下文标识与 all-stop 多上下文调试回归测试。
 - [ ] 如后续需要 non-stop 多上下文调试，再单独设计 per-context pause 集合、命令路由和事件顺序。
 

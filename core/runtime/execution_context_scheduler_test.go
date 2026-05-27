@@ -9,34 +9,25 @@ func TestSchedulerRoundRobinFIFO(t *testing.T) {
 	scheduler.runq.push(first)
 	scheduler.runq.push(second)
 
-	execCtx, done, _, err := scheduler.nextReady()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if done || execCtx != first {
-		t.Fatalf("expected first execution context first, got context=%v done=%v", execCtx, done)
+	snapshot := scheduler.Snapshot()
+	if snapshot.State != SchedulerStateReady || snapshot.ExecCtx != first {
+		t.Fatalf("expected first execution context first, got state=%d context=%v", snapshot.State, snapshot.ExecCtx)
 	}
 	if err := scheduler.YieldCurrent(); err != nil {
 		t.Fatal(err)
 	}
 
-	execCtx, done, _, err = scheduler.nextReady()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if done || execCtx != second {
-		t.Fatalf("expected second execution context next, got context=%v done=%v", execCtx, done)
+	snapshot = scheduler.Snapshot()
+	if snapshot.State != SchedulerStateReady || snapshot.ExecCtx != second {
+		t.Fatalf("expected second execution context next, got state=%d context=%v", snapshot.State, snapshot.ExecCtx)
 	}
 	if err := scheduler.YieldCurrent(); err != nil {
 		t.Fatal(err)
 	}
 
-	execCtx, done, _, err = scheduler.nextReady()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if done || execCtx != first {
-		t.Fatalf("expected first execution context to return after round robin, got context=%v done=%v", execCtx, done)
+	snapshot = scheduler.Snapshot()
+	if snapshot.State != SchedulerStateReady || snapshot.ExecCtx != first {
+		t.Fatalf("expected first execution context to return after round robin, got state=%d context=%v", snapshot.State, snapshot.ExecCtx)
 	}
 }
 
@@ -60,12 +51,9 @@ func TestSchedulerDrainBudgetFairness(t *testing.T) {
 		}
 	}
 
-	execCtx, done, _, err := scheduler.nextReady()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if done || execCtx != ready {
-		t.Fatalf("expected existing runnable execution context first, got context=%v done=%v", execCtx, done)
+	snapshot := scheduler.Snapshot()
+	if snapshot.State != SchedulerStateReady || snapshot.ExecCtx != ready {
+		t.Fatalf("expected existing runnable execution context first, got state=%d context=%v", snapshot.State, snapshot.ExecCtx)
 	}
 	if got := scheduler.runq.len(); got != completionDrainBudget {
 		t.Fatalf("expected %d resumed execution contexts queued after draining one batch, got %d", completionDrainBudget, got)
@@ -81,15 +69,12 @@ func TestSchedulerDrainBudgetFairness(t *testing.T) {
 	}
 
 	scheduler.FinishCurrent()
-	execCtx, done, _, err = scheduler.nextReady()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if done {
+	snapshot = scheduler.Snapshot()
+	if snapshot.State == SchedulerStateDone {
 		t.Fatal("scheduler should keep running after draining the first batch")
 	}
-	if execCtx == nil || execCtx.ID != 2 {
-		t.Fatalf("expected FIFO completion resume order to start with execution context 2, got %#v", execCtx)
+	if snapshot.ExecCtx == nil || snapshot.ExecCtx.ID != 2 {
+		t.Fatalf("expected FIFO completion resume order to start with execution context 2, got %#v", snapshot.ExecCtx)
 	}
 	if got := scheduler.completed.len(); got != 0 {
 		t.Fatalf("expected remaining completions to be drained on the next scheduling round, got %d", got)

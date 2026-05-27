@@ -1,13 +1,17 @@
 //go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg contextlib -out context_ffigen.go interface.go host.go
 package contextlib
 
-import "gopkg.d7z.net/go-mini/core/ffigo"
+import (
+	"context"
+
+	"gopkg.d7z.net/go-mini/core/ffigo"
+)
 
 // ffigen:module context/internal
 type Module interface {
 	Canceled() error
 	DeadlineExceeded() error
-	NewTimer(ns int64) *Timer
+	NewTimer(ctx context.Context, ns int64) *Timer
 	ValidValueKey(key any) bool
 }
 

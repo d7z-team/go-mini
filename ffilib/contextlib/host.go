@@ -1,7 +1,7 @@
 package contextlib
 
 import (
-	gocontext "context"
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -13,14 +13,15 @@ import (
 type ModuleHost struct{}
 
 func (h *ModuleHost) Canceled() error {
-	return gocontext.Canceled
+	return context.Canceled
 }
 
 func (h *ModuleHost) DeadlineExceeded() error {
-	return gocontext.DeadlineExceeded
+	return context.DeadlineExceeded
 }
 
-func (h *ModuleHost) NewTimer(ns int64) *Timer {
+func (h *ModuleHost) NewTimer(ctx context.Context, ns int64) *Timer {
+	_ = ctx
 	return &Timer{impl: newTimerState(ns)}
 }
 
@@ -52,23 +53,12 @@ func newTimerState(ns int64) *timerState {
 	return state
 }
 
-func (s *timerState) fire() {
-	if s == nil {
-		return
-	}
-	waiters := s.finishLockedState(true)
-	for _, done := range waiters {
-		done.Complete(true, nil)
-	}
-}
-
 func (s *timerState) wait() ffigo.Async[bool] {
-	return ffigo.AsyncFunc[bool](func(_ gocontext.Context, done ffigo.Completion[bool]) (ffigo.WaitHandle, error) {
+	return ffigo.AsyncFunc[bool](func(ctx context.Context, done ffigo.Completion[bool]) (ffigo.WaitHandle, error) {
 		if s == nil {
 			done.Complete(false, nil)
 			return nil, nil
 		}
-
 		s.mu.Lock()
 		switch {
 		case s.fired:
@@ -90,48 +80,79 @@ func (s *timerState) wait() ffigo.Async[bool] {
 		s.mu.Unlock()
 
 		cancel := func() {
-			s.mu.Lock()
-			delete(s.waiters, id)
-			s.mu.Unlock()
+			s.cancelWaiter(id)
 		}
 		return ffigo.NewWaitHandle(ffigo.WaitExternal, "context/internal.Timer.Wait", cancel), nil
 	})
+}
+
+func (s *timerState) cancelWaiter(id timerWaiterID) {
+	if s == nil {
+		return
+	}
+	var timer *time.Timer
+	s.mu.Lock()
+	if s.waiters != nil {
+		delete(s.waiters, id)
+	}
+	if len(s.waiters) == 0 && !s.fired && !s.stopped {
+		s.stopped = true
+		timer = s.timer
+		s.timer = nil
+	}
+	s.mu.Unlock()
+	if timer != nil {
+		timer.Stop()
+	}
 }
 
 func (s *timerState) stop() bool {
 	if s == nil {
 		return false
 	}
-	stoppedTimer := false
-	if s.timer != nil {
-		stoppedTimer = s.timer.Stop()
-	}
-	waiters := s.finishLockedState(false)
-	for _, done := range waiters {
-		done.Complete(false, nil)
-	}
-	return stoppedTimer
-}
-
-func (s *timerState) finishLockedState(fired bool) []ffigo.Completion[bool] {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.fired || s.stopped {
-		return nil
+		s.mu.Unlock()
+		return false
 	}
-	if fired {
-		s.fired = true
-	} else {
-		s.stopped = true
-	}
-
+	s.stopped = true
+	timer := s.timer
+	s.timer = nil
 	waiters := make([]ffigo.Completion[bool], 0, len(s.waiters))
 	for id, done := range s.waiters {
 		waiters = append(waiters, done)
 		delete(s.waiters, id)
 	}
-	return waiters
+	s.mu.Unlock()
+	if timer != nil {
+		timer.Stop()
+	}
+	for _, done := range waiters {
+		done.Complete(false, nil)
+	}
+	return true
+}
+
+func (s *timerState) fire() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.fired || s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.fired = true
+	s.timer = nil
+	waiters := make([]ffigo.Completion[bool], 0, len(s.waiters))
+	for id, done := range s.waiters {
+		waiters = append(waiters, done)
+		delete(s.waiters, id)
+	}
+	s.mu.Unlock()
+	for _, done := range waiters {
+		done.Complete(true, nil)
+	}
 }
 
 func (s *timerState) String() string {

@@ -16,6 +16,9 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 - VM-only pointer semantics with `new`, `&`, dereference, and struct literals
 - FFI binding generator
 - Cooperative VM scheduling with async FFI all-blocked diagnostics
+- Run-level pause/resume via `Start(...)` and `RunHandle`
+- Debugger break/step control via the active `RunHandle`, with events delivered after the VM is paused
+- VM timer model that freezes script waits like `time.Sleep` while leaving real-time deadlines observable
 - Built-in core standard-library subset for errors and pure value helpers
 - Full FFI surface with packages such as `fmt`, `time`, `context`, `io`, and `os`
 - LSP helpers for editor integrations
@@ -55,6 +58,7 @@ import (
 	"context"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/ffilib"
 )
 
@@ -77,6 +81,47 @@ func main() {
 	if err := prog.Execute(context.Background()); err != nil {
 		panic(err)
 	}
+}
+```
+
+Control a running program:
+
+```go
+run, err := prog.Start(context.Background())
+if err != nil {
+	panic(err)
+}
+if err := run.Pause(runtime.PauseReason{Kind: "manual"}); err != nil {
+	panic(err)
+}
+if err := run.Resume(); err != nil {
+	panic(err)
+}
+if err := run.Wait(); err != nil {
+	panic(err)
+}
+```
+
+Debug with an explicit run handle:
+
+```go
+dbg := debugger.NewSession()
+ctx := debugger.WithDebugger(context.Background(), dbg)
+
+run, err := prog.Start(ctx)
+if err != nil {
+	panic(err)
+}
+event, err := dbg.NextEvent(ctx)
+if err != nil {
+	panic(err)
+}
+_ = event
+if err := run.StepInto(); err != nil {
+	panic(err)
+}
+if err := run.Continue(); err != nil {
+	panic(err)
 }
 ```
 

@@ -70,7 +70,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			tmp := reqBuf.ReadVarint()
 			ns = int64(tmp)
 		}
-		r0 := impl.NewTimer(ns)
+		r0 := impl.NewTimer(ctx, ns)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
 		if r0 == nil {

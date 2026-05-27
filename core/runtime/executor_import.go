@@ -175,41 +175,5 @@ func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err
 
 // ImportModulePath imports a prepared module or FFI module without exposing AST nodes.
 func (e *Executor) ImportModulePath(ctx *StackContext, path string) (*Var, error) {
-	oldTasks := ctx.TaskStack
-	oldValues := ctx.ValueStack
-	oldLHS := ctx.LHSStack
-	oldUnwind := ctx.UnwindMode
-
-	ctx.TaskStack = []Task{{Op: OpImportInit, Data: &ImportInitData{Path: path}}}
-	ctx.ValueStack = &ValueStack{}
-	ctx.LHSStack = &LHSStack{}
-	setUnwindMode(ctx, UnwindNone)
-
-	var err error
-	if e.scheduler == nil {
-		e.scheduler = NewExecutionContextScheduler()
-	}
-	if e.scheduler.Current() == nil {
-		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(ctx, e)
-		if resetErr != nil {
-			err = resetErr
-		} else {
-			err = e.runExecutionContexts(ctx.Context, root)
-			e.scheduler.Stop()
-		}
-		e.runMu.Unlock()
-	} else {
-		err = e.Run(ctx)
-	}
-	var res *Var
-	if err == nil {
-		res = ctx.ValueStack.Pop()
-	}
-
-	ctx.TaskStack = oldTasks
-	ctx.ValueStack = oldValues
-	ctx.LHSStack = oldLHS
-	ctx.UnwindMode = oldUnwind
-	return res, err
+	return e.runTemporaryTasks(ctx, []Task{{Op: OpImportInit, Data: &ImportInitData{Path: path}}})
 }

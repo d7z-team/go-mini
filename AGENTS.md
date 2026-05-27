@@ -35,6 +35,8 @@
 - 新增并发能力必须证明不会破坏单线程 VM 调度器语义。
 - Channel / select 必须保持 lowering / bytecode / runtime 闭环；FFI channel endpoint 的宿主 goroutine 只能等待 endpoint、完成 wire 编解码并唤醒调度器，不能执行 VM 指令。
 - 异步 FFI 必须返回 `ffigo.WaitHandle` 描述等待来源；依赖 VM 继续执行才能完成的等待不得标记为 `WaitExternal`，不得用无来源等待或 context timeout 掩盖 all-blocked。
+- VM timer 必须来自 runtime `VMClock` / `VMTimer`；`time.Sleep` 这类脚本等待不得直接绑定宿主真实时钟。`time.Now` / `Since` / `Until`、`context.WithTimeout` 和 `context.WithDeadline` 这类观测或宿主 deadline API 默认返回或使用真实时间。
+- 独立 pause/resume 与 debugger pause 必须统一走 runtime `RunController`；debugger 只保留断点、按 run ID 绑定的单步策略和事件，不要恢复 debugger 私有阻塞通道、pending resume 队列或第二套暂停状态；debugger pause event 必须在 VM 已进入 `Paused` 后投递。
 - Mini AST / lowering / compiler / runtime 只允许 canonical type。
 - Go 风格类型只允许存在于 Go 前端输入层，必须在 `core/gofrontend` 中立即规范化。
 - 手写 AST 若出现非 canonical type，必须直接编译错误，不做兼容修复；不得恢复 AST 格式 JSON 装载或执行入口。

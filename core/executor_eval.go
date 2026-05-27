@@ -45,13 +45,10 @@ func (e *MiniExecutor) MustEval(ctx context.Context, exprStr string, env map[str
 	return res
 }
 
-// Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量。
-// 注意：本方法使用“单次快照模式”，每次调用均创建全新的执行器上下文。
-// 若需持久化的全局变量或复杂的跨模块交互，建议使用 NewRuntimeByGoCode。
-func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
+func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, error) {
 	stmts, err := e.newCompiler().CompileStatementsSource(code)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// 构建临时程序以便验证
@@ -79,22 +76,40 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("snippet", code, program, false)
 	if err != nil {
-		return newMiniAstError(err, semanticCtx, program)
+		return nil, newMiniAstError(err, semanticCtx, program)
 	}
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
-		return err
+		return nil, err
 	}
 
-	executor, err := e.NewRuntimeByCompiled(compiled)
+	return e.NewRuntimeByCompiled(compiled)
+}
+
+// Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量。
+// 注意：本方法使用“单次快照模式”，每次调用均创建全新的执行器上下文。
+// 若需持久化的全局变量或复杂的跨模块交互，建议使用 NewRuntimeByGoCode。
+func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]interface{}) error {
+	executor, err := e.buildSnippetRuntime(code)
 	if err != nil {
 		return err
 	}
-
 	runtimeEnv := make(map[string]*runtime.Var, len(env))
 	for k, v := range env {
 		runtimeEnv[k] = executor.executor.ToVar(nil, v, nil)
 	}
 	return executor.ExecuteWithEnv(ctx, runtimeEnv)
+}
+
+func (e *MiniExecutor) StartExecute(ctx context.Context, code string, env map[string]interface{}) (*runtime.RunHandle, error) {
+	executor, err := e.buildSnippetRuntime(code)
+	if err != nil {
+		return nil, err
+	}
+	runtimeEnv := make(map[string]*runtime.Var, len(env))
+	for k, v := range env {
+		runtimeEnv[k] = executor.executor.ToVar(nil, v, nil)
+	}
+	return executor.StartWithEnv(ctx, runtimeEnv)
 }
 
 // MustExecute 类似于 Execute，但在出错时会触发 panic

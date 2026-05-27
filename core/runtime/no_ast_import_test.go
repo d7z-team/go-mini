@@ -6,10 +6,17 @@ import (
 	"testing"
 )
 
-func TestRuntimeNonTestFilesDoNotImportMiniAST(t *testing.T) {
+func TestRuntimeNonTestFilesDoNotImportFrontendOrDebugger(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatalf("read runtime dir failed: %v", err)
+	}
+	forbidden := []struct {
+		importPath string
+		name       string
+	}{
+		{importPath: `"gopkg.d7z.net/go-mini/core/ast"`, name: "core/ast"},
+		{importPath: `"gopkg.d7z.net/go-mini/core/debugger"`, name: "core/debugger"},
 	}
 	for _, entry := range entries {
 		name := entry.Name()
@@ -20,8 +27,11 @@ func TestRuntimeNonTestFilesDoNotImportMiniAST(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s failed: %v", name, err)
 		}
-		if strings.Contains(string(data), `"gopkg.d7z.net/go-mini/core/ast"`) {
-			t.Fatalf("runtime non-test file %s imports core/ast", name)
+		source := string(data)
+		for _, rule := range forbidden {
+			if strings.Contains(source, rule.importPath) {
+				t.Fatalf("runtime non-test file %s imports %s", name, rule.name)
+			}
 		}
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.d7z.net/go-mini/core/debugger"
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
@@ -406,42 +405,27 @@ func (e *Executor) lookupGlobal(name string) (*RuntimeGlobal, bool) {
 	return global, ok
 }
 
-func (e *Executor) runExprPlan(ctx *StackContext, plan []Task) (*Var, error) {
+func (e *Executor) runTemporaryTasks(ctx *StackContext, plan []Task) (*Var, error) {
 	oldTasks := ctx.TaskStack
 	oldValues := ctx.ValueStack
 	oldLHS := ctx.LHSStack
+	oldUnwind := ctx.UnwindMode
 
 	ctx.TaskStack = cloneTasks(plan)
 	ctx.ValueStack = &ValueStack{}
 	ctx.LHSStack = &LHSStack{}
-
-	var err error
-	if e.scheduler != nil && e.scheduler.Current() == nil {
-		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(ctx, e)
-		if resetErr != nil {
-			e.runMu.Unlock()
-			err = resetErr
-		} else {
-			err = e.runExecutionContexts(ctx.Context, root)
-			e.scheduler.Stop()
-			e.runMu.Unlock()
-		}
-	} else {
-		err = e.Run(ctx)
-	}
-	if err != nil {
+	setUnwindMode(ctx, UnwindNone)
+	defer func() {
 		ctx.TaskStack = oldTasks
 		ctx.ValueStack = oldValues
 		ctx.LHSStack = oldLHS
+		ctx.UnwindMode = oldUnwind
+	}()
+
+	if err := e.runStackContext(ctx.Context, ctx, false); err != nil {
 		return nil, err
 	}
-
-	res := ctx.ValueStack.Pop()
-	ctx.TaskStack = oldTasks
-	ctx.ValueStack = oldValues
-	ctx.LHSStack = oldLHS
-	return res, nil
+	return ctx.ValueStack.Pop(), nil
 }
 
 func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunction, env map[string]interface{}) (*Var, error) {
@@ -476,7 +460,6 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 
 	session := e.NewSession(ctx, "eval")
 	session.StepLimit = e.StepLimit
-	defer e.CleanupSession(session)
 	for k, v := range env {
 		_ = session.AddVariable(k, session.Executor.ToVar(session, v, nil))
 	}
@@ -487,25 +470,11 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 		BodyTasks:   cloneTasks(fn.BodyTasks),
 	}
 	if err := e.setupFuncCall(session, name, call, nil, nil); err != nil {
+		e.CleanupSession(session)
 		return nil, err
 	}
 
-	var err error
-	if e.scheduler != nil && e.scheduler.Current() == nil {
-		e.runMu.Lock()
-		root, resetErr := e.scheduler.Reset(session, e)
-		if resetErr != nil {
-			e.runMu.Unlock()
-			err = resetErr
-		} else {
-			err = e.runExecutionContexts(ctx, root)
-			e.scheduler.Stop()
-			e.runMu.Unlock()
-		}
-	} else {
-		err = e.Run(session)
-	}
-	if err != nil {
+	if err := e.runStackContext(ctx, session, true); err != nil {
 		return nil, err
 	}
 	if fn.FunctionSig.ReturnType.IsVoid() || session.ValueStack.Len() == 0 {
@@ -515,18 +484,19 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 }
 
 func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
+	controller := RunControllerFromContext(ctx)
 	session := &StackContext{
-		Context:      ctx,
-		Executor:     e,
-		Shared:       e.shared,
-		ImportChain:  make(map[string]bool),
-		Stack:        &Stack{MemoryPtr: make(map[string]*Slot), Symbols: make(map[string]SymbolRef), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
-		Debugger:     debugger.GetDebugger(ctx),
-		TaskStack:    make([]Task, 0, 128),
-		ValueStack:   &ValueStack{},
-		LHSStack:     &LHSStack{},
-		UnwindMode:   UnwindNone,
-		resumeSignal: make(chan struct{}, 1),
+		Context:     ctx,
+		Executor:    e,
+		Controller:  controller,
+		Shared:      e.shared,
+		ImportChain: make(map[string]bool),
+		Stack:       &Stack{MemoryPtr: make(map[string]*Slot), Symbols: make(map[string]SymbolRef), Frame: &SlotFrame{}, Scope: scope, Depth: 1},
+		Debugger:    DebuggerFromContext(ctx),
+		TaskStack:   make([]Task, 0, 128),
+		ValueStack:  &ValueStack{},
+		LHSStack:    &LHSStack{},
+		UnwindMode:  UnwindNone,
 	}
 	session.Stack.DeferOwner = session.Stack
 
@@ -543,21 +513,77 @@ func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[str
 	session := e.NewSession(ctx, "global")
 	session.StepLimit = e.StepLimit
 	if err := e.scheduleSharedInitialization(session, env); err != nil {
+		e.CleanupSession(session)
 		return err
 	}
 	if len(session.TaskStack) == 0 {
+		e.CleanupSession(session)
 		return nil
 	}
-	e.runMu.Lock()
-	root, err := e.scheduler.Reset(session, e)
-	if err != nil {
-		e.runMu.Unlock()
+	return e.runStackContext(ctx, session, true)
+}
+
+func (e *Executor) runStackContext(ctx context.Context, session *StackContext, cleanupSession bool) error {
+	if e.scheduler != nil && e.scheduler.Current() != nil {
+		err := e.Run(session)
+		if cleanupSession {
+			e.CleanupSession(session)
+		}
 		return err
 	}
-	err = e.runExecutionContexts(ctx, root)
-	e.scheduler.Stop()
-	e.runMu.Unlock()
-	return err
+	run, err := e.startRun(ctx, session, cleanupSession)
+	if err != nil {
+		if cleanupSession {
+			e.CleanupSession(session)
+		}
+		return err
+	}
+	return run.Wait()
+}
+
+func (e *Executor) startRun(ctx context.Context, session *StackContext, cleanupSession bool) (*RunHandle, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	e.runMu.Lock()
+	if e.scheduler == nil {
+		e.scheduler = NewExecutionContextScheduler()
+	}
+	baseCtx := session.Context
+	baseController := session.Controller
+	session.Controller = NewRunController(nil)
+	session.Context = ContextWithRunController(ctx, session.Controller)
+	activeController := session.Controller
+	root, err := e.scheduler.Reset(session, e)
+	if err != nil {
+		session.Context = baseCtx
+		session.Controller = baseController
+		activeController.Stop(err)
+		e.runMu.Unlock()
+		return nil, err
+	}
+	done := make(chan struct{})
+	run := NewRunHandle(session.Controller, session.Debugger, done)
+	go func() {
+		var runErr error
+		defer func() {
+			if session.Debugger != nil {
+				session.Debugger.ClearStep(activeController.ID())
+			}
+			session.Context = baseCtx
+			session.Controller = baseController
+			if cleanupSession {
+				e.CleanupSession(session)
+			}
+			activeController.Stop(runErr)
+			run.setResult(runErr)
+			e.scheduler.Stop()
+			close(done)
+			e.runMu.Unlock()
+		}()
+		runErr = e.runExecutionContexts(session.Context, root)
+	}()
+	return run, nil
 }
 
 func (e *Executor) CleanupSession(session *StackContext) {
@@ -787,14 +813,51 @@ func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionCo
 	if e.scheduler == nil || root == nil {
 		return errors.New("invalid VM execution context scheduler")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	controller := RunControllerFromContext(ctx)
+	if controller == nil {
+		if frame := root.CurrentFrame(); frame != nil && frame.Session != nil {
+			controller = frame.Session.Controller
+		}
+	}
 	for {
-		execCtx, err := e.scheduler.Next(ctx)
-		if err != nil {
-			return e.abortRun(err)
+		if controller != nil {
+			if err := controller.Checkpoint(ctx); err != nil {
+				return e.abortRun(err)
+			}
 		}
-		if execCtx == nil {
+		snapshot := e.scheduler.Snapshot()
+		switch snapshot.State {
+		case SchedulerStateDone:
 			return nil
+		case SchedulerStateIdleExternal:
+			wake := e.scheduler.WakeChan()
+			var control <-chan struct{}
+			if controller != nil {
+				control = controller.Signal()
+			}
+			select {
+			case <-wake:
+			case <-control:
+			case <-ctx.Done():
+				return e.abortRun(ctx.Err())
+			}
+			continue
+		case SchedulerStateAllBlocked:
+			if controller != nil && controller.HasPauseRequest() {
+				if err := controller.Checkpoint(ctx); err != nil {
+					return e.abortRun(err)
+				}
+				continue
+			}
+			return e.abortRun(&VMAllBlockedError{Waits: snapshot.Blocked})
+		case SchedulerStateReady:
+		default:
+			return e.abortRun(errors.New("invalid VM scheduler state"))
 		}
+		execCtx := snapshot.ExecCtx
 		frame := execCtx.CurrentFrame()
 		if frame == nil {
 			e.scheduler.FinishCurrent()
@@ -920,13 +983,9 @@ func (e *Executor) unwindExecutionContextError(execCtx *VMExecutionContext, caus
 func (e *Executor) runSession(session *StackContext, budget int) (runStop, error) {
 	executed := 0
 	for len(session.TaskStack) > 0 {
-		// Pause/Resume Logic (Fake Context)
-		if session.IsPaused() {
-			select {
-			case <-session.Done():
-				return runStopDone, session.Err()
-			case <-session.resumeSignal:
-				// Continue execution
+		if session.Controller != nil {
+			if err := session.Controller.Checkpoint(session.Context); err != nil {
+				return runStopDone, err
 			}
 		}
 		if session.Context != nil {
@@ -944,34 +1003,49 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 				return runStopDone, fmt.Errorf("instruction limit exceeded (%d)", session.StepLimit)
 			}
 		}
-		if session.Aborted() {
-			return runStopDone, session.Err()
-		}
-
 		if task.Op == OpLineStep {
 			if session.Debugger != nil && task.Source != nil {
-				if session.Debugger.ShouldTrigger(task.Source.Line) {
-					session.Debugger.SetStepping(false)
+				var runID uint64
+				if session.Controller != nil {
+					runID = session.Controller.ID()
+				}
+				if session.Debugger.ShouldTrigger(runID, task.Source.Line) {
+					session.Debugger.ClearStep(runID)
 					var execCtxID uint32
 					if e.scheduler != nil {
 						if execCtx := e.scheduler.Current(); execCtx != nil {
 							execCtxID = execCtx.ID
 						}
 					}
-					event := &debugger.Event{
+					event := &DebugEvent{
+						RunID:              runID,
 						ExecutionContextID: execCtxID,
-						Loc: &debugger.Position{
+						Loc: &DebugPosition{
 							F: task.Source.File,
 							L: task.Source.Line,
 							C: task.Source.Col,
 						},
 						Variables: session.Stack.DumpVariables(),
 					}
-					// Debugger pause is currently all-stop: once any VM execution context triggers a pause,
-					// the single-threaded VM waits here for a global debugger command.
-					cmd := session.Debugger.Pause(event)
-					if cmd == debugger.CmdStepInto {
-						session.Debugger.SetStepping(true)
+					if session.Controller != nil {
+						if !session.Controller.RequestPause(PauseReason{Kind: "debugger", Meta: task.Source.File}) {
+							if err := session.Controller.Checkpoint(session.Context); err != nil {
+								return runStopDone, err
+							}
+							continue
+						}
+						if !session.Controller.EnterPaused() {
+							if err := session.Controller.Checkpoint(session.Context); err != nil {
+								return runStopDone, err
+							}
+							continue
+						}
+					}
+					session.Debugger.Publish(event)
+					if session.Controller != nil {
+						if err := session.Controller.WaitPaused(session.Context); err != nil {
+							return runStopDone, err
+						}
 					}
 				}
 			}

@@ -2,6 +2,7 @@
 package timelib
 
 import (
+	"context"
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -35,11 +36,11 @@ const (
 
 // ffigen:module time
 type Module interface {
-	Now() *Time
+	Now(ctx context.Context) *Time
 	Unix(sec, nsec int64) *Time
-	Sleep(ns int64) ffigo.Async[ffigo.Void]
-	Since(t *Time) int64
-	Until(t *Time) int64
+	Sleep(ctx context.Context, ns int64) ffigo.Async[ffigo.Void]
+	Since(ctx context.Context, t *Time) int64
+	Until(ctx context.Context, t *Time) int64
 	Parse(layout, value string) (*Time, error)
 	ParseDuration(s string) (int64, error)
 }

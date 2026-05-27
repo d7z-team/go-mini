@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,6 +98,21 @@ func (e *VMAllBlockedError) Error() string {
 		}
 	}
 	return msg.String()
+}
+
+type SchedulerState uint8
+
+const (
+	SchedulerStateReady SchedulerState = iota
+	SchedulerStateIdleExternal
+	SchedulerStateAllBlocked
+	SchedulerStateDone
+)
+
+type SchedulerSnapshot struct {
+	State   SchedulerState
+	ExecCtx *VMExecutionContext
+	Blocked []BlockedWait
 }
 
 type schedulerQueue[T any] struct {
@@ -487,34 +501,14 @@ func (s *ExecutionContextScheduler) completeWire(token uint64, ret []byte, err e
 	return true
 }
 
-func (s *ExecutionContextScheduler) Next(ctx context.Context) (*VMExecutionContext, error) {
+func (s *ExecutionContextScheduler) Snapshot() SchedulerSnapshot {
 	if s == nil {
-		return nil, nil
+		return SchedulerSnapshot{State: SchedulerStateDone}
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	for {
-		execCtx, done, wake, err := s.nextReady()
-		if err != nil {
-			return nil, err
-		}
-		if execCtx != nil || done {
-			return execCtx, nil
-		}
-		select {
-		case <-wake:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-}
-
-func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-chan struct{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stopped {
-		return nil, true, nil, nil
+		return SchedulerSnapshot{State: SchedulerStateDone}
 	}
 	s.drainCompletionsLocked()
 	if s.runq.len() > 0 {
@@ -523,21 +517,36 @@ func (s *ExecutionContextScheduler) nextReady() (*VMExecutionContext, bool, <-ch
 			s.signalLocked()
 		}
 		s.current = execCtx
-		return execCtx, false, nil, nil
+		return SchedulerSnapshot{State: SchedulerStateReady, ExecCtx: execCtx}
 	}
 	if len(s.pending) == 0 {
-		return nil, true, nil, nil
+		return SchedulerSnapshot{State: SchedulerStateDone}
 	}
 	if s.completed.len() > 0 {
 		s.signalLocked()
 	}
 	if !s.pendingHasExternalWakeLocked() {
-		return nil, false, nil, s.allBlockedErrorLocked()
+		return SchedulerSnapshot{
+			State:   SchedulerStateAllBlocked,
+			Blocked: s.collectBlockedWaitsLocked(),
+		}
 	}
 	if s.wake == nil {
 		s.wake = make(chan struct{}, 1)
 	}
-	return nil, false, s.wake, nil
+	return SchedulerSnapshot{State: SchedulerStateIdleExternal}
+}
+
+func (s *ExecutionContextScheduler) WakeChan() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.wake == nil {
+		s.wake = make(chan struct{}, 1)
+	}
+	return s.wake
 }
 
 func (s *ExecutionContextScheduler) pendingHasExternalWakeLocked() bool {
@@ -552,7 +561,7 @@ func (s *ExecutionContextScheduler) pendingHasExternalWakeLocked() bool {
 	return false
 }
 
-func (s *ExecutionContextScheduler) allBlockedErrorLocked() error {
+func (s *ExecutionContextScheduler) collectBlockedWaitsLocked() []BlockedWait {
 	waits := make([]BlockedWait, 0, len(s.pending))
 	for _, pending := range s.pending {
 		if pending == nil {
@@ -573,7 +582,7 @@ func (s *ExecutionContextScheduler) allBlockedErrorLocked() error {
 			Reason:             reason,
 		})
 	}
-	return &VMAllBlockedError{Waits: waits}
+	return waits
 }
 
 func (s *ExecutionContextScheduler) drainCompletionsLocked() {

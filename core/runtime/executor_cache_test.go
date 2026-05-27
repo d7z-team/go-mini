@@ -47,7 +47,7 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		t.Fatalf("unexpected counter value: %#v", counter)
 	}
 
-	result, err := exec.runExprPlan(session, []Task{
+	result, err := exec.runTemporaryTasks(session, []Task{
 		{Op: OpCall, Data: &CallData{Mode: CallByName, Name: "inc", ArgCount: 1}},
 		{Op: OpPush, Data: NewInt(41)},
 	})

@@ -44,6 +44,14 @@ func (p *ExecutableProgram) SetStepLimit(limit int64) {
 	p.executor.StepLimit = limit
 }
 
+func (p *ExecutableProgram) Start(ctx context.Context) (*runtime.RunHandle, error) {
+	return p.StartWithEnv(ctx, nil)
+}
+
+func (p *ExecutableProgram) StartWithEnv(ctx context.Context, env map[string]*runtime.Var) (*runtime.RunHandle, error) {
+	return p.executor.StartWithEnv(ctx, env)
+}
+
 func (p *ExecutableProgram) Execute(ctx context.Context) error {
 	return p.executor.Execute(ctx)
 }
