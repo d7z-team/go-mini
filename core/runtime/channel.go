@@ -165,6 +165,12 @@ func (ch *VMChannel) TrySend(value *Var) (bool, string) {
 	if ch == nil {
 		return false, ""
 	}
+	if !ch.elem.IsEmpty() && !ch.elem.IsAny() {
+		source := runtimeTypeForAssignment(value)
+		if source.IsEmpty() || source.IsAny() || !source.IsAssignableTo(ch.elem) {
+			return true, "channel send type mismatch"
+		}
+	}
 	ch.mu.Lock()
 	if ch.closed {
 		ch.mu.Unlock()
@@ -473,6 +479,8 @@ func zeroVarForRuntimeType(typ RuntimeType) *Var {
 		return NewVarWithRuntimeType(typ, TypePointer)
 	case typ.IsInterface():
 		return NewVarWithRuntimeType(typ, TypeInterface)
+	case typ.Raw == SpecClosure:
+		return NewVarWithRuntimeType(typ, TypeClosure)
 	case typ.Kind == RuntimeTypeTuple:
 		return &Var{TypeInfo: typ, VType: TypeArray, Ref: &VMArray{Data: make([]*Var, len(typ.Params))}}
 	case typ.Kind == RuntimeTypeStruct:

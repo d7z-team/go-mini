@@ -15,7 +15,7 @@ package main
 
 func main() {
 	x := 1
-	var f Any
+	var f func() Int64
 	for i := 0; i < 1; i++ {
 		f = func() Int64 { return x }
 		x = 5
@@ -44,7 +44,7 @@ package main
 
 func main() {
 	x := 1
-	var f Any
+	var f func() Int64
 	for i := 0; i < 3; i++ {
 		f = func() Int64 { return x }
 		x = 5
@@ -74,7 +74,7 @@ package main
 
 func main() {
 	x := 1
-	var f Any
+	var f func() Int64
 	for _, i := range []Int64{0} {
 		_ = i
 		f = func() Int64 { return x }

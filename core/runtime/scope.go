@@ -661,6 +661,12 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 		return nil, fmt.Errorf("multiple-value value cannot be assigned to %s", target.Raw)
 	}
 	if target.IsAny() {
+		if ctx.Executor != nil {
+			if err := ctx.Executor.validateAnyValue(expr); err != nil {
+				return nil, err
+			}
+			return ctx.Executor.wrapAnyVar(ctx, cloneVarForAssign(expr)), nil
+		}
 		return cloneVarForAssign(expr), nil
 	}
 	if target.Kind == RuntimeTypeTuple {
@@ -857,6 +863,8 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 	case target.Kind == RuntimeTypeTuple:
 		return &Var{TypeInfo: target, VType: TypeArray, Ref: &VMArray{Data: make([]*Var, len(target.Params))}}, nil
 	case target.Kind == RuntimeTypeFunction:
+		return NewVarWithRuntimeType(target, TypeClosure), nil
+	case target.Raw == SpecClosure:
 		return NewVarWithRuntimeType(target, TypeClosure), nil
 	case target.Raw == "TypeBytes":
 		return &Var{TypeInfo: target, VType: TypeBytes}, nil

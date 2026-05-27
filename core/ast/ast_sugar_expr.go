@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 // BinaryExpr 表示二元运算表达式 1 + 1
@@ -113,66 +115,20 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 
-	// 标准化操作符
-	switch b.Operator {
-	case "+", "Plus":
-		b.Operator = "Plus"
-	case "-", "Minus":
-		b.Operator = "Minus"
-	case "*", "Mult":
-		b.Operator = "Mult"
-	case "/", "Div":
-		b.Operator = "Div"
-	case "%", "Mod":
-		b.Operator = "Mod"
-	case "==", "Eq":
-		b.Operator = "Eq"
-	case "!=", "Neq":
-		b.Operator = "Neq"
-	case "<", "Lt":
-		b.Operator = "Lt"
-	case ">", "Gt":
-		b.Operator = "Gt"
-	case "<=", "Le":
-		b.Operator = "Le"
-	case ">=", "Ge":
-		b.Operator = "Ge"
-	case "&&", "And":
-		b.Operator = "And"
-	case "||", "Or":
-		b.Operator = "Or"
-	case "&", "BitAnd":
-		b.Operator = "BitAnd"
-	case "|", "BitOr":
-		b.Operator = "BitOr"
-	case "^", "BitXor":
-		b.Operator = "BitXor"
-	case "<<", "Lsh":
-		b.Operator = "Lsh"
-	case ">>", "Rsh":
-		b.Operator = "Rsh"
-	default:
+	normalized, ok := typespec.NormalizeBinaryOperator(string(b.Operator))
+	if !ok {
 		ctx.AddErrorf("未知二元表达式: %s", b.Operator)
 		return fmt.Errorf("未知二元表达式: %s", b.Operator)
 	}
-
-	if b.Operator == "And" || b.Operator == "Or" || b.Operator == "Eq" || b.Operator == "Neq" ||
-		b.Operator == "Lt" || b.Operator == "Gt" || b.Operator == "Le" || b.Operator == "Ge" ||
-		b.Operator == "&&" || b.Operator == "||" || b.Operator == "==" || b.Operator == "!=" ||
-		b.Operator == "<" || b.Operator == ">" || b.Operator == "<=" || b.Operator == ">=" {
-		b.Type = TypeBool
-	} else {
-		// 在隔离架构下，标量运算结果类型等于左操作数类型（规约后）
-		b.Type = b.Left.GetBase().Type
-	}
+	b.Operator = Ident(normalized)
 
 	leftType := b.Left.GetBase().Type
 	rightType := b.Right.GetBase().Type
 	isKnown := func(t GoMiniType) bool {
 		return t != "" && !t.IsAny() && t != "Constant"
 	}
-	isBitwiseInt := func(t GoMiniType) bool {
-		return t == TypeInt64
+	isDynamic := func(t GoMiniType) bool {
+		return t == TypeAny
 	}
 
 	switch b.Operator {
@@ -187,30 +143,60 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
+		b.Type = TypeBool
+		return nil
+	}
+
+	if leftType == "Constant" || rightType == "Constant" {
+		if normalized.IsComparison() {
+			b.Type = TypeBool
+		} else {
+			b.Type = leftType
+		}
+		return nil
+	}
+
+	if isDynamic(leftType) || isDynamic(rightType) {
+		result, err := typespec.BinaryResultType(normalized, typespec.Type(leftType), typespec.Type(rightType))
+		if err != nil {
+			ctx.AddErrorAt(b, "%s", err.Error())
+			return err
+		}
+		b.Type = GoMiniType(result)
+		return nil
+	}
+
+	switch b.Operator {
 	case "Minus", "Mult", "Div", "Mod":
-		if isKnown(leftType) && !leftType.IsNumeric() {
+		if isKnown(leftType) && (b.Operator == "Mod" && leftType != TypeInt64 || b.Operator != "Mod" && !leftType.IsNumeric()) {
 			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
-		if isKnown(rightType) && !rightType.IsNumeric() {
+		if isKnown(rightType) && (b.Operator == "Mod" && rightType != TypeInt64 || b.Operator != "Mod" && !rightType.IsNumeric()) {
 			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
 	case "BitAnd", "BitOr", "BitXor", "Lsh", "Rsh":
-		if isKnown(leftType) && !isBitwiseInt(leftType) {
+		if isKnown(leftType) && leftType != TypeInt64 {
 			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, leftType)
 			ctx.AddErrorAt(b.Left, "%s", err.Error())
 			return err
 		}
-		if isKnown(rightType) && !isBitwiseInt(rightType) {
+		if isKnown(rightType) && rightType != TypeInt64 {
 			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, rightType)
 			ctx.AddErrorAt(b.Right, "%s", err.Error())
 			return err
 		}
 	}
 
+	result, err := typespec.BinaryResultType(normalized, typespec.Type(leftType), typespec.Type(rightType))
+	if err != nil {
+		ctx.AddErrorAt(b, "%s", err.Error())
+		return err
+	}
+	b.Type = GoMiniType(result)
 	return nil
 }
 

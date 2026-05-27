@@ -77,7 +77,7 @@ type Parsed struct {
 func (t Type) String() string  { return string(t) }
 func (t Type) IsEmpty() bool   { return strings.TrimSpace(string(t)) == "" }
 func (t Type) IsVoid() bool    { return t.IsEmpty() || t == Void }
-func (t Type) IsAny() bool     { return t == Any || t == Closure }
+func (t Type) IsAny() bool     { return t == Any }
 func (t Type) IsModule() bool  { return t == Module }
 func (t Type) IsClosure() bool { return t == Closure }
 func (t Type) IsString() bool  { return t == String }
@@ -606,7 +606,7 @@ func (t Type) IsCanonical() bool {
 }
 
 func (t Type) Equals(other Type) bool {
-	if t == other || t == Any || other == Any || t == Closure || other == Closure {
+	if t == other {
 		return true
 	}
 	if t.IsArray() && other.IsArray() {
@@ -650,7 +650,29 @@ func (t Type) IsAssignableTo(target Type) bool {
 }
 
 func (t Type) isAssignableTo(target Type) bool {
-	if target == Any || t == Any || target == Closure || t == Closure || t == "Constant" {
+	if target == Any {
+		return t.canAssignToAny()
+	}
+	if t == "nil" {
+		return IsNilComparable(target)
+	}
+	if t == Any {
+		return false
+	}
+	if target == Closure || t == Closure || t == "Constant" {
+		return true
+	}
+	if t.IsTuple() && target.IsTuple() {
+		items, ok := t.TupleTypes()
+		targetItems, targetOK := target.TupleTypes()
+		if !ok || !targetOK || len(items) != len(targetItems) {
+			return false
+		}
+		for i := range items {
+			if !items[i].IsAssignableTo(targetItems[i]) {
+				return false
+			}
+		}
 		return true
 	}
 	if t.Equals(target) {
@@ -699,6 +721,48 @@ func (t Type) isAssignableTo(target Type) bool {
 		return t.Equals(target)
 	}
 	return t.Equals(target)
+}
+
+func (t Type) canAssignToAny() bool {
+	if t.IsEmpty() || t == Any || t == "nil" || t == "Constant" {
+		return true
+	}
+	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsModule() {
+		return false
+	}
+	if t.IsArray() {
+		elem, ok := t.Element()
+		return ok && elem.canAssignToAny()
+	}
+	if t.IsMap() {
+		_, value, ok := t.MapTypes()
+		return ok && value.canAssignToAny()
+	}
+	if t.IsTuple() {
+		items, ok := t.TupleTypes()
+		if !ok {
+			return false
+		}
+		for _, item := range items {
+			if !item.canAssignToAny() {
+				return false
+			}
+		}
+		return true
+	}
+	if t.IsStruct() {
+		fields, ok := t.StructFields()
+		if !ok {
+			return false
+		}
+		for _, field := range fields {
+			if !field.Type.canAssignToAny() {
+				return false
+			}
+		}
+		return true
+	}
+	return true
 }
 
 func (t Type) ZeroValue() interface{} {

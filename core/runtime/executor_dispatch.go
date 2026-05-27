@@ -342,7 +342,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		if !ok {
 			return errors.New("OpAddressAlloc missing RuntimeType")
 		}
-		val := e.normalizeTypedValue(session.ValueStack.Pop(), typ)
+		val, err := e.prepareValueForType(session, session.ValueStack.Pop(), typ)
+		if err != nil {
+			return err
+		}
 		slot := NewSlot(typ, val)
 		session.ValueStack.Push(e.newSlotPointer(typ, slot))
 		return nil
@@ -356,6 +359,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		if data.Multi {
 			obj = e.unwrapValue(obj)
+			idx = e.unwrapValue(idx)
 			if obj == nil || isEmptyVar(obj) {
 				return errors.New("index access on nil")
 			}
@@ -364,7 +368,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			}
 			if obj.VType == TypeMap {
 				m := obj.Ref.(*VMMap)
-				key, err := e.varToMapKey(idx)
+				keyType, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
+				key, err := e.varToTypedMapKey(idx, keyType)
 				if err != nil {
 					return err
 				}
@@ -373,7 +378,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					tuple[0] = val
 					tuple[1] = NewBool(true)
 				} else {
-					_, valType, _ := obj.RuntimeType().GetMapKeyValueTypes()
 					tuple[0] = e.ToVar(session, valType.ZeroVar(), nil)
 					tuple[1] = NewBool(false)
 				}
@@ -433,7 +437,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			// ValueStack has [V1, V2, ..., VN]
 			// So we must pop in reverse: V_N first, then V_N-1...
 			for i := len(entries) - 1; i >= 0; i-- {
-				val := e.normalizeTypedValue(session.ValueStack.Pop(), elemType)
+				val, err := e.prepareValueForType(session, session.ValueStack.Pop(), elemType)
+				if err != nil {
+					return fmt.Errorf("array literal element %d: %w", i, err)
+				}
 				res[i] = val
 			}
 			v := &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
@@ -505,7 +512,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// So we must pop in reverse order: V_i then K_i
 		for i := len(entries) - 1; i >= 0; i-- {
 			val := session.ValueStack.Pop()
-			val = e.normalizeTypedValue(val, valType)
+			preparedVal, err := e.prepareValueForType(session, val, valType)
+			if err != nil {
+				return fmt.Errorf("map literal value %d: %w", i, err)
+			}
 
 			keyName := ""
 			if entries[i].IdentKey != "" {
@@ -519,7 +529,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				}
 			}
 
-			res[keyName] = val
+			res[keyName] = preparedVal
 		}
 		v := &Var{VType: TypeMap, Ref: &VMMap{Data: res}}
 		v.SetRuntimeType(typ)
@@ -578,6 +588,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
 				copy(newArgs[len(args)-1:], items)
+				args = newArgs
+			} else if last != nil && last.VType == TypeBytes {
+				newArgs := make([]*Var, len(args)-1+len(last.B))
+				copy(newArgs, args[:len(args)-1])
+				for i, b := range last.B {
+					newArgs[len(args)-1+i] = NewInt(int64(b))
+				}
 				args = newArgs
 			}
 		}
@@ -668,6 +685,13 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
 				copy(newArgs[len(args)-1:], items)
+				args = newArgs
+			} else if last != nil && last.VType == TypeBytes {
+				newArgs := make([]*Var, len(args)-1+len(last.B))
+				copy(newArgs, args[:len(args)-1])
+				for i, b := range last.B {
+					newArgs[len(args)-1+i] = NewInt(int64(b))
+				}
 				args = newArgs
 			}
 		}
@@ -808,9 +832,8 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		res, err := e.CheckSatisfaction(val, targetType.Raw.String())
 		if multi {
 			if err != nil {
-				// 返回 (nil, false)
 				tuple := make([]*Var, 2)
-				tuple[0] = nil
+				tuple[0] = zeroVarForRuntimeType(targetType)
 				tuple[1] = NewBool(false)
 				v := &Var{VType: TypeArray, Ref: &VMArray{Data: tuple}}
 				v.SetRuntimeType(resultType)
@@ -902,6 +925,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		return nil
 	case OpRangeInit:
 		obj := session.ValueStack.Pop()
+		obj = e.unwrapValue(obj)
 		if obj == nil {
 			return nil
 		}
@@ -924,6 +948,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			m := obj.Ref.(*VMMap)
 			rData.Keys = m.Keys()
 			rData.Length = len(rData.Keys)
+		case TypeChannel:
+		default:
+			return &VMError{Message: fmt.Sprintf("range over non-iterable type %v", obj.VType), IsPanic: true}
 		}
 		session.TaskStack = append(session.TaskStack, Task{Op: OpLoopBoundary})
 		session.TaskStack = append(session.TaskStack, Task{Op: OpRangeIter, Data: rData})
@@ -1116,7 +1143,10 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 	case OpSwitchMatchCase:
 		if state, ok := task.Data.(*SwitchState); ok {
 			val := session.ValueStack.Pop()
-			res, _ := e.evalComparison("==", state.Tag, val)
+			res, err := e.evalComparison("==", state.Tag, val)
+			if err != nil {
+				return err
+			}
 			if res != nil && res.Bool {
 				caseData := state.Plan.Cases[state.Index]
 				session.TaskStack = append(session.TaskStack, caseData.Body...)

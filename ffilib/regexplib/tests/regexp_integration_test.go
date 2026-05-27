@@ -76,15 +76,19 @@ test.Out(groups[1][2])
 			Name:    "replace-split-and-error",
 			Imports: []string{"regexp"},
 			Body: `
-replaced, err := regexp.ReplaceAllString("[0-9]+", "a1b22", "#")
+var err error
+var replaced String
+replaced, err = regexp.ReplaceAllString("[0-9]+", "a1b22", "#")
 if err != nil {
 	panic(err)
 }
-literal, err := regexp.ReplaceAllLiteralString("[0-9]+", "a1", "$x")
+var literal String
+literal, err = regexp.ReplaceAllLiteralString("[0-9]+", "a1", "$x")
 if err != nil {
 	panic(err)
 }
-parts, err := regexp.Split("[,;]", "a,b;c", -1)
+var parts []String
+parts, err = regexp.Split("[,;]", "a,b;c", -1)
 if err != nil {
 	panic(err)
 }

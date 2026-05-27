@@ -13,17 +13,17 @@ func TestLoopClosureCaptureUsesPerIterationBindings(t *testing.T) {
 	code := `
 		package main
 		func main() {
-			fns := make([]any, 3)
+			fns := make([]func() int64, 3)
 			for i := 0; i < 3; i++ {
 				fns[i] = func() int64 { return i }
 			}
 
 			v0 := fns[0]()
-			if v0 != 0 { panic("loop capture 0 failed, got " + string(v0)) }
+			if v0 != 0 { panic("loop capture 0 failed") }
 			v1 := fns[1]()
-			if v1 != 1 { panic("loop capture 1 failed, got " + string(v1)) }
+			if v1 != 1 { panic("loop capture 1 failed") }
 			v2 := fns[2]()
-			if v2 != 2 { panic("loop capture 2 failed, got " + string(v2)) }
+			if v2 != 2 { panic("loop capture 2 failed") }
 		}
 		`
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -42,17 +42,17 @@ func TestRangeLoopClosureCaptureUsesPerIterationBindings(t *testing.T) {
 		package main
 		func main() {
 			arr := []int64{10, 20, 30}
-			fns := make([]any, 3)
+			fns := make([]func() int64, 3)
 			for i, v := range arr {
 				fns[i] = func() int64 { return v }
 			}
 
 			v0 := fns[0]()
-			if v0 != 10 { panic("range loop capture 0 failed, got " + string(v0)) }
+			if v0 != 10 { panic("range loop capture 0 failed") }
 			v1 := fns[1]()
-			if v1 != 20 { panic("range loop capture 1 failed, got " + string(v1)) }
+			if v1 != 20 { panic("range loop capture 1 failed") }
 			v2 := fns[2]()
-			if v2 != 30 { panic("range loop capture 2 failed, got " + string(v2)) }
+			if v2 != 30 { panic("range loop capture 2 failed") }
 		}
 		`
 	prog, err := executor.NewRuntimeByGoCode(code)

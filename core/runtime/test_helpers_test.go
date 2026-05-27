@@ -27,12 +27,20 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 	prepared := &PreparedProgram{
 		Package:          program.Package,
 		Constants:        cloneStringMap(program.Constants),
+		ConstantTypes:    make(map[string]RuntimeType, len(program.ConstantTypes)),
 		NamedTypes:       make(map[string]RuntimeType, len(program.Types)),
 		StructSchemas:    make(map[string]*RuntimeStructSpec, len(program.Structs)),
 		InterfaceSchemas: make(map[string]*RuntimeInterfaceSpec, len(program.Interfaces)),
 		Globals:          make(map[string]*PreparedGlobal, len(program.Variables)),
 		Functions:        make(map[string]*PreparedFunction, len(program.Functions)),
 		MainTasks:        []Task{},
+	}
+	for name, typ := range program.ConstantTypes {
+		parsed, err := ParseRuntimeType(typ)
+		if err != nil {
+			return nil, err
+		}
+		prepared.ConstantTypes[name] = parsed
 	}
 	for ident, typ := range program.Types {
 		parsed, err := ParseRuntimeType(typ)

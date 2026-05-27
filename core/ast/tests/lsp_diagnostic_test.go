@@ -274,7 +274,7 @@ func main() {
 				t.Fatalf("expected index diagnostic on literal at line 4, got %s at %d", base.Meta, base.Loc.L)
 			}
 			foundIndex = true
-		case "slice high index must be numeric":
+		case "slice high index must be Int64, got String":
 			if base.Meta != "literal" || base.Loc.L != 5 {
 				t.Fatalf("expected slice diagnostic on literal at line 5, got %s at %d", base.Meta, base.Loc.L)
 			}

@@ -48,6 +48,7 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("close", runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("Int64", runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("Float64", runtime.MustRuntimeFuncSig(runtime.SpecFloat64, false, runtime.SpecAny))
+	res.mustAddFuncSchemaLocked("Bool", runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecAny))
 	res.mustAddFuncSchemaLocked("require", runtime.MustRuntimeFuncSig(runtime.SpecModule, false, runtime.SpecString))
 
 	if err := res.UseSurface(coreffilib.Surface()); err != nil {

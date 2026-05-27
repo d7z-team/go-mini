@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -85,6 +86,11 @@ func (e *Executor) dispatchChanSend(session *StackContext, task Task) error {
 	chVar := session.ValueStack.Pop()
 	ch, ok := asVMChannel(e.unwrapValue(chVar))
 	if ok {
+		prepared, err := e.prepareValueForType(session, value, ch.ElemType())
+		if err != nil {
+			return fmt.Errorf("channel send: %w", err)
+		}
+		value = prepared
 		if ready, errText := ch.TrySend(value); ready {
 			if errText != "" {
 				return &VMError{Message: errText, IsPanic: true}

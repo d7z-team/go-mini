@@ -46,10 +46,17 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		}
 		switch obj.VType {
 		case TypeArray:
+			if idx.VType != TypeInt {
+				return nil, &VMError{Message: fmt.Sprintf("array index must be Int64, got %v", idx.VType), IsPanic: true}
+			}
 			arr := obj.Ref.(*VMArray)
 			i := int(idx.I64)
 			if _, ok := arr.Load(i); !ok {
 				return nil, &VMError{Message: fmt.Sprintf("index out of range: %d", i), IsPanic: true}
+			}
+			elemType, ok := obj.RuntimeType().ReadArrayItemType()
+			if !ok {
+				elemType = MustParseRuntimeType(SpecAny)
 			}
 			return &resolvedAddress{
 				load: func() (*Var, error) {
@@ -57,13 +64,22 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					arr.Store(i, val)
+					prepared, err := e.prepareValueForType(session, val, elemType)
+					if err != nil {
+						return err
+					}
+					arr.Store(i, prepared)
 					return nil
 				},
 			}, nil
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
-			key, err := e.varToMapKey(idx)
+			keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
+			if !ok {
+				keyType = MustParseRuntimeType(SpecAny)
+				valType = MustParseRuntimeType(SpecAny)
+			}
+			key, err := e.varToTypedMapKey(idx, keyType)
 			if err != nil {
 				return nil, err
 			}
@@ -73,7 +89,11 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					m.Store(key, val)
+					prepared, err := e.prepareValueForType(session, val, valType)
+					if err != nil {
+						return err
+					}
+					m.Store(key, prepared)
 					return nil
 				},
 			}, nil
@@ -87,13 +107,26 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 		switch obj.VType {
 		case TypeMap:
 			m := obj.Ref.(*VMMap)
+			keyType, valType, ok := obj.RuntimeType().GetMapKeyValueTypes()
+			if !ok {
+				keyType = MustParseRuntimeType("String")
+				valType = MustParseRuntimeType(SpecAny)
+			}
+			key, err := e.varToTypedMapKey(NewString(desc.Property), keyType)
+			if err != nil {
+				return nil, err
+			}
 			return &resolvedAddress{
 				load: func() (*Var, error) {
-					v, _ := m.Load(desc.Property)
+					v, _ := m.Load(key)
 					return e.unwrapAddressVar(v), nil
 				},
 				store: func(val *Var) error {
-					m.Store(desc.Property, val)
+					prepared, err := e.prepareValueForType(session, val, valType)
+					if err != nil {
+						return err
+					}
+					m.Store(key, prepared)
 					return nil
 				},
 			}, nil

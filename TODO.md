@@ -15,10 +15,13 @@
 - `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow / exports 校验。
 - canonical type 是 Mini AST / lowering / compiler / runtime 的统一类型格式；Go 风格类型在 Go 前端输入层规范化。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面。
+- 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
+- Go 前端保留常量值类型，lowering 写入 `PreparedProgram.ConstantTypes`；常量比较、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - 公开扩展入口统一为 `executor.UseSurface(...)`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
 - 公开 FFI schema 使用具体 `HostRef<T>`、typed interface schema、`Error` 和 channel endpoint 表达宿主身份、错误与 channel；`Any` 面向纯值数据。
+- VM `Any` slot 使用显式 wrapper 保持 nil 与动态值身份；VM pointer、HostRef、channel 和 module 不能进入 `Any`，FFI Any wire 继续拒绝 VM pointer、HostRef、channel、closure 和 host error/interface handle。
 - MethodID 0 / `Invoke` 用于显式 schema route 与 typed interface method 调用。
 - Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`。
 - Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
@@ -60,6 +63,7 @@
 - VM struct 是独立 `TypeStruct` / `VMStruct`；struct 赋值、参数传递、返回值和 value receiver 按值复制字段 slot。
 - VM array/map、VM pointer、closure、module、interface 和 host handle 按引用语义共享；VM 内部不并行执行，因此无宿主级数据竞争。
 - VM pointer 是 runtime-only `TypePointer`，只保存 VM slot 引用，不使用 host handle ID，也不是宿主地址；解引用写入统一走 slot assignment 和声明类型校验，`Ptr<T>` 与 `T` 之间不做隐式互转。
+- VM pointer 不允许进入 `Any`、FFI wire、map/array 纯 Any payload 或 host identity 路径；运行时地址写入、channel send、composite literal、append/delete/index/slice 均执行目标类型校验。
 - Go 前端支持 `&x`、`&T{...}` 和 `&struct{...}{...}`；VM 可寻址 slot 支持取地址与解引用写入。
 - map key 保留 primitive key 类型，避免 string/int/bool/float key 在运行时被同一个字符串键混淆。
 - FFI struct schema 区分 `VMValue` 和 `HostOpaque`；`HostOpaque` 以 `HostRef<T>` 形式进入 VM。
@@ -99,6 +103,11 @@
 - [ ] 建立 import 初始化开销 benchmark。
 - [ ] 输出当前基线数据，形成后续优化对比口径。
 - [ ] 针对热点路径做优化前后指标对比，至少跟踪耗时、分配次数和 GC 压力。
+
+## 待办
+
+新增一个小特性，设计支持运算符重载（在ast内部通过语法糖的方式，并且可以支持不同的前端），并结合现在的代码设计一个总体最优方案，不要打补丁，分析现在不合理的地方也一并重构
+
 
 ## 变更门禁
 

@@ -677,21 +677,20 @@ func TestResolveAddressSupportsWrappedTargets(t *testing.T) {
 	}
 
 	ptr := &Var{VType: TypePointer, TypeInfo: MustParseRuntimeType("Ptr<Int64>"), Ref: NewSlot(MustParseRuntimeType("Int64"), NewInt(3))}
-	anyPtr := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: ptr}
-	deref := &LHSDeref{Target: anyPtr}
+	deref := &LHSDeref{Target: ptr}
 
 	if err := exec.assignAddress(session, deref, NewInt(11)); err != nil {
-		t.Fatalf("assign wrapped dereference failed: %v", err)
+		t.Fatalf("assign dereference failed: %v", err)
 	}
 	if err := exec.updateAddress(session, deref, "++"); err != nil {
-		t.Fatalf("update wrapped dereference failed: %v", err)
+		t.Fatalf("update dereference failed: %v", err)
 	}
 	got, err = exec.loadAddress(session, deref)
 	if err != nil {
-		t.Fatalf("load wrapped dereference failed: %v", err)
+		t.Fatalf("load dereference failed: %v", err)
 	}
 	if got == nil || got.I64 != 12 {
-		t.Fatalf("unexpected wrapped dereference value: %#v", got)
+		t.Fatalf("unexpected dereference value: %#v", got)
 	}
 }
 

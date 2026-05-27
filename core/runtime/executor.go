@@ -14,6 +14,7 @@ type Executor struct {
 	packageName      string
 	metadata         *runtimeMetadataRegistry
 	consts           map[string]string
+	constTypes       map[string]RuntimeType
 	globals          map[string]*RuntimeGlobal
 	functions        map[string]*RuntimeFunction
 	methodFunctions  map[string]map[string]string
@@ -213,6 +214,7 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		methodFunctions:      make(map[string]map[string]string),
 		exports:              clonePreparedExportMap(prepared.Exports),
 		consts:               make(map[string]string),
+		constTypes:           make(map[string]RuntimeType),
 		routes:               make(map[string]FFIRoute),
 		packageValues:        make(map[string]*BoundPackageValue),
 		ffiPackages:          make(map[string]*BoundFFIPackage),
@@ -247,6 +249,10 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneStringMap(prepared.Constants)
+	e.constTypes = cloneRuntimeTypeMap(prepared.ConstantTypes)
+	if e.constTypes == nil {
+		e.constTypes = make(map[string]RuntimeType)
+	}
 	e.exports = clonePreparedExportMap(prepared.Exports)
 	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
 	e.methodFunctions = make(map[string]map[string]string)

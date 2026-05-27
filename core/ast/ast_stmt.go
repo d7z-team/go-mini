@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 type AssignKind string
@@ -35,19 +37,20 @@ func ImportLocationKey(file, alias string) string {
 
 // ProgramStmt 程序启动
 type ProgramStmt struct {
-	BaseNode     `json:",inline"`
-	Package      string                   `json:"package,omitempty"` // 包名，默认为main
-	Imports      []ImportSpec             `json:"imports,omitempty"` // 导入列表
-	Constants    map[string]string        `json:"constants"`         // 常量表
-	ConstantLocs map[string]*Position     `json:"constant_locs,omitempty"`
-	Variables    map[Ident]Expr           `json:"variables"` // 声明的全局变量
-	Types        map[Ident]GoMiniType     `json:"types"`     // 命名类型定义 (type MyInt int64)
-	TypeLocs     map[Ident]*Position      `json:"type_locs,omitempty"`
-	Structs      map[Ident]*StructStmt    `json:"structs"`    // 声明的对象 (对象)
-	Interfaces   map[Ident]*InterfaceStmt `json:"interfaces"` // 声明的接口
-	ImportLocs   map[string]*Position     `json:"import_locs,omitempty"`
-	Functions    map[Ident]*FunctionStmt  `json:"functions"` // 声明的函数 (解构为无作用域函数)
-	Main         []Stmt                   `json:"main"`      // 入口点 （如果没有内容则代表为 lib）
+	BaseNode      `json:",inline"`
+	Package       string                   `json:"package,omitempty"` // 包名，默认为main
+	Imports       []ImportSpec             `json:"imports,omitempty"` // 导入列表
+	Constants     map[string]string        `json:"constants"`         // 常量表
+	ConstantTypes map[string]GoMiniType    `json:"constant_types,omitempty"`
+	ConstantLocs  map[string]*Position     `json:"constant_locs,omitempty"`
+	Variables     map[Ident]Expr           `json:"variables"` // 声明的全局变量
+	Types         map[Ident]GoMiniType     `json:"types"`     // 命名类型定义 (type MyInt int64)
+	TypeLocs      map[Ident]*Position      `json:"type_locs,omitempty"`
+	Structs       map[Ident]*StructStmt    `json:"structs"`    // 声明的对象 (对象)
+	Interfaces    map[Ident]*InterfaceStmt `json:"interfaces"` // 声明的接口
+	ImportLocs    map[string]*Position     `json:"import_locs,omitempty"`
+	Functions     map[Ident]*FunctionStmt  `json:"functions"` // 声明的函数 (解构为无作用域函数)
+	Main          []Stmt                   `json:"main"`      // 入口点 （如果没有内容则代表为 lib）
 }
 
 // InterfaceStmt 表示接口定义
@@ -1628,7 +1631,14 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 			continue
 		}
 		if s.IsType {
+			assignName := Ident("")
+			if assign, ok := s.Assign.(*AssignmentStmt); ok {
+				if id, ok := assign.LHS.(*IdentifierExpr); ok {
+					assignName = id.Name
+				}
+			}
 			// 在 Type Switch 中，Case 列表中的表达式应该代表类型
+			caseType := TypeAny
 			for _, expr := range clause.List {
 				if expr == nil {
 					continue
@@ -1638,17 +1648,29 @@ func (s *SwitchStmt) Check(ctx *SemanticContext) error {
 				logCount := inner.LogCount()
 				if err := expr.Check(inner); ForwardStructuredError(inner, expr, logCount, err) {
 					hasError = true
+					continue
+				}
+				if len(clause.List) == 1 {
+					caseType = expr.GetBase().Type
 				}
 			}
 			// 校验 Case 的 Body
-			for _, s := range clause.Body {
-				if s == nil {
+			caseCtx := inner
+			if assignName != "" {
+				caseCtx = inner.Child(clause)
+				if caseType == "nil" {
+					caseType = TypeAny
+				}
+				caseCtx.AddVariable(assignName, caseType)
+			}
+			for _, stmt := range clause.Body {
+				if stmt == nil {
 					ctx.AddErrorf("case body contains nil statement")
 					hasError = true
 					continue
 				}
-				logCount := inner.LogCount()
-				if err := s.Check(inner); ForwardStructuredError(inner, s, logCount, err) {
+				logCount := caseCtx.LogCount()
+				if err := stmt.Check(caseCtx); ForwardStructuredError(caseCtx, stmt, logCount, err) {
 					hasError = true
 				}
 			}
@@ -1732,8 +1754,8 @@ func (c *CaseClause) CheckWithTag(ctx *SemanticContext, tagType GoMiniType) erro
 		if err := expr.Check(ctx); err != nil {
 			hasError = true
 		} else {
-			if !expr.GetBase().Type.IsAssignableTo(tagType) {
-				err := fmt.Errorf("case type mismatch: expected %s, got %s", tagType, expr.GetBase().Type)
+			if !typespec.EqualityComparable(typespec.Type(tagType), typespec.Type(expr.GetBase().Type)) {
+				err := fmt.Errorf("case type mismatch: cannot compare %s with %s", tagType, expr.GetBase().Type)
 				ctx.AddErrorAt(expr, "%s", err.Error())
 				hasError = true
 			}

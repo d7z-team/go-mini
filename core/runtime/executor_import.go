@@ -42,7 +42,7 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 				}
 			case PreparedExportConst:
 				if val, ok := modExec.consts[target]; ok {
-					exports[name] = modExec.evalLiteralToVar(val)
+					exports[name] = modExec.evalLiteralToVarWithType(val, modExec.constTypes[target])
 				}
 			case PreparedExportType:
 				if typ, ok := modExec.metadata.namedTypesByName[target]; ok {
@@ -93,6 +93,14 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	for name, value := range e.consts {
 		if _, exists := modExecutor.consts[name]; !exists {
 			modExecutor.consts[name] = value
+		}
+	}
+	if modExecutor.constTypes == nil {
+		modExecutor.constTypes = make(map[string]RuntimeType)
+	}
+	for name, typ := range e.constTypes {
+		if _, exists := modExecutor.constTypes[name]; !exists {
+			modExecutor.constTypes[name] = typ
 		}
 	}
 	for name, spec := range e.metadata.structsByName {

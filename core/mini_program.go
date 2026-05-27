@@ -83,6 +83,11 @@ func unpackEvalResult(expr ast.Expr, res *runtime.Var) []*runtime.Var {
 		if res == nil {
 			return []*runtime.Var{}
 		}
+		if res.VType == runtime.TypeAny {
+			if inner, ok := res.Ref.(*runtime.Var); ok && inner != nil {
+				return []*runtime.Var{inner}
+			}
+		}
 		return []*runtime.Var{res}
 	}
 	if res == nil || res.VType != runtime.TypeArray {

@@ -5,34 +5,36 @@ import "strings"
 import "gopkg.d7z.net/go-mini/core/internal/miniident"
 
 type ModuleExports struct {
-	Path         string
-	Functions    map[Ident]*FunctionStmt
-	Methods      map[Ident]*FunctionStmt
-	Vars         map[Ident]GoMiniType
-	VarDefs      map[Ident]Expr
-	Constants    map[string]string
-	ConstantLocs map[string]*Position
-	Types        map[Ident]GoMiniType
-	TypeLocs     map[Ident]*Position
-	Structs      map[Ident]*StructStmt
-	StructDefs   map[Ident]*ValidStruct
-	Interfaces   map[Ident]*InterfaceStmt
+	Path          string
+	Functions     map[Ident]*FunctionStmt
+	Methods       map[Ident]*FunctionStmt
+	Vars          map[Ident]GoMiniType
+	VarDefs       map[Ident]Expr
+	Constants     map[string]string
+	ConstantTypes map[string]GoMiniType
+	ConstantLocs  map[string]*Position
+	Types         map[Ident]GoMiniType
+	TypeLocs      map[Ident]*Position
+	Structs       map[Ident]*StructStmt
+	StructDefs    map[Ident]*ValidStruct
+	Interfaces    map[Ident]*InterfaceStmt
 }
 
 func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 	exports := &ModuleExports{
-		Path:         strings.TrimSpace(path),
-		Functions:    make(map[Ident]*FunctionStmt),
-		Methods:      make(map[Ident]*FunctionStmt),
-		Vars:         make(map[Ident]GoMiniType),
-		VarDefs:      make(map[Ident]Expr),
-		Constants:    make(map[string]string),
-		ConstantLocs: make(map[string]*Position),
-		Types:        make(map[Ident]GoMiniType),
-		TypeLocs:     make(map[Ident]*Position),
-		Structs:      make(map[Ident]*StructStmt),
-		StructDefs:   make(map[Ident]*ValidStruct),
-		Interfaces:   make(map[Ident]*InterfaceStmt),
+		Path:          strings.TrimSpace(path),
+		Functions:     make(map[Ident]*FunctionStmt),
+		Methods:       make(map[Ident]*FunctionStmt),
+		Vars:          make(map[Ident]GoMiniType),
+		VarDefs:       make(map[Ident]Expr),
+		Constants:     make(map[string]string),
+		ConstantTypes: make(map[string]GoMiniType),
+		ConstantLocs:  make(map[string]*Position),
+		Types:         make(map[Ident]GoMiniType),
+		TypeLocs:      make(map[Ident]*Position),
+		Structs:       make(map[Ident]*StructStmt),
+		StructDefs:    make(map[Ident]*ValidStruct),
+		Interfaces:    make(map[Ident]*InterfaceStmt),
 	}
 	if root == nil || root.program == nil {
 		return exports
@@ -74,7 +76,16 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 			continue
 		}
 		exports.Constants[name] = val
-		exports.Vars[Ident(name)] = "Constant"
+		if prog.ConstantTypes != nil {
+			if typ := prog.ConstantTypes[name]; typ != "" {
+				exports.ConstantTypes[name] = typ
+				exports.Vars[Ident(name)] = typ
+			} else {
+				exports.Vars[Ident(name)] = "Constant"
+			}
+		} else {
+			exports.Vars[Ident(name)] = "Constant"
+		}
 		if prog.ConstantLocs != nil {
 			exports.ConstantLocs[name] = prog.ConstantLocs[name]
 		}
@@ -177,11 +188,17 @@ func (m *ModuleExports) Definition(name Ident) Node {
 		return it
 	}
 	if val, ok := m.Constants[string(name)]; ok {
+		typ := GoMiniType("Constant")
+		if m.ConstantTypes != nil {
+			if known := m.ConstantTypes[string(name)]; known != "" {
+				typ = known
+			}
+		}
 		return &LiteralExpr{
 			BaseNode: BaseNode{
 				ID:   "module_const_" + m.Path + "." + string(name),
 				Meta: "constant",
-				Type: "Constant",
+				Type: typ,
 				Loc:  m.ConstantLocs[string(name)],
 			},
 			Value: val,

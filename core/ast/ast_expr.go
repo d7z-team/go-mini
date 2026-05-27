@@ -34,6 +34,68 @@ func compositeInvalidCause(kind string, index int, child Node) string {
 	return fmt.Sprintf("%s: %s", base, childCause)
 }
 
+func checkAppendBuiltin(ctx *SemanticContext, call *CallExprStmt) error {
+	if len(call.Args) < 2 {
+		err := errors.New("append: requires at least 2 arguments")
+		ctx.AddErrorf("%s", err.Error())
+		return err
+	}
+	baseType := call.Args[0].GetBase().Type
+	call.Type = baseType
+	if baseType == TypeAny {
+		return nil
+	}
+	if baseType.IsArray() {
+		elemType, ok := baseType.ReadArrayItemType()
+		if !ok {
+			err := fmt.Errorf("append: invalid array type %s", baseType)
+			ctx.AddErrorAt(call.Args[0], "%s", err.Error())
+			return err
+		}
+		if call.Ellipsis {
+			lastType := call.Args[len(call.Args)-1].GetBase().Type
+			if !ctx.IsAssignableTo(lastType, baseType) {
+				err := fmt.Errorf("append: ellipsis argument type mismatch: expected %s, got %s", baseType, lastType)
+				ctx.AddErrorAt(call.Args[len(call.Args)-1], "%s", err.Error())
+				return err
+			}
+			return nil
+		}
+		for i := 1; i < len(call.Args); i++ {
+			argType := call.Args[i].GetBase().Type
+			if !ctx.IsAssignableTo(argType, elemType) {
+				err := fmt.Errorf("append: argument %d type mismatch: expected %s, got %s", i+1, elemType, argType)
+				ctx.AddErrorAt(call.Args[i], "%s", err.Error())
+				return err
+			}
+		}
+		return nil
+	}
+	if baseType == TypeBytes {
+		if call.Ellipsis {
+			lastType := call.Args[len(call.Args)-1].GetBase().Type
+			if lastType != TypeBytes {
+				err := fmt.Errorf("append: bytes ellipsis argument must be TypeBytes, got %s", lastType)
+				ctx.AddErrorAt(call.Args[len(call.Args)-1], "%s", err.Error())
+				return err
+			}
+			return nil
+		}
+		for i := 1; i < len(call.Args); i++ {
+			argType := call.Args[i].GetBase().Type
+			if argType != TypeInt64 {
+				err := fmt.Errorf("append: bytes argument %d must be Int64, got %s", i+1, argType)
+				ctx.AddErrorAt(call.Args[i], "%s", err.Error())
+				return err
+			}
+		}
+		return nil
+	}
+	err := fmt.Errorf("append: first argument must be array or TypeBytes, got %s", baseType)
+	ctx.AddErrorAt(call.Args[0], "%s", err.Error())
+	return err
+}
+
 type IdentifierExpr struct {
 	BaseNode
 	Name Ident `json:"name"`
@@ -49,13 +111,13 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 
+	if c.Name == "nil" {
+		c.Type = "nil"
+		return nil
+	}
+
 	if c.IsType {
 		// 处于类型上下文，将其视为类型名
-		// 特殊处理 nil
-		if c.Name == "nil" {
-			c.Type = "nil"
-			return nil
-		}
 		c.Type = GoMiniType(c.Name)
 		if err := c.Type.ValidateCanonical(); err != nil {
 			ctx.AddErrorf("%s, use canonical Mini type syntax", err.Error())
@@ -342,6 +404,12 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 	}
 
 	if _, b := ctx.root.program.Constants[string(c.Name)]; b {
+		if ctx.root.program.ConstantTypes != nil {
+			if typ := ctx.root.program.ConstantTypes[string(c.Name)]; typ != "" {
+				c.Type = typ
+				return nil
+			}
+		}
 		c.Type = "Constant"
 		return nil
 	}
@@ -455,6 +523,158 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		return funcErr
 	}
 
+	if ident, ok := c.Func.(*ConstRefExpr); ok {
+		switch ident.Name {
+		case "make", "new":
+			if len(c.Args) == 0 {
+				err := fmt.Errorf("%s: requires a type argument", ident.Name)
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			lit, ok := c.Args[0].(*LiteralExpr)
+			if !ok || lit.Type != "String" {
+				err := fmt.Errorf("%s: first argument must be a type literal", ident.Name)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			target := GoMiniType(lit.Value)
+			c.Type = target
+			if ident.Name == "new" {
+				return nil
+			}
+			if !target.IsArray() && target != TypeBytes && !target.IsMap() && !target.IsChan() {
+				err := fmt.Errorf("make: unsupported type %s", target)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			if len(c.Args) > 3 || (target.IsMap() || target.IsChan()) && len(c.Args) > 2 {
+				err := fmt.Errorf("make: invalid argument count for %s", target)
+				ctx.AddErrorAt(c, "%s", err.Error())
+				return err
+			}
+			for i := 1; i < len(c.Args); i++ {
+				argType := c.Args[i].GetBase().Type
+				if argType != TypeInt64 && argType != TypeAny {
+					err := fmt.Errorf("make: size argument %d must be Int64, got %s", i, argType)
+					ctx.AddErrorAt(c.Args[i], "%s", err.Error())
+					return err
+				}
+			}
+			return nil
+		case "append":
+			return checkAppendBuiltin(ctx, c)
+		case "len", "cap":
+			c.Type = TypeInt64
+			if len(c.Args) != 1 {
+				err := fmt.Errorf("%s: requires 1 argument, got %d", ident.Name, len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			argType := c.Args[0].GetBase().Type
+			valid := argType == TypeAny || argType.IsArray() || argType.IsChan() || argType == TypeBytes || argType == TypeString
+			if ident.Name == "len" {
+				valid = valid || argType.IsMap()
+			}
+			if !valid {
+				err := fmt.Errorf("%s: unsupported argument type %s", ident.Name, argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			return nil
+		case "delete":
+			c.Type = TypeVoid
+			if len(c.Args) != 2 {
+				err := fmt.Errorf("delete: requires 2 arguments, got %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			mapType := c.Args[0].GetBase().Type
+			keyType := c.Args[1].GetBase().Type
+			if mapType == TypeAny {
+				return nil
+			}
+			if !mapType.IsMap() {
+				err := fmt.Errorf("delete: first argument must be map, got %s", mapType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			expectedKey, _, ok := mapType.GetMapKeyValueTypes()
+			if !ok {
+				err := fmt.Errorf("delete: invalid map type %s", mapType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			if !ctx.IsAssignableTo(keyType, expectedKey) {
+				err := fmt.Errorf("delete: key type mismatch: expected %s, got %s", expectedKey, keyType)
+				ctx.AddErrorAt(c.Args[1], "%s", err.Error())
+				return err
+			}
+			return nil
+		case "close":
+			c.Type = TypeVoid
+			if len(c.Args) != 1 {
+				err := fmt.Errorf("close: requires 1 argument, got %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			argType := c.Args[0].GetBase().Type
+			if argType != TypeAny && !argType.IsChan() {
+				err := fmt.Errorf("close: argument must be channel, got %s", argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			if argType.IsRecvChan() {
+				err := fmt.Errorf("close: cannot close receive-only channel %s", argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			return nil
+		case "panic":
+			c.Type = TypeVoid
+			if len(c.Args) != 1 {
+				err := fmt.Errorf("panic: requires 1 argument, got %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			argType := c.Args[0].GetBase().Type
+			if !ctx.IsAssignableTo(argType, TypeAny) {
+				err := fmt.Errorf("panic: argument type %s cannot be carried by Any", argType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			return nil
+		case "recover":
+			c.Type = TypeAny
+			if len(c.Args) != 0 {
+				err := fmt.Errorf("recover: requires 0 arguments, got %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			return nil
+		}
+	}
+
+	if member, ok := c.Func.(*MemberExpr); ok && member.ResolvedPackageName == "errors.As" {
+		c.Type = TypeBool
+		if len(c.Args) != 2 {
+			err := fmt.Errorf("errors.As: requires 2 arguments, got %d", len(c.Args))
+			ctx.AddErrorf("%s", err.Error())
+			return err
+		}
+		if !ctx.IsAssignableTo(c.Args[0].GetBase().Type, TypeError) {
+			err := fmt.Errorf("errors.As: first argument must be Error, got %s", c.Args[0].GetBase().Type)
+			ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+			return err
+		}
+		targetType := c.Args[1].GetBase().Type
+		if targetType != "nil" && !targetType.IsPtr() {
+			err := fmt.Errorf("errors.As: second argument must be pointer or nil, got %s", targetType)
+			ctx.AddErrorAt(c.Args[1], "%s", err.Error())
+			return err
+		}
+		return nil
+	}
+
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
@@ -558,10 +778,7 @@ done:
 				}
 			}
 		case "append":
-			if len(c.Args) > 0 {
-				// append 返回第一个参数的类型 (通常是 Array<T>)
-				c.Type = c.Args[0].GetBase().Type
-			}
+			return checkAppendBuiltin(ctx, c)
 		case "len", "cap":
 			c.Type = "Int64"
 			if len(c.Args) > 0 {
@@ -571,6 +788,34 @@ done:
 					ctx.AddErrorAt(c.Args[0], "%s", err.Error())
 					return err
 				}
+			}
+		case "delete":
+			c.Type = TypeVoid
+			if len(c.Args) != 2 {
+				err := fmt.Errorf("delete: requires 2 arguments, got %d", len(c.Args))
+				ctx.AddErrorf("%s", err.Error())
+				return err
+			}
+			mapType := c.Args[0].GetBase().Type
+			keyType := c.Args[1].GetBase().Type
+			if mapType.IsAny() {
+				return nil
+			}
+			if !mapType.IsMap() {
+				err := fmt.Errorf("delete: first argument must be map, got %s", mapType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			expectedKey, _, ok := mapType.GetMapKeyValueTypes()
+			if !ok {
+				err := fmt.Errorf("delete: invalid map type %s", mapType)
+				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
+				return err
+			}
+			if !ctx.IsAssignableTo(keyType, expectedKey) {
+				err := fmt.Errorf("delete: key type mismatch: expected %s, got %s", expectedKey, keyType)
+				ctx.AddErrorAt(c.Args[1], "%s", err.Error())
+				return err
 			}
 		case "close":
 			c.Type = "Void"
@@ -1358,8 +1603,8 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 			s.InvalidCause = err.Error()
 			return err
 		}
-		if !s.Low.GetBase().Type.IsNumeric() {
-			err := errors.New("slice low 索引必须是数值类型")
+		if s.Low.GetBase().Type != TypeInt64 {
+			err := fmt.Errorf("slice low index must be Int64, got %s", s.Low.GetBase().Type)
 			ctx.AddErrorAt(s.Low, "%s", err.Error())
 			return err
 		}
@@ -1374,8 +1619,8 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 			s.InvalidCause = err.Error()
 			return err
 		}
-		if !s.High.GetBase().Type.IsNumeric() {
-			err := errors.New("slice high index must be numeric")
+		if s.High.GetBase().Type != TypeInt64 {
+			err := fmt.Errorf("slice high index must be Int64, got %s", s.High.GetBase().Type)
 			ctx.AddErrorAt(s.High, "%s", err.Error())
 			return err
 		}
@@ -1426,8 +1671,7 @@ func (f *FuncLitExpr) exprNode() {}
 
 func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(f)
-	// 类型推导
-	f.Type = TypeClosure
+	f.Type = f.FunctionType.MiniType()
 
 	// 这里我们需要在 SemanticContext 中开启一个新的作用域来检查函数体
 	// 但这在现有的 check_*.go 或 ast_stmt.go 的 FunctionStmt.Check 中可能有现成的模式

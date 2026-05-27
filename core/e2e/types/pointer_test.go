@@ -145,25 +145,6 @@ func main() {
 }
 `,
 		},
-		{
-			name: "any-wrapped-pointer-assignment",
-			code: `
-package main
-
-func main() {
-	raw := new(Int64)
-	var boxed Any = raw
-	*boxed = 88
-	if *raw != 88 {
-		panic("any-wrapped pointer write failed")
-	}
-	*boxed += 2
-	if *boxed != 90 {
-		panic("any-wrapped pointer read failed")
-	}
-}
-`,
-		},
 	}
 	for _, tc := range passCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,6 +213,18 @@ func takePointer(p *Int64) {}
 func main() {
 	n := 1
 	takePointer(n)
+}
+`,
+		},
+		{
+			name: "pointer-cannot-enter-any",
+			code: `
+package main
+
+func main() {
+	raw := new(Int64)
+	var boxed Any = raw
+	_ = boxed
 }
 `,
 		},

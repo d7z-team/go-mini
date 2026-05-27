@@ -93,8 +93,8 @@ func TestGoMiniType_Equals(t *testing.T) {
 	}{
 		{"Same basic", "Int64", "Int64", true},
 		{"Different basic", "Int64", "String", false},
-		{"Any matches all", "Any", "Int64", true},
-		{"Any matches all rev", "Int64", "Any", true},
+		{"Any is exact", "Any", "Int64", false},
+		{"Any is exact rev", "Int64", "Any", false},
 		{"Same array", "Array<Int64>", "Array<Int64>", true},
 		{"Different array", "Array<Int64>", "Array<String>", false},
 	}

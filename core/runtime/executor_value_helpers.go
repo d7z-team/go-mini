@@ -95,16 +95,91 @@ func (e *Executor) isOpaqueHandle(v *Var) bool {
 	return v.Bridge != nil || v.Handle != 0
 }
 
-func (e *Executor) normalizeTypedValue(v *Var, targetType RuntimeType) *Var {
+func (e *Executor) prepareValueForType(session *StackContext, v *Var, targetType RuntimeType) (*Var, error) {
+	if targetType.IsEmpty() {
+		return cloneVarForAssign(e.unwrapValue(v)), nil
+	}
+	if session != nil {
+		return session.prepareAssignedValue(targetType, v)
+	}
+	ctx := &StackContext{Executor: e}
+	return ctx.prepareAssignedValue(targetType, v)
+}
+
+func (e *Executor) validateAnyValue(v *Var) error {
 	v = e.unwrapValue(v)
 	if v == nil {
 		return nil
 	}
-	runtimeType := v.RuntimeType()
-	if runtimeType.IsEmpty() || runtimeType.IsAny() {
-		v.SetRuntimeType(targetType)
+	switch v.VType {
+	case TypeInt, TypeFloat, TypeString, TypeBool, TypeBytes:
+		return nil
+	case TypeError:
+		if host := hostErrorFromError(goErrorFromVar(v)); host != nil && host.Handle != 0 {
+			return errors.New("Any cannot carry host error handle")
+		}
+		return nil
+	case TypeArray:
+		arr, ok := v.Ref.(*VMArray)
+		if !ok || arr == nil {
+			return nil
+		}
+		for _, item := range arr.Snapshot() {
+			if err := e.validateAnyValue(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case TypeMap:
+		m, ok := v.Ref.(*VMMap)
+		if !ok || m == nil {
+			return nil
+		}
+		for _, item := range m.Snapshot() {
+			if err := e.validateAnyValue(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case TypeStruct:
+		st, ok := v.Ref.(*VMStruct)
+		if !ok || st == nil {
+			return nil
+		}
+		for _, field := range st.Fields {
+			if field != nil {
+				if err := e.validateAnyValue(field.Value); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	case TypeAny:
+		if inner, ok := v.Ref.(*Var); ok {
+			return e.validateAnyValue(inner)
+		}
+		if v.Ref == nil {
+			return nil
+		}
+		return fmt.Errorf("Any cannot carry host value %T", v.Ref)
+	case TypePointer:
+		return errors.New("Any cannot carry VM pointer")
+	case TypeHostRef:
+		return errors.New("Any cannot carry host reference")
+	case TypeChannel:
+		return errors.New("Any cannot carry channel")
+	case TypeInterface:
+		if iface, ok := v.Ref.(*VMInterface); ok && iface != nil && iface.Target != nil && iface.Target.Handle != 0 {
+			return errors.New("Any cannot carry host interface handle")
+		}
+		return nil
+	case TypeModule:
+		return errors.New("Any cannot carry module")
+	case TypeClosure:
+		return nil
+	default:
+		return fmt.Errorf("Any cannot carry %s", v.VType)
 	}
-	return v
 }
 
 func (e *Executor) unwrapAddressVar(v *Var) *Var {

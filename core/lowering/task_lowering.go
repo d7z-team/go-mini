@@ -251,7 +251,23 @@ func literalDirect(n *ast.LiteralExpr) (*runtime.Var, error) {
 	return nil, fmt.Errorf("unknown literal %s", n.Type)
 }
 
-func literalToVar(val string) *runtime.Var {
+func typedLiteralToVar(val string, typ runtime.RuntimeType) *runtime.Var {
+	switch {
+	case typ.IsString():
+		return runtime.NewString(val)
+	case typ.IsInt():
+		if v, err := strconv.ParseInt(val, 0, 64); err == nil {
+			return runtime.NewInt(v)
+		}
+		return runtime.NewInt(0)
+	case typ.Raw == runtime.SpecFloat64:
+		if v, err := strconv.ParseFloat(val, 64); err == nil {
+			return runtime.NewFloat(v)
+		}
+		return runtime.NewFloat(0)
+	case typ.IsBool():
+		return runtime.NewBool(val == "true")
+	}
 	if v, err := strconv.ParseInt(val, 0, 64); err == nil {
 		return runtime.NewInt(v)
 	}
@@ -954,7 +970,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
 		if val, ok := b.consts[string(n.Name)]; ok {
-			return []runtime.Task{{Op: runtime.OpPush, Data: literalToVar(val)}}, true
+			return []runtime.Task{{Op: runtime.OpPush, Data: typedLiteralToVar(val, b.constTypes[string(n.Name)])}}, true
 		}
 		return nil, false
 	case *ast.UnaryExpr:
@@ -1194,7 +1210,7 @@ func (b *builder) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]runti
 			},
 		}}, true
 	case *ast.IdentifierExpr:
-		if lhs == nil {
+		if lhs == nil || lhs.Name == "_" {
 			return []runtime.Task{{
 				Op: runtime.OpEvalLHS,
 				Data: &runtime.LHSData{

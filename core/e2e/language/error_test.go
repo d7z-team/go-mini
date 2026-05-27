@@ -87,9 +87,9 @@ test.Out("|")
 err = errors.New("typed")
 test.OutBool(errors.As(err, &anyOut))
 test.Out("|")
-test.Out(anyOut.Error())
+test.OutBool(anyOut != nil)
 `,
-			Want: "false|true|true|typed",
+			Want: "false|true|true|true",
 		},
 		{
 			Name:    "errors-as-rejects-nil-target",
@@ -123,7 +123,7 @@ defer func() {
 var format any = 123
 fmt.Errorf(format)
 `,
-			Want: "true",
+			WantCompileErr: "function argument 1 type mismatch: expected String, got Any",
 		},
 	})
 }

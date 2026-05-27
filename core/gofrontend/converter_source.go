@@ -102,17 +102,18 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 	}
 
 	program := &miniast.ProgramStmt{
-		BaseNode:     miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
-		Constants:    make(map[string]string),
-		ConstantLocs: make(map[string]*miniast.Position),
-		Variables:    make(map[miniast.Ident]miniast.Expr),
-		Types:        make(map[miniast.Ident]miniast.GoMiniType),
-		TypeLocs:     make(map[miniast.Ident]*miniast.Position),
-		Structs:      make(map[miniast.Ident]*miniast.StructStmt),
-		Interfaces:   make(map[miniast.Ident]*miniast.InterfaceStmt),
-		ImportLocs:   make(map[string]*miniast.Position),
-		Functions:    make(map[miniast.Ident]*miniast.FunctionStmt),
-		Imports:      miniImports,
+		BaseNode:      miniast.BaseNode{ID: c.genID(f, "boot"), Meta: "boot", Type: "Void", Loc: c.extractLoc(f)},
+		Constants:     make(map[string]string),
+		ConstantTypes: make(map[string]miniast.GoMiniType),
+		ConstantLocs:  make(map[string]*miniast.Position),
+		Variables:     make(map[miniast.Ident]miniast.Expr),
+		Types:         make(map[miniast.Ident]miniast.GoMiniType),
+		TypeLocs:      make(map[miniast.Ident]*miniast.Position),
+		Structs:       make(map[miniast.Ident]*miniast.StructStmt),
+		Interfaces:    make(map[miniast.Ident]*miniast.InterfaceStmt),
+		ImportLocs:    make(map[string]*miniast.Position),
+		Functions:     make(map[miniast.Ident]*miniast.FunctionStmt),
+		Imports:       miniImports,
 	}
 	if f != nil {
 		program.Package = f.Name.Name
@@ -178,17 +179,35 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 									continue
 								}
 								if i < len(s.Values) {
-									if lit, ok := s.Values[i].(*ast.BasicLit); ok {
+									switch lit := s.Values[i].(type) {
+									case *ast.BasicLit:
 										val := lit.Value
-										if lit.Kind == token.STRING && len(val) >= 2 {
+										switch lit.Kind {
+										case token.STRING:
+											program.ConstantTypes[name.Name] = miniast.TypeString
 											if unquoted, err := strconv.Unquote(val); err == nil {
 												val = unquoted
-											} else {
+											} else if len(val) >= 2 {
 												val = val[1 : len(val)-1]
 											}
+										case token.INT:
+											program.ConstantTypes[name.Name] = miniast.TypeInt64
+										case token.CHAR:
+											program.ConstantTypes[name.Name] = miniast.TypeInt64
+											if unquoted, _, _, err := strconv.UnquoteChar(strings.Trim(lit.Value, "'"), '\''); err == nil {
+												val = strconv.FormatInt(int64(unquoted), 10)
+											}
+										case token.FLOAT:
+											program.ConstantTypes[name.Name] = miniast.TypeFloat64
 										}
 										program.Constants[name.Name] = val
 										program.ConstantLocs[name.Name] = c.extractLoc(name)
+									case *ast.Ident:
+										if lit.Name == "true" || lit.Name == "false" {
+											program.Constants[name.Name] = lit.Name
+											program.ConstantTypes[name.Name] = miniast.TypeBool
+											program.ConstantLocs[name.Name] = c.extractLoc(name)
+										}
 									}
 								}
 							}

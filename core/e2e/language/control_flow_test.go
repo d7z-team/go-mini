@@ -37,7 +37,7 @@ func TestControlFlow(t *testing.T) {
 		code := `
 		package main
 		func main() {
-			arr := []any{10, 20, 30}
+			arr := []int64{10, 20, 30}
 			sum := 0
 			for i, v := range arr {
 				sum = sum + v
@@ -58,7 +58,7 @@ func TestControlFlow(t *testing.T) {
 		code := `
 		package main
 		func main() {
-			m := map[string]any{"a": 1, "b": 2}
+			m := map[string]int64{"a": 1, "b": 2}
 			sum := 0
 			for k, v := range m {
 				sum = sum + v

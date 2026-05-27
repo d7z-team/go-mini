@@ -46,7 +46,7 @@ func TestRangeContinueSkipBody(t *testing.T) {
 package main
 
 func main() {
-	arr := []any{2, 3, 4, 5, 6}
+	arr := []int64{2, 3, 4, 5, 6}
 	count := 0
 
 	for _, v := range arr {
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	if count != 3 {
-		panic("expected count=3, got " + count)
+		panic("expected count=3")
 	}
 }
 `
@@ -80,7 +80,7 @@ func TestRangeContinueInsideIfBlock(t *testing.T) {
 package main
 
 func main() {
-	arr := []any{1, 2, 3, 4, 5}
+	arr := []int64{1, 2, 3, 4, 5}
 	sum := 0
 
 	for _, v := range arr {
@@ -91,7 +91,7 @@ func main() {
 	}
 
 	if sum != 6 {
-		panic("expected sum=6 (1+2+3), got " + sum)
+		panic("expected sum=6")
 	}
 }
 `
@@ -123,7 +123,7 @@ package main
 import "mock"
 
 func main() {
-	items := []any{1, 2, 3, 4, 5}
+	items := []int64{1, 2, 3, 4, 5}
 	count := 0
 
 	for _, item := range items {
@@ -135,7 +135,7 @@ func main() {
 	}
 
 	if count != 2 {
-		panic("expected count=2, got " + count)
+		panic("expected count=2")
 	}
 }
 `)
@@ -165,7 +165,7 @@ package main
 import "mock"
 
 func main() {
-	items := []any{1, 2, 3, 4, 5}
+	items := []int64{1, 2, 3, 4, 5}
 	count := 0
 
 	for _, item := range items {
@@ -178,7 +178,7 @@ func main() {
 	}
 
 	if count != 2 {
-		panic("expected count=2, got " + count)
+		panic("expected count=2")
 	}
 }
 `)

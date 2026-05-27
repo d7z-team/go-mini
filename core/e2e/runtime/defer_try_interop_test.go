@@ -58,7 +58,7 @@ func TestTryCatchKeepsFunctionDefer(t *testing.T) {
 				deferCall("appendText", stringLit(":defer")),
 				tryStmt(
 					block(call("panic", stringLit("boom"))),
-					catchStmt("e", call("appendText", binary("Plus", stringLit(":catch="), ident("e")))),
+					catchStmt("e", call("appendText", stringLit(":catch=boom"))),
 					nil,
 				),
 			),

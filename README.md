@@ -12,6 +12,7 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 - Compile-time call templates for lightweight builtins
 - Surface bundles for FFI and VM source libraries
 - Surface-packaged VM source libraries with explicit exports and bytecode hash validation
+- Strict type gates for operators, comparisons, typed containers, and VM-only pointers
 - Language-level `chan` / `select` with cooperative VM scheduling
 - VM-only pointer semantics with `new`, `&`, dereference, and struct literals
 - FFI binding generator

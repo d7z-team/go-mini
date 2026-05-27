@@ -127,36 +127,57 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
 		case "String":
-			str := ""
-			if v != nil {
-				str = v.Str
-				if v.VType == TypeBytes {
-					str = string(v.B)
-				}
-				if v.VType == TypeError {
-					str, _ = v.ToError()
-				}
+			if v == nil {
+				buf.WriteString("")
+				return nil
 			}
-			buf.WriteString(str)
-			return nil
+			switch v.VType {
+			case TypeString:
+				buf.WriteString(v.Str)
+				return nil
+			case TypeBytes:
+				buf.WriteString(string(v.B))
+				return nil
+			case TypeError:
+				str, err := v.ToError()
+				if err != nil {
+					return err
+				}
+				buf.WriteString(str)
+				return nil
+			default:
+				return fmt.Errorf("FFI encode String: expected String, got %v", v.VType)
+			}
 		case "Float64":
 			fVal := 0.0
 			if v != nil {
-				fVal, _ = v.ToFloat()
+				var err error
+				fVal, err = v.ToFloat()
+				if err != nil {
+					return err
+				}
 			}
 			buf.WriteFloat64(fVal)
 			return nil
 		case "Uint32", "uint32", "Int32", "int32":
 			iVal := int64(0)
 			if v != nil {
-				iVal, _ = v.ToInt()
+				var err error
+				iVal, err = v.ToInt()
+				if err != nil {
+					return err
+				}
 			}
 			buf.WriteUvarint(uint64(iVal))
 			return nil
 		case "Bool":
 			bVal := false
 			if v != nil {
-				bVal, _ = v.ToBool()
+				var err error
+				bVal, err = v.ToBool()
+				if err != nil {
+					return err
+				}
 			}
 			buf.WriteBool(bVal)
 			return nil
@@ -174,7 +195,11 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		case "TypeBytes":
 			var bVal []byte
 			if v != nil {
-				bVal, _ = v.ToBytes()
+				var err error
+				bVal, err = v.ToBytes()
+				if err != nil {
+					return err
+				}
 			}
 			buf.WriteBytes(bVal)
 			return nil
@@ -182,7 +207,11 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 		if typ.Raw.IsNumeric() {
 			iVal := int64(0)
 			if v != nil {
-				iVal, _ = v.ToInt()
+				var err error
+				iVal, err = v.ToInt()
+				if err != nil {
+					return err
+				}
 			}
 			buf.WriteVarint(iVal)
 			return nil
@@ -324,6 +353,9 @@ func (e *Executor) serializeInterfaceValue(buf *ffigo.Buffer, v *Var, interfaceT
 }
 
 func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
+	if err := e.validateAnyValue(v); err != nil {
+		return err
+	}
 	v = e.unwrapFFIValue(v)
 	if v == nil {
 		buf.WriteAny(nil)
@@ -423,6 +455,8 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 			_ = buf.WriteByte(ffigo.TypeTagInterface)
 			buf.WriteRawInterface(0, nil)
 		}
+	case TypeClosure:
+		return errors.New("FFI Any cannot carry closure")
 	default:
 		buf.WriteAny(nil)
 	}

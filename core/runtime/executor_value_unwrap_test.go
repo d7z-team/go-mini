@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-func TestEvalUnaryDereferenceUnwrapsAnyPointer(t *testing.T) {
+func TestAssignAnyRejectsSlotPointer(t *testing.T) {
 	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
 
 	ptr := &Var{
 		VType:    TypePointer,
@@ -15,14 +16,13 @@ func TestEvalUnaryDereferenceUnwrapsAnyPointer(t *testing.T) {
 		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
 		Ref:      NewSlot(MustParseRuntimeType("Int64"), NewInt(7)),
 	}
-	anyWrapped := &Var{VType: TypeAny, TypeInfo: MustParseRuntimeType("Any"), Ref: ptr}
 
-	got, err := exec.evalUnaryExprDirect("Dereference", anyWrapped)
-	if err != nil {
-		t.Fatalf("dereference failed: %v", err)
+	_, err := exec.prepareValueForType(session, ptr, MustParseRuntimeType("Any"))
+	if err == nil {
+		t.Fatal("expected Any assignment to reject VM pointer")
 	}
-	if got == nil || got.VType != TypeInt || got.I64 != 7 {
-		t.Fatalf("unexpected dereference result: %#v", got)
+	if !strings.Contains(err.Error(), "VM pointer") {
+		t.Fatalf("unexpected Any assignment error: %v", err)
 	}
 }
 

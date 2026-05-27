@@ -69,7 +69,7 @@ func TestIntKeyMap(t *testing.T) {
 	package main
 	import "ffigen_test"
 	func main() {
-		m1 := map[Int64]String{ "1": "one", "2": "two" }
+		m1 := map[Int64]String{ 1: "one", 2: "two" }
 		m2, err := ffigen_test.EchoIntMap(m1)
 		if m2[1] != "one" || m2[2] != "two" {
 			panic("m2 mismatch")

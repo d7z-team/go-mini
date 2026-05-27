@@ -17,6 +17,14 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 			return err
 		}
 	}
+	for name, typ := range plan.ConstantTypes {
+		if _, ok := plan.Constants[name]; !ok {
+			return fmt.Errorf("constant type %s targets missing constant", name)
+		}
+		if err := validateRuntimeType("constant "+name+" type", typ); err != nil {
+			return err
+		}
+	}
 	for name, spec := range plan.StructSchemas {
 		if err := validateRuntimeStructSpec("struct schema "+name, spec); err != nil {
 			return err
@@ -185,6 +193,11 @@ func validatePreparedExport(plan *PreparedProgram, mapName string, export Prepar
 	case PreparedExportConst:
 		if _, ok := plan.Constants[target]; !ok {
 			return fmt.Errorf("prepared export %s targets missing constant %s", export.Name, target)
+		}
+		if typ, ok := plan.ConstantTypes[target]; ok {
+			if err := validateRuntimeType("prepared constant "+target+" type", typ); err != nil {
+				return err
+			}
 		}
 	case PreparedExportType:
 		if _, ok := plan.NamedTypes[target]; !ok {

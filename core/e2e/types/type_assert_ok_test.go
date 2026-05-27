@@ -23,7 +23,7 @@ func TestTypeAssertOk(t *testing.T) {
 		// Case 2: Failure
 		v2, ok2 := x.(String)
 		if ok2 { panic("ok2 should be false") }
-		if v2 != nil { panic("v2 should be nil") }
+		if v2 != "" { panic("v2 should be empty") }
 		
 		// Case 3: Single assign still fails
 		// defer func() { if recover() == nil { panic("should panic") } }()

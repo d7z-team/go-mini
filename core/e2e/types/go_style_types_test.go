@@ -151,8 +151,6 @@ func TestGoStyleTypes(t *testing.T) {
                 
                 s := ""
                 if s != "" { panic("empty string comparison failed") }
-                // 在 go-mini 中，空字符串不等于 nil
-                if s == nil { panic("empty string should not be nil") }
                 
                 if nil != nil { panic("nil equality failed") }
 			}`,

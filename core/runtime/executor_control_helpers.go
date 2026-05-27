@@ -31,37 +31,25 @@ func (e *Executor) varToTypedMapKey(v *Var, keyType RuntimeType) (string, error)
 	}
 	switch {
 	case keyType.IsInt():
-		if v.VType == TypeString {
-			if _, err := strconv.ParseInt(v.Str, 10, 64); err != nil {
-				return "", err
-			}
-			return "i:" + v.Str, nil
-		}
 		if v.VType == TypeInt {
 			return "i:" + strconv.FormatInt(v.I64, 10), nil
 		}
 	case keyType.IsBool():
-		if v.VType == TypeString {
-			if _, err := strconv.ParseBool(v.Str); err != nil {
-				return "", err
-			}
-			return "b:" + v.Str, nil
-		}
 		if v.VType == TypeBool {
 			return "b:" + strconv.FormatBool(v.Bool), nil
 		}
 	case keyType.IsNumeric() && !keyType.IsInt():
-		if v.VType == TypeString {
-			if _, err := strconv.ParseFloat(v.Str, 64); err != nil {
-				return "", err
-			}
-			return "f:" + v.Str, nil
-		}
 		if v.VType == TypeFloat {
 			return "f:" + strconv.FormatFloat(v.F64, 'f', -1, 64), nil
 		}
+	case keyType.IsString():
+		if v.VType == TypeString {
+			return v.Str, nil
+		}
+	case keyType.IsAny():
+		return e.varToMapKey(v)
 	}
-	return e.varToMapKey(v)
+	return "", fmt.Errorf("invalid map key type: expected %s, got %v", keyType.Raw, v.VType)
 }
 
 func (e *Executor) mapKeyToVar(k string, keyType RuntimeType) *Var {

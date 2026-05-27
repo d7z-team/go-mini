@@ -10,10 +10,11 @@ import (
 )
 
 type builder struct {
-	consts    map[string]string
-	globals   map[string]struct{}
-	functions map[string]struct{}
-	err       error
+	consts     map[string]string
+	constTypes map[string]runtime.RuntimeType
+	globals    map[string]struct{}
+	functions  map[string]struct{}
+	err        error
 }
 
 // Error reports an AST node that cannot be represented in executable
@@ -52,11 +53,12 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-func newBuilder(constants map[string]string, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
+func newBuilder(constants map[string]string, constantTypes map[string]runtime.RuntimeType, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
 	b := &builder{
-		consts:    cloneStringMap(constants),
-		globals:   make(map[string]struct{}, len(variables)),
-		functions: make(map[string]struct{}, len(functions)),
+		consts:     cloneStringMap(constants),
+		constTypes: cloneRuntimeTypeMap(constantTypes),
+		globals:    make(map[string]struct{}, len(variables)),
+		functions:  make(map[string]struct{}, len(functions)),
 	}
 	for ident := range variables {
 		b.globals[string(ident)] = struct{}{}
@@ -97,6 +99,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		Package:          program.Package,
 		ImportAliases:    importAliases,
 		Constants:        make(map[string]string, len(program.Constants)),
+		ConstantTypes:    make(map[string]runtime.RuntimeType, len(program.ConstantTypes)),
 		NamedTypes:       make(map[string]runtime.RuntimeType, len(program.Types)),
 		StructSchemas:    make(map[string]*runtime.RuntimeStructSpec, len(program.Structs)),
 		InterfaceSchemas: make(map[string]*runtime.RuntimeInterfaceSpec, len(program.Interfaces)),
@@ -108,6 +111,13 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 	}
 	for name, val := range program.Constants {
 		prepared.Constants[name] = val
+	}
+	for name, typ := range program.ConstantTypes {
+		typeInfo, err := runtime.ParseRuntimeType(typ)
+		if err != nil {
+			return nil, err
+		}
+		prepared.ConstantTypes[name] = typeInfo
 	}
 	for ident, t := range program.Types {
 		typeInfo, err := runtime.ParseRuntimeType(t)
@@ -135,7 +145,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		}
 	}
 
-	b := newBuilder(prepared.Constants, program.Variables, program.Functions)
+	b := newBuilder(prepared.Constants, prepared.ConstantTypes, program.Variables, program.Functions)
 	rootScope := b.newRootLoweringScope()
 	for _, group := range groups {
 		if len(group.Names) == 0 {
@@ -272,7 +282,7 @@ func populatePreparedExports(prepared *runtime.PreparedProgram, program *ast.Pro
 		prepared.Exports[name] = runtime.PreparedExport{
 			Name:       name,
 			Kind:       runtime.PreparedExportConst,
-			Type:       literalToVar(val).RuntimeType(),
+			Type:       typedLiteralToVar(val, prepared.ConstantTypes[name]).RuntimeType(),
 			TargetName: name,
 		}
 	}
@@ -422,6 +432,14 @@ func importAliasFromPath(path string) string {
 
 func cloneStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneRuntimeTypeMap(in map[string]runtime.RuntimeType) map[string]runtime.RuntimeType {
+	out := make(map[string]runtime.RuntimeType, len(in))
 	for k, v := range in {
 		out[k] = v
 	}

@@ -98,14 +98,12 @@ func main() {
 	var x Int64
 	x = get()
 }`
-	prog, err := executor.NewRuntimeByGoCode(code)
-	if err != nil {
-		t.Fatalf("compile failed: %v", err)
+	_, err := executor.NewRuntimeByGoCode(code)
+	if err == nil {
+		t.Fatal("expected compile error")
 	}
-	if err := prog.Execute(context.Background()); err == nil {
-		t.Fatal("expected runtime assignment error")
-	} else if !strings.Contains(err.Error(), "cannot assign") && !strings.Contains(err.Error(), "type mismatch") {
-		t.Fatalf("unexpected runtime error: %v", err)
+	if !strings.Contains(err.Error(), "cannot assign Any to x (Int64)") {
+		t.Fatalf("unexpected compile error: %v", err)
 	}
 }
 

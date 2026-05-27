@@ -24,7 +24,11 @@ obj, err := json.Unmarshal(data)
 if err != nil {
 	panic(err)
 }
-test.Out(obj.name)
+name, ok := obj.name.(String)
+if !ok {
+	panic("name must be string")
+}
+test.Out(name)
 `,
 			Want:   "mini",
 			Covers: []string{"Marshal", "Unmarshal"},
@@ -51,9 +55,17 @@ obj, err := json.Unmarshal(data)
 if err != nil {
 	panic(err)
 }
-test.Out(obj.Name)
+name, ok := obj.Name.(String)
+if !ok {
+	panic("Name must be string")
+}
+test.Out(name)
 test.Out("|")
-test.OutBool(obj.Meta.Active)
+active, ok := obj.Meta.Active.(Bool)
+if !ok {
+	panic("Active must be bool")
+}
+test.OutBool(active)
 `,
 			Want:   "mini|true",
 			Covers: []string{"Marshal", "Unmarshal"},

@@ -90,7 +90,7 @@ func TestClosureStress(t *testing.T) {
 			func main() {
 				// 在 go-mini 中，for 循环的 init 变量在整个循环生命周期内共享（类似 Go 1.22 之前）
 				// 如果需要每个闭包捕获不同的值，必须在循环体内部重新定义
-				fns := make([]any, 3)
+				fns := make([]func() int64, 3)
 				for i := 0; i < 3; i++ {
 					val := i // 局部重新定义
 					fns[i] = func() int64 { return val }
@@ -105,7 +105,7 @@ func TestClosureStress(t *testing.T) {
 			name: "Closure as Argument",
 			code: `
 			package main
-			func exec(f any) int64 {
+			func exec(f func() int64) int64 {
 				return f()
 			}
 			func main() {
@@ -121,7 +121,7 @@ func TestClosureStress(t *testing.T) {
 			code: `
 			package main
 			func main() {
-				var fib any
+				var fib func(int64) int64
 				fib = func(n int64) int64 {
 					if n <= 1 { return n }
 					return fib(n-1) + fib(n-2)

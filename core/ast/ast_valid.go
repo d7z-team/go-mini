@@ -899,6 +899,11 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 		}
 		if ctx.root.program != nil {
 			if _, ok := ctx.root.program.Constants[string(variable)]; ok {
+				if ctx.root.program.ConstantTypes != nil {
+					if typ := ctx.root.program.ConstantTypes[string(variable)]; typ != "" {
+						return typ, true
+					}
+				}
 				return "Constant", true
 			}
 		}

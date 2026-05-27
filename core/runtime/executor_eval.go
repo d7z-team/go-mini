@@ -4,69 +4,67 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 // isEmptyVar is already defined in executor.go, but we can reuse it since it doesn't have a receiver.
 // Wait, isEmptyVar is private in the package, so we can just use it without redefining it.
 
 func (e *Executor) evalBinaryExprDirect(operator string, l, r *Var) (*Var, error) {
+	normalized, ok := typespec.NormalizeBinaryOperator(operator)
+	if !ok {
+		return nil, &VMError{Message: "unsupported operator: " + operator, IsPanic: true}
+	}
+
+	if normalized.IsEquality() && (isEmptyVar(l) || isEmptyVar(r)) {
+		return e.evalComparison(string(normalized), l, r)
+	}
+
 	l = e.unwrapValue(l)
 	r = e.unwrapValue(r)
 
-	// 允许比较运算的操作数为 nil
-	if operator == "==" || operator == "Eq" || operator == "!=" || operator == "Neq" {
-		isLEmpty := isEmptyVar(l)
-		isREmpty := isEmptyVar(r)
-
-		if isLEmpty && isREmpty {
-			return NewBool(operator == "==" || operator == "Eq"), nil
-		}
-		if isLEmpty || isREmpty {
-			return NewBool(operator == "!=" || operator == "Neq"), nil
-		}
-	}
-
 	if l == nil || r == nil {
+		if normalized.IsEquality() {
+			return e.evalComparison(string(normalized), l, r)
+		}
 		return nil, &VMError{Message: "binary op with nil operand", IsPanic: true}
 	}
 
-	switch operator {
-	case "+", "Plus", "Add", "-", "Minus", "Sub", "*", "Mult", "/", "Div", "%", "Mod":
-		return e.evalArithmetic(operator, l, r)
-	case "&", "BitAnd", "|", "BitOr", "^", "BitXor", "<<", "Lsh", ">>", "Rsh":
-		return e.evalBitwise(operator, l, r)
-	case "==", "Eq", "!=", "Neq", "<", "Lt", ">", "Gt", "<=", "Le", ">=", "Ge":
-		return e.evalComparison(operator, l, r)
-	case "&&", "And", "||", "Or":
-		return e.evalLogic(operator, l, r)
+	switch normalized {
+	case typespec.OpPlus, typespec.OpMinus, typespec.OpMult, typespec.OpDiv, typespec.OpMod:
+		return e.evalArithmetic(string(normalized), l, r)
+	case typespec.OpBitAnd, typespec.OpBitOr, typespec.OpBitXor, typespec.OpLsh, typespec.OpRsh:
+		return e.evalBitwise(string(normalized), l, r)
+	case typespec.OpEq, typespec.OpNeq, typespec.OpLt, typespec.OpGt, typespec.OpLe, typespec.OpGe:
+		return e.evalComparison(string(normalized), l, r)
+	case typespec.OpAnd, typespec.OpOr:
+		return e.evalLogic(string(normalized), l, r)
 	}
 
 	return nil, &VMError{Message: "unsupported operator: " + operator, IsPanic: true}
 }
 
 func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
-	if l.VType != TypeInt && l.VType != TypeFloat {
-		if op == "+" || op == "Plus" || op == "Add" {
-			// 字符串拼接尝试：仅限字符串和字节
-			if l.VType == TypeString || l.VType == TypeBytes || r.VType == TypeString || r.VType == TypeBytes {
-				// 如果两个都是字节，返回字节
-				if l.VType == TypeBytes && r.VType == TypeBytes {
-					resB := make([]byte, len(l.B)+len(r.B))
-					copy(resB, l.B)
-					copy(resB[len(l.B):], r.B)
-					return NewBytes(resB), nil
-				}
-
-				// 否则按字符串拼接 (TypeError 将不再进入此分支)
-				lStr, _ := l.ToError()
-				rStr, _ := r.ToError()
-				return NewString(lStr + rStr), nil
-			}
+	if op == string(typespec.OpPlus) {
+		if l.VType == TypeString && r.VType == TypeString {
+			return NewString(l.Str + r.Str), nil
 		}
+		if l.VType == TypeBytes && r.VType == TypeBytes {
+			resB := make([]byte, len(l.B)+len(r.B))
+			copy(resB, l.B)
+			copy(resB[len(l.B):], r.B)
+			return NewBytes(resB), nil
+		}
+	}
+	if l.VType != TypeInt && l.VType != TypeFloat {
 		return nil, &VMError{Message: fmt.Sprintf("arithmetic operation %s on non-numeric type %v", op, l.VType), IsPanic: true}
 	}
 	if r.VType != TypeInt && r.VType != TypeFloat {
 		return nil, &VMError{Message: fmt.Sprintf("arithmetic operation %s on non-numeric type %v", op, r.VType), IsPanic: true}
+	}
+	if op == string(typespec.OpMod) && (l.VType != TypeInt || r.VType != TypeInt) {
+		return nil, &VMError{Message: fmt.Sprintf("Mod operator expects Int64 operands, got %v and %v", l.VType, r.VType), IsPanic: true}
 	}
 
 	lf, _ := l.ToFloat()
@@ -74,22 +72,22 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 	useFloat := l.VType == TypeFloat || r.VType == TypeFloat
 
 	switch op {
-	case "+", "Plus", "Add":
+	case string(typespec.OpPlus):
 		if useFloat {
 			return NewFloat(lf + rf), nil
 		}
 		return NewInt(l.I64 + r.I64), nil
-	case "-", "Minus", "Sub":
+	case string(typespec.OpMinus):
 		if useFloat {
 			return NewFloat(lf - rf), nil
 		}
 		return NewInt(l.I64 - r.I64), nil
-	case "*", "Mult":
+	case string(typespec.OpMult):
 		if useFloat {
 			return NewFloat(lf * rf), nil
 		}
 		return NewInt(l.I64 * r.I64), nil
-	case "/", "Div":
+	case string(typespec.OpDiv):
 		if rf == 0 {
 			return nil, &VMError{Message: "division by zero", IsPanic: true}
 		}
@@ -100,16 +98,14 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 			return NewInt(-9223372036854775808), nil
 		}
 		return NewInt(l.I64 / r.I64), nil
-	case "%", "Mod":
-		lVal, _ := l.ToInt()
-		rVal, _ := r.ToInt()
-		if rVal == 0 {
+	case string(typespec.OpMod):
+		if r.I64 == 0 {
 			return nil, &VMError{Message: "division by zero", IsPanic: true}
 		}
-		if lVal == -9223372036854775808 && rVal == -1 {
+		if l.I64 == -9223372036854775808 && r.I64 == -1 {
 			return NewInt(0), nil
 		}
-		return NewInt(lVal % rVal), nil
+		return NewInt(l.I64 % r.I64), nil
 	}
 	return nil, &VMError{Message: "unsupported arithmetic operator: " + op, IsPanic: true}
 }
@@ -129,37 +125,48 @@ func (e *Executor) evalBitwise(op string, l, r *Var) (*Var, error) {
 	}
 
 	switch op {
-	case "&", "BitAnd":
+	case string(typespec.OpBitAnd):
 		return NewInt(li & ri), nil
-	case "|", "BitOr":
+	case string(typespec.OpBitOr):
 		return NewInt(li | ri), nil
-	case "^", "BitXor":
+	case string(typespec.OpBitXor):
 		return NewInt(li ^ ri), nil
-	case "<<", "Lsh":
+	case string(typespec.OpLsh):
 		return NewInt(li << uint(ri)), nil
-	case ">>", "Rsh":
+	case string(typespec.OpRsh):
 		return NewInt(li >> uint(ri)), nil
 	}
 	return nil, &VMError{Message: "unsupported bitwise operator: " + op, IsPanic: true}
 }
 
 func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
+	if normalized, ok := typespec.NormalizeBinaryOperator(op); ok {
+		op = string(normalized)
+	}
 	lEmpty := isEmptyVar(l)
 	rEmpty := isEmptyVar(r)
+	eqOp := op == string(typespec.OpEq)
+	neqOp := op == string(typespec.OpNeq)
 
-	if op == "==" || op == "Eq" {
+	if eqOp {
 		if lEmpty && rEmpty {
 			return NewBool(true), nil
 		}
 		if lEmpty || rEmpty {
+			if !runtimeValueNilComparable(nonEmptyVar(l, r)) {
+				return nil, &VMError{Message: fmt.Sprintf("cannot compare %s and nil", runtimeTypeForAssignment(nonEmptyVar(l, r)).Raw), IsPanic: true}
+			}
 			return NewBool(false), nil
 		}
 	}
-	if op == "!=" || op == "Neq" {
+	if neqOp {
 		if lEmpty && rEmpty {
 			return NewBool(false), nil
 		}
 		if lEmpty || rEmpty {
+			if !runtimeValueNilComparable(nonEmptyVar(l, r)) {
+				return nil, &VMError{Message: fmt.Sprintf("cannot compare %s and nil", runtimeTypeForAssignment(nonEmptyVar(l, r)).Raw), IsPanic: true}
+			}
 			return NewBool(true), nil
 		}
 	}
@@ -167,26 +174,34 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 	if l != nil && r != nil {
 		if l.VType == TypeString && r.VType == TypeString {
 			switch op {
-			case "==", "Eq":
+			case string(typespec.OpEq):
 				return NewBool(l.Str == r.Str), nil
-			case "!=", "Neq":
+			case string(typespec.OpNeq):
 				return NewBool(l.Str != r.Str), nil
+			case string(typespec.OpLt):
+				return NewBool(l.Str < r.Str), nil
+			case string(typespec.OpGt):
+				return NewBool(l.Str > r.Str), nil
+			case string(typespec.OpLe):
+				return NewBool(l.Str <= r.Str), nil
+			case string(typespec.OpGe):
+				return NewBool(l.Str >= r.Str), nil
 			}
 		}
 		if l.VType == TypeError && r.VType == TypeError {
 			eq := sameGoError(goErrorFromVar(l), goErrorFromVar(r))
 			switch op {
-			case "==", "Eq":
+			case string(typespec.OpEq):
 				return NewBool(eq), nil
-			case "!=", "Neq":
+			case string(typespec.OpNeq):
 				return NewBool(!eq), nil
 			}
 		}
 		if l.VType == TypeBool && r.VType == TypeBool {
 			switch op {
-			case "==", "Eq":
+			case string(typespec.OpEq):
 				return NewBool(l.Bool == r.Bool), nil
-			case "!=", "Neq":
+			case string(typespec.OpNeq):
 				return NewBool(l.Bool != r.Bool), nil
 			}
 		}
@@ -195,23 +210,23 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 		rf, rErr := r.ToFloat()
 		if lErr == nil && rErr == nil {
 			switch op {
-			case "==", "Eq":
+			case string(typespec.OpEq):
 				return NewBool(lf == rf), nil
-			case "!=", "Neq":
+			case string(typespec.OpNeq):
 				return NewBool(lf != rf), nil
-			case "<", "Lt":
+			case string(typespec.OpLt):
 				return NewBool(lf < rf), nil
-			case ">", "Gt":
+			case string(typespec.OpGt):
 				return NewBool(lf > rf), nil
-			case "<=", "Le":
+			case string(typespec.OpLe):
 				return NewBool(lf <= rf), nil
-			case ">=", "Ge":
+			case string(typespec.OpGe):
 				return NewBool(lf >= rf), nil
 			}
 		}
 	}
 
-	if op == "==" || op == "Eq" {
+	if eqOp {
 		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
@@ -220,11 +235,13 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 				return NewBool(l.Handle == r.Handle), nil
 			case TypePointer:
 				return NewBool(l.Ref == r.Ref), nil
+			case TypeInterface:
+				return NewBool(interfaceIdentity(l) == interfaceIdentity(r)), nil
 			}
 		}
-		return NewBool(l == r), nil
+		return nil, &VMError{Message: fmt.Sprintf("unsupported equality comparison between %s and %s", runtimeTypeForAssignment(l).Raw, runtimeTypeForAssignment(r).Raw), IsPanic: true}
 	}
-	if op == "!=" || op == "Neq" {
+	if neqOp {
 		if l != nil && r != nil && l.VType == r.VType {
 			switch l.VType {
 			case TypeArray, TypeMap, TypeChannel, TypeModule, TypeClosure:
@@ -233,12 +250,46 @@ func (e *Executor) evalComparison(op string, l, r *Var) (*Var, error) {
 				return NewBool(l.Handle != r.Handle), nil
 			case TypePointer:
 				return NewBool(l.Ref != r.Ref), nil
+			case TypeInterface:
+				return NewBool(interfaceIdentity(l) != interfaceIdentity(r)), nil
 			}
 		}
-		return NewBool(l != r), nil
+		return nil, &VMError{Message: fmt.Sprintf("unsupported equality comparison between %s and %s", runtimeTypeForAssignment(l).Raw, runtimeTypeForAssignment(r).Raw), IsPanic: true}
 	}
 
 	return nil, &VMError{Message: fmt.Sprintf("unsupported comparison %s between %v and %v", op, l, r), IsPanic: true}
+}
+
+func nonEmptyVar(a, b *Var) *Var {
+	if !isEmptyVar(a) {
+		return a
+	}
+	return b
+}
+
+func runtimeValueNilComparable(v *Var) bool {
+	if v == nil {
+		return true
+	}
+	switch v.VType {
+	case TypeAny, TypePointer, TypeHostRef, TypeChannel, TypeArray, TypeMap, TypeModule, TypeClosure, TypeInterface, TypeBytes, TypeError:
+		return true
+	}
+	return false
+}
+
+func interfaceIdentity(v *Var) interface{} {
+	if v == nil || v.VType != TypeInterface {
+		return nil
+	}
+	inter, _ := v.Ref.(*VMInterface)
+	if inter == nil {
+		return nil
+	}
+	if inter.Target != nil {
+		return inter.Target
+	}
+	return inter
 }
 
 func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
@@ -252,9 +303,9 @@ func (e *Executor) evalLogic(op string, l, r *Var) (*Var, error) {
 	}
 
 	switch op {
-	case "&&", "And":
+	case string(typespec.OpAnd):
 		return NewBool(lb && rb), nil
-	case "||", "Or":
+	case string(typespec.OpOr):
 		return NewBool(lb || rb), nil
 	}
 	return nil, &VMError{Message: "unsupported logic operator: " + op, IsPanic: true}
@@ -286,6 +337,26 @@ func (e *Executor) evalUnaryExprDirect(operator string, val *Var) (*Var, error) 
 }
 
 func (e *Executor) evalLiteralToVar(val string) *Var {
+	return e.evalLiteralToVarWithType(val, RuntimeType{})
+}
+
+func (e *Executor) evalLiteralToVarWithType(val string, typ RuntimeType) *Var {
+	switch {
+	case typ.IsString():
+		return NewString(val)
+	case typ.IsInt():
+		if v, err := strconv.ParseInt(val, 0, 64); err == nil {
+			return NewInt(v)
+		}
+		return NewInt(0)
+	case typ.Raw == SpecFloat64:
+		if v, err := strconv.ParseFloat(val, 64); err == nil {
+			return NewFloat(v)
+		}
+		return NewFloat(0)
+	case typ.IsBool():
+		return NewBool(val == "true")
+	}
 	if v, err := strconv.ParseInt(val, 0, 64); err == nil {
 		return NewInt(v)
 	}
@@ -315,18 +386,27 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 
 	switch obj.VType {
 	case TypeBytes:
+		if idx.VType != TypeInt {
+			return nil, &VMError{Message: fmt.Sprintf("bytes index must be Int64, got %v", idx.VType), IsPanic: true}
+		}
 		i := int(idx.I64)
 		if i < 0 || i >= len(obj.B) {
 			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length %d", i, len(obj.B)), IsPanic: true}
 		}
 		return NewInt(int64(obj.B[i])), nil
 	case TypeString:
+		if idx.VType != TypeInt {
+			return nil, &VMError{Message: fmt.Sprintf("string index must be Int64, got %v", idx.VType), IsPanic: true}
+		}
 		i := int(idx.I64)
 		if i < 0 || i >= len(obj.Str) {
 			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length %d", i, len(obj.Str)), IsPanic: true}
 		}
 		return NewInt(int64(obj.Str[i])), nil
 	case TypeArray:
+		if idx.VType != TypeInt {
+			return nil, &VMError{Message: fmt.Sprintf("array index must be Int64, got %v", idx.VType), IsPanic: true}
+		}
 		arr := obj.Ref.(*VMArray)
 		i := int(idx.I64)
 		val, ok := arr.Load(i)
@@ -348,9 +428,12 @@ func (e *Executor) evalIndexExprDirect(ctx *StackContext, obj, idx *Var) (*Var, 
 			if keyType.IsBool() && idx.VType != TypeBool {
 				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Bool, got %v", idx.VType), IsPanic: true}
 			}
+			if keyType.Raw == SpecFloat64 && idx.VType != TypeFloat {
+				return nil, &VMError{Message: fmt.Sprintf("invalid map key type: expected Float64, got %v", idx.VType), IsPanic: true}
+			}
 		}
 
-		key, err := e.varToMapKey(idx)
+		key, err := e.varToTypedMapKey(idx, keyType)
 		if err != nil {
 			return nil, err
 		}
@@ -495,10 +578,16 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 	}
 
 	low, high := 0, -1
-	if lowVar != nil && lowVar.VType == TypeInt {
+	if lowVar != nil {
+		if lowVar.VType != TypeInt {
+			return nil, &VMError{Message: fmt.Sprintf("slice low index must be Int64, got %v", lowVar.VType), IsPanic: true}
+		}
 		low = int(lowVar.I64)
 	}
-	if highVar != nil && highVar.VType == TypeInt {
+	if highVar != nil {
+		if highVar.VType != TypeInt {
+			return nil, &VMError{Message: fmt.Sprintf("slice high index must be Int64, got %v", highVar.VType), IsPanic: true}
+		}
 		high = int(highVar.I64)
 	}
 
@@ -570,7 +659,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			} else if targetType.IsChan() {
 				capacity := 0
 				if len(args) > 1 && args[1] != nil {
-					cInt, _ := args[1].ToInt()
+					cInt, err := e.unwrapValue(args[1]).ToInt()
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("make channel capacity must be Int64: %v", err), IsPanic: true}
+					}
 					if cInt < 0 {
 						return &VMError{Message: fmt.Sprintf("negative channel capacity in make: %d", cInt), IsPanic: true}
 					}
@@ -591,7 +683,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				length := 0
 				capacity := 0
 				if len(args) > 1 && args[1] != nil {
-					lInt, _ := args[1].ToInt()
+					lInt, err := e.unwrapValue(args[1]).ToInt()
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("make length must be Int64: %v", err), IsPanic: true}
+					}
 					if lInt < 0 {
 						return &VMError{Message: fmt.Sprintf("negative length in make: %d", lInt), IsPanic: true}
 					}
@@ -602,7 +697,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					capacity = length
 				}
 				if len(args) > 2 && args[2] != nil {
-					cInt, _ := args[2].ToInt()
+					cInt, err := e.unwrapValue(args[2]).ToInt()
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("make capacity must be Int64: %v", err), IsPanic: true}
+					}
 					if int(cInt) < length {
 						return &VMError{Message: fmt.Sprintf("capacity %d less than length %d", cInt, length), IsPanic: true}
 					}
@@ -717,28 +815,51 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if len(args) < 2 || args[0] == nil {
 				return &VMError{Message: "append requires at least 2 arguments", IsPanic: true}
 			}
-			switch args[0].VType {
+			base := e.unwrapValue(args[0])
+			if base == nil {
+				return &VMError{Message: "append requires array or bytes as first argument", IsPanic: true}
+			}
+			switch base.VType {
 			case TypeArray:
-				arr := args[0].Ref.(*VMArray)
+				arr := base.Ref.(*VMArray)
 				items := arr.Snapshot()
 				newArr := make([]*Var, len(items), len(items)+len(args)-1)
-				copy(newArr, items)
-				newArr = append(newArr, args[1:]...)
+				for i, item := range items {
+					newArr[i] = cloneVarForAssign(item)
+				}
+				elemType, ok := base.RuntimeType().ReadArrayItemType()
+				if !ok {
+					elemType = MustParseRuntimeType(SpecAny)
+				}
+				for i, arg := range args[1:] {
+					prepared, err := e.prepareValueForType(session, arg, elemType)
+					if err != nil {
+						return fmt.Errorf("append argument %d: %w", i+2, err)
+					}
+					newArr = append(newArr, prepared)
+				}
 				v := &Var{VType: TypeArray, Ref: &VMArray{Data: newArr}}
-				v.SetRuntimeType(args[0].RuntimeType())
+				v.SetRuntimeType(base.RuntimeType())
 				session.ValueStack.Push(v)
 				return nil
 			case TypeBytes:
-				buf := make([]byte, len(args[0].B))
-				copy(buf, args[0].B)
-				for _, arg := range args[1:] {
-					if arg != nil {
-						val, _ := arg.ToInt()
-						buf = append(buf, byte(val))
+				buf := make([]byte, len(base.B))
+				copy(buf, base.B)
+				for i, arg := range args[1:] {
+					if arg == nil {
+						return fmt.Errorf("append bytes argument %d is nil", i+2)
 					}
+					val, err := e.unwrapValue(arg).ToInt()
+					if err != nil {
+						return fmt.Errorf("append bytes argument %d: %w", i+2, err)
+					}
+					if val < 0 || val > 255 {
+						return &VMError{Message: fmt.Sprintf("append bytes argument %d out of byte range: %d", i+2, val), IsPanic: true}
+					}
+					buf = append(buf, byte(val))
 				}
 				v := &Var{VType: TypeBytes, B: buf}
-				v.SetRuntimeType(args[0].RuntimeType())
+				v.SetRuntimeType(base.RuntimeType())
 				session.ValueStack.Push(v)
 				return nil
 			}
@@ -749,9 +870,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			}
 			obj := args[0]
 			obj = e.unwrapValue(obj)
+			keyArg := e.unwrapValue(args[1])
 			if obj.VType == TypeMap {
 				m := obj.Ref.(*VMMap)
-				key, err := e.varToMapKey(args[1])
+				keyType, _, _ := obj.RuntimeType().GetMapKeyValueTypes()
+				key, err := e.varToTypedMapKey(keyArg, keyType)
 				if err != nil {
 					return err
 				}
@@ -806,6 +929,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewString(text))
 					return nil
 				}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to String", arg.VType), IsPanic: true}
 			}
 			session.ValueStack.Push(NewString(""))
 			return nil
@@ -821,6 +945,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewBytes([]byte(arg.Str)))
 					return nil
 				}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to TypeBytes", arg.VType), IsPanic: true}
 			}
 			session.ValueStack.Push(NewBytes(nil))
 			return nil
@@ -836,7 +961,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewInt(int64(arg.F64)))
 					return nil
 				case TypeString:
-					val, _ := strconv.ParseInt(arg.Str, 10, 64)
+					val, err := strconv.ParseInt(arg.Str, 10, 64)
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("cannot convert String to Int64: %v", err), IsPanic: true}
+					}
 					session.ValueStack.Push(NewInt(val))
 					return nil
 				case TypeBool:
@@ -847,6 +975,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewInt(0))
 					return nil
 				}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to Int64", arg.VType), IsPanic: true}
 			}
 			session.ValueStack.Push(NewInt(0))
 			return nil
@@ -862,7 +991,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewFloat(float64(arg.I64)))
 					return nil
 				case TypeString:
-					val, _ := strconv.ParseFloat(arg.Str, 64)
+					val, err := strconv.ParseFloat(arg.Str, 64)
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("cannot convert String to Float64: %v", err), IsPanic: true}
+					}
 					session.ValueStack.Push(NewFloat(val))
 					return nil
 				case TypeBool:
@@ -873,6 +1005,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					session.ValueStack.Push(NewFloat(0.0))
 					return nil
 				}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to Float64", arg.VType), IsPanic: true}
 			}
 			session.ValueStack.Push(NewFloat(0.0))
 			return nil
@@ -880,7 +1013,10 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
 				arg = e.unwrapValue(arg)
-				b, _ := arg.ToBool()
+				b, err := arg.ToBool()
+				if err != nil {
+					return &VMError{Message: fmt.Sprintf("cannot convert %v to Bool", arg.VType), IsPanic: true}
+				}
 				session.ValueStack.Push(NewBool(b))
 				return nil
 			}
@@ -1158,7 +1294,9 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			paramName = sig.ParamNames[i]
 		}
 		paramSym := SymbolRef{Name: paramName, Kind: SymbolLocal, Slot: i}
-		_ = session.DeclareSymbol(paramSym, paramType)
+		if err := session.DeclareSymbol(paramSym, paramType); err != nil {
+			return fmt.Errorf("function %s parameter %d: %w", name, i+1, err)
+		}
 		if sig.Variadic && i == len(sig.ParamTypes)-1 {
 			var variadicArgs []*Var
 			if i < len(args) {
@@ -1166,13 +1304,19 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 			}
 			arr := &Var{VType: TypeArray, Ref: &VMArray{Data: variadicArgs}}
 			arr.SetRuntimeType(paramType)
-			_ = session.StoreSymbol(paramSym, arr)
+			if err := session.StoreSymbol(paramSym, arr); err != nil {
+				return fmt.Errorf("function %s variadic argument: %w", name, err)
+			}
 		} else if i < len(args) && args[i] != nil {
-			_ = session.StoreSymbol(paramSym, args[i])
+			if err := session.StoreSymbol(paramSym, args[i]); err != nil {
+				return fmt.Errorf("function %s argument %d: %w", name, i+1, err)
+			}
 		}
 	}
 	if !sig.ReturnType.IsVoid() {
-		_ = session.InitReturn(sig.ReturnType)
+		if err := session.InitReturn(sig.ReturnType); err != nil {
+			return fmt.Errorf("function %s return slot: %w", name, err)
+		}
 	}
 
 	// Push CallBoundary

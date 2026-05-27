@@ -372,7 +372,7 @@ func blockedSender(ch chan Int64, ready chan Int64, done chan Int64) {
 	var recv <-chan Int64 = ch
 	close(recv)
 `,
-			WantCompileErr: "<any>",
+			WantCompileErr: "cannot close receive-only channel",
 		},
 	})
 }

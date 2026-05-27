@@ -10,7 +10,8 @@ func TestEvalFFICopyBackWritesToMemberField(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 
 	holder := &Var{
-		VType: TypeMap,
+		VType:    TypeMap,
+		TypeInfo: MustParseRuntimeType("Map<String,TypeBytes>"),
 		Ref: &VMMap{Data: map[string]*Var{
 			"buf": NewBytes([]byte("xy")),
 		}},
@@ -41,7 +42,8 @@ func TestEvalFFICopyBackWritesToArrayIndex(t *testing.T) {
 	session := exec.NewSession(context.Background(), "global")
 
 	arr := &Var{
-		VType: TypeArray,
+		VType:    TypeArray,
+		TypeInfo: MustParseRuntimeType("Array<TypeBytes>"),
 		Ref: &VMArray{Data: []*Var{
 			NewBytes([]byte("aa")),
 			NewBytes([]byte("bc")),

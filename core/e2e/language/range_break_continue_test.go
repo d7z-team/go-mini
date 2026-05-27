@@ -14,7 +14,7 @@ func TestRangeBreakContinue(t *testing.T) {
 		code := `
 		package main
 		func main() {
-			arr := []any{1, 2, 3, 4, 5}
+			arr := []int64{1, 2, 3, 4, 5}
 			sum := 0
 			for _, v := range arr {
 				if v > 3 {
@@ -22,7 +22,7 @@ func TestRangeBreakContinue(t *testing.T) {
 				}
 				sum = sum + v
 			}
-			if sum != 6 { panic("sum should be 6 (1+2+3), got " + sum) }
+			if sum != 6 { panic("sum should be 6") }
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
@@ -39,7 +39,7 @@ func TestRangeBreakContinue(t *testing.T) {
 		code := `
 		package main
 		func main() {
-			arr := []any{1, 2, 3, 4, 5}
+			arr := []int64{1, 2, 3, 4, 5}
 			sum := 0
 			for _, v := range arr {
 				if v == 3 {
@@ -47,7 +47,7 @@ func TestRangeBreakContinue(t *testing.T) {
 				}
 				sum = sum + v
 			}
-			if sum != 12 { panic("sum should be 12 (1+2+4+5), got " + sum) }
+			if sum != 12 { panic("sum should be 12") }
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
@@ -72,7 +72,7 @@ func TestRangeBreakContinue(t *testing.T) {
 				break
 				count = 2
 			}
-			if count != 1 { panic("count should be 1, got " + count) }
+			if count != 1 { panic("count should be 1") }
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)
@@ -97,7 +97,7 @@ func TestRangeBreakContinue(t *testing.T) {
 				}
 				sum = sum + i
 			}
-			if sum != 10 { panic("sum should be 10 (0+1+2+3+4), got " + sum) }
+			if sum != 10 { panic("sum should be 10") }
 		}
 		`
 		prog, err := executor.NewRuntimeByGoCode(code)

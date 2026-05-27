@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -133,7 +134,12 @@ func (e *Executor) dispatchSelect(session *StackContext, task Task) error {
 			if !ok {
 				continue
 			}
-			ready, errText := ch.TrySend(operands[i].Value)
+			value, err := e.prepareValueForType(session, operands[i].Value, ch.ElemType())
+			if err != nil {
+				return fmt.Errorf("select send: %w", err)
+			}
+			operands[i].Value = value
+			ready, errText := ch.TrySend(value)
 			if ready {
 				if errText != "" {
 					return &VMError{Message: errText, IsPanic: true}
@@ -236,8 +242,15 @@ func (e *Executor) parkSelect(session *StackContext, task Task, plan *SelectData
 			if !ok {
 				continue
 			}
+			value, err := e.prepareValueForType(session, operands[i].Value, ch.ElemType())
+			if err != nil {
+				group.choose(caseIndex, nil, true, err.Error())
+				registered = true
+				continue
+			}
+			operands[i].Value = value
 			if endpoint := ch.Endpoint(); channelEndpointCanSend(endpoint) {
-				payload, err := e.encodeChannelPayload(operands[i].Value, ch.ElemType())
+				payload, err := e.encodeChannelPayload(value, ch.ElemType())
 				if err != nil {
 					group.choose(caseIndex, nil, true, err.Error())
 					registered = true
@@ -258,7 +271,7 @@ func (e *Executor) parkSelect(session *StackContext, task Task, plan *SelectData
 			}
 			waiter := &channelSendWaiter{
 				token: token,
-				value: cloneVarForAssign(operands[i].Value),
+				value: cloneVarForAssign(value),
 				ack: func(errText string) {
 					group.choose(caseIndex, nil, true, errText)
 				},

@@ -4,6 +4,7 @@ type PreparedProgram struct {
 	Package              string                           `json:"package,omitempty"`
 	ImportAliases        map[string]string                `json:"import_aliases,omitempty"`
 	Constants            map[string]string                `json:"constants,omitempty"`
+	ConstantTypes        map[string]RuntimeType           `json:"constant_types,omitempty"`
 	NamedTypes           map[string]RuntimeType           `json:"named_types,omitempty"`
 	StructSchemas        map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
 	InterfaceSchemas     map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
@@ -63,6 +64,7 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		Package:              plan.Package,
 		ImportAliases:        cloneStringMap(plan.ImportAliases),
 		Constants:            cloneStringMap(plan.Constants),
+		ConstantTypes:        cloneRuntimeTypeMap(plan.ConstantTypes),
 		NamedTypes:           cloneRuntimeTypeMap(plan.NamedTypes),
 		StructSchemas:        cloneRuntimeStructSpecMap(plan.StructSchemas),
 		InterfaceSchemas:     cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
