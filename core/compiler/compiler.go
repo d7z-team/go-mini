@@ -270,7 +270,7 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 	if err := fillArtifactGlobalInitOrder(artifact, artifact.Program, true); err != nil {
 		return artifact, semanticCtx, err
 	}
-	bytecodeProgram, err := buildBytecode(artifact.Program, artifact.GlobalInitOrder)
+	bytecodeProgram, err := buildBytecode(artifact.Program)
 	if err != nil {
 		return artifact, semanticCtx, err
 	}

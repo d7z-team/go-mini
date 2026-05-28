@@ -8,6 +8,15 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
+func assertContainsAll(t *testing.T, text string, expected []string) {
+	t.Helper()
+	for _, sym := range expected {
+		if !strings.Contains(text, sym) {
+			t.Fatalf("expected %q in output, got:\n%s", sym, text)
+		}
+	}
+}
+
 func TestNewProgramInitializesStableHeader(t *testing.T) {
 	prog := NewProgram()
 	if prog.Format != FormatGoMiniBytecode {
@@ -81,7 +90,16 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 			"Reader": runtime.MustParseRuntimeInterfaceSpec("interface{Read() String;}"),
 		},
 		Globals: map[string]*runtime.PreparedGlobal{
-			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: true},
+			"counter": {
+				Name:    "counter",
+				Kind:    runtime.MustParseRuntimeType("Int64"),
+				HasInit: true,
+				InitPlan: []runtime.Task{{
+					Op:     runtime.OpPush,
+					Source: &runtime.SourceRef{ID: "lit_1", File: "demo.go", Line: 3, Col: 12},
+					Data:   runtime.NewInt(1),
+				}},
+			},
 			"pending": {Name: "pending", Kind: runtime.MustParseRuntimeType("Int64"), HasInit: false},
 		},
 		Functions: map[string]*runtime.PreparedFunction{
@@ -107,7 +125,7 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 		"; interface Reader interface{Read() String;}",
 		"global.pending: resq 1",
 		"section .data",
-		"global.counter: ; has_init=true",
+		"global.counter: ; names=counter",
 		"0000  PUSH",
 		"node=lit_1",
 		"demo.go:3:12",
@@ -119,11 +137,7 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 		"fn.main: ; signature function() Void",
 		"; no body",
 	}
-	for _, sym := range expected {
-		if !strings.Contains(asm, sym) {
-			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
-		}
-	}
+	assertContainsAll(t, asm, expected)
 }
 
 func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
@@ -191,11 +205,168 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 		"RETURN",
 		"POP",
 	}
-	for _, sym := range expected {
-		if !strings.Contains(asm, sym) {
-			t.Fatalf("expected %q in disassembly, got:\n%s", sym, asm)
+	assertContainsAll(t, asm, expected)
+}
+
+func TestDisassembleFullyExpandsPreparedSelectBlocks(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{
+		Package: "demo",
+		Functions: map[string]*runtime.PreparedFunction{
+			"main": {
+				Name:        "main",
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
+				BodyTasks: []runtime.Task{
+					{
+						Op: runtime.OpSelect,
+						Data: &runtime.SelectData{
+							Cases: []runtime.SelectCaseData{
+								{
+									Kind:     runtime.SelectCommRecv,
+									RecvName: "v",
+									RecvType: runtime.MustParseRuntimeType("Int64"),
+									Body: []runtime.Task{
+										{Op: runtime.OpPush, Data: runtime.NewInt(1)},
+									},
+								},
+								{
+									Kind: runtime.SelectCommDefault,
+									Body: []runtime.Task{
+										{Op: runtime.OpReturn, Data: 0},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	prog.RefreshDisplayFromExecutable()
+	if len(prog.Functions) != 1 || prog.Functions[0].Name != "main" {
+		t.Fatalf("unexpected function preview: %+v", prog.Functions)
+	}
+	hasSelectLabel := false
+	hasCasePush := false
+	for _, inst := range prog.Functions[0].Instructions {
+		if inst.Op == pseudoOpLabel && strings.Contains(inst.Operand, ".select_case_0_recv") {
+			hasSelectLabel = true
+		}
+		if inst.Op == runtime.OpPush.String() && inst.Operand == "1" {
+			hasCasePush = true
 		}
 	}
+	if !hasSelectLabel || !hasCasePush {
+		t.Fatalf("select case body was not expanded in preview: %+v", prog.Functions[0].Instructions)
+	}
+
+	asm := prog.Disassemble()
+	expected := []string{
+		"SELECT             cases=2",
+		"select_case_0_recv->fn.main.L0000.select_case_0_recv",
+		"select_case_1_default->fn.main.L0001.select_case_1_default",
+		"fn.main.L0000.select_case_0_recv:",
+		"fn.main.L0001.select_case_1_default:",
+		"PUSH               1",
+		"RETURN             0",
+	}
+	assertContainsAll(t, asm, expected)
+}
+
+func TestDisassembleIncludesEmbeddedModuleTasks(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{
+		Package: "main",
+		Globals: map[string]*runtime.PreparedGlobal{},
+		Functions: map[string]*runtime.PreparedFunction{
+			"main": {
+				Name:        "main",
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
+			},
+		},
+		ModuleHashes: map[string]string{"lib": "hash-lib"},
+		Modules: map[string]*runtime.PreparedProgram{
+			"lib": {
+				Package: "lib",
+				Globals: map[string]*runtime.PreparedGlobal{
+					"Value": {
+						Name:    "Value",
+						Kind:    runtime.MustParseRuntimeType("Int64"),
+						HasInit: true,
+					},
+				},
+				GlobalInitGroups: []*runtime.PreparedGlobalInit{
+					{
+						Names: []string{"Value"},
+						InitPlan: []runtime.Task{
+							{Op: runtime.OpDeclareInitVars, Data: &runtime.VarDeclData{
+								Mode:       runtime.VarDeclInitPerBinding,
+								ValueCount: 1,
+								Bindings: []runtime.DeclareVarData{
+									{Name: "Value", Kind: runtime.MustParseRuntimeType("Int64")},
+								},
+							}},
+							{Op: runtime.OpPush, Data: runtime.NewInt(7)},
+						},
+					},
+				},
+				Functions: map[string]*runtime.PreparedFunction{
+					"Run": {
+						Name:        "Run",
+						FunctionSig: runtime.MustParseRuntimeFuncSig("function() Int64"),
+						BodyTasks: []runtime.Task{
+							{Op: runtime.OpReturn, Data: 1},
+							{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "Value", Sym: runtime.SymbolRef{Name: "Value", Kind: runtime.SymbolGlobal}}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	asm := prog.Disassemble()
+	expected := []string{
+		"; modules    1",
+		"section .modules",
+		"module.lib: ; path lib hash=hash-lib package=lib",
+		"module.lib.global.Value: ; names=Value",
+		"DECLARE_INIT_VARS  per_binding bindings=1 values=1 names=Value",
+		"PUSH               7",
+		"module.lib.fn.Run: ; signature function() Int64",
+		"RETURN             1",
+		"LOAD_VAR           global[0]=Value",
+	}
+	assertContainsAll(t, asm, expected)
+}
+
+func TestDisassembleDoesNotDuplicateGroupedZeroInitGlobalsInBSS(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{
+		Globals: map[string]*runtime.PreparedGlobal{
+			"counter": {Name: "counter", Kind: runtime.MustParseRuntimeType("Int64")},
+		},
+		GlobalInitGroups: []*runtime.PreparedGlobalInit{
+			{
+				Names: []string{"counter"},
+				InitPlan: []runtime.Task{{Op: runtime.OpDeclareInitVars, Data: &runtime.VarDeclData{
+					Mode: runtime.VarDeclInitZero,
+					Bindings: []runtime.DeclareVarData{
+						{Name: "counter", Kind: runtime.MustParseRuntimeType("Int64")},
+					},
+				}}},
+			},
+		},
+	}
+
+	asm := prog.Disassemble()
+	if strings.Contains(asm, "global.counter: resq 1") {
+		t.Fatalf("grouped zero init global should not be duplicated in bss:\n%s", asm)
+	}
+	assertContainsAll(t, asm, []string{
+		"global.counter: ; names=counter",
+		"DECLARE_INIT_VARS  zero bindings=1 values=0 names=counter",
+	})
 }
 
 func TestBytecodeJSONRejectsNonCanonicalExecutableType(t *testing.T) {

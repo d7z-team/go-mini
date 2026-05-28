@@ -104,6 +104,83 @@ func main() {}
 	}
 }
 
+func TestCompileSourceBytecodePreviewUsesExecutableTasks(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+var nums = []int{1, 2, 3}
+
+func main() {
+	total := 0
+	for i := 0; i < 3; i++ {
+		total = total + nums[i]
+	}
+	switch total {
+	case 6:
+		total = total + 1
+	default:
+		total = 0
+	}
+	var ch chan int
+	select {
+	case v := <-ch:
+		total = total + v
+	default:
+		total = total + 10
+	}
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		t.Fatal("expected executable bytecode")
+	}
+
+	hasGlobalComposite := false
+	for _, global := range artifact.Bytecode.Globals {
+		if global.Name != "nums" {
+			continue
+		}
+		for _, inst := range global.Instructions {
+			if inst.Op == runtime.OpComposite.String() {
+				hasGlobalComposite = true
+			}
+		}
+	}
+	if !hasGlobalComposite {
+		t.Fatalf("bytecode global preview missed executable COMPOSITE task: %+v", artifact.Bytecode.Globals)
+	}
+
+	hasFor := false
+	hasSwitch := false
+	hasSelect := false
+	hasSelectCase := false
+	for _, fn := range artifact.Bytecode.Functions {
+		if fn.Name != "main" {
+			continue
+		}
+		for _, inst := range fn.Instructions {
+			if inst.Op == runtime.OpForStart.String() {
+				hasFor = true
+			}
+			if inst.Op == runtime.OpSwitchStart.String() {
+				hasSwitch = true
+			}
+			if inst.Op == runtime.OpSelect.String() {
+				hasSelect = true
+			}
+			if strings.Contains(inst.Operand, ".select_case_") {
+				hasSelectCase = true
+			}
+		}
+	}
+	if !hasFor || !hasSwitch || !hasSelect || !hasSelectCase {
+		t.Fatalf("bytecode function preview missed executable tasks: for=%t switch=%t select=%t select_case=%t functions=%+v", hasFor, hasSwitch, hasSelect, hasSelectCase, artifact.Bytecode.Functions)
+	}
+}
+
 func TestCompileSourceBytecodeUsesRuntimeOpcodeNames(t *testing.T) {
 	c := New(Config{})
 	artifact, _, _, err := c.CompileSource("snippet", `

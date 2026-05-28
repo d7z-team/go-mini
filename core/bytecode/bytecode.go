@@ -14,6 +14,7 @@ import (
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
 	CurrentVersion       = 8
+	pseudoOpLabel        = "PSEUDO_LABEL"
 )
 
 type Location struct {
@@ -131,15 +132,54 @@ func (p *Program) Disassemble() string {
 	if p.Executable != nil && p.Executable.Package != "" {
 		fmt.Fprintf(&sb, "; package    %s\n", p.Executable.Package)
 	}
-	fmt.Fprintf(&sb, "; globals    display=%d executable=%d\n", len(p.Globals), len(disassembleExecutableGlobals(p)))
-	fmt.Fprintf(&sb, "; functions  display=%d executable=%d\n", len(p.Functions), len(disassembleExecutableFunctions(p)))
+	execGlobals := 0
+	execFunctions := 0
+	if p.Executable != nil {
+		execGlobals = len(p.Executable.Globals)
+		execFunctions = len(p.Executable.Functions)
+		fmt.Fprintf(&sb, "; modules    %d\n", len(p.Executable.Modules))
+	}
+	fmt.Fprintf(&sb, "; globals    display=%d executable=%d\n", len(p.Globals), execGlobals)
+	fmt.Fprintf(&sb, "; functions  display=%d executable=%d\n", len(p.Functions), execFunctions)
 	sb.WriteString("\n")
 
 	writeExecutableMetadataSection(&sb, p)
 	writeGlobalsSections(&sb, p)
 	writeTextSection(&sb, p)
+	writeEmbeddedModuleSections(&sb, p)
 
 	return sb.String()
+}
+
+func (p *Program) RefreshDisplayFromExecutable() {
+	if p == nil || p.Executable == nil {
+		return
+	}
+	p.Entry = instructionsFromPreparedTasks(p.Executable.MainTasks, "_start")
+
+	p.Globals = nil
+	blocks := preparedGlobalInitBlocks(p.Executable)
+	if len(blocks) > 0 {
+		p.Globals = make([]Global, 0, len(blocks))
+		for _, block := range blocks {
+			p.Globals = append(p.Globals, Global{
+				Name:         block.name,
+				Instructions: instructionsFromPreparedTasks(block.tasks, "global."+sanitizeLabel(block.name)),
+			})
+		}
+	}
+
+	p.Functions = nil
+	names := sortedPreparedFunctionNames(p.Executable.Functions)
+	p.Functions = make([]Function, 0, len(names))
+	for _, name := range names {
+		fn := p.Executable.Functions[name]
+		p.Functions = append(p.Functions, Function{
+			Name:         name,
+			Signature:    formatExecutableSignature(fn),
+			Instructions: instructionsFromPreparedTasks(fn.BodyTasks, "fn."+sanitizeLabel(name)),
+		})
+	}
 }
 
 func writeExecutableMetadataSection(sb *strings.Builder, p *Program) {
@@ -155,17 +195,30 @@ func writeExecutableMetadataSection(sb *strings.Builder, p *Program) {
 }
 
 func writeGlobalsSections(sb *strings.Builder, p *Program) {
-	initGlobals := append([]Global(nil), p.Globals...)
-	sort.Slice(initGlobals, func(i, j int) bool {
-		return initGlobals[i].Name < initGlobals[j].Name
-	})
-
-	execGlobals := disassembleExecutableGlobals(p)
+	var execGlobals map[string]*runtime.PreparedGlobal
+	var execBlocks []executableGlobalInitBlock
+	if p != nil && p.Executable != nil {
+		execGlobals = p.Executable.Globals
+		execBlocks = preparedGlobalInitBlocks(p.Executable)
+	}
+	var globalsWithInitBlock map[string]struct{}
+	if len(execBlocks) > 0 {
+		globalsWithInitBlock = make(map[string]struct{})
+		for _, block := range execBlocks {
+			for _, name := range block.names {
+				globalsWithInitBlock[name] = struct{}{}
+			}
+		}
+	}
 	uninitialized := make([]string, 0)
 	for name, global := range execGlobals {
-		if global != nil && !global.HasInit {
-			uninitialized = append(uninitialized, name)
+		if global == nil || global.HasInit || len(global.InitPlan) > 0 {
+			continue
 		}
+		if _, hasInitBlock := globalsWithInitBlock[name]; hasInitBlock {
+			continue
+		}
+		uninitialized = append(uninitialized, name)
 	}
 	sort.Strings(uninitialized)
 
@@ -178,16 +231,25 @@ func writeGlobalsSections(sb *strings.Builder, p *Program) {
 	}
 
 	sb.WriteString("section .data\n")
+	if p != nil && p.Executable != nil {
+		if len(execBlocks) == 0 {
+			sb.WriteString("; no global initializers\n\n")
+			return
+		}
+		writePreparedGlobalInitBlocks(sb, execBlocks, "global", "")
+		return
+	}
+
+	initGlobals := append([]Global(nil), p.Globals...)
+	sort.Slice(initGlobals, func(i, j int) bool {
+		return initGlobals[i].Name < initGlobals[j].Name
+	})
 	if len(initGlobals) == 0 {
 		sb.WriteString("; no global initializers\n\n")
 		return
 	}
 	for _, global := range initGlobals {
-		meta := ""
-		if exec := execGlobals[global.Name]; exec != nil {
-			meta = fmt.Sprintf(" ; has_init=%t", exec.HasInit)
-		}
-		fmt.Fprintf(sb, "global.%s:%s\n", sanitizeLabel(global.Name), meta)
+		fmt.Fprintf(sb, "global.%s:\n", sanitizeLabel(global.Name))
 		writeInstructions(sb, global.Instructions)
 		sb.WriteString("\n")
 	}
@@ -197,6 +259,13 @@ func writeTextSection(sb *strings.Builder, p *Program) {
 	sb.WriteString("section .text\n")
 	sb.WriteString("global _start\n\n")
 	sb.WriteString("_start:\n")
+	if p != nil && p.Executable != nil {
+		writePreparedTasks(sb, p.Executable.MainTasks, "_start")
+		sb.WriteString("\n")
+		writePreparedFunctions(sb, p.Executable.Functions, "fn", "")
+		return
+	}
+
 	if len(p.Entry) == 0 {
 		sb.WriteString("    ; no entry instructions\n")
 	} else {
@@ -212,39 +281,128 @@ func writeTextSection(sb *strings.Builder, p *Program) {
 	for name := range displayFunctions {
 		names = append(names, name)
 	}
-	for name := range disassembleExecutableFunctions(p) {
-		if _, ok := displayFunctions[name]; !ok {
-			names = append(names, name)
-		}
-	}
 	sort.Strings(names)
 
-	execFunctions := disassembleExecutableFunctions(p)
 	for _, name := range names {
-		fn, hasDisplay := displayFunctions[name]
-		signature := ""
-		if hasDisplay {
-			signature = fn.Signature
-		}
-		if signature == "" {
-			if exec := execFunctions[name]; exec != nil {
-				signature = formatExecutableSignature(exec)
-			}
-		}
-		if signature != "" {
-			fmt.Fprintf(sb, "fn.%s: ; signature %s\n", sanitizeLabel(name), signature)
+		fn := displayFunctions[name]
+		if fn.Signature != "" {
+			fmt.Fprintf(sb, "fn.%s: ; signature %s\n", sanitizeLabel(name), fn.Signature)
 		} else {
 			fmt.Fprintf(sb, "fn.%s:\n", sanitizeLabel(name))
 		}
-		if hasDisplay && len(fn.Instructions) > 0 {
+		if len(fn.Instructions) > 0 {
 			writeInstructions(sb, fn.Instructions)
-		} else if exec := execFunctions[name]; exec != nil {
-			writePreparedTasks(sb, exec.BodyTasks, "    ", "fn."+sanitizeLabel(name))
 		} else {
 			sb.WriteString("    ; no body\n")
 		}
 		sb.WriteString("\n")
 	}
+}
+
+func writeEmbeddedModuleSections(sb *strings.Builder, p *Program) {
+	if p == nil || p.Executable == nil || len(p.Executable.Modules) == 0 {
+		return
+	}
+	paths := make([]string, 0, len(p.Executable.Modules))
+	for path := range p.Executable.Modules {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	sb.WriteString("section .modules\n")
+	for _, path := range paths {
+		module := p.Executable.Modules[path]
+		if module == nil {
+			continue
+		}
+		moduleLabel := "module." + sanitizeLabel(path)
+		header := fmt.Sprintf("%s: ; path %s", moduleLabel, path)
+		if hash := p.Executable.ModuleHashes[path]; hash != "" {
+			header += " hash=" + hash
+		}
+		if module.Package != "" {
+			header += " package=" + module.Package
+		}
+		sb.WriteString(header + "\n")
+
+		blocks := preparedGlobalInitBlocks(module)
+		if len(blocks) > 0 {
+			writePreparedGlobalInitBlocks(sb, blocks, moduleLabel+".global", "  ")
+		}
+		if len(module.MainTasks) > 0 {
+			scope := moduleLabel + "._start"
+			fmt.Fprintf(sb, "  %s:\n", scope)
+			writePreparedTasks(sb, module.MainTasks, scope)
+		}
+		writePreparedFunctions(sb, module.Functions, moduleLabel+".fn", "  ")
+		sb.WriteString("\n")
+	}
+}
+
+func writePreparedGlobalInitBlocks(sb *strings.Builder, blocks []executableGlobalInitBlock, labelPrefix, linePrefix string) {
+	for _, block := range blocks {
+		scope := labelPrefix + "." + sanitizeLabel(block.name)
+		fmt.Fprintf(sb, "%s%s: ; names=%s\n", linePrefix, scope, strings.Join(block.names, ","))
+		writePreparedTasks(sb, block.tasks, scope)
+		sb.WriteString("\n")
+	}
+}
+
+func writePreparedFunctions(sb *strings.Builder, functions map[string]*runtime.PreparedFunction, labelPrefix, linePrefix string) {
+	for _, name := range sortedPreparedFunctionNames(functions) {
+		fn := functions[name]
+		scope := labelPrefix + "." + sanitizeLabel(name)
+		if sig := formatExecutableSignature(fn); sig != "" {
+			fmt.Fprintf(sb, "%s%s: ; signature %s\n", linePrefix, scope, sig)
+		} else {
+			fmt.Fprintf(sb, "%s%s:\n", linePrefix, scope)
+		}
+		writePreparedTasks(sb, fn.BodyTasks, scope)
+		sb.WriteString("\n")
+	}
+}
+
+func instructionsFromPreparedTasks(tasks []runtime.Task, scope string) []Instruction {
+	if len(tasks) == 0 {
+		return nil
+	}
+	state := &preparedDisasmState{}
+	return appendPreparedInstructions(nil, tasks, scope, state)
+}
+
+func appendPreparedInstructions(out []Instruction, tasks []runtime.Task, scope string, state *preparedDisasmState) []Instruction {
+	for _, task := range tasks {
+		children := preparedTaskChildren(task, scope, state)
+		out = append(out, instructionFromPreparedTask(task, children))
+		for _, child := range children {
+			out = append(out, Instruction{
+				Op:      pseudoOpLabel,
+				Operand: child.label,
+				Comment: "block",
+			})
+			out = appendPreparedInstructions(out, child.tasks, child.label, state)
+		}
+	}
+	return out
+}
+
+func instructionFromPreparedTask(task runtime.Task, children []preparedTaskChildBlock) Instruction {
+	inst := Instruction{
+		Op:      task.Op.String(),
+		Operand: formatPreparedTaskOperand(task),
+		Comment: preparedTaskComment(task, children),
+	}
+	if task.Source != nil {
+		inst.NodeID = task.Source.ID
+		if task.Source.File != "" || task.Source.Line > 0 || task.Source.Col > 0 {
+			inst.Loc = &Location{
+				File:   task.Source.File,
+				Line:   task.Source.Line,
+				Column: task.Source.Col,
+			}
+		}
+	}
+	return inst
 }
 
 func writeInstructions(sb *strings.Builder, instructions []Instruction) {
@@ -282,10 +440,10 @@ type preparedDisasmState struct {
 	nextLabel int
 }
 
-func writePreparedTasks(sb *strings.Builder, tasks []runtime.Task, indent, scope string) {
+func writePreparedTasks(sb *strings.Builder, tasks []runtime.Task, scope string) {
 	pc := 0
 	state := &preparedDisasmState{}
-	writePreparedTaskBlock(sb, tasks, indent, scope, &pc, state)
+	writePreparedTaskBlock(sb, tasks, "    ", scope, &pc, state)
 }
 
 func writePreparedTaskBlock(sb *strings.Builder, tasks []runtime.Task, indent, scope string, pc *int, state *preparedDisasmState) {
@@ -409,6 +567,18 @@ func preparedTaskChildren(task runtime.Task, scope string, state *preparedDisasm
 			return nil
 		}
 		return []preparedTaskChildBlock{{label: newLabel(".call_body"), tasks: data.BodyTasks}}
+	case *runtime.SelectData:
+		blocks := make([]preparedTaskChildBlock, 0, len(data.Cases))
+		for idx, c := range data.Cases {
+			if len(c.Body) == 0 {
+				continue
+			}
+			blocks = append(blocks, preparedTaskChildBlock{
+				label: newLabel(fmt.Sprintf(".select_case_%d_%s", idx, c.Kind)),
+				tasks: c.Body,
+			})
+		}
+		return blocks
 	default:
 		return nil
 	}
@@ -497,7 +667,12 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s %s argc=%d", data.Name, data.FunctionSig.SignatureString(), len(data.Args))
+		parts := []string{data.Name}
+		if data.FunctionSig != nil {
+			parts = append(parts, data.FunctionSig.SignatureString())
+		}
+		parts = append(parts, fmt.Sprintf("argc=%d", len(data.Args)))
+		return strings.Join(filterEmptyStrings(parts), " ")
 	case *runtime.DeclareVarData:
 		if data == nil {
 			return ""
@@ -510,11 +685,109 @@ func formatPreparedTaskOperand(task runtime.Task) string {
 			parts = append(parts, formatSymbolRef(data.Sym))
 		}
 		return strings.Join(parts, " ")
+	case *runtime.VarDeclData:
+		if data == nil {
+			return ""
+		}
+		names := make([]string, 0, len(data.Bindings))
+		for _, binding := range data.Bindings {
+			if binding.Name != "" {
+				names = append(names, binding.Name)
+			}
+		}
+		parts := []string{
+			string(data.Mode),
+			fmt.Sprintf("bindings=%d", len(data.Bindings)),
+			fmt.Sprintf("values=%d", data.ValueCount),
+		}
+		if len(names) > 0 {
+			parts = append(parts, "names="+strings.Join(names, ","))
+		}
+		return strings.Join(filterEmptyStrings(parts), " ")
+	case *runtime.MultiAssignData:
+		if data == nil {
+			return ""
+		}
+		return strings.Join(filterEmptyStrings([]string{
+			string(data.Mode),
+			fmt.Sprintf("lhs=%d", data.LHSCount),
+			fmt.Sprintf("values=%d", data.ValueCount),
+		}), " ")
 	case *runtime.ClosureData:
 		if data == nil {
 			return ""
 		}
-		return fmt.Sprintf("%s captures=%d", data.FunctionSig.SignatureString(), len(data.CaptureRefs))
+		parts := make([]string, 0, 2)
+		if data.FunctionSig != nil {
+			parts = append(parts, data.FunctionSig.SignatureString())
+		}
+		parts = append(parts, fmt.Sprintf("captures=%d", len(data.CaptureRefs)))
+		return strings.Join(filterEmptyStrings(parts), " ")
+	case *runtime.MemberData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{data.Property}
+		if !data.ObjectType.IsEmpty() {
+			parts = append(parts, "object="+data.ObjectType.String())
+		}
+		return strings.Join(filterEmptyStrings(parts), " ")
+	case *runtime.ChanRecvData:
+		if data == nil {
+			return ""
+		}
+		parts := make([]string, 0, 2)
+		if data.Multi {
+			parts = append(parts, "multi")
+		}
+		if !data.ResultType.IsEmpty() {
+			parts = append(parts, "result="+data.ResultType.String())
+		}
+		return strings.Join(parts, " ")
+	case *runtime.RangeData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{}
+		if data.Define {
+			parts = append(parts, "define")
+		}
+		if data.Key != "" {
+			parts = append(parts, "key="+data.Key)
+		}
+		if data.Value != "" {
+			parts = append(parts, "value="+data.Value)
+		}
+		if !data.KeyType.IsEmpty() {
+			parts = append(parts, "key_type="+data.KeyType.String())
+		}
+		if !data.ValType.IsEmpty() {
+			parts = append(parts, "value_type="+data.ValType.String())
+		}
+		return strings.Join(parts, " ")
+	case *runtime.SwitchData:
+		if data == nil {
+			return ""
+		}
+		parts := []string{fmt.Sprintf("cases=%d", len(data.Cases))}
+		if data.IsType {
+			parts = append(parts, "type")
+		}
+		if data.HasTag {
+			parts = append(parts, "tag")
+		}
+		if data.HasAssign {
+			parts = append(parts, "assign")
+		}
+		if len(data.DefaultBody) > 0 {
+			parts = append(parts, "default")
+		}
+		return strings.Join(parts, " ")
+	case *runtime.SelectData:
+		if data == nil {
+			return ""
+		}
+		return fmt.Sprintf("cases=%d", len(data.Cases))
 	default:
 		return ""
 	}
@@ -540,6 +813,8 @@ func preparedTaskComment(task runtime.Task, children []preparedTaskChildBlock) s
 	case *runtime.JumpData:
 		parts = append(parts, fmt.Sprintf("op=%s | %s", data.Operator, formatChildTargets(children)))
 	case *runtime.DoCallData:
+		parts = append(parts, formatChildTargets(children))
+	case *runtime.SelectData:
 		parts = append(parts, formatChildTargets(children))
 	}
 	if task.Source != nil {
@@ -727,33 +1002,83 @@ func writeExecutableMetadataNotes(sb *strings.Builder, p *Program) {
 	}
 }
 
-func disassembleExecutableGlobals(p *Program) map[string]*runtime.PreparedGlobal {
-	if p == nil || p.Executable == nil {
-		return nil
-	}
-	out := make(map[string]*runtime.PreparedGlobal, len(p.Executable.Globals))
-	for name, global := range p.Executable.Globals {
-		out[name] = global
-	}
-	return out
+type executableGlobalInitBlock struct {
+	name  string
+	names []string
+	tasks []runtime.Task
 }
 
-func disassembleExecutableFunctions(p *Program) map[string]*runtime.PreparedFunction {
-	if p == nil || p.Executable == nil {
+func preparedGlobalInitBlocks(prepared *runtime.PreparedProgram) []executableGlobalInitBlock {
+	if prepared == nil {
 		return nil
 	}
-	out := make(map[string]*runtime.PreparedFunction, len(p.Executable.Functions))
-	for name, fn := range p.Executable.Functions {
-		out[name] = fn
+	if len(prepared.GlobalInitGroups) > 0 {
+		blocks := make([]executableGlobalInitBlock, 0, len(prepared.GlobalInitGroups))
+		for idx, group := range prepared.GlobalInitGroups {
+			if group == nil || len(group.Names) == 0 {
+				continue
+			}
+			name := strings.Join(group.Names, ",")
+			if name == "" {
+				name = fmt.Sprintf("group_%d", idx)
+			}
+			blocks = append(blocks, executableGlobalInitBlock{
+				name:  name,
+				names: append([]string(nil), group.Names...),
+				tasks: group.InitPlan,
+			})
+		}
+		return blocks
 	}
-	return out
+	if len(prepared.Globals) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(prepared.Globals))
+	blocks := make([]executableGlobalInitBlock, 0, len(prepared.Globals))
+	add := func(name string) {
+		if seen[name] {
+			return
+		}
+		global := prepared.Globals[name]
+		if global == nil || (!global.HasInit && len(global.InitPlan) == 0) {
+			return
+		}
+		seen[name] = true
+		blocks = append(blocks, executableGlobalInitBlock{name: name, names: []string{name}, tasks: global.InitPlan})
+	}
+	for _, name := range prepared.GlobalInitOrder {
+		add(name)
+	}
+	remaining := make([]string, 0, len(prepared.Globals))
+	for name := range prepared.Globals {
+		if !seen[name] {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+	for _, name := range remaining {
+		add(name)
+	}
+	return blocks
 }
 
 func formatExecutableSignature(fn *runtime.PreparedFunction) string {
-	if fn == nil {
+	if fn == nil || fn.FunctionSig == nil {
 		return ""
 	}
 	return fn.FunctionSig.SignatureString()
+}
+
+func sortedPreparedFunctionNames(functions map[string]*runtime.PreparedFunction) []string {
+	names := make([]string, 0, len(functions))
+	for name, fn := range functions {
+		if fn != nil {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func sanitizeLabel(name string) string {
@@ -763,6 +1088,7 @@ func sanitizeLabel(name string) string {
 		"-", "_",
 		" ", "_",
 		":", "_",
+		",", "_",
 	)
 	return replacer.Replace(name)
 }
