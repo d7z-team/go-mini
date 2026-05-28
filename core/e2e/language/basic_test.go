@@ -7,7 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestComprehensive(t *testing.T) {
+func TestArithmeticLoopAndBranchExecution(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main

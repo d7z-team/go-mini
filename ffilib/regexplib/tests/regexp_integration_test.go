@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/regexplib"
 )
 
-func TestRegexp(t *testing.T) {
+func TestRegexpSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("regexp", regexplib.SurfaceRegexp(&regexplib.RegexpHost{})),
 	}, []testutil.Case{

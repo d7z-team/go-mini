@@ -63,6 +63,43 @@ func parseSurfaceLibraryModule(module surface.LibraryModule) (*ast.ProgramStmt, 
 	return program, nil
 }
 
+func (e *MiniExecutor) parseRegisteredLibraryASTsLocked() (map[string]*ast.ProgramStmt, error) {
+	if len(e.librarySourceHashes) == 0 {
+		return nil, nil
+	}
+	asts := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes))
+	for path := range e.librarySourceHashes {
+		library, ok := e.sourceLibraries[path]
+		if !ok {
+			continue
+		}
+		program, err := parseSurfaceLibraryModule(library)
+		if err != nil {
+			return nil, err
+		}
+		asts[path] = program
+	}
+	return asts, nil
+}
+
+func (e *MiniExecutor) loadRegisteredModuleProgram(path string) (*ast.ProgramStmt, bool, error) {
+	e.mu.RLock()
+	library, hasLibrary := e.sourceLibraries[path]
+	program := e.moduleSources[path]
+	e.mu.RUnlock()
+	if hasLibrary {
+		program, err := parseSurfaceLibraryModule(library)
+		if err != nil {
+			return nil, true, err
+		}
+		return program, true, nil
+	}
+	if program != nil {
+		return program, false, nil
+	}
+	return nil, false, nil
+}
+
 func prepareSurfaceLibraryModules(modules []surface.LibraryModule) ([]surface.LibraryModule, map[string]*ast.ProgramStmt, map[string]string, error) {
 	if len(modules) == 0 {
 		return nil, nil, nil, nil
@@ -180,16 +217,13 @@ func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedPr
 		e.mu.RUnlock()
 		return prepared, nil
 	}
-	library, hasLibrary := e.sourceLibraries[path]
-	program := e.moduleSources[path]
 	e.mu.RUnlock()
-	if hasLibrary {
-		var err error
-		program, err = parseSurfaceLibraryModule(library)
-		if err != nil {
-			return nil, err
-		}
-	} else if program == nil {
+
+	program, hasLibrary, err := e.loadRegisteredModuleProgram(path)
+	if err != nil {
+		return nil, err
+	}
+	if program == nil {
 		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
 	}
 
@@ -233,18 +267,10 @@ func (e *MiniExecutor) recomputeSurfaceLibraryHashesLocked() {
 		e.libraryHashes = make(map[string]string)
 		return
 	}
-	asts := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes))
-	for path := range e.librarySourceHashes {
-		library, ok := e.sourceLibraries[path]
-		if !ok {
-			continue
-		}
-		program, err := parseSurfaceLibraryModule(library)
-		if err != nil {
-			e.libraryHashes = cloneSurfaceLibraryHashes(e.librarySourceHashes)
-			return
-		}
-		asts[path] = program
+	asts, err := e.parseRegisteredLibraryASTsLocked()
+	if err != nil {
+		e.libraryHashes = cloneSurfaceLibraryHashes(e.librarySourceHashes)
+		return
 	}
 	hashes, err := resolveSurfaceLibraryHashes(asts, e.librarySourceHashes)
 	if err != nil {

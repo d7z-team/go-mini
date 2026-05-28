@@ -3,7 +3,6 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -23,7 +22,6 @@ type MockGeometry interface {
 type MockGeo struct{}
 
 func (m *MockGeo) SumX(points []RobustPoint) int64 {
-	fmt.Printf("Host received points: %+v\n", points)
 	var sum int64
 	for _, p := range points {
 		sum += p.X
@@ -31,7 +29,7 @@ func (m *MockGeo) SumX(points []RobustPoint) int64 {
 	return sum
 }
 
-func TestRobustness(t *testing.T) {
+func TestGeneratedRouterSupportsCompositeInputsAndBuiltins(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	mock := &MockGeo{}

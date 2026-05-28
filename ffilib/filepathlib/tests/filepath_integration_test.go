@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/filepathlib"
 )
 
-func TestFilepath(t *testing.T) {
+func TestFilepathSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("filepath", filepathlib.SurfaceFilepath(&filepathlib.FilepathHost{})),
 	}, []testutil.Case{

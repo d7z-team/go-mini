@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/timelib"
 )
 
-func TestContext(t *testing.T) {
+func TestContextSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("context/internal", contextlib.SurfaceModule(&contextlib.ModuleHost{})),
 		testutil.SurfaceFFISchema("context/internal.Timer", contextlib.SurfaceTimer()),

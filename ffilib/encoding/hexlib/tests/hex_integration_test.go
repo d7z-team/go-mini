@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/encoding/hexlib"
 )
 
-func TestHex(t *testing.T) {
+func TestHexSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("encoding/hex", hexlib.SurfaceHex(&hexlib.HexHost{})),
 	}, []testutil.Case{

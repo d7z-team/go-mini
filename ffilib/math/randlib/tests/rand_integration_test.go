@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/math/randlib"
 )
 
-func TestRand(t *testing.T) {
+func TestRandSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("math/rand", randlib.SurfaceRand(randlib.NewRandHost())),
 	}, []testutil.Case{

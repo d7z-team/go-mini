@@ -7,7 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestBuiltins(t *testing.T) {
+func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	code := `

@@ -19,7 +19,16 @@ func (testFFIBridge) Call(context.Context, *ffigo.FFICallRequest) (ffigo.FFIRetu
 func (testFFIBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	return nil, nil
 }
+
 func (testFFIBridge) DestroyHandle(uint32) error { return nil }
+
+func requireSchemaConflict(t *testing.T, err error, kind string) {
+	t.Helper()
+	var conflict *SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != kind {
+		t.Fatalf("expected %s conflict, got %T %v", kind, err, err)
+	}
+}
 
 func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 	exec := &Executor{
@@ -218,11 +227,7 @@ func TestApplyBoundFFISurfaceRejectsConflictingRouteDefinitions(t *testing.T) {
 		MethodID: 2,
 		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
 	})
-	err := exec.ApplyBoundFFISurface(second)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "route" {
-		t.Fatalf("expected route conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.ApplyBoundFFISurface(second), "route")
 }
 
 func TestApplyBoundFFISurfaceRejectsConflictingStructDefinitions(t *testing.T) {
@@ -233,11 +238,7 @@ func TestApplyBoundFFISurfaceRejectsConflictingStructDefinitions(t *testing.T) {
 
 	surface := NewBoundFFISurface(nil)
 	surface.AddStruct("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
-	err := exec.ApplyBoundFFISurface(surface)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "struct schema" {
-		t.Fatalf("expected struct schema conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 }
 
 func TestRuntimeMetadataNilStructSchemaClearsCanonicalIndex(t *testing.T) {
@@ -272,11 +273,7 @@ func TestApplyBoundFFISurfaceReportsParamModeConflict(t *testing.T) {
 		Name:    "demo.Mutate",
 		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamIn),
 	})
-	err := exec.ApplyBoundFFISurface(second)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "route" {
-		t.Fatalf("expected route conflict error, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.ApplyBoundFFISurface(second), "route")
 }
 
 func TestCheckPublicFFIRouteSchemaRejectsPublicSchemaEscapes(t *testing.T) {
@@ -331,11 +328,7 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPolluteRoutes(t *testing.T) {
 	})
 	surface.AddStruct("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
 
-	err := exec.ApplyBoundFFISurface(surface)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "struct schema" {
-		t.Fatalf("expected struct schema conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 	if _, ok := exec.routes["demo.Call"]; ok {
 		t.Fatalf("failed surface registration polluted route state: %+v", exec.routes)
 	}
@@ -365,11 +358,7 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPollutePackageMembers(t *test
 	})
 	surface.AddPackageValue("demo", "Value", &ValueSpec{Type: MustParseRuntimeType("Int64"), ReadOnly: true}, NewInt(1))
 
-	err := exec.ApplyBoundFFISurface(surface)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
-		t.Fatalf("expected package value conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "package value")
 	if _, ok := exec.routes["demo.Call"]; ok {
 		t.Fatalf("failed surface registration polluted route state: %+v", exec.routes)
 	}
@@ -454,11 +443,7 @@ func TestSurfaceSchemaMergeTypeMethodConflictDoesNotPollute(t *testing.T) {
 		Sig:        MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
 	}})
 
-	err := left.Merge(right)
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "surface type method" {
-		t.Fatalf("expected type method conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, left.Merge(right), "surface type method")
 	if got := left.Types["demo.Handle"].Methods["Close"].MethodID; got != 1 {
 		t.Fatalf("failed merge polluted existing method id: %d", got)
 	}
@@ -469,11 +454,7 @@ func TestBindSchemaRoutesRejectsDuplicateRouteNameConflict(t *testing.T) {
 	schema.AddFunc("demo", "Call", "demo.Shared", 1, MustParseRuntimeFuncSig("function() Void"), "")
 	schema.AddTypeMethod("demo.Handle", "Close", "demo.Shared", 2, MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Void"), "")
 
-	err := NewBoundFFISurfaceFromSchema(schema).BindSchemaRoutes(schema, testFFIBridge{})
-	var conflict *SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "route" {
-		t.Fatalf("expected duplicate route conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, NewBoundFFISurfaceFromSchema(schema).BindSchemaRoutes(schema, testFFIBridge{}), "route")
 }
 
 type copyBackFFIBridge struct {

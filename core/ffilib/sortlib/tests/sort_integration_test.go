@@ -7,7 +7,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
-func TestSort(t *testing.T) {
+func TestSortSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("sort", sortlib.SurfaceSort(&sortlib.SortHost{})),
 	}, []testutil.Case{

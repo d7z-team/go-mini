@@ -9,7 +9,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestEval(t *testing.T) {
+func TestExecutorEvalExpressions(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	tests := []struct {

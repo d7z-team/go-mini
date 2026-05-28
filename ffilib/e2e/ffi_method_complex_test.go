@@ -9,7 +9,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib"
 )
 
-func TestFFIMethodComplex(t *testing.T) {
+func TestOSFileMethodsKeepHandleIsolation(t *testing.T) {
 	dir := t.TempDir()
 	firstPath := filepath.Join(dir, "complex_1.txt")
 	secondPath := filepath.Join(dir, "complex_2.txt")

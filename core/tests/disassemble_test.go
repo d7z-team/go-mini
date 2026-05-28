@@ -2,12 +2,13 @@ package engine_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestDisassemble(t *testing.T) {
+func TestDisassembleIncludesExecutableSectionsAndSymbols(t *testing.T) {
 	scriptSource := `
 	package main
 	
@@ -60,19 +61,8 @@ func TestDisassemble(t *testing.T) {
 	}
 
 	for _, sym := range expectedSymbols {
-		if !contains(disassembly, sym) {
+		if !strings.Contains(disassembly, sym) {
 			t.Errorf("Expected symbol %q not found in disassembly", sym)
 		}
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && func() bool {
-		for i := 0; i <= len(s)-len(substr); i++ {
-			if s[i:i+len(substr)] == substr {
-				return true
-			}
-		}
-		return false
-	}()
 }

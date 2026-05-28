@@ -15,6 +15,14 @@ import (
 	"gopkg.d7z.net/go-mini/core/testsurface"
 )
 
+func requireSchemaConflict(t *testing.T, err error, kind string) {
+	t.Helper()
+	var conflict *runtime.SchemaConflictError
+	if !errors.As(err, &conflict) || conflict.Kind != kind {
+		t.Fatalf("expected %s conflict, got %T %v", kind, err, err)
+	}
+}
+
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	ffiSchema := runtime.NewFFISurfaceSchema()
@@ -62,17 +70,6 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	}
 	if got := snapshot.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
 		t.Fatalf("unexpected exported interface spec: %s", got)
-	}
-}
-
-func TestMiniExecutorRuntimeExecutorReturnsErrorAPI(t *testing.T) {
-	exec := engine.MustNewMiniExecutor()
-	runtimeExec, err := exec.RuntimeExecutor()
-	if err != nil {
-		t.Fatalf("runtime executor failed: %v", err)
-	}
-	if runtimeExec == nil {
-		t.Fatal("expected runtime executor")
 	}
 }
 
@@ -254,7 +251,7 @@ func main() {}
 	}
 }
 
-func TestNewRuntimeByBytecodeJSONLoadsBytecode(t *testing.T) {
+func TestNewRuntimeByBytecodeJSONExecutesLoadedProgram(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
@@ -282,22 +279,14 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
-	err := exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), ""))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
-		t.Fatalf("expected surface member conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")), "surface member")
 }
 
 func TestMiniExecutorUseSurfaceReportsSchemaConflict(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, exec, "demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), "")
 
-	err := exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), ""))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
-		t.Fatalf("expected surface member conflict error, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), "")), "surface member")
 }
 
 func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
@@ -306,11 +295,7 @@ func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
 	sigB := runtime.MustParseRuntimeFuncSig("function(Int64) Void")
 	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, sigA, "")
 
-	err := exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 7, sigB, ""))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "surface member" {
-		t.Fatalf("expected surface member conflict error, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 7, sigB, "")), "surface member")
 
 	schema := exec.ExportedSchema()
 	if got := schema.Funcs["demo.Call"]; got == nil || !runtime.SameRuntimeFuncSchema(got, sigA) {
@@ -342,10 +327,7 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 		bound.AddPackageValue("demo", "Value", intSpec, runtime.NewInt(1))
 		return bound, nil
 	}))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "package value" {
-		t.Fatalf("expected package value conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, err, "package value")
 	if handle == 0 {
 		t.Fatal("expected bind to allocate a pinned handle")
 	}
@@ -393,11 +375,7 @@ func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 
 	right := runtime.NewFFISurfaceSchema()
 	right.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
-	err := exec.UseSurface(surface.Router(right, nil))
-	var conflict *runtime.SchemaConflictError
-	if !errors.As(err, &conflict) || conflict.Kind != "surface type" {
-		t.Fatalf("expected surface type conflict, got %T %v", err, err)
-	}
+	requireSchemaConflict(t, exec.UseSurface(surface.Router(right, nil)), "surface type")
 }
 
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {

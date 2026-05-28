@@ -9,22 +9,13 @@ import (
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-// TestLSPEnhancedCasing 验证成员补全的大小写是否正确 (Go 规范)
-func TestLSPEnhancedCasing(t *testing.T) {
-	testExecutor := newStdExecutor()
-
+func TestLSPPackageCompletionPreservesExportedCasing(t *testing.T) {
 	sourceSnippet := `package main
 import "fmt"
 func main() {
     fmt.
 }`
-	// 使用容错解析，因为 fmt. 语法是不完整的
-	testProgram, _ := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
-	if testProgram == nil {
-		t.Fatal("failed to get program even in tolerant mode")
-	}
-
-	// 尝试在 fmt. 后面获取补全 (第4行, 第9列，即点号之后)
+	testProgram := analyzeTolerantProgram(t, sourceSnippet)
 	completionItems := testProgram.GetCompletionsAt(4, 9)
 
 	foundPrintf := false
@@ -44,15 +35,12 @@ func main() {
 	}
 }
 
-// TestLSPGlobalBuiltins 验证全局内置函数是否去重且大小写正确
-func TestLSPGlobalBuiltins(t *testing.T) {
-	testExecutor := newStdExecutor()
-
+func TestLSPGlobalCompletionDeduplicatesBuiltins(t *testing.T) {
 	sourceSnippet := `package main
 func main() {
 	
 }`
-	testProgram, _ := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
+	testProgram := analyzeTolerantProgram(t, sourceSnippet)
 	completionItems := testProgram.GetCompletionsAt(3, 1)
 
 	printCount := 0
@@ -77,8 +65,7 @@ func main() {
 	}
 }
 
-// TestLSPUserScenarioRegression 验证用户报告的 printf 不存在错误
-func TestLSPUserScenarioRegression(t *testing.T) {
+func TestLSPUndefinedPrintfRequiresPackagePrefix(t *testing.T) {
 	testExecutor := newStdExecutor()
 
 	sourceSnippet := `package main
@@ -98,8 +85,6 @@ func main() {
 }
 
 func TestTolerantBuildDoesNotReportRuntimeBytecodeNoise(t *testing.T) {
-	testExecutor := newStdExecutor()
-
 	sourceSnippet := `package main
 import "fmt"
 
@@ -108,7 +93,7 @@ func main() {
 	time.Sleep(1 * time.Second)
 }`
 
-	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
+	_, errs := newStdExecutor().AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) == 0 {
 		t.Fatal("expected semantic diagnostics for missing import")
 	}
@@ -121,15 +106,13 @@ func main() {
 }
 
 func TestTolerantBuildReportsUnknownImport(t *testing.T) {
-	testExecutor := newStdExecutor()
-
 	sourceSnippet := `package main
 import "definitely/not-found"
 
 func main() {}
 `
 
-	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
+	_, errs := newStdExecutor().AnalyzeGoCodeTolerant(sourceSnippet)
 	if len(errs) == 0 {
 		t.Fatal("expected unknown import diagnostic")
 	}
@@ -147,8 +130,6 @@ func main() {}
 }
 
 func TestTolerantBuildAllowsRegisteredFFIImport(t *testing.T) {
-	testExecutor := newStdExecutor()
-
 	sourceSnippet := `package main
 import "time"
 
@@ -157,7 +138,7 @@ func main() {
 }
 `
 
-	_, errs := testExecutor.AnalyzeGoCodeTolerant(sourceSnippet)
+	_, errs := newStdExecutor().AnalyzeGoCodeTolerant(sourceSnippet)
 	for _, err := range errs {
 		if strings.Contains(err.Error(), "module not found: time") {
 			t.Fatalf("registered FFI import should be accepted, got: %v", err)
@@ -260,4 +241,13 @@ func hoverMarkdownAtSubstring(t *testing.T, program *engine.AnalysisProgram, sou
 		t.Fatalf("expected template hover at %d:%d for %q, got %#v", line, col, needle, hover)
 	}
 	return hover.Markdown
+}
+
+func analyzeTolerantProgram(t *testing.T, source string) *engine.AnalysisProgram {
+	t.Helper()
+	program, _ := newStdExecutor().AnalyzeGoCodeTolerant(source)
+	if program == nil {
+		t.Fatal("failed to get program in tolerant mode")
+	}
+	return program
 }

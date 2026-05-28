@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/unicode/utf8lib"
 )
 
-func TestUTF8(t *testing.T) {
+func TestUTF8SurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("unicode/utf8", utf8lib.SurfaceUTF8(&utf8lib.UTF8Host{})),
 	}, []testutil.Case{

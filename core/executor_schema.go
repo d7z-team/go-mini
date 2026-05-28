@@ -40,20 +40,12 @@ func (e *MiniExecutor) RuntimeExecutor() (*runtime.Executor, error) {
 func (e *MiniExecutor) RegisterFunctionTemplate(tpl calltemplate.FunctionTemplate) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.templates == nil {
-		e.templates = calltemplate.NewRegistry()
-	}
-	next := e.templates.Clone()
-	if next == nil {
-		next = calltemplate.NewRegistry()
-	}
+	next := e.cloneTemplateRegistryLocked()
 	if err := next.Register(tpl); err != nil {
 		return err
 	}
-	for name, registered := range next.Globals() {
-		if e.globalSymbolExistsLocked(name) {
-			return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
-		}
+	if err := e.checkTemplateGlobalsLocked(next, nil); err != nil {
+		return err
 	}
 	e.templates = next
 	return nil
@@ -118,6 +110,32 @@ func (e *MiniExecutor) templateRegistrySnapshot() *calltemplate.Registry {
 		return nil
 	}
 	return e.templates.Clone()
+}
+
+func (e *MiniExecutor) cloneTemplateRegistryLocked() *calltemplate.Registry {
+	if e.templates == nil {
+		return calltemplate.NewRegistry()
+	}
+	next := e.templates.Clone()
+	if next == nil {
+		return calltemplate.NewRegistry()
+	}
+	return next
+}
+
+func (e *MiniExecutor) checkTemplateGlobalsLocked(next *calltemplate.Registry, incomingSymbolExists func(string) bool) error {
+	if next == nil {
+		return nil
+	}
+	for name, registered := range next.Globals() {
+		switch {
+		case e.globalSymbolExistsLocked(name):
+			return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
+		case incomingSymbolExists != nil && incomingSymbolExists(name):
+			return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
+		}
+	}
+	return nil
 }
 
 func (e *MiniExecutor) globalSymbolExistsLocked(name string) bool {

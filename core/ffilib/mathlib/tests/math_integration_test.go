@@ -7,7 +7,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
-func TestMath(t *testing.T) {
+func TestMathSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("math", mathlib.SurfaceMath(&mathlib.MathHost{})),
 	}, []testutil.Case{

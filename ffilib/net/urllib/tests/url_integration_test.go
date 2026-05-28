@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/net/urllib"
 )
 
-func TestURL(t *testing.T) {
+func TestURLSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("net/url", urllib.SurfaceURL(&urllib.URLHost{})),
 	}, []testutil.Case{

@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/crypto/md5lib"
 )
 
-func TestMD5Sum(t *testing.T) {
+func TestMD5SurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("crypto/md5", md5lib.SurfaceMD5(&md5lib.MD5Host{})),
 	}, []testutil.Case{

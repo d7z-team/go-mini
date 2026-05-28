@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/crypto/sha256lib"
 )
 
-func TestSHA256Sum(t *testing.T) {
+func TestSHA256SurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("crypto/sha256", sha256lib.SurfaceSHA256(&sha256lib.SHA256Host{})),
 	}, []testutil.Case{

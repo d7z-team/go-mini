@@ -7,7 +7,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
-func TestStrings(t *testing.T) {
+func TestStringsSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("strings", stringslib.SurfaceStrings(&stringslib.StringsHost{})),
 	}, []testutil.Case{

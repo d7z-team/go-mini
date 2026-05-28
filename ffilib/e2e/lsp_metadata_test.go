@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestExportMetadata(t *testing.T) {
+func TestExportMetadataIncludesBuiltinsFFIAndRegisteredModules(t *testing.T) {
 	testExecutor := newStdExecutor()
 
 	sourceProgram := `package main

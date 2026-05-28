@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/imagelib"
 )
 
-func TestImage(t *testing.T) {
+func TestImageSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("image", imagelib.SurfaceImageLib(&imagelib.ImageHost{})),
 		testutil.SurfaceFFISchema("image.Image", imagelib.SurfaceImage()),

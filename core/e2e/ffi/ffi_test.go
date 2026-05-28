@@ -38,7 +38,7 @@ func (b *MockFmtBridge) DestroyHandle(handle uint32) error {
 	return nil
 }
 
-func TestFFIPrintln(t *testing.T) {
+func TestFFIRouteDispatchesPrintlnCall(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	bridge := &MockFmtBridge{}
 

@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 )
 
-func TestFmt(t *testing.T) {
+func TestFmtSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("fmt", fmtlib.Surface(&fmtlib.FmtHost{})),
 	}, []testutil.Case{

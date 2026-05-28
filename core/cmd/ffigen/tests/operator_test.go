@@ -7,7 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestOperators(t *testing.T) {
+func TestOperatorExecutionSupportsBitwiseAndShiftOps(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	code := `
@@ -58,7 +58,7 @@ func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[in
 	return m, nil
 }
 
-func TestIntKeyMap(t *testing.T) {
+func TestGeneratedMapBindingsPreserveIntKeyTypes(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	host := &IntMapHost{}
 	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {

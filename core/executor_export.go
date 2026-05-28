@@ -190,9 +190,9 @@ func (e *MiniExecutor) ExportMetadata() string {
 	for modName, prog := range e.moduleSources {
 		exportProgramModule(modName, prog)
 	}
-	for modName, library := range e.sourceLibraries {
-		prog, err := parseSurfaceLibraryModule(library)
-		if err != nil {
+	for modName := range e.sourceLibraries {
+		prog, _, err := e.loadRegisteredModuleProgram(modName)
+		if err != nil || prog == nil {
 			continue
 		}
 		exportProgramModule(modName, prog)

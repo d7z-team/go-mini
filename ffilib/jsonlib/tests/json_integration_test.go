@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/jsonlib"
 )
 
-func TestJSON(t *testing.T) {
+func TestJSONSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("encoding/json", jsonlib.SurfaceJSON(&jsonlib.JSONHost{})),
 	}, []testutil.Case{

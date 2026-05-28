@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/encoding/base64lib"
 )
 
-func TestBase64(t *testing.T) {
+func TestBase64SurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("encoding/base64", base64lib.SurfaceModule(&base64lib.ModuleHost{})),
 		testutil.SurfaceFFISchema("encoding/base64.Encoding", base64lib.SurfaceEncoding()),

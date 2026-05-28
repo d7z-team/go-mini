@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/timelib"
 )
 
-func TestTime(t *testing.T) {
+func TestTimeSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("time", timelib.SurfaceModule(&timelib.TimeHost{})),
 		testutil.SurfaceFFISchema("time.Time", timelib.SurfaceTime()),

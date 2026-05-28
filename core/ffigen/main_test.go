@@ -38,11 +38,7 @@ type BrowserModule interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 
 	if strings.Count(code, "var browser_Page_FFI_StructSchema = ") != 1 {
 		t.Fatalf("expected browser.Page schema to be emitted once, got %d", strings.Count(code, "var browser_Page_FFI_StructSchema = "))
@@ -80,12 +76,9 @@ type DemoModule interface {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	content, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	if !strings.Contains(string(content), "func SurfaceDemoModule(") {
-		t.Fatalf("expected generated module surface, got:\n%s", string(content))
+	code := readGeneratedCode(t, outputPath)
+	if !strings.Contains(code, "func SurfaceDemoModule(") {
+		t.Fatalf("expected generated module surface, got:\n%s", code)
 	}
 }
 
@@ -156,16 +149,8 @@ type BetaModule interface {
 		}
 	}
 
-	contentA, err := os.ReadFile(outputA)
-	if err != nil {
-		t.Fatalf("read alpha output: %v", err)
-	}
-	contentB, err := os.ReadFile(outputB)
-	if err != nil {
-		t.Fatalf("read beta output: %v", err)
-	}
-	codeA := string(contentA)
-	codeB := string(contentB)
+	codeA := readGeneratedCode(t, outputA)
+	codeB := readGeneratedCode(t, outputB)
 	if !strings.Contains(codeA, "func SurfaceAlphaModule(") || strings.Contains(codeA, "SurfaceBetaModule") {
 		t.Fatalf("alpha output was contaminated:\n%s", codeA)
 	}
@@ -198,11 +183,7 @@ type BrowserModule interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if strings.Contains(code, "....") {
 		t.Fatalf("generated code contains invalid variadic member access:\n%s", code)
 	}
@@ -227,11 +208,7 @@ type RegexpModule interface {
 	if err := runFileModeForTest("pkgmode", outputPath, []string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
 	}
-	content, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, outputPath)
 	if strings.Contains(code, "l_v_0[i_v_0]") || strings.Contains(code, "i_v_0[i_v_0]") {
 		t.Fatalf("generated code still uses indexed expressions as identifiers:\n%s", code)
 	}
@@ -257,11 +234,7 @@ func (o *CdpSelector) DragTo(target *CdpSelector) {}
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, "__recv.DragTo(target)") {
 		t.Fatalf("expected generated struct method call to use injected receiver, got:\n%s", code)
 	}
@@ -290,11 +263,7 @@ func (o *Browser) AutoPage(url string) *Browser {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, "r0 := __recv.AutoPage(url)") {
 		t.Fatalf("expected generated module-qualified struct method to use injected receiver, got:\n%s", code)
 	}
@@ -322,11 +291,7 @@ func (f *Factory) New(base int64) *Factory {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if strings.Contains(code, "impl.New(__recv, base)") || strings.Contains(code, "var __recv *Factory") {
 		t.Fatalf("module-only struct should not inject receiver, got:\n%s", code)
 	}
@@ -361,11 +326,7 @@ type Mutator interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamInOutBytes)`) {
 		t.Fatalf("expected BytesRef schema to emit inout bytes mode, got:\n%s", code)
 	}
@@ -397,11 +358,7 @@ type Mutator interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray)`) {
 		t.Fatalf("expected ArrayRef schema to emit inout array mode, got:\n%s", code)
 	}
@@ -438,11 +395,7 @@ func (f *Factory) New(base int64) *Factory {
 		t.Fatalf("runFileMode: %v", err)
 	}
 
-	content, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, outputPath)
 	if strings.Contains(code, "impl.New(__recv, base)") || strings.Contains(code, "var __recv *Factory") {
 		t.Fatalf("file mode module-only struct should not inject receiver, got:\n%s", code)
 	}
@@ -474,11 +427,7 @@ func (t *Table) SetString(row, col int, val string) {}
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	required := `SetString function(HostRef<Table>, Int64, Int64, String) Void;`
 	if !strings.Contains(code, required) {
 		t.Fatalf("expected grouped params to be preserved in struct schema, missing %q in:\n%s", required, code)
@@ -503,11 +452,7 @@ type PairModule interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSig("function() tuple(Int64, Int64)")`) {
 		t.Fatalf("expected grouped results to be expanded in schema, got:\n%s", code)
 	}
@@ -586,11 +531,7 @@ type OrderService interface {
 		t.Fatalf("runFileMode: %v", err)
 	}
 
-	content, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, outputPath)
 	if count := strings.Count(code, "var order_Order_FFI_StructSchema = "); count != 1 {
 		t.Fatalf("expected one shared struct schema, got %d\n%s", count, code)
 	}
@@ -619,11 +560,7 @@ type Demo interface {
 	if err := runFileModeForTest("pkgmode", outputPath, []string{filepath.Join(workspace, "api.go")}); err != nil {
 		t.Fatalf("runFileMode: %v", err)
 	}
-	content, err := os.ReadFile(outputPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, outputPath)
 	if !strings.Contains(code, `registry.RegisterTyped(r0, "time.Time")`) {
 		t.Fatalf("expected unresolved import to fall back to alias form for host handles, got:\n%s", code)
 	}
@@ -694,11 +631,7 @@ type Numbers interface {
 	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, filepath.Join(outputDir, "ffigen_pkgmode.go"))
 	if !strings.Contains(code, "wireBuf.WriteVarint(int64(v))") {
 		t.Fatalf("expected unsigned params to use signed varint wire, got:\n%s", code)
 	}
@@ -730,11 +663,7 @@ type ChanModule interface {
 	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, filepath.Join(outputDir, "ffigen_pkgmode.go"))
 	for _, required := range []string{
 		`runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>")`,
 		`runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>")`,
@@ -765,11 +694,7 @@ type ChanModule interface {
 	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, filepath.Join(outputDir, "ffigen_pkgmode.go"))
 	for _, required := range []string{
 		`runtime.MustParseRuntimeFuncSig("function() Chan<Int64>")`,
 		`ffigo.ChannelEndpointFuncs{Elem: "Int64", Dir: ffigo.ChannelBoth}`,
@@ -857,11 +782,7 @@ type Demo interface {
 	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
 		t.Fatalf("runDirectoryMode: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(outputDir, "ffigen_pkgmode.go"))
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, filepath.Join(outputDir, "ffigen_pkgmode.go"))
 	if !strings.Contains(code, "HostRef<depmod.Item>") {
 		t.Fatalf("expected imported non-test module metadata to resolve, got:\n%s", code)
 	}
@@ -937,11 +858,7 @@ type IO interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
 		t.Fatalf("expected flattened ReadWriter interface schema, got:\n%s", code)
 	}
@@ -975,11 +892,7 @@ type Reader interface {
 	}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
-	content, err := os.ReadFile(generatedPath)
-	if err != nil {
-		t.Fatalf("read generated output: %v", err)
-	}
-	code := string(content)
+	code := readGeneratedCode(t, generatedPath)
 	if strings.Contains(code, "RegisterReaderSchema") || strings.Contains(code, "type ReaderProxy") {
 		t.Fatalf("expected unmarked interface to be skipped, got:\n%s", code)
 	}
@@ -1049,6 +962,15 @@ func writeTestFile(t *testing.T, dir, name, content string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
+}
+
+func readGeneratedCode(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	return string(content)
 }
 
 func mustParseFuncType(t *testing.T, src string) *ast.FuncType {

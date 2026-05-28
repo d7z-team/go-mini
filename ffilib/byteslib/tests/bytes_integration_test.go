@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/byteslib"
 )
 
-func TestBytes(t *testing.T) {
+func TestBytesSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("bytes", byteslib.SurfaceBytes(&byteslib.BytesHost{})),
 	}, []testutil.Case{

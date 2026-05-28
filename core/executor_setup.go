@@ -97,17 +97,9 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 		}
 		resolvedLibraryHashes := e.libraryHashes
 		if len(libraries) > 0 {
-			existingLibraryASTs := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes))
-			for path := range e.librarySourceHashes {
-				library, ok := e.sourceLibraries[path]
-				if !ok {
-					continue
-				}
-				program, err := parseSurfaceLibraryModule(library)
-				if err != nil {
-					return err
-				}
-				existingLibraryASTs[path] = program
+			existingLibraryASTs, err := e.parseRegisteredLibraryASTsLocked()
+			if err != nil {
+				return err
 			}
 			allASTs := make(map[string]*ast.ProgramStmt, len(e.librarySourceHashes)+len(libraryASTs))
 			allSourceHashes := make(map[string]string, len(e.librarySourceHashes)+len(librarySourceHashes))
@@ -174,21 +166,14 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 				}
 				return false
 			}
-			if e.templates != nil {
-				nextTemplates = e.templates.Clone()
-			}
-			if nextTemplates == nil {
-				nextTemplates = calltemplate.NewRegistry()
-			}
+			nextTemplates = e.cloneTemplateRegistryLocked()
 			for _, tpl := range bundle.Templates {
 				if err := nextTemplates.Register(tpl); err != nil {
 					return err
 				}
 			}
-			for name, registered := range nextTemplates.Globals() {
-				if e.globalSymbolExistsLocked(name) || incomingSymbolExists(name) {
-					return fmt.Errorf("global call template %s conflicts with existing symbol %s", registered.ID, name)
-				}
+			if err := e.checkTemplateGlobalsLocked(nextTemplates, incomingSymbolExists); err != nil {
+				return err
 			}
 		}
 		nextBound := runtime.NewBoundFFISurface(nextSchema)

@@ -10,7 +10,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/iolib"
 )
 
-func TestIO(t *testing.T) {
+func TestIOSurfaceIntegration(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "io.txt")
 	secondPath := filepath.Join(dir, "io-second.txt")

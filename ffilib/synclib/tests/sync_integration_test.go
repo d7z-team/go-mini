@@ -8,7 +8,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/synclib"
 )
 
-func TestWaitGroup(t *testing.T) {
+func TestWaitGroupSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("sync", synclib.SurfaceModule(&synclib.ModuleHost{})),
 		testutil.SurfaceFFISchema("sync.WaitGroup", synclib.SurfaceWaitGroup()),

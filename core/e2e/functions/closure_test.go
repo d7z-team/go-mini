@@ -7,7 +7,7 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-func TestClosure(t *testing.T) {
+func TestClosureCapturesStateAcrossInstances(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	code := `

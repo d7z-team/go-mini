@@ -7,7 +7,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
 )
 
-func TestStrconv(t *testing.T) {
+func TestStrconvSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
 		testutil.SurfaceFFISchema("strconv", strconvlib.SurfaceStrconv(&strconvlib.StrconvHost{})),
 	}, []testutil.Case{
