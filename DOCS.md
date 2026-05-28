@@ -13,7 +13,7 @@
 - 执行入口统一落在 `ExecutableArtifact` / bytecode；源码分析使用 `AnalysisProgram`
 - 类型文本统一使用 canonical type
 - 运算符重载按普通方法调用语义编译
-- 命名常量是编译期值，表达式中会降低为常量 push，不作为 runtime 变量加载；局部变量可以遮蔽同名常量，常量不能作为赋值目标
+- 命名常量按声明值求值，不作为 runtime 变量加载；局部变量可以遮蔽同名常量，常量不能作为赋值目标
 - `Any` 不是静态通配符；VM 语言层 `Any` 使用动态值 wrapper，FFI `Any` wire 只接受纯值数据
 - VM 可见 `Error` 直接承载 Go `error`，VM 创建的 error 会附带 VM stack，FFI host error 会保留 host error chain
 - 语言级 channel/select 编译为 bytecode 执行，保持单线程协作式 VM 调度

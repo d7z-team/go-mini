@@ -410,14 +410,8 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 		return nil
 	}
 
-	if _, b := ctx.root.program.Constants[string(c.Name)]; b {
-		if ctx.root.program.ConstantTypes != nil {
-			if typ := ctx.root.program.ConstantTypes[string(c.Name)]; typ != "" {
-				c.Type = typ
-				return nil
-			}
-		}
-		c.Type = "Constant"
+	if cType, b := ctx.GetConstant(c.Name); b {
+		c.Type = cType
 		return nil
 	}
 
@@ -982,7 +976,7 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					m.Type = t
 					return nil
 				}
-				if t, ok := ctx.GetConstant(fullPath); ok {
+				if t, ok := ctx.getExternalConstant(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
 					m.ResolvedPackageName = fullPath

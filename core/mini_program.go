@@ -90,7 +90,7 @@ func (p *ExecutableProgram) Eval(ctx context.Context, exprStr string, env map[st
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
-	program := buildEvalProgram(expr, env, p.artifact.Bytecode.Executable.ImportAliases)
+	program := buildEvalProgram(expr, env, p.artifact.Bytecode.Executable.ImportAliases, p.artifact.Bytecode.Executable)
 	compiled, semanticCtx, err := compiler.CompileProgram("eval", "", program, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, program)

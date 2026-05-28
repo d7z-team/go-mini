@@ -10,11 +10,10 @@ import (
 )
 
 type builder struct {
-	consts     map[string]runtime.FFIConstValue
-	constTypes map[string]runtime.RuntimeType
-	globals    map[string]struct{}
-	functions  map[string]struct{}
-	err        error
+	consts    map[string]runtime.FFIConstValue
+	globals   map[string]struct{}
+	functions map[string]struct{}
+	err       error
 }
 
 // Error reports an AST node that cannot be represented in executable
@@ -53,12 +52,11 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-func newBuilder(constants map[string]runtime.FFIConstValue, constantTypes map[string]runtime.RuntimeType, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
+func newBuilder(constants map[string]runtime.FFIConstValue, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
 	b := &builder{
-		consts:     cloneFFIConstValueMap(constants),
-		constTypes: cloneRuntimeTypeMap(constantTypes),
-		globals:    make(map[string]struct{}, len(variables)),
-		functions:  make(map[string]struct{}, len(functions)),
+		consts:    constants,
+		globals:   make(map[string]struct{}, len(variables)),
+		functions: make(map[string]struct{}, len(functions)),
 	}
 	for ident := range variables {
 		b.globals[string(ident)] = struct{}{}
@@ -160,7 +158,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		}
 	}
 
-	b := newBuilder(prepared.Constants, prepared.ConstantTypes, program.Variables, program.Functions)
+	b := newBuilder(prepared.Constants, program.Variables, program.Functions)
 	rootScope := b.newRootLoweringScope()
 	for _, group := range groups {
 		if len(group.Names) == 0 {
@@ -276,6 +274,9 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		mainStmts = append(mainStmts, stmt)
 	}
 	prepared.MainTasks = b.buildStmtPlanWithScope(mainStmts, rootScope)
+	if prepared.MainTasks == nil {
+		prepared.MainTasks = []runtime.Task{}
+	}
 	if b.err != nil {
 		return nil, b.err
 	}
@@ -424,9 +425,6 @@ func isGlobalDecl(program *ast.ProgramStmt, decl *ast.GenDeclStmt) bool {
 }
 
 func identSliceToStrings(items []ast.Ident) []string {
-	if len(items) == 0 {
-		return nil
-	}
 	out := make([]string, len(items))
 	for i, item := range items {
 		out[i] = string(item)
@@ -443,20 +441,4 @@ func importAliasFromPath(path string) string {
 		}
 	}
 	return alias
-}
-
-func cloneFFIConstValueMap(in map[string]runtime.FFIConstValue) map[string]runtime.FFIConstValue {
-	out := make(map[string]runtime.FFIConstValue, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneRuntimeTypeMap(in map[string]runtime.RuntimeType) map[string]runtime.RuntimeType {
-	out := make(map[string]runtime.RuntimeType, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }

@@ -17,7 +17,7 @@
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面。
 - 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
 - 运算符重载是 compiler 阶段 AST 语法糖：前端只输出普通一元/二元表达式，AST 检查在原生运算不支持时解析接收者 `Op*` 方法，模板展开后、优化前改写为真实方法调用，lowering / bytecode / runtime 不保留重载分派。
-- Go 前端保留常量值类型，AST 语义检查显式标记命名常量引用，lowering 写入 `PreparedProgram.ConstantTypes` 并把表达式常量降为 `OpPush`；常量比较、调用参数、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量，也不把常量作为 runtime 变量加载。
+- Go 前端保留源码常量值类型，AST 语义检查显式标记源码命名常量引用，lowering 写入 `PreparedProgram.Constants` / `ConstantTypes` 并把表达式常量降为 `OpLoadConst`；外部 FFI 常量只作为 package member schema 和 bytecode requirement 存在，不写入源码 AST 或 prepared source constants。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`；runtime FFI 返回路径按 wire schema 解码，不反射解构任意 Go host 值。
 - FFI 常量在 `ffigen` 生成阶段落到显式 `ConstInt64` / `ConstFloat64` / `ConstString` / `ConstBool` constructor；schema、bound surface、compiler 外部依赖与 bytecode requirement 中只携带 canonical primitive 类型。
 - 公开扩展入口统一为 `executor.UseSurface(...)`。

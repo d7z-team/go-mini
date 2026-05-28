@@ -101,6 +101,29 @@ func main() {
 	assertNoCompletion(t, items, "math.Pi")
 }
 
+func TestLSPFFIConstantCompletionDoesNotPolluteProgramConstants(t *testing.T) {
+	exec := engine.MustNewMiniExecutor()
+	program, _ := exec.AnalyzeGoCodeTolerant(`package main
+
+import "math"
+
+func main() {
+	math.
+}
+`)
+	if program == nil {
+		t.Fatal("expected tolerant analysis program")
+	}
+	items := program.GetCompletionsAt(6, 7)
+	assertCompletion(t, items, "Pi", "constant")
+	if _, ok := program.Program.Constants["math.Pi"]; ok {
+		t.Fatalf("external FFI constant should not be injected into program constants: %#v", program.Program.Constants)
+	}
+	if _, ok := program.Program.Constants["Pi"]; ok {
+		t.Fatalf("external FFI constant member should not be injected into program constants: %#v", program.Program.Constants)
+	}
+}
+
 func TestSurfaceLibraryLSPRejectsUnknownSourceMember(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(lspMathLibrary()); err != nil {

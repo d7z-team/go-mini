@@ -72,6 +72,7 @@ const (
 	OpStoreGlobalInit
 	OpFinishSharedInit
 	OpDeclareInitVars
+	OpLoadConst
 )
 
 func (op OpCode) String() string {
@@ -166,6 +167,8 @@ func (op OpCode) String() string {
 		return "MEMBER"
 	case OpLoadVar:
 		return "LOAD_VAR"
+	case OpLoadConst:
+		return "LOAD_CONST"
 	case OpLoadLocal:
 		return "LOAD_LOCAL"
 	case OpLoadUpvalue:

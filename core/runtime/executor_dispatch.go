@@ -116,6 +116,28 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		}
 		session.ValueStack.Push(v)
 		return nil
+	case OpLoadConst:
+		name, ok := task.Data.(string)
+		if !ok || name == "" {
+			return errors.New("OpLoadConst missing constant name")
+		}
+		exec := session.Executor
+		if exec == nil {
+			exec = e
+		}
+		if exec == nil {
+			return errors.New("OpLoadConst missing executor")
+		}
+		value, ok := exec.consts[name]
+		if !ok {
+			return fmt.Errorf("constant %s does not exist", name)
+		}
+		v := value.ToVar()
+		if v == nil {
+			return fmt.Errorf("constant %s is invalid", name)
+		}
+		session.ValueStack.Push(v)
+		return nil
 	case OpLoadLocal:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok {

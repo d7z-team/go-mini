@@ -1,8 +1,10 @@
 package ast
 
-import "strings"
+import (
+	"strings"
 
-import "gopkg.d7z.net/go-mini/core/internal/miniident"
+	"gopkg.d7z.net/go-mini/core/internal/miniident"
+)
 
 type ModuleExports struct {
 	Path          string
@@ -69,9 +71,6 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 		}
 	}
 	for name, val := range prog.Constants {
-		if _, injected := root.externalConsts[name]; injected {
-			continue
-		}
 		if !isExportedModuleMember(Ident(name)) {
 			continue
 		}

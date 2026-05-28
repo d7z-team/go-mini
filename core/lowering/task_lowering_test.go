@@ -80,7 +80,7 @@ func taskLoadSymbol(task runtime.Task) (string, runtime.SymbolKind, bool) {
 
 func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 	program := emptyProgram()
-	b := newBuilder(nil, nil, program.Variables, program.Functions)
+	b := newBuilder(nil, program.Variables, program.Functions)
 	expr, err := gofrontend.NewConverter().ConvertExprSource(`sum(1, 2)`)
 	if err != nil {
 		t.Fatalf("convert expr failed: %v", err)
@@ -113,7 +113,7 @@ func TestLowerExprTasksBuildsDataOnlyCallPlan(t *testing.T) {
 func TestLoweringAnnotatesSymbols(t *testing.T) {
 	program := emptyProgram()
 	program.Variables["g"] = nil
-	b := newBuilder(nil, nil, program.Variables, program.Functions)
+	b := newBuilder(nil, program.Variables, program.Functions)
 
 	expr, err := gofrontend.NewConverter().ConvertExprSource(`func(x Int64) Int64 { var y Int64; len("abc"); return x + y + g }`)
 	if err != nil {
@@ -230,7 +230,7 @@ func TestPrepareProgramReturnsErrorForInvalidCanonicalType(t *testing.T) {
 
 func TestLoweringHandlesTypedNilASTNodes(t *testing.T) {
 	program := emptyProgram()
-	b := newBuilder(nil, nil, program.Variables, program.Functions)
+	b := newBuilder(nil, program.Variables, program.Functions)
 
 	var nilBlock *ast.BlockStmt
 	var nilExpr *ast.IdentifierExpr

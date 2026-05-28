@@ -17,7 +17,7 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
-	program := buildEvalProgram(expr, env, nil)
+	program := buildEvalProgram(expr, env, nil, nil)
 	compiled, semanticCtx, err := compiler.CompileProgram("eval", "", program, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, program)
@@ -49,10 +49,12 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	return unpackEvalResult(expr, res), nil
 }
 
-func buildEvalProgram(expr ast.Expr, env map[string]interface{}, importAliases map[string]string) *ast.ProgramStmt {
+func buildEvalProgram(expr ast.Expr, env map[string]interface{}, importAliases map[string]string, prepared *runtime.PreparedProgram) *ast.ProgramStmt {
 	variables := make(map[ast.Ident]ast.Expr, len(importAliases))
 	imports := make([]ast.ImportSpec, 0, len(importAliases))
 	params := make([]ast.FunctionParam, 0, len(env))
+	constants := make(map[string]string)
+	constantTypes := make(map[string]ast.GoMiniType)
 
 	envNames := make([]string, 0, len(env))
 	for name := range env {
@@ -79,13 +81,31 @@ func buildEvalProgram(expr ast.Expr, env map[string]interface{}, importAliases m
 			Path:     path,
 		}
 	}
+	if prepared != nil {
+		names := make([]string, 0, len(prepared.Constants))
+		for name := range prepared.Constants {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			value := prepared.Constants[name]
+			constants[name] = value.DisplayString()
+			typ := ast.GoMiniType(value.Type)
+			if declared, ok := prepared.ConstantTypes[name]; ok && !declared.IsEmpty() {
+				typ = ast.GoMiniType(declared.Raw)
+			}
+			if typ != "" {
+				constantTypes[name] = typ
+			}
+		}
+	}
 
 	program := &ast.ProgramStmt{
 		BaseNode:      ast.BaseNode{ID: "eval", Meta: "boot"},
 		Imports:       imports,
 		Variables:     variables,
-		Constants:     map[string]string{},
-		ConstantTypes: map[string]ast.GoMiniType{},
+		Constants:     constants,
+		ConstantTypes: constantTypes,
 		Types:         map[ast.Ident]ast.GoMiniType{},
 		Structs:       map[ast.Ident]*ast.StructStmt{},
 		Interfaces:    map[ast.Ident]*ast.InterfaceStmt{},

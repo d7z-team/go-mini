@@ -381,7 +381,7 @@ func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 }
 
 func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
-	payload := []byte(fmt.Sprintf(`{"format":"go-mini-bytecode","version":%d,"opcode_set":"runtime.opcode.v4","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":5}]}}`, bytecode.CurrentVersion))
+	payload := []byte(fmt.Sprintf(`{"format":"go-mini-bytecode","version":%d,"opcode_set":"runtime.opcode.v5","entry":[{"op":"PUSH","operand":"1"}],"executable":{"global_init_order":[],"globals":{},"functions":{},"main_tasks":[{"op":5}]}}`, bytecode.CurrentVersion))
 	_, err := bytecode.UnmarshalJSON(payload)
 	if err == nil {
 		t.Fatal("expected executable task decode failure")

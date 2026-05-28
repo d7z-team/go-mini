@@ -33,9 +33,9 @@
 | :--- | :--- | :--- |
 | `ast.BinaryExpr` | **Lowered** | 转换为 `OpApplyBinary` 或 `OpJumpIf` (逻辑运算) |
 | `ast.UnaryExpr` | **Lowered** | 转换为 `OpApplyUnary` |
-| `ast.IdentifierExpr` | **Lowered** | 变量转换为 `OpLoadVar`，命名常量转换为 `OpPush` |
+| `ast.IdentifierExpr` | **Lowered** | 变量转换为 `OpLoadVar`，命名常量转换为 `OpLoadConst` |
 | `ast.LiteralExpr` | **Lowered** | 转换为 `OpPush` |
-| `ast.ConstRefExpr` | **Lowered** | 转换为 `OpPush` (常量值) |
+| `ast.ConstRefExpr` | **Lowered** | 转换为 `OpLoadConst` |
 | `ast.CallExprStmt` | **Lowered** | 转换为 `OpCall` + `CallData` |
 | `ast.MemberExpr` | **Lowered** | 转换为 `OpMember` |
 | `ast.IndexExpr` | **Lowered** | 转换为 `OpIndex` + `IndexData` |

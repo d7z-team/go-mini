@@ -174,24 +174,6 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 		node.GetBase().Scope = v
 	}
 
-	// 注入外部 FFI 常量
-	for name, val := range externalConsts {
-		if node != nil {
-			if node.Constants == nil {
-				node.Constants = make(map[string]string)
-			}
-			if node.ConstantTypes == nil {
-				node.ConstantTypes = make(map[string]GoMiniType)
-			}
-			if _, ok := node.Constants[name]; !ok {
-				node.Constants[name] = val
-			}
-			if typ := externalConstTypes[name]; typ != "" {
-				node.ConstantTypes[name] = typ
-			}
-		}
-	}
-
 	// 注入外部 FFI 符号 (如 os.ReadFile)
 	for ident, spec := range externalTypes {
 		t := spec.Type
@@ -315,6 +297,13 @@ func (r *ValidRoot) HasExternalImportPath(path string) bool {
 		s := string(name)
 		for _, prefix := range prefixes {
 			if strings.HasPrefix(s, prefix) {
+				return true
+			}
+		}
+	}
+	for name := range r.externalConsts {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(name, prefix) {
 				return true
 			}
 		}
@@ -861,6 +850,9 @@ func (c *ValidContext) IsReadOnlyVariable(variable Ident) bool {
 	if c == nil || c.root == nil {
 		return false
 	}
+	if _, ok := c.getExternalConstant(variable); ok {
+		return true
+	}
 	if c.root.readOnlyVars[variable] {
 		return true
 	}
@@ -928,6 +920,28 @@ func (c *ValidContext) GetConstant(name Ident) (GoMiniType, bool) {
 		}
 	}
 	return "Constant", true
+}
+
+func (c *ValidContext) getExternalConstant(name Ident) (GoMiniType, bool) {
+	if c == nil || c.root == nil {
+		return "", false
+	}
+	candidates := []string{string(name)}
+	if s := string(name); strings.Contains(s, "/") {
+		candidates = append(candidates, strings.ReplaceAll(s, "/", "."))
+	} else if strings.Contains(s, ".") {
+		candidates = append(candidates, strings.ReplaceAll(s, ".", "/"))
+	}
+	for _, candidate := range candidates {
+		if _, ok := c.root.externalConsts[candidate]; !ok {
+			continue
+		}
+		if typ := c.root.externalConstTypes[candidate]; typ != "" {
+			return typ, true
+		}
+		return "Constant", true
+	}
+	return "", false
 }
 
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {

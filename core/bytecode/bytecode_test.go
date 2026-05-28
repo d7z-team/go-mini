@@ -17,6 +17,27 @@ func assertContainsAll(t *testing.T, text string, expected []string) {
 	}
 }
 
+func assertContainsInOrder(t *testing.T, text string, expected []string) {
+	t.Helper()
+	offset := 0
+	for _, sym := range expected {
+		idx := strings.Index(text[offset:], sym)
+		if idx < 0 {
+			t.Fatalf("expected %q after offset %d in output, got:\n%s", sym, offset, text)
+		}
+		offset += idx + len(sym)
+	}
+}
+
+func assertNotContainsAll(t *testing.T, text string, unexpected []string) {
+	t.Helper()
+	for _, sym := range unexpected {
+		if strings.Contains(text, sym) {
+			t.Fatalf("did not expect %q in output, got:\n%s", sym, text)
+		}
+	}
+}
+
 func TestNewProgramInitializesStableHeader(t *testing.T) {
 	prog := NewProgram()
 	if prog.Format != FormatGoMiniBytecode {
@@ -51,6 +72,26 @@ func TestBytecodeJSONRoundTripValidatesHeader(t *testing.T) {
 	}
 	if len(decoded.Entry) != 1 || decoded.Entry[0].Op != "PUSH" {
 		t.Fatalf("unexpected decoded instructions: %+v", decoded.Entry)
+	}
+}
+
+func TestRefreshDisplayKeepsEmptyInstructionListsAsArrays(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{}
+	prog.RefreshDisplayFromExecutable()
+
+	payload, err := json.Marshal(prog)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	for _, key := range []string{"globals", "entry", "functions"} {
+		if string(raw[key]) != "[]" {
+			t.Fatalf("top-level %s = %s, want []", key, raw[key])
+		}
 	}
 }
 
@@ -140,7 +181,112 @@ func TestDisassembleUsesNasmStyleMetadata(t *testing.T) {
 	assertContainsAll(t, asm, expected)
 }
 
+func TestDisassembleUsesPreparedExecutionOrder(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{
+		Functions: map[string]*runtime.PreparedFunction{
+			"main": {
+				Name:        "main",
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
+				BodyTasks: []runtime.Task{
+					{Op: runtime.OpScopeExit},
+					{Op: runtime.OpPush, Data: runtime.NewInt(1)},
+					{Op: runtime.OpScopeEnter, Data: "block"},
+				},
+			},
+		},
+	}
+
+	prog.RefreshDisplayFromExecutable()
+	if len(prog.Functions) != 1 {
+		t.Fatalf("unexpected function preview: %+v", prog.Functions)
+	}
+	instructions := prog.Functions[0].Instructions
+	if len(instructions) != 3 {
+		t.Fatalf("unexpected instruction preview: %+v", instructions)
+	}
+	expectedOps := []string{
+		runtime.OpScopeEnter.String(),
+		runtime.OpPush.String(),
+		runtime.OpScopeExit.String(),
+	}
+	for idx, op := range expectedOps {
+		if instructions[idx].Op != op {
+			t.Fatalf("instruction %d = %s, want %s; preview=%+v", idx, instructions[idx].Op, op, instructions)
+		}
+	}
+
+	assertContainsInOrder(t, prog.Disassemble(), []string{
+		"SCOPE_ENTER        block",
+		"PUSH               1",
+		"SCOPE_EXIT         block",
+	})
+}
+
+func TestDisassembleHidesInternalNoopTasks(t *testing.T) {
+	prog := NewProgram()
+	prog.Executable = &runtime.PreparedProgram{
+		Functions: map[string]*runtime.PreparedFunction{
+			"main": {
+				Name:        "main",
+				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
+				BodyTasks: []runtime.Task{
+					{Op: runtime.OpEvalLHS, Data: &runtime.LHSData{Kind: runtime.LHSTypeEnv, Name: "x", Sym: runtime.SymbolRef{Name: "x", Kind: runtime.SymbolLocal}}},
+					{Op: runtime.OpEvalLHS, Data: &runtime.LHSData{Kind: runtime.LHSTypeNone}},
+					{Op: runtime.OpLineStep},
+					{Op: runtime.OpPush, Data: runtime.NewInt(1)},
+				},
+			},
+		},
+	}
+
+	prog.RefreshDisplayFromExecutable()
+	instructions := prog.Functions[0].Instructions
+	if len(instructions) != 2 {
+		t.Fatalf("unexpected visible instructions: %+v", instructions)
+	}
+	if instructions[0].Op != runtime.OpPush.String() || instructions[1].Operand != "env x local[0]=x" {
+		t.Fatalf("unexpected instruction preview: %+v", instructions)
+	}
+
+	asm := prog.Disassemble()
+	assertContainsAll(t, asm, []string{
+		"PUSH               1",
+		"EVAL_LHS           env x local[0]=x",
+	})
+	assertNotContainsAll(t, asm, []string{
+		"EVAL_LHS           none",
+		"LINE_STEP",
+	})
+}
+
 func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
+	switchData := &runtime.SwitchData{
+		Init: []runtime.Task{
+			{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 1}},
+		},
+		Tag: []runtime.Task{
+			{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "v"}},
+		},
+		Cases: []runtime.SwitchCaseData{
+			{
+				Exprs: [][]runtime.Task{
+					{
+						{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 2}},
+					},
+					{
+						{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 3}},
+					},
+				},
+				Body: []runtime.Task{
+					{Op: runtime.OpReturn, Data: 0},
+				},
+			},
+		},
+		DefaultBody: []runtime.Task{
+			{Op: runtime.OpPop},
+		},
+	}
 	prog := NewProgram()
 	prog.Executable = &runtime.PreparedProgram{
 		Package: "demo",
@@ -149,35 +295,9 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 				Name:        "main",
 				FunctionSig: runtime.MustParseRuntimeFuncSig("function() Void"),
 				BodyTasks: []runtime.Task{
-					{
-						Op: runtime.OpSwitchTag,
-						Data: &runtime.SwitchData{
-							Init: []runtime.Task{
-								{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 1}},
-							},
-							Tag: []runtime.Task{
-								{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "v"}},
-							},
-							Cases: []runtime.SwitchCaseData{
-								{
-									Exprs: [][]runtime.Task{
-										{
-											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 2}},
-										},
-										{
-											{Op: runtime.OpPush, Data: &runtime.Var{TypeInfo: runtime.MustParseRuntimeType("Int64"), VType: runtime.TypeInt, I64: 3}},
-										},
-									},
-									Body: []runtime.Task{
-										{Op: runtime.OpReturn, Data: 0},
-									},
-								},
-							},
-							DefaultBody: []runtime.Task{
-								{Op: runtime.OpPop},
-							},
-						},
-					},
+					{Op: runtime.OpSwitchStart, Data: switchData},
+					switchData.Tag[0],
+					switchData.Init[0],
 				},
 			},
 		},
@@ -186,26 +306,27 @@ func TestDisassembleFullyExpandsPreparedSwitchBlocks(t *testing.T) {
 	asm := prog.Disassemble()
 	expected := []string{
 		"fn.main: ; signature function() Void",
-		"SWITCH_TAG",
-		"init->fn.main.L0000.init",
-		"tag->fn.main.L0001.tag",
-		"case_0_match_0->fn.main.L0002.case_0_match_0",
-		"case_0_match_1->fn.main.L0003.case_0_match_1",
-		"case_0->fn.main.L0004.case_0",
-		"default->fn.main.L0005.default",
-		"fn.main.L0000.init:",
-		"fn.main.L0001.tag:",
-		"fn.main.L0002.case_0_match_0:",
-		"fn.main.L0003.case_0_match_1:",
-		"fn.main.L0004.case_0:",
-		"fn.main.L0005.default:",
-		"0001  PUSH               1",
-		"0003  PUSH               2",
-		"0004  PUSH               3",
+		"PUSH               1",
+		"LOAD_VAR           v",
+		"SWITCH_START",
+		"case_0_match_0->fn.main.L0000.case_0_match_0",
+		"case_0_match_1->fn.main.L0001.case_0_match_1",
+		"case_0->fn.main.L0002.case_0",
+		"default->fn.main.L0003.default",
+		"fn.main.L0000.case_0_match_0:",
+		"PUSH               2",
+		"fn.main.L0001.case_0_match_1:",
+		"PUSH               3",
+		"fn.main.L0002.case_0:",
 		"RETURN",
+		"fn.main.L0003.default:",
 		"POP",
 	}
-	assertContainsAll(t, asm, expected)
+	assertContainsInOrder(t, asm, expected)
+	assertNotContainsAll(t, asm, []string{
+		".init:",
+		".tag:",
+	})
 }
 
 func TestDisassembleFullyExpandsPreparedSelectBlocks(t *testing.T) {
@@ -331,13 +452,13 @@ func TestDisassembleIncludesEmbeddedModuleTasks(t *testing.T) {
 		"section .modules",
 		"module.lib: ; path lib hash=hash-lib package=lib",
 		"module.lib.global.Value: ; names=Value",
-		"DECLARE_INIT_VARS  per_binding bindings=1 values=1 names=Value",
 		"PUSH               7",
+		"DECLARE_INIT_VARS  per_binding bindings=1 values=1 names=Value",
 		"module.lib.fn.Run: ; signature function() Int64",
-		"RETURN             1",
 		"LOAD_VAR           global[0]=Value",
+		"RETURN             1",
 	}
-	assertContainsAll(t, asm, expected)
+	assertContainsInOrder(t, asm, expected)
 }
 
 func TestDisassembleDoesNotDuplicateGroupedZeroInitGlobalsInBSS(t *testing.T) {
@@ -372,8 +493,8 @@ func TestDisassembleDoesNotDuplicateGroupedZeroInitGlobalsInBSS(t *testing.T) {
 func TestBytecodeJSONRejectsNonCanonicalExecutableType(t *testing.T) {
 	payload := []byte(`{
 		"format":"go-mini-bytecode",
-		"version":7,
-		"opcode_set":"runtime.opcode.v4",
+		"version":9,
+		"opcode_set":"runtime.opcode.v5",
 		"executable":{
 			"global_init_order":[],
 			"globals":{

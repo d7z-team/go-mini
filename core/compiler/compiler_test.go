@@ -157,11 +157,13 @@ func main() {
 	hasSwitch := false
 	hasSelect := false
 	hasSelectCase := false
+	scopeEnterIndex := -1
+	scopeExitIndex := -1
 	for _, fn := range artifact.Bytecode.Functions {
 		if fn.Name != "main" {
 			continue
 		}
-		for _, inst := range fn.Instructions {
+		for idx, inst := range fn.Instructions {
 			if inst.Op == runtime.OpForStart.String() {
 				hasFor = true
 			}
@@ -174,10 +176,19 @@ func main() {
 			if strings.Contains(inst.Operand, ".select_case_") {
 				hasSelectCase = true
 			}
+			if inst.Op == runtime.OpScopeEnter.String() && scopeEnterIndex < 0 {
+				scopeEnterIndex = idx
+			}
+			if inst.Op == runtime.OpScopeExit.String() && scopeExitIndex < 0 {
+				scopeExitIndex = idx
+			}
 		}
 	}
 	if !hasFor || !hasSwitch || !hasSelect || !hasSelectCase {
 		t.Fatalf("bytecode function preview missed executable tasks: for=%t switch=%t select=%t select_case=%t functions=%+v", hasFor, hasSwitch, hasSelect, hasSelectCase, artifact.Bytecode.Functions)
+	}
+	if scopeEnterIndex < 0 || scopeExitIndex < 0 || scopeEnterIndex > scopeExitIndex {
+		t.Fatalf("bytecode function preview should use execution order for scope tasks: enter=%d exit=%d functions=%+v", scopeEnterIndex, scopeExitIndex, artifact.Bytecode.Functions)
 	}
 }
 
@@ -281,7 +292,7 @@ func main() {
 	}
 }
 
-func TestCompileSourcePushesNamedConstants(t *testing.T) {
+func TestCompileSourceLoadsNamedConstantsSymbolically(t *testing.T) {
 	c := New(Config{})
 	artifact, _, _, err := c.CompileSource("snippet", `
 package main
@@ -294,8 +305,92 @@ var result = one
 		t.Fatalf("compile failed: %v", err)
 	}
 	asm := artifact.Bytecode.Disassemble()
-	if strings.Contains(asm, runtime.OpLoadVar.String()) && strings.Contains(asm, "one") {
-		t.Fatalf("named constant should be pushed, not loaded as a variable:\n%s", asm)
+	if !strings.Contains(asm, runtime.OpLoadConst.String()) || !strings.Contains(asm, "one") {
+		t.Fatalf("named constant should be loaded through LOAD_CONST:\n%s", asm)
+	}
+	if strings.Contains(asm, "PUSH               1") {
+		t.Fatalf("named constant should not be inlined as a literal push:\n%s", asm)
+	}
+}
+
+func TestCompileSourceKeepsExternalConstantsOutOfASTAndPreparedConstants(t *testing.T) {
+	schema := runtime.NewFFISurfaceSchema()
+	schema.AddConst("math", "Pi", runtime.ConstFloat64(3.14))
+	schema.AddConst("math", "Unused", runtime.ConstString("unused"))
+	c := New(Config{Surface: schema})
+
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+import "math"
+
+var result = math.Pi
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if _, ok := artifact.Program.Constants["math.Pi"]; ok {
+		t.Fatalf("external constant should not be injected into AST constants: %#v", artifact.Program.Constants)
+	}
+	if _, ok := artifact.Program.Constants["Pi"]; ok {
+		t.Fatalf("external constant member should not be injected into AST constants: %#v", artifact.Program.Constants)
+	}
+	executable := artifact.Bytecode.Executable
+	if len(executable.Constants) != 0 {
+		t.Fatalf("external constants should not be persisted as prepared constants: %#v", executable.Constants)
+	}
+	found := false
+	for _, req := range executable.ExternalRequirements {
+		if req.PackagePath == "math" && req.MemberName == "Pi" && req.Kind == runtime.FFIMemberConst {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected math.Pi external requirement, got %#v", executable.ExternalRequirements)
+	}
+
+	_, _, _, err = c.CompileSource("snippet", `
+package main
+
+var result = Pi
+`, false)
+	if err == nil {
+		t.Fatal("expected unqualified external constant to be rejected")
+	}
+}
+
+func TestCompileSourceBytecodeJSONUsesArraysForEmptyExecutablePlans(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+func main() {}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	payload, err := artifact.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatalf("marshal bytecode failed: %v", err)
+	}
+	text := string(payload)
+	assertContains := []string{
+		`"global_init_order":[]`,
+		`"main_tasks":[]`,
+	}
+	for _, expected := range assertContains {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected %s in bytecode JSON, got:\n%s", expected, text)
+		}
+	}
+	for _, unexpected := range []string{
+		`"global_init_order":null`,
+		`"main_tasks":null`,
+	} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("did not expect %s in bytecode JSON, got:\n%s", unexpected, text)
+		}
 	}
 }
 

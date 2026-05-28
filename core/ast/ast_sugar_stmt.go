@@ -82,15 +82,11 @@ func (e *ExpressionStmt) Check(ctx *SemanticContext) error {
 
 func (e *ExpressionStmt) Optimize(ctx *OptimizeContext) Node {
 	if e.X != nil {
-		if e.X != nil {
-			if opt := e.X.Optimize(ctx); opt != nil {
-				if val, ok := opt.(Expr); ok {
-					e.X = val
-				}
+		if opt := e.X.Optimize(ctx); opt != nil {
+			if val, ok := opt.(Expr); ok {
+				e.X = val
 			}
 		}
 	}
 	return e
 }
-
-// 注意: SwitchStmt 和 RangeStmt 已迁移至 ast_stmt.go

@@ -59,6 +59,16 @@ func TestExecutorHotPathUsesPreparedProgramCaches(t *testing.T) {
 		t.Fatalf("unexpected function result: %#v", result)
 	}
 
+	constant, err := exec.runTemporaryTasks(session, []Task{
+		{Op: OpLoadConst, Data: "Answer"},
+	})
+	if err != nil {
+		t.Fatalf("load const failed: %v", err)
+	}
+	if constant == nil || constant.VType != TypeInt || constant.I64 != 42 {
+		t.Fatalf("unexpected constant result: %#v", constant)
+	}
+
 	if got := exec.consts["Answer"].DisplayString(); got != "42" {
 		t.Fatalf("prepared constants were not cached: %#v", exec.consts)
 	}

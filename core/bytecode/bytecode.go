@@ -13,7 +13,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 8
+	CurrentVersion       = 9
 	pseudoOpLabel        = "PSEUDO_LABEL"
 )
 
@@ -56,7 +56,7 @@ func NewProgram() *Program {
 	return &Program{
 		Format:    FormatGoMiniBytecode,
 		Version:   CurrentVersion,
-		OpcodeSet: "runtime.opcode.v4",
+		OpcodeSet: "runtime.opcode.v5",
 		Globals:   make([]Global, 0),
 		Entry:     make([]Instruction, 0),
 		Functions: make([]Function, 0),
@@ -157,19 +157,15 @@ func (p *Program) RefreshDisplayFromExecutable() {
 	}
 	p.Entry = instructionsFromPreparedTasks(p.Executable.MainTasks, "_start")
 
-	p.Globals = nil
 	blocks := preparedGlobalInitBlocks(p.Executable)
-	if len(blocks) > 0 {
-		p.Globals = make([]Global, 0, len(blocks))
-		for _, block := range blocks {
-			p.Globals = append(p.Globals, Global{
-				Name:         block.name,
-				Instructions: instructionsFromPreparedTasks(block.tasks, "global."+sanitizeLabel(block.name)),
-			})
-		}
+	p.Globals = make([]Global, 0, len(blocks))
+	for _, block := range blocks {
+		p.Globals = append(p.Globals, Global{
+			Name:         block.name,
+			Instructions: instructionsFromPreparedTasks(block.tasks, "global."+sanitizeLabel(block.name)),
+		})
 	}
 
-	p.Functions = nil
 	names := sortedPreparedFunctionNames(p.Executable.Functions)
 	p.Functions = make([]Function, 0, len(names))
 	for _, name := range names {
@@ -364,16 +360,21 @@ func writePreparedFunctions(sb *strings.Builder, functions map[string]*runtime.P
 
 func instructionsFromPreparedTasks(tasks []runtime.Task, scope string) []Instruction {
 	if len(tasks) == 0 {
-		return nil
+		return []Instruction{}
 	}
 	state := &preparedDisasmState{}
-	return appendPreparedInstructions(nil, tasks, scope, state)
+	return appendPreparedInstructions([]Instruction{}, tasks, scope, state)
 }
 
 func appendPreparedInstructions(out []Instruction, tasks []runtime.Task, scope string, state *preparedDisasmState) []Instruction {
-	for _, task := range tasks {
+	for i := len(tasks) - 1; i >= 0; i-- {
+		task := tasks[i]
+		if !shouldDisplayPreparedTask(task) {
+			continue
+		}
 		children := preparedTaskChildren(task, scope, state)
-		out = append(out, instructionFromPreparedTask(task, children))
+		operand := formatPreparedTaskOperandForDisplay(task, state)
+		out = append(out, instructionFromPreparedTask(task, operand, children))
 		for _, child := range children {
 			out = append(out, Instruction{
 				Op:      pseudoOpLabel,
@@ -386,10 +387,10 @@ func appendPreparedInstructions(out []Instruction, tasks []runtime.Task, scope s
 	return out
 }
 
-func instructionFromPreparedTask(task runtime.Task, children []preparedTaskChildBlock) Instruction {
+func instructionFromPreparedTask(task runtime.Task, operand string, children []preparedTaskChildBlock) Instruction {
 	inst := Instruction{
 		Op:      task.Op.String(),
-		Operand: formatPreparedTaskOperand(task),
+		Operand: operand,
 		Comment: preparedTaskComment(task, children),
 	}
 	if task.Source != nil {
@@ -437,7 +438,8 @@ func instructionComment(inst Instruction) string {
 }
 
 type preparedDisasmState struct {
-	nextLabel int
+	nextLabel  int
+	scopeStack []string
 }
 
 func writePreparedTasks(sb *strings.Builder, tasks []runtime.Task, scope string) {
@@ -451,9 +453,15 @@ func writePreparedTaskBlock(sb *strings.Builder, tasks []runtime.Task, indent, s
 		sb.WriteString(indent + "; no body\n")
 		return
 	}
-	for _, task := range tasks {
+	wrote := false
+	for i := len(tasks) - 1; i >= 0; i-- {
+		task := tasks[i]
+		if !shouldDisplayPreparedTask(task) {
+			continue
+		}
+		wrote = true
 		children := preparedTaskChildren(task, scope, state)
-		operand := formatPreparedTaskOperand(task)
+		operand := formatPreparedTaskOperandForDisplay(task, state)
 		line := fmt.Sprintf("%s%04d  %-18s %s", indent, *pc, task.Op.String(), operand)
 		comment := preparedTaskComment(task, children)
 		if comment != "" {
@@ -465,6 +473,9 @@ func writePreparedTaskBlock(sb *strings.Builder, tasks []runtime.Task, indent, s
 			sb.WriteString(indent + child.label + ":\n")
 			writePreparedTaskBlock(sb, child.tasks, indent+"    ", child.label, pc, state)
 		}
+	}
+	if !wrote {
+		sb.WriteString(indent + "; no instructions\n")
 	}
 }
 
@@ -522,13 +533,7 @@ func preparedTaskChildren(task runtime.Task, scope string, state *preparedDisasm
 		}
 		return []preparedTaskChildBlock{{label: newLabel(".range_body"), tasks: data.Body}}
 	case *runtime.SwitchData:
-		blocks := make([]preparedTaskChildBlock, 0, 2+len(data.Cases))
-		if len(data.Init) > 0 {
-			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".init"), tasks: data.Init})
-		}
-		if len(data.Tag) > 0 {
-			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".tag"), tasks: data.Tag})
-		}
+		blocks := make([]preparedTaskChildBlock, 0, 1+len(data.Cases)*2)
 		if len(data.AssignLHS) > 0 {
 			blocks = append(blocks, preparedTaskChildBlock{label: newLabel(".assign_lhs"), tasks: data.AssignLHS})
 		}
@@ -582,6 +587,50 @@ func preparedTaskChildren(task runtime.Task, scope string, state *preparedDisasm
 	default:
 		return nil
 	}
+}
+
+func shouldDisplayPreparedTask(task runtime.Task) bool {
+	switch task.Op {
+	case runtime.OpLineStep:
+		return task.Source != nil && (task.Source.ID != "" || task.Source.File != "" || task.Source.Line > 0 || task.Source.Col > 0)
+	case runtime.OpEvalLHS:
+		if task.Data == nil {
+			return false
+		}
+		data, ok := task.Data.(*runtime.LHSData)
+		return !ok || data == nil || data.Kind != runtime.LHSTypeNone
+	default:
+		return true
+	}
+}
+
+func formatPreparedTaskOperandForDisplay(task runtime.Task, state *preparedDisasmState) string {
+	operand := formatPreparedTaskOperand(task)
+	switch task.Op {
+	case runtime.OpScopeEnter, runtime.OpForScopeEnter, runtime.OpRangeScopeEnter, runtime.OpSelectScopeEnter, runtime.OpCatchScopeEnter:
+		name := operand
+		if name == "" {
+			switch task.Op {
+			case runtime.OpForScopeEnter:
+				name = "for_body"
+			case runtime.OpRangeScopeEnter:
+				name = "for_range_body"
+			case runtime.OpSelectScopeEnter:
+				name = "select_case"
+			case runtime.OpCatchScopeEnter:
+				name = "catch"
+			default:
+				name = "scope"
+			}
+		}
+		state.scopeStack = append(state.scopeStack, name)
+	case runtime.OpScopeExit, runtime.OpForScopeExit:
+		if len(state.scopeStack) > 0 {
+			operand = state.scopeStack[len(state.scopeStack)-1]
+			state.scopeStack = state.scopeStack[:len(state.scopeStack)-1]
+		}
+	}
+	return operand
 }
 
 func formatPreparedTaskOperand(task runtime.Task) string {

@@ -487,6 +487,12 @@ func validatePreparedTaskPayload(path string, index int, task Task, depth int) e
 			return fmt.Errorf("%s missing LoadVarData", plan)
 		}
 		return nil
+	case OpLoadConst:
+		name, ok := task.Data.(string)
+		if !ok || strings.TrimSpace(name) == "" {
+			return fmt.Errorf("%s missing constant name", plan)
+		}
+		return nil
 	case OpLoadLocal, OpStoreLocal:
 		sym, ok := task.Data.(SymbolRef)
 		if !ok || sym.Kind != SymbolLocal || sym.Slot < 0 {

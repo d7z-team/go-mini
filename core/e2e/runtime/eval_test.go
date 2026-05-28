@@ -149,6 +149,8 @@ package main
 
 import "strings"
 
+const Base = 10
+
 type Box struct {
 	V int
 }
@@ -185,6 +187,7 @@ func main() {}
 		{name: "recursive_function", expr: "Factorial(5)", want: int64(120)},
 		{name: "template", expr: "bump(41)", want: int64(42)},
 		{name: "ffi_import", expr: `strings.ToUpper("go")`, want: "GO"},
+		{name: "source_constant", expr: "Base + 5", want: int64(15)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

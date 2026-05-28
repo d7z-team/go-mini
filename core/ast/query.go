@@ -1195,7 +1195,11 @@ func FindCompletionsAtFile(root Node, file string, line, col int) []CompletionIt
 	if ctx.root.program != nil {
 		for name := range ctx.root.program.Constants {
 			if !seen[name] {
-				items = append(items, CompletionItem{Label: name, Kind: "constant", Type: "Constant"})
+				typ := GoMiniType("Constant")
+				if ctx.root.program.ConstantTypes != nil && ctx.root.program.ConstantTypes[name] != "" {
+					typ = ctx.root.program.ConstantTypes[name]
+				}
+				items = append(items, CompletionItem{Label: name, Kind: "constant", Type: typ})
 				seen[name] = true
 			}
 		}
@@ -1454,6 +1458,23 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 					}
 				}
 			}
+			for name := range ctx.root.externalConsts {
+				for _, prefix := range targets {
+					if strings.HasPrefix(name, prefix) {
+						label := name[len(prefix):]
+						if label == "" || strings.Contains(label, ".") || seenSymbols[label] {
+							continue
+						}
+						typ := GoMiniType("Constant")
+						if declared := ctx.root.externalConstTypes[name]; declared != "" {
+							typ = declared
+						}
+						seenSymbols[label] = true
+						items = append(items, CompletionItem{Label: label, Kind: "constant", Type: typ})
+						break
+					}
+				}
+			}
 		}
 		if objType == "Package" || objType == TypeModule {
 			return items
@@ -1643,7 +1664,7 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 					if t, ok := ctx.GetVariable(fullPath); ok {
 						return resolveLSPType(ctx, t, depth+1)
 					}
-					if t, ok := ctx.GetConstant(fullPath); ok {
+					if t, ok := ctx.getExternalConstant(fullPath); ok {
 						return resolveLSPType(ctx, t, depth+1)
 					}
 				}

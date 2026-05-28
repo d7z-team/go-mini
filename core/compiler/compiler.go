@@ -276,6 +276,9 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 	}
 	if bytecodeProgram != nil && bytecodeProgram.Executable != nil {
 		bytecodeProgram.Executable.ExternalRequirements = c.externalRequirements(artifact.Program)
+		if err := runtime.ValidatePreparedProgram(bytecodeProgram.Executable); err != nil {
+			return artifact, semanticCtx, err
+		}
 	}
 	artifact.Bytecode = bytecodeProgram
 	if kept := pruneImportedPrograms(importedPrograms, artifact.Program); len(kept) > 0 {
