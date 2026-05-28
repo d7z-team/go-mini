@@ -41,7 +41,10 @@ func (b *NumericSafetyBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 	case 1: // AcceptInt8(int8)
 		var v int8
 		{
-			tmp := reader.ReadVarint()
+			tmp, err := reader.ReadVarint()
+			if err != nil {
+				return nil, err
+			}
 			if tmp < -128 || tmp > 127 {
 				panic(fmt.Sprintf("ffi: int8 overflow: %d", tmp))
 			}
@@ -52,7 +55,10 @@ func (b *NumericSafetyBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 	case 2: // AcceptUint16(uint16)
 		var v uint16
 		{
-			tmp := reader.ReadVarint()
+			tmp, err := reader.ReadVarint()
+			if err != nil {
+				return nil, err
+			}
 			if tmp < 0 || tmp > 65535 {
 				panic(fmt.Sprintf("ffi: uint16 overflow: %d", tmp))
 			}
@@ -63,7 +69,10 @@ func (b *NumericSafetyBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 	case 3: // AcceptInt32(int32)
 		var v int32
 		{
-			tmp := reader.ReadVarint()
+			tmp, err := reader.ReadVarint()
+			if err != nil {
+				return nil, err
+			}
 			if tmp < -2147483648 || tmp > 2147483647 {
 				panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
 			}
@@ -83,7 +92,7 @@ func (b *NumericSafetyBridge) DestroyHandle(id uint32) error { return nil }
 func TestFFINumericSafety(t *testing.T) {
 	impl := &NumericSafetyImpl{}
 	bridge := &NumericSafetyBridge{impl: impl}
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	testsurface.UseRoutes(t, executor, bridge,
 		testsurface.Route("numeric.AcceptInt8", 1, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),

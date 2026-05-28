@@ -16,7 +16,7 @@ import (
 // become undefined.
 
 func TestRangeContinueNestedBlockKeepsOuterVars(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -86,7 +86,7 @@ func main() {
 // Same scenario but without the outer for-loop – purely range + continue +
 // nested if-true block.
 func TestRangeContinueNestedBlockKeepsOuterVarsNoOuterFor(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main

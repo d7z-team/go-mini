@@ -10,7 +10,7 @@ import (
 )
 
 func newStdExecutor() *engine.MiniExecutor {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if err := executor.UseSurface(ffilib.Surface()); err != nil {
 		panic(err)
 	}

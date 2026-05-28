@@ -38,7 +38,13 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	switch methodID {
 	case methodIDOrderServiceNew:
 		var id string
-		id = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			id = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OrderService.New failed: %w", err)
+		}
 		r0, err := impl.New(id)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -60,7 +66,8 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case methodIDOrderServiceAddItem:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
@@ -68,9 +75,18 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 			}
 		}
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
 		var price float64
-		price = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			price = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OrderService.AddItem failed: %w", err)
+		}
 		err := impl.AddItem(o, name, price)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -86,12 +102,16 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case methodIDOrderServiceGetTotal:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OrderService.GetTotal failed: %w", err)
 		}
 		r0, err := impl.GetTotal(o)
 		resBuf := ffigo.GetBuffer()
@@ -109,12 +129,16 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 	case methodIDOrderServiceClose:
 		var o *Order
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "order.Order"); err == nil {
 				o = obj.(*Order)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "o", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OrderService.Close failed: %w", err)
 		}
 		err := impl.Close(o)
 		resBuf := ffigo.GetBuffer()

@@ -28,7 +28,10 @@ func md5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 	switch methodID {
 	case methodIDMD5Sum:
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MD5.Sum failed: %w", err)
+		}
 		r0 := impl.Sum(data)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)

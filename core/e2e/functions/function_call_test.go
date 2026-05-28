@@ -8,7 +8,7 @@ import (
 )
 
 func TestFunctionDeclarationOrderAndCalls(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -47,7 +47,7 @@ func TestFunctionDeclarationOrderAndCalls(t *testing.T) {
 }
 
 func TestFunctionValuesAndHigherOrderCalls(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -95,7 +95,7 @@ func TestFunctionValuesAndHigherOrderCalls(t *testing.T) {
 }
 
 func TestTupleReturnForwarding(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -124,7 +124,7 @@ func TestTupleReturnForwarding(t *testing.T) {
 }
 
 func TestPrivatePointerMethodValueInClosure(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -163,7 +163,7 @@ func TestPrivatePointerMethodValueInClosure(t *testing.T) {
 }
 
 func TestRecursiveAndMutualFunctionCalls(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -210,7 +210,7 @@ func TestRecursiveAndMutualFunctionCalls(t *testing.T) {
 }
 
 func TestFunctionParametersWithStructAndNumericValues(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 

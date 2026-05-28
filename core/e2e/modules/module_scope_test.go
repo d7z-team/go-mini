@@ -10,7 +10,7 @@ import (
 
 // TestModulePrivateScope 验证跨模块调用时，被调模块的私有变量作用域是否丢失
 func TestModulePrivateScope(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("service", surface.GoFile("service.mgo", `
 			package service

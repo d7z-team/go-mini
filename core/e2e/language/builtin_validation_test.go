@@ -8,7 +8,7 @@ import (
 )
 
 func TestInvalidMakeCompileError(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("String Literal as Type", func(t *testing.T) {
 		code := `
@@ -25,7 +25,7 @@ func TestInvalidMakeCompileError(t *testing.T) {
 }
 
 func TestNewBuiltinCompileError(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("String Literal as Type", func(t *testing.T) {
 		code := `
@@ -70,7 +70,7 @@ func TestNewBuiltinCompileError(t *testing.T) {
 }
 
 func TestCapRejectsStringCompileError(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	func main() {

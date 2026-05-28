@@ -44,7 +44,7 @@ func (m *HandleMockOS) Deep(n Nested) Nested {
 }
 
 func TestFFIHandle(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	mock := &HandleMockOS{}
 
 	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {

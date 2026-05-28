@@ -31,11 +31,14 @@ func storageAPIHostRouter(ctx context.Context, impl StorageAPI, registry *ffigo.
 	case methodIDStorageAPISetCapacity:
 		var capacity uint32
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			if tmp < 0 || tmp > 4294967295 {
-				panic(fmt.Sprintf("ffi: uint32 overflow: %d", tmp))
+				return nil, fmt.Errorf("ffi: uint32 overflow: %d", tmp)
 			}
 			capacity = uint32(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for StorageAPI.SetCapacity failed: %w", err)
 		}
 		impl.SetCapacity(capacity)
 		resBuf := ffigo.GetBuffer()

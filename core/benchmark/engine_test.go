@@ -28,7 +28,7 @@ func BenchmarkFibNative(b *testing.B) {
 }
 
 func BenchmarkFibMini(b *testing.B) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	func fib(n int) int {
@@ -68,7 +68,7 @@ func BenchmarkSumNative(b *testing.B) {
 }
 
 func BenchmarkSumMini(b *testing.B) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	func Run() int {
@@ -100,7 +100,7 @@ func BenchmarkFFINative(b *testing.B) {
 }
 
 func BenchmarkFFIMini(b *testing.B) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(b, executor, "bench.Sprintf", benchBridge{}, 1, runtime.MustParseRuntimeFuncSig("function(String, Int64) String"), "")
 	code := `
 	package main
@@ -125,8 +125,14 @@ type benchBridge struct{}
 
 func (benchBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	format := reader.ReadString()
-	value := reader.ReadVarint()
+	format, err := reader.ReadString()
+	if err != nil {
+		return nil, err
+	}
+	value, err := reader.ReadVarint()
+	if err != nil {
+		return nil, err
+	}
 	buf := ffigo.GetBuffer()
 	defer ffigo.ReleaseBuffer(buf)
 	buf.WriteString(fmt.Sprintf(format, value))
@@ -144,7 +150,7 @@ func (benchBridge) DestroyHandle(uint32) error {
 // 4. Eval (纯表达式模式开销 - 环境变量注入)
 
 func BenchmarkEvalMini(b *testing.B) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	ctx := context.Background()
 	env := map[string]interface{}{"a": 10, "b": 20}
 

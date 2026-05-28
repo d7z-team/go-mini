@@ -47,7 +47,10 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 		t.Fatalf("serializeVarToAny failed: %v", err)
 	}
 
-	decoded := ffigo.NewReader(buf.Bytes()).ReadAny()
+	decoded, err := ffigo.NewReader(buf.Bytes()).ReadAny()
+	if err != nil {
+		t.Fatalf("ReadAny failed: %v", err)
+	}
 	vmStruct, ok := decoded.(*ffigo.VMStruct)
 	if !ok {
 		t.Fatalf("expected VMStruct, got %T", decoded)
@@ -131,7 +134,7 @@ func TestAnyWireDoesNotEncodeHostReferenceHandle(t *testing.T) {
 	reader := ffigo.NewReader(buf.Bytes())
 	ffigo.ReleaseBuffer(buf)
 
-	if got := reader.ReadAny(); got != nil {
+	if got, err := reader.ReadAny(); err != nil || got != nil {
 		t.Fatalf("expected uint32 to be omitted from Any wire, got %T %#v", got, got)
 	}
 }
@@ -479,7 +482,11 @@ type copyBackFFIBridge struct {
 
 func (b copyBackFFIBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	input := bytes.ToUpper(reader.ReadBytes())
+	rawInput, err := reader.ReadBytes()
+	if err != nil {
+		return nil, err
+	}
+	input := bytes.ToUpper(rawInput)
 	input = append(input, '!')
 
 	buf := ffigo.GetBuffer()
@@ -498,6 +505,23 @@ func (b copyBackFFIBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest
 
 func (b copyBackFFIBridge) DestroyHandle(uint32) error { return nil }
 
+type malformedCopyBackFFIBridge struct{}
+
+func (malformedCopyBackFFIBridge) Call(context.Context, *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	buf.WriteUvarint(1)
+	buf.WriteUvarint(5)
+	_ = buf.WriteByte('x')
+	return append([]byte(nil), buf.Bytes()...), nil
+}
+
+func (b malformedCopyBackFFIBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return b.Call(ctx, req)
+}
+
+func (malformedCopyBackFFIBridge) DestroyHandle(uint32) error { return nil }
+
 type arrayCopyBackFFIBridge struct {
 	returnValue int64
 	replace     []int64
@@ -505,10 +529,17 @@ type arrayCopyBackFFIBridge struct {
 
 func (b arrayCopyBackFFIBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	count := int(reader.ReadUvarint())
+	rawCount, err := reader.ReadUvarint()
+	if err != nil {
+		return nil, err
+	}
+	count := int(rawCount)
 	input := make([]int64, count)
 	for i := range input {
-		input[i] = reader.ReadVarint()
+		input[i], err = reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resBuf := ffigo.GetBuffer()
@@ -584,5 +615,58 @@ func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
 	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
 	if err == nil || !strings.Contains(err.Error(), "requires assignable argument") {
 		t.Fatalf("expected non-assignable inout rejection, got %v", err)
+	}
+}
+
+func TestFinishFFIReturnsErrorForMalformedPayload(t *testing.T) {
+	exec := &Executor{}
+	route := FFIRoute{
+		Name:    "demo.Bad",
+		FuncSig: MustParseRuntimeFuncSig("function() String"),
+	}
+
+	_, err := exec.finishFFI(nil, route, nil, []byte{5, 'x'}, nil)
+	if err == nil || !strings.Contains(err.Error(), "invalid payload") {
+		t.Fatalf("expected invalid payload error, got %v", err)
+	}
+}
+
+func TestDecodeChannelPayloadReturnsErrorForMalformedPayload(t *testing.T) {
+	exec := &Executor{}
+	_, err := exec.decodeChannelPayload([]byte{5, 'x'}, MustParseRuntimeType("String"))
+	if err == nil {
+		t.Fatal("expected malformed channel payload error")
+	}
+}
+
+func TestEvalFFICopyBackRejectsMalformedPayloadWithoutWriting(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	if err := session.NewVar("buf", MustParseRuntimeType("TypeBytes")); err != nil {
+		t.Fatalf("new var failed: %v", err)
+	}
+	if err := session.Store("buf", NewBytes([]byte("original"))); err != nil {
+		t.Fatalf("store failed: %v", err)
+	}
+	arg, err := session.Load("buf")
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	route := FFIRoute{
+		Name:    "demo.Mutate",
+		Bridge:  malformedCopyBackFFIBridge{},
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamInOutBytes),
+	}
+
+	_, err = exec.evalFFI(session, route, []*Var{arg}, []LHSValue{&LHSEnv{Name: "buf"}})
+	if err == nil {
+		t.Fatal("expected malformed copy-back error")
+	}
+	updated, err := session.Load("buf")
+	if err != nil {
+		t.Fatalf("load updated failed: %v", err)
+	}
+	if updated == nil || string(updated.B) != "original" {
+		t.Fatalf("copy-back mutated value after decode failure: %#v", updated)
 	}
 }

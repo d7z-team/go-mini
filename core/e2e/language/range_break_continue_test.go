@@ -8,7 +8,7 @@ import (
 )
 
 func TestRangeBreakContinue(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("RangeArrayBreak", func(t *testing.T) {
 		code := `

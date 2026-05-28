@@ -8,7 +8,7 @@ import (
 )
 
 func TestTypeSwitch(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("BasicTypes", func(t *testing.T) {
 		code := `

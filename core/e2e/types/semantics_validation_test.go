@@ -9,7 +9,7 @@ import (
 )
 
 func TestStrictMapKeyValidation(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	code := `package main
 		func main() {
 			m := make(map[string]int64)
@@ -22,7 +22,7 @@ func TestStrictMapKeyValidation(t *testing.T) {
 }
 
 func TestInvalidCapArgument(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	code := `package main
 		func main() {
 			return cap(123)
@@ -34,7 +34,7 @@ func TestInvalidCapArgument(t *testing.T) {
 }
 
 func TestErrorToStringAssignmentValidation(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, e, "test.getErr", nil, 1, runtime.MustParseRuntimeFuncSig("function() Error"), "")
 
 	code := `package main

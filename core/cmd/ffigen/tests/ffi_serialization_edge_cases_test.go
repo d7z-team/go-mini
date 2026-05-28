@@ -22,23 +22,45 @@ func (b *ComplexBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ff
 	reader := ffigo.NewReader(req.Args)
 	switch req.MethodID {
 	case 1:
-		i := reader.ReadVarint()
-		s := reader.ReadString()
-		bl := reader.ReadBool()
-		ptr := uint32(reader.ReadUvarint())
+		i, err := reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
+		s, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
+		bl, err := reader.ReadBool()
+		if err != nil {
+			return nil, err
+		}
+		rawPtr, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		ptr := uint32(rawPtr)
 		if i != 0 || s != "" || bl != false || ptr != 0 {
 			b.t.Errorf("Expected zero values, got: %d, %q, %v, %d", i, s, bl, ptr)
 		}
 	case 2:
-		count := reader.ReadUvarint()
+		count, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
 		if count != 1 {
 			b.t.Errorf("Expected map count 1, got %d", count)
 		}
-		k := reader.ReadString()
+		k, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
 		if k != "key" {
 			b.t.Errorf("Expected key 'key', got %q", k)
 		}
-		arrLen := reader.ReadUvarint()
+		arrLen, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
 		if arrLen != 2 {
 			b.t.Errorf("Expected array len 2, got %d", arrLen)
 		}
@@ -53,7 +75,7 @@ func (b *ComplexBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (
 func (b *ComplexBridge) DestroyHandle(handle uint32) error { return nil }
 
 func TestFFISerializationEdgeCases(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &ComplexBridge{t: t}
 
 	schema := runtime.NewFFISurfaceSchema()

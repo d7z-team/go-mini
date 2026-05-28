@@ -99,7 +99,7 @@ func NewHarness(tb testing.TB, opts ...Option) *Harness {
 			opt(&cfg)
 		}
 	}
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if cfg.surface != nil {
 		if err := executor.UseSurface(cfg.surface); err != nil {
 			tb.Fatal(err)
@@ -403,18 +403,42 @@ func (b *testBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.F
 	reader := ffigo.NewReader(req.Args)
 	switch req.MethodID {
 	case methodOut:
-		b.output.Write(reader.ReadString())
+		v, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(v)
 	case methodOutLine:
-		b.output.Write(reader.ReadString())
+		v, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(v)
 		b.output.Write("\n")
 	case methodOutBool:
-		b.output.Write(gostrconv.FormatBool(reader.ReadBool()))
+		v, err := reader.ReadBool()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(gostrconv.FormatBool(v))
 	case methodOutInt:
-		b.output.Write(gostrconv.FormatInt(reader.ReadVarint(), 10))
+		v, err := reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(gostrconv.FormatInt(v, 10))
 	case methodOutFloat:
-		b.output.Write(gostrconv.FormatFloat(reader.ReadFloat64(), 'f', -1, 64))
+		v, err := reader.ReadFloat64()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(gostrconv.FormatFloat(v, 'f', -1, 64))
 	case methodOutBytes:
-		b.output.Write(string(reader.ReadBytes()))
+		v, err := reader.ReadBytes()
+		if err != nil {
+			return nil, err
+		}
+		b.output.Write(string(v))
 	case methodDone:
 		b.output.MarkDone()
 	default:

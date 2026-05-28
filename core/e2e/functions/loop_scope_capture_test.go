@@ -8,7 +8,7 @@ import (
 )
 
 func TestForLoopClosureSeesPostLoopOuterMutation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -37,7 +37,7 @@ func main() {
 }
 
 func TestForLoopClosureSeesOuterMutationAfterBreak(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -67,7 +67,7 @@ func main() {
 }
 
 func TestRangeLoopClosureSeesPostLoopOuterMutation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main

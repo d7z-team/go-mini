@@ -9,7 +9,7 @@ import (
 )
 
 func TestSecurityAndAuditability(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("StepLimitEnforcement", func(t *testing.T) {
 		code := `

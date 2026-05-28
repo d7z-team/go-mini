@@ -8,7 +8,7 @@ import (
 )
 
 func TestInterfaceMultiReturn(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -53,7 +53,7 @@ func TestInterfaceMultiReturn(t *testing.T) {
 }
 
 func TestInterfaceErrorToStringMapping(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	func main() {

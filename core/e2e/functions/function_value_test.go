@@ -8,7 +8,7 @@ import (
 )
 
 func TestNamedFunctionAsValue(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -33,7 +33,7 @@ func TestNamedFunctionAsValue(t *testing.T) {
 }
 
 func TestNamedFunctionAsArgument(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -61,7 +61,7 @@ func TestNamedFunctionAsArgument(t *testing.T) {
 }
 
 func TestNamedFunctionInClosure(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 

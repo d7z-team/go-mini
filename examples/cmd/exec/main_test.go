@@ -22,7 +22,7 @@ func TestLoadProgramMergesFilesViaCompilePipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	program, err := loadProgram(executor, &execOptions{inputs: []string{fileA, fileB}, run: true})
 	if err != nil {
 		t.Fatalf("loadProgram failed: %v", err)
@@ -80,7 +80,7 @@ func TestLoadProgramFromDirectoryLoadsMGOFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	program, err := loadProgram(executor, &execOptions{inputs: []string{tempDir}, run: true})
 	if err != nil {
 		t.Fatalf("loadProgram from dir failed: %v", err)
@@ -94,7 +94,7 @@ func TestLoadProgramFromDirectoryLoadsMGOFiles(t *testing.T) {
 }
 
 func TestLoadProgramFromBytecode(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	compiled, err := executor.CompileGoCode(`package main
 func main() {}

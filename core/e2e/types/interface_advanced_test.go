@@ -11,7 +11,7 @@ import (
 )
 
 func TestNamedInterface(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -44,7 +44,7 @@ func TestNamedInterface(t *testing.T) {
 }
 
 func TestTypeAssertion(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -74,7 +74,7 @@ func TestTypeAssertion(t *testing.T) {
 }
 
 func TestTypeAssertionFailure(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -99,7 +99,7 @@ func TestTypeAssertionFailure(t *testing.T) {
 
 func TestFFIInterfaceReturn(t *testing.T) {
 	// 1. 设置宿主侧环境，模拟返回一个 InterfaceData
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -163,7 +163,10 @@ func (m *mockLoggerBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) 
 func (m *mockLoggerBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	if req.Method == "Log" {
 		reader := ffigo.NewReader(req.Args)
-		msg := reader.ReadString()
+		msg, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
 
 		buf := ffigo.GetBuffer()
 		buf.WriteString("Logged: " + msg)

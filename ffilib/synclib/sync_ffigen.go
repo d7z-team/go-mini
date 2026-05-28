@@ -83,7 +83,8 @@ func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 	case methodIDWaitGroupAdd:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "sync.WaitGroup"); err == nil {
 				__recv = obj.(*WaitGroup)
 			} else {
@@ -92,8 +93,11 @@ func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 		}
 		var delta int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			delta = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for WaitGroup.Add failed: %w", err)
 		}
 		__recv.Add(delta)
 		resBuf := ffigo.GetBuffer()
@@ -101,12 +105,16 @@ func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 	case methodIDWaitGroupDone:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "sync.WaitGroup"); err == nil {
 				__recv = obj.(*WaitGroup)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for WaitGroup.Done failed: %w", err)
 		}
 		__recv.Done()
 		resBuf := ffigo.GetBuffer()
@@ -114,12 +122,16 @@ func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 	case methodIDWaitGroupWait:
 		var __recv *WaitGroup
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "sync.WaitGroup"); err == nil {
 				__recv = obj.(*WaitGroup)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for WaitGroup.Wait failed: %w", err)
 		}
 		r0 := __recv.Wait()
 		return ffigo.AsyncValue[ffigo.Void](r0, func(resBuf *ffigo.Buffer, value ffigo.Void) error {

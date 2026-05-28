@@ -12,7 +12,7 @@ import (
 )
 
 func TestVariadic(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -50,7 +50,7 @@ func TestVariadic(t *testing.T) {
 }
 
 func TestFFIVariadicEllipsis(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "mock.Printf", emptyVariadicBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(String, ...Any) Void", runtime.FFIParamIn, runtime.FFIParamIn), "")
 	code := `
 	package main

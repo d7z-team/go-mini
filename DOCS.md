@@ -35,7 +35,10 @@
 ## 1. 基础执行
 
 ```go
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 if err := executor.UseSurface(ffilib.Surface()); err != nil {
     panic(err)
 }
@@ -156,7 +159,10 @@ FFI `Any` wire 只面向 primitive、bytes、array、map 和 VM value struct 这
 ### 2.1 编译为 Artifact
 
 ```go
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 
 artifact, err := executor.CompileGoCode(`
 package main
@@ -284,7 +290,10 @@ _ = diags
 自定义模板的最短使用方式是在执行器上注册 `calltemplate.FunctionTemplate`，然后在脚本里像调用普通函数一样调用模板名。下面示例借用 `ffilib.Surface()` 提供 `fmt` 包；如果模板体引用自定义包，需要先注册对应 FFI/schema：
 
 ```go
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 if err := executor.UseSurface(ffilib.Surface()); err != nil {
     panic(err)
 }
@@ -369,7 +378,10 @@ func Double(v int) int {
 `)),
 )
 
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 if err := executor.UseSurface(bundle); err != nil {
     panic(err)
 }
@@ -856,7 +868,10 @@ go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg sampleffi -out sample_ffigen.g
 ```
 
 ```go
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 
 if err := executor.UseSurface(sampleffi.SurfaceSampleAPI(sampleffi.Host{})); err != nil {
     panic(err)
@@ -982,7 +997,10 @@ FFI struct schema 有两类 ownership：
 生成后通过 surface bundle 装配：
 
 ```go
-executor := engine.NewMiniExecutor()
+executor, err := engine.NewMiniExecutor()
+if err != nil {
+    panic(err)
+}
 
 if err := executor.UseSurface(sampleffi.SurfaceSampleAPI(sampleffi.Host{})); err != nil {
     panic(err)

@@ -29,8 +29,11 @@ func importTesterHostRouter(ctx context.Context, impl ImportTester, registry *ff
 	case methodIDImportTesterSleep:
 		var d time.Duration
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			d = time.Duration(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ImportTester.Sleep failed: %w", err)
 		}
 		err := impl.Sleep(ctx, d)
 		resBuf := ffigo.GetBuffer()

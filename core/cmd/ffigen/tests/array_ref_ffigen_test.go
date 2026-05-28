@@ -53,27 +53,28 @@ func (__p *ArrayRefAPIProxy) Rewrite(nums *ffigo.ArrayRef[int64]) int64 {
 	_ = retData
 	_ = err
 	retBuf := ffigo.NewReader(retData)
-	copyBackCount := int(retBuf.ReadUvarint())
+	copyBackCount, _ := retBuf.ReadCount(ffigo.MaxWireCollectionItems, "copy-back")
 	if copyBackCount != 1 {
 		panic(fmt.Sprintf("ffigen: ArrayRefAPI.Rewrite copy-back mismatch: %d", copyBackCount))
 	}
 	if nums == nil {
 		panic("ffigen: nil ArrayRef passed to ArrayRefAPI.Rewrite")
 	}
-	copyBackBuf_nums := ffigo.NewReader(retBuf.ReadBytes())
+	copyBackPayload_nums, _ := retBuf.ReadBytes()
+	copyBackBuf_nums := ffigo.NewReader(copyBackPayload_nums)
 	var copyBack_nums []int64
-	l_copyBack_nums := int(copyBackBuf_nums.ReadUvarint())
+	l_copyBack_nums, _ := copyBackBuf_nums.ReadCount(ffigo.MaxWireCollectionItems, "array")
 	copyBack_nums = make([]int64, l_copyBack_nums)
 	for i_copyBack_nums := 0; i_copyBack_nums < l_copyBack_nums; i_copyBack_nums++ {
 		{
-			tmp := copyBackBuf_nums.ReadVarint()
+			tmp, _ := copyBackBuf_nums.ReadVarint()
 			copyBack_nums[i_copyBack_nums] = int64(tmp)
 		}
 	}
 	nums.Value = copyBack_nums
 	var v_0 int64
 	{
-		tmp := retBuf.ReadVarint()
+		tmp, _ := retBuf.ReadVarint()
 		v_0 = int64(tmp)
 	}
 	return v_0
@@ -92,15 +93,18 @@ func arrayRefAPIHostRouter(ctx context.Context, impl ArrayRefAPI, registry *ffig
 	case methodIDArrayRefAPIRewrite:
 		var nums *ffigo.ArrayRef[int64]
 		var numsValue []int64
-		l_numsValue := int(reqBuf.ReadUvarint())
+		l_numsValue, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		numsValue = make([]int64, l_numsValue)
 		for i_numsValue := 0; i_numsValue < l_numsValue; i_numsValue++ {
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				numsValue[i_numsValue] = int64(tmp)
 			}
 		}
 		nums = &ffigo.ArrayRef[int64]{Value: numsValue}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ArrayRefAPI.Rewrite failed: %w", err)
+		}
 		r0 := impl.Rewrite(nums)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))

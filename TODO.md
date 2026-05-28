@@ -28,7 +28,7 @@
 - Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
 - `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过 `FFIRouteDecl` 一次声明 schema route 并由 `RouterBridge + BindSchemaRoutes` 绑定；Go 端 proxy 在显式 `ffigen:proxy` 时生成，`ffigen:global` 生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
-- 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册。
+- 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
 - VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
@@ -107,7 +107,7 @@
 
 ## 待办
 
-新增一个小特性，设计支持运算符重载（在ast内部通过语法糖的方式，并且可以支持不同的前端），并结合现在的代码设计一个总体最优方案，不要打补丁，分析现在不合理的地方也一并重构
+新增一个小特性，设计支持运算符重载（在ast内部通过语法糖对计算表达式转换为对应的实际函数的方式，并且可以支持不同的前端），并结合现在的代码设计一个总体最优方案，不要打补丁，分析现在不合理的地方也一并重构
 
 
 ## 变更门禁

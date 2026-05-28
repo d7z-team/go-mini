@@ -9,7 +9,7 @@ import (
 )
 
 func TestTypeGateRejectsInvalidOperations(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	requireCompileErrorContains(t, executor, `
 package main
@@ -65,7 +65,7 @@ func main() {
 }
 
 func TestTypeGateAllowsValidAnyPureValues(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 func main() {
@@ -89,7 +89,7 @@ func main() {
 }
 
 func TestRuntimeTypeGateRejectsDynamicAnyMismatch(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 func main() {
@@ -111,7 +111,7 @@ func main() {
 }
 
 func TestAnyWrappedScalarCanCompareWithNil(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 func main() {

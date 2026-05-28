@@ -9,7 +9,7 @@ import (
 )
 
 func TestCompileArtifactDoesNotExecuteGlobalInit(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	compiledArtifact, err := testExecutor.CompileGoCode(`
 package main
 

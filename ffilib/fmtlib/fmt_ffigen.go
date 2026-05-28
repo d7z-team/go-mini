@@ -38,10 +38,10 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 	switch methodID {
 	case methodIDFmtPrint:
 		var args []any
-		l_args := int(reqBuf.ReadUvarint())
+		l_args, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal = reqBuf.ReadAny()
+			rawVal, _ = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
@@ -56,16 +56,19 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			default:
 				args[i_args] = rawVal
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Fmt.Print failed: %w", err)
 		}
 		impl.Print(ctx, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case methodIDFmtPrintln:
 		var args []any
-		l_args := int(reqBuf.ReadUvarint())
+		l_args, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal = reqBuf.ReadAny()
+			rawVal, _ = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
@@ -80,18 +83,24 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			default:
 				args[i_args] = rawVal
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Fmt.Println failed: %w", err)
 		}
 		impl.Println(ctx, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case methodIDFmtPrintf:
 		var format string
-		format = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			format = string(tmp)
+		}
 		var args []any
-		l_args := int(reqBuf.ReadUvarint())
+		l_args, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal = reqBuf.ReadAny()
+			rawVal, _ = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
@@ -107,17 +116,23 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 				args[i_args] = rawVal
 			}
 		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Fmt.Printf failed: %w", err)
+		}
 		impl.Printf(ctx, format, args...)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case methodIDFmtSprintf:
 		var format string
-		format = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			format = string(tmp)
+		}
 		var args []any
-		l_args := int(reqBuf.ReadUvarint())
+		l_args, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		args = make([]any, l_args)
 		for i_args := 0; i_args < l_args; i_args++ {
-			rawVal = reqBuf.ReadAny()
+			rawVal, _ = reqBuf.ReadAny()
 			switch rv := rawVal.(type) {
 			case ffigo.InterfaceData:
 				if rv.Handle != 0 {
@@ -132,6 +147,9 @@ func fmtHostRouter(ctx context.Context, impl Fmt, registry *ffigo.HandleRegistry
 			default:
 				args[i_args] = rawVal
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Fmt.Sprintf failed: %w", err)
 		}
 		r0 := impl.Sprintf(ctx, format, args...)
 		resBuf := ffigo.GetBuffer()

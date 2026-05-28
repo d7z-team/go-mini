@@ -21,7 +21,7 @@ func requireCompileErrorContains(t *testing.T, executor *engine.MiniExecutor, co
 }
 
 func TestAdvancedAssignmentAndSlice(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	execute := func(t *testing.T, prog *engine.ExecutableProgram) {
 		t.Helper()
@@ -216,7 +216,7 @@ func TestAdvancedAssignmentAndSlice(t *testing.T) {
 }
 
 func TestAssignToNilMapFailsAtRuntime(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 func main() {

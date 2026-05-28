@@ -20,7 +20,10 @@ func (b *mockContinueBridge) Call(ctx context.Context, req *ffigo.FFICallRequest
 
 	switch req.MethodID {
 	case 1:
-		val := reader.ReadVarint()
+		val, err := reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
 		buf.WriteBool(val >= 3)
 		return buf.Bytes(), nil
 	case 2:
@@ -40,7 +43,7 @@ func (b *mockContinueBridge) DestroyHandle(handle uint32) error {
 
 // TestRangeContinueSkipBody 验证 for-range 中 continue 能正确跳过循环体剩余代码。
 func TestRangeContinueSkipBody(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -74,7 +77,7 @@ func main() {
 
 // TestRangeContinueInsideIfBlock 测试 continue 在 if 块内部时能否正确跳过循环体
 func TestRangeContinueInsideIfBlock(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -110,7 +113,7 @@ func main() {
 // continue 能否正确跳过 FFI 调用。模拟 1.mgo 中 continue 后执行
 // item1.Locator(...).TextContent() 和 page.Eval(...) 等 FFI 调用的场景。
 func TestRangeContinueWithFFICall(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	bridge := &mockContinueBridge{}
 	testsurface.UseRoutes(t, executor, bridge,
@@ -152,7 +155,7 @@ func main() {
 // TestRangeContinueWithFFICallInIfBlock 模拟 1.mgo 更精确的模式：
 // continue 在 if 块内，后续还有嵌套 if true 块包含 FFI 调用。
 func TestRangeContinueWithFFICallInIfBlock(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	bridge := &mockContinueBridge{}
 	testsurface.UseRoutes(t, executor, bridge,

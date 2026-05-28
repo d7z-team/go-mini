@@ -29,7 +29,7 @@ func useTableSurface(t *testing.T, executor *engine.MiniExecutor) {
 }
 
 func TestStructExport(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	useCalculatorSurface(t, executor)
 	code := `
@@ -64,7 +64,7 @@ func TestStructExport(t *testing.T) {
 }
 
 func TestAddressOfHostRefRejected(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	useCalculatorSurface(t, executor)
 
 	code := `
@@ -82,7 +82,7 @@ func TestAddressOfHostRefRejected(t *testing.T) {
 }
 
 func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	useCalculatorSurface(t, executor)
 
@@ -128,7 +128,7 @@ func TestFFIDefinedObjectAsFunctionParameter(t *testing.T) {
 }
 
 func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	useCalculatorSurface(t, executor)
 
@@ -169,7 +169,7 @@ func TestFFIDefinedObjectAsPointerTypedFunctionParameter(t *testing.T) {
 }
 
 func TestFFIStructMethodGroupedParametersE2E(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	useTableSurface(t, executor)
 

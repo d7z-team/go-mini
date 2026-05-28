@@ -60,45 +60,81 @@ func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 	switch methodID {
 	case methodIDFilepathBase:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Base failed: %w", err)
+		}
 		r0 := impl.Base(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathClean:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Clean failed: %w", err)
+		}
 		r0 := impl.Clean(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathDir:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Dir failed: %w", err)
+		}
 		r0 := impl.Dir(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathExt:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Ext failed: %w", err)
+		}
 		r0 := impl.Ext(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathIsAbs:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.IsAbs failed: %w", err)
+		}
 		r0 := impl.IsAbs(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathJoin:
 		var elem []string
-		l_elem := int(reqBuf.ReadUvarint())
+		l_elem, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		elem = make([]string, l_elem)
 		for i_elem := 0; i_elem < l_elem; i_elem++ {
-			elem[i_elem] = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				elem[i_elem] = string(tmp)
+			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Join failed: %w", err)
 		}
 		r0 := impl.Join(elem...)
 		resBuf := ffigo.GetBuffer()
@@ -106,9 +142,18 @@ func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		return resBuf.Bytes(), nil
 	case methodIDFilepathMatch:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Match failed: %w", err)
+		}
 		r0, err := impl.Match(pattern, name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
@@ -124,9 +169,18 @@ func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		return resBuf.Bytes(), nil
 	case methodIDFilepathRel:
 		var basepath string
-		basepath = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			basepath = string(tmp)
+		}
 		var targpath string
-		targpath = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			targpath = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Rel failed: %w", err)
+		}
 		r0, err := impl.Rel(basepath, targpath)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -142,7 +196,13 @@ func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		return resBuf.Bytes(), nil
 	case methodIDFilepathSplit:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.Split failed: %w", err)
+		}
 		r0, r1 := impl.Split(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -150,21 +210,39 @@ func filepathHostRouter(ctx context.Context, impl Filepath, registry *ffigo.Hand
 		return resBuf.Bytes(), nil
 	case methodIDFilepathToSlash:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.ToSlash failed: %w", err)
+		}
 		r0 := impl.ToSlash(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathFromSlash:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.FromSlash failed: %w", err)
+		}
 		r0 := impl.FromSlash(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDFilepathVolumeName:
 		var path string
-		path = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			path = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Filepath.VolumeName failed: %w", err)
+		}
 		r0 := impl.VolumeName(path)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))

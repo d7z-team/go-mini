@@ -33,14 +33,23 @@ func hexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 	switch methodID {
 	case methodIDHexEncodeToString:
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Hex.EncodeToString failed: %w", err)
+		}
 		r0 := impl.EncodeToString(src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDHexDecodeString:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Hex.DecodeString failed: %w", err)
+		}
 		r0, err := impl.DecodeString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -56,7 +65,10 @@ func hexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 		return resBuf.Bytes(), nil
 	case methodIDHexDump:
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Hex.Dump failed: %w", err)
+		}
 		r0 := impl.Dump(data)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))

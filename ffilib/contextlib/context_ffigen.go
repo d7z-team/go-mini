@@ -67,8 +67,11 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case methodIDModuleNewTimer:
 		var ns int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			ns = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.NewTimer failed: %w", err)
 		}
 		r0 := impl.NewTimer(ctx, ns)
 		resBuf := ffigo.GetBuffer()
@@ -81,7 +84,7 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDModuleValidValueKey:
 		var key any
-		rawVal = reqBuf.ReadAny()
+		rawVal, _ = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case ffigo.InterfaceData:
 			if rv.Handle != 0 {
@@ -95,6 +98,9 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 			key = rv
 		default:
 			key = rawVal
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.ValidValueKey failed: %w", err)
 		}
 		r0 := impl.ValidValueKey(key)
 		resBuf := ffigo.GetBuffer()
@@ -147,12 +153,16 @@ func timerHostRouter(ctx context.Context, impl *Timer, registry *ffigo.HandleReg
 	case methodIDTimerWait:
 		var __recv *Timer
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "context/internal.Timer"); err == nil {
 				__recv = obj.(*Timer)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Timer.Wait failed: %w", err)
 		}
 		r0 := __recv.Wait()
 		return ffigo.AsyncValue[bool](r0, func(resBuf *ffigo.Buffer, value bool) error {
@@ -162,12 +172,16 @@ func timerHostRouter(ctx context.Context, impl *Timer, registry *ffigo.HandleReg
 	case methodIDTimerStop:
 		var __recv *Timer
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "context/internal.Timer"); err == nil {
 				__recv = obj.(*Timer)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Timer.Stop failed: %w", err)
 		}
 		r0 := __recv.Stop()
 		resBuf := ffigo.GetBuffer()

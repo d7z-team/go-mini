@@ -481,21 +481,44 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (*Var, error) {
 	switch kType.Raw {
 	case "String":
-		return NewString(reader.ReadString()), nil
+		v, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
+		return NewString(v), nil
 	case "Int64", "Int", "int", "int64":
-		return NewInt(reader.ReadVarint()), nil
+		v, err := reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
+		return NewInt(v), nil
 	case "Bool", "bool":
-		return NewBool(reader.ReadBool()), nil
+		v, err := reader.ReadBool()
+		if err != nil {
+			return nil, err
+		}
+		return NewBool(v), nil
 	case "Float64", "float64":
-		return NewFloat(reader.ReadFloat64()), nil
+		v, err := reader.ReadFloat64()
+		if err != nil {
+			return nil, err
+		}
+		return NewFloat(v), nil
 	default:
 		return nil, fmt.Errorf("unsupported map key type: %s", kType.Raw)
 	}
 }
 
+func readRuntimeWireCount(reader *ffigo.Reader, label string) (int, error) {
+	return reader.ReadCount(ffigo.MaxWireCollectionItems, label)
+}
+
 func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Reader, typ RuntimeType, bridge ffigo.FFIBridge) (*Var, error) {
 	if typ.Kind == RuntimeTypeVoid {
 		return nil, nil
+	}
+	if err := reader.Err(); err != nil {
+		return nil, err
 	}
 	if reader.Available() == 0 {
 		return nil, nil
@@ -508,7 +531,11 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 
 	switch typ.Kind {
 	case RuntimeTypeAny:
-		raw := reader.ReadAny()
+		raw, readErr := reader.ReadAny()
+		if readErr != nil {
+			err = readErr
+			break
+		}
 		if err = rejectHostIdentityInAny(raw); err == nil {
 			decoded, convErr := e.ToVar(session, raw, bridge)
 			if convErr != nil {
@@ -520,22 +547,40 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
 		case "String":
-			res = NewString(reader.ReadString())
+			var v string
+			v, err = reader.ReadString()
+			res = NewString(v)
 		case "Int64", "int", "int64":
-			res = NewInt(reader.ReadVarint())
+			var v int64
+			v, err = reader.ReadVarint()
+			res = NewInt(v)
 		case "Uint32", "uint32", "Int32", "int32":
-			res = NewInt(int64(reader.ReadUvarint()))
+			var v uint64
+			v, err = reader.ReadUvarint()
+			res = NewInt(int64(v))
 		case "Float64":
-			res = NewFloat(reader.ReadFloat64())
+			var v float64
+			v, err = reader.ReadFloat64()
+			res = NewFloat(v)
 		case "Bool":
-			res = NewBool(reader.ReadBool())
+			var v bool
+			v, err = reader.ReadBool()
+			res = NewBool(v)
 		case "Error", "error":
-			res, err = e.ToVar(session, reader.ReadRawError(), bridge)
+			var raw ffigo.ErrorData
+			raw, err = reader.ReadRawError()
+			if err == nil {
+				res, err = e.ToVar(session, raw, bridge)
+			}
 		case "TypeBytes":
-			res = &Var{VType: TypeBytes, B: reader.ReadBytes()}
+			var v []byte
+			v, err = reader.ReadBytes()
+			res = &Var{VType: TypeBytes, B: v}
 		default:
 			if typ.Raw.IsNumeric() {
-				res = NewInt(reader.ReadVarint())
+				var v int64
+				v, err = reader.ReadVarint()
+				res = NewInt(v)
 				break
 			}
 			if schema, ok := e.lookupStructSchema(typ); ok {
@@ -548,14 +593,22 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			}
 			if typ.Kind == RuntimeTypeNamed {
 				if _, ok := e.resolveInterfaceSpec(typ.Raw); ok {
-					res, err = e.ToVar(session, reader.ReadRawInterface(), bridge)
+					var raw ffigo.InterfaceData
+					raw, err = reader.ReadRawInterface()
+					if err == nil {
+						res, err = e.ToVar(session, raw, bridge)
+					}
 					break
 				}
 			}
 			err = fmt.Errorf("unsupported named FFI return type: %s", typ.Raw)
 		}
 	case RuntimeTypeHostRef:
-		id := uint32(reader.ReadUvarint())
+		rawID, readErr := reader.ReadUvarint()
+		if readErr != nil {
+			return nil, readErr
+		}
+		id := uint32(rawID)
 		var h *VMHandle
 		if id != 0 {
 			h = NewVMHandle(id, bridge)
@@ -564,7 +617,10 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	case RuntimeTypePointer:
 		err = fmt.Errorf("FFI cannot return VM pointer type %s", typ.Raw)
 	case RuntimeTypeArray:
-		count := int(reader.ReadUvarint())
+		count, err := readRuntimeWireCount(reader, "array")
+		if err != nil {
+			return nil, err
+		}
 		arrData := make([]*Var, count)
 		for i := 0; i < count; i++ {
 			val, err := e.deserializeParsedType(session, reader, *typ.Elem, bridge)
@@ -575,11 +631,17 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: arrData}}
 	case RuntimeTypeMap:
-		count := int(reader.ReadUvarint())
+		count, err := readRuntimeWireCount(reader, "map")
+		if err != nil {
+			return nil, err
+		}
 		vmMap := &VMMap{Data: make(map[string]*Var, count), KeyVars: make(map[string]*Var, count)}
 		for i := 0; i < count; i++ {
 			keyVar, err := e.deserializeKey(reader, *typ.Key)
 			if err != nil {
+				return nil, err
+			}
+			if err := reader.Err(); err != nil {
 				return nil, err
 			}
 			val, err := e.deserializeParsedType(session, reader, *typ.Value, bridge)
@@ -594,7 +656,10 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 		res = &Var{VType: TypeMap, Ref: vmMap}
 	case RuntimeTypeChannel:
-		id := reader.ReadUvarint()
+		id, readErr := reader.ReadUvarint()
+		if readErr != nil {
+			return nil, readErr
+		}
 		if id == 0 {
 			res = &Var{VType: TypeChannel}
 			break
@@ -631,11 +696,20 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 		}
 		res = &Var{VType: TypeArray, Ref: &VMArray{Data: tupleData}}
 	case RuntimeTypeInterface:
-		res, err = e.ToVar(session, reader.ReadRawInterface(), bridge)
+		raw, readErr := reader.ReadRawInterface()
+		if readErr != nil {
+			err = readErr
+			break
+		}
+		res, err = e.ToVar(session, raw, bridge)
 	case RuntimeTypeStruct:
 		res, err = e.deserializeStructSchema(session, reader, &RuntimeStructSpec{Spec: typ.Raw, TypeInfo: typ, Fields: typ.Fields}, bridge)
 	case RuntimeTypeFunction:
-		raw := reader.ReadAny()
+		raw, readErr := reader.ReadAny()
+		if readErr != nil {
+			err = readErr
+			break
+		}
 		if err = rejectHostIdentityInAny(raw); err == nil {
 			decoded, convErr := e.ToVar(session, raw, bridge)
 			if convErr != nil {
@@ -649,6 +723,9 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	}
 
 	if err != nil {
+		return nil, err
+	}
+	if err := reader.Err(); err != nil {
 		return nil, err
 	}
 	if res != nil {

@@ -95,11 +95,14 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case methodIDRandInt31n:
 		var n int32
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			if tmp < -2147483648 || tmp > 2147483647 {
-				panic(fmt.Sprintf("ffi: int32 overflow: %d", tmp))
+				return nil, fmt.Errorf("ffi: int32 overflow: %d", tmp)
 			}
 			n = int32(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Int31n failed: %w", err)
 		}
 		r0 := impl.Int31n(n)
 		resBuf := ffigo.GetBuffer()
@@ -108,8 +111,11 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case methodIDRandIntn:
 		var n int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Intn failed: %w", err)
 		}
 		r0 := impl.Intn(n)
 		resBuf := ffigo.GetBuffer()
@@ -123,8 +129,11 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case methodIDRandInt63n:
 		var n int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Int63n failed: %w", err)
 		}
 		r0 := impl.Int63n(n)
 		resBuf := ffigo.GetBuffer()
@@ -137,7 +146,13 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDRandRead:
 		var p *ffigo.BytesRef
-		p = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			p = &ffigo.BytesRef{Value: bytes}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Read failed: %w", err)
+		}
 		r0, err := impl.Read(p)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -160,8 +175,11 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case methodIDRandSeed:
 		var seed int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			seed = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Seed failed: %w", err)
 		}
 		impl.Seed(seed)
 		resBuf := ffigo.GetBuffer()
@@ -169,8 +187,11 @@ func randHostRouter(ctx context.Context, impl Rand, registry *ffigo.HandleRegist
 	case methodIDRandPerm:
 		var n int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Rand.Perm failed: %w", err)
 		}
 		r0 := impl.Perm(n)
 		resBuf := ffigo.GetBuffer()

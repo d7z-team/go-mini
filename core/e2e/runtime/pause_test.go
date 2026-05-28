@@ -15,7 +15,7 @@ import (
 )
 
 func TestRunHandlePauseAndResume(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 
@@ -63,7 +63,7 @@ func main() {
 }
 
 func TestPauseWaitsForSyncFFISafePoint(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "host.Block", syncBlockBridge{delay: 80 * time.Millisecond}, 1, runtime.MustParseRuntimeFuncSig("function(Int64) Void"), "")
 
 	prog, err := executor.NewRuntimeByGoCode(`
@@ -120,7 +120,7 @@ func main() {
 }
 
 func TestPausePreemptsAllBlockedUntilResume(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &gatedBlockedBridge{
 		started: make(chan struct{}),
 		release: make(chan struct{}),

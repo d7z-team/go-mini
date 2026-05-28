@@ -58,7 +58,7 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 	switch methodID {
 	case methodIDIOReadAll:
 		var r Reader
-		ifaceData_r := reqBuf.ReadRawInterface()
+		ifaceData_r, _ := reqBuf.ReadRawInterface()
 		if ifaceData_r.Handle != 0 {
 			if registry == nil {
 				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "r")
@@ -75,6 +75,9 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		} else if len(ifaceData_r.Methods) != 0 {
 			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Reader has method schema but no host handle", "r")
 		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for IO.ReadAll failed: %w", err)
+		}
 		r0, err := impl.ReadAll(ctx, r)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -90,7 +93,7 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDIOCopy:
 		var dst Writer
-		ifaceData_dst := reqBuf.ReadRawInterface()
+		ifaceData_dst, _ := reqBuf.ReadRawInterface()
 		if ifaceData_dst.Handle != 0 {
 			if registry == nil {
 				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "dst")
@@ -108,7 +111,7 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Writer has method schema but no host handle", "dst")
 		}
 		var src Reader
-		ifaceData_src := reqBuf.ReadRawInterface()
+		ifaceData_src, _ := reqBuf.ReadRawInterface()
 		if ifaceData_src.Handle != 0 {
 			if registry == nil {
 				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "src")
@@ -125,6 +128,9 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		} else if len(ifaceData_src.Methods) != 0 {
 			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Reader has method schema but no host handle", "src")
 		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for IO.Copy failed: %w", err)
+		}
 		r0, err := impl.Copy(ctx, dst, src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -140,7 +146,7 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDIOWriteString:
 		var w Writer
-		ifaceData_w := reqBuf.ReadRawInterface()
+		ifaceData_w, _ := reqBuf.ReadRawInterface()
 		if ifaceData_w.Handle != 0 {
 			if registry == nil {
 				return nil, fmt.Errorf("FFI restore interface param '%s' failed: missing registry", "w")
@@ -158,7 +164,13 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 			return nil, fmt.Errorf("FFI restore interface param '%s' failed: io.Writer has method schema but no host handle", "w")
 		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for IO.WriteString failed: %w", err)
+		}
 		r0, err := impl.WriteString(ctx, w, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -250,7 +262,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileWrite:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -258,7 +271,10 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Write failed: %w", err)
+		}
 		r0, err := __recv.Write(b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -275,7 +291,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileRead:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -283,7 +300,13 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var buf *ffigo.BytesRef
-		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			buf = &ffigo.BytesRef{Value: bytes}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Read failed: %w", err)
+		}
 		r0, err := __recv.Read(buf)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -306,7 +329,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileWriteAt:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -314,11 +338,14 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
 		var off int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			off = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.WriteAt failed: %w", err)
 		}
 		r0, err := __recv.WriteAt(b, off)
 		resBuf := ffigo.GetBuffer()
@@ -336,7 +363,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileReadAt:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -344,11 +372,17 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var buf *ffigo.BytesRef
-		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			buf = &ffigo.BytesRef{Value: bytes}
+		}
 		var off int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			off = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.ReadAt failed: %w", err)
 		}
 		r0, err := __recv.ReadAt(buf, off)
 		resBuf := ffigo.GetBuffer()
@@ -372,7 +406,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileSeek:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -381,13 +416,16 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		}
 		var offset int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			offset = int64(tmp)
 		}
 		var whence int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			whence = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Seek failed: %w", err)
 		}
 		r0, err := __recv.Seek(offset, whence)
 		resBuf := ffigo.GetBuffer()
@@ -405,12 +443,16 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileClose:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Close failed: %w", err)
 		}
 		err := __recv.Close()
 		resBuf := ffigo.GetBuffer()
@@ -427,12 +469,16 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileSync:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Sync failed: %w", err)
 		}
 		err := __recv.Sync()
 		resBuf := ffigo.GetBuffer()
@@ -449,7 +495,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileTruncate:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -458,8 +505,11 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 		}
 		var size int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			size = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Truncate failed: %w", err)
 		}
 		err := __recv.Truncate(size)
 		resBuf := ffigo.GetBuffer()
@@ -476,7 +526,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileWriteString:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -484,7 +535,13 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.WriteString failed: %w", err)
+		}
 		r0, err := __recv.WriteString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -501,12 +558,16 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileName:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.Name failed: %w", err)
 		}
 		r0 := __recv.Name()
 		resBuf := ffigo.GetBuffer()
@@ -515,7 +576,8 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 	case methodIDFileWriteNative:
 		var __recv *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "io.File"); err == nil {
 				__recv = obj.(*File)
 			} else {
@@ -523,7 +585,10 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 			}
 		}
 		var p []byte
-		p = reqBuf.ReadBytes()
+		p, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for File.WriteNative failed: %w", err)
+		}
 		r0, err := __recv.WriteNative(p)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))

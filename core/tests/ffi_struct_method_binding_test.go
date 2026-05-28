@@ -11,7 +11,7 @@ import (
 )
 
 func TestFFIMethodBindingKeepsFirstParam(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddStruct("demo.Table", runtime.MustParseRuntimeStructSpec("demo.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<demo.Table>, Int64, Int64, String) Void; }"))
 	schema.AddRouteDecls([]runtime.FFIRouteDecl{

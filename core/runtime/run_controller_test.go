@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,5 +66,20 @@ func TestRunControllerWaitPausedReturnsAfterResume(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for paused wait to resume")
+	}
+}
+
+func TestRunHandleReportsRuntimePanic(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	session.TaskStack = append(session.TaskStack, Task{Op: OpDoCall, Data: "bad"})
+
+	run, err := exec.startRun(context.Background(), session, true)
+	if err != nil {
+		t.Fatalf("startRun failed: %v", err)
+	}
+	err = run.Wait()
+	if err == nil || !strings.Contains(err.Error(), "runtime panic") {
+		t.Fatalf("expected runtime panic error, got %v", err)
 	}
 }

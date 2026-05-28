@@ -8,7 +8,7 @@ import (
 )
 
 func TestLowercaseAnyTypeSwitchStringBehavior(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 
 	const code = `
 package main
@@ -50,7 +50,7 @@ func main() {
 }
 
 func TestNilSliceAppendBehavior(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 
 	const code = `
 package main
@@ -74,7 +74,7 @@ func main() {
 }
 
 func TestUppercaseInt64ControlFlowAccumulationBehavior(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 
 	const code = `
 package main

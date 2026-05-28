@@ -46,7 +46,7 @@ func TestUnpackEvalResultTupleValue(t *testing.T) {
 }
 
 func TestRegisterModuleNilUnregistersPreparedModule(t *testing.T) {
-	exec := NewMiniExecutor()
+	exec := MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package helper
 func Answer() Int64 { return 42 }

@@ -36,7 +36,13 @@ func testCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	switch methodID {
 	case methodIDTestCanonicalServiceNewA:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for TestCanonicalService.NewA failed: %w", err)
+		}
 		r0 := impl.NewA(ctx, name)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -49,8 +55,11 @@ func testCanonicalServiceHostRouter(ctx context.Context, impl TestCanonicalServi
 	case methodIDTestCanonicalServiceNewB:
 		var id int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			id = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for TestCanonicalService.NewB failed: %w", err)
 		}
 		r0 := impl.NewB(ctx, id)
 		resBuf := ffigo.GetBuffer()
@@ -103,12 +112,16 @@ func aTypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 	case methodIDATypeServiceHello:
 		var t *a_other.Type
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/a/other.Type"); err == nil {
 				t = obj.(*a_other.Type)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ATypeService.Hello failed: %w", err)
 		}
 		r0 := impl.Hello(t)
 		resBuf := ffigo.GetBuffer()
@@ -156,12 +169,16 @@ func bTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 	case methodIDBTypeServiceHello:
 		var t *b_other.Type
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "gopkg.d7z.net/go-mini/core/e2e/canonicaltest/internal/b/other.Type"); err == nil {
 				t = obj.(*b_other.Type)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for BTypeService.Hello failed: %w", err)
 		}
 		r0 := impl.Hello(t)
 		resBuf := ffigo.GetBuffer()

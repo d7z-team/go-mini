@@ -9,7 +9,7 @@ import (
 )
 
 func TestPrepareArtifactModulesDoesNotCommitOnDependencyLoweringFailure(t *testing.T) {
-	exec := NewMiniExecutor()
+	exec := MustNewMiniExecutor()
 	modules := map[string]*ast.ProgramStmt{
 		"a": parseModuleForCacheTest(t, "a.mgo", `
 package a

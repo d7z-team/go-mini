@@ -72,7 +72,10 @@ func (b *ffiChannelBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (f
 			Elem: "Int64",
 			Dir:  ffigo.ChannelSend,
 			OnSend: func(ctx context.Context, payload []byte) error {
-				value := ffigo.NewReader(payload).ReadVarint()
+				value, err := ffigo.NewReader(payload).ReadVarint()
+				if err != nil {
+					return err
+				}
 				signalFFIChannelWaiter(b.sendWaiter)
 				select {
 				case b.sink <- value:
@@ -83,7 +86,10 @@ func (b *ffiChannelBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (f
 				}
 			},
 			OnTrySend: func(payload []byte) (bool, error) {
-				value := ffigo.NewReader(payload).ReadVarint()
+				value, err := ffigo.NewReader(payload).ReadVarint()
+				if err != nil {
+					return false, err
+				}
 				select {
 				case b.sink <- value:
 					return true, nil
@@ -113,7 +119,12 @@ func (b *ffiChannelBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (f
 							done.Complete(sum, nil)
 							return
 						}
-						sum += ffigo.NewReader(payload).ReadVarint()
+						value, err := ffigo.NewReader(payload).ReadVarint()
+						if err != nil {
+							done.Complete(0, err)
+							return
+						}
+						sum += value
 					}
 				}()
 				return ffigo.NewWaitHandle(ffigo.WaitExternal, "chanlib.Sum", cancel), nil
@@ -169,7 +180,7 @@ func (b *ffiChannelBridge) DestroyHandle(uint32) error {
 }
 
 func TestFFIChannelReceiveWaitsOnHostEndpoint(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
@@ -201,7 +212,7 @@ func main() {
 }
 
 func TestFFIChannelSendWaitsOnHostEndpoint(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
 
@@ -233,7 +244,7 @@ func main() {
 }
 
 func TestFFIChannelSelectUsesHostEndpoint(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	bridge.values = make(chan int64, 1)
 	bridge.values <- 8
@@ -266,7 +277,7 @@ func main() {
 }
 
 func TestFFIChannelSelectWaitsOnHostEndpoint(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
@@ -301,7 +312,7 @@ func main() {
 }
 
 func TestFFIChannelForRangeWaitsUntilHostClose(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
@@ -340,7 +351,7 @@ func main() {
 }
 
 func TestFFIChannelHostReceivesVMChannelArgument(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Sum", bridge, 3, runtime.MustParseRuntimeFuncSig("function(RecvChan<Int64>) Int64"), "")
 
@@ -373,7 +384,7 @@ func main() {
 }
 
 func TestFFIChannelHostSendsToVMChannelArgument(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Fill", bridge, 4, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
 
@@ -407,7 +418,7 @@ func main() {
 }
 
 func TestFFIChannelHostClosesVMChannelArgument(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Close", bridge, 5, runtime.MustParseRuntimeFuncSig("function(SendChan<Int64>) Void"), "")
 
@@ -434,7 +445,7 @@ func main() {
 }
 
 func TestFFIChannelSelectCancelsUnchosenHostReceive(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Values", bridge, 1, runtime.MustParseRuntimeFuncSig("function() RecvChan<Int64>"), "")
 
@@ -474,7 +485,7 @@ func main() {
 }
 
 func TestFFIChannelSelectCancelsUnchosenHostSend(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newFFIChannelBridge()
 	testsurface.UseRoute(t, executor, "chanlib.Sink", bridge, 2, runtime.MustParseRuntimeFuncSig("function() SendChan<Int64>"), "")
 
@@ -561,7 +572,10 @@ func lookupFFIChannelArg(req *ffigo.FFICallRequest) (ffigo.ChannelEndpoint, erro
 	if req == nil || req.Channels == nil {
 		return nil, errors.New("missing channel registry")
 	}
-	id := ffigo.NewReader(req.Args).ReadUvarint()
+	id, err := ffigo.NewReader(req.Args).ReadUvarint()
+	if err != nil {
+		return nil, err
+	}
 	endpoint, ok := req.Channels.LookupChannel(id)
 	if !ok || endpoint == nil {
 		return nil, fmt.Errorf("unknown channel endpoint %d", id)

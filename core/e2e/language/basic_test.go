@@ -8,7 +8,7 @@ import (
 )
 
 func TestComprehensive(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -46,7 +46,7 @@ func TestComprehensive(t *testing.T) {
 }
 
 func TestConstAndVar(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	const PI = "3.14"
@@ -70,7 +70,7 @@ func TestConstAndVar(t *testing.T) {
 }
 
 func TestReferenceComparison(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	a := make([]Int64, 1)
 	b := a
@@ -91,7 +91,7 @@ func TestReferenceComparison(t *testing.T) {
 }
 
 func TestGlobalVarInitialization(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 package main
 var res Any

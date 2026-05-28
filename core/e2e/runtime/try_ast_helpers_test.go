@@ -10,7 +10,7 @@ import (
 func compileASTRuntimeProgram(t *testing.T, program *ast.ProgramStmt) *engine.ExecutableProgram {
 	t.Helper()
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	compiled, err := executor.CompileAST(program)
 	if err != nil {
 		t.Fatal(err)

@@ -78,104 +78,197 @@ func mathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 	switch methodID {
 	case methodIDMathAbs:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Abs failed: %w", err)
+		}
 		r0 := impl.Abs(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathCeil:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Ceil failed: %w", err)
+		}
 		r0 := impl.Ceil(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathFloor:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Floor failed: %w", err)
+		}
 		r0 := impl.Floor(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathRound:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Round failed: %w", err)
+		}
 		r0 := impl.Round(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathSqrt:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Sqrt failed: %w", err)
+		}
 		r0 := impl.Sqrt(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathPow:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
 		var y float64
-		y = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			y = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Pow failed: %w", err)
+		}
 		r0 := impl.Pow(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathMin:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
 		var y float64
-		y = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			y = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Min failed: %w", err)
+		}
 		r0 := impl.Min(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathMax:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
 		var y float64
-		y = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			y = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Max failed: %w", err)
+		}
 		r0 := impl.Max(x, y)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathSin:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Sin failed: %w", err)
+		}
 		r0 := impl.Sin(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathCos:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Cos failed: %w", err)
+		}
 		r0 := impl.Cos(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathTan:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Tan failed: %w", err)
+		}
 		r0 := impl.Tan(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathExp:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Exp failed: %w", err)
+		}
 		r0 := impl.Exp(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathLog:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Log failed: %w", err)
+		}
 		r0 := impl.Log(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDMathLog10:
 		var x float64
-		x = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			x = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Log10 failed: %w", err)
+		}
 		r0 := impl.Log10(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteFloat64(float64(r0))
@@ -187,7 +280,13 @@ func mathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDMathIsNaN:
 		var f float64
-		f = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			f = float64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.IsNaN failed: %w", err)
+		}
 		r0 := impl.IsNaN(f)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
@@ -195,8 +294,11 @@ func mathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 	case methodIDMathInf:
 		var sign int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			sign = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.Inf failed: %w", err)
 		}
 		r0 := impl.Inf(sign)
 		resBuf := ffigo.GetBuffer()
@@ -204,11 +306,17 @@ func mathHostRouter(ctx context.Context, impl Math, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDMathIsInf:
 		var f float64
-		f = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			f = float64(tmp)
+		}
 		var sign int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			sign = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Math.IsInf failed: %w", err)
 		}
 		r0 := impl.IsInf(f, sign)
 		resBuf := ffigo.GetBuffer()

@@ -11,7 +11,7 @@ import (
 
 func TestCompileAndExecuteSeparation(t *testing.T) {
 	// 阶段 1：在节点 A 进行编译和 bytecode 序列化
-	sourceCompiler := engine.NewMiniExecutor()
+	sourceCompiler := engine.MustNewMiniExecutor()
 	sourceProgram := `
 			package main
 		
@@ -38,7 +38,7 @@ func TestCompileAndExecuteSeparation(t *testing.T) {
 	}
 
 	// 阶段 2：在节点 B 接收 JSON 并高并发执行
-	bytecodeLoader := engine.NewMiniExecutor()
+	bytecodeLoader := engine.MustNewMiniExecutor()
 
 	// 从 bytecode JSON 数据直接恢复为可执行程序蓝图
 	loadedProgram, err := bytecodeLoader.NewRuntimeByBytecodeJSON(bytecodeJSON)

@@ -10,7 +10,7 @@ import (
 )
 
 func TestImportStrictnessRegression(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, e, "mock.Getenv", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
 	t.Run("Missing Import Should Fail", func(t *testing.T) {

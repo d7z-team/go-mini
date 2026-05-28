@@ -38,7 +38,8 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case methodIDCalculatorAdd:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "calc.Calculator"); err == nil {
 				__recv = obj.(*Calculator)
 			} else {
@@ -47,8 +48,11 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		}
 		var x int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Calculator.Add failed: %w", err)
 		}
 		r0 := __recv.Add(ctx, x)
 		resBuf := ffigo.GetBuffer()
@@ -57,7 +61,8 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case methodIDCalculatorMultiply:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "calc.Calculator"); err == nil {
 				__recv = obj.(*Calculator)
 			} else {
@@ -66,13 +71,16 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 		}
 		var x int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int64(tmp)
 		}
 		var y int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Calculator.Multiply failed: %w", err)
 		}
 		r0 := __recv.Multiply(x, y)
 		resBuf := ffigo.GetBuffer()
@@ -81,12 +89,16 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 	case methodIDCalculatorGetBase:
 		var __recv *Calculator
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "calc.Calculator"); err == nil {
 				__recv = obj.(*Calculator)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Calculator.GetBase failed: %w", err)
 		}
 		r0 := __recv.GetBase()
 		resBuf := ffigo.GetBuffer()
@@ -139,7 +151,8 @@ func tableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 	case methodIDTableSetString:
 		var __recv *Table
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "calc.Table"); err == nil {
 				__recv = obj.(*Table)
 			} else {
@@ -148,23 +161,30 @@ func tableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 		}
 		var row int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			row = int(tmp)
 		}
 		var col int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			col = int(tmp)
 		}
 		var val string
-		val = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			val = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Table.SetString failed: %w", err)
+		}
 		__recv.SetString(row, col, val)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case methodIDTableGetString:
 		var __recv *Table
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "calc.Table"); err == nil {
 				__recv = obj.(*Table)
 			} else {
@@ -173,13 +193,16 @@ func tableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 		}
 		var row int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			row = int(tmp)
 		}
 		var col int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			col = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Table.GetString failed: %w", err)
 		}
 		r0 := __recv.GetString(row, col)
 		resBuf := ffigo.GetBuffer()
@@ -231,8 +254,11 @@ func factoryHostRouter(ctx context.Context, impl *Factory, registry *ffigo.Handl
 	case methodIDFactoryNew:
 		var base int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			base = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Factory.New failed: %w", err)
 		}
 		r0 := impl.New(base)
 		resBuf := ffigo.GetBuffer()

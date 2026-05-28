@@ -55,7 +55,13 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	switch methodID {
 	case methodIDStrconvAtoi:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.Atoi failed: %w", err)
+		}
 		r0, err := impl.Atoi(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -72,8 +78,11 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	case methodIDStrconvItoa:
 		var i int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			i = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.Itoa failed: %w", err)
 		}
 		r0 := impl.Itoa(i)
 		resBuf := ffigo.GetBuffer()
@@ -81,7 +90,13 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDStrconvParseBool:
 		var str string
-		str = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			str = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.ParseBool failed: %w", err)
+		}
 		r0, err := impl.ParseBool(str)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
@@ -97,11 +112,17 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDStrconvParseFloat:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
 		var bitSize int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			bitSize = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.ParseFloat failed: %w", err)
 		}
 		r0, err := impl.ParseFloat(s, bitSize)
 		resBuf := ffigo.GetBuffer()
@@ -118,16 +139,22 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDStrconvParseInt:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
 		var base int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			base = int(tmp)
 		}
 		var bitSize int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			bitSize = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.ParseInt failed: %w", err)
 		}
 		r0, err := impl.ParseInt(s, base, bitSize)
 		resBuf := ffigo.GetBuffer()
@@ -144,31 +171,43 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDStrconvFormatBool:
 		var b bool
-		b = bool(reqBuf.ReadBool())
+		{
+			tmp, _ := reqBuf.ReadBool()
+			b = bool(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.FormatBool failed: %w", err)
+		}
 		r0 := impl.FormatBool(b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDStrconvFormatFloat:
 		var f float64
-		f = float64(reqBuf.ReadFloat64())
+		{
+			tmp, _ := reqBuf.ReadFloat64()
+			f = float64(tmp)
+		}
 		var format uint8
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			if tmp < 0 || tmp > 255 {
-				panic(fmt.Sprintf("ffi: uint8 overflow: %d", tmp))
+				return nil, fmt.Errorf("ffi: uint8 overflow: %d", tmp)
 			}
 			format = uint8(tmp)
 		}
 		var prec int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			prec = int(tmp)
 		}
 		var bitSize int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			bitSize = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.FormatFloat failed: %w", err)
 		}
 		r0 := impl.FormatFloat(f, format, prec, bitSize)
 		resBuf := ffigo.GetBuffer()
@@ -177,13 +216,16 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 	case methodIDStrconvFormatInt:
 		var i int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			i = int64(tmp)
 		}
 		var base int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			base = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.FormatInt failed: %w", err)
 		}
 		r0 := impl.FormatInt(i, base)
 		resBuf := ffigo.GetBuffer()
@@ -191,14 +233,26 @@ func strconvHostRouter(ctx context.Context, impl Strconv, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDStrconvQuote:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.Quote failed: %w", err)
+		}
 		r0 := impl.Quote(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDStrconvUnquote:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Strconv.Unquote failed: %w", err)
+		}
 		r0, err := impl.Unquote(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))

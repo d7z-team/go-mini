@@ -74,7 +74,14 @@ func (e *Executor) encodeChannelPayload(value *Var, elem RuntimeType) ([]byte, e
 
 func (e *Executor) decodeChannelPayload(payload []byte, elem RuntimeType) (*Var, error) {
 	reader := ffigo.NewReader(payload)
-	return e.deserializeParsedType(nil, reader, elem, nil)
+	value, err := e.deserializeParsedType(nil, reader, elem, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := reader.Err(); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
 func (e *Executor) registerVMChannelEndpoint(ch *VMChannel, typ RuntimeType) uint64 {

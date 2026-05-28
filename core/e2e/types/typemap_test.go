@@ -8,7 +8,7 @@ import (
 )
 
 func TestTypeMapRobustness(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	tests := []struct {
 		name string

@@ -51,7 +51,8 @@ func advancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 	case methodIDAdvancedFFIIsSame:
 		var a *TestObj
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "test.TestObj"); err == nil {
 				a = obj.(*TestObj)
 			} else {
@@ -60,12 +61,16 @@ func advancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		}
 		var b *TestObj
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "test.TestObj"); err == nil {
 				b = obj.(*TestObj)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "b", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for AdvancedFFI.IsSame failed: %w", err)
 		}
 		r0 := impl.IsSame(a, b)
 		resBuf := ffigo.GetBuffer()
@@ -73,14 +78,23 @@ func advancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		return resBuf.Bytes(), nil
 	case methodIDAdvancedFFIEchoMap:
 		var m map[bool]string
-		l_m := int(reqBuf.ReadUvarint())
+		l_m, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "map")
 		m = make(map[bool]string)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k bool
 			var v string
-			k = bool(reqBuf.ReadBool())
-			v = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadBool()
+				k = bool(tmp)
+			}
+			{
+				tmp, _ := reqBuf.ReadString()
+				v = string(tmp)
+			}
 			m[k] = v
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for AdvancedFFI.EchoMap failed: %w", err)
 		}
 		r0 := impl.EchoMap(m)
 		resBuf := ffigo.GetBuffer()
@@ -92,10 +106,16 @@ func advancedFFIHostRouter(ctx context.Context, impl AdvancedFFI, registry *ffig
 		return resBuf.Bytes(), nil
 	case methodIDAdvancedFFIEchoEmbedded:
 		var e EmbeddedStruct
-		e.BaseField = string(reqBuf.ReadString())
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadString()
+			e.BaseField = string(tmp)
+		}
+		{
+			tmp, _ := reqBuf.ReadVarint()
 			e.ExtraField = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for AdvancedFFI.EchoEmbedded failed: %w", err)
 		}
 		r0 := impl.EchoEmbedded(e)
 		resBuf := ffigo.GetBuffer()

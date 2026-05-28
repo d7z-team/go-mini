@@ -19,7 +19,10 @@ type MockFmtBridge struct {
 func (b *MockFmtBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	if req.MethodID == 1 { // Println
 		reader := ffigo.NewReader(req.Args)
-		msg := reader.ReadString()
+		msg, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
 		b.LastOutput = msg
 		fmt.Printf("[FFI fmt.Println] %s\n", msg) //nolint:forbidigo // allowed for testing
 		return nil, nil
@@ -36,7 +39,7 @@ func (b *MockFmtBridge) DestroyHandle(handle uint32) error {
 }
 
 func TestFFIPrintln(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &MockFmtBridge{}
 
 	testsurface.UseRoute(t, executor, "sandbox.Println", bridge, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")

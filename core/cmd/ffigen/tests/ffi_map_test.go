@@ -30,7 +30,7 @@ func (h *MapTestHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[i
 }
 
 func TestFFIMap(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	host := &MapTestHost{}
 
 	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {

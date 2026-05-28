@@ -59,7 +59,13 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	switch methodID {
 	case methodIDMockOSOpen:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Open failed: %w", err)
+		}
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -81,12 +87,16 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case methodIDMockOSName:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Name failed: %w", err)
 		}
 		r0 := impl.Name(f)
 		resBuf := ffigo.GetBuffer()
@@ -95,12 +105,16 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case methodIDMockOSStat:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Stat failed: %w", err)
 		}
 		r0, err := impl.Stat(f)
 		resBuf := ffigo.GetBuffer()
@@ -119,7 +133,8 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case methodIDMockOSRead:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
@@ -127,7 +142,10 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			}
 		}
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Read failed: %w", err)
+		}
 		r0, err := impl.Read(f, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -144,7 +162,8 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case methodIDMockOSWrite:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
@@ -152,7 +171,10 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 			}
 		}
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Write failed: %w", err)
+		}
 		r0, err := impl.Write(f, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -169,12 +191,16 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 	case methodIDMockOSClose:
 		var f *File
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "os.File"); err == nil {
 				f = obj.(*File)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "f", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Close failed: %w", err)
 		}
 		err := impl.Close(f)
 		resBuf := ffigo.GetBuffer()
@@ -190,14 +216,20 @@ func mockOSHostRouter(ctx context.Context, impl MockOS, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDMockOSDeep:
 		var n Nested
-		n.Info.Name = string(reqBuf.ReadString())
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadString()
+			n.Info.Name = string(tmp)
+		}
+		{
+			tmp, _ := reqBuf.ReadVarint()
 			n.Info.Size = int64(tmp)
 		}
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n.Level = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockOS.Deep failed: %w", err)
 		}
 		r0 := impl.Deep(n)
 		resBuf := ffigo.GetBuffer()
@@ -257,14 +289,26 @@ func contextMockHostRouter(ctx context.Context, impl ContextMock, registry *ffig
 	switch methodID {
 	case methodIDContextMockWithContext:
 		var key string
-		key = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			key = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ContextMock.WithContext failed: %w", err)
+		}
 		r0 := impl.WithContext(ctx, key)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDContextMockWithoutContext:
 		var val string
-		val = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			val = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ContextMock.WithoutContext failed: %w", err)
+		}
 		r0 := impl.WithoutContext(val)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -335,10 +379,16 @@ func nativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 		return resBuf.Bytes(), nil
 	case methodIDNativeMockSetStruct:
 		var s NativeStruct
-		s.Msg = string(reqBuf.ReadString())
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadString()
+			s.Msg = string(tmp)
+		}
+		{
+			tmp, _ := reqBuf.ReadVarint()
 			s.Value = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for NativeMock.SetStruct failed: %w", err)
 		}
 		r0 := impl.SetStruct(s)
 		resBuf := ffigo.GetBuffer()
@@ -347,12 +397,16 @@ func nativeMockHostRouter(ctx context.Context, impl NativeMock, registry *ffigo.
 	case methodIDNativeMockSetPtr:
 		var s *NativeHandle
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "native.NativeHandle"); err == nil {
 				s = obj.(*NativeHandle)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "s", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for NativeMock.SetPtr failed: %w", err)
 		}
 		r0 := impl.SetPtr(s)
 		resBuf := ffigo.GetBuffer()
@@ -404,7 +458,8 @@ func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 	case methodIDPageGetByPlaceholder:
 		var __recv *Page
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "Page"); err == nil {
 				__recv = obj.(*Page)
 			} else {
@@ -412,12 +467,21 @@ func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 			}
 		}
 		var text string
-		text = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			text = string(tmp)
+		}
 		var exact []bool
-		l_exact := int(reqBuf.ReadUvarint())
+		l_exact, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		exact = make([]bool, l_exact)
 		for i_exact := 0; i_exact < l_exact; i_exact++ {
-			exact[i_exact] = bool(reqBuf.ReadBool())
+			{
+				tmp, _ := reqBuf.ReadBool()
+				exact[i_exact] = bool(tmp)
+			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Page.GetByPlaceholder failed: %w", err)
 		}
 		r0 := __recv.GetByPlaceholder(text, exact...)
 		resBuf := ffigo.GetBuffer()

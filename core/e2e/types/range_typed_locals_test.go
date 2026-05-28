@@ -8,7 +8,7 @@ import (
 )
 
 func TestRangeTypedLocals(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 
 	t.Run("ArrayInt64ValueKeepsNumericType", func(t *testing.T) {
 		const code = `

@@ -35,7 +35,7 @@ func (m *MockShapeHost) Area(r Rect) int64 {
 
 func TestFFIStruct(t *testing.T) {
 	impl := &MockShapeHost{}
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if err := executor.UseSurface(SurfaceMockShapeAPILibrary("shape", impl)); err != nil {
 		t.Fatal(err)
 	}

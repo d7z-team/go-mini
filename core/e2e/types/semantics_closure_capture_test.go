@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoopClosureCaptureUsesPerIterationBindings(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 		package main
@@ -36,7 +36,7 @@ func TestLoopClosureCaptureUsesPerIterationBindings(t *testing.T) {
 }
 
 func TestRangeLoopClosureCaptureUsesPerIterationBindings(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 		package main

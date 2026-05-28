@@ -8,7 +8,7 @@ import (
 )
 
 func TestInterfaceAssignmentClonesStructReceiverForVTable(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -43,7 +43,7 @@ func TestInterfaceAssignmentClonesStructReceiverForVTable(t *testing.T) {
 }
 
 func TestInterfaceReassignmentRebindsClonedVTableReceiver(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 

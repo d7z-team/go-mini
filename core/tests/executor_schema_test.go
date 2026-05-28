@@ -16,7 +16,7 @@ import (
 )
 
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	ffiSchema := runtime.NewFFISurfaceSchema()
 	ffiSchema.AddRouteDecls([]runtime.FFIRouteDecl{
 		testsurface.Route("demo.Call", 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route"),
@@ -66,7 +66,7 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 }
 
 func TestMiniExecutorRuntimeExecutorReturnsErrorAPI(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	runtimeExec, err := exec.RuntimeExecutor()
 	if err != nil {
 		t.Fatalf("runtime executor failed: %v", err)
@@ -77,7 +77,7 @@ func TestMiniExecutorRuntimeExecutorReturnsErrorAPI(t *testing.T) {
 }
 
 func TestExportMetadataIncludesRegisteredFFISignatures(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route")
 
 	meta := exec.ExportMetadata()
@@ -87,7 +87,7 @@ func TestExportMetadataIncludesRegisteredFFISignatures(t *testing.T) {
 }
 
 func TestCompiledBytecodeJSONRoundTripRemainsExecutable(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
 
@@ -144,7 +144,7 @@ func main() {
 }
 
 func TestPreparedProgramJSONRoundTripExecutes(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
 var counter = 1
@@ -178,7 +178,7 @@ func main() { counter = counter + 41 }
 }
 
 func TestNewRuntimeByBytecodeJSONUsesExecutableMetadataOnly(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
 
@@ -236,7 +236,7 @@ func main() {
 }
 
 func TestExecutableProgramMarshalJSONDefaultsToBytecode(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 func main() {}
@@ -255,7 +255,7 @@ func main() {}
 }
 
 func TestNewRuntimeByBytecodeJSONLoadsBytecode(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 var counter = 1
@@ -279,7 +279,7 @@ func main() { counter = counter + 1 }
 }
 
 func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
 	err := exec.UseSurface(testsurface.RouteBundle("demo.Call", nil, 2, runtime.MustParseRuntimeFuncSig("function(String) Void"), ""))
@@ -290,7 +290,7 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 }
 
 func TestMiniExecutorUseSurfaceReportsSchemaConflict(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, exec, "demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), "")
 
 	err := exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), ""))
@@ -301,7 +301,7 @@ func TestMiniExecutorUseSurfaceReportsSchemaConflict(t *testing.T) {
 }
 
 func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	sigA := runtime.MustParseRuntimeFuncSig("function(String) Void")
 	sigB := runtime.MustParseRuntimeFuncSig("function(Int64) Void")
 	testsurface.UseRoute(t, exec, "demo.Call", nil, 1, sigA, "")
@@ -319,7 +319,7 @@ func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
 }
 
 func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
 	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
 	schema := runtime.NewFFISurfaceSchema()
@@ -358,7 +358,7 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 }
 
 func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	var handle uint32
 	var directHandle uint32
 	err := exec.UseSurface(surface.New(runtime.NewFFISurfaceSchema(), func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
@@ -384,7 +384,7 @@ func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
 }
 
 func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	left := runtime.NewFFISurfaceSchema()
 	left.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
 	if err := exec.UseSurface(surface.Router(left, nil)); err != nil {
@@ -412,7 +412,7 @@ func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
 }
 
 func TestNewRuntimeByCompiledRequiresExecutableBytecode(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
 func main() {}
@@ -432,7 +432,7 @@ func main() {}
 }
 
 func TestNewRuntimeByBytecodeRejectsMissingExecutable(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	program := bytecode.NewProgram()
 	program.Entry = []bytecode.Instruction{{Op: "PUSH", Operand: "1"}}
 
@@ -446,7 +446,7 @@ func TestNewRuntimeByBytecodeRejectsMissingExecutable(t *testing.T) {
 }
 
 func TestCompileGoCodeToBytecodeReturnsExecutableProgram(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	program, err := exec.CompileGoCodeToBytecode(`
 package main
 func main() {}
@@ -466,7 +466,7 @@ func main() {}
 }
 
 func TestPreparedOnlyBytecodeLoadsAndExecutes(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 var Result Int64 = 1
@@ -502,7 +502,7 @@ func main() { Result = Result + 41 }
 }
 
 func TestModuleImportUsesPreparedExecutable(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	helperSource := `
 package helper
 func Answer() Int64 { return 40 }
@@ -540,7 +540,7 @@ func Answer() Int64 { return 40 }
 }
 
 func TestExecutableProgramBytecodeAccessor(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 func main() {}
@@ -558,7 +558,7 @@ func main() {}
 }
 
 func TestArtifactFromBytecodeJSONRoundTrip(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 const Version = "v1"

@@ -352,16 +352,17 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 			fmt.Fprintf(sb, "\tretBuf := ffigo.NewReader(retData)\n")
 		}
 		if method.HasCopyBack {
-			fmt.Fprintf(sb, "\tcopyBackCount := int(retBuf.ReadUvarint())\n")
+			fmt.Fprintf(sb, "\tcopyBackCount, _ := retBuf.ReadCount(ffigo.MaxWireCollectionItems, \"copy-back\")\n")
 			fmt.Fprintf(sb, "\tif copyBackCount != %d { panic(fmt.Sprintf(\"ffigen: %s.%s copy-back mismatch: %%d\", copyBackCount)) }\n", len(copyBackVars), name, method.Name)
 			for _, copyBackVar := range copyBackVars {
 				switch copyBackVar.kind {
 				case "bytes":
 					fmt.Fprintf(sb, "\tif %s == nil { panic(\"ffigen: nil BytesRef passed to %s.%s\") }\n", copyBackVar.name, name, method.Name)
-					fmt.Fprintf(sb, "\t%s.Value = retBuf.ReadBytes()\n", copyBackVar.name)
+					fmt.Fprintf(sb, "\t%s.Value, _ = retBuf.ReadBytes()\n", copyBackVar.name)
 				case "array":
 					fmt.Fprintf(sb, "\tif %s == nil { panic(\"ffigen: nil ArrayRef passed to %s.%s\") }\n", copyBackVar.name, name, method.Name)
-					fmt.Fprintf(sb, "\tcopyBackBuf_%s := ffigo.NewReader(retBuf.ReadBytes())\n", copyBackVar.name)
+					fmt.Fprintf(sb, "\tcopyBackPayload_%s, _ := retBuf.ReadBytes()\n", copyBackVar.name)
+					fmt.Fprintf(sb, "\tcopyBackBuf_%s := ffigo.NewReader(copyBackPayload_%s)\n", copyBackVar.name, copyBackVar.name)
 					tmpVar := "copyBack_" + copyBackVar.name
 					fmt.Fprintf(sb, "\tvar %s %s\n", tmpVar, g.toGoType(copyBackVar.vmType))
 					g.emitReadAssign(sb, tmpVar, copyBackVar.vmType, nil, structs, "copyBackBuf_"+copyBackVar.name, moduleName, interfaceSchemaVars, false)
@@ -376,7 +377,7 @@ func (g *Generator) writeProxy(sb *strings.Builder, name string, methods []gener
 				varName := fmt.Sprintf("err_%d", result.Index)
 				fmt.Fprintf(sb, "\tvar %s error\n", varName)
 				fmt.Fprintf(sb, "\tif retBuf.Available() > 0 {\n")
-				fmt.Fprintf(sb, "\t\ted := retBuf.ReadRawError()\n")
+				fmt.Fprintf(sb, "\t\ted, _ := retBuf.ReadRawError()\n")
 				fmt.Fprintf(sb, "\t\tif ed.Message != \"\" || ed.Handle != 0 {\n")
 				fmt.Fprintf(sb, "\t\t\tif ed.Handle != 0 && __p.registry != nil {\n")
 				fmt.Fprintf(sb, "\t\t\t\tif obj, ok := __p.registry.Get(ed.Handle); ok { %s = obj.(error) } else { %s = ed }\n", varName, varName)
@@ -445,6 +446,9 @@ func (g *Generator) writeHostRouter(sb *strings.Builder, name, implType string, 
 			} else {
 				paramVars = append(paramVars, param.Name)
 			}
+		}
+		if method.HasInput {
+			fmt.Fprintf(sb, "\t\tif err := reqBuf.Err(); err != nil { return nil, fmt.Errorf(\"FFI decode params for %s.%s failed: %%w\", err) }\n", name, method.Name)
 		}
 
 		callPrefix := "impl."

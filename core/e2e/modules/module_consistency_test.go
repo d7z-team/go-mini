@@ -13,7 +13,7 @@ import (
 
 // TestModuleConsistency 验证导出变量读取来自显式模块导出表，并反映模块内部更新
 func TestModuleConsistency(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
 			package counter
@@ -74,7 +74,7 @@ func TestModuleConsistency(t *testing.T) {
 
 // TestReadOnlyModuleProtection 验证 FFI 等虚拟模块的只读属性
 func TestReadOnlyModuleProtection(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "mock.Print", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) Void"), "")
 
 	code := `
@@ -105,7 +105,7 @@ func TestReadOnlyModuleProtection(t *testing.T) {
 }
 
 func TestSourceModuleExportsAreReadOnly(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
 package counter
 
@@ -134,7 +134,7 @@ func main() {
 
 // TestModuleClosureConsistency 验证被闭包捕获的变量在模块内部修改时的表现
 func TestModuleClosureConsistency(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("auth", surface.GoFile("auth.mgo", `
 			package auth

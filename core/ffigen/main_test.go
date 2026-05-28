@@ -372,7 +372,7 @@ type Mutator interface {
 	if !strings.Contains(code, `resBuf.WriteUvarint(uint64(1))`) {
 		t.Fatalf("expected host router to write copy-back envelope, got:\n%s", code)
 	}
-	if !strings.Contains(code, `buf.Value = retBuf.ReadBytes()`) {
+	if !strings.Contains(code, `buf.Value, _ = retBuf.ReadBytes()`) {
 		t.Fatalf("expected proxy to read copy-back into BytesRef, got:\n%s", code)
 	}
 }
@@ -411,7 +411,7 @@ type Mutator interface {
 	if !strings.Contains(code, `resBuf.WriteBytes(copyBackBuf_nums.Bytes())`) {
 		t.Fatalf("expected host router to write array copy-back envelope, got:\n%s", code)
 	}
-	if !strings.Contains(code, `copyBackBuf_nums := ffigo.NewReader(retBuf.ReadBytes())`) {
+	if !strings.Contains(code, `copyBackPayload_nums, _ := retBuf.ReadBytes()`) || !strings.Contains(code, `copyBackBuf_nums := ffigo.NewReader(copyBackPayload_nums)`) {
 		t.Fatalf("expected proxy to read nested array copy-back payload, got:\n%s", code)
 	}
 	if !strings.Contains(code, `copyBack_nums[i_copyBack_nums] = int64(tmp)`) {
@@ -705,7 +705,7 @@ type Numbers interface {
 	if !strings.Contains(code, "resBuf.WriteVarint(int64(r0))") {
 		t.Fatalf("expected unsigned results to use signed varint wire, got:\n%s", code)
 	}
-	if !strings.Contains(code, "tmp := reqBuf.ReadVarint()") || !strings.Contains(code, "tmp < 0 || tmp > 255") {
+	if !strings.Contains(code, "tmp, _ := reqBuf.ReadVarint()") || !strings.Contains(code, "tmp < 0 || tmp > 255") {
 		t.Fatalf("expected host router to decode uint8 from signed varint with bounds, got:\n%s", code)
 	}
 	if strings.Contains(code, "wireBuf.WriteUvarint(uint64(v))") || strings.Contains(code, "resBuf.WriteUvarint(uint64(r0))") {

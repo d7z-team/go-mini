@@ -8,7 +8,7 @@ import (
 
 // 多个嵌套 if 块都在 continue 之后
 func TestRangeContinueMultipleNestedBlocks(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -68,7 +68,7 @@ func main() {
 
 // 传统 for 循环中的 continue + 嵌套块
 func TestForContinueWithNestedBlocks(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -117,7 +117,7 @@ func main() {
 
 // break 在内层 range 中，外层变量应仍然可访问
 func TestRangeBreakWithNestedBlocks(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -173,7 +173,7 @@ func main() {
 
 // for 循环中的 break + 嵌套块
 func TestForBreakWithNestedBlocks(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main

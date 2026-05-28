@@ -60,9 +60,15 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 	switch methodID {
 	case methodIDRegexpMatch:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.Match failed: %w", err)
+		}
 		r0, err := impl.Match(pattern, b)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
@@ -78,9 +84,18 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpMatchString:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.MatchString failed: %w", err)
+		}
 		r0, err := impl.MatchString(pattern, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
@@ -96,29 +111,53 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpQuoteMeta:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.QuoteMeta failed: %w", err)
+		}
 		r0 := impl.QuoteMeta(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindString:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindString failed: %w", err)
+		}
 		r0 := impl.FindString(pattern, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindAllString:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
 		var n int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindAllString failed: %w", err)
 		}
 		r0, err := impl.FindAllString(pattern, s, n)
 		resBuf := ffigo.GetBuffer()
@@ -138,9 +177,18 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindStringIndex:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindStringIndex failed: %w", err)
+		}
 		r0, err := impl.FindStringIndex(pattern, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
@@ -159,9 +207,18 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindStringSubmatchIndex:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindStringSubmatchIndex failed: %w", err)
+		}
 		r0, err := impl.FindStringSubmatchIndex(pattern, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
@@ -180,9 +237,18 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindStringSubmatch:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindStringSubmatch failed: %w", err)
+		}
 		r0 := impl.FindStringSubmatch(pattern, s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
@@ -192,13 +258,22 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpFindAllStringSubmatch:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
 		var n int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.FindAllStringSubmatch failed: %w", err)
 		}
 		r0, err := impl.FindAllStringSubmatch(pattern, s, n)
 		resBuf := ffigo.GetBuffer()
@@ -221,11 +296,23 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpReplaceAllString:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var src string
-		src = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			src = string(tmp)
+		}
 		var repl string
-		repl = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			repl = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.ReplaceAllString failed: %w", err)
+		}
 		r0, err := impl.ReplaceAllString(pattern, src, repl)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -241,11 +328,23 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpReplaceAllLiteralString:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var src string
-		src = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			src = string(tmp)
+		}
 		var repl string
-		repl = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			repl = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.ReplaceAllLiteralString failed: %w", err)
+		}
 		r0, err := impl.ReplaceAllLiteralString(pattern, src, repl)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -261,13 +360,22 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDRegexpSplit:
 		var pattern string
-		pattern = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			pattern = string(tmp)
+		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
 		var n int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Regexp.Split failed: %w", err)
 		}
 		r0, err := impl.Split(pattern, s, n)
 		resBuf := ffigo.GetBuffer()

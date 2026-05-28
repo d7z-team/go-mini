@@ -4,9 +4,11 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type RobustPoint struct {
@@ -30,7 +32,7 @@ func (m *MockGeo) SumX(points []RobustPoint) int64 {
 }
 
 func TestRobustness(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	mock := &MockGeo{}
 	if err := executor.UseSurface(SurfaceMockGeometryLibrary("e2e", mock)); err != nil {
@@ -72,5 +74,12 @@ func TestRobustness(t *testing.T) {
 	err = prog.Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGeneratedRouterRejectsMalformedArgs(t *testing.T) {
+	_, err := mockGeometryHostRouter(context.Background(), &MockGeo{}, ffigo.NewHandleRegistry(), methodIDMockGeometrySumX, "", []byte{5})
+	if err == nil || !strings.Contains(err.Error(), "decode params") {
+		t.Fatalf("expected decode params error, got %v", err)
 	}
 }

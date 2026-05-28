@@ -11,7 +11,7 @@ func TestAdvancedFFIExecution(t *testing.T) {
 	obj := &TestObj{Name: "Shared"}
 	impl := &AdvancedFFIImpl{obj: obj}
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if err := executor.UseSurface(SurfaceAdvancedFFI(impl)); err != nil {
 		t.Fatal(err)
 	}

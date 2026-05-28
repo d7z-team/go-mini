@@ -34,7 +34,7 @@ func (importRunControllerBridge) DestroyHandle(uint32) error {
 }
 
 func TestExecutorImportModulePathRunsWithRunController(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "host.HasRunController", importRunControllerBridge{}, 1, runtime.MustParseRuntimeFuncSig("function() Bool"), "")
 	if err := executor.UseSurface(surface.Library("usesrun", surface.GoFile("usesrun.mgo", `
 package usesrun

@@ -26,7 +26,7 @@ func (m *mockLogger) Internal(msg, level string, code int64) {
 }
 
 func TestUnnamedParams(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	logger := &mockLogger{}
 
 	if err := executor.UseSurface(SurfaceLogger(logger)); err != nil {

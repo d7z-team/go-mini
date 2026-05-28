@@ -90,15 +90,26 @@ func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridg
 	}
 	switch target.Mode {
 	case FFIParamInOutBytes:
-		next := NewBytes(reader.ReadBytes())
+		bytes, err := reader.ReadBytes()
+		if err != nil {
+			return err
+		}
+		next := NewBytes(bytes)
 		if !target.Type.IsEmpty() {
 			next.SetRuntimeType(target.Type)
 		}
 		return e.storeAddress(session, target.LHS, next)
 	case FFIParamInOutArray:
-		payload := reader.ReadBytes()
-		next, err := e.deserializeRuntimeType(session, ffigo.NewReader(payload), target.WireType, bridge)
+		payload, err := reader.ReadBytes()
 		if err != nil {
+			return err
+		}
+		copyBackReader := ffigo.NewReader(payload)
+		next, err := e.deserializeRuntimeType(session, copyBackReader, target.WireType, bridge)
+		if err != nil {
+			return err
+		}
+		if err := copyBackReader.Err(); err != nil {
 			return err
 		}
 		if next != nil && !target.Type.IsEmpty() {

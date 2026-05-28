@@ -66,93 +66,129 @@ func bytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 	switch methodID {
 	case methodIDBytesContains:
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
 		var sub []byte
-		sub = reqBuf.ReadBytes()
+		sub, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Contains failed: %w", err)
+		}
 		r0 := impl.Contains(b, sub)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesCount:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var sep []byte
-		sep = reqBuf.ReadBytes()
+		sep, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Count failed: %w", err)
+		}
 		r0 := impl.Count(s, sep)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesHasPrefix:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var prefix []byte
-		prefix = reqBuf.ReadBytes()
+		prefix, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.HasPrefix failed: %w", err)
+		}
 		r0 := impl.HasPrefix(s, prefix)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesHasSuffix:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var suffix []byte
-		suffix = reqBuf.ReadBytes()
+		suffix, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.HasSuffix failed: %w", err)
+		}
 		r0 := impl.HasSuffix(s, suffix)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesIndex:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var sep []byte
-		sep = reqBuf.ReadBytes()
+		sep, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Index failed: %w", err)
+		}
 		r0 := impl.Index(s, sep)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesLastIndex:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var sep []byte
-		sep = reqBuf.ReadBytes()
+		sep, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.LastIndex failed: %w", err)
+		}
 		r0 := impl.LastIndex(s, sep)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
 		return resBuf.Bytes(), nil
 	case methodIDBytesToLower:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.ToLower failed: %w", err)
+		}
 		r0 := impl.ToLower(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
 	case methodIDBytesToUpper:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.ToUpper failed: %w", err)
+		}
 		r0 := impl.ToUpper(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
 	case methodIDBytesTrim:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var cutset string
-		cutset = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			cutset = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Trim failed: %w", err)
+		}
 		r0 := impl.Trim(s, cutset)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
 	case methodIDBytesTrimSpace:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.TrimSpace failed: %w", err)
+		}
 		r0 := impl.TrimSpace(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
 	case methodIDBytesSplit:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var sep []byte
-		sep = reqBuf.ReadBytes()
+		sep, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Split failed: %w", err)
+		}
 		r0 := impl.Split(s, sep)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(len(r0)))
@@ -162,24 +198,30 @@ func bytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		return resBuf.Bytes(), nil
 	case methodIDBytesJoin:
 		var s [][]byte
-		l_s := int(reqBuf.ReadUvarint())
+		l_s, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		s = make([][]byte, l_s)
 		for i_s := 0; i_s < l_s; i_s++ {
-			s[i_s] = reqBuf.ReadBytes()
+			s[i_s], _ = reqBuf.ReadBytes()
 		}
 		var sep []byte
-		sep = reqBuf.ReadBytes()
+		sep, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Join failed: %w", err)
+		}
 		r0 := impl.Join(s, sep)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
 		return resBuf.Bytes(), nil
 	case methodIDBytesRepeat:
 		var b []byte
-		b = reqBuf.ReadBytes()
+		b, _ = reqBuf.ReadBytes()
 		var count int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			count = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.Repeat failed: %w", err)
 		}
 		r0 := impl.Repeat(b, count)
 		resBuf := ffigo.GetBuffer()
@@ -187,11 +229,14 @@ func bytesHostRouter(ctx context.Context, impl Bytes, registry *ffigo.HandleRegi
 		return resBuf.Bytes(), nil
 	case methodIDBytesReplaceAll:
 		var s []byte
-		s = reqBuf.ReadBytes()
+		s, _ = reqBuf.ReadBytes()
 		var old []byte
-		old = reqBuf.ReadBytes()
+		old, _ = reqBuf.ReadBytes()
 		var replacement []byte
-		replacement = reqBuf.ReadBytes()
+		replacement, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Bytes.ReplaceAll failed: %w", err)
+		}
 		r0 := impl.ReplaceAll(s, old, replacement)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)

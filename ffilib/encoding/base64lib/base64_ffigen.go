@@ -30,7 +30,13 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	switch methodID {
 	case methodIDModuleNewEncoding:
 		var encoder string
-		encoder = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			encoder = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.NewEncoding failed: %w", err)
+		}
 		r0 := impl.NewEncoding(encoder)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -110,7 +116,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingEncode:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -118,9 +125,15 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var dst *ffigo.BytesRef
-		dst = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			dst = &ffigo.BytesRef{Value: bytes}
+		}
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.Encode failed: %w", err)
+		}
 		__recv.Encode(dst, src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -133,7 +146,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingDecode:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -141,9 +155,15 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var dst *ffigo.BytesRef
-		dst = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			dst = &ffigo.BytesRef{Value: bytes}
+		}
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.Decode failed: %w", err)
+		}
 		r0, err := __recv.Decode(dst, src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -166,7 +186,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingEncodeToString:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -174,7 +195,10 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.EncodeToString failed: %w", err)
+		}
 		r0 := __recv.EncodeToString(src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -182,7 +206,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingDecodeString:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -190,7 +215,13 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.DecodeString failed: %w", err)
+		}
 		r0, err := __recv.DecodeString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -207,7 +238,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingAppendEncode:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -215,9 +247,12 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var dst []byte
-		dst = reqBuf.ReadBytes()
+		dst, _ = reqBuf.ReadBytes()
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.AppendEncode failed: %w", err)
+		}
 		r0 := __recv.AppendEncode(dst, src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -225,7 +260,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingAppendDecode:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -233,9 +269,12 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 			}
 		}
 		var dst []byte
-		dst = reqBuf.ReadBytes()
+		dst, _ = reqBuf.ReadBytes()
 		var src []byte
-		src = reqBuf.ReadBytes()
+		src, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.AppendDecode failed: %w", err)
+		}
 		r0, err := __recv.AppendDecode(dst, src)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -252,7 +291,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingEncodedLen:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -261,8 +301,11 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 		}
 		var n int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.EncodedLen failed: %w", err)
 		}
 		r0 := __recv.EncodedLen(n)
 		resBuf := ffigo.GetBuffer()
@@ -271,7 +314,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingDecodedLen:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -280,8 +324,11 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 		}
 		var n int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			n = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.DecodedLen failed: %w", err)
 		}
 		r0 := __recv.DecodedLen(n)
 		resBuf := ffigo.GetBuffer()
@@ -290,7 +337,8 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingWithPadding:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
@@ -299,8 +347,11 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 		}
 		var padding int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			padding = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.WithPadding failed: %w", err)
 		}
 		r0 := __recv.WithPadding(padding)
 		resBuf := ffigo.GetBuffer()
@@ -314,12 +365,16 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 	case methodIDEncodingStrict:
 		var __recv *Encoding
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "encoding/base64.Encoding"); err == nil {
 				__recv = obj.(*Encoding)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Encoding.Strict failed: %w", err)
 		}
 		r0 := __recv.Strict()
 		resBuf := ffigo.GetBuffer()

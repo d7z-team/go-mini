@@ -59,13 +59,16 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case methodIDModuleUnix:
 		var sec int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			sec = int64(tmp)
 		}
 		var nsec int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			nsec = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.Unix failed: %w", err)
 		}
 		r0 := impl.Unix(sec, nsec)
 		resBuf := ffigo.GetBuffer()
@@ -79,8 +82,11 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case methodIDModuleSleep:
 		var ns int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			ns = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.Sleep failed: %w", err)
 		}
 		r0 := impl.Sleep(ctx, ns)
 		return ffigo.AsyncValue[ffigo.Void](r0, func(resBuf *ffigo.Buffer, value ffigo.Void) error {
@@ -89,12 +95,16 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case methodIDModuleSince:
 		var t *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				t = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.Since failed: %w", err)
 		}
 		r0 := impl.Since(ctx, t)
 		resBuf := ffigo.GetBuffer()
@@ -103,12 +113,16 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 	case methodIDModuleUntil:
 		var t *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				t = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "t", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.Until failed: %w", err)
 		}
 		r0 := impl.Until(ctx, t)
 		resBuf := ffigo.GetBuffer()
@@ -116,9 +130,18 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDModuleParse:
 		var layout string
-		layout = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			layout = string(tmp)
+		}
 		var value string
-		value = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			value = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.Parse failed: %w", err)
+		}
 		r0, err := impl.Parse(layout, value)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -139,7 +162,13 @@ func moduleHostRouter(ctx context.Context, impl Module, registry *ffigo.HandleRe
 		return resBuf.Bytes(), nil
 	case methodIDModuleParseDuration:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Module.ParseDuration failed: %w", err)
+		}
 		r0, err := impl.ParseDuration(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -272,12 +301,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeYear:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Year failed: %w", err)
 		}
 		r0 := __recv.Year()
 		resBuf := ffigo.GetBuffer()
@@ -286,12 +319,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeMonth:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Month failed: %w", err)
 		}
 		r0 := __recv.Month()
 		resBuf := ffigo.GetBuffer()
@@ -300,12 +337,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeDay:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Day failed: %w", err)
 		}
 		r0 := __recv.Day()
 		resBuf := ffigo.GetBuffer()
@@ -314,12 +355,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeHour:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Hour failed: %w", err)
 		}
 		r0 := __recv.Hour()
 		resBuf := ffigo.GetBuffer()
@@ -328,12 +373,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeMinute:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Minute failed: %w", err)
 		}
 		r0 := __recv.Minute()
 		resBuf := ffigo.GetBuffer()
@@ -342,12 +391,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeSecond:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Second failed: %w", err)
 		}
 		r0 := __recv.Second()
 		resBuf := ffigo.GetBuffer()
@@ -356,12 +409,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeNanosecond:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Nanosecond failed: %w", err)
 		}
 		r0 := __recv.Nanosecond()
 		resBuf := ffigo.GetBuffer()
@@ -370,12 +427,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeUnix:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Unix failed: %w", err)
 		}
 		r0 := __recv.Unix()
 		resBuf := ffigo.GetBuffer()
@@ -384,12 +445,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeUnixMilli:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.UnixMilli failed: %w", err)
 		}
 		r0 := __recv.UnixMilli()
 		resBuf := ffigo.GetBuffer()
@@ -398,12 +463,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeUnixMicro:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.UnixMicro failed: %w", err)
 		}
 		r0 := __recv.UnixMicro()
 		resBuf := ffigo.GetBuffer()
@@ -412,12 +481,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeUnixNano:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.UnixNano failed: %w", err)
 		}
 		r0 := __recv.UnixNano()
 		resBuf := ffigo.GetBuffer()
@@ -426,7 +499,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeFormat:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -434,7 +508,13 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 			}
 		}
 		var layout string
-		layout = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			layout = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Format failed: %w", err)
+		}
 		r0 := __recv.Format(layout)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -442,7 +522,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeAdd:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -451,8 +532,11 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		var d int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			d = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Add failed: %w", err)
 		}
 		r0 := __recv.Add(d)
 		resBuf := ffigo.GetBuffer()
@@ -466,7 +550,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeSub:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -475,12 +560,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		var other *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Sub failed: %w", err)
 		}
 		r0 := __recv.Sub(other)
 		resBuf := ffigo.GetBuffer()
@@ -489,12 +578,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeIsZero:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.IsZero failed: %w", err)
 		}
 		r0 := __recv.IsZero()
 		resBuf := ffigo.GetBuffer()
@@ -503,7 +596,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeBefore:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -512,12 +606,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		var other *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Before failed: %w", err)
 		}
 		r0 := __recv.Before(other)
 		resBuf := ffigo.GetBuffer()
@@ -526,7 +624,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeAfter:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -535,12 +634,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		var other *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.After failed: %w", err)
 		}
 		r0 := __recv.After(other)
 		resBuf := ffigo.GetBuffer()
@@ -549,7 +652,8 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeEqual:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
@@ -558,12 +662,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 		}
 		var other *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				other = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "other", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.Equal failed: %w", err)
 		}
 		r0 := __recv.Equal(other)
 		resBuf := ffigo.GetBuffer()
@@ -572,12 +680,16 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 	case methodIDTimeString:
 		var __recv *Time
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "time.Time"); err == nil {
 				__recv = obj.(*Time)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Time.String failed: %w", err)
 		}
 		r0 := __recv.String()
 		resBuf := ffigo.GetBuffer()

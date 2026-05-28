@@ -12,7 +12,7 @@ import (
 )
 
 func TestFFIPanicCarriesSourceLine(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &panicInterceptBridge{}
 	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 

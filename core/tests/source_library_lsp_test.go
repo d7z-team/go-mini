@@ -19,7 +19,7 @@ func (a surfaceLibraryLSPAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramSt
 }
 
 func TestSurfaceLibraryLSPAnalysisRegistersSourceModule(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(lspMathLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func main() {
 }
 
 func TestSurfaceLibraryLSPPackageCompletionIncludesSourceMembers(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(lspMathLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func main() {
 }
 
 func TestSurfaceLibraryLSPRejectsUnknownSourceMember(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(lspMathLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func main() {
 }
 
 func TestSurfaceLibraryLSPServerUsesLibraryModuleLoader(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(lspMathLibrary()); err != nil {
 		t.Fatal(err)
 	}

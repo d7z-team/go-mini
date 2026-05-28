@@ -8,7 +8,7 @@ import (
 )
 
 func TestNamedType(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -38,7 +38,7 @@ func TestNamedType(t *testing.T) {
 }
 
 func TestNamedTypeRecursive(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	

@@ -52,7 +52,7 @@ func (m *CoverageMockOS) Deep(n Nested) Nested {
 }
 
 func TestFFICoverage(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	mock := &CoverageMockOS{}
 	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
@@ -95,7 +95,7 @@ func TestFFICoverage(t *testing.T) {
 }
 
 func TestFFIErrorPropagation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	mock := &CoverageMockOS{}
 	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {
 		t.Fatal(err)

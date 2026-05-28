@@ -12,7 +12,7 @@ import (
 )
 
 func TestMultiAssignment(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("ResultDestructuring", func(t *testing.T) {
 		code := `
@@ -261,8 +261,14 @@ type mockTupleBridge struct{}
 
 func (b *mockTupleBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	a := reader.ReadVarint()
-	bVal := reader.ReadVarint()
+	a, err := reader.ReadVarint()
+	if err != nil {
+		return nil, err
+	}
+	bVal, err := reader.ReadVarint()
+	if err != nil {
+		return nil, err
+	}
 
 	q := a / bVal
 	r := a % bVal

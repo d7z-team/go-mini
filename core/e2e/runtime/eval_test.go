@@ -9,7 +9,7 @@ import (
 )
 
 func TestEval(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	tests := []struct {
 		expr    string
@@ -68,7 +68,7 @@ func TestEval(t *testing.T) {
 }
 
 func TestEvalByteCopy(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	original := []byte("hello")
 	env := map[string]interface{}{
@@ -95,7 +95,7 @@ func TestEvalByteCopy(t *testing.T) {
 }
 
 func TestEvalStructInjection(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	type Metadata struct {
 		ID int `json:"id"`
@@ -164,7 +164,7 @@ func TestEvalStructInjection(t *testing.T) {
 }
 
 func TestEvalAfterExecute(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -203,7 +203,7 @@ func test() string {
 }
 
 func TestNormalizeFixedSizeByteArray(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	prog, _ := e.NewRuntimeByGoCode("package main")
 
 	data := [4]byte{1, 2, 3, 4}
@@ -223,7 +223,7 @@ func TestNormalizeFixedSizeByteArray(t *testing.T) {
 }
 
 func TestEvalRuntimeFailureEscapesAsAPIError(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 
 	prog, err := e.NewRuntimeByGoCode(`
 package main

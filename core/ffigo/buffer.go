@@ -2,6 +2,7 @@ package ffigo
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -157,90 +158,205 @@ func (b *Buffer) WriteAny(v interface{}) {
 type Reader struct {
 	buf    []byte
 	offset int
+	err    error
 }
 
 func NewReader(data []byte) *Reader {
 	return &Reader{buf: data, offset: 0}
 }
 
-func (r *Reader) Available() int { return len(r.buf) - r.offset }
+const (
+	MaxWireBlobBytes       = 64 << 20
+	MaxWireCollectionItems = 1 << 20
+	MaxWireInterfaceItems  = 1024
+)
+
+func (r *Reader) Available() int {
+	if r == nil || r.offset >= len(r.buf) {
+		return 0
+	}
+	return len(r.buf) - r.offset
+}
+
+func (r *Reader) Err() error {
+	if r == nil {
+		return io.ErrUnexpectedEOF
+	}
+	return r.err
+}
+
+func (r *Reader) setErr(err error) {
+	if r.err == nil {
+		r.err = err
+	}
+}
 
 func (r *Reader) ReadByte() (byte, error) {
+	if r == nil {
+		return 0, io.ErrUnexpectedEOF
+	}
+	if r.err != nil {
+		return 0, r.err
+	}
 	if r.offset >= len(r.buf) {
-		return 0, io.EOF
+		r.setErr(io.ErrUnexpectedEOF)
+		return 0, r.err
 	}
 	v := r.buf[r.offset]
 	r.offset++
 	return v, nil
 }
 
-func (r *Reader) ReadUvarint() uint64 {
+func (r *Reader) ReadUvarint() (uint64, error) {
+	if r == nil || r.err != nil {
+		return 0, r.Err()
+	}
 	v, n := binary.Uvarint(r.buf[r.offset:])
+	if n == 0 {
+		r.setErr(io.ErrUnexpectedEOF)
+		return 0, r.err
+	}
+	if n < 0 {
+		r.setErr(errors.New("wire uvarint overflow"))
+		return 0, r.err
+	}
 	r.offset += n
-	return v
+	return v, nil
 }
 
-func (r *Reader) ReadVarint() int64 {
+func (r *Reader) ReadVarint() (int64, error) {
+	if r == nil || r.err != nil {
+		return 0, r.Err()
+	}
 	v, n := binary.Varint(r.buf[r.offset:])
+	if n == 0 {
+		r.setErr(io.ErrUnexpectedEOF)
+		return 0, r.err
+	}
+	if n < 0 {
+		r.setErr(errors.New("wire varint overflow"))
+		return 0, r.err
+	}
 	r.offset += n
-	return v
+	return v, nil
 }
 
-func (r *Reader) ReadFloat64() float64 {
+func (r *Reader) ReadFloat64() (float64, error) {
+	if r == nil || r.err != nil {
+		return 0, r.Err()
+	}
+	if r.Available() < 8 {
+		r.setErr(io.ErrUnexpectedEOF)
+		return 0, r.err
+	}
 	v := binary.LittleEndian.Uint64(r.buf[r.offset:])
 	r.offset += 8
-	return math.Float64frombits(v)
+	return math.Float64frombits(v), nil
 }
 
-func (r *Reader) ReadBool() bool {
-	v, _ := r.ReadByte()
-	return v != 0
+func (r *Reader) ReadBool() (bool, error) {
+	v, err := r.ReadByte()
+	return v != 0, err
 }
 
-func (r *Reader) ReadString() string {
-	l := int(r.ReadUvarint())
+func (r *Reader) readByteLength(limit int, label string) (int, error) {
+	raw, err := r.ReadUvarint()
+	if err != nil {
+		return 0, err
+	}
+	if raw > uint64(limit) {
+		r.setErr(fmt.Errorf("wire %s length %d exceeds limit %d", label, raw, limit))
+		return 0, r.err
+	}
+	l := int(raw)
+	if l > r.Available() {
+		r.setErr(io.ErrUnexpectedEOF)
+		return 0, r.err
+	}
+	return l, nil
+}
+
+func (r *Reader) ReadCount(limit int, label string) (int, error) {
+	raw, err := r.ReadUvarint()
+	if err != nil {
+		return 0, err
+	}
+	if raw > uint64(limit) {
+		r.setErr(fmt.Errorf("wire %s count %d exceeds limit %d", label, raw, limit))
+		return 0, r.err
+	}
+	return int(raw), nil
+}
+
+func (r *Reader) ReadString() (string, error) {
+	l, err := r.readByteLength(MaxWireBlobBytes, "string")
+	if err != nil {
+		return "", err
+	}
 	v := string(r.buf[r.offset : r.offset+l])
 	r.offset += l
-	return v
+	return v, nil
 }
 
-func (r *Reader) ReadBytes() []byte {
-	l := int(r.ReadUvarint())
+func (r *Reader) ReadBytes() ([]byte, error) {
+	l, err := r.readByteLength(MaxWireBlobBytes, "bytes")
+	if err != nil {
+		return nil, err
+	}
 	if l == 0 {
-		return nil
+		return nil, nil
 	}
 	v := make([]byte, l)
 	copy(v, r.buf[r.offset:r.offset+l])
 	r.offset += l
-	return v
+	return v, nil
 }
 
-func (r *Reader) ReadRawError() ErrorData {
-	msg := r.ReadString()
-	handle := uint32(r.ReadUvarint())
-	return ErrorData{Message: msg, Handle: handle}
+func (r *Reader) ReadRawError() (ErrorData, error) {
+	msg, err := r.ReadString()
+	if err != nil {
+		return ErrorData{}, err
+	}
+	handle, err := r.ReadUvarint()
+	if err != nil {
+		return ErrorData{}, err
+	}
+	return ErrorData{Message: msg, Handle: uint32(handle)}, nil
 }
 
-func (r *Reader) ReadRawInterface() InterfaceData {
-	handle := uint32(r.ReadUvarint())
-	count := int(r.ReadUvarint())
-	if count > 1024 {
-		count = 1024
+func (r *Reader) ReadRawInterface() (InterfaceData, error) {
+	rawHandle, err := r.ReadUvarint()
+	if err != nil {
+		return InterfaceData{}, err
+	}
+	handle := uint32(rawHandle)
+	count, err := r.ReadCount(MaxWireInterfaceItems, "interface method")
+	if err != nil {
+		return InterfaceData{Handle: handle}, err
 	}
 	methods := make(map[string]string)
 	for i := 0; i < count; i++ {
-		k := r.ReadString()
-		v := r.ReadString()
+		k, err := r.ReadString()
+		if err != nil {
+			return InterfaceData{Handle: handle}, err
+		}
+		v, err := r.ReadString()
+		if err != nil {
+			return InterfaceData{Handle: handle}, err
+		}
 		methods[k] = v
 	}
-	return InterfaceData{Handle: handle, Methods: methods}
+	return InterfaceData{Handle: handle, Methods: methods}, nil
 }
 
-func (r *Reader) ReadAny() interface{} {
-	if r.Available() == 0 {
-		return nil
+func (r *Reader) ReadAny() (interface{}, error) {
+	if r == nil || r.err != nil || r.Available() == 0 {
+		return nil, r.Err()
 	}
-	tag, _ := r.ReadByte()
+	tag, err := r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
 	switch tag {
 	case TypeTagInt64:
 		return r.ReadVarint()
@@ -253,36 +369,63 @@ func (r *Reader) ReadAny() interface{} {
 	case TypeTagBool:
 		return r.ReadBool()
 	case TypeTagMap:
-		count := int(r.ReadUvarint())
-		m := make(map[string]interface{})
+		count, err := r.ReadCount(MaxWireCollectionItems, "map")
+		if err != nil {
+			return nil, err
+		}
+		m := make(map[string]interface{}, count)
 		for i := 0; i < count; i++ {
-			k := r.ReadString()
-			v := r.ReadAny()
+			k, err := r.ReadString()
+			if err != nil {
+				return nil, err
+			}
+			v, err := r.ReadAny()
+			if err != nil {
+				return nil, err
+			}
 			m[k] = v
 		}
-		return m
+		return m, nil
 	case TypeTagArray:
-		count := int(r.ReadUvarint())
+		count, err := r.ReadCount(MaxWireCollectionItems, "array")
+		if err != nil {
+			return nil, err
+		}
 		a := make([]interface{}, count)
 		for i := 0; i < count; i++ {
-			a[i] = r.ReadAny()
+			a[i], err = r.ReadAny()
+			if err != nil {
+				return nil, err
+			}
 		}
-		return a
+		return a, nil
 	case TypeTagInterface:
 		return r.ReadRawInterface()
 	case TypeTagError:
 		return r.ReadRawError()
 	case TypeTagStruct:
-		typeName := r.ReadString()
-		count := int(r.ReadUvarint())
+		typeName, err := r.ReadString()
+		if err != nil {
+			return nil, err
+		}
+		count, err := r.ReadCount(MaxWireCollectionItems, "struct field")
+		if err != nil {
+			return nil, err
+		}
 		fields := make([]StructField, count)
 		for i := 0; i < count; i++ {
-			fields[i].Name = r.ReadString()
-			fields[i].Value = r.ReadAny()
+			fields[i].Name, err = r.ReadString()
+			if err != nil {
+				return nil, err
+			}
+			fields[i].Value, err = r.ReadAny()
+			if err != nil {
+				return nil, err
+			}
 		}
-		return &VMStruct{TypeName: typeName, Fields: fields}
+		return &VMStruct{TypeName: typeName, Fields: fields}, nil
 	default:
-		return nil
+		return nil, nil
 	}
 }
 

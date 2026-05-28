@@ -30,7 +30,7 @@ func TestDisassemble(t *testing.T) {
 		}
 	}
 	`
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	testProgram, err := testExecutor.NewRuntimeByGoCode(scriptSource)
 	if err != nil {
 		t.Fatalf("Failed to compile: %v", err)

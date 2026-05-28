@@ -32,7 +32,10 @@ func imageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 	switch methodID {
 	case methodIDImageLibDecode:
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ImageLib.Decode failed: %w", err)
+		}
 		r0, r1, err := impl.Decode(ctx, data)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -55,13 +58,16 @@ func imageLibHostRouter(ctx context.Context, impl ImageLib, registry *ffigo.Hand
 	case methodIDImageLibNewRGBA:
 		var width int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			width = int(tmp)
 		}
 		var height int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			height = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for ImageLib.NewRGBA failed: %w", err)
 		}
 		r0 := impl.NewRGBA(ctx, width, height)
 		resBuf := ffigo.GetBuffer()
@@ -156,12 +162,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageBounds:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Bounds failed: %w", err)
 		}
 		r0, r1, r2, r3 := __recv.Bounds()
 		resBuf := ffigo.GetBuffer()
@@ -173,12 +183,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageSize:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Size failed: %w", err)
 		}
 		r0, r1 := __recv.Size()
 		resBuf := ffigo.GetBuffer()
@@ -188,12 +202,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageWidth:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Width failed: %w", err)
 		}
 		r0 := __recv.Width()
 		resBuf := ffigo.GetBuffer()
@@ -202,12 +220,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageHeight:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Height failed: %w", err)
 		}
 		r0 := __recv.Height()
 		resBuf := ffigo.GetBuffer()
@@ -216,7 +238,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageAt:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -225,13 +248,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var x int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int(tmp)
 		}
 		var y int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.At failed: %w", err)
 		}
 		r0, r1, r2, r3 := __recv.At(x, y)
 		resBuf := ffigo.GetBuffer()
@@ -243,7 +269,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageSet:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -252,33 +279,36 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var x int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int(tmp)
 		}
 		var y int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
 		var r int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r = int(tmp)
 		}
 		var g int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			g = int(tmp)
 		}
 		var b int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			b = int(tmp)
 		}
 		var a int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			a = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Set failed: %w", err)
 		}
 		__recv.Set(x, y, r, g, b, a)
 		resBuf := ffigo.GetBuffer()
@@ -286,7 +316,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageFill:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -295,23 +326,26 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var r int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r = int(tmp)
 		}
 		var g int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			g = int(tmp)
 		}
 		var b int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			b = int(tmp)
 		}
 		var a int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			a = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Fill failed: %w", err)
 		}
 		__recv.Fill(r, g, b, a)
 		resBuf := ffigo.GetBuffer()
@@ -319,12 +353,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageClear:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Clear failed: %w", err)
 		}
 		__recv.Clear()
 		resBuf := ffigo.GetBuffer()
@@ -332,12 +370,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageClone:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Clone failed: %w", err)
 		}
 		r0 := __recv.Clone()
 		resBuf := ffigo.GetBuffer()
@@ -351,7 +393,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageSubImage:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -360,23 +403,26 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var x int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int(tmp)
 		}
 		var y int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
 		var width int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			width = int(tmp)
 		}
 		var height int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			height = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.SubImage failed: %w", err)
 		}
 		r0, err := __recv.SubImage(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
@@ -399,7 +445,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageDraw:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -408,7 +455,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var src *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				src = obj.(*Image)
 			} else {
@@ -417,13 +465,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var x int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int(tmp)
 		}
 		var y int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Draw failed: %w", err)
 		}
 		__recv.Draw(ctx, src, x, y)
 		resBuf := ffigo.GetBuffer()
@@ -431,7 +482,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageResize:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -440,13 +492,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var width int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			width = int(tmp)
 		}
 		var height int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			height = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Resize failed: %w", err)
 		}
 		r0, err := __recv.Resize(width, height)
 		resBuf := ffigo.GetBuffer()
@@ -469,7 +524,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageCrop:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -478,23 +534,26 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var x int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			x = int(tmp)
 		}
 		var y int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			y = int(tmp)
 		}
 		var width int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			width = int(tmp)
 		}
 		var height int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			height = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.Crop failed: %w", err)
 		}
 		r0, err := __recv.Crop(x, y, width, height)
 		resBuf := ffigo.GetBuffer()
@@ -517,12 +576,16 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageEncodePNG:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.EncodePNG failed: %w", err)
 		}
 		r0, err := __recv.EncodePNG()
 		resBuf := ffigo.GetBuffer()
@@ -540,7 +603,8 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 	case methodIDImageEncodeJPEG:
 		var __recv *Image
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
-		if id := uint32(reqBuf.ReadUvarint()); id != 0 {
+		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
+			id := uint32(rawID)
 			if obj, err := registry.GetTypedWithAudit(id, "image.Image"); err == nil {
 				__recv = obj.(*Image)
 			} else {
@@ -549,8 +613,11 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 		}
 		var quality int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			quality = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Image.EncodeJPEG failed: %w", err)
 		}
 		r0, err := __recv.EncodeJPEG(quality)
 		resBuf := ffigo.GetBuffer()

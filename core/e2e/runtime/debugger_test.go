@@ -57,7 +57,7 @@ func nextDebugEventAsync(ctx context.Context, dbg *debugger.Session) <-chan debu
 }
 
 func TestDebuggerBasicBreakAndStep(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -135,7 +135,7 @@ WAIT_DONE:
 }
 
 func TestDebuggerSnippetMode(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 
 	sourceSnippet := `
 		x := 100 // Line 2
@@ -203,7 +203,7 @@ DONE:
 }
 
 func TestDebuggerStepStateIsClearedWhenRunEnds(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	firstProgram, err := testExecutor.NewRuntimeByGoCode(`
 package main
 func main() {
@@ -271,7 +271,7 @@ func main() {
 }
 
 func TestDebuggerLoopExecution(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -328,7 +328,7 @@ func TestDebuggerLoopExecution(t *testing.T) {
 }
 
 func TestDebuggerAnytimePause(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() {
@@ -373,7 +373,7 @@ func TestDebuggerAnytimePause(t *testing.T) {
 }
 
 func TestDebuggerContextBreakpointHitsChildContext(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 package main
 
@@ -421,7 +421,7 @@ func main() {
 }
 
 func TestDebuggerContextBreakpointHitsMultipleContexts(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 package main
 
@@ -493,7 +493,7 @@ func main() {
 }
 
 func TestDebuggerContextBreakpointUsesAllStopPause(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 package main
 
@@ -560,7 +560,7 @@ func main() {
 }
 
 func TestDebuggerRemoveBreakpointAfterHitPreventsLaterHits(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 package main
 func main() {
@@ -610,7 +610,7 @@ func main() {
 }
 
 func TestDebuggerConcurrentBreakpointMutation(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 package main
 func main() {

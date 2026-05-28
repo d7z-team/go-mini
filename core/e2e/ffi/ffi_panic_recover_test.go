@@ -11,7 +11,7 @@ import (
 )
 
 func TestFFIPanicCanBeRecoveredInScript(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &panicInterceptBridge{}
 	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
@@ -44,7 +44,7 @@ func main() {
 }
 
 func TestFFIPanicInvokeRouteCanBeRecoveredInScript(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &panicInterceptBridge{}
 	testsurface.UseRoute(t, executor, "sandbox.InvokeBoom", bridge, 0, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
@@ -77,7 +77,7 @@ func main() {
 }
 
 func TestFFIPanicBubblesWhenUnhandled(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &panicInterceptBridge{}
 	testsurface.UseRoute(t, executor, "sandbox.CallBoom", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 

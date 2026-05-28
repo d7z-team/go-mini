@@ -36,14 +36,23 @@ func mapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 	switch methodID {
 	case methodIDMapTestEchoMap:
 		var m map[string]string
-		l_m := int(reqBuf.ReadUvarint())
+		l_m, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "map")
 		m = make(map[string]string)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
 			var v string
-			k = string(reqBuf.ReadString())
-			v = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				k = string(tmp)
+			}
+			{
+				tmp, _ := reqBuf.ReadString()
+				v = string(tmp)
+			}
 			m[k] = v
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MapTest.EchoMap failed: %w", err)
 		}
 		r0, err := impl.EchoMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
@@ -82,17 +91,23 @@ func mapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDMapTestProcessMap:
 		var m map[string]int64
-		l_m := int(reqBuf.ReadUvarint())
+		l_m, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "map")
 		m = make(map[string]int64)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k string
 			var v int64
-			k = string(reqBuf.ReadString())
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadString()
+				k = string(tmp)
+			}
+			{
+				tmp, _ := reqBuf.ReadVarint()
 				v = int64(tmp)
 			}
 			m[k] = v
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MapTest.ProcessMap failed: %w", err)
 		}
 		r0, err := impl.ProcessMap(ctx, m)
 		resBuf := ffigo.GetBuffer()
@@ -109,17 +124,23 @@ func mapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 		return resBuf.Bytes(), nil
 	case methodIDMapTestEchoIntMap:
 		var m map[int64]string
-		l_m := int(reqBuf.ReadUvarint())
+		l_m, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "map")
 		m = make(map[int64]string)
 		for i_m := 0; i_m < l_m; i_m++ {
 			var k int64
 			var v string
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				k = int64(tmp)
 			}
-			v = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				v = string(tmp)
+			}
 			m[k] = v
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MapTest.EchoIntMap failed: %w", err)
 		}
 		r0, err := impl.EchoIntMap(ctx, m)
 		resBuf := ffigo.GetBuffer()

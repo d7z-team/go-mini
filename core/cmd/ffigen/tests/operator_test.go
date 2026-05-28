@@ -8,7 +8,7 @@ import (
 )
 
 func TestOperators(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main
@@ -59,7 +59,7 @@ func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[in
 }
 
 func TestIntKeyMap(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	host := &IntMapHost{}
 	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {
 		t.Fatal(err)

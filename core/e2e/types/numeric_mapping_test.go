@@ -21,7 +21,7 @@ func main() int {
 	return int(float64(a + b + c + d + e + f) + float64(g))
 }
 `
-	vm, err := engine.NewMiniExecutor().NewRuntimeByGoCode(code)
+	vm, err := engine.MustNewMiniExecutor().NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}

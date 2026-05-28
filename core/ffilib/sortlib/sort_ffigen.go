@@ -43,15 +43,18 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	case methodIDSortInts:
 		var x *ffigo.ArrayRef[int64]
 		var xValue []int64
-		l_xValue := int(reqBuf.ReadUvarint())
+		l_xValue, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		xValue = make([]int64, l_xValue)
 		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				xValue[i_xValue] = int64(tmp)
 			}
 		}
 		x = &ffigo.ArrayRef[int64]{Value: xValue}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.Ints failed: %w", err)
+		}
 		impl.Ints(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -68,12 +71,18 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	case methodIDSortFloat64s:
 		var x *ffigo.ArrayRef[float64]
 		var xValue []float64
-		l_xValue := int(reqBuf.ReadUvarint())
+		l_xValue, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		xValue = make([]float64, l_xValue)
 		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
-			xValue[i_xValue] = float64(reqBuf.ReadFloat64())
+			{
+				tmp, _ := reqBuf.ReadFloat64()
+				xValue[i_xValue] = float64(tmp)
+			}
 		}
 		x = &ffigo.ArrayRef[float64]{Value: xValue}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.Float64s failed: %w", err)
+		}
 		impl.Float64s(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -90,12 +99,18 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 	case methodIDSortStrings:
 		var x *ffigo.ArrayRef[string]
 		var xValue []string
-		l_xValue := int(reqBuf.ReadUvarint())
+		l_xValue, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		xValue = make([]string, l_xValue)
 		for i_xValue := 0; i_xValue < l_xValue; i_xValue++ {
-			xValue[i_xValue] = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				xValue[i_xValue] = string(tmp)
+			}
 		}
 		x = &ffigo.ArrayRef[string]{Value: xValue}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.Strings failed: %w", err)
+		}
 		impl.Strings(x)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))
@@ -111,13 +126,16 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDSortIntsAreSorted:
 		var x []int64
-		l_x := int(reqBuf.ReadUvarint())
+		l_x, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		x = make([]int64, l_x)
 		for i_x := 0; i_x < l_x; i_x++ {
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				x[i_x] = int64(tmp)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.IntsAreSorted failed: %w", err)
 		}
 		r0 := impl.IntsAreSorted(x)
 		resBuf := ffigo.GetBuffer()
@@ -125,10 +143,16 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDSortFloat64sAreSorted:
 		var x []float64
-		l_x := int(reqBuf.ReadUvarint())
+		l_x, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		x = make([]float64, l_x)
 		for i_x := 0; i_x < l_x; i_x++ {
-			x[i_x] = float64(reqBuf.ReadFloat64())
+			{
+				tmp, _ := reqBuf.ReadFloat64()
+				x[i_x] = float64(tmp)
+			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.Float64sAreSorted failed: %w", err)
 		}
 		r0 := impl.Float64sAreSorted(x)
 		resBuf := ffigo.GetBuffer()
@@ -136,10 +160,16 @@ func sortHostRouter(ctx context.Context, impl Sort, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDSortStringsAreSorted:
 		var x []string
-		l_x := int(reqBuf.ReadUvarint())
+		l_x, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		x = make([]string, l_x)
 		for i_x := 0; i_x < l_x; i_x++ {
-			x[i_x] = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				x[i_x] = string(tmp)
+			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Sort.StringsAreSorted failed: %w", err)
 		}
 		r0 := impl.StringsAreSorted(x)
 		resBuf := ffigo.GetBuffer()

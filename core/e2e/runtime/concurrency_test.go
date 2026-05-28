@@ -11,7 +11,7 @@ import (
 )
 
 func TestConcurrencySafety(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	// 一个简单的循环脚本，用于触发 stepCount
 	code := `
@@ -44,7 +44,7 @@ func main() {
 }
 
 func TestConcurrentModuleImportSingleflight(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("sharedmod", surface.GoFile("sharedmod.mgo", `
 package sharedmod
@@ -92,7 +92,7 @@ func main() {
 }
 
 func TestConcurrentSharedMapMutationDoesNotPanic(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("counter", surface.GoFile("counter.mgo", `
 package counter

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -32,6 +33,8 @@ var (
 	errMissingTextDocumentURI = errors.New("missing textDocument.uri")
 	jsonNull                  = json.RawMessage("null")
 )
+
+const maxLSPMessageBytes = 64 << 20
 
 type publishDiagnosticsParams struct {
 	URI         string       `json:"uri"`
@@ -71,7 +74,7 @@ func ServeStream(server *LSPServer, in io.Reader, out, errOut io.Writer) error {
 				return nil
 			}
 			_, _ = fmt.Fprintf(errOut, "Error reading message: %v\n", err)
-			continue
+			return err
 		}
 		shouldExit := false
 		func(m *rpcMessage) {
@@ -89,7 +92,7 @@ func ServeStream(server *LSPServer, in io.Reader, out, errOut io.Writer) error {
 }
 
 func readMessage(r *bufio.Reader) (*rpcMessage, error) {
-	var contentLength int
+	contentLength := -1
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -99,12 +102,23 @@ func readMessage(r *bufio.Reader) (*rpcMessage, error) {
 		if line == "" {
 			break
 		}
-		if strings.HasPrefix(line, "Content-Length:") {
-			_, _ = fmt.Sscanf(line, "Content-Length: %d", &contentLength)
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return nil, fmt.Errorf("invalid content length %q", strings.TrimSpace(value))
+			}
+			contentLength = n
 		}
 	}
-	if contentLength == 0 {
+	if contentLength <= 0 {
 		return nil, errors.New("invalid content length")
+	}
+	if contentLength > maxLSPMessageBytes {
+		return nil, fmt.Errorf("content length %d exceeds limit %d", contentLength, maxLSPMessageBytes)
 	}
 	body := make([]byte, contentLength)
 	if _, err := io.ReadFull(r, body); err != nil {

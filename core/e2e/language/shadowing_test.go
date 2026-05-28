@@ -8,7 +8,7 @@ import (
 )
 
 func TestShadowingInDefine(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -40,7 +40,7 @@ func TestShadowingInDefine(t *testing.T) {
 }
 
 func TestForInitShortDeclShadowsOuterVariable(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -68,7 +68,7 @@ func TestForInitShortDeclShadowsOuterVariable(t *testing.T) {
 }
 
 func TestRangeShortDeclShadowsOuterVariable(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 
@@ -96,7 +96,7 @@ func TestRangeShortDeclShadowsOuterVariable(t *testing.T) {
 }
 
 func TestRangeAssignUsesExistingVariables(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 

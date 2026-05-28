@@ -8,7 +8,11 @@ import (
 )
 
 func main() {
-	executor := engine.NewMiniExecutor()
+	executor, err := engine.NewMiniExecutor()
+	if err != nil {
+		_, _ = os.Stderr.WriteString(err.Error() + "\n")
+		os.Exit(1)
+	}
 	if err := executor.UseSurface(ffilib.Surface()); err != nil {
 		_, _ = os.Stderr.WriteString(err.Error() + "\n")
 		os.Exit(1)

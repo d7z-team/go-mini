@@ -8,7 +8,7 @@ import (
 )
 
 func TestPointerSemantics(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	passCases := []struct {
 		name string

@@ -14,7 +14,7 @@ import (
 func assertBoolConditionRuntimeErrorAtLine(t *testing.T, filename, code string, wantLine int) {
 	t.Helper()
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoFile(filename, code)
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)

@@ -42,7 +42,13 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	switch methodID {
 	case methodIDUTF8DecodeRuneInString:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.DecodeRuneInString failed: %w", err)
+		}
 		r0, r1 := impl.DecodeRuneInString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -51,8 +57,11 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	case methodIDUTF8EncodeRune:
 		var r int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.EncodeRune failed: %w", err)
 		}
 		r0 := impl.EncodeRune(r)
 		resBuf := ffigo.GetBuffer()
@@ -60,14 +69,26 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDUTF8FullRuneInString:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.FullRuneInString failed: %w", err)
+		}
 		r0 := impl.FullRuneInString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))
 		return resBuf.Bytes(), nil
 	case methodIDUTF8RuneCountInString:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.RuneCountInString failed: %w", err)
+		}
 		r0 := impl.RuneCountInString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteVarint(int64(r0))
@@ -75,8 +96,11 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 	case methodIDUTF8RuneLen:
 		var r int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.RuneLen failed: %w", err)
 		}
 		r0 := impl.RuneLen(r)
 		resBuf := ffigo.GetBuffer()
@@ -84,7 +108,13 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDUTF8ValidString:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for UTF8.ValidString failed: %w", err)
+		}
 		r0 := impl.ValidString(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBool(bool(r0))

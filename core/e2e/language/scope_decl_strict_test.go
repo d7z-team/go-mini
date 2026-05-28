@@ -78,7 +78,7 @@ func main() { _ = f(1, 2) }`,
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			executor := engine.NewMiniExecutor()
+			executor := engine.MustNewMiniExecutor()
 			_, err := executor.NewRuntimeByGoCode(tc.code)
 			if err == nil {
 				t.Fatal("expected compile error")
@@ -91,7 +91,7 @@ func main() { _ = f(1, 2) }`,
 }
 
 func TestAnyValueCannotPolluteConcreteSlot(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func get() Any { return "bad" }
 func main() {
@@ -108,7 +108,7 @@ func main() {
 }
 
 func TestInferredGlobalKeepsInitializerType(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 var X = 41
 func main() {
@@ -127,7 +127,7 @@ func main() {
 }
 
 func TestExplicitAnyNeverNarrowsStatically(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func get() Any { return 1 }
 func main() {
@@ -147,7 +147,7 @@ func main() {
 }
 
 func TestInferredConcreteVariableRejectsDifferentAssignment(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	_, err := executor.NewRuntimeByGoCode(`package main
 func main() {
 	var x = 1
@@ -162,7 +162,7 @@ func main() {
 }
 
 func TestVarDeclarationDestructuresTupleReturn(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func pair() (Int64, String) { return 7, "go" }
 func main() {
@@ -181,7 +181,7 @@ func main() {
 }
 
 func TestGlobalVarDeclarationDestructuresTupleReturnOnce(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 var Hits = 0
 var A, B = pair()
@@ -204,7 +204,7 @@ func main() {
 }
 
 func TestVarDeclarationDestructuresAnyArrayAtRuntime(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func values() Any { return []Any{1, "go"} }
 func main() {
@@ -223,7 +223,7 @@ func main() {
 }
 
 func TestShortDeclarationDestructuresArbitraryTupleReturn(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func triple() (Int64, String, Bool) { return 7, "go", true }
 func main() {
@@ -303,7 +303,7 @@ func main() { _ = bad() }`,
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			executor := engine.NewMiniExecutor()
+			executor := engine.MustNewMiniExecutor()
 			_, err := executor.NewRuntimeByGoCode(tc.code)
 			if err == nil {
 				t.Fatal("expected compile error")
@@ -316,7 +316,7 @@ func main() { _ = bad() }`,
 }
 
 func TestDeclarationRHSUsesOuterBindingBeforeNewNamesEnterScope(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `package main
 func main() {
 	x := 5

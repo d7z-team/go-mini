@@ -10,7 +10,7 @@ import (
 )
 
 func TestContextCancellation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main

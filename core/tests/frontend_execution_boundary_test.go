@@ -43,7 +43,7 @@ func TestFrontendCanSupplyMiniASTWithoutRuntimeASTRetention(t *testing.T) {
 		},
 	}
 
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileWithFrontend(context.Background(), staticFrontend{program: program}, []engine.SourceFile{{
 		URI:      "memory://fixture.static",
 		Language: "test/static",

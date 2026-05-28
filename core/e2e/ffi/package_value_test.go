@@ -32,7 +32,11 @@ func (b *packageValueBridge) Call(_ context.Context, req *ffigo.FFICallRequest) 
 	reader := ffigo.NewReader(req.Args)
 	switch req.MethodID {
 	case 1:
-		id := uint32(reader.ReadUvarint())
+		rawID, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		id := uint32(rawID)
 		b.lastHandle = id
 		obj, err := b.registry.GetTypedWithAudit(id, "mock.Counter")
 		if err != nil {
@@ -46,7 +50,11 @@ func (b *packageValueBridge) Call(_ context.Context, req *ffigo.FFICallRequest) 
 		buf.WriteVarint(counter.value)
 		return buf.Bytes(), nil
 	case 2:
-		b.seen = append(b.seen, reader.ReadVarint())
+		v, err := reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
+		b.seen = append(b.seen, v)
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("unknown method %d", req.MethodID)
@@ -141,7 +149,7 @@ func main() {
 		t.Fatal(err)
 	}
 
-	loader := engine.NewMiniExecutor()
+	loader := engine.MustNewMiniExecutor()
 	_, err = loader.NewRuntimeByBytecodeJSON(payload)
 	if err == nil {
 		t.Fatal("expected bytecode load to reject missing external surface")
@@ -150,7 +158,7 @@ func main() {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	partial := engine.NewMiniExecutor()
+	partial := engine.MustNewMiniExecutor()
 	partialBridge := &packageValueBridge{registry: partial.HandleRegistry()}
 	registerMockCounterSurface(t, partial, partialBridge, false)
 	_, err = partial.NewRuntimeByBytecodeJSON(payload)
@@ -164,7 +172,7 @@ func main() {
 
 func newPackageValueExecutor(t *testing.T) (*engine.MiniExecutor, *packageValueBridge) {
 	t.Helper()
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &packageValueBridge{registry: executor.HandleRegistry()}
 	registerMockCounterSurface(t, executor, bridge, true)
 	return executor, bridge

@@ -29,11 +29,14 @@ func (b *securitySimpleBridge) DestroyHandle(handle uint32) error {
 }
 
 func TestFFIOverflowCheck(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	bridge := &securitySimpleBridge{
 		Callback: func(methodID uint32, args []byte) ([]byte, error) {
 			reader := ffigo.NewReader(args)
-			tmp := reader.ReadVarint()
+			tmp, err := reader.ReadVarint()
+			if err != nil {
+				return nil, err
+			}
 			if tmp < -128 || tmp > 127 {
 				panic(fmt.Sprintf("ffi: int8 overflow: %d", tmp))
 			}
@@ -71,7 +74,7 @@ func TestFFIOverflowCheck(t *testing.T) {
 }
 
 func TestFFIReturnBytesAreDeepCopied(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	original := []byte("hello")
 	bridge := &securitySimpleBridge{
 		Callback: func(methodID uint32, args []byte) ([]byte, error) {

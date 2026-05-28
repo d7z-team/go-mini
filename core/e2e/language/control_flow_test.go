@@ -7,7 +7,7 @@ import (
 )
 
 func TestControlFlow(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	t.Run("DeferLIFO", func(t *testing.T) {
 		code := `
@@ -112,7 +112,7 @@ func TestControlFlow(t *testing.T) {
 }
 
 func TestSwitchMatchesAnyWrappedValue(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 package main
 func main() {

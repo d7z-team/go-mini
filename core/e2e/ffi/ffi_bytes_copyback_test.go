@@ -15,7 +15,10 @@ type bytesCopyBackBridge struct{}
 
 func (bytesCopyBackBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	input := reader.ReadBytes()
+	input, err := reader.ReadBytes()
+	if err != nil {
+		return nil, err
+	}
 	mutated := append([]byte(strings.ToUpper(string(input))), '!')
 
 	buf := ffigo.GetBuffer()
@@ -34,7 +37,7 @@ func (b bytesCopyBackBridge) Invoke(ctx context.Context, req *ffigo.FFICallReque
 func (bytesCopyBackBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
@@ -61,7 +64,7 @@ func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
 }
 
 func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
@@ -100,7 +103,7 @@ func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
 }
 
 func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
@@ -129,7 +132,7 @@ func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 }
 
 func TestFFIBytesCopyBackUpdatesSliceWindow(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `

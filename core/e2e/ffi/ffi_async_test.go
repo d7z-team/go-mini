@@ -44,7 +44,11 @@ func (asyncBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFI
 			}),
 			func(buf *ffigo.Buffer, _ ffigo.Void) error {
 				reader := ffigo.NewReader(args)
-				mutated := append([]byte(strings.ToUpper(string(reader.ReadBytes()))), '!')
+				input, err := reader.ReadBytes()
+				if err != nil {
+					return err
+				}
+				mutated := append([]byte(strings.ToUpper(string(input))), '!')
 				buf.WriteUvarint(1)
 				buf.WriteBytes(mutated)
 				return nil
@@ -77,7 +81,7 @@ func (asyncBridge) DestroyHandle(uint32) error {
 }
 
 func TestAsyncFFIResumesWithReturnAndCopyBack(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := asyncBridge{}
 	testsurface.UseRoutes(t, executor, bridge,
 		testsurface.Route("async.Value", 1, runtime.MustParseRuntimeFuncSig("function() Int64"), ""),
@@ -110,7 +114,7 @@ func main() {
 }
 
 func TestAsyncFFICompletionErrorPropagates(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := asyncBridge{}
 	testsurface.UseRoute(t, executor, "async.Fail", bridge, 3, runtime.MustParseRuntimeFuncSig("function() Int64"), "")
 
@@ -235,7 +239,7 @@ func (b *burstAsyncBridge) DestroyHandle(uint32) error {
 func TestAsyncFFICompletionBurstDoesNotDropTokens(t *testing.T) {
 	const workers = 1200
 
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := newBurstAsyncBridge(workers)
 	testsurface.UseRoutes(t, executor, bridge,
 		testsurface.Route("gate.Wait", 1, runtime.MustParseRuntimeFuncSig("function() Void"), ""),
@@ -305,7 +309,7 @@ func (b *blockingAsyncBridge) DestroyHandle(uint32) error {
 }
 
 func TestAsyncFFICancelledOnContextDeadline(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
 	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
@@ -334,7 +338,7 @@ func main() {
 }
 
 func TestAsyncFFICancelledOnVMPanic(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitExternal, reason: "external block"}
 	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 
@@ -369,7 +373,7 @@ func main() {
 }
 
 func TestAsyncFFIAllBlockedReportsWaits(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &blockingAsyncBridge{kind: ffigo.WaitDependsOnVM, reason: "test blocked on VM"}
 	testsurface.UseRoute(t, executor, "block.Wait", bridge, 1, runtime.MustParseRuntimeFuncSig("function() Void"), "")
 

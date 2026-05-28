@@ -33,14 +33,26 @@ func urlHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 	switch methodID {
 	case methodIDURLQueryEscape:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for URL.QueryEscape failed: %w", err)
+		}
 		r0 := impl.QueryEscape(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
 		return resBuf.Bytes(), nil
 	case methodIDURLQueryUnescape:
 		var s string
-		s = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			s = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for URL.QueryUnescape failed: %w", err)
+		}
 		r0, err := impl.QueryUnescape(s)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))
@@ -56,12 +68,21 @@ func urlHostRouter(ctx context.Context, impl URL, registry *ffigo.HandleRegistry
 		return resBuf.Bytes(), nil
 	case methodIDURLJoinPath:
 		var base string
-		base = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			base = string(tmp)
+		}
 		var elem []string
-		l_elem := int(reqBuf.ReadUvarint())
+		l_elem, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		elem = make([]string, l_elem)
 		for i_elem := 0; i_elem < l_elem; i_elem++ {
-			elem[i_elem] = string(reqBuf.ReadString())
+			{
+				tmp, _ := reqBuf.ReadString()
+				elem[i_elem] = string(tmp)
+			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for URL.JoinPath failed: %w", err)
 		}
 		r0 := impl.JoinPath(base, elem...)
 		resBuf := ffigo.GetBuffer()

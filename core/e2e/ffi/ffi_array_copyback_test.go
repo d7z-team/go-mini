@@ -14,10 +14,17 @@ type arrayCopyBackBridge struct{}
 
 func (arrayCopyBackBridge) Call(_ context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	count := int(reader.ReadUvarint())
+	rawCount, err := reader.ReadUvarint()
+	if err != nil {
+		return nil, err
+	}
+	count := int(rawCount)
 	values := make([]int64, count)
 	for i := range values {
-		values[i] = reader.ReadVarint()
+		values[i], err = reader.ReadVarint()
+		if err != nil {
+			return nil, err
+		}
 	}
 	mutated := make([]int64, 0, len(values)+1)
 	for _, item := range values {
@@ -48,7 +55,7 @@ func (b arrayCopyBackBridge) Invoke(ctx context.Context, req *ffigo.FFICallReque
 func (arrayCopyBackBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIArrayCopyBackUpdatesWholeArray(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Rewrite", arrayCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), "")
 
 	code := `
@@ -79,7 +86,7 @@ func TestFFIArrayCopyBackUpdatesWholeArray(t *testing.T) {
 }
 
 func TestFFIArrayCopyBackUpdatesSliceWindow(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	testsurface.UseRoute(t, executor, "demo.Rewrite", arrayCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Int64>) Int64", runtime.FFIParamInOutArray), "")
 
 	code := `

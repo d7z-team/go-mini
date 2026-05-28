@@ -43,20 +43,23 @@ func mockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 	case methodIDMockShapeAPIArea:
 		var r Rect
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r.A.X = int64(tmp)
 		}
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r.A.Y = int64(tmp)
 		}
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r.B.X = int64(tmp)
 		}
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			r.B.Y = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockShapeAPI.Area failed: %w", err)
 		}
 		r0 := impl.Area(r)
 		resBuf := ffigo.GetBuffer()

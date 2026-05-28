@@ -11,7 +11,7 @@ import (
 )
 
 func TestNilFunctionCallErrorCarriesSourceLine(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `package main
 func main() {

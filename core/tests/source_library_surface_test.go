@@ -70,7 +70,7 @@ func TestSurfaceLibraryRunCases(t *testing.T) {
 }
 
 func TestBytecodeRejectsInvalidPreparedExport(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	payload, err := exec.CompileGoCodeToBytecodeJSON(`
 package main
 
@@ -112,7 +112,7 @@ func main() {
 	}
 	}
 `
-	compilerExec := engine.NewMiniExecutor()
+	compilerExec := engine.MustNewMiniExecutor()
 	if err := compilerExec.UseSurface(labelsLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -124,12 +124,12 @@ func main() {
 		t.Fatalf("compile bytecode: %v", err)
 	}
 
-	missing := engine.NewMiniExecutor()
+	missing := engine.MustNewMiniExecutor()
 	if _, err := missing.NewRuntimeByBytecodeJSON(payload); err == nil || !strings.Contains(err.Error(), "missing external VM module labels") {
 		t.Fatalf("expected missing module hash error, got %v", err)
 	}
 
-	mismatch := engine.NewMiniExecutor()
+	mismatch := engine.MustNewMiniExecutor()
 	if err := mismatch.UseSurface(labelsLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func main() {
 		t.Fatalf("expected module hash mismatch, got %v", err)
 	}
 
-	loader := engine.NewMiniExecutor()
+	loader := engine.MustNewMiniExecutor()
 	if err := loader.UseSurface(labelsLibrary()); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestSurfaceLibraryMergeAndValidation(t *testing.T) {
 		t.Fatalf("different library source should conflict")
 	}
 
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	if err := exec.UseSurface(surface.Library("empty")); err == nil || !strings.Contains(err.Error(), "has no source files") {
 		t.Fatalf("expected no source files error, got %v", err)
 	}
@@ -200,7 +200,7 @@ func Value() int { return a.Value() }
 }
 
 func TestSurfaceLibraryDoesNotPolluteBytecodeWhenUnused(t *testing.T) {
-	compilerExec := engine.NewMiniExecutor()
+	compilerExec := engine.MustNewMiniExecutor()
 	if err := compilerExec.UseSurface(mathxLibrary(2)); err != nil {
 		t.Fatal(err)
 	}
@@ -212,14 +212,14 @@ func main() {}
 	if err != nil {
 		t.Fatalf("compile bytecode: %v", err)
 	}
-	loader := engine.NewMiniExecutor()
+	loader := engine.MustNewMiniExecutor()
 	if _, err := loader.NewRuntimeByBytecodeJSON(payload); err != nil {
 		t.Fatalf("unused surface library should not be required by bytecode: %v", err)
 	}
 }
 
 func TestSurfaceLibraryConflictsWithRegisteredModule(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package mathx
 

@@ -109,7 +109,7 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 		return
 	}
 	if isBytesRefTypeString(pType) {
-		fmt.Fprintf(sb, "\t%s = &ffigo.BytesRef{Value: %s.ReadBytes()}\n", varName, readerName)
+		fmt.Fprintf(sb, "\t{\n\tbytes, _ := %s.ReadBytes()\n\t%s = &ffigo.BytesRef{Value: bytes}\n\t}\n", readerName, varName)
 		return
 	}
 	if interfaceName, _, ok := g.interfaceSchemaForType(pType, moduleName, interfaceSchemas); ok {
@@ -120,9 +120,9 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 		typeID := g.refTypeID(pType, moduleName)
 		fmt.Fprintf(sb, "\t// HostRef<T> is restored from the opaque handle ID written on the FFI wire.\n")
 		if isHost {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if obj, err := registry.GetTypedWithAudit(id, \"%s\"); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, typeID, varName, g.toGoType(pType), varName)
+			fmt.Fprintf(sb, "\tif rawID, _ := %s.ReadUvarint(); rawID != 0 { id := uint32(rawID); if obj, err := registry.GetTypedWithAudit(id, \"%s\"); err == nil { %s = obj.(%s) } else { return nil, fmt.Errorf(\"FFI restore param '%%s' failed: %%v\", \"%s\", err) } }\n", readerName, typeID, varName, g.toGoType(pType), varName)
 		} else {
-			fmt.Fprintf(sb, "\tif id := uint32(%s.ReadUvarint()); id != 0 { if __p.registry != nil { if obj, ok := __p.registry.GetTyped(id, \"%s\"); ok { %s = obj.(%s) } } }\n", readerName, typeID, varName, g.toGoType(pType))
+			fmt.Fprintf(sb, "\tif rawID, _ := %s.ReadUvarint(); rawID != 0 { id := uint32(rawID); if __p.registry != nil { if obj, ok := __p.registry.GetTyped(id, \"%s\"); ok { %s = obj.(%s) } } }\n", readerName, typeID, varName, g.toGoType(pType))
 		}
 		return
 	}
@@ -135,59 +135,59 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 		gt := g.toGoType(pType)
 		switch {
 		case codecSignedBasic(bt):
-			fmt.Fprintf(sb, "\t{\n\ttmp := %s.ReadVarint()\n", readerName)
+			fmt.Fprintf(sb, "\t{\n\ttmp, _ := %s.ReadVarint()\n", readerName)
 			switch bt {
 			case "int8":
-				fmt.Fprintf(sb, "\tif tmp < -128 || tmp > 127 { panic(fmt.Sprintf(\"ffi: int8 overflow: %%d\", tmp)) }\n")
+				g.emitReadOverflowCheck(sb, "tmp < -128 || tmp > 127", "int8", isHost)
 			case "int16":
-				fmt.Fprintf(sb, "\tif tmp < -32768 || tmp > 32767 { panic(fmt.Sprintf(\"ffi: int16 overflow: %%d\", tmp)) }\n")
+				g.emitReadOverflowCheck(sb, "tmp < -32768 || tmp > 32767", "int16", isHost)
 			case "int32":
-				fmt.Fprintf(sb, "\tif tmp < -2147483648 || tmp > 2147483647 { panic(fmt.Sprintf(\"ffi: int32 overflow: %%d\", tmp)) }\n")
+				g.emitReadOverflowCheck(sb, "tmp < -2147483648 || tmp > 2147483647", "int32", isHost)
 			case "int":
 				// Go's int is at least 32 bits; generated bindings assume a 64-bit VM integer.
 			}
 			fmt.Fprintf(sb, "\t%s = %s(tmp)\n\t}\n", varName, gt)
 			return
 		case codecUnsignedBasic(bt):
-			fmt.Fprintf(sb, "\t{\n\ttmp := %s.ReadVarint()\n", readerName)
+			fmt.Fprintf(sb, "\t{\n\ttmp, _ := %s.ReadVarint()\n", readerName)
 			if maxLiteral := codecUnsignedMaxLiteral(bt); maxLiteral != "" {
-				fmt.Fprintf(sb, "\tif tmp < 0 || tmp > %s { panic(fmt.Sprintf(\"ffi: %s overflow: %%d\", tmp)) }\n", maxLiteral, bt)
+				g.emitReadOverflowCheck(sb, "tmp < 0 || tmp > "+maxLiteral, bt, isHost)
 			} else if isHost {
-				fmt.Fprintf(sb, "\tif tmp < 0 { panic(fmt.Sprintf(\"ffi: %s overflow: %%d\", tmp)) }\n", bt)
+				g.emitReadOverflowCheck(sb, "tmp < 0", bt, isHost)
 			}
 			fmt.Fprintf(sb, "\t%s = %s(tmp)\n\t}\n", varName, gt)
 			return
 		case strings.HasPrefix(bt, "float"):
-			fmt.Fprintf(sb, "\t%s = %s(%s.ReadFloat64())\n", varName, gt, readerName)
+			fmt.Fprintf(sb, "\t{\n\ttmp, _ := %s.ReadFloat64()\n\t%s = %s(tmp)\n\t}\n", readerName, varName, gt)
 			return
 		case bt == "string":
-			fmt.Fprintf(sb, "\t%s = %s(%s.ReadString())\n", varName, gt, readerName)
+			fmt.Fprintf(sb, "\t{\n\ttmp, _ := %s.ReadString()\n\t%s = %s(tmp)\n\t}\n", readerName, varName, gt)
 			return
 		case bt == "bool":
-			fmt.Fprintf(sb, "\t%s = %s(%s.ReadBool())\n", varName, gt, readerName)
+			fmt.Fprintf(sb, "\t{\n\ttmp, _ := %s.ReadBool()\n\t%s = %s(tmp)\n\t}\n", readerName, varName, gt)
 			return
 		}
 	}
 
 	switch pType {
 	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
-		fmt.Fprintf(sb, "\t%s = %s.ReadBytes()\n", varName, readerName)
+		fmt.Fprintf(sb, "\t%s, _ = %s.ReadBytes()\n", varName, readerName)
 	case "bool", "Bool":
-		fmt.Fprintf(sb, "\t%s = %s.ReadBool()\n", varName, readerName)
+		fmt.Fprintf(sb, "\t%s, _ = %s.ReadBool()\n", varName, readerName)
 	case "float64", "Float64", "float32", "Float32":
-		fmt.Fprintf(sb, "\t%s = %s.ReadFloat64()\n", varName, readerName)
+		fmt.Fprintf(sb, "\t%s, _ = %s.ReadFloat64()\n", varName, readerName)
 	case "Any", "any":
 		if isHost {
-			fmt.Fprintf(sb, "\trawVal = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase ffigo.InterfaceData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host interface handle\", \"%s\") }\n\t\t%s = rv\n\tcase ffigo.ErrorData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host error handle\", \"%s\") }\n\t\t%s = rv\n\tdefault:\n\t\t%s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName)
+			fmt.Fprintf(sb, "\trawVal, _ = %s.ReadAny()\n\tswitch rv := rawVal.(type) {\n\tcase ffigo.InterfaceData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host interface handle\", \"%s\") }\n\t\t%s = rv\n\tcase ffigo.ErrorData:\n\t\tif rv.Handle != 0 { return nil, fmt.Errorf(\"FFI Any param '%%s' cannot carry host error handle\", \"%s\") }\n\t\t%s = rv\n\tdefault:\n\t\t%s = rawVal\n\t}\n", readerName, varName, varName, varName, varName, varName)
 		} else {
-			fmt.Fprintf(sb, "\t%s = %s.ReadAny()\n", varName, readerName)
+			fmt.Fprintf(sb, "\t%s, _ = %s.ReadAny()\n", varName, readerName)
 		}
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
 			suffix := generatedIdentSuffix(varName)
 			lenVar := "l_" + suffix
 			idxVar := "i_" + suffix
-			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s, %s)\n\tfor %s := 0; %s < %s; %s++ {\n", lenVar, readerName, varName, g.toGoType(pType), lenVar, idxVar, idxVar, lenVar, idxVar)
+			fmt.Fprintf(sb, "\t%s, _ := %s.ReadCount(ffigo.MaxWireCollectionItems, \"array\")\n\t%s = make(%s, %s)\n\tfor %s := 0; %s < %s; %s++ {\n", lenVar, readerName, varName, g.toGoType(pType), lenVar, idxVar, idxVar, lenVar, idxVar)
 			g.emitReadAssign(sb, fmt.Sprintf("%s[%s]", varName, idxVar), itemType, nil, structs, readerName, moduleName, interfaceSchemas, isHost)
 			fmt.Fprintf(sb, "\t}\n")
 			return
@@ -196,7 +196,7 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 			suffix := generatedIdentSuffix(varName)
 			lenVar := "l_" + suffix
 			idxVar := "i_" + suffix
-			fmt.Fprintf(sb, "\t%s := int(%s.ReadUvarint())\n\t%s = make(%s)\n\tfor %s := 0; %s < %s; %s++ {\n\t\tvar k %s\n\t\tvar v %s\n", lenVar, readerName, varName, g.toGoType(pType), idxVar, idxVar, lenVar, idxVar, g.toGoType(kType), g.toGoType(vType))
+			fmt.Fprintf(sb, "\t%s, _ := %s.ReadCount(ffigo.MaxWireCollectionItems, \"map\")\n\t%s = make(%s)\n\tfor %s := 0; %s < %s; %s++ {\n\t\tvar k %s\n\t\tvar v %s\n", lenVar, readerName, varName, g.toGoType(pType), idxVar, idxVar, lenVar, idxVar, g.toGoType(kType), g.toGoType(vType))
 			g.emitReadAssign(sb, "k", kType, nil, structs, readerName, moduleName, interfaceSchemas, isHost)
 			g.emitReadAssign(sb, "v", vType, nil, structs, readerName, moduleName, interfaceSchemas, isHost)
 			fmt.Fprintf(sb, "\t\t%s[k] = v\n\t}\n", varName)
@@ -217,6 +217,14 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 			unsupportedBareFFIType(pType)
 		}
 	}
+}
+
+func (g *Generator) emitReadOverflowCheck(sb *strings.Builder, condition, typeName string, isHost bool) {
+	if isHost {
+		fmt.Fprintf(sb, "\tif %s { return nil, fmt.Errorf(\"ffi: %s overflow: %%d\", tmp) }\n", condition, typeName)
+		return
+	}
+	fmt.Fprintf(sb, "\tif %s { panic(fmt.Sprintf(\"ffi: %s overflow: %%d\", tmp)) }\n", condition, typeName)
 }
 
 func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemType string, structs map[string]*ast.StructType, bufName, moduleName string, interfaceSchemas map[string]string, isHost bool) {
@@ -271,6 +279,7 @@ func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemTyp
 		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
 		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(data)\n", readerVar)
 		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tif err := %s.Err(); err != nil { return err }\n", readerVar)
 		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\tcase %s <- %s:\n", prefix, valueVar)
 		fmt.Fprintf(sb, "\t\t\t\t\t\treturn nil\n")
@@ -282,6 +291,7 @@ func (g *Generator) emitChannelWrite(sb *strings.Builder, prefix, pType, elemTyp
 		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
 		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(data)\n", readerVar)
 		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tif err := %s.Err(); err != nil { return false, err }\n", readerVar)
 		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\tcase %s <- %s:\n", prefix, valueVar)
 		fmt.Fprintf(sb, "\t\t\t\t\t\treturn true, nil\n")
@@ -316,7 +326,7 @@ func (g *Generator) emitChannelReadAssign(sb *strings.Builder, varName, pType, e
 	canRecv := channelTypeCanRecv(pType)
 	canSend := channelTypeCanSend(pType)
 	fmt.Fprintf(sb, "\t{\n")
-	fmt.Fprintf(sb, "\t\tchannelID_%s := %s.ReadUvarint()\n", suffix, readerName)
+	fmt.Fprintf(sb, "\t\tchannelID_%s, _ := %s.ReadUvarint()\n", suffix, readerName)
 	fmt.Fprintf(sb, "\t\tif channelID_%s != 0 {\n", suffix)
 	fmt.Fprintf(sb, "\t\t\tchannels_%s := %s\n", suffix, registryExpr)
 	if isHost {
@@ -346,6 +356,7 @@ func (g *Generator) emitChannelReadAssign(sb *strings.Builder, varName, pType, e
 		fmt.Fprintf(sb, "\t\t\t\t\tvar %s %s\n", valueVar, elemGoType)
 		fmt.Fprintf(sb, "\t\t\t\t\t%s := ffigo.NewReader(%s)\n", readerVar, payloadVar)
 		g.emitReadAssign(sb, valueVar, elemType, nil, structs, readerVar, moduleName, interfaceSchemas, isHost)
+		fmt.Fprintf(sb, "\t\t\t\t\tif %s.Err() != nil { return }\n", readerVar)
 		fmt.Fprintf(sb, "\t\t\t\t\tselect {\n")
 		fmt.Fprintf(sb, "\t\t\t\t\tcase bridgeChan_%s <- %s:\n", suffix, valueVar)
 		fmt.Fprintf(sb, "\t\t\t\t\tcase <-%s.Done():\n", ctxExpr)
@@ -470,7 +481,7 @@ func (g *Generator) emitInterfaceWrite(sb *strings.Builder, prefix, interfaceNam
 
 func (g *Generator) emitInterfaceReadAssign(sb *strings.Builder, varName, interfaceName, goType, readerName string, isHost bool) {
 	dataVar := "ifaceData_" + generatedIdentSuffix(varName)
-	fmt.Fprintf(sb, "\t%s := %s.ReadRawInterface()\n", dataVar, readerName)
+	fmt.Fprintf(sb, "\t%s, _ := %s.ReadRawInterface()\n", dataVar, readerName)
 	fmt.Fprintf(sb, "\tif %s.Handle != 0 {\n", dataVar)
 	if isHost {
 		fmt.Fprintf(sb, "\t\tif registry == nil { return nil, fmt.Errorf(\"FFI restore interface param '%%s' failed: missing registry\", %q) }\n", varName)

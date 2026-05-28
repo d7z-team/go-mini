@@ -8,7 +8,7 @@ import (
 )
 
 func TestMapKeyDynamicValidation(t *testing.T) {
-	e := engine.NewMiniExecutor()
+	e := engine.MustNewMiniExecutor()
 	code := `package main
 		func identity(v any) any { return v }
 		func main() {

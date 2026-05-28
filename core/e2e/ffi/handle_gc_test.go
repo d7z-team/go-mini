@@ -41,7 +41,11 @@ func (m *lifecycleMockBridge) Call(ctx context.Context, req *ffigo.FFICallReques
 
 	case 2: // 模拟 GetWidth
 		reader := ffigo.NewReader(req.Args)
-		id := uint32(reader.ReadUvarint())
+		rawID, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		id := uint32(rawID)
 
 		obj, err := m.registry.GetTypedWithAudit(id, "mock.Resource")
 		if err != nil {
@@ -73,7 +77,7 @@ func (m *lifecycleMockBridge) DestroyHandle(id uint32) error {
 
 // TestHandleGCLifecycleRegression 验证句柄在 GC 压力下的生命周期，防止 "invalid handle ID" 回归
 func TestHandleGCLifecycleRegression(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	registry := ffigo.NewHandleRegistry()
 	bridge := &lifecycleMockBridge{registry: registry, t: t}
 

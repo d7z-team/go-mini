@@ -427,7 +427,7 @@ func main() {
 
 func expectChannelAllBlocked(t *testing.T, code, reason string) {
 	t.Helper()
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatal(err)

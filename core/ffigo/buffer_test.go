@@ -18,22 +18,22 @@ func TestBufferAndReader(t *testing.T) {
 
 	reader := NewReader(buf.Bytes())
 
-	if v := reader.ReadUvarint(); v != 123 {
+	if v, err := reader.ReadUvarint(); err != nil || v != 123 {
 		t.Errorf("ReadUvarint() = %v, want 123", v)
 	}
-	if v := reader.ReadVarint(); v != -456 {
+	if v, err := reader.ReadVarint(); err != nil || v != -456 {
 		t.Errorf("ReadVarint() = %v, want -456", v)
 	}
-	if v := reader.ReadFloat64(); v != 3.14 {
+	if v, err := reader.ReadFloat64(); err != nil || v != 3.14 {
 		t.Errorf("ReadFloat64() = %v, want 3.14", v)
 	}
-	if v := reader.ReadBool(); v != true {
+	if v, err := reader.ReadBool(); err != nil || v != true {
 		t.Errorf("ReadBool() = %v, want true", v)
 	}
-	if v := reader.ReadString(); v != "hello" {
+	if v, err := reader.ReadString(); err != nil || v != "hello" {
 		t.Errorf("ReadString() = %v, want hello", v)
 	}
-	if v := reader.ReadBytes(); !bytes.Equal(v, []byte{1, 2, 3}) {
+	if v, err := reader.ReadBytes(); err != nil || !bytes.Equal(v, []byte{1, 2, 3}) {
 		t.Errorf("ReadBytes() = %v, want [1 2 3]", v)
 	}
 }
@@ -49,7 +49,10 @@ func TestZeroCopyBytes(t *testing.T) {
 	rawBuf := buf.Bytes()
 
 	reader := NewReader(rawBuf)
-	readData := reader.ReadBytes()
+	readData, err := reader.ReadBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify content
 	if !bytes.Equal(readData, data) {
@@ -69,5 +72,30 @@ func TestZeroCopyBytes(t *testing.T) {
 	}
 	if found {
 		t.Errorf("ReadBytes should return a deep copy to maintain isolation, but modification reflected in buffer")
+	}
+}
+
+func TestReaderReportsTruncatedPayload(t *testing.T) {
+	reader := NewReader([]byte{5, 'a'})
+	if got, err := reader.ReadString(); err == nil || got != "" {
+		t.Fatalf("ReadString() = %q, want empty string on malformed payload", got)
+	}
+	if reader.Err() == nil {
+		t.Fatal("expected reader error for truncated string")
+	}
+}
+
+func TestReaderReportsInvalidCollectionCount(t *testing.T) {
+	buf := GetBuffer()
+	defer ReleaseBuffer(buf)
+	_ = buf.WriteByte(TypeTagArray)
+	buf.WriteUvarint(MaxWireCollectionItems + 1)
+
+	reader := NewReader(buf.Bytes())
+	if got, err := reader.ReadAny(); err == nil || got != nil {
+		t.Fatalf("ReadAny() = %#v, want nil for oversized array", got)
+	}
+	if reader.Err() == nil {
+		t.Fatal("expected reader error for oversized array")
 	}
 }

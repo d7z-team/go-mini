@@ -12,7 +12,7 @@ import (
 )
 
 func TestGeneratedBlockScopeReturnAfterSiblingBlocks(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 
@@ -42,7 +42,7 @@ func main() { _ = f() }
 }
 
 func TestGeneratedBlockScopePanicAfterSiblingBlocksReturnsVMError(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 
@@ -74,7 +74,7 @@ func main() { f() }
 }
 
 func TestSwitchInitExecutesOnce(t *testing.T) {
-	exec := engine.NewMiniExecutor()
+	exec := engine.MustNewMiniExecutor()
 	prog, err := exec.NewRuntimeByGoCode(`
 package main
 

@@ -46,7 +46,13 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 	switch methodID {
 	case methodIDOSOpen:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.Open failed: %w", err)
+		}
 		r0, err := impl.Open(name)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -67,7 +73,13 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSCreate:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.Create failed: %w", err)
+		}
 		r0, err := impl.Create(name)
 		resBuf := ffigo.GetBuffer()
 		// HostRef<T> crosses the FFI boundary as an opaque handle ID.
@@ -88,16 +100,22 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSOpenFile:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
 		var flag int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			flag = int(tmp)
 		}
 		var perm int
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			perm = int(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.OpenFile failed: %w", err)
 		}
 		r0, err := impl.OpenFile(name, flag, perm)
 		resBuf := ffigo.GetBuffer()
@@ -119,7 +137,13 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSReadFile:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.ReadFile failed: %w", err)
+		}
 		r0, err := impl.ReadFile(name)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)
@@ -135,9 +159,15 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSWriteFile:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.WriteFile failed: %w", err)
+		}
 		err := impl.WriteFile(name, data)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -152,7 +182,13 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSRemove:
 		var name string
-		name = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			name = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.Remove failed: %w", err)
+		}
 		err := impl.Remove(name)
 		resBuf := ffigo.GetBuffer()
 		if err != nil {
@@ -167,7 +203,13 @@ func osHostRouter(ctx context.Context, impl OS, registry *ffigo.HandleRegistry, 
 		return resBuf.Bytes(), nil
 	case methodIDOSGetenv:
 		var key string
-		key = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			key = string(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for OS.Getenv failed: %w", err)
+		}
 		r0 := impl.Getenv(key)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteString(string(r0))

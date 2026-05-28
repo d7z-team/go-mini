@@ -177,6 +177,21 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 	}
 }
 
+func TestServeStreamRejectsInvalidContentLength(t *testing.T) {
+	cases := []string{
+		"Content-Length: -1\r\n\r\n",
+		"Content-Length: nope\r\n\r\n",
+	}
+	for _, input := range cases {
+		var out bytes.Buffer
+		var errOut bytes.Buffer
+		err := ServeStream(NewLSPServer(&stubAnalyzer{program: &stubProgram{}}), strings.NewReader(input), &out, &errOut)
+		if err == nil {
+			t.Fatalf("ServeStream(%q) returned nil error", input)
+		}
+	}
+}
+
 func TestDebouncedDiagnosticsPublishOnlyLatestChange(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 	server.diagnosticDelay = 10 * time.Millisecond

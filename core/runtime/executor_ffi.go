@@ -133,7 +133,10 @@ func (e *Executor) wrapFFIError(session *StackContext, err error) error {
 		vme.IsPanic = true
 		return vme
 	}
-	frames := session.GenerateStackTrace(nil)
+	var frames []StackFrame
+	if session != nil {
+		frames = session.GenerateStackTrace(nil)
+	}
 	stackErr := wrapErrorWithStack(err, frames)
 	return &VMError{
 		Message: stackErr.Error(),
@@ -158,7 +161,10 @@ func (e *Executor) finishFFI(session *StackContext, route FFIRoute, copyBackTarg
 
 	reader := ffigo.NewReader(retData)
 	if len(copyBackTargets) > 0 {
-		copyBackCount := int(reader.ReadUvarint())
+		copyBackCount, err := reader.ReadCount(ffigo.MaxWireCollectionItems, "copy-back")
+		if err != nil {
+			return nil, fmt.Errorf("ffi route %s returned invalid payload: %w", route.Name, err)
+		}
 		if copyBackCount != len(copyBackTargets) {
 			return nil, fmt.Errorf("ffi route %s returned %d copy-back values, want %d", route.Name, copyBackCount, len(copyBackTargets))
 		}
@@ -168,8 +174,23 @@ func (e *Executor) finishFFI(session *StackContext, route FFIRoute, copyBackTarg
 			}
 		}
 	}
+	var (
+		res *Var
+		err error
+	)
 	if funcSig != nil {
-		return e.deserializeRuntimeType(session, reader, funcSig.ReturnType, route.Bridge)
+		res, err = e.deserializeRuntimeType(session, reader, funcSig.ReturnType, route.Bridge)
+	} else {
+		res, err = e.deserializeRuntimeType(session, reader, RuntimeType{Kind: RuntimeTypeAny, Raw: "Any"}, route.Bridge)
 	}
-	return e.deserializeRuntimeType(session, reader, RuntimeType{Kind: RuntimeTypeAny, Raw: "Any"}, route.Bridge)
+	if err != nil {
+		if readErr := reader.Err(); readErr != nil {
+			return nil, fmt.Errorf("ffi route %s returned invalid payload: %w", route.Name, readErr)
+		}
+		return nil, err
+	}
+	if err := reader.Err(); err != nil {
+		return nil, fmt.Errorf("ffi route %s returned invalid payload: %w", route.Name, err)
+	}
+	return res, nil
 }

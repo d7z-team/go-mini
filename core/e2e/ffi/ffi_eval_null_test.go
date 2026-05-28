@@ -21,7 +21,7 @@ import (
 // executor_ffi.go:89 的 defer/recover 捕获后包装为 VMError{IsPanic: true}，
 // 最后在 Mini 脚本中表现为未捕获的 panic。
 func TestFFIEvalQuerySelectorNull(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &querySelectorNullBridge{}
 	testsurface.UseRoute(t, executor, "page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
 
@@ -49,7 +49,7 @@ func main() {
 // TestFFIEvalQuerySelectorNullRecovered 验证 Mini 脚本可以通过 defer/recover
 // 捕获 page.Eval() 的 FFI panic，避免脚本崩溃。
 func TestFFIEvalQuerySelectorNullRecovered(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	bridge := &querySelectorNullBridge{}
 	testsurface.UseRoute(t, executor, "page.Eval", bridge, 0, runtime.MustParseRuntimeFuncSig("function(String) Any"), "")
 

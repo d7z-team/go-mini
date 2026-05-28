@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -585,6 +586,9 @@ func (e *Executor) startRun(ctx context.Context, session *StackContext, cleanupS
 	go func() {
 		var runErr error
 		defer func() {
+			if r := recover(); r != nil {
+				runErr = fmt.Errorf("runtime panic: %v\n%s", r, debug.Stack())
+			}
 			if session.Debugger != nil {
 				session.Debugger.ClearStep(activeController.ID())
 			}

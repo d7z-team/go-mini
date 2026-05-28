@@ -29,7 +29,7 @@ type BImpl struct{}
 func (i *BImpl) Hello(t *b_other.Type) string { return "Hello B: " + string(rune(t.ID)) }
 
 func TestCanonicalTypeSystem(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	impl := &CanonicalTestImpl{}
 	if err := executor.UseSurface(canonicaltest.SurfaceTestCanonicalService(impl)); err != nil {
@@ -72,7 +72,7 @@ func TestCanonicalTypeSystem(t *testing.T) {
 }
 
 func TestCanonicalTypeInterfaceAcrossPaths(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	impl := &CanonicalTestImpl{}
 	if err := executor.UseSurface(canonicaltest.SurfaceTestCanonicalService(impl)); err != nil {

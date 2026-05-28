@@ -39,7 +39,7 @@ func main() {
 
 	for _, loader := range pipelineLoaders(code) {
 		t.Run(loader.name, func(t *testing.T) {
-			exec := engine.NewMiniExecutor()
+			exec := engine.MustNewMiniExecutor()
 			prog, err := loader.load(exec)
 			if err != nil {
 				t.Fatalf("load failed: %v", err)

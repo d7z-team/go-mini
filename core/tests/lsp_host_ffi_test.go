@@ -11,7 +11,7 @@ import (
 )
 
 func TestLSPHostFFICompletion(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddStruct("hostfs.File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }"))
 	schema.AddRouteDecls([]runtime.FFIRouteDecl{

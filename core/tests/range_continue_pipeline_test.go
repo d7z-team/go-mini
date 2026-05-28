@@ -27,7 +27,10 @@ func (b *rangeContinueHandleBridge) Call(ctx context.Context, req *ffigo.FFICall
 		buf.WriteUvarint(2)
 		return buf.Bytes(), nil
 	case 2:
-		handle := reader.ReadUvarint()
+		handle, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
 		switch handle {
 		case 1:
 			buf.WriteString("skip")
@@ -38,7 +41,10 @@ func (b *rangeContinueHandleBridge) Call(ctx context.Context, req *ffigo.FFICall
 		}
 		return buf.Bytes(), nil
 	case 3:
-		label := reader.ReadString()
+		label, err := reader.ReadString()
+		if err != nil {
+			return nil, err
+		}
 		switch label {
 		case "skip":
 			buf.WriteVarint(30)
@@ -49,7 +55,10 @@ func (b *rangeContinueHandleBridge) Call(ctx context.Context, req *ffigo.FFICall
 		}
 		return buf.Bytes(), nil
 	case 4:
-		handle := reader.ReadUvarint()
+		handle, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
 		if handle == 1 {
 			panic("skip row reached Download after continue")
 		}
@@ -122,7 +131,7 @@ func main() {
 
 	for _, loader := range pipelineLoaders(code) {
 		t.Run(loader.name, func(t *testing.T) {
-			exec := engine.NewMiniExecutor()
+			exec := engine.MustNewMiniExecutor()
 			bridge := &rangeContinueHandleBridge{}
 			registerRangeContinueHandleSchemas(t, exec, bridge)
 

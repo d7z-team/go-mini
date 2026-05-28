@@ -32,7 +32,7 @@ func jsonHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 	switch methodID {
 	case methodIDJSONMarshal:
 		var v any
-		rawVal = reqBuf.ReadAny()
+		rawVal, _ = reqBuf.ReadAny()
 		switch rv := rawVal.(type) {
 		case ffigo.InterfaceData:
 			if rv.Handle != 0 {
@@ -46,6 +46,9 @@ func jsonHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 			v = rv
 		default:
 			v = rawVal
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for JSON.Marshal failed: %w", err)
 		}
 		r0, err := impl.Marshal(v)
 		resBuf := ffigo.GetBuffer()
@@ -62,7 +65,10 @@ func jsonHostRouter(ctx context.Context, impl JSON, registry *ffigo.HandleRegist
 		return resBuf.Bytes(), nil
 	case methodIDJSONUnmarshal:
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for JSON.Unmarshal failed: %w", err)
+		}
 		r0, err := impl.Unmarshal(data)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteAny(r0)

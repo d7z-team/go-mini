@@ -55,16 +55,26 @@ type PrinterBridge struct {
 
 func (b *PrinterBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 	reader := ffigo.NewReader(req.Args)
-	prefix := reader.ReadString()
-
-	// 根据标准化协议：[Count (Uvarint)] [Item1] [Item2]...
-	count := int(reader.ReadUvarint())
-	variadic := make([]any, count)
-	for i := 0; i < count; i++ {
-		variadic[i] = reader.ReadAny()
+	prefix, err := reader.ReadString()
+	if err != nil {
+		return nil, err
 	}
 
-	err := b.impl.Log(prefix, variadic...)
+	// 根据标准化协议：[Count (Uvarint)] [Item1] [Item2]...
+	rawCount, err := reader.ReadUvarint()
+	if err != nil {
+		return nil, err
+	}
+	count := int(rawCount)
+	variadic := make([]any, count)
+	for i := 0; i < count; i++ {
+		variadic[i], err = reader.ReadAny()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = b.impl.Log(prefix, variadic...)
 
 	resBuf := ffigo.GetBuffer()
 	if err != nil {
@@ -82,7 +92,7 @@ func (b *PrinterBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (
 func (b *PrinterBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIVariadic(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	printer := &MockPrinter{}
 	RegisterPrinter(t, executor, printer)
 

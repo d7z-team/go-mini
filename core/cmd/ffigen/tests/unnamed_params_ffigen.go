@@ -30,26 +30,44 @@ func loggerHostRouter(ctx context.Context, impl Logger, registry *ffigo.HandleRe
 	switch methodID {
 	case methodIDLoggerLog:
 		var msg string
-		msg = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			msg = string(tmp)
+		}
 		var level string
-		level = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			level = string(tmp)
+		}
 		var code int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			code = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Logger.Log failed: %w", err)
 		}
 		impl.Log(ctx, msg, level, code)
 		resBuf := ffigo.GetBuffer()
 		return resBuf.Bytes(), nil
 	case methodIDLoggerInternal:
 		var arg0 string
-		arg0 = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			arg0 = string(tmp)
+		}
 		var arg1 string
-		arg1 = string(reqBuf.ReadString())
+		{
+			tmp, _ := reqBuf.ReadString()
+			arg1 = string(tmp)
+		}
 		var arg2 int64
 		{
-			tmp := reqBuf.ReadVarint()
+			tmp, _ := reqBuf.ReadVarint()
 			arg2 = int64(tmp)
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for Logger.Internal failed: %w", err)
 		}
 		impl.Internal(arg0, arg1, arg2)
 		resBuf := ffigo.GetBuffer()

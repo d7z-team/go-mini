@@ -8,7 +8,7 @@ import (
 )
 
 func TestIfScopeIsolation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -33,7 +33,7 @@ func TestIfScopeIsolation(t *testing.T) {
 }
 
 func TestSwitchScopeIsolation(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	

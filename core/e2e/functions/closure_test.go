@@ -8,7 +8,7 @@ import (
 )
 
 func TestClosure(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main

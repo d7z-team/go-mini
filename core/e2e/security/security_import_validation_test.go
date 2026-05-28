@@ -10,7 +10,7 @@ import (
 )
 
 func TestPathTraversalSecurity(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	testCases := []string{
 		"../etc/passwd",
@@ -31,7 +31,7 @@ func TestPathTraversalSecurity(t *testing.T) {
 }
 
 func TestImportDepthLimit(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	modules := make([]surface.LibraryModule, 0, 111)
 	for i := 0; i <= 110; i++ {

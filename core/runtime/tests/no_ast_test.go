@@ -8,7 +8,7 @@ import (
 )
 
 func TestRuntimeTaskStack_NoAST(t *testing.T) {
-	testExecutor := engine.NewMiniExecutor()
+	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
 	package main
 	func main() int {

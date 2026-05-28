@@ -26,7 +26,10 @@ func (b *nestedRangeOuterLoopBridge) Call(ctx context.Context, req *ffigo.FFICal
 		buf.WriteUvarint(3)
 		return buf.Bytes(), nil
 	case 2:
-		handle := reader.ReadUvarint()
+		handle, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
 		switch handle {
 		case 1, 2:
 			buf.WriteVarint(12)
@@ -110,7 +113,7 @@ func main() {
 
 	for _, loader := range pipelineLoaders(code) {
 		t.Run(loader.name, func(t *testing.T) {
-			exec := engine.NewMiniExecutor()
+			exec := engine.MustNewMiniExecutor()
 			bridge := &nestedRangeOuterLoopBridge{}
 			registerNestedRangeOuterLoopSchemas(t, exec, bridge)
 

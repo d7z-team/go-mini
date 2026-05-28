@@ -28,7 +28,10 @@ func sha256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 	switch methodID {
 	case methodIDSHA256Sum256:
 		var data []byte
-		data = reqBuf.ReadBytes()
+		data, _ = reqBuf.ReadBytes()
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for SHA256.Sum256 failed: %w", err)
+		}
 		r0 := impl.Sum256(data)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteBytes(r0)

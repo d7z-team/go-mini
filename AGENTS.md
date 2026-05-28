@@ -24,7 +24,7 @@
 - `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
 - `ffigen` 对 channel 参数必须使用 `<-chan T` 或 `chan<- T` 这种方向类型；不要生成 bidirectional `chan T` 参数代理。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
-- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载 native error/fmt.Errorf 与纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
+- `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载 native error/fmt.Errorf 与纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册（失败通过 error 返回）；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
 - VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。

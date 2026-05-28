@@ -29,17 +29,20 @@ func mockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 	switch methodID {
 	case methodIDMockGeometrySumX:
 		var points []RobustPoint
-		l_points := int(reqBuf.ReadUvarint())
+		l_points, _ := reqBuf.ReadCount(ffigo.MaxWireCollectionItems, "array")
 		points = make([]RobustPoint, l_points)
 		for i_points := 0; i_points < l_points; i_points++ {
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				points[i_points].X = int64(tmp)
 			}
 			{
-				tmp := reqBuf.ReadVarint()
+				tmp, _ := reqBuf.ReadVarint()
 				points[i_points].Y = int64(tmp)
 			}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for MockGeometry.SumX failed: %w", err)
 		}
 		r0 := impl.SumX(points)
 		resBuf := ffigo.GetBuffer()

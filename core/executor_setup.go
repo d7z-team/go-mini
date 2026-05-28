@@ -13,7 +13,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-func NewMiniExecutor() *MiniExecutor {
+func NewMiniExecutor() (*MiniExecutor, error) {
 	res := &MiniExecutor{
 		routes:              make(map[string]runtime.FFIRoute),
 		constants:           make(map[string]runtime.FFIConstValue),
@@ -53,9 +53,17 @@ func NewMiniExecutor() *MiniExecutor {
 	res.mustAddFuncSchemaLocked("require", runtime.MustRuntimeFuncSig(runtime.SpecModule, false, runtime.SpecString))
 
 	if err := res.UseSurface(coreffilib.Surface()); err != nil {
-		panic(err)
+		return nil, err
 	}
 
+	return res, nil
+}
+
+func MustNewMiniExecutor() *MiniExecutor {
+	res, err := NewMiniExecutor()
+	if err != nil {
+		panic(err)
+	}
 	return res
 }
 

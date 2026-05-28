@@ -8,7 +8,7 @@ import (
 )
 
 func TestSwitchContinuePropagatesToOuterLoop(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -51,7 +51,7 @@ func main() {
 }
 
 func TestFunctionDeferSurvivesLoopControlFlow(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -101,7 +101,7 @@ func main() {
 }
 
 func TestSwitchBreakStaysInsideInnerLoop(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -145,7 +145,7 @@ func main() {
 }
 
 func TestSwitchContinueTargetsNearestInnerLoop(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -189,7 +189,7 @@ func main() {
 }
 
 func TestInnerRangeBreakDoesNotEscapeOuterLoops(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -232,7 +232,7 @@ func main() {
 }
 
 func TestInnerRangeContinueDoesNotSkipOuterLoop(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main
@@ -275,7 +275,7 @@ func main() {
 }
 
 func TestRangeContinueSkipsTailAfterShortDeclsAndNestedBlock(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 package main

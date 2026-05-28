@@ -13,7 +13,7 @@ import (
 
 // TestModuleComprehensive 综合测试：函数、变量、常量、结构体导出
 func TestModuleComprehensive(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("lib", surface.GoFile("lib.mgo", `
 			package lib
@@ -74,7 +74,7 @@ func TestModuleComprehensive(t *testing.T) {
 
 // TestCircularDependency 循环依赖拦截测试
 func TestCircularDependency(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	err := executor.UseSurface(surface.Libraries(
 		surface.LibraryModule{Path: "a", Files: []surface.LibraryFile{surface.GoFile("a.mgo", "package a; import \"b\"; func Run() {}")}},
@@ -91,7 +91,7 @@ func TestCircularDependency(t *testing.T) {
 
 // TestNestedFFIPath 嵌套 FFI 路径匹配测试
 func TestNestedFFIPath(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	testsurface.UseRoute(t, executor, "net/http.Get", nil, 1, runtime.MustParseRuntimeFuncSig("function(String) String"), "")
 
@@ -113,7 +113,7 @@ func TestNestedFFIPath(t *testing.T) {
 
 // TestImportScope 非法导入作用域测试
 func TestImportScope(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main

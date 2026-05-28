@@ -4,25 +4,13 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 
 ## Features
 
-- Go-like syntax for small scripts and embedded workflows
-- Bytecode-first runtime
-- Frontend boundary for Go and future source languages
+- Go-like syntax for embedded scripts
+- Bytecode-first compile and execution flow
 - Embeddable Go API
-- CLI for running scripts and bytecode
-- Compile-time call templates for lightweight builtins
-- Surface bundles for FFI and VM source libraries
-- Surface-packaged VM source libraries with explicit exports and bytecode hash validation
-- Strict type gates for operators, comparisons, typed containers, and VM-only pointers
-- Language-level `chan` / `select` with cooperative VM scheduling
-- VM-only pointer semantics with `new`, `&`, dereference, and struct literals
-- FFI binding generator
-- Cooperative VM scheduling with async FFI all-blocked diagnostics
-- Run-level pause/resume via `Start(...)` and `RunHandle`
-- Debugger break/step control via the active `RunHandle`, with events delivered after the VM is paused
-- VM timer model that freezes script waits like `time.Sleep` while leaving real-time deadlines observable
-- Built-in core standard-library subset for errors and pure value helpers
-- Full FFI surface with packages such as `fmt`, `time`, `context`, `io`, and `os`
-- LSP helpers for editor integrations
+- Schema-based FFI with generated bindings
+- Language support for functions, structs, interfaces, channels, select, errors, and modules
+- Optional standard-library FFI surface for packages such as `fmt`, `time`, `context`, `io`, and `os`
+- CLI examples and LSP helper APIs
 
 ## Install
 
@@ -38,15 +26,10 @@ Run a script:
 go run ./examples/cmd/exec -run script.mgo
 ```
 
-Compile to bytecode:
+Compile and run bytecode:
 
 ```bash
 go run ./examples/cmd/exec -o script.json script.mgo
-```
-
-Run bytecode:
-
-```bash
 go run ./examples/cmd/exec -bytecode script.json
 ```
 
@@ -59,12 +42,14 @@ import (
 	"context"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/ffilib"
 )
 
 func main() {
-	exec := engine.NewMiniExecutor()
+	exec, err := engine.NewMiniExecutor()
+	if err != nil {
+		panic(err)
+	}
 	if err := exec.UseSurface(ffilib.Surface()); err != nil {
 		panic(err)
 	}
@@ -85,47 +70,6 @@ func main() {
 }
 ```
 
-Control a running program:
-
-```go
-run, err := prog.Start(context.Background())
-if err != nil {
-	panic(err)
-}
-if err := run.Pause(runtime.PauseReason{Kind: "manual"}); err != nil {
-	panic(err)
-}
-if err := run.Resume(); err != nil {
-	panic(err)
-}
-if err := run.Wait(); err != nil {
-	panic(err)
-}
-```
-
-Debug with an explicit run handle:
-
-```go
-dbg := debugger.NewSession()
-ctx := debugger.WithDebugger(context.Background(), dbg)
-
-run, err := prog.Start(ctx)
-if err != nil {
-	panic(err)
-}
-event, err := dbg.NextEvent(ctx)
-if err != nil {
-	panic(err)
-}
-_ = event
-if err := run.StepInto(); err != nil {
-	panic(err)
-}
-if err := run.Continue(); err != nil {
-	panic(err)
-}
-```
-
 ## FFI
 
 Generate bindings from Go interfaces:
@@ -134,9 +78,7 @@ Generate bindings from Go interfaces:
 go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg orderlib -out order_ffigen.go interface.go
 ```
 
-Generated bindings expose `SurfaceXxx(...) *surface.Bundle` for `executor.UseSurface(...)`. Go-side proxies are generated when the source interface is marked with `// ffigen:proxy`.
-
-For examples and runtime integration details, see [DOCS.md](./DOCS.md).
+Generated bindings expose `SurfaceXxx(...) *surface.Bundle` for `executor.UseSurface(...)`. See [DOCS.md](./DOCS.md) for runtime integration details.
 
 ## Development
 
@@ -144,19 +86,13 @@ For examples and runtime integration details, see [DOCS.md](./DOCS.md).
 make lint test examples
 ```
 
-Useful focused checks:
-
-```bash
-GOCACHE=/tmp/go-build-cache bash -lc 'cd core && go test -timeout 180s ./runtime ./runtime/tests'
-GOCACHE=/tmp/go-build-cache bash -lc 'cd ffilib && go test -timeout 180s ./...'
-timeout 180s env GOCACHE=/tmp/go-build-cache make coverage
-```
+The repository uses a multi-module layout with `core`, `ffilib`, and `examples`, coordinated by the root `go.work`.
 
 ## Documentation
 
-- [DOCS.md](./DOCS.md)
-- [LSP.md](./LSP.md)
-- [TODO.md](./TODO.md)
+- [DOCS.md](./DOCS.md): usage and architecture details
+- [LSP.md](./LSP.md): editor and LSP integration
+- [TODO.md](./TODO.md): current architecture state and remaining work
 
 ## License
 

@@ -8,7 +8,7 @@ import (
 )
 
 func TestLibEval(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	// 1. 加载一个只有函数定义的“库脚本”
 	libCode := `
@@ -65,7 +65,7 @@ func Add(a, b int) int {
 }
 
 func TestCrossPackageEval(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	// 1. 注册一个“库”
 	libCode := `

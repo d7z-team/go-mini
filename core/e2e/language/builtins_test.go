@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuiltins(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main
@@ -122,7 +122,7 @@ func TestBuiltins(t *testing.T) {
 }
 
 func TestNilMapBuiltinsAndIndexing(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 

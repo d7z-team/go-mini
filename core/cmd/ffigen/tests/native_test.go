@@ -33,7 +33,7 @@ func (m *NativeMockImpl) SetPtr(s *NativeHandle) int64 {
 }
 
 func TestNativeObjectInjection(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	mock := &NativeMockImpl{}
 	if err := executor.UseSurface(SurfaceNativeMock(mock)); err != nil {
 		t.Fatal(err)

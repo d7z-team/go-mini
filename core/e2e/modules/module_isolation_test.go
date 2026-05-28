@@ -12,7 +12,7 @@ import (
 )
 
 func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("broken", surface.GoFile("broken.mgo", `
 			package broken
@@ -55,7 +55,7 @@ func TestModuleInitFailureDoesNotPolluteParentSession(t *testing.T) {
 }
 
 func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("panicmod", surface.GoFile("panicmod.mgo", `
 			package panicmod
@@ -102,7 +102,7 @@ func TestModuleInitPanicFunctionDoesNotPolluteParentSession(t *testing.T) {
 }
 
 func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Libraries(
 		surface.LibraryModule{Path: "childbroken", Files: []surface.LibraryFile{surface.GoFile("childbroken.mgo", `
@@ -161,7 +161,7 @@ func TestTransitivePartialInitDoesNotPolluteImporterChain(t *testing.T) {
 }
 
 func TestModuleInitContextCancelClearsLoadingState(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	if err := executor.UseSurface(surface.Library("slowmod", surface.GoFile("slowmod.mgo", `
 package slowmod

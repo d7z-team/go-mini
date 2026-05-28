@@ -9,7 +9,7 @@ import (
 )
 
 func TestInterfaceMap(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -41,7 +41,7 @@ func TestInterfaceMap(t *testing.T) {
 }
 
 func TestInterfaceHandle(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 
 	code := `
 	package main
@@ -64,7 +64,7 @@ func TestInterfaceHandle(t *testing.T) {
 }
 
 func TestInterfaceAssignmentFailure(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -87,7 +87,7 @@ func TestInterfaceAssignmentFailure(t *testing.T) {
 }
 
 func TestInterfaceMethodWhitelist(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -114,7 +114,7 @@ func TestInterfaceMethodWhitelist(t *testing.T) {
 }
 
 func TestInterfaceToInterface(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -144,7 +144,7 @@ func TestInterfaceToInterface(t *testing.T) {
 }
 
 func TestInterfaceSignatureMismatch(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	
@@ -172,7 +172,7 @@ func TestInterfaceSignatureMismatch(t *testing.T) {
 }
 
 func TestInterfaceAnyPenetration(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	code := `
 	package main
 	

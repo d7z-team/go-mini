@@ -33,7 +33,10 @@ func run(args []string) error {
 		return err
 	}
 
-	executor := engine.NewMiniExecutor()
+	executor, err := engine.NewMiniExecutor()
+	if err != nil {
+		return err
+	}
 	if err := executor.UseSurface(ffilib.Surface()); err != nil {
 		return err
 	}

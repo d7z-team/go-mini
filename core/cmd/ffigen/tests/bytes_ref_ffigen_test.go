@@ -27,7 +27,13 @@ func bytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffig
 	switch methodID {
 	case methodIDBytesRefAPIMutate:
 		var buf *ffigo.BytesRef
-		buf = &ffigo.BytesRef{Value: reqBuf.ReadBytes()}
+		{
+			bytes, _ := reqBuf.ReadBytes()
+			buf = &ffigo.BytesRef{Value: bytes}
+		}
+		if err := reqBuf.Err(); err != nil {
+			return nil, fmt.Errorf("FFI decode params for BytesRefAPI.Mutate failed: %w", err)
+		}
 		r0 := impl.Mutate(buf)
 		resBuf := ffigo.GetBuffer()
 		resBuf.WriteUvarint(uint64(1))

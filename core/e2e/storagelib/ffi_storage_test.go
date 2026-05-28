@@ -11,7 +11,7 @@ import (
 
 func TestFFIStorageOverflow(t *testing.T) {
 	impl := &storagelib.StorageImpl{}
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	if err := executor.UseSurface(storagelib.SurfaceStorageAPI(impl)); err != nil {
 		t.Fatal(err)
 	}

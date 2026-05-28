@@ -9,7 +9,7 @@ import (
 )
 
 func TestOrderFFIGen(t *testing.T) {
-	executor := engine.NewMiniExecutor()
+	executor := engine.MustNewMiniExecutor()
 	impl := ordertest.NewOrderImpl()
 	if err := executor.UseSurface(ordertest.SurfaceOrderService(impl)); err != nil {
 		t.Fatal(err)
