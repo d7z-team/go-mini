@@ -98,7 +98,8 @@ func checkAppendBuiltin(ctx *SemanticContext, call *CallExprStmt) error {
 
 type IdentifierExpr struct {
 	BaseNode
-	Name Ident `json:"name"`
+	Name             Ident `json:"name"`
+	ResolvedConstant bool  `json:"-"`
 }
 
 func (c *IdentifierExpr) GetBase() *BaseNode { return &c.BaseNode }
@@ -106,6 +107,7 @@ func (c *IdentifierExpr) exprNode()          {}
 
 func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(c)
+	c.ResolvedConstant = false
 	c.Name = c.Name.Resolve(ctx.ValidContext)
 	if !c.Name.Valid(ctx.ValidContext) {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
@@ -128,6 +130,11 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 
 	vtp, b := ctx.GetVariable(c.Name)
 	if !b {
+		if cType, ok := ctx.GetConstant(c.Name); ok {
+			c.Type = cType
+			c.ResolvedConstant = true
+			return nil
+		}
 		// 回退：检查是否为包别名
 		if _, isPkg := ctx.root.Imports[string(c.Name)]; isPkg {
 			c.Type = "Package"
@@ -968,6 +975,14 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 			for _, fullPath := range targets {
 				// 1. 尝试作为变量/常量查找
 				if t, ok := ctx.GetVariable(fullPath); ok {
+					reportMissingImport()
+					m.ResolvedPackagePath = path
+					m.ResolvedPackageName = fullPath
+					m.ResolvedPackageMember = true
+					m.Type = t
+					return nil
+				}
+				if t, ok := ctx.GetConstant(fullPath); ok {
 					reportMissingImport()
 					m.ResolvedPackagePath = path
 					m.ResolvedPackageName = fullPath

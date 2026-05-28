@@ -891,6 +891,21 @@ func addCapture(f *FuncLitExpr, name string) {
 	f.CaptureNames = append(f.CaptureNames, name)
 }
 
+func (c *ValidContext) GetConstant(name Ident) (GoMiniType, bool) {
+	if c == nil || c.root == nil || c.root.program == nil {
+		return "", false
+	}
+	if _, ok := c.root.program.Constants[string(name)]; !ok {
+		return "", false
+	}
+	if c.root.program.ConstantTypes != nil {
+		if typ := c.root.program.ConstantTypes[string(name)]; typ != "" {
+			return typ, true
+		}
+	}
+	return "Constant", true
+}
+
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 	if prefix, member, ok := splitQualifiedMember(string(variable)); ok {
 		if mod, _, ok := c.root.ModuleByPathOrAlias(prefix); ok {
@@ -916,16 +931,6 @@ func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
 		if miniType, ok := ctx.root.vars[variable]; ok {
 			// 全局变量无需捕获，因为闭包执行时环境能看到全局
 			return miniType, true
-		}
-		if ctx.root.program != nil {
-			if _, ok := ctx.root.program.Constants[string(variable)]; ok {
-				if ctx.root.program.ConstantTypes != nil {
-					if typ := ctx.root.program.ConstantTypes[string(variable)]; typ != "" {
-						return typ, true
-					}
-				}
-				return "Constant", true
-			}
 		}
 		ctx = ctx.parent
 	}

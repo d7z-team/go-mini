@@ -137,6 +137,91 @@ func main() {
 	}
 }
 
+func TestCompileSourceRewritesOperatorOverloadBeforeBytecode(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+type Vec struct {
+	X int
+}
+
+var a = Vec{X: 1}
+var b = Vec{X: 2}
+var result = a + b
+
+func (v Vec) OpAdd(other Vec) Vec {
+	return other
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if artifact.Bytecode == nil {
+		t.Fatal("expected bytecode artifact, got nil")
+	}
+	asm := artifact.Bytecode.Disassemble()
+	if strings.Contains(asm, runtime.OpApplyBinary.String()) {
+		t.Fatalf("overloaded operator should be rewritten before bytecode:\n%s", asm)
+	}
+	if !strings.Contains(asm, "OpAdd") {
+		t.Fatalf("expected rewritten method call in disassembly:\n%s", asm)
+	}
+}
+
+func TestCompileSourceRewritesNestedOperatorOverloads(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+type Vec struct {
+	X int
+}
+
+var a = Vec{X: 1}
+var b = Vec{X: 2}
+
+func (v Vec) OpAdd(other Vec) Vec {
+	return other
+}
+
+func main() {
+	items := []Vec{a + b}
+	_ = func() Vec {
+		return items[0] + b
+	}()
+	switch (a + b).X {
+	case (b + a).X:
+	}
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	asm := artifact.Bytecode.Disassemble()
+	if strings.Contains(asm, runtime.OpApplyBinary.String()) {
+		t.Fatalf("nested overloaded operators should be rewritten before bytecode:\n%s", asm)
+	}
+}
+
+func TestCompileSourcePushesNamedConstants(t *testing.T) {
+	c := New(Config{})
+	artifact, _, _, err := c.CompileSource("snippet", `
+package main
+
+const one = 1
+
+var result = one
+`, false)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	asm := artifact.Bytecode.Disassemble()
+	if strings.Contains(asm, runtime.OpLoadVar.String()) && strings.Contains(asm, "one") {
+		t.Fatalf("named constant should be pushed, not loaded as a variable:\n%s", asm)
+	}
+}
+
 func TestCompileSourceAcceptsParsedSchema(t *testing.T) {
 	funcSig, err := runtime.ParseRuntimeFuncSig("function(String, ...Any) String")
 	if err != nil {

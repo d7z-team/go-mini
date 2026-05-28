@@ -11,9 +11,10 @@ import (
 // BinaryExpr 表示二元运算表达式 1 + 1
 type BinaryExpr struct {
 	BaseNode
-	Operator Ident `json:"operator"`
-	Left     Expr  `json:"left"`
-	Right    Expr  `json:"right"`
+	Operator           Ident               `json:"operator"`
+	Left               Expr                `json:"left"`
+	Right              Expr                `json:"right"`
+	OperatorResolution *OperatorResolution `json:"-"`
 }
 
 func (b *BinaryExpr) GetBase() *BaseNode { return &b.BaseNode }
@@ -99,6 +100,7 @@ func tryConstantFold(left, right *LiteralExpr, operator Ident, id string) *Liter
 
 func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(b)
+	b.OperatorResolution = nil
 	if b.Left == nil || b.Right == nil {
 		err := errors.New("二元表达式缺少操作数")
 		ctx.AddErrorf("%s", err.Error())
@@ -124,80 +126,58 @@ func (b *BinaryExpr) Check(ctx *SemanticContext) error {
 
 	leftType := b.Left.GetBase().Type
 	rightType := b.Right.GetBase().Type
-	isKnown := func(t GoMiniType) bool {
-		return t != "" && !t.IsAny() && t != "Constant"
-	}
-	isDynamic := func(t GoMiniType) bool {
-		return t == TypeAny
-	}
 
-	switch b.Operator {
-	case "And", "Or":
-		if isKnown(leftType) && leftType != TypeBool {
-			err := fmt.Errorf("%s operator expects Bool, got %s", b.Operator, leftType)
-			ctx.AddErrorAt(b.Left, "%s", err.Error())
-			return err
-		}
-		if isKnown(rightType) && rightType != TypeBool {
-			err := fmt.Errorf("%s operator expects Bool, got %s", b.Operator, rightType)
-			ctx.AddErrorAt(b.Right, "%s", err.Error())
-			return err
-		}
-		b.Type = TypeBool
-		return nil
-	}
-
-	if leftType == "Constant" || rightType == "Constant" {
-		if normalized.IsComparison() {
-			b.Type = TypeBool
-		} else {
-			b.Type = leftType
-		}
-		return nil
-	}
-
-	if isDynamic(leftType) || isDynamic(rightType) {
-		result, err := typespec.BinaryResultType(normalized, typespec.Type(leftType), typespec.Type(rightType))
-		if err != nil {
-			ctx.AddErrorAt(b, "%s", err.Error())
-			return err
-		}
+	result, nativeErr := typespec.BinaryResultType(normalized, typespec.Type(leftType), typespec.Type(rightType))
+	if nativeErr == nil {
 		b.Type = GoMiniType(result)
 		return nil
 	}
 
-	switch b.Operator {
-	case "Minus", "Mult", "Div", "Mod":
-		if isKnown(leftType) && (b.Operator == "Mod" && leftType != TypeInt64 || b.Operator != "Mod" && !leftType.IsNumeric()) {
-			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, leftType)
-			ctx.AddErrorAt(b.Left, "%s", err.Error())
+	if resolution, ok, err := ctx.ResolveBinaryOperatorMethod(normalized, leftType, rightType); ok {
+		if err != nil {
+			ctx.AddErrorAt(b, "%s", err.Error())
 			return err
 		}
-		if isKnown(rightType) && (b.Operator == "Mod" && rightType != TypeInt64 || b.Operator != "Mod" && !rightType.IsNumeric()) {
-			err := fmt.Errorf("%s operator expects a numeric type, got %s", b.Operator, rightType)
-			ctx.AddErrorAt(b.Right, "%s", err.Error())
-			return err
-		}
-	case "BitAnd", "BitOr", "BitXor", "Lsh", "Rsh":
-		if isKnown(leftType) && leftType != TypeInt64 {
-			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, leftType)
-			ctx.AddErrorAt(b.Left, "%s", err.Error())
-			return err
-		}
-		if isKnown(rightType) && rightType != TypeInt64 {
-			err := fmt.Errorf("%s operator expects Int64, got %s", b.Operator, rightType)
-			ctx.AddErrorAt(b.Right, "%s", err.Error())
-			return err
-		}
+		b.OperatorResolution = resolution
+		b.Type = resolution.ReturnType
+		return nil
 	}
 
-	result, err := typespec.BinaryResultType(normalized, typespec.Type(leftType), typespec.Type(rightType))
-	if err != nil {
-		ctx.AddErrorAt(b, "%s", err.Error())
-		return err
+	if target, message, ok := binaryOperandDiagnostic(normalized, b.Left, b.Right); ok {
+		ctx.AddErrorAt(target, "%s", message)
+		return nativeErr
 	}
-	b.Type = GoMiniType(result)
-	return nil
+	ctx.AddErrorAt(b, "%s", nativeErr.Error())
+	return nativeErr
+}
+
+func binaryOperandDiagnostic(op typespec.BinaryOperator, left, right Expr) (Node, string, bool) {
+	leftType := left.GetBase().Type
+	rightType := right.GetBase().Type
+	switch op {
+	case typespec.OpAnd, typespec.OpOr:
+		if leftType != TypeBool && leftType != TypeAny && leftType != "" {
+			return left, fmt.Sprintf("%s operator expects Bool, got %s", op, leftType), true
+		}
+		if rightType != TypeBool && rightType != TypeAny && rightType != "" {
+			return right, fmt.Sprintf("%s operator expects Bool, got %s", op, rightType), true
+		}
+	case typespec.OpMinus, typespec.OpMult, typespec.OpDiv:
+		if leftType != TypeAny && leftType != "" && !leftType.IsNumeric() {
+			return left, fmt.Sprintf("%s operator expects a numeric type, got %s", op, leftType), true
+		}
+		if rightType != TypeAny && rightType != "" && !rightType.IsNumeric() {
+			return right, fmt.Sprintf("%s operator expects a numeric type, got %s", op, rightType), true
+		}
+	case typespec.OpMod, typespec.OpBitAnd, typespec.OpBitOr, typespec.OpBitXor, typespec.OpLsh, typespec.OpRsh:
+		if leftType != TypeInt64 && leftType != TypeAny && leftType != "" {
+			return left, fmt.Sprintf("%s operator expects Int64, got %s", op, leftType), true
+		}
+		if rightType != TypeInt64 && rightType != TypeAny && rightType != "" {
+			return right, fmt.Sprintf("%s operator expects Int64, got %s", op, rightType), true
+		}
+	}
+	return nil, "", false
 }
 
 func (b *BinaryExpr) Optimize(ctx *OptimizeContext) Node {
@@ -226,16 +206,15 @@ func (b *BinaryExpr) Optimize(ctx *OptimizeContext) Node {
 		}
 	}
 
-	// 3. 在隔离架构下，我们不再将标量运算转换为 StructCallExpr
-	// 直接返回优化后的 BinaryExpr，由 Runtime 处理。
 	return b
 }
 
 // UnaryExpr 表示一元运算表达式 !true
 type UnaryExpr struct {
 	BaseNode
-	Operator Ident `json:"operator"`
-	Operand  Expr  `json:"operand"`
+	Operator           Ident               `json:"operator"`
+	Operand            Expr                `json:"operand"`
+	OperatorResolution *OperatorResolution `json:"-"`
 }
 
 func (u *UnaryExpr) GetBase() *BaseNode { return &u.BaseNode }
@@ -243,6 +222,7 @@ func (u *UnaryExpr) exprNode()          {}
 
 func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(u)
+	u.OperatorResolution = nil
 	switch u.Operator {
 	case "-", "Sub", "Minus":
 		u.Operator = "Sub"
@@ -267,24 +247,51 @@ func (u *UnaryExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 
-	u.Type = u.Operand.GetBase().Type
+	operandType := u.Operand.GetBase().Type
+	u.Type = operandType
+	nativeOK := true
 	switch u.Operator {
 	case "Not":
-		if u.Type != TypeBool && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "Not operator expects Bool, got %s", u.Type)
+		if operandType != TypeBool && operandType != TypeAny && operandType != "" {
+			nativeOK = false
+		} else {
+			u.Type = TypeBool
 		}
-		u.Type = TypeBool
 	case "Sub", "Plus":
-		if u.Type != TypeInt64 && u.Type != TypeFloat64 && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "%s operator expects a numeric type, got %s", u.Operator, u.Type)
+		if operandType != TypeInt64 && operandType != TypeFloat64 && operandType != TypeAny && operandType != "" {
+			nativeOK = false
 		}
 	case "BitXor":
-		if u.Type != TypeInt64 && u.Type != TypeAny && u.Type != "" {
-			ctx.AddErrorAt(u.Operand, "BitXor operator expects Int64, got %s", u.Type)
+		if operandType != TypeInt64 && operandType != TypeAny && operandType != "" {
+			nativeOK = false
 		}
 	}
+	if nativeOK {
+		return nil
+	}
+	if resolution, ok, err := ctx.ResolveUnaryOperatorMethod(u.Operator, operandType); ok {
+		if err != nil {
+			ctx.AddErrorAt(u, "%s", err.Error())
+			return err
+		}
+		u.OperatorResolution = resolution
+		u.Type = resolution.ReturnType
+		return nil
+	}
 
-	return nil
+	var err error
+	switch u.Operator {
+	case "Not":
+		err = fmt.Errorf("Not operator expects Bool, got %s", operandType)
+	case "Sub", "Plus":
+		err = fmt.Errorf("%s operator expects a numeric type, got %s", u.Operator, operandType)
+	case "BitXor":
+		err = fmt.Errorf("BitXor operator expects Int64, got %s", operandType)
+	default:
+		err = fmt.Errorf("%s operator does not support %s", u.Operator, operandType)
+	}
+	ctx.AddErrorAt(u.Operand, "%s", err.Error())
+	return err
 }
 
 func (u *UnaryExpr) Optimize(ctx *OptimizeContext) Node {
@@ -296,11 +303,10 @@ func (u *UnaryExpr) Optimize(ctx *OptimizeContext) Node {
 		}
 	}
 
-	if u.Operator == "Plus" {
+	if u.Operator == "Plus" && u.OperatorResolution == nil {
 		return u.Operand
 	}
 
-	// 隔离架构下不再转换为 StructCallExpr
 	return u
 }
 

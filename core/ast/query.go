@@ -1503,6 +1503,9 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 		if t, ok := ctx.GetVariable(e.Name); ok {
 			return t
 		}
+		if t, ok := ctx.GetConstant(e.Name); ok {
+			return t
+		}
 		if _, known, _ := ctx.root.ResolvePackage(e.Name); known {
 			return "Package"
 		}
@@ -1544,6 +1547,9 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 					// FFI 包成员推导
 					fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
 					if t, ok := ctx.GetVariable(fullPath); ok {
+						return resolveLSPType(ctx, t, depth+1)
+					}
+					if t, ok := ctx.GetConstant(fullPath); ok {
 						return resolveLSPType(ctx, t, depth+1)
 					}
 				}

@@ -248,6 +248,21 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		}
 	}
 
+	if ast.RewriteOperatorOverloads(artifact.Program) {
+		if err := ast.AssertNoResidualOperatorOverloads(artifact.Program); err != nil {
+			return artifact, semanticCtx, err
+		}
+		activeValidator, err = newValidator(artifact.Program, false)
+		if err != nil {
+			return artifact, semanticCtx, err
+		}
+		semanticCtx = ast.NewSemanticContext(activeValidator)
+		if err := artifact.Program.Check(semanticCtx); err != nil {
+			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
+			return artifact, semanticCtx, err
+		}
+	}
+
 	if prog, ok := artifact.Program.Optimize(ast.NewOptimizeContext(activeValidator)).(*ast.ProgramStmt); ok {
 		artifact.Program = prog
 	}

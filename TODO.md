@@ -16,7 +16,8 @@
 - canonical type 是 Mini AST / lowering / compiler / runtime 的统一类型格式；Go 风格类型在 Go 前端输入层规范化。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面。
 - 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
-- Go 前端保留常量值类型，lowering 写入 `PreparedProgram.ConstantTypes`；常量比较、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量。
+- 运算符重载是 compiler 阶段 AST 语法糖：前端只输出普通一元/二元表达式，AST 检查在原生运算不支持时解析接收者 `Op*` 方法，模板展开后、优化前改写为真实方法调用，lowering / bytecode / runtime 不保留重载分派。
+- Go 前端保留常量值类型，AST 语义检查显式标记命名常量引用，lowering 写入 `PreparedProgram.ConstantTypes` 并把表达式常量降为 `OpPush`；常量比较、调用参数、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量，也不把常量作为 runtime 变量加载。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
 - FFI 常量在 schema、bound surface、compiler 外部依赖与 bytecode requirement 中携带 canonical primitive 类型；缺失或不支持的常量类型会在装配或装载前失败。
 - 公开扩展入口统一为 `executor.UseSurface(...)`。
@@ -107,7 +108,7 @@
 
 ## 待办
 
-新增一个小特性，设计支持运算符重载（在ast内部通过语法糖对计算表达式转换为对应的实际函数的方式，并且可以支持不同的前端），并结合现在的代码设计一个总体最优方案，不要打补丁，分析现在不合理的地方也一并重构
+- [x] 支持 AST 层运算符重载语法糖，并在 compiler 中改写为真实方法调用。
 
 
 ## 变更门禁

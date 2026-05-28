@@ -33,7 +33,7 @@
 | :--- | :--- | :--- |
 | `ast.BinaryExpr` | **Lowered** | 转换为 `OpApplyBinary` 或 `OpJumpIf` (逻辑运算) |
 | `ast.UnaryExpr` | **Lowered** | 转换为 `OpApplyUnary` |
-| `ast.IdentifierExpr` | **Lowered** | 转换为 `OpLoadVar` |
+| `ast.IdentifierExpr` | **Lowered** | 变量转换为 `OpLoadVar`，命名常量转换为 `OpPush` |
 | `ast.LiteralExpr` | **Lowered** | 转换为 `OpPush` |
 | `ast.ConstRefExpr` | **Lowered** | 转换为 `OpPush` (常量值) |
 | `ast.CallExprStmt` | **Lowered** | 转换为 `OpCall` + `CallData` |
@@ -52,7 +52,7 @@
 
 | AST 节点 | 状态 | 说明 |
 | :--- | :--- | :--- |
-| `ast.IdentifierExpr` | **Lowered** | 转换为 `OpEvalLHS` (LHSTypeEnv) |
+| `ast.IdentifierExpr` | **Lowered** | 变量转换为 `OpEvalLHS` (LHSTypeEnv)，常量作为调用参数 LHS 时转换为 `LHSTypeNone` |
 | `ast.IndexExpr` | **Lowered** | 转换为 `OpEvalLHS` (LHSTypeIndex) |
 | `ast.MemberExpr` | **Lowered** | 转换为 `OpEvalLHS` (LHSTypeMember) |
 | `ast.StarExpr` | **Lowered** | 转换为 `OpEvalLHS` (LHSTypeStar) |

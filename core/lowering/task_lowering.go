@@ -251,6 +251,14 @@ func literalDirect(n *ast.LiteralExpr) (*runtime.Var, error) {
 	return nil, fmt.Errorf("unknown literal %s", n.Type)
 }
 
+func (b *builder) constantPushTasks(name string) ([]runtime.Task, bool) {
+	val, ok := b.consts[name]
+	if !ok {
+		return nil, false
+	}
+	return []runtime.Task{{Op: runtime.OpPush, Data: val.ToVar()}}, true
+}
+
 func parseTypedConstLiteral(val string, typ runtime.RuntimeType) (runtime.FFIConstValue, error) {
 	switch {
 	case typ.IsString():
@@ -952,6 +960,9 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		if n == nil {
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
+		if n.ResolvedConstant {
+			return b.constantPushTasks(string(n.Name))
+		}
 		sym := scope.resolveOrImplicit(string(n.Name))
 		switch sym.Kind {
 		case runtime.SymbolLocal:
@@ -965,10 +976,7 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 		if n == nil {
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
-		if val, ok := b.consts[string(n.Name)]; ok {
-			return []runtime.Task{{Op: runtime.OpPush, Data: val.ToVar()}}, true
-		}
-		return nil, false
+		return b.constantPushTasks(string(n.Name))
 	case *ast.UnaryExpr:
 		if n == nil {
 			return []runtime.Task{{Op: runtime.OpPush}}, true
@@ -1207,6 +1215,14 @@ func (b *builder) lowerLHSTasks(lhsExpr ast.Expr, scope *loweringScope) ([]runti
 		}}, true
 	case *ast.IdentifierExpr:
 		if lhs == nil || lhs.Name == "_" {
+			return []runtime.Task{{
+				Op: runtime.OpEvalLHS,
+				Data: &runtime.LHSData{
+					Kind: runtime.LHSTypeNone,
+				},
+			}}, true
+		}
+		if lhs.ResolvedConstant {
 			return []runtime.Task{{
 				Op: runtime.OpEvalLHS,
 				Data: &runtime.LHSData{

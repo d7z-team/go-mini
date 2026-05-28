@@ -246,12 +246,12 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 	case *ast.LiteralExpr:
 		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpPush, formatLiteral(n.Value), "literal")}, true
 	case *ast.IdentifierExpr:
+		if n.ResolvedConstant {
+			return b.compileConstantPush(n, n.Name, false)
+		}
 		return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpLoadVar, string(n.Name), "identifier")}, true
 	case *ast.ConstRefExpr:
-		if val, ok := b.program.Constants[string(n.Name)]; ok {
-			return []bytecode.Instruction{b.runtimeInstruction(n, runtime.OpPush, formatLiteral(val), "const")}, true
-		}
-		return []bytecode.Instruction{b.instruction(n, pseudoOpLoadConst, string(n.Name), "const")}, true
+		return b.compileConstantPush(n, n.Name, true)
 	case *ast.BinaryExpr:
 		left, ok := b.compileExpr(n.Left)
 		if !ok {
@@ -356,6 +356,16 @@ func (b *bytecodeBuilder) compileExpr(expr ast.Expr) ([]bytecode.Instruction, bo
 	default:
 		return nil, false
 	}
+}
+
+func (b *bytecodeBuilder) compileConstantPush(node ast.Node, name ast.Ident, allowPseudo bool) ([]bytecode.Instruction, bool) {
+	if val, ok := b.program.Constants[string(name)]; ok {
+		return []bytecode.Instruction{b.runtimeInstruction(node, runtime.OpPush, formatLiteral(val), "const")}, true
+	}
+	if !allowPseudo {
+		return nil, false
+	}
+	return []bytecode.Instruction{b.instruction(node, pseudoOpLoadConst, string(name), "const")}, true
 }
 
 func (b *bytecodeBuilder) compileLHS(expr ast.Expr) ([]bytecode.Instruction, bool) {

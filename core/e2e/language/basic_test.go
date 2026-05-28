@@ -50,13 +50,27 @@ func TestConstAndVar(t *testing.T) {
 	code := `
 	package main
 	const PI = "3.14"
+	const ONE = 1
 	var globalMsg = "hello"
+
+	func add(v int) int {
+		return v + ONE
+	}
 
 	func main() {
 		if globalMsg != "hello" {
 			panic("global var failed")
 		}
-		// 注意：目前 ConstRefExpr 在执行器中直接从 Program.Constants 读取字符串
+		if PI != "3.14" {
+			panic("string constant failed")
+		}
+		if add(ONE) != 2 {
+			panic("constant call argument failed")
+		}
+		ONE := 10
+		if add(ONE) != 11 {
+			panic("local variable should shadow constant")
+		}
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -67,6 +81,13 @@ func TestConstAndVar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	requireCompileErrorContains(t, executor, `
+package main
+const ONE = 1
+func main() {
+	ONE = 2
+}`, "cannot assign to constant ONE")
 }
 
 func TestReferenceComparison(t *testing.T) {

@@ -2136,6 +2136,12 @@ func (m *MultiAssignmentStmt) Check(ctx *SemanticContext) error {
 
 			vType, exists := ctx.GetVariable(ident.Name)
 			if !exists {
+				if _, ok := ctx.GetConstant(ident.Name); ok {
+					err := fmt.Errorf("cannot assign to constant %s", ident.Name)
+					ctx.AddErrorf("%s", err.Error())
+					hasError = true
+					continue
+				}
 				err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
 				ctx.AddErrorf("%s", err.Error())
 				hasError = true
@@ -2609,6 +2615,11 @@ func (a *AssignmentStmt) Check(ctx *SemanticContext) error {
 			return nil
 		}
 
+		if _, ok := ctx.GetConstant(ident.Name); ok {
+			err := fmt.Errorf("cannot assign to constant %s", ident.Name)
+			ctx.AddErrorAt(a.LHS, "%s", err.Error())
+			return err
+		}
 		err := fmt.Errorf("undefined identifier in assignment: %s", ident.Name)
 		ctx.AddErrorAt(a.LHS, "%s", err.Error())
 		return err
