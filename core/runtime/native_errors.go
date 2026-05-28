@@ -51,7 +51,7 @@ func NativeErrorsAs(e *Executor, session *StackContext, _ FFIRoute, args []*Var,
 	}
 	value := newErrorVar(err)
 	if slot.Decl.IsAny() {
-		value = e.wrapAnyVar(session, value)
+		value = e.wrapAnyVar(value)
 	}
 	if err := session.Assign(slot, value); err != nil {
 		return nil, e.newPanicError(session, err.Error())

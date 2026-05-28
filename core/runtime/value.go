@@ -6,7 +6,6 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"sync"
-	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -127,9 +126,6 @@ func cloneVarForAssign(v *Var) *Var {
 		}
 	}
 
-	if v.stack.Value() != nil {
-		res.stack = weak.Make(v.stack.Value())
-	}
 	return res
 }
 
@@ -252,8 +248,6 @@ type Var struct {
 	Handle   uint32
 	Bridge   ffigo.FFIBridge
 	Ref      interface{} // Internal structures only: *VMArray, *VMMap, *VMStruct, *VMHandle, *Slot, *VMModule, *VMClosure, *VMInterface, error
-
-	stack weak.Pointer[Stack]
 }
 
 type Slot struct {

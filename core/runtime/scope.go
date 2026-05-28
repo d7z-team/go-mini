@@ -130,19 +130,6 @@ func lookupFrameSlotByName(frame *SlotFrame, name string) *Slot {
 	return nil
 }
 
-func lookupFrameSymbolByName(frame *SlotFrame, name string) (SymbolRef, bool) {
-	if frame == nil || name == "" {
-		return SymbolRef{}, false
-	}
-	if slot, ok := frame.LocalIndex[name]; ok {
-		return SymbolRef{Name: name, Kind: SymbolLocal, Slot: slot}, true
-	}
-	if slot, ok := frame.UpvalueIndex[name]; ok {
-		return SymbolRef{Name: name, Kind: SymbolUpvalue, Slot: slot}, true
-	}
-	return SymbolRef{}, false
-}
-
 func loadVarFromScope(exec *Executor, shared *SharedState, stack *Stack, variable string) (*Var, error) {
 	if variable == "nil" {
 		return nil, nil
@@ -665,7 +652,7 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 			if err := ctx.Executor.validateAnyValue(expr); err != nil {
 				return nil, err
 			}
-			return ctx.Executor.wrapAnyVar(ctx, cloneVarForAssign(expr)), nil
+			return ctx.Executor.wrapAnyVar(cloneVarForAssign(expr)), nil
 		}
 		return cloneVarForAssign(expr), nil
 	}

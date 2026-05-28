@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -17,9 +16,6 @@ func (e *Executor) deserializeRuntimeType(session *StackContext, reader *ffigo.R
 	res, err := e.deserializeParsedType(session, reader, typ, bridge)
 	if res != nil {
 		res.SetRuntimeType(typ)
-		if session != nil && session.Stack != nil {
-			res.stack = weak.Make(session.Stack)
-		}
 	}
 	return res, err
 }
@@ -542,7 +538,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 				err = convErr
 				break
 			}
-			res = e.wrapAnyVar(session, decoded)
+			res = e.wrapAnyVar(decoded)
 		}
 	case RuntimeTypePrimitive, RuntimeTypeNamed:
 		switch typ.Raw {
@@ -716,7 +712,7 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 				err = convErr
 				break
 			}
-			res = e.wrapAnyVar(session, decoded)
+			res = e.wrapAnyVar(decoded)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported FFI return type: %s", typ.Raw)
@@ -730,9 +726,6 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	}
 	if res != nil {
 		res.SetRuntimeType(typ)
-		if session != nil && session.Stack != nil {
-			res.stack = weak.Make(session.Stack)
-		}
 	}
 	return res, nil
 }

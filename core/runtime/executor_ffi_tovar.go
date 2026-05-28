@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"strings"
-	"weak"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/typespec"
@@ -19,9 +18,6 @@ func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FF
 	res, err := e.hostValueToVar(session, val, bridge)
 	if err != nil {
 		return nil, err
-	}
-	if res != nil && session != nil && session.Stack != nil {
-		res.stack = weak.Make(session.Stack)
 	}
 	return res, nil
 }
@@ -110,7 +106,7 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 			if err != nil {
 				return nil, fmt.Errorf("map value %q: %w", k, err)
 			}
-			vmMap.StoreWithKey(k, NewString(k), e.wrapAnyVar(session, inner))
+			vmMap.StoreWithKey(k, NewString(k), e.wrapAnyVar(inner))
 		}
 		res := &Var{VType: TypeMap, Ref: vmMap}
 		res.SetRawType(MapType(SpecString, SpecAny).String())
@@ -122,7 +118,7 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 			if err != nil {
 				return nil, fmt.Errorf("array item %d: %w", i, err)
 			}
-			resArr[i] = e.wrapAnyVar(session, inner)
+			resArr[i] = e.wrapAnyVar(inner)
 		}
 		res := &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
 		res.SetRawType(ArrayType(SpecAny).String())
@@ -208,12 +204,9 @@ func (e *Executor) decodeAnonymousVMStruct(session *StackContext, raw *ffigo.VMS
 	return res, nil
 }
 
-func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
+func (e *Executor) wrapAnyVar(inner *Var) *Var {
 	if inner == nil {
 		res := NewVarWithRuntimeType(MustParseRuntimeType(SpecAny), TypeAny)
-		if session != nil && session.Stack != nil {
-			res.stack = weak.Make(session.Stack)
-		}
 		return res
 	}
 	if inner.VType == TypeAny {
@@ -226,8 +219,5 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 		Handle: inner.Handle,
 	}
 	res.SetRawType(SpecAny.String())
-	if session != nil && session.Stack != nil {
-		res.stack = weak.Make(session.Stack)
-	}
 	return res
 }
