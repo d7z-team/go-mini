@@ -128,9 +128,14 @@ withValue := context.WithValue(context.WithValue(ctx, "key", "parent"), "key", "
 test.OutBool(withValue.Value("key") == "child")
 test.Out("|")
 test.OutBool(withValue.Value("missing") == nil)
+test.Out("|")
+intValue := context.WithValue(withValue, Int64(7), "int")
+test.OutBool(intValue.Value(Int64(7)) == "int")
+test.Out("|")
+boolValue := context.WithValue(intValue, true, "bool")
+test.OutBool(boolValue.Value(true) == "bool")
 `,
-			Want:   "true|true|true",
-			Covers: []string{"ValidValueKey"},
+			Want: "true|true|true|true|true",
 		},
 		{
 			Name:    "deadline-forwarding-cancel-context",
@@ -205,12 +210,14 @@ context.WithValue(context.Background(), nil, "value")
 `,
 		},
 		{
-			Name:       "with-value-rejects-array-key",
-			Imports:    []string{"context"},
-			WantRunErr: "context key is not comparable",
+			Name:    "with-value-accepts-array-key",
+			Imports: []string{"context"},
 			Body: `
-context.WithValue(context.Background(), []Int64{1}, "value")
+key := []Int64{1}
+ctx := context.WithValue(context.Background(), key, "value")
+test.Out(ctx.Value(key).(String))
 `,
+			Want: "value",
 		},
 		{
 			Name:       "with-value-rejects-map-key",

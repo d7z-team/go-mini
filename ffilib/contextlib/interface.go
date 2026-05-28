@@ -12,7 +12,6 @@ type Module interface {
 	Canceled() error
 	DeadlineExceeded() error
 	NewTimer(ctx context.Context, ns int64) *Timer
-	ValidValueKey(key any) bool
 }
 
 // ffigen:methods

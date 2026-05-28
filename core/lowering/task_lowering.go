@@ -2,7 +2,6 @@ package lowering
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -223,16 +222,7 @@ func (b *builder) runtimeType(spec ast.GoMiniType, node ast.Node, op string) run
 }
 
 func isNilNode(node ast.Node) bool {
-	if node == nil {
-		return true
-	}
-	value := reflect.ValueOf(node)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
+	return ast.IsNilNode(node)
 }
 
 func literalDirect(n *ast.LiteralExpr) (*runtime.Var, error) {

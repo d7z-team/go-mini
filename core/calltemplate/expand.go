@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"reflect"
 	"sort"
 	"strings"
 	"text/template"
@@ -2264,16 +2263,8 @@ func validateReservedExpr(expr ast.Expr, check func(ast.Ident, string) error) er
 }
 
 func isNilInterface(v interface{}) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
-	}
+	node, ok := v.(ast.Node)
+	return v == nil || (ok && ast.IsNilNode(node))
 }
 
 func asStmt(node ast.Node) ast.Stmt {

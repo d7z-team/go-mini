@@ -198,9 +198,9 @@ var ioRoutes = []runtime.FFIRouteDecl{
 func SurfaceIO(impl IO) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddRouteDecls(ioRoutes)
-	schema.AddConst("io", "SeekCurrent", runtime.MustConstantValue(io.SeekCurrent))
-	schema.AddConst("io", "SeekEnd", runtime.MustConstantValue(io.SeekEnd))
-	schema.AddConst("io", "SeekStart", runtime.MustConstantValue(io.SeekStart))
+	schema.AddConst("io", "SeekCurrent", runtime.ConstInt64(int64(io.SeekCurrent)))
+	schema.AddConst("io", "SeekEnd", runtime.ConstInt64(int64(io.SeekEnd)))
+	schema.AddConst("io", "SeekStart", runtime.ConstInt64(int64(io.SeekStart)))
 	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
 	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {

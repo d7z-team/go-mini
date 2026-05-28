@@ -2,8 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"math"
-	"reflect"
 	"strings"
 	"weak"
 
@@ -11,20 +9,14 @@ import (
 	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
+const maxHostInt64 = uint64(1<<63 - 1)
+
 func (e *Executor) ToVar(session *StackContext, val interface{}, bridge ffigo.FFIBridge) (*Var, error) {
 	if val == nil {
 		return nil, nil
 	}
 
-	norm, err := e.normalizeValue(val)
-	if err != nil {
-		return nil, err
-	}
-	if norm == nil {
-		return nil, nil
-	}
-
-	res, err := e.hostValueToVar(session, norm, bridge)
+	res, err := e.hostValueToVar(session, val, bridge)
 	if err != nil {
 		return nil, err
 	}
@@ -40,10 +32,26 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		return v, nil
 	case int:
 		return NewInt(int64(v)), nil
+	case int8:
+		return NewInt(int64(v)), nil
+	case int16:
+		return NewInt(int64(v)), nil
+	case int32:
+		return NewInt(int64(v)), nil
 	case int64:
 		return NewInt(v), nil
+	case uint:
+		return hostUintToVar(uint64(v), val)
+	case uint8:
+		return NewInt(int64(v)), nil
+	case uint16:
+		return NewInt(int64(v)), nil
+	case uint64:
+		return hostUintToVar(v, val)
 	case float64:
 		return NewFloat(v), nil
+	case float32:
+		return NewFloat(float64(v)), nil
 	case string:
 		return NewString(v), nil
 	case []byte:
@@ -134,6 +142,13 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 	}
 }
 
+func hostUintToVar(raw uint64, val interface{}) (*Var, error) {
+	if raw > maxHostInt64 {
+		return nil, fmt.Errorf("host value %T overflows Int64: %d", val, raw)
+	}
+	return NewInt(int64(raw)), nil
+}
+
 func (e *Executor) decodeKnownVMStruct(session *StackContext, raw *ffigo.VMStruct, bridge ffigo.FFIBridge, schema *RuntimeStructSpec) (*Var, error) {
 	fields := make([]*Slot, len(schema.Fields))
 	byName := make(map[string]int, len(schema.Fields))
@@ -215,104 +230,4 @@ func (e *Executor) wrapAnyVar(session *StackContext, inner *Var) *Var {
 		res.stack = weak.Make(session.Stack)
 	}
 	return res
-}
-
-func normalizeHostUint(raw uint64, typ interface{}) (int64, error) {
-	if raw > math.MaxInt64 {
-		return 0, fmt.Errorf("host value %T overflows Int64: %d", typ, raw)
-	}
-	return int64(raw), nil
-}
-
-func (e *Executor) normalizeValue(val interface{}) (interface{}, error) {
-	if val == nil {
-		return nil, nil
-	}
-	if _, ok := val.(*Var); ok {
-		return val, nil
-	}
-	if _, ok := val.(ffigo.InterfaceData); ok {
-		return val, nil
-	}
-	if _, ok := val.(ffigo.ErrorData); ok {
-		return val, nil
-	}
-	if _, ok := val.(*ffigo.VMStruct); ok {
-		return val, nil
-	}
-
-	v := reflect.ValueOf(val)
-	for v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return nil, nil
-		}
-		v = v.Elem()
-	}
-
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int(), nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return normalizeHostUint(v.Uint(), val)
-	case reflect.Float32, reflect.Float64:
-		return v.Float(), nil
-	case reflect.String:
-		return v.String(), nil
-	case reflect.Bool:
-		return v.Bool(), nil
-	case reflect.Slice, reflect.Array:
-		if v.Type().Elem().Kind() == reflect.Uint8 {
-			if v.Kind() == reflect.Slice {
-				return v.Bytes(), nil
-			}
-			res := make([]byte, v.Len())
-			for i := 0; i < v.Len(); i++ {
-				res[i] = uint8(v.Index(i).Uint())
-			}
-			return res, nil
-		}
-		res := make([]interface{}, v.Len())
-		for i := 0; i < v.Len(); i++ {
-			item, err := e.normalizeValue(v.Index(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-			res[i] = item
-		}
-		return res, nil
-	case reflect.Map:
-		res := make(map[string]interface{}, v.Len())
-		for _, key := range v.MapKeys() {
-			if key.Kind() != reflect.String {
-				return nil, fmt.Errorf("unsupported non-string map key kind %v", key.Kind())
-			}
-			item, err := e.normalizeValue(v.MapIndex(key).Interface())
-			if err != nil {
-				return nil, err
-			}
-			res[key.String()] = item
-		}
-		return res, nil
-	case reflect.Struct:
-		res := make(map[string]interface{})
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			if field.PkgPath != "" {
-				continue
-			}
-			name := field.Name
-			if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
-				name = strings.Split(tag, ",")[0]
-			}
-			item, err := e.normalizeValue(v.Field(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-			res[name] = item
-		}
-		return res, nil
-	default:
-		return nil, fmt.Errorf("unsupported host value %T", val)
-	}
 }

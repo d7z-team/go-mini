@@ -10,9 +10,103 @@ type Visitor interface {
 	Visit(node Node) (w Visitor)
 }
 
+func IsNilNode(node Node) bool {
+	if node == nil {
+		return true
+	}
+	switch n := node.(type) {
+	case *ProgramStmt:
+		return n == nil
+	case *InterfaceStmt:
+		return n == nil
+	case *BlockStmt:
+		return n == nil
+	case *IfStmt:
+		return n == nil
+	case *ForStmt:
+		return n == nil
+	case *ReturnStmt:
+		return n == nil
+	case *DeferStmt:
+		return n == nil
+	case *GoStmt:
+		return n == nil
+	case *SendStmt:
+		return n == nil
+	case *SelectStmt:
+		return n == nil
+	case *SelectCase:
+		return n == nil
+	case *RangeStmt:
+		return n == nil
+	case *SwitchStmt:
+		return n == nil
+	case *CaseClause:
+		return n == nil
+	case *FunctionStmt:
+		return n == nil
+	case *MultiAssignmentStmt:
+		return n == nil
+	case *GenDeclStmt:
+		return n == nil
+	case *AssignmentStmt:
+		return n == nil
+	case *InterruptStmt:
+		return n == nil
+	case *TryStmt:
+		return n == nil
+	case *CatchClause:
+		return n == nil
+	case *StructStmt:
+		return n == nil
+	case *IncDecStmt:
+		return n == nil
+	case *ExpressionStmt:
+		return n == nil
+	case *IdentifierExpr:
+		return n == nil
+	case *StarExpr:
+		return n == nil
+	case *AddressExpr:
+		return n == nil
+	case *ConstRefExpr:
+		return n == nil
+	case *TypeAssertExpr:
+		return n == nil
+	case *ReceiveExpr:
+		return n == nil
+	case *CallExprStmt:
+		return n == nil
+	case *MemberExpr:
+		return n == nil
+	case *CompositeExpr:
+		return n == nil
+	case *IndexExpr:
+		return n == nil
+	case *SliceExpr:
+		return n == nil
+	case *FuncLitExpr:
+		return n == nil
+	case *BinaryExpr:
+		return n == nil
+	case *UnaryExpr:
+		return n == nil
+	case *LiteralExpr:
+		return n == nil
+	case *ImportExpr:
+		return n == nil
+	case *BadExpr:
+		return n == nil
+	case *BadStmt:
+		return n == nil
+	default:
+		return false
+	}
+}
+
 // Walk 深度优先遍历 AST 节点
 func Walk(v Visitor, node Node) {
-	if node == nil || v == nil {
+	if IsNilNode(node) || v == nil {
 		return
 	}
 	if v = v.Visit(node); v == nil {

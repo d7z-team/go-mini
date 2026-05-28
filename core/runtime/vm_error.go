@@ -3,9 +3,10 @@ package runtime
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	goruntime "runtime"
+	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -45,6 +46,7 @@ func (e *VMError) Unwrap() error {
 // VMStackError wraps a Go error created by VM code with the VM stack captured
 // at the creation site. It deliberately keeps Go's normal errors.Is/As chain.
 type VMStackError struct {
+	ID     uint64       `json:"id,omitempty"`
 	Err    error        `json:"-"`
 	Frames []StackFrame `json:"frames,omitempty"`
 }
@@ -159,11 +161,11 @@ func sameGoError(a, b error) bool {
 	if ah != nil || bh != nil {
 		return ah != nil && bh != nil && ah.Handle != 0 && ah.Handle == bh.Handle && sameRuntimeBridge(ah.Bridge, bh.Bridge)
 	}
-	at := reflect.TypeOf(a)
-	if at == nil || at != reflect.TypeOf(b) || !at.Comparable() {
-		return false
+	if aid, ok := vmErrorIdentity(a); ok {
+		bid, bok := vmErrorIdentity(b)
+		return bok && aid == bid
 	}
-	return a == b
+	return false
 }
 
 func newHostErrorVar(data ffigo.ErrorData, bridge ffigo.FFIBridge) *Var {
@@ -206,7 +208,27 @@ func wrapErrorWithStack(err error, frames []StackFrame) error {
 	if errors.As(err, &stackErr) && stackErr != nil && len(stackErr.Frames) > 0 {
 		return err
 	}
-	return &VMStackError{Err: err, Frames: append([]StackFrame(nil), frames...)}
+	return &VMStackError{ID: nextVMErrorID(), Err: err, Frames: append([]StackFrame(nil), frames...)}
+}
+
+var vmErrorID atomic.Uint64
+
+func nextVMErrorID() uint64 {
+	return vmErrorID.Add(1)
+}
+
+func vmErrorIdentity(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	if host := hostErrorFromError(err); host != nil && host.Handle != 0 {
+		return "host:" + runtimeBridgeIdentity(host.Bridge) + ":" + strconv.FormatUint(uint64(host.Handle), 10), true
+	}
+	var stack *VMStackError
+	if errors.As(err, &stack) && stack != nil && stack.ID != 0 {
+		return "vm:" + strconv.FormatUint(stack.ID, 10), true
+	}
+	return "", false
 }
 
 func formatStackFrames(frames []StackFrame) string {

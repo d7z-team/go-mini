@@ -13,6 +13,7 @@ import (
 
 type constBinding struct {
 	Expr string
+	Kind string
 }
 
 func (g *Generator) parseDirectoryFiles(dir, absOutFile string) ([]*ast.File, error) {
@@ -171,7 +172,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 							}
 							expr := valSpec.Values[i]
 							if val := exprToString(expr); val != "" {
-								globalConsts[name.Name] = constBinding{Expr: val}
+								globalConsts[name.Name] = constBinding{Expr: val, Kind: g.constKindForName(name, expr)}
 							}
 						}
 					}

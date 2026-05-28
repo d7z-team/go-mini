@@ -3,6 +3,8 @@ package ffigen
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
+	"go/importer"
 	"go/types"
 	"strings"
 
@@ -109,6 +111,126 @@ func (g *Generator) unsupportedInterfaceExpr(expr ast.Expr) bool {
 	}
 	iface, ok := tv.Type.Underlying().(*types.Interface)
 	return ok && iface.NumMethods() > 0
+}
+
+func (g *Generator) constKindForName(name *ast.Ident, expr ast.Expr) string {
+	if g.typeInfo == nil || expr == nil {
+		return ""
+	}
+	if selector, ok := expr.(*ast.SelectorExpr); ok {
+		if kind := g.importedSelectorConstKind(selector); kind != "" {
+			return kind
+		}
+	}
+	if name != nil {
+		if obj := g.typeInfo.Defs[name]; obj != nil {
+			if kind := constKindFromObject(obj); kind != "" {
+				return kind
+			}
+		}
+	}
+	tv, ok := g.typeInfo.Types[expr]
+	if ok && tv.Type != nil {
+		return constKindFromType(tv.Type)
+	}
+	switch n := expr.(type) {
+	case *ast.Ident:
+		if obj := g.lookupTypeObject(n); obj != nil {
+			return constKindFromObject(obj)
+		}
+	case *ast.SelectorExpr:
+		if obj := g.lookupTypeObject(n.Sel); obj != nil {
+			return constKindFromObject(obj)
+		}
+	}
+	return ""
+}
+
+func (g *Generator) importedSelectorConstKind(expr *ast.SelectorExpr) string {
+	if expr == nil || expr.Sel == nil {
+		return ""
+	}
+	pkgIdent, ok := expr.X.(*ast.Ident)
+	if !ok || pkgIdent == nil {
+		return ""
+	}
+	path := g.knownImports[pkgIdent.Name]
+	if path == "" {
+		return ""
+	}
+	pkg, err := importer.Default().Import(path)
+	if err != nil || pkg == nil || pkg.Scope() == nil {
+		return ""
+	}
+	obj := pkg.Scope().Lookup(expr.Sel.Name)
+	return constKindFromObject(obj)
+}
+
+func constKindFromObject(obj types.Object) string {
+	c, ok := obj.(*types.Const)
+	if !ok {
+		return ""
+	}
+	if kind := constKindFromValue(c.Val()); kind != "" {
+		return kind
+	}
+	return constKindFromType(c.Type())
+}
+
+func constKindFromValue(v constant.Value) string {
+	if v == nil {
+		return ""
+	}
+	switch v.Kind() {
+	case constant.Bool:
+		return "bool"
+	case constant.String:
+		return "string"
+	case constant.Float:
+		return "float64"
+	case constant.Int:
+		return "int64"
+	default:
+		return ""
+	}
+}
+
+func constKindFromType(typ types.Type) string {
+	if typ == nil {
+		return ""
+	}
+	basic, ok := typ.Underlying().(*types.Basic)
+	if !ok {
+		return ""
+	}
+	info := basic.Info()
+	switch {
+	case info&types.IsBoolean != 0:
+		return "bool"
+	case info&types.IsString != 0:
+		return "string"
+	case info&types.IsFloat != 0:
+		return "float64"
+	case info&types.IsInteger != 0:
+		return "int64"
+	default:
+		return ""
+	}
+}
+
+func constConstructorExpr(c constBinding) string {
+	switch c.Kind {
+	case "bool":
+		return fmt.Sprintf("runtime.ConstBool(bool(%s))", c.Expr)
+	case "string":
+		return fmt.Sprintf("runtime.ConstString(string(%s))", c.Expr)
+	case "float64":
+		return fmt.Sprintf("runtime.ConstFloat64(float64(%s))", c.Expr)
+	case "int64":
+		return fmt.Sprintf("runtime.ConstInt64(int64(%s))", c.Expr)
+	default:
+		panic("ffigen: unsupported const type for " + c.Expr)
+	}
 }
 
 func (g *Generator) toGoType(pType string) string {

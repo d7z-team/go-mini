@@ -2,7 +2,6 @@ package ast
 
 import (
 	"fmt"
-	"reflect"
 )
 
 func RewriteOperatorOverloads(program *ProgramStmt) bool {
@@ -25,10 +24,35 @@ func RewriteOperatorOverloads(program *ProgramStmt) bool {
 }
 
 func AssertNoResidualOperatorOverloads(program *ProgramStmt) error {
-	if node := residualOperatorOverload(reflect.ValueOf(program), map[uintptr]bool{}); node != nil {
-		return fmt.Errorf("operator overload rewrite left residual %T", node)
+	v := residualOperatorVisitor{}
+	Walk(&v, program)
+	if v.node != nil {
+		return fmt.Errorf("operator overload rewrite left residual %T", v.node)
 	}
 	return nil
+}
+
+type residualOperatorVisitor struct {
+	node Node
+}
+
+func (v *residualOperatorVisitor) Visit(node Node) Visitor {
+	if v.node != nil {
+		return nil
+	}
+	switch n := node.(type) {
+	case *BinaryExpr:
+		if n.OperatorResolution != nil {
+			v.node = n
+			return nil
+		}
+	case *UnaryExpr:
+		if n.OperatorResolution != nil {
+			v.node = n
+			return nil
+		}
+	}
+	return v
 }
 
 type operatorRewriter struct {
@@ -204,64 +228,4 @@ func operatorCall(base BaseNode, receiver Expr, method Ident, args []Expr) *Call
 		},
 		Args: args,
 	}
-}
-
-func residualOperatorOverload(v reflect.Value, seen map[uintptr]bool) Node {
-	if !v.IsValid() {
-		return nil
-	}
-	switch v.Kind() {
-	case reflect.Interface:
-		if v.IsNil() {
-			return nil
-		}
-		return residualOperatorOverload(v.Elem(), seen)
-	case reflect.Pointer:
-		if v.IsNil() {
-			return nil
-		}
-		ptr := v.Pointer()
-		if seen[ptr] {
-			return nil
-		}
-		seen[ptr] = true
-		if v.CanInterface() {
-			switch n := v.Interface().(type) {
-			case *BinaryExpr:
-				if n.OperatorResolution != nil {
-					return n
-				}
-			case *UnaryExpr:
-				if n.OperatorResolution != nil {
-					return n
-				}
-			}
-		}
-		return residualOperatorOverload(v.Elem(), seen)
-	case reflect.Struct:
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			if field.PkgPath != "" || field.Name == "Scope" {
-				continue
-			}
-			if node := residualOperatorOverload(v.Field(i), seen); node != nil {
-				return node
-			}
-		}
-	case reflect.Slice, reflect.Array:
-		for i := 0; i < v.Len(); i++ {
-			if node := residualOperatorOverload(v.Index(i), seen); node != nil {
-				return node
-			}
-		}
-	case reflect.Map:
-		iter := v.MapRange()
-		for iter.Next() {
-			if node := residualOperatorOverload(iter.Value(), seen); node != nil {
-				return node
-			}
-		}
-	}
-	return nil
 }

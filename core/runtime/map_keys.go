@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 )
@@ -207,19 +206,12 @@ func comparableValueString(v *Var) (string, error) {
 			return "err#nil", nil
 		}
 		if host := hostErrorFromError(errVal); host != nil && host.Handle != 0 {
-			return fmt.Sprintf("err#host#%d#%p", host.Handle, host.Bridge), nil
+			return fmt.Sprintf("err#host#%s#%d", runtimeBridgeIdentity(host.Bridge), host.Handle), nil
 		}
-		rv := reflect.ValueOf(errVal)
-		if !rv.IsValid() {
-			return "err#nil", nil
+		if id, ok := vmErrorIdentity(errVal); ok {
+			return "err#" + id, nil
 		}
-		if rv.Kind() == reflect.Pointer || rv.Kind() == reflect.UnsafePointer {
-			return fmt.Sprintf("err#ptr#%T#0x%x", errVal, rv.Pointer()), nil
-		}
-		if !rv.Type().Comparable() {
-			return "", fmt.Errorf("error %T is not comparable", errVal)
-		}
-		return fmt.Sprintf("err#val#%T#%#v", errVal, errVal), nil
+		return "", fmt.Errorf("error %T has no VM identity", errVal)
 	case TypeArray:
 		if !isEqualityComparableRuntimeType(rt) {
 			return "", fmt.Errorf("%s is not comparable", rt.Raw)
@@ -358,6 +350,14 @@ func comparableMapKeyString(v *Var) (string, error) {
 	default:
 		return "", fmt.Errorf("%s is not comparable", v.VType)
 	}
+}
+
+func NativeComparable(_ *Executor, _ *StackContext, _ FFIRoute, args []*Var, _ []LHSValue) (*Var, error) {
+	if len(args) == 0 || args[0] == nil {
+		return NewBool(true), nil
+	}
+	_, err := comparableMapKeyString(args[0])
+	return NewBool(err == nil), nil
 }
 
 func (e *Executor) comparableMapKey(v *Var, keyType RuntimeType) (string, *Var, error) {

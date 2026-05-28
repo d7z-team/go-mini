@@ -158,7 +158,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		sort.Strings(keys)
 		for _, key := range keys {
 			c := constants[key]
-			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, runtime.MustConstantValue(%s))\n", fixedPrefix, key, c.Expr)
+			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, %s)\n", fixedPrefix, key, constConstructorExpr(c))
 		}
 	}
 	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)

@@ -84,6 +84,15 @@ func nativeErrorSurface() *surface.Bundle {
 			fn:       runtime.NativeFmtErrorf,
 			doc:      "Format an error using Go fmt.Errorf semantics",
 		},
+		{
+			pkg:      "runtime/internal",
+			member:   "Comparable",
+			route:    "runtime/internal.Comparable",
+			methodID: 1,
+			sig:      runtime.MustRuntimeFuncSig(runtime.SpecBool, false, runtime.SpecAny),
+			fn:       runtime.NativeComparable,
+			doc:      "Report whether a VM value is comparable",
+		},
 	}
 	schema := runtime.NewFFISurfaceSchema()
 	for _, r := range routes {

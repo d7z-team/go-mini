@@ -3,7 +3,6 @@ package contextlib
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -23,13 +22,6 @@ func (h *ModuleHost) DeadlineExceeded() error {
 func (h *ModuleHost) NewTimer(ctx context.Context, ns int64) *Timer {
 	_ = ctx
 	return &Timer{impl: newTimerState(ns)}
-}
-
-func (h *ModuleHost) ValidValueKey(key any) bool {
-	if key == nil {
-		return false
-	}
-	return reflect.TypeOf(key).Comparable()
 }
 
 type timerWaiterID uint64

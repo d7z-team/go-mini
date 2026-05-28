@@ -18,8 +18,8 @@
 - 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
 - 运算符重载是 compiler 阶段 AST 语法糖：前端只输出普通一元/二元表达式，AST 检查在原生运算不支持时解析接收者 `Op*` 方法，模板展开后、优化前改写为真实方法调用，lowering / bytecode / runtime 不保留重载分派。
 - Go 前端保留常量值类型，AST 语义检查显式标记命名常量引用，lowering 写入 `PreparedProgram.ConstantTypes` 并把表达式常量降为 `OpPush`；常量比较、调用参数、导出和 bytecode 装载不再把字符串常量 `"10"` 退化成数值常量，也不把常量作为 runtime 变量加载。
-- FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`。
-- FFI 常量在 schema、bound surface、compiler 外部依赖与 bytecode requirement 中携带 canonical primitive 类型；缺失或不支持的常量类型会在装配或装载前失败。
+- FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`；runtime FFI 返回路径按 wire schema 解码，不反射解构任意 Go host 值。
+- FFI 常量在 `ffigen` 生成阶段落到显式 `ConstInt64` / `ConstFloat64` / `ConstString` / `ConstBool` constructor；schema、bound surface、compiler 外部依赖与 bytecode requirement 中只携带 canonical primitive 类型。
 - 公开扩展入口统一为 `executor.UseSurface(...)`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
 - 公开 FFI schema 使用具体 `HostRef<T>`、typed interface schema、`Error` 和 channel endpoint 表达宿主身份、错误与 channel；`Any` 面向纯值数据。
@@ -30,7 +30,7 @@
 - `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过 `FFIRouteDecl` 一次声明 schema route 并由 `RouterBridge + BindSchemaRoutes` 绑定；Go 端 proxy 在显式 `ffigen:proxy` 时生成，`ffigen:global` 生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
-- VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
+- VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用带 VM identity 的 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge identity 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
@@ -46,7 +46,7 @@
 - compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`，runtime 只校验 module hash 并通过 `ModulePlanLoader` 装载 `PreparedProgram`。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
-- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 提供 sentinel error、timer 与 value key 可比较性校验；`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。
+- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验复用 `runtime/internal.Comparable` 的 VM 动态值可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。
 - runtime run 统一挂载 `RunController`；独立 pause/resume、debugger breakpoint pause 和 continue/step 共用同一控制面，`ExecutableProgram.Start(...)` / `MiniExecutor.StartExecute(...)` 返回 `RunHandle` 供宿主控制当前 run。
 - VM timer 统一来自 `VMClock` / `VMTimer`；pause 会冻结 `time.Sleep` 这类脚本等待，但 `time.Now` / `Since` / `Until`、`context.WithTimeout`、`context.WithDeadline` 和宿主 `context.Context` 的取消/截止时间继续使用真实时间。
 - Eval 便捷入口先由 compiler/lowering 产出临时 `PreparedFunction`，runtime 执行 prepared function。

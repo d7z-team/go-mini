@@ -115,12 +115,16 @@ func (c *Converter) convertFunc(d *ast.FuncDecl) *miniast.FunctionStmt {
 	if d.Doc != nil {
 		doc = d.Doc.Text()
 	}
+	bodyNode := ast.Node(d)
+	if d.Body != nil {
+		bodyNode = d.Body
+	}
 
 	fn := &miniast.FunctionStmt{
 		BaseNode:     miniast.BaseNode{ID: c.genID(d, "function"), Meta: "function", Loc: c.extractLoc(d)},
 		Name:         miniast.Ident(fnName),
 		ReceiverType: miniast.Ident(receiverType),
-		Body:         &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(d.Body, "block"), Meta: "block", Loc: c.extractLoc(d.Body)}},
+		Body:         &miniast.BlockStmt{BaseNode: miniast.BaseNode{ID: c.genID(bodyNode, "block"), Meta: "block", Loc: c.extractLoc(bodyNode)}},
 		FunctionType: miniast.FunctionType{Params: params},
 		Doc:          doc,
 	}

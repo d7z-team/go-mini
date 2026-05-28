@@ -153,6 +153,10 @@ type FFIBridge interface {
 	DestroyHandle(handle uint32) error
 }
 
+type BridgeIdentity interface {
+	BridgeID() string
+}
+
 type RouterFunc func(context.Context, *FFICallRequest) (FFIReturn, error)
 
 type RouterBridge struct {
@@ -162,6 +166,10 @@ type RouterBridge struct {
 
 func NewRouterBridge(registry *HandleRegistry, router RouterFunc) *RouterBridge {
 	return &RouterBridge{Registry: registry, Router: router}
+}
+
+func (b *RouterBridge) BridgeID() string {
+	return "ffigo.RouterBridge"
 }
 
 func (b *RouterBridge) Call(ctx context.Context, req *FFICallRequest) (FFIReturn, error) {

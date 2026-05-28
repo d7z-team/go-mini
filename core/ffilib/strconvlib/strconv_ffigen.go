@@ -287,7 +287,7 @@ var strconvRoutes = []runtime.FFIRouteDecl{
 func SurfaceStrconv(impl Strconv) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	schema.AddRouteDecls(strconvRoutes)
-	schema.AddConst("strconv", "IntSize", runtime.MustConstantValue(strconv.IntSize))
+	schema.AddConst("strconv", "IntSize", runtime.ConstInt64(int64(strconv.IntSize)))
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return strconvHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

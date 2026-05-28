@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"hash/fnv"
-	"reflect"
 	"strconv"
 
 	miniast "gopkg.d7z.net/go-mini/core/ast"
@@ -61,7 +60,7 @@ func (c *Converter) badStmt(node ast.Node, message string) miniast.Stmt {
 }
 
 func (c *Converter) genID(node ast.Node, meta string) string {
-	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) {
+	if node == nil {
 		return "meta_" + meta
 	}
 	pos := c.fset.Position(node.Pos())
@@ -73,7 +72,7 @@ func (c *Converter) genID(node ast.Node, meta string) string {
 }
 
 func (c *Converter) extractLoc(node ast.Node) *miniast.Position {
-	if node == nil || (reflect.ValueOf(node).Kind() == reflect.Ptr && reflect.ValueOf(node).IsNil()) || c.fset == nil {
+	if node == nil || c.fset == nil {
 		return nil
 	}
 	start := c.fset.Position(node.Pos())

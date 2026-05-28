@@ -2,8 +2,9 @@ package runtime
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
+
+	"gopkg.d7z.net/go-mini/core/ffigo"
 )
 
 type SchemaConflictError struct {
@@ -117,20 +118,20 @@ func sameRuntimeBridge(a, b any) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return reflect.TypeOf(a) == reflect.TypeOf(b)
+	return runtimeBridgeIdentity(a) == runtimeBridgeIdentity(b)
 }
 
 func runtimeBridgeIdentity(bridge any) string {
 	if bridge == nil {
 		return "<nil>"
 	}
-	v := reflect.ValueOf(bridge)
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.UnsafePointer:
-		return fmt.Sprintf("%T@0x%x", bridge, v.Pointer())
-	default:
-		return fmt.Sprintf("%T:%v", bridge, bridge)
+	if identified, ok := bridge.(ffigo.BridgeIdentity); ok {
+		id := strings.TrimSpace(identified.BridgeID())
+		if id != "" {
+			return id
+		}
 	}
+	return "<missing bridge identity>"
 }
 
 func (e *Executor) RegisterModuleHash(path, hash string) {

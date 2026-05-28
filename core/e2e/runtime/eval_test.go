@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -94,75 +95,6 @@ func TestEvalByteCopy(t *testing.T) {
 	}
 }
 
-func TestEvalStructInjection(t *testing.T) {
-	executor := engine.MustNewMiniExecutor()
-
-	type Metadata struct {
-		ID int `json:"id"`
-	}
-	type User struct {
-		Name     string   `json:"user_name"`
-		Age      int      `json:"age"`
-		Tags     []string `json:"tags"`
-		Meta     Metadata `json:"meta"`
-		Internal string   // 这种私有字段应该被忽略
-	}
-
-	u := User{
-		Name:     "Bob",
-		Age:      25,
-		Tags:     []string{"dev", "go"},
-		Meta:     Metadata{ID: 999},
-		Internal: "secret",
-	}
-
-	env := map[string]interface{}{
-		"u": u,
-	}
-
-	t.Run("Access basic field", func(t *testing.T) {
-		results, err := executor.Eval(context.Background(), "u.user_name", env)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(results) != 1 {
-			t.Fatalf("Eval() returned %d values, want 1", len(results))
-		}
-		res := results[0]
-		if res.Str != "Bob" {
-			t.Errorf("Expected 'Bob', got %q", res.Str)
-		}
-	})
-
-	t.Run("Access nested field", func(t *testing.T) {
-		results, err := executor.Eval(context.Background(), "u.meta.id", env)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(results) != 1 {
-			t.Fatalf("Eval() returned %d values, want 1", len(results))
-		}
-		res := results[0]
-		if res.I64 != 999 {
-			t.Errorf("Expected 999, got %d", res.I64)
-		}
-	})
-
-	t.Run("Access slice in struct", func(t *testing.T) {
-		results, err := executor.Eval(context.Background(), "u.tags[0]", env)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(results) != 1 {
-			t.Fatalf("Eval() returned %d values, want 1", len(results))
-		}
-		res := results[0]
-		if res.Str != "dev" {
-			t.Errorf("Expected 'dev', got %q", res.Str)
-		}
-	})
-}
-
 func TestEvalAfterExecute(t *testing.T) {
 	e := engine.MustNewMiniExecutor()
 
@@ -202,23 +134,11 @@ func test() string {
 	}
 }
 
-func TestNormalizeFixedSizeByteArray(t *testing.T) {
-	e := engine.MustNewMiniExecutor()
-	prog, _ := e.NewRuntimeByGoCode("package main")
-
-	data := [4]byte{1, 2, 3, 4}
-	results, err := prog.Eval(context.Background(), "d", map[string]interface{}{"d": data})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("Eval() returned %d values, want 1", len(results))
-	}
-	res := results[0]
-
-	got := res.Interface().([]byte)
-	if len(got) != 4 || got[0] != 1 || got[3] != 4 {
-		t.Errorf("Expected []byte{1,2,3,4}, got %v", got)
+func TestEvalRejectsImplicitHostStructConversion(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	_, err := executor.Eval(context.Background(), "u", map[string]interface{}{"u": struct{ Name string }{Name: "Bob"}})
+	if err == nil || !strings.Contains(err.Error(), "unsupported host value") {
+		t.Fatalf("expected unsupported host value error, got %v", err)
 	}
 }
 

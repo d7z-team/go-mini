@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 )
 
@@ -31,74 +30,6 @@ func ConstString(v string) FFIConstValue {
 
 func ConstBool(v bool) FFIConstValue {
 	return FFIConstValue{Type: SpecBool, Bool: &v}
-}
-
-func ConstantValue(v interface{}) (FFIConstValue, error) {
-	if v == nil {
-		return FFIConstValue{}, fmt.Errorf("unsupported ffi const type %T", v)
-	}
-	toInt64 := func(raw uint64, typ interface{}) (FFIConstValue, error) {
-		if raw > math.MaxInt64 {
-			return FFIConstValue{}, fmt.Errorf("ffi const %T overflows Int64: %d", typ, raw)
-		}
-		return ConstInt64(int64(raw)), nil
-	}
-	switch val := v.(type) {
-	case bool:
-		return ConstBool(val), nil
-	case string:
-		return ConstString(val), nil
-	case float32:
-		return ConstFloat64(float64(val)), nil
-	case float64:
-		return ConstFloat64(val), nil
-	case int:
-		return ConstInt64(int64(val)), nil
-	case int8:
-		return ConstInt64(int64(val)), nil
-	case int16:
-		return ConstInt64(int64(val)), nil
-	case int32:
-		return ConstInt64(int64(val)), nil
-	case int64:
-		return ConstInt64(val), nil
-	case uint:
-		return toInt64(uint64(val), v)
-	case uint8:
-		return ConstInt64(int64(val)), nil
-	case uint16:
-		return ConstInt64(int64(val)), nil
-	case uint32:
-		return ConstInt64(int64(val)), nil
-	case uint64:
-		return toInt64(val, v)
-	case uintptr:
-		return toInt64(uint64(val), v)
-	}
-
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Bool:
-		return ConstBool(rv.Bool()), nil
-	case reflect.String:
-		return ConstString(rv.String()), nil
-	case reflect.Float32, reflect.Float64:
-		return ConstFloat64(rv.Convert(reflect.TypeOf(float64(0))).Float()), nil
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return ConstInt64(rv.Int()), nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return toInt64(rv.Uint(), v)
-	default:
-		return FFIConstValue{}, fmt.Errorf("unsupported ffi const type %T", v)
-	}
-}
-
-func MustConstantValue(v interface{}) FFIConstValue {
-	res, err := ConstantValue(v)
-	if err != nil {
-		panic(err)
-	}
-	return res
 }
 
 func (v FFIConstValue) Validate() error {
