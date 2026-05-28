@@ -19,9 +19,7 @@ func NewMiniExecutor() (*MiniExecutor, error) {
 		constants:           make(map[string]runtime.FFIConstValue),
 		constTypes:          make(map[string]runtime.RuntimeType),
 		registry:            ffigo.NewHandleRegistry(),
-		moduleSources:       make(map[string]*ast.ProgramStmt),
 		sourceLibraries:     make(map[string]surface.LibraryModule),
-		modules:             make(map[string]*runtime.PreparedProgram),
 		librarySourceHashes: make(map[string]string),
 		libraryHashes:       make(map[string]string),
 		funcSchemas:         make(map[ast.Ident]*runtime.RuntimeFuncSig),
@@ -216,27 +214,11 @@ func (e *MiniExecutor) moduleASTLoaderWithStaged(stagedSources, importedPrograms
 		}
 		e.mu.RLock()
 		library, hasLibrary := e.sourceLibraries[path]
-		astNode, ok := e.moduleSources[path]
 		e.mu.RUnlock()
 		if hasLibrary {
 			return parseSurfaceLibraryModule(library)
 		}
-		if ok {
-			return astNode, nil
-		}
 		return nil, fmt.Errorf("module not found: %s", path)
-	}
-}
-
-func (e *MiniExecutor) modulePlanLoader() func(path string) (*runtime.PreparedProgram, error) {
-	return func(path string) (*runtime.PreparedProgram, error) {
-		e.mu.RLock()
-		if prepared, ok := e.modules[path]; ok && prepared != nil {
-			e.mu.RUnlock()
-			return prepared, nil
-		}
-		e.mu.RUnlock()
-		return e.prepareModuleFromSource(path)
 	}
 }
 
@@ -244,17 +226,10 @@ func (e *MiniExecutor) applyExecutorConfig(executor *runtime.Executor) error {
 	if executor == nil {
 		return nil
 	}
-	executor.ModulePlanLoader = e.modulePlanLoader()
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	if err := executor.ApplyBoundFFISurface(e.boundSurface); err != nil {
-		return err
-	}
-	for path, hash := range e.libraryHashes {
-		executor.RegisterModuleHash(path, hash)
-	}
-	return nil
+	return executor.ApplyBoundFFISurface(e.boundSurface)
 }
 
 func (e *MiniExecutor) newCompiler() *compiler.Compiler {
@@ -262,25 +237,7 @@ func (e *MiniExecutor) newCompiler() *compiler.Compiler {
 }
 
 func (e *MiniExecutor) newCompilerWithModuleSources(stagedSources, importedPrograms map[string]*ast.ProgramStmt) *compiler.Compiler {
-	schema := e.ExportedSchema()
-	e.mu.RLock()
-	surfaceSchema := runtime.CloneFFISurfaceSchema(e.surfaceSchema)
-	moduleHashes := cloneSurfaceLibraryHashes(e.libraryHashes)
-	e.mu.RUnlock()
-	return compiler.New(compiler.Config{
-		ModuleLoader:            e.moduleASTLoaderWithStaged(stagedSources, importedPrograms),
-		Surface:                 surfaceSchema,
-		FuncSchemas:             schema.Funcs,
-		RegisteredFuncs:         schema.RegisteredFuncs,
-		RegisteredFuncMethodIDs: schema.RegisteredFuncMethodIDs,
-		ValueSchemas:            schema.Values,
-		StructSchemas:           schema.Structs,
-		InterfaceSchemas:        schema.Interfaces,
-		Constants:               e.GetExportedConstants(),
-		ModuleHashes:            moduleHashes,
-		MaxTypeDepth:            e.MaxTypeDepth,
-		Templates:               e.templateRegistrySnapshot(),
-	})
+	return compiler.New(e.newCompilerConfigWithModuleSources(stagedSources, importedPrograms))
 }
 
 func newMiniAstError(err error, semanticCtx *ast.SemanticContext, node ast.Node) error {
@@ -306,7 +263,7 @@ func (e *MiniExecutor) prepareCompiledArtifact(compiled *compiler.Artifact, sema
 }
 
 func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error {
-	if compiled == nil || compiled.Program == nil {
+	if compiled == nil || compiled.Program == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
 		return nil
 	}
 	stagedPrepared := make(map[string]*runtime.PreparedProgram)
@@ -314,7 +271,7 @@ func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error
 	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{}, stagedPrepared, stagedSources); err != nil {
 		return err
 	}
-	e.commitPreparedModuleStage(stagedPrepared, stagedSources)
+	embedPreparedModules(compiled.Bytecode.Executable, stagedPrepared, e.embeddedModuleHashes(stagedPrepared))
 	return nil
 }
 
@@ -335,13 +292,8 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 		}
 
 		e.mu.RLock()
-		prepared := e.modules[path]
 		library, hasLibrary := e.sourceLibraries[path]
-		registeredSource := e.moduleSources[path]
 		e.mu.RUnlock()
-		if prepared != nil {
-			continue
-		}
 		prog := stagedSources[path]
 		if hasLibrary {
 			var err error
@@ -351,8 +303,6 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 			}
 		} else if prog == nil && imported != nil {
 			prog = imported[path]
-		} else if prog == nil {
-			prog = registeredSource
 		}
 		if prog == nil {
 			continue
@@ -386,65 +336,39 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 	return nil
 }
 
-func (e *MiniExecutor) commitPreparedModuleStage(stagedPrepared map[string]*runtime.PreparedProgram, stagedSources map[string]*ast.ProgramStmt) {
-	if len(stagedPrepared) == 0 && len(stagedSources) == 0 {
-		return
+func (e *MiniExecutor) embeddedModuleHashes(stagedPrepared map[string]*runtime.PreparedProgram) map[string]string {
+	if len(stagedPrepared) == 0 {
+		return nil
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for path, prepared := range stagedPrepared {
-		if prepared != nil {
-			e.modules[path] = prepared
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	hashes := make(map[string]string, len(stagedPrepared))
+	for path := range stagedPrepared {
+		if hash := e.libraryHashes[path]; hash != "" {
+			hashes[path] = hash
 		}
 	}
-	for path, prog := range stagedSources {
-		if prog == nil {
-			continue
-		}
-		if _, hasLibrary := e.sourceLibraries[path]; hasLibrary {
-			continue
-		}
-		e.moduleSources[path] = prog
-	}
+	return hashes
 }
 
-func newEmptyRuntimeExecutor() (*runtime.Executor, error) {
-	return runtime.NewExecutorFromPrepared(&runtime.PreparedProgram{
-		Globals:   map[string]*runtime.PreparedGlobal{},
-		Functions: map[string]*runtime.PreparedFunction{},
-		MainTasks: []runtime.Task{},
-	})
-}
-
-// RegisterModule 注册一个预编译的模块，使得脚本可以通过 import 直接引用
-func (e *MiniExecutor) RegisterModule(path string, prog *ExecutableProgram) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if prog == nil {
-		delete(e.modules, path)
-		delete(e.moduleSources, path)
-		delete(e.sourceLibraries, path)
-		delete(e.librarySourceHashes, path)
-		delete(e.libraryHashes, path)
-		e.recomputeSurfaceLibraryHashesLocked()
+func embedPreparedModules(root *runtime.PreparedProgram, modules map[string]*runtime.PreparedProgram, hashes map[string]string) {
+	if root == nil {
 		return
 	}
-
-	var prepared *runtime.PreparedProgram
-	if compiled := prog.Compilation(); compiled != nil && compiled.Bytecode != nil {
-		prepared = compiled.Bytecode.Executable
+	if len(modules) > 0 {
+		root.Modules = make(map[string]*runtime.PreparedProgram, len(modules))
+		for path, prepared := range modules {
+			if prepared != nil {
+				root.Modules[path] = prepared
+			}
+		}
 	}
-	delete(e.moduleSources, path)
-	delete(e.sourceLibraries, path)
-	if prepared != nil {
-		e.modules[path] = prepared
-		delete(e.librarySourceHashes, path)
-		delete(e.libraryHashes, path)
-		e.recomputeSurfaceLibraryHashesLocked()
-		return
+	if len(hashes) > 0 {
+		root.ModuleHashes = make(map[string]string, len(hashes))
+		for path, hash := range hashes {
+			if hash != "" && root.Modules[path] != nil {
+				root.ModuleHashes[path] = hash
+			}
+		}
 	}
-	delete(e.modules, path)
-	delete(e.librarySourceHashes, path)
-	delete(e.libraryHashes, path)
-	e.recomputeSurfaceLibraryHashesLocked()
 }

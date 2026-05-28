@@ -9,9 +9,24 @@ import (
 const maxPreparedValidationDepth = 256
 
 func ValidatePreparedProgram(plan *PreparedProgram) error {
+	return validatePreparedProgram(plan, 0, nil)
+}
+
+func validatePreparedProgram(plan *PreparedProgram, depth int, stack map[*PreparedProgram]struct{}) error {
 	if plan == nil {
 		return errors.New("missing prepared program")
 	}
+	if depth > maxPreparedValidationDepth {
+		return errors.New("prepared program module graph is too deeply nested")
+	}
+	if stack == nil {
+		stack = make(map[*PreparedProgram]struct{})
+	}
+	if _, ok := stack[plan]; ok {
+		return errors.New("prepared program module graph contains a cycle")
+	}
+	stack[plan] = struct{}{}
+	defer delete(stack, plan)
 	for name, typ := range plan.NamedTypes {
 		if err := validateRuntimeType("named type "+name, typ); err != nil {
 			return err
@@ -56,6 +71,28 @@ func ValidatePreparedProgram(plan *PreparedProgram) error {
 	for name, export := range plan.Exports {
 		if err := validatePreparedExport(plan, name, export); err != nil {
 			return err
+		}
+	}
+	for path, module := range plan.Modules {
+		if strings.TrimSpace(path) == "" {
+			return errors.New("embedded module has empty path")
+		}
+		if module == nil {
+			return fmt.Errorf("embedded module %s is nil", path)
+		}
+		if err := validatePreparedProgram(module, depth+1, stack); err != nil {
+			return fmt.Errorf("embedded module %s invalid: %w", path, err)
+		}
+	}
+	for path, hash := range plan.ModuleHashes {
+		if strings.TrimSpace(path) == "" {
+			return errors.New("embedded module hash has empty path")
+		}
+		if strings.TrimSpace(hash) == "" {
+			return fmt.Errorf("embedded module %s has empty hash", path)
+		}
+		if plan.Modules[path] == nil {
+			return fmt.Errorf("embedded module hash %s targets missing module", path)
 		}
 	}
 	for i, req := range plan.ExternalRequirements {

@@ -9,6 +9,8 @@ type PreparedProgram struct {
 	StructSchemas        map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
 	InterfaceSchemas     map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
 	Exports              map[string]PreparedExport        `json:"exports,omitempty"`
+	Modules              map[string]*PreparedProgram      `json:"modules,omitempty"`
+	ModuleHashes         map[string]string                `json:"module_hashes,omitempty"`
 	ExternalRequirements []ExternalRequirement            `json:"external_requirements,omitempty"`
 
 	GlobalInitOrder  []string                     `json:"global_init_order"`
@@ -69,6 +71,8 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 		StructSchemas:        cloneRuntimeStructSpecMap(plan.StructSchemas),
 		InterfaceSchemas:     cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
 		Exports:              clonePreparedExportMap(plan.Exports),
+		Modules:              clonePreparedProgramMap(plan.Modules),
+		ModuleHashes:         cloneStringMap(plan.ModuleHashes),
 		ExternalRequirements: append([]ExternalRequirement(nil), plan.ExternalRequirements...),
 		GlobalInitOrder:      append([]string(nil), plan.GlobalInitOrder...),
 		GlobalInitGroups:     make([]*PreparedGlobalInit, 0, len(plan.GlobalInitGroups)),
@@ -122,6 +126,17 @@ func clonePreparedExportMap(in map[string]PreparedExport) map[string]PreparedExp
 	out := make(map[string]PreparedExport, len(in))
 	for k, v := range in {
 		out[k] = v
+	}
+	return out
+}
+
+func clonePreparedProgramMap(in map[string]*PreparedProgram) map[string]*PreparedProgram {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]*PreparedProgram, len(in))
+	for path, plan := range in {
+		out[path] = clonePreparedProgram(plan)
 	}
 	return out
 }

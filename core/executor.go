@@ -19,9 +19,7 @@ type MiniExecutor struct {
 	constTypes map[string]runtime.RuntimeType
 
 	registry            *ffigo.HandleRegistry
-	moduleSources       map[string]*ast.ProgramStmt
 	sourceLibraries     map[string]surface.LibraryModule
-	modules             map[string]*runtime.PreparedProgram
 	librarySourceHashes map[string]string
 	libraryHashes       map[string]string
 	funcSchemas         map[ast.Ident]*runtime.RuntimeFuncSig

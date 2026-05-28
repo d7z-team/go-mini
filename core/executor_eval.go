@@ -2,38 +2,130 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 // Eval 执行单个 Go 表达式字符串
 func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]interface{}) ([]*runtime.Var, error) {
-	expr, err := e.newCompiler().CompileExprSource(exprStr)
+	compiler := e.newCompiler()
+	expr, err := compiler.CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
-
-	// 创建最小化的无状态执行器
-	executor, err := newEmptyRuntimeExecutor()
+	program := buildEvalProgram(expr, env, nil)
+	compiled, semanticCtx, err := compiler.CompileProgram("eval", "", program, false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, program)
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		return nil, errors.New("eval did not produce executable bytecode")
+	}
+	executor, err := runtime.NewExecutorFromPrepared(compiled.Bytecode.Executable)
 	if err != nil {
 		return nil, err
 	}
 	if err := e.applyExecutorConfig(executor); err != nil {
 		return nil, err
 	}
-
-	fn, err := compiler.CompileEvalFunction("__eval__", expr)
-	if err != nil {
+	if err := executor.ValidateExternalRequirements(); err != nil {
 		return nil, err
+	}
+	fn := compiled.Bytecode.Executable.Functions["__eval__"]
+	if fn == nil {
+		return nil, errors.New("eval function __eval__ was not prepared")
 	}
 	res, err := executor.EvalPreparedFunction(ctx, fn, env)
 	if err != nil {
 		return nil, err
 	}
 	return unpackEvalResult(expr, res), nil
+}
+
+func buildEvalProgram(expr ast.Expr, env map[string]interface{}, importAliases map[string]string) *ast.ProgramStmt {
+	variables := make(map[ast.Ident]ast.Expr, len(importAliases))
+	imports := make([]ast.ImportSpec, 0, len(importAliases))
+	params := make([]ast.FunctionParam, 0, len(env))
+
+	envNames := make([]string, 0, len(env))
+	for name := range env {
+		envNames = append(envNames, name)
+	}
+	sort.Strings(envNames)
+	for _, envName := range envNames {
+		params = append(params, ast.FunctionParam{Name: ast.Ident(envName), Type: evalEnvType(env[envName])})
+	}
+
+	aliases := make([]string, 0, len(importAliases))
+	for alias := range importAliases {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		path := importAliases[alias]
+		if alias == "" || path == "" {
+			continue
+		}
+		imports = append(imports, ast.ImportSpec{Alias: alias, Path: path})
+		variables[ast.Ident(alias)] = &ast.ImportExpr{
+			BaseNode: ast.BaseNode{ID: "eval_import_" + alias, Meta: "import", Type: ast.TypeModule},
+			Path:     path,
+		}
+	}
+
+	program := &ast.ProgramStmt{
+		BaseNode:      ast.BaseNode{ID: "eval", Meta: "boot"},
+		Imports:       imports,
+		Variables:     variables,
+		Constants:     map[string]string{},
+		ConstantTypes: map[string]ast.GoMiniType{},
+		Types:         map[ast.Ident]ast.GoMiniType{},
+		Structs:       map[ast.Ident]*ast.StructStmt{},
+		Interfaces:    map[ast.Ident]*ast.InterfaceStmt{},
+		Functions: map[ast.Ident]*ast.FunctionStmt{
+			"__eval__": {
+				BaseNode:     ast.BaseNode{ID: "eval_fn", Meta: "function"},
+				Name:         "__eval__",
+				FunctionType: ast.FunctionType{Params: params, Return: ast.TypeAny},
+				Body: &ast.BlockStmt{
+					BaseNode: ast.BaseNode{ID: "eval_body", Meta: "block"},
+					Children: []ast.Stmt{
+						&ast.ReturnStmt{Results: []ast.Expr{expr}},
+					},
+				},
+			},
+		},
+	}
+	return program
+}
+
+func evalEnvType(value interface{}) ast.GoMiniType {
+	switch typed := value.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return ast.TypeInt64
+	case float32, float64:
+		return ast.TypeFloat64
+	case bool:
+		return ast.TypeBool
+	case string:
+		return ast.TypeString
+	case []byte:
+		return ast.TypeBytes
+	case *runtime.Var:
+		if typed != nil && !typed.RawType().IsEmpty() {
+			return ast.GoMiniType(typed.RawType())
+		}
+		return ast.TypeAny
+	default:
+		return ast.TypeAny
+	}
 }
 
 // MustEval 类似于 Eval，但在出错时会触发 panic
@@ -51,7 +143,6 @@ func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, err
 		return nil, err
 	}
 
-	// 构建临时程序以便验证
 	program := &ast.ProgramStmt{
 		BaseNode:      ast.BaseNode{ID: "snippet", Meta: "boot"},
 		Main:          stmts,
@@ -60,25 +151,6 @@ func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, err
 		Constants:     make(map[string]string),
 		ConstantTypes: make(map[string]ast.GoMiniType),
 	}
-	// 注入所有已注册的模块中的符号，以便在 Snippet 中使用
-	e.mu.RLock()
-	for _, s := range e.moduleSources {
-		for name, sDef := range s.Structs {
-			program.Structs[name] = sDef
-		}
-		for name, iDef := range s.Interfaces {
-			program.Interfaces[name] = iDef
-		}
-		for name, cDef := range s.Constants {
-			program.Constants[name] = cDef
-			if s.ConstantTypes != nil {
-				if typ := s.ConstantTypes[name]; typ != "" {
-					program.ConstantTypes[name] = typ
-				}
-			}
-		}
-	}
-	e.mu.RUnlock()
 
 	compiled, semanticCtx, err := e.newCompiler().CompileProgram("snippet", code, program, false)
 	if err != nil {
@@ -88,7 +160,11 @@ func (e *MiniExecutor) buildSnippetRuntime(code string) (*ExecutableProgram, err
 		return nil, err
 	}
 
-	return e.NewRuntimeByCompiled(compiled)
+	artifact, err := executableArtifactFromCompiled(compiled)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByArtifact(artifact)
 }
 
 // Execute 执行脚本代码片段（无需 package 声明），支持注入环境变量。
@@ -107,7 +183,7 @@ func (e *MiniExecutor) Execute(ctx context.Context, code string, env map[string]
 		}
 		runtimeEnv[k] = converted
 	}
-	return executor.ExecuteWithEnv(ctx, runtimeEnv)
+	return executor.executor.ExecuteWithEnv(ctx, runtimeEnv)
 }
 
 func (e *MiniExecutor) StartExecute(ctx context.Context, code string, env map[string]interface{}) (*runtime.RunHandle, error) {
@@ -123,7 +199,7 @@ func (e *MiniExecutor) StartExecute(ctx context.Context, code string, env map[st
 		}
 		runtimeEnv[k] = converted
 	}
-	return executor.StartWithEnv(ctx, runtimeEnv)
+	return executor.executor.StartWithEnv(ctx, runtimeEnv)
 }
 
 // MustExecute 类似于 Execute，但在出错时会触发 panic
@@ -132,21 +208,4 @@ func (e *MiniExecutor) MustExecute(ctx context.Context, code string, env map[str
 	if err != nil {
 		panic(err)
 	}
-}
-
-// Import 手动加载一个模块并返回其导出的成员对象
-func (e *MiniExecutor) Import(ctx context.Context, path string) (*runtime.Var, error) {
-	// 创建一个最简的执行器环境来执行加载
-	executor, err := newEmptyRuntimeExecutor()
-	if err != nil {
-		return nil, err
-	}
-	if err := e.applyExecutorConfig(executor); err != nil {
-		return nil, err
-	}
-
-	session := executor.NewSession(ctx, "loader")
-	defer executor.CleanupSession(session)
-
-	return executor.ImportModulePath(session, path)
 }

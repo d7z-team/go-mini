@@ -87,7 +87,6 @@ make lint test examples
 ```
 
 The repository uses a multi-module layout with `core`, `ffilib`, and `examples`, coordinated by the root `go.work`.
-Generated `ffigen` outputs should be left to `make gen`; hand cleanup work should stay in non-generated code and keep tests focused on behavior rather than oversized line-count stress cases.
 
 ## Documentation
 

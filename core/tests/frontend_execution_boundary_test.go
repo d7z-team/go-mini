@@ -52,16 +52,24 @@ func TestFrontendCanSupplyMiniASTWithoutRuntimeASTRetention(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile with frontend failed: %v", err)
 	}
-	if compiled.Program == nil {
-		t.Fatal("compiler artifact should retain AST for analysis/compiler boundary")
+	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
+		t.Fatal("executable artifact should expose prepared bytecode")
 	}
 
-	runtimeProgram, err := exec.NewRuntimeByCompiled(compiled)
+	analysis, errs := exec.AnalyzeProgramTolerant(program, nil)
+	if len(errs) != 0 {
+		t.Fatalf("analysis failed: %v", errs)
+	}
+	if analysis == nil || analysis.Artifact == nil || analysis.Artifact.Program == nil {
+		t.Fatal("analysis artifact should retain AST for analysis boundary")
+	}
+
+	runtimeProgram, err := exec.NewRuntimeByArtifact(compiled)
 	if err != nil {
 		t.Fatalf("load runtime failed: %v", err)
 	}
-	if runtimeProgram.Compilation().Program != nil {
-		t.Fatal("executable program should not retain compiler AST")
+	if _, err := runtimeProgram.Bytecode(); err != nil {
+		t.Fatalf("executable program should expose bytecode only: %v", err)
 	}
 	if err := runtimeProgram.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -73,16 +81,22 @@ func TestFrontendCanSupplyMiniASTWithoutRuntimeASTRetention(t *testing.T) {
 }
 
 func TestExecutableProgramTypeHasNoASTFields(t *testing.T) {
-	programType := reflect.TypeOf(engine.ExecutableProgram{})
+	for _, programType := range []reflect.Type{reflect.TypeOf(engine.ExecutableProgram{}), reflect.TypeOf(engine.ExecutableArtifact{})} {
+		assertNoASTFields(t, programType)
+	}
+}
+
+func assertNoASTFields(t *testing.T, programType reflect.Type) {
+	t.Helper()
 	for _, forbidden := range []string{"Program", "TemplatePreviews", "parentMap"} {
 		if _, ok := programType.FieldByName(forbidden); ok {
-			t.Fatalf("ExecutableProgram should not expose %s", forbidden)
+			t.Fatalf("%s should not expose %s", programType.Name(), forbidden)
 		}
 	}
 	for i := 0; i < programType.NumField(); i++ {
 		field := programType.Field(i)
 		if strings.Contains(field.Type.String(), "/ast.") {
-			t.Fatalf("ExecutableProgram field %s retains AST type %s", field.Name, field.Type)
+			t.Fatalf("%s field %s retains AST type %s", programType.Name(), field.Name, field.Type)
 		}
 	}
 }

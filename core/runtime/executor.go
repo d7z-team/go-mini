@@ -30,11 +30,10 @@ type Executor struct {
 	ffiPackages          map[string]*BoundFFIPackage
 	ffiChannels          ffigo.ChannelRegistry
 	externalRequirements []ExternalRequirement
+	embeddedModules      map[string]*PreparedProgram
 	moduleHashes         map[string]string
 
-	ModulePlanLoader func(path string) (*PreparedProgram, error)
-
-	StepLimit int64
+	stepLimit int64
 
 	interfaceCache map[TypeSpec]*RuntimeInterfaceSpec
 	mu             sync.RWMutex
@@ -221,7 +220,8 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		ffiPackages:          make(map[string]*BoundFFIPackage),
 		ffiChannels:          ffigo.NewChannelRegistry(),
 		externalRequirements: append([]ExternalRequirement(nil), prepared.ExternalRequirements...),
-		moduleHashes:         make(map[string]string),
+		embeddedModules:      clonePreparedProgramMap(prepared.Modules),
+		moduleHashes:         cloneStringMap(prepared.ModuleHashes),
 		interfaceCache:       make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:               NewSharedState(),
 		scheduler:            NewExecutionContextScheduler(),
@@ -263,6 +263,8 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 		}
 	}
 	e.exports = clonePreparedExportMap(prepared.Exports)
+	e.embeddedModules = clonePreparedProgramMap(prepared.Modules)
+	e.moduleHashes = cloneStringMap(prepared.ModuleHashes)
 	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
 	e.methodFunctions = make(map[string]map[string]string)
 	for name, typeInfo := range prepared.NamedTypes {
@@ -318,6 +320,15 @@ func (e *Executor) registerMethodFunction(pkg, name string, fn *RuntimeFunction)
 		}
 		methods[methodName] = name
 	}
+}
+
+func (e *Executor) SetStepLimit(limit int64) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.stepLimit = limit
 }
 
 func (e *Executor) resolveNamedType(typ TypeSpec) (RuntimeType, bool) {
@@ -376,13 +387,6 @@ func (e *Executor) cachedInterfaceSpec(typ TypeSpec) (*RuntimeInterfaceSpec, boo
 
 func (e *Executor) resolveStructSchema(typ TypeSpec) (*RuntimeStructSpec, bool) {
 	return e.metadata.resolveStructSchema(typ)
-}
-
-func (e *Executor) SetGlobalInitOrder(order []string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.globalInitOrder = append([]string(nil), order...)
-	e.globalInitGroups = nil
 }
 
 func cloneTasks(tasks []Task) []Task {
@@ -474,13 +478,24 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 	}
 
 	session := e.NewSession(ctx, "eval")
-	session.StepLimit = e.StepLimit
-	for k, v := range env {
-		converted, err := session.Executor.ToVar(session, v, nil)
+	session.StepLimit = e.stepLimit
+	args := make([]*Var, 0, len(fn.FunctionSig.ParamNames))
+	for i, paramName := range fn.FunctionSig.ParamNames {
+		if paramName == "" {
+			e.CleanupSession(session)
+			return nil, fmt.Errorf("prepared function %s parameter %d missing name", name, i+1)
+		}
+		raw, ok := env[paramName]
+		if !ok {
+			e.CleanupSession(session)
+			return nil, fmt.Errorf("prepared function %s missing eval value for %s", fn.Name, paramName)
+		}
+		converted, err := session.Executor.ToVar(session, raw, nil)
 		if err != nil {
+			e.CleanupSession(session)
 			return nil, err
 		}
-		_ = session.AddVariable(k, converted)
+		args = append(args, converted)
 	}
 
 	call := &DoCallData{
@@ -488,7 +503,7 @@ func (e *Executor) EvalPreparedFunction(ctx context.Context, fn *PreparedFunctio
 		FunctionSig: CloneRuntimeFuncSig(fn.FunctionSig),
 		BodyTasks:   cloneTasks(fn.BodyTasks),
 	}
-	if err := e.setupFuncCall(session, name, call, nil, nil); err != nil {
+	if err := e.setupFuncCall(session, name, call, args, nil); err != nil {
 		e.CleanupSession(session)
 		return nil, err
 	}
@@ -530,7 +545,7 @@ func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[str
 		return errors.New("shared state initialization cannot start inside an active VM execution context")
 	}
 	session := e.NewSession(ctx, "global")
-	session.StepLimit = e.StepLimit
+	session.StepLimit = e.stepLimit
 	if err := e.scheduleSharedInitialization(session, env); err != nil {
 		e.CleanupSession(session)
 		return err

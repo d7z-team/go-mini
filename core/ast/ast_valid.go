@@ -63,6 +63,8 @@ type ExternalTypeSpec struct {
 	Type      GoMiniType
 	Ownership StructOwnership
 	ReadOnly  bool
+	Fields    map[Ident]GoMiniType
+	Methods   map[Ident]CallFunctionType
 }
 
 func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externalConsts map[string]string, tolerant bool) (*ValidContext, error) {
@@ -76,6 +78,20 @@ func NewValidator(node *ProgramStmt, externalSpecs map[Ident]GoMiniType, externa
 func cloneExternalTypeSpecs(in map[Ident]ExternalTypeSpec) map[Ident]ExternalTypeSpec {
 	out := make(map[Ident]ExternalTypeSpec, len(in))
 	for k, v := range in {
+		if len(v.Fields) > 0 {
+			fields := make(map[Ident]GoMiniType, len(v.Fields))
+			for name, typ := range v.Fields {
+				fields[name] = typ
+			}
+			v.Fields = fields
+		}
+		if len(v.Methods) > 0 {
+			methods := make(map[Ident]CallFunctionType, len(v.Methods))
+			for name, sig := range v.Methods {
+				methods[name] = sig
+			}
+			v.Methods = methods
+		}
 		out[k] = v
 	}
 	return out
@@ -195,8 +211,7 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 			}
 		}
 
-		if t.IsStruct() {
-			fields, _ := t.ReadStructFields()
+		if t.IsStruct() || len(spec.Fields) > 0 || len(spec.Methods) > 0 {
 			ownership := spec.Ownership
 			if ownership == "" {
 				ownership = StructOwnershipVMValue
@@ -206,12 +221,21 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 				Methods:   make(map[Ident]CallFunctionType),
 				Ownership: ownership,
 			}
-			for fName, fType := range fields {
-				if callFunc, ok := fType.ReadCallFunc(); ok {
-					vStru.Methods[Ident(fName)] = *callFunc
-				} else {
-					vStru.Fields[Ident(fName)] = fType
+			if t.IsStruct() {
+				fields, _ := t.ReadStructFields()
+				for fName, fType := range fields {
+					if callFunc, ok := fType.ReadCallFunc(); ok {
+						vStru.Methods[Ident(fName)] = *callFunc
+					} else {
+						vStru.Fields[Ident(fName)] = fType
+					}
 				}
+			}
+			for fName, fType := range spec.Fields {
+				vStru.Fields[fName] = fType
+			}
+			for methodName, methodSig := range spec.Methods {
+				vStru.Methods[methodName] = methodSig
 			}
 			v.root.structs[ident] = vStru
 			continue

@@ -50,15 +50,21 @@ func Value() bool {
 		t.Fatalf("UseSurface library failed: %v", err)
 	}
 
-	module, err := executor.Import(context.Background(), "usesrun")
-	if err != nil {
-		t.Fatalf("Import usesrun failed: %v", err)
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "usesrun"
+
+func main() {
+	if !usesrun.Value() {
+		panic("module import did not observe run controller")
 	}
-	results, err := executor.Eval(context.Background(), "mod.Value()", map[string]interface{}{"mod": module})
+}
+`)
 	if err != nil {
-		t.Fatalf("Eval imported module failed: %v", err)
+		t.Fatalf("compile importer failed: %v", err)
 	}
-	if len(results) != 1 || results[0] == nil || !results[0].Bool {
-		t.Fatalf("imported module did not observe run controller: %#v", results)
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute importer failed: %v", err)
 	}
 }

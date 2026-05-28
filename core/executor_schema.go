@@ -6,32 +6,8 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/calltemplate"
-	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
-
-func (e *MiniExecutor) HandleRegistry() *ffigo.HandleRegistry {
-	return e.registry
-}
-
-func (e *MiniExecutor) Executor() *runtime.Executor {
-	executor, err := e.RuntimeExecutor()
-	if err != nil {
-		panic(err)
-	}
-	return executor
-}
-
-func (e *MiniExecutor) RuntimeExecutor() (*runtime.Executor, error) {
-	executor, err := newEmptyRuntimeExecutor()
-	if err != nil {
-		return nil, err
-	}
-	if err := e.applyExecutorConfig(executor); err != nil {
-		return nil, err
-	}
-	return executor, nil
-}
 
 // RegisterFunctionTemplate registers a compiler-only call template.
 //

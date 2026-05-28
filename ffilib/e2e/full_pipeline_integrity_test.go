@@ -132,7 +132,7 @@ func TestFullPipelineIntegrity(t *testing.T) {
 
 	t.Run("compiled_prepared_only", func(t *testing.T) {
 		exec, compiled := buildPipelineFixture(t, "helper", fullPipelineHelperModule, fullPipelineMainProgram)
-		prog, err := exec.NewRuntimeByCompiled(compiled)
+		prog, err := exec.NewRuntimeByArtifact(compiled)
 		if err != nil {
 			t.Fatalf("new runtime by compiled failed: %v", err)
 		}

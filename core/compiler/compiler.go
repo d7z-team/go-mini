@@ -329,7 +329,25 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 		if _, ok := res[k]; ok {
 			return nil, errors.New("external struct schema conflicts with existing symbol " + string(k))
 		}
-		res[k] = ast.ExternalTypeSpec{Type: ast.GoMiniType(v.Spec), Ownership: ownership}
+		spec := ast.ExternalTypeSpec{
+			Type:      ast.GoMiniType(v.Spec),
+			Ownership: ownership,
+			Fields:    make(map[ast.Ident]ast.GoMiniType, len(v.Fields)),
+			Methods:   make(map[ast.Ident]ast.CallFunctionType, len(v.Methods)),
+		}
+		for _, field := range v.Fields {
+			spec.Fields[ast.Ident(field.Name)] = ast.GoMiniType(field.Type)
+		}
+		for _, method := range v.Methods {
+			if method.Spec == nil {
+				continue
+			}
+			sig, ok := ast.GoMiniType(method.Spec.Spec).ReadCallFunc()
+			if ok && sig != nil {
+				spec.Methods[ast.Ident(method.Name)] = *sig
+			}
+		}
+		res[k] = spec
 	}
 	for k, v := range interfaceSchemas {
 		if v == nil {

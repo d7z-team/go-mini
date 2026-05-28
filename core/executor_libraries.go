@@ -82,24 +82,6 @@ func (e *MiniExecutor) parseRegisteredLibraryASTsLocked() (map[string]*ast.Progr
 	return asts, nil
 }
 
-func (e *MiniExecutor) loadRegisteredModuleProgram(path string) (*ast.ProgramStmt, bool, error) {
-	e.mu.RLock()
-	library, hasLibrary := e.sourceLibraries[path]
-	program := e.moduleSources[path]
-	e.mu.RUnlock()
-	if hasLibrary {
-		program, err := parseSurfaceLibraryModule(library)
-		if err != nil {
-			return nil, true, err
-		}
-		return program, true, nil
-	}
-	if program != nil {
-		return program, false, nil
-	}
-	return nil, false, nil
-}
-
 func prepareSurfaceLibraryModules(modules []surface.LibraryModule) ([]surface.LibraryModule, map[string]*ast.ProgramStmt, map[string]string, error) {
 	if len(modules) == 0 {
 		return nil, nil, nil, nil
@@ -190,12 +172,6 @@ func (e *MiniExecutor) validateSurfaceLibrariesLocked(modules []surface.LibraryM
 			}
 			continue
 		}
-		if prepared := e.modules[path]; prepared != nil {
-			return fmt.Errorf("surface library %s conflicts with registered bytecode module", path)
-		}
-		if existing := e.moduleSources[path]; existing != nil {
-			return fmt.Errorf("surface library %s conflicts with registered source module", path)
-		}
 	}
 	return nil
 }
@@ -205,33 +181,25 @@ func (e *MiniExecutor) applySurfaceLibrariesLocked(modules []surface.LibraryModu
 		path := module.Path
 		e.librarySourceHashes[path] = sourceHashes[path]
 		e.sourceLibraries[path] = module
-		delete(e.moduleSources, path)
-		delete(e.modules, path)
 	}
 	e.libraryHashes = resolvedHashes
 }
 
 func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedProgram, error) {
 	e.mu.RLock()
-	if prepared := e.modules[path]; prepared != nil {
-		e.mu.RUnlock()
-		return prepared, nil
-	}
+	library, hasLibrary := e.sourceLibraries[path]
 	e.mu.RUnlock()
-
-	program, hasLibrary, err := e.loadRegisteredModuleProgram(path)
+	if !hasLibrary {
+		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
+	}
+	program, err := parseSurfaceLibraryModule(library)
 	if err != nil {
 		return nil, err
-	}
-	if program == nil {
-		return nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
 	}
 
 	stagedPrepared := make(map[string]*runtime.PreparedProgram)
 	stagedSources := make(map[string]*ast.ProgramStmt)
-	if !hasLibrary {
-		stagedSources[path] = program
-	}
+	stagedSources[path] = program
 
 	compiled, _, err := e.newCompilerWithModuleSources(stagedSources, nil).CompileProgram(path, "", program, false)
 	if err != nil {
@@ -247,7 +215,13 @@ func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedPr
 	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{path: true}, stagedPrepared, stagedSources); err != nil {
 		return nil, err
 	}
-	e.commitPreparedModuleStage(stagedPrepared, stagedSources)
+	deps := make(map[string]*runtime.PreparedProgram, len(stagedPrepared))
+	for depPath, dep := range stagedPrepared {
+		if depPath != path {
+			deps[depPath] = dep
+		}
+	}
+	embedPreparedModules(prepared, deps, e.embeddedModuleHashes(deps))
 	return prepared, nil
 }
 
@@ -260,22 +234,4 @@ func cloneSurfaceLibraryHashes(in map[string]string) map[string]string {
 		out[path] = hash
 	}
 	return out
-}
-
-func (e *MiniExecutor) recomputeSurfaceLibraryHashesLocked() {
-	if len(e.librarySourceHashes) == 0 {
-		e.libraryHashes = make(map[string]string)
-		return
-	}
-	asts, err := e.parseRegisteredLibraryASTsLocked()
-	if err != nil {
-		e.libraryHashes = cloneSurfaceLibraryHashes(e.librarySourceHashes)
-		return
-	}
-	hashes, err := resolveSurfaceLibraryHashes(asts, e.librarySourceHashes)
-	if err != nil {
-		e.libraryHashes = cloneSurfaceLibraryHashes(e.librarySourceHashes)
-		return
-	}
-	e.libraryHashes = hashes
 }

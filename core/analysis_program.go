@@ -11,7 +11,7 @@ import (
 type AnalysisProgram struct {
 	Source   string
 	Program  *ast.ProgramStmt
-	Compiled *compiler.Artifact
+	Artifact *AnalysisArtifact
 
 	// TemplatePreviews contains source-based call template render previews used by LSP hover.
 	TemplatePreviews []calltemplate.TemplatePreview
@@ -21,28 +21,16 @@ type AnalysisProgram struct {
 }
 
 func newAnalysisProgram(source string, compiled *compiler.Artifact, program *ast.ProgramStmt) *AnalysisProgram {
-	if program == nil && compiled != nil {
-		program = compiled.Program
-	}
+	artifact := analysisArtifactFromCompiled(source, compiled, program)
 	res := &AnalysisProgram{
-		Source:  source,
-		Program: program,
+		Artifact: artifact,
 	}
-	if compiled != nil {
-		res.Compiled = compiled
-		res.TemplatePreviews = append([]calltemplate.TemplatePreview(nil), compiled.TemplatePreviews...)
-		if res.Source == "" {
-			res.Source = compiled.Source
-		}
+	if artifact != nil {
+		res.Source = artifact.Source
+		res.Program = artifact.Program
+		res.TemplatePreviews = append([]calltemplate.TemplatePreview(nil), artifact.TemplatePreviews...)
 	}
 	return res
-}
-
-func (p *AnalysisProgram) Compilation() *compiler.Artifact {
-	if p == nil {
-		return nil
-	}
-	return p.Compiled
 }
 
 // ReleaseLSPCache releases analysis caches after IDE queries no longer need them.

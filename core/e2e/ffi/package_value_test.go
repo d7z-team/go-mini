@@ -103,7 +103,7 @@ func main() {
 	if err := bridge.DestroyHandle(bridge.lastHandle); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := executor.HandleRegistry().GetTypedWithAudit(bridge.lastHandle, "mock.Counter"); err != nil {
+	if _, err := bridge.registry.GetTypedWithAudit(bridge.lastHandle, "mock.Counter"); err != nil {
 		t.Fatalf("pinned package value was removed: %v", err)
 	}
 }
@@ -159,7 +159,7 @@ func main() {
 	}
 
 	partial := engine.MustNewMiniExecutor()
-	partialBridge := &packageValueBridge{registry: partial.HandleRegistry()}
+	partialBridge := &packageValueBridge{}
 	registerMockCounterSurface(t, partial, partialBridge, false)
 	_, err = partial.NewRuntimeByBytecodeJSON(payload)
 	if err == nil {
@@ -173,7 +173,7 @@ func main() {
 func newPackageValueExecutor(t *testing.T) (*engine.MiniExecutor, *packageValueBridge) {
 	t.Helper()
 	executor := engine.MustNewMiniExecutor()
-	bridge := &packageValueBridge{registry: executor.HandleRegistry()}
+	bridge := &packageValueBridge{}
 	registerMockCounterSurface(t, executor, bridge, true)
 	return executor, bridge
 }
@@ -199,6 +199,7 @@ func registerMockCounterSurface(t *testing.T, executor *engine.MiniExecutor, bri
 	})
 	schema.AddValue("mock", "Default", &miniruntime.ValueSpec{Type: hostRefType, ReadOnly: true})
 	if err := executor.UseSurface(surface.New(schema, func(ctx miniruntime.FFIBindContext) (*miniruntime.BoundFFISurface, error) {
+		bridge.registry = ctx.Registry
 		bound := miniruntime.NewBoundFFISurfaceFromSchema(schema)
 		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
 			return nil, err

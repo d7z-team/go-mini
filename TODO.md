@@ -8,7 +8,7 @@
 
 - 执行主路径以 `PreparedProgram` / `go-mini-bytecode` 为装载工件。
 - `core/frontend` 定义源码前端边界；`core/gofrontend` 是 Go source / Go AST -> Mini AST 的唯一 Go 前端转换包，其他语言只能实现 frontend 输出 Mini AST。Go 风格类型必须在 Go 前端立即规范化。
-- `ExecutableProgram` 只保留 bytecode artifact 与 runtime executor；AST、模板 hover 预览和 LSP 缓存只存在于 `AnalysisProgram` 或 compiler artifact。
+- `ExecutableArtifact` 只保留 bytecode 与源码摘要，`ExecutableProgram` 只保留 bytecode artifact 与 runtime executor；AST、模板 hover 预览和 LSP 缓存只存在于 `AnalysisArtifact` / `AnalysisProgram` 或 compiler 内部 artifact。
 - `core/lowering` 是 Mini AST -> `runtime.PreparedProgram` 边界；compiler 调用 `lowering.PrepareProgram`。
 - `core/lowering` 对不支持的 AST 节点与非法 canonical type 返回 lowering error，不以 panic 作为主错误通道。
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
@@ -41,9 +41,10 @@
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - `core/surface.Bundle` 承载声明式 schema、runtime bind、compiler-only templates 和纯 VM 源码库；surface 冲突通过 `Bundle.Err` / `UseSurface` 返回错误。
 - `core/surface.Bundle` 可以携带纯 VM 源码库；engine 在 `UseSurface` 阶段解析源码用于校验与 resolved module hash，随后只保留规范化源码描述，后续 compiler / LSP / module 装载每次按需重新解析 fresh AST。
+- 纯 VM 模块不提供公开的预编译模块动态注册入口；VM 库只能通过 `surface.Library(...)` 装配，编译主程序时按实际 import 编译并嵌入 bytecode。
 - 纯 VM 源码库的可见成员来自 `ModuleExports` / `PreparedProgram.Exports` 显式导出表，导出范围限定为 ASCII 大写开头的 Go-style exported identifier；runtime `TypeModule` 成员访问读取 `VMModule.Data`。
-- executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再提交 `PreparedProgram` / source cache，避免依赖失败留下半成品 module cache。
-- compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`，runtime 只校验 module hash 并通过 `ModulePlanLoader` 装载 `PreparedProgram`。
+- executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再把 prepared module closure 写入主程序 bytecode，避免依赖失败留下半成品执行工件。
+- compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`、`ModuleHashes` 和 `Modules`；runtime 只校验 embedded module hash 并从 `PreparedProgram.Modules` 装载 `PreparedProgram`，不提供动态 module loader。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
 - 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验复用 `runtime/internal.Comparable` 的 VM 动态值可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。

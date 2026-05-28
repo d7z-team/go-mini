@@ -39,12 +39,12 @@ func main() {
 	}
 	assertNoSourceLibraryDiagnostics(t, errs)
 
-	if program.Compiled == nil || program.Compiled.ImportedPrograms == nil {
-		t.Fatal("expected compiled analysis artifact with imported source modules")
+	if program.Artifact == nil || program.Artifact.ImportedPrograms == nil {
+		t.Fatal("expected analysis artifact with imported source modules")
 	}
-	imported := program.Compiled.ImportedPrograms["mathx"]
+	imported := program.Artifact.ImportedPrograms["mathx"]
 	if imported == nil {
-		t.Fatalf("expected mathx imported program, got %#v", program.Compiled.ImportedPrograms)
+		t.Fatalf("expected mathx imported program, got %#v", program.Artifact.ImportedPrograms)
 	}
 	if _, ok := imported.Functions["Double"]; !ok {
 		t.Fatalf("expected imported function Double, got %#v", imported.Functions)

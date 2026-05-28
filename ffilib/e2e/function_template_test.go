@@ -61,7 +61,11 @@ func main() {
 	if got, want := recorder.out.String(), "hello 7\n"; got != want {
 		t.Fatalf("unexpected output %q, want %q", got, want)
 	}
-	if aliases := prog.Compilation().Bytecode.Executable.ImportAliases; !hasImportAlias(aliases, "fmt", calltemplate.InternalNamePrefix+"pkg_fmt") {
+	bytecodeProgram, err := prog.Bytecode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliases := bytecodeProgram.Executable.ImportAliases; !hasImportAlias(aliases, "fmt", calltemplate.InternalNamePrefix+"pkg_fmt") {
 		t.Fatalf("expected generated fmt import alias, got %#v", aliases)
 	}
 }
@@ -90,7 +94,11 @@ func main() {
 	if got, want := recorder.out.String(), "hi!\n"; got != want {
 		t.Fatalf("unexpected output %q, want %q", got, want)
 	}
-	aliases := prog.Compilation().Bytecode.Executable.ImportAliases
+	bytecodeProgram, err := prog.Bytecode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliases := bytecodeProgram.Executable.ImportAliases
 	if aliases["f"] != "fmt" || !hasImportAlias(aliases, "fmt", calltemplate.InternalNamePrefix+"pkg_fmt") {
 		t.Fatalf("expected user fmt alias plus generated hygienic fmt alias, got %#v", aliases)
 	}
@@ -134,7 +142,7 @@ func main() {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	prog, err := executor.NewRuntimeByCompiled(compiled)
+	prog, err := executor.NewRuntimeByArtifact(compiled)
 	if err != nil {
 		t.Fatalf("load runtime failed: %v", err)
 	}
@@ -145,20 +153,16 @@ func main() {
 	if got, want := recorder.out.String(), "virtual\n"; got != want {
 		t.Fatalf("unexpected output %q, want %q", got, want)
 	}
-	aliases := prog.Compilation().Bytecode.Executable.ImportAliases
+	bytecodeProgram, err := prog.Bytecode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliases := bytecodeProgram.Executable.ImportAliases
 	if _, ok := aliases["x"]; ok {
 		t.Fatalf("compile-only import leaked into bytecode aliases: %#v", aliases)
 	}
 	if hasImportAlias(aliases, "aaa", calltemplate.InternalNamePrefix) {
 		t.Fatalf("synthetic compile-only import leaked into bytecode aliases: %#v", aliases)
-	}
-	if imports := compiled.ImportedPrograms; len(imports) != 0 {
-		t.Fatalf("compile-only import leaked into artifact imports: %#v", imports)
-	}
-	for key := range compiled.Program.ImportLocs {
-		if key == "x" || strings.HasSuffix(key, "\x1fx") {
-			t.Fatalf("compile-only import location leaked: %#v", compiled.Program.ImportLocs)
-		}
 	}
 }
 

@@ -100,7 +100,7 @@ func main() {}
 	}
 }
 
-func TestSurfaceLibraryBytecodeLoadRequiresMatchingSourceHash(t *testing.T) {
+func TestSurfaceLibraryBytecodeEmbedsImportedModules(t *testing.T) {
 	source := `
 package main
 
@@ -124,35 +124,32 @@ func main() {
 		t.Fatalf("compile bytecode: %v", err)
 	}
 
-	missing := engine.MustNewMiniExecutor()
-	if _, err := missing.NewRuntimeByBytecodeJSON(payload); err == nil || !strings.Contains(err.Error(), "missing external VM module labels") {
-		t.Fatalf("expected missing module hash error, got %v", err)
-	}
-
-	mismatch := engine.MustNewMiniExecutor()
-	if err := mismatch.UseSurface(labelsLibrary()); err != nil {
-		t.Fatal(err)
-	}
-	if err := mismatch.UseSurface(mathxLibrary(3)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := mismatch.NewRuntimeByBytecodeJSON(payload); err == nil || !strings.Contains(err.Error(), "external VM module labels schema mismatch") {
-		t.Fatalf("expected module hash mismatch, got %v", err)
-	}
-
 	loader := engine.MustNewMiniExecutor()
-	if err := loader.UseSurface(labelsLibrary()); err != nil {
-		t.Fatal(err)
-	}
-	if err := loader.UseSurface(mathxLibrary(2)); err != nil {
-		t.Fatal(err)
-	}
 	prog, err := loader.NewRuntimeByBytecodeJSON(payload)
 	if err != nil {
 		t.Fatalf("load bytecode: %v", err)
 	}
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute bytecode: %v", err)
+	}
+
+	program, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		t.Fatalf("unmarshal bytecode: %v", err)
+	}
+	if program.Executable == nil || program.Executable.Modules["labels"] == nil || program.Executable.Modules["mathx"] == nil {
+		t.Fatalf("expected embedded module closure, got %#v", program.Executable.Modules)
+	}
+	if program.Executable.ModuleHashes["labels"] == "" {
+		t.Fatalf("expected embedded module hashes, got %#v", program.Executable.ModuleHashes)
+	}
+	program.Executable.ModuleHashes["labels"] = "tampered"
+	tampered, err := json.Marshal(program)
+	if err != nil {
+		t.Fatalf("marshal tampered bytecode: %v", err)
+	}
+	if _, err := loader.NewRuntimeByBytecodeJSON(tampered); err == nil || !strings.Contains(err.Error(), "embedded VM module labels schema mismatch") {
+		t.Fatalf("expected embedded module hash mismatch, got %v", err)
 	}
 }
 
@@ -215,26 +212,6 @@ func main() {}
 	loader := engine.MustNewMiniExecutor()
 	if _, err := loader.NewRuntimeByBytecodeJSON(payload); err != nil {
 		t.Fatalf("unused surface library should not be required by bytecode: %v", err)
-	}
-}
-
-func TestSurfaceLibraryConflictsWithRegisteredModule(t *testing.T) {
-	exec := engine.MustNewMiniExecutor()
-	compiled, err := exec.CompileGoCode(`
-package mathx
-
-func Double(v int) int { return v * 2 }
-`)
-	if err != nil {
-		t.Fatalf("compile registered module: %v", err)
-	}
-	prog, err := exec.NewRuntimeByCompiled(compiled)
-	if err != nil {
-		t.Fatalf("load registered module: %v", err)
-	}
-	exec.RegisterModule("mathx", prog)
-	if err := exec.UseSurface(mathxLibrary(2)); err == nil || !strings.Contains(err.Error(), "conflicts with registered bytecode module") {
-		t.Fatalf("expected registered module conflict, got %v", err)
 	}
 }
 

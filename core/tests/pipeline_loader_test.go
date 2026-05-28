@@ -22,7 +22,7 @@ func pipelineLoaders(code string) []pipelineLoader {
 				if err != nil {
 					return nil, err
 				}
-				return exec.NewRuntimeByCompiled(compiled)
+				return exec.NewRuntimeByArtifact(compiled)
 			},
 		},
 		{

@@ -10,6 +10,7 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/ffigo"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/core/testsurface"
@@ -115,13 +116,10 @@ func main() {
 	}
 
 	compiled.Bytecode = decoded
-	compiled.Program.Variables["counter"] = nil
-	compiled.Program.Functions["inc"].Body = nil
-	compiled.Program.Main = nil
 
-	prog, err := exec.NewRuntimeByCompiled(compiled)
+	prog, err := exec.NewRuntimeByArtifact(compiled)
 	if err != nil {
-		t.Fatalf("new runtime by compiled failed: %v", err)
+		t.Fatalf("new runtime by executable artifact failed: %v", err)
 	}
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
@@ -223,8 +221,8 @@ func main() {
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
-	if prog.Compilation().Program != nil {
-		t.Fatal("bytecode-loaded executable should not retain analysis AST")
+	if _, err := prog.Bytecode(); err != nil {
+		t.Fatalf("bytecode-loaded executable should expose bytecode only: %v", err)
 	}
 	counter, ok := prog.SharedState().LoadGlobal("counter")
 	if !ok || counter == nil || counter.I64 != 2 {
@@ -318,10 +316,12 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 	}
 
 	var handle uint32
+	var registry *ffigo.HandleRegistry
 	err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		if ctx.PinnedRegistry == nil {
 			return nil, errors.New("missing pinned registry")
 		}
+		registry = ctx.Registry
 		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		bound.AddPackageValue("demo", "Value", intSpec, runtime.NewInt(1))
@@ -331,7 +331,7 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 	if handle == 0 {
 		t.Fatal("expected bind to allocate a pinned handle")
 	}
-	if _, ok := exec.HandleRegistry().Get(handle); ok {
+	if _, ok := registry.Get(handle); ok {
 		t.Fatalf("failed UseSurface polluted pinned handle %d", handle)
 	}
 	if got := exec.ExportedSchema().Values["demo.Value"]; got == nil || got.Type.Raw != "String" {
@@ -343,10 +343,12 @@ func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	var handle uint32
 	var directHandle uint32
+	var registry *ffigo.HandleRegistry
 	err := exec.UseSurface(surface.New(runtime.NewFFISurfaceSchema(), func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		if ctx.PinnedRegistry == nil {
 			return nil, errors.New("missing pinned registry")
 		}
+		registry = ctx.Registry
 		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
 		directHandle = ctx.Registry.RegisterTyped(&struct{}{}, "demo.Direct")
 		return nil, errors.New("bind failed")
@@ -357,10 +359,10 @@ func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
 	if handle == 0 {
 		t.Fatal("expected bind to allocate a pinned handle")
 	}
-	if _, ok := exec.HandleRegistry().Get(handle); ok {
+	if _, ok := registry.Get(handle); ok {
 		t.Fatalf("failed UseSurface bind error polluted pinned handle %d", handle)
 	}
-	if _, ok := exec.HandleRegistry().Get(directHandle); ok {
+	if _, ok := registry.Get(directHandle); ok {
 		t.Fatalf("failed UseSurface bind error polluted direct handle %d", directHandle)
 	}
 }
@@ -389,7 +391,7 @@ func TestBytecodeUnmarshalRejectsInvalidExecutableTask(t *testing.T) {
 	}
 }
 
-func TestNewRuntimeByCompiledRequiresExecutableBytecode(t *testing.T) {
+func TestNewRuntimeByArtifactRequiresExecutableBytecode(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	compiled, err := exec.CompileGoCode(`
 package main
@@ -400,7 +402,7 @@ func main() {}
 	}
 	compiled.Bytecode = nil
 
-	_, err = exec.NewRuntimeByCompiled(compiled)
+	_, err = exec.NewRuntimeByArtifact(compiled)
 	if err == nil {
 		t.Fatal("expected missing executable bytecode error")
 	}
@@ -467,8 +469,8 @@ func main() { Result = Result + 41 }
 	if err != nil {
 		t.Fatalf("load prepared-only bytecode failed: %v", err)
 	}
-	if loaded.Compilation().Program != nil {
-		t.Fatal("prepared-only bytecode should not retain analysis AST")
+	if _, err := loaded.Bytecode(); err != nil {
+		t.Fatalf("prepared-only bytecode should expose bytecode only: %v", err)
 	}
 	if err := loaded.Execute(context.Background()); err != nil {
 		t.Fatalf("execute prepared-only bytecode failed: %v", err)
@@ -476,44 +478,6 @@ func main() { Result = Result + 41 }
 	result, ok := loaded.SharedState().LoadGlobal("Result")
 	if !ok || result == nil || result.I64 != 42 {
 		t.Fatalf("unexpected Result global: %#v", result)
-	}
-}
-
-func TestModuleImportUsesPreparedExecutable(t *testing.T) {
-	exec := engine.MustNewMiniExecutor()
-	helperSource := `
-package helper
-func Answer() Int64 { return 40 }
-`
-	helperCompiled, err := exec.CompileGoCode(helperSource)
-	if err != nil {
-		t.Fatalf("compile helper failed: %v", err)
-	}
-	helperProg, err := exec.NewRuntimeByCompiled(helperCompiled)
-	if err != nil {
-		t.Fatalf("load helper failed: %v", err)
-	}
-	helperBytecode, err := helperProg.Bytecode()
-	if err != nil {
-		t.Fatalf("helper bytecode accessor failed: %v", err)
-	}
-	helperPreparedOnly := *helperBytecode
-	helperPreparedOnly.Globals = nil
-	helperPreparedOnly.Entry = nil
-	helperPreparedOnly.Functions = nil
-
-	helperRuntime, err := exec.NewRuntimeByBytecode(&helperPreparedOnly)
-	if err != nil {
-		t.Fatalf("load prepared-only helper failed: %v", err)
-	}
-	if helperRuntime.Compilation().Program != nil {
-		t.Fatal("prepared helper runtime should not retain analysis AST")
-	}
-
-	exec.RegisterModule("helper", helperRuntime)
-	metadata := exec.ExportMetadata()
-	if !strings.Contains(metadata, `"helper"`) || !strings.Contains(metadata, `"Answer": "function() Int64"`) {
-		t.Fatalf("expected prepared module metadata, got: %s", metadata)
 	}
 }
 
@@ -555,9 +519,6 @@ func main() {}
 	}
 	if artifact == nil || artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
 		t.Fatal("expected executable artifact")
-	}
-	if artifact.Program != nil {
-		t.Fatal("bytecode artifact should not contain analysis AST")
 	}
 	if artifact.Bytecode.Executable.Constants["Version"].DisplayString() != "v1" {
 		t.Fatalf("unexpected executable constants: %#v", artifact.Bytecode.Executable.Constants)

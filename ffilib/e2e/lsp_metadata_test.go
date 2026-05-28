@@ -4,25 +4,25 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-func TestExportMetadataIncludesBuiltinsFFIAndRegisteredModules(t *testing.T) {
+func TestExportMetadataIncludesBuiltinsFFIAndSourceLibraries(t *testing.T) {
 	testExecutor := newStdExecutor()
 
 	sourceProgram := `package main
 const VERSION = "1.0.0"
+var Total = 7
+type Count int
 type Point struct { X, Y int }
 func Add(a, b int) int { return a + b }
 func (p Point) Distance() int { return 0 }
 func main() {}`
 
-	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
-	if err != nil {
+	if err := testExecutor.UseSurface(surface.Library("main", surface.GoFile("main.mgo", sourceProgram))); err != nil {
 		t.Fatal(err)
 	}
-
-	// 注册为模块，这样 ExportMetadata 才能看到
-	testExecutor.RegisterModule("main", testProgram)
 
 	metadataJSON := testExecutor.ExportMetadata()
 	var metadata map[string]interface{}
@@ -30,13 +30,11 @@ func main() {}`
 		t.Fatal(err)
 	}
 
-	// 验证内置函数
 	builtins := metadata["builtins"].(map[string]interface{})
 	if _, ok := builtins["len"]; !ok {
 		t.Error("len not found in builtins")
 	}
 
-	// 验证 FFI 模块
 	modules := metadata["modules"].(map[string]interface{})
 	if _, ok := modules["fmt"]; !ok {
 		t.Error("fmt module not found")
@@ -47,7 +45,6 @@ func main() {}`
 		t.Error("fmt.Printf not found")
 	}
 
-	// 验证脚本模块 (注册在 main)
 	if _, ok := modules["main"]; !ok {
 		t.Error("main module not found")
 	}
@@ -55,7 +52,6 @@ func main() {}`
 	mainFuncs := mainMod["functions"].(map[string]interface{})
 	if sig, ok := mainFuncs["Add"]; ok {
 		t.Logf("Add signature: %v", sig)
-		// 检查是否包含完整签名 (参数和返回类型)
 		sigStr := sig.(string)
 		if !strings.Contains(sigStr, "Int64") {
 			t.Errorf("Signature should contain types, got %s", sigStr)
@@ -64,7 +60,6 @@ func main() {}`
 		t.Error("Add function not found in main module")
 	}
 
-	// 验证常量
 	mainConstants := mainMod["constants"].(map[string]interface{})
 	if val, ok := mainConstants["VERSION"]; ok {
 		if val != "1.0.0" {
@@ -72,5 +67,14 @@ func main() {}`
 		}
 	} else {
 		t.Error("VERSION constant not found")
+	}
+
+	mainValues := mainMod["values"].(map[string]interface{})
+	if typ, ok := mainValues["Total"]; !ok || typ != "Int64" {
+		t.Fatalf("expected Total value type Int64, got %v", typ)
+	}
+	mainTypes := mainMod["types"].(map[string]interface{})
+	if typ, ok := mainTypes["Count"]; !ok || typ != "Int64" {
+		t.Fatalf("expected Count type Int64, got %v", typ)
 	}
 }

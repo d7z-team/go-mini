@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/calltemplate"
+	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
 
 func TestExecutorEvalExpressions(t *testing.T) {
@@ -85,13 +88,11 @@ func TestEvalByteCopy(t *testing.T) {
 	}
 	res := results[0]
 
-	// 修改原始数据
 	original[0] = 'H'
 
-	// 验证 VM 内部数据未变
 	got := res.Interface().([]byte)
 	if string(got) != "hello" {
-		t.Errorf("Data leaked! Expected 'hello', got %q", string(got))
+		t.Errorf("Eval result aliased host byte slice: got %q", string(got))
 	}
 }
 
@@ -112,13 +113,11 @@ func test() string {
 		t.Fatal(err)
 	}
 
-	// 1. Execute the program to initialize globals and imports
 	err = prog.Execute(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// 2. Eval a function that uses those globals and imports
 	results, err := prog.Eval(context.Background(), "test()", nil)
 	if err != nil {
 		t.Errorf("Eval after Execute failed: %v", err)
@@ -131,6 +130,118 @@ func test() string {
 
 	if res.Str != "initialized:ok" {
 		t.Errorf("Expected 'initialized:ok', got %q", res.Str)
+	}
+}
+
+func TestExecutableEvalUsesCompiledProgramSymbols(t *testing.T) {
+	e := engine.MustNewMiniExecutor()
+	if err := e.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "bump",
+		Name:      "bump",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecInt64, false, runtime.SpecInt64),
+		Body:      `{{ arg 0 }} + 1`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	prog, err := e.NewRuntimeByGoCode(`
+package main
+
+import "strings"
+
+type Box struct {
+	V int
+}
+
+func (b Box) OpAdd(other Box) Box {
+	return Box{V: b.V + other.V}
+}
+
+func MakeBox(v int) Box {
+	return Box{V: v}
+}
+
+func Factorial(n int) int {
+	if n <= 1 {
+		return 1
+	}
+	return n * Factorial(n-1)
+}
+
+func main() {}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		expr string
+		env  map[string]interface{}
+		want interface{}
+	}{
+		{name: "operator_overload", expr: "(MakeBox(2) + MakeBox(3)).V", want: int64(5)},
+		{name: "env", expr: "MakeBox(x).V", env: map[string]interface{}{"x": int64(7)}, want: int64(7)},
+		{name: "recursive_function", expr: "Factorial(5)", want: int64(120)},
+		{name: "template", expr: "bump(41)", want: int64(42)},
+		{name: "ffi_import", expr: `strings.ToUpper("go")`, want: "GO"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, err := prog.Eval(context.Background(), tt.expr, tt.env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(results) != 1 {
+				t.Fatalf("Eval() returned %d values, want 1", len(results))
+			}
+			if got := results[0].Interface(); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("Eval() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecutableEvalUsesEmbeddedModuleAfterBytecodeLoad(t *testing.T) {
+	compilerExec := engine.MustNewMiniExecutor()
+	if err := compilerExec.UseSurface(surface.Library("mathx", surface.GoFile("mathx.mgo", `
+package mathx
+
+func Double(v int) int {
+	return v * 2
+}
+`))); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := compilerExec.CompileGoCodeToBytecodeJSON(`
+package main
+
+import "mathx"
+
+func Use(v int) int {
+	return mathx.Double(v)
+}
+
+func main() {}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loader := engine.MustNewMiniExecutor()
+	prog, err := loader.NewRuntimeByBytecodeJSON(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := prog.Eval(context.Background(), "mathx.Double(21) + Use(1)", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Eval() returned %d values, want 1", len(results))
+	}
+	if got := results[0].I64; got != 44 {
+		t.Fatalf("Eval() = %d, want 44", got)
 	}
 }
 

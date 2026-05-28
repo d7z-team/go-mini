@@ -18,7 +18,7 @@ func (e *Executor) Start(ctx context.Context) (*RunHandle, error) {
 
 func (e *Executor) StartWithEnv(ctx context.Context, env map[string]*Var) (*RunHandle, error) {
 	session := e.NewSession(ctx, "global")
-	session.StepLimit = e.StepLimit
+	session.StepLimit = e.stepLimit
 	if err := e.prepareSession(session, env, true); err != nil {
 		e.CleanupSession(session)
 		return nil, err

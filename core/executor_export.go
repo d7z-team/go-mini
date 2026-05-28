@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/internal/miniident"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -22,6 +21,8 @@ type ExportedModule struct {
 	Structs    map[string]*ExportedStruct `json:"structs"`    // 结构体名 -> 结构体信息
 	Interfaces map[string]string          `json:"interfaces"` // 接口名 -> 签名
 	Constants  map[string]string          `json:"constants"`  // 模块内常量
+	Values     map[string]string          `json:"values"`     // 模块内变量名 -> 类型
+	Types      map[string]string          `json:"types"`      // 类型名 -> 类型
 	Doc        string                     `json:"doc,omitempty"`
 }
 
@@ -33,6 +34,20 @@ type ExportedStruct struct {
 
 // ExportMetadata 导出当前执行器中注册的所有符号，供 IDE 和 LSP 提供代码补全
 func (e *MiniExecutor) ExportMetadata() string {
+	modulePlans := make(map[string]*runtime.PreparedProgram)
+	e.mu.RLock()
+	libraryPaths := make([]string, 0, len(e.sourceLibraries))
+	for path := range e.sourceLibraries {
+		libraryPaths = append(libraryPaths, path)
+	}
+	e.mu.RUnlock()
+	for _, path := range libraryPaths {
+		prepared, err := e.prepareModuleFromSource(path)
+		if err == nil && prepared != nil {
+			modulePlans[path] = prepared
+		}
+	}
+
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -49,6 +64,8 @@ func (e *MiniExecutor) ExportMetadata() string {
 				Structs:    make(map[string]*ExportedStruct),
 				Interfaces: make(map[string]string),
 				Constants:  make(map[string]string),
+				Values:     make(map[string]string),
+				Types:      make(map[string]string),
 			}
 		}
 		return meta.Modules[name]
@@ -65,7 +82,6 @@ func (e *MiniExecutor) ExportMetadata() string {
 		return mod.Structs[structName]
 	}
 
-	// 1. 导出 builtin 函数签名
 	for name, spec := range e.funcSchemas {
 		sName := string(name)
 		if !strings.Contains(sName, ".") && !strings.HasPrefix(sName, "__") {
@@ -87,14 +103,11 @@ func (e *MiniExecutor) ExportMetadata() string {
 		getModule(parts[0]).Interfaces[parts[1]] = string(spec.Spec)
 	}
 
-	// 2. 处理 FFI Routes 和 Methods
 	for routeName, route := range e.routes {
 		sig := e.formatRouteSchema(route)
-		// 处理新版 Type.Method 格式
 		if strings.Contains(routeName, ".") && strings.Count(routeName, ".") == 1 {
 			parts := strings.SplitN(routeName, ".", 2)
 			typeName, methodName := parts[0], parts[1]
-			// 如果 typeName 看起来像是一个已经注册的结构体
 			if _, ok := e.structsMeta[ast.Ident(typeName)]; ok {
 				getStruct("ffi", typeName).Methods[methodName] = sig
 				continue
@@ -114,40 +127,6 @@ func (e *MiniExecutor) ExportMetadata() string {
 		}
 	}
 
-	exportProgramModule := func(modName string, prog *ast.ProgramStmt) {
-		if prog == nil {
-			return
-		}
-		mod := getModule(modName)
-		for fnName, fnStmt := range prog.Functions {
-			if miniident.IsExported(string(fnName)) {
-				sig := string(fnStmt.FunctionType.MiniType())
-				if fnStmt.Doc != "" {
-					sig = sig + " // " + strings.ReplaceAll(fnStmt.Doc, "\n", " ")
-				}
-				mod.Functions[string(fnName)] = sig
-			}
-		}
-		for stName, stStmt := range prog.Structs {
-			if miniident.IsExported(string(stName)) {
-				st := getStruct(modName, string(stName))
-				st.Doc = stStmt.Doc
-				for fName, fType := range stStmt.Fields {
-					st.Fields[string(fName)] = string(fType)
-				}
-			}
-		}
-		for ifaceName, ifaceStmt := range prog.Interfaces {
-			if miniident.IsExported(string(ifaceName)) {
-				mod.Interfaces[string(ifaceName)] = string(ifaceStmt.Type)
-			}
-		}
-		for cName, cVal := range prog.Constants {
-			if miniident.IsExported(cName) {
-				mod.Constants[cName] = cVal
-			}
-		}
-	}
 	exportPreparedModule := func(modName string, prepared *runtime.PreparedProgram) {
 		if prepared == nil {
 			return
@@ -156,54 +135,40 @@ func (e *MiniExecutor) ExportMetadata() string {
 		for exportName, export := range prepared.Exports {
 			target := export.TargetName
 			if target == "" {
-				target = exportName
+				target = export.Name
 			}
 			switch export.Kind {
 			case runtime.PreparedExportFunc:
 				if fn := prepared.Functions[target]; fn != nil && fn.FunctionSig != nil {
-					mod.Functions[export.Name] = string(fn.FunctionSig.Spec)
-				} else {
-					mod.Functions[export.Name] = export.Type.Raw.String()
+					mod.Functions[exportName] = fn.FunctionSig.SignatureString()
 				}
 			case runtime.PreparedExportConst:
-				if val, ok := prepared.Constants[target]; ok {
-					mod.Constants[export.Name] = val.DisplayString()
+				if value, ok := prepared.Constants[target]; ok {
+					mod.Constants[exportName] = value.DisplayString()
 				}
 			case runtime.PreparedExportStruct:
-				st := getStruct(modName, export.Name)
 				if spec := prepared.StructSchemas[target]; spec != nil {
+					st := getStruct(modName, exportName)
 					for _, field := range spec.Fields {
 						st.Fields[field.Name] = string(field.Type)
 					}
 				}
 			case runtime.PreparedExportInterface:
 				if spec := prepared.InterfaceSchemas[target]; spec != nil {
-					mod.Interfaces[export.Name] = string(spec.Spec)
+					mod.Interfaces[exportName] = string(spec.Spec)
 				}
-			case runtime.PreparedExportGlobal, runtime.PreparedExportType:
-				mod.Constants[export.Name] = export.Type.Raw.String()
+			case runtime.PreparedExportGlobal:
+				if global := prepared.Globals[target]; global != nil {
+					mod.Values[exportName] = global.Kind.Raw.String()
+				}
+			case runtime.PreparedExportType:
+				if typ, ok := prepared.NamedTypes[target]; ok {
+					mod.Types[exportName] = typ.Raw.String()
+				}
 			}
 		}
 	}
-
-	// 3. 处理已加载的 Modules (脚本模块)
-	for modName, prog := range e.moduleSources {
-		exportProgramModule(modName, prog)
-	}
-	for modName := range e.sourceLibraries {
-		prog, _, err := e.loadRegisteredModuleProgram(modName)
-		if err != nil || prog == nil {
-			continue
-		}
-		exportProgramModule(modName, prog)
-	}
-	for modName, prepared := range e.modules {
-		if _, hasSourceModule := e.moduleSources[modName]; hasSourceModule || prepared == nil {
-			continue
-		}
-		if _, hasSourceLibrary := e.sourceLibraries[modName]; hasSourceLibrary {
-			continue
-		}
+	for modName, prepared := range modulePlans {
 		exportPreparedModule(modName, prepared)
 	}
 

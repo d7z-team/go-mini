@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib"
 )
@@ -17,7 +16,7 @@ func newStdExecutor() *engine.MiniExecutor {
 	return executor
 }
 
-func buildPipelineFixture(t *testing.T, modulePath, helperSource, mainSource string) (*engine.MiniExecutor, *compiler.Artifact) {
+func buildPipelineFixture(t *testing.T, modulePath, helperSource, mainSource string) (*engine.MiniExecutor, *engine.ExecutableArtifact) {
 	t.Helper()
 
 	exec := newStdExecutor()

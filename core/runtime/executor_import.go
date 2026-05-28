@@ -83,12 +83,12 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	if err != nil {
 		return err
 	}
-	modExecutor.ModulePlanLoader = e.ModulePlanLoader
-	modExecutor.StepLimit = e.StepLimit
+	modExecutor.stepLimit = e.stepLimit
 	modExecutor.routes = e.routes
 	modExecutor.packageValues = e.packageValues
 	modExecutor.ffiPackages = e.ffiPackages
 	modExecutor.ffiChannels = e.channelRegistry()
+	modExecutor.embeddedModules = e.embeddedModules
 	modExecutor.moduleHashes = cloneStringMap(e.moduleHashes)
 	for name, value := range e.consts {
 		if _, exists := modExecutor.consts[name]; !exists {

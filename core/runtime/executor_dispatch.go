@@ -1292,22 +1292,14 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ImportChain[path] = true
 		defer delete(session.ImportChain, path)
 
-		if e.ModulePlanLoader != nil {
-			prepared, err := e.ModulePlanLoader(path)
-			if err == nil {
-				err := e.startImportedProgram(session, path, prepared)
-				if err != nil && !errors.Is(err, errExecutionContextYield) {
-					waiters := session.Shared.finishModuleLoad(path, nil)
-					e.scheduleModuleWaiters(waiters, nil, err)
-					return err
-				}
-				return err
-			}
-			if !errors.Is(err, ErrModuleNotFound) {
+		if prepared := e.embeddedModules[path]; prepared != nil {
+			err := e.startImportedProgram(session, path, prepared)
+			if err != nil && !errors.Is(err, errExecutionContextYield) {
 				waiters := session.Shared.finishModuleLoad(path, nil)
 				e.scheduleModuleWaiters(waiters, nil, err)
 				return err
 			}
+			return err
 		}
 
 		if pkg, ok := e.lookupFFIPackage(path); ok {

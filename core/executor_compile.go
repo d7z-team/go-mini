@@ -6,23 +6,11 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/frontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
-func (e *MiniExecutor) CompileAST(program *ast.ProgramStmt) (*compiler.Artifact, error) {
-	compiled, semanticCtx, err := e.newCompiler().CompileProgram("ast", "", program, false)
-	if err != nil {
-		return nil, newMiniAstError(err, semanticCtx, program)
-	}
-	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
-		return nil, err
-	}
-	return compiled, nil
-}
-
-func (e *MiniExecutor) CompileWithFrontend(ctx context.Context, fe frontend.Frontend, files []SourceFile) (*compiler.Artifact, error) {
+func (e *MiniExecutor) CompileWithFrontend(ctx context.Context, fe frontend.Frontend, files []SourceFile) (*ExecutableArtifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileWithFrontend(ctx, fe, files, "", false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
@@ -30,10 +18,10 @@ func (e *MiniExecutor) CompileWithFrontend(ctx context.Context, fe frontend.Fron
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
-	return compiled, nil
+	return executableArtifactFromCompiled(compiled)
 }
 
-func (e *MiniExecutor) CompileFiles(files []SourceFile) (*compiler.Artifact, error) {
+func (e *MiniExecutor) CompileFiles(files []SourceFile) (*ExecutableArtifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileFiles(files, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
@@ -41,10 +29,10 @@ func (e *MiniExecutor) CompileFiles(files []SourceFile) (*compiler.Artifact, err
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
-	return compiled, nil
+	return executableArtifactFromCompiled(compiled)
 }
 
-func (e *MiniExecutor) CompileDir(dir string) (*compiler.Artifact, error) {
+func (e *MiniExecutor) CompileDir(dir string) (*ExecutableArtifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileDir(dir, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
@@ -52,18 +40,18 @@ func (e *MiniExecutor) CompileDir(dir string) (*compiler.Artifact, error) {
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
-	return compiled, nil
+	return executableArtifactFromCompiled(compiled)
 }
 
-func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*ExecutableProgram, error) {
-	if compiled == nil {
-		return nil, errors.New("invalid compiled program")
+func (e *MiniExecutor) NewRuntimeByArtifact(artifact *ExecutableArtifact) (*ExecutableProgram, error) {
+	if artifact == nil {
+		return nil, errors.New("invalid executable artifact")
 	}
-	if compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
-		return nil, errors.New("compiled program missing executable bytecode")
+	if artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		return nil, errors.New("executable artifact missing executable bytecode")
 	}
 
-	executor, err := runtime.NewExecutorFromPrepared(compiled.Bytecode.Executable)
+	executor, err := runtime.NewExecutorFromPrepared(artifact.Bytecode.Executable)
 	if err != nil {
 		return nil, err
 	}
@@ -74,16 +62,11 @@ func (e *MiniExecutor) NewRuntimeByCompiled(compiled *compiler.Artifact) (*Execu
 		return nil, err
 	}
 
-	executableArtifact, err := compiler.ArtifactFromBytecode(compiled.Bytecode)
-	if err != nil {
-		return nil, err
-	}
-	executableArtifact.Filename = compiled.Filename
-	executableArtifact.Source = compiled.Source
 	return &ExecutableProgram{
-		Source:   compiled.Source,
-		compiled: executableArtifact,
+		Source:   artifact.Source,
+		artifact: artifact,
 		executor: executor,
+		owner:    e,
 	}, nil
 }
 
@@ -92,7 +75,7 @@ func (e *MiniExecutor) NewRuntimeByFiles(files []SourceFile) (*ExecutableProgram
 	if err != nil {
 		return nil, err
 	}
-	return e.NewRuntimeByCompiled(compiled)
+	return e.NewRuntimeByArtifact(compiled)
 }
 
 func (e *MiniExecutor) NewRuntimeByDir(dir string) (*ExecutableProgram, error) {
@@ -100,23 +83,23 @@ func (e *MiniExecutor) NewRuntimeByDir(dir string) (*ExecutableProgram, error) {
 	if err != nil {
 		return nil, err
 	}
-	return e.NewRuntimeByCompiled(compiled)
+	return e.NewRuntimeByArtifact(compiled)
 }
 
 func (e *MiniExecutor) NewRuntimeByBytecode(program *bytecode.Program) (*ExecutableProgram, error) {
-	compiled, err := compiler.ArtifactFromBytecode(program)
+	artifact, err := e.ArtifactFromBytecode(program)
 	if err != nil {
 		return nil, err
 	}
-	return e.NewRuntimeByCompiled(compiled)
+	return e.NewRuntimeByArtifact(artifact)
 }
 
-func (e *MiniExecutor) ArtifactFromBytecode(program *bytecode.Program) (*compiler.Artifact, error) {
-	return compiler.ArtifactFromBytecode(program)
+func (e *MiniExecutor) ArtifactFromBytecode(program *bytecode.Program) (*ExecutableArtifact, error) {
+	return ExecutableArtifactFromBytecode("bytecode", "", program)
 }
 
-func (e *MiniExecutor) ArtifactFromBytecodeJSON(payload []byte) (*compiler.Artifact, error) {
-	return compiler.ArtifactFromBytecodeJSON(payload)
+func (e *MiniExecutor) ArtifactFromBytecodeJSON(payload []byte) (*ExecutableArtifact, error) {
+	return ExecutableArtifactFromBytecodeJSON(payload)
 }
 
 func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*ExecutableProgram, error) {
@@ -127,7 +110,7 @@ func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*ExecutableProg
 	return e.NewRuntimeByBytecode(program)
 }
 
-func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {
+func (e *MiniExecutor) CompileGoCode(code string) (*ExecutableArtifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileSource("snippet", code, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
@@ -135,10 +118,10 @@ func (e *MiniExecutor) CompileGoCode(code string) (*compiler.Artifact, error) {
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
-	return compiled, nil
+	return executableArtifactFromCompiled(compiled)
 }
 
-func (e *MiniExecutor) CompileGoFile(filename, code string) (*compiler.Artifact, error) {
+func (e *MiniExecutor) CompileGoFile(filename, code string) (*ExecutableArtifact, error) {
 	compiled, _, semanticCtx, err := e.newCompiler().CompileSource(filename, code, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
@@ -146,7 +129,7 @@ func (e *MiniExecutor) CompileGoFile(filename, code string) (*compiler.Artifact,
 	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
-	return compiled, nil
+	return executableArtifactFromCompiled(compiled)
 }
 
 func (e *MiniExecutor) NewRuntimeByGoCode(code string) (*ExecutableProgram, error) {
@@ -187,18 +170,12 @@ func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources 
 }
 
 func (e *MiniExecutor) newRuntimeByGoCode(filename, code string) (*ExecutableProgram, error) {
-	compiled, _, semanticCtx, err := e.newCompiler().CompileSource(filename, code, false)
+	artifact, err := e.CompileGoFile(filename, code)
 	if err != nil {
-		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
-	}
-	if compiled == nil {
-		return nil, errors.New("failed to compile source")
-	}
-	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
 		return nil, err
 	}
 
-	res, err := e.NewRuntimeByCompiled(compiled)
+	res, err := e.NewRuntimeByArtifact(artifact)
 	if err != nil {
 		return nil, err
 	}

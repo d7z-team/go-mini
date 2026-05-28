@@ -44,27 +44,3 @@ func TestUnpackEvalResultTupleValue(t *testing.T) {
 		t.Fatalf("unexpected second result: %#v", got[1])
 	}
 }
-
-func TestRegisterModuleNilUnregistersPreparedModule(t *testing.T) {
-	exec := MustNewMiniExecutor()
-	prog, err := exec.NewRuntimeByGoCode(`
-package helper
-func Answer() Int64 { return 42 }
-`)
-	if err != nil {
-		t.Fatalf("compile helper failed: %v", err)
-	}
-
-	exec.RegisterModule("helper", prog)
-	if exec.modules["helper"] == nil {
-		t.Fatal("expected prepared module to be registered")
-	}
-
-	exec.RegisterModule("helper", nil)
-	if exec.modules["helper"] != nil {
-		t.Fatal("expected prepared module to be removed")
-	}
-	if exec.moduleSources["helper"] != nil {
-		t.Fatal("expected source module to be removed")
-	}
-}

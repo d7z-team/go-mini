@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ast"
 )
 
 func TestDeferRecover(t *testing.T) {
@@ -35,27 +34,6 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := runtime.Execute(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTryCatchManual(t *testing.T) {
-	program := tryProgram(
-		map[ast.Ident]ast.Expr{"res": stringLit("initial")},
-		nil,
-		tryStmt(
-			block(call("panic", stringLit("try-boom"))),
-			catchStmt("e", assign("res", ident("e"))),
-			nil,
-		),
-		ifStmt(
-			binary("Neq", ident("res"), stringLit("try-boom")),
-			call("panic", stringLit("failed")),
-		),
-	)
-
-	runtime := compileASTRuntimeProgram(t, program)
 	if err := runtime.Execute(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -2,12 +2,9 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
-	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 func TestNamedInterface(t *testing.T) {
@@ -56,7 +53,6 @@ func TestTypeAssertion(t *testing.T) {
 		var a Any = make(map[String]Any)
 		a["Read"] = func() String { return "content" }
 		
-		// 1. 成功断言
 		r := a.(Reader)
 		if r.Read() != "content" {
 			panic("assertion failed")
@@ -84,7 +80,7 @@ func TestTypeAssertionFailure(t *testing.T) {
 
 	func main() {
 		var a Any = 123
-		r := a.(Reader) // 应该报错
+		r := a.(Reader)
 	}
 	`
 	prog, err := executor.NewRuntimeByGoCode(code)
@@ -95,86 +91,4 @@ func TestTypeAssertionFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected assertion error, but got nil")
 	}
-}
-
-func TestFFIInterfaceReturn(t *testing.T) {
-	// 1. 设置宿主侧环境，模拟返回一个 InterfaceData
-	executor := engine.MustNewMiniExecutor()
-	code := `
-	package main
-	
-	type Logger interface {
-		Log(String) String
-	}
-
-	var hostLogger Any
-
-	func main() {
-		// hostLogger 是由宿主注入的接口
-		res := hostLogger.Log("Hello from Sandbox")
-		if String(res) != "Logged: Hello from Sandbox" {
-			panic("FFI interface call failed: " + String(res))
-		}
-	}
-	`
-	runtimeObj, err := executor.NewRuntimeByGoCode(code)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// 2. 模拟宿主侧：注册一个 Handle 和其对应的方法路由
-	// 我们创建一个假的 FFIBridge 来响应 Log 调用
-	bridge := &mockLoggerBridge{}
-
-	// 构造 InterfaceData
-	ifaceData := ffigo.InterfaceData{
-		Handle: 101, // 模拟 Handle ID
-		Methods: map[string]string{
-			"Log": "function(String) String",
-		},
-	}
-
-	// 准备注入环境。由于 ExecuteWithEnv 会创建自己的 session，
-	// 我们需要一个能构造 Var 的临时 session 或者直接用 nil。
-	// 幸运的是 ToVar 已经改进，我们可以利用临时 session。
-	tempSession := &runtime.StackContext{Executor: runtimeObj.Executor()}
-	v, err := runtimeObj.ToVar(tempSession, ifaceData, bridge)
-	if err != nil {
-		t.Fatalf("ToVar failed: %v", err)
-	}
-
-	env := map[string]*runtime.Var{
-		"hostLogger": v,
-	}
-
-	// 3. 执行脚本 (带环境注入)
-	err = runtimeObj.ExecuteWithEnv(context.Background(), env)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-type mockLoggerBridge struct{}
-
-func (m *mockLoggerBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	return nil, nil // Not used in this test
-}
-
-func (m *mockLoggerBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
-	if req.Method == "Log" {
-		reader := ffigo.NewReader(req.Args)
-		msg, err := reader.ReadString()
-		if err != nil {
-			return nil, err
-		}
-
-		buf := ffigo.GetBuffer()
-		buf.WriteString("Logged: " + msg)
-		return buf.Bytes(), nil
-	}
-	return nil, fmt.Errorf("unknown method: %s", req.Method)
-}
-
-func (m *mockLoggerBridge) DestroyHandle(handle uint32) error {
-	return nil
 }

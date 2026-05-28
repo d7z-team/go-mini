@@ -24,7 +24,7 @@ var bad = explode()
 		t.Fatalf("compile failed unexpectedly: %v", err)
 	}
 
-	testProgram, err := testExecutor.NewRuntimeByCompiled(compiledArtifact)
+	testProgram, err := testExecutor.NewRuntimeByArtifact(compiledArtifact)
 	if err != nil {
 		t.Fatalf("runtime creation failed unexpectedly: %v", err)
 	}

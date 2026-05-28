@@ -848,12 +848,15 @@ func (e *Executor) validateExternalRequirementLocked(req ExternalRequirement) er
 	name := ExternalFullName(pkg, member)
 	switch req.Kind {
 	case FFIMemberModule:
+		if e.embeddedModules[pkg] == nil {
+			return fmt.Errorf("missing embedded VM module %s", pkg)
+		}
 		got := e.moduleHashes[pkg]
 		if got == "" {
-			return fmt.Errorf("missing external VM module %s", pkg)
+			return fmt.Errorf("missing embedded VM module hash %s", pkg)
 		}
 		if req.Hash != "" && got != req.Hash {
-			return fmt.Errorf("external VM module %s schema mismatch", pkg)
+			return fmt.Errorf("embedded VM module %s schema mismatch", pkg)
 		}
 	case FFIMemberFunc:
 		route, ok := e.routes[name]

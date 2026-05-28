@@ -1,19 +1,19 @@
 # Go-Mini LSP 集成指南
 
-`go-mini` 的 LSP / 查询能力建立在源码 AST 与语义上下文之上，和运行时执行链各自独立：
+`go-mini` 的 LSP / 查询能力建立在源码与语义上下文之上，和运行时执行链各自独立：
 
-- LSP 使用 `core/ast` 与 `core/lspserv`
+- LSP 使用 `core/lspserv`
 - Go 源码解析和 tolerant conversion 使用 `core/gofrontend`
-- 其他语言前端通过 `core/frontend.Frontend` 产出 Mini AST 后进入同一分析链
-- 执行使用 `ExecutableProgram` / prepared program / bytecode
+- 其他语言前端通过 `core/frontend.Frontend` 进入同一分析链
+- 执行使用 `ExecutableProgram` / bytecode
 
-IDE 能力基于 `AnalysisProgram` 持有的源码 AST，执行链基于 `ExecutableProgram` / prepared program / bytecode。
+IDE 能力基于 `AnalysisProgram` 持有的源码信息，执行链基于 `ExecutableProgram` / bytecode。
 
-LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`、`RecvChan<Int64>`、`Ptr<Int64>` 和 `struct { Name String; }`。Go 风格类型由 `core/gofrontend` 规范化后进入 Mini AST；`&x` 与 `&struct{...}{...}` 在分析层表现为 VM slot pointer。
+LSP 展示的函数签名和类型文本使用项目统一的 canonical type renderer，例如 `function(Int64, Int64) Int64`、`Map<String, Int64>`、`RecvChan<Int64>`、`Ptr<Int64>` 和 `struct { Name String; }`。Go 风格类型会在分析前规范化；指针表达式按 `Ptr<T>` 语义展示。
 
-编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`fmt.Errorf`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板、完整标准库 FFI 和 `context` 这类 VM 源码库会参与补全、hover 与语义校验。模板 hover 会展示 fixed-point 后的最终渲染视图，例如 `import "fmt"` 与 `fmt.Println(...)`，不会暴露 `__gomini_tpl_` 内部 alias。模板展开仍只发生在 compiler 阶段，LSP 不把模板当作运行时符号。
+编译期调用模板会把自身的源码签名暴露给 LSP；`engine.NewMiniExecutor()` 默认提供 `errors`、`fmt.Errorf`、`strings`、`strconv`、`math`、`sort` 纯库符号。当执行器通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface 时，`print` / `println` 模板、完整标准库 FFI 和 `context` 这类 VM 源码库会参与补全、hover 与语义校验。模板 hover 会展示最终渲染后的源码视图，例如 `import "fmt"` 与 `fmt.Println(...)`。
 
-通过 `surface.Library(...)` 注册的纯 VM 源码库会作为 module loader 的源码输入参与语义分析和补全；它们仍属于 compiler/analysis 边界，runtime 装载 bytecode 时校验 module hash 并请求 `PreparedProgram`。LSP 对源码库使用显式导出表，补全范围限定为库源码自身声明且 ASCII 大写开头的函数、变量、常量、类型、结构体和接口。模块对象类型为独立的 `TypeModule`，成员推断来自显式导出表。
+通过 `surface.Library(...)` 注册的纯 VM 源码库会参与语义分析和补全；补全范围限定为库源码自身声明且 ASCII 大写开头的函数、变量、常量、类型、结构体和接口。
 
 源码库进入 LSP 的方式和执行侧一致：通过 `surface.Library(...)` 随 `UseSurface(...)` 装配。
 
@@ -34,7 +34,7 @@ go run ./examples/cmd/lsp-server
 
 编辑器插件只需要把该命令配置为 language server command。服务端支持 initialize、didOpen、didChange、didSave、didClose、completion、hover、definition、references、shutdown 和 exit。
 
-stdio LSP 声明 full text sync（`textDocumentSync.change = 1`），客户端应在 didOpen / didChange 中发送完整文本。诊断防抖在 server 侧完成：didChange 只更新会话并延迟发布 diagnostics，didSave 会立即 flush pending diagnostics，didClose 会取消 pending diagnostics 并发布空诊断清理旧状态。completion / hover / definition / references 查询会基于最新会话文本刷新分析，不等待诊断防抖结束。
+stdio LSP 声明 full text sync（`textDocumentSync.change = 1`），客户端应在 didOpen / didChange 中发送完整文本。诊断防抖在 server 侧完成：didChange 只更新会话并延迟发布 diagnostics，didSave 会立即 flush pending diagnostics，didClose 会取消 pending diagnostics 并发布空诊断。completion / hover / definition / references 查询会基于最新会话文本刷新分析，不等待诊断防抖结束。
 
 ### HTTP / RPC API
 
@@ -120,7 +120,7 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 - 语义错误
 - 跨文件符号错误
 - UTF-16 LSP range 输出
-- 关闭文件后清理旧诊断
+- 关闭文件后清空诊断
 
 返回结构遵循 LSP 风格：
 
@@ -142,15 +142,15 @@ items := lsp.GetCompletions("virtual://project/"+req.CurrentFile, req.Line, req.
 
 需要明确区分：
 
-- LSP / IDE 查询：基于源码 AST
-- 运行 / 反汇编 / 持久化：基于 bytecode / prepared program
+- LSP / IDE 查询：基于源码信息
+- 运行 / 反汇编 / 持久化：基于 bytecode
 
-channel/select 阻塞、FFI channel endpoint wake、异步 FFI 的 wait-source 分类、`RunController` pause/resume、`VMClock` 冻结和 `VMAllBlockedError` 都属于执行期调度语义。LSP 只通过 AST 与 schema 暴露函数签名、channel 方向、类型和模板信息，不模拟 select 调度、channel readiness、async completion 或运行时 pause/time 状态，也不把这些状态写入分析缓存。
+channel/select 阻塞、FFI channel endpoint wake、异步 FFI 的 wait-source 分类、`RunController` pause/resume、`VMClock` 冻结和 `VMAllBlockedError` 都属于执行期调度语义。LSP 只通过源码信息与 schema 暴露函数签名、channel 方向、类型和模板信息，不模拟 select 调度、channel readiness、async completion 或运行时 pause/time 状态，也不把这些状态写入分析缓存。
 
 如果你的系统既要编辑又要运行，推荐双链设计：
 
 1. 编辑时走 `lspserv`
-2. 运行时走 `CompileGoCode` / `NewRuntimeByCompiled` / `NewRuntimeByBytecodeJSON`
+2. 运行时走 `CompileGoCode` / `NewRuntimeByArtifact` / `NewRuntimeByBytecodeJSON`
 
 运行入口使用编译产物或 bytecode artifact。
 
