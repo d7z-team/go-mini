@@ -3,6 +3,7 @@ package structtest
 
 import "context"
 
+// ffigen:module calc
 // ffigen:methods
 type Calculator struct {
 	Base int64
@@ -20,6 +21,7 @@ func (c *Calculator) GetBase() int64 {
 	return c.Base
 }
 
+// ffigen:module calc
 // ffigen:methods
 type Table struct {
 	Values map[string]string

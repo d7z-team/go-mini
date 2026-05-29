@@ -16,6 +16,7 @@ func (h *ModuleHost) NewWaitGroup() *WaitGroup {
 
 type waiterID uint64
 
+// ffigen:module sync
 // ffigen:methods
 type WaitGroup struct {
 	mu      sync.Mutex

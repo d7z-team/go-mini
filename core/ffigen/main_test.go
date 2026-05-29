@@ -14,6 +14,7 @@ func TestRunDirGeneratesPackageOutput(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "page.go", `package pkgmode
 
+// ffigen:module browser
 // ffigen:methods Page
 type Page struct {
 	TitleText string
@@ -49,7 +50,7 @@ type BrowserModule interface {
 	if !strings.Contains(code, "func SurfacePage(") {
 		t.Fatalf("expected owned struct target to be generated")
 	}
-	if !strings.Contains(code, `TypeName: "browser.Page", MethodName: "Title", RouteName: "browser.Page.Title"`) {
+	if !strings.Contains(code, `TypePackagePath: "browser", TypeMemberName: "Page", MethodName: "Title", RouteName: "browser.Page.Title"`) {
 		t.Fatalf("expected owned struct methods to use type method route descriptors")
 	}
 	if strings.Contains(code, "func RegisterBrowserModule(") || strings.Contains(code, "func RegisterPage(") {
@@ -163,6 +164,7 @@ func TestRunDirKeepsVariadicArg(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
 
+// ffigen:module browser
 // ffigen:methods Locator
 type Locator struct{}
 
@@ -189,6 +191,30 @@ type BrowserModule interface {
 	}
 	if !strings.Contains(code, "r0 := impl.All(selectors...)") {
 		t.Fatalf("expected variadic module call to target impl directly")
+	}
+}
+
+func TestRunRejectsMethodsWithoutExplicitModule(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "page.go", `package pkgmode
+
+// ffigen:methods Page
+type Page struct{}
+
+func (p *Page) Title() string {
+	return ""
+}
+`)
+
+	defer func() {
+		got := recover()
+		if got == nil || !strings.Contains(got.(string), "ffigen:methods Page requires ffigen:module") {
+			t.Fatalf("expected explicit module panic for methods target, got %v", got)
+		}
+	}()
+
+	if err := runDirectoryModeForTest("pkgmode", filepath.Join(workspace, "gen"), workspace); err != nil {
+		t.Fatalf("expected methods target rejection to panic before returning error, got %v", err)
 	}
 }
 
@@ -221,6 +247,7 @@ func TestRunDirInjectsStructReceiver(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "selector.go", `package pkgmode
 
+// ffigen:module cdp
 // ffigen:methods CdpSelector
 type CdpSelector struct{}
 
@@ -414,6 +441,7 @@ func TestRunDirPreservesGroupedParams(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "table.go", `package pkgmode
 
+// ffigen:module table
 // ffigen:methods Table
 type Table struct{}
 
@@ -428,7 +456,7 @@ func (t *Table) SetString(row, col int, val string) {}
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
 	code := readGeneratedCode(t, generatedPath)
-	required := `SetString function(HostRef<Table>, Int64, Int64, String) Void;`
+	required := `SetString function(HostRef<table.Table>, Int64, Int64, String) Void;`
 	if !strings.Contains(code, required) {
 		t.Fatalf("expected grouped params to be preserved in struct schema, missing %q in:\n%s", required, code)
 	}
@@ -506,6 +534,7 @@ func TestRunFileDedupesSharedStructs(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "order.go", `package pkgmode
 
+// ffigen:module order
 // ffigen:methods Order
 type Order struct {
 	ID string
@@ -535,10 +564,10 @@ type OrderService interface {
 	if count := strings.Count(code, "var order_Order_FFI_StructSchema = "); count != 1 {
 		t.Fatalf("expected one shared struct schema, got %d\n%s", count, code)
 	}
-	if count := strings.Count(code, `schema.AddStruct("order.Order",`); count != 1 {
+	if count := strings.Count(code, `schema.AddStruct("order", "Order",`); count != 1 {
 		t.Fatalf("expected one shared struct schema binding, got %d\n%s", count, code)
 	}
-	if strings.Contains(code, `bound.AddStruct("order.Order",`) {
+	if strings.Contains(code, `bound.AddStruct("order", "Order",`) {
 		t.Fatalf("shared struct binding should be derived from schema, got:\n%s", code)
 	}
 }
@@ -871,7 +900,7 @@ type IO interface {
 	if !strings.Contains(code, `function(io.Writer, io.Reader) tuple(Int64, Error)`) {
 		t.Fatalf("expected named Writer/Reader parameter schema, got:\n%s", code)
 	}
-	if !strings.Contains(code, `schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)`) {
+	if !strings.Contains(code, `schema.AddInterface("io", "Reader", io_Reader_FFI_InterfaceSchema)`) {
 		t.Fatalf("expected IO surface to include referenced Reader interface, got:\n%s", code)
 	}
 }

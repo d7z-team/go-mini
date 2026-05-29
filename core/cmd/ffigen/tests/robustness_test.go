@@ -15,6 +15,7 @@ type RobustPoint struct {
 	Y int64
 }
 
+// ffigen:module e2e
 type MockGeometry interface {
 	SumX(points []RobustPoint) int64
 }
@@ -33,7 +34,7 @@ func TestGeneratedRouterSupportsCompositeInputsAndBuiltins(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	mock := &MockGeo{}
-	if err := executor.UseSurface(SurfaceMockGeometryLibrary("e2e", mock)); err != nil {
+	if err := executor.UseSurface(SurfaceMockGeometry(mock)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,9 +51,9 @@ func TestGeneratedRouterSupportsCompositeInputsAndBuiltins(t *testing.T) {
 		if len(arr) != 4 { panic("len array") }
 
 		// 2. 测试复合字面量与 FFI 数组传递
-		p1 := RobustPoint{X: 10, Y: 20}
-		p2 := RobustPoint{X: 30, Y: 40}
-		points := []RobustPoint{p1, p2}
+		p1 := e2e.RobustPoint{X: 10, Y: 20}
+		p2 := e2e.RobustPoint{X: 30, Y: 40}
+		points := []e2e.RobustPoint{p1, p2}
 		
 		totalX := e2e.SumX(points)
 		if totalX != 40 { 

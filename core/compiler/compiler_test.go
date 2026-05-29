@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/ffilib/reflectlib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -315,8 +316,12 @@ var result = one
 
 func TestCompileSourceKeepsExternalConstantsOutOfASTAndPreparedConstants(t *testing.T) {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddConst("math", "Pi", runtime.ConstFloat64(3.14))
-	schema.AddConst("math", "Unused", runtime.ConstString("unused"))
+	if err := schema.AddConst("math", "Pi", runtime.ConstFloat64(3.14)); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddConst("math", "Unused", runtime.ConstString("unused")); err != nil {
+		t.Fatal(err)
+	}
 	c := New(Config{Surface: schema})
 
 	artifact, _, _, err := c.CompileSource("snippet", `
@@ -340,14 +345,40 @@ var result = math.Pi
 		t.Fatalf("external constants should not be persisted as prepared constants: %#v", executable.Constants)
 	}
 	found := false
-	for _, req := range executable.ExternalRequirements {
-		if req.PackagePath == "math" && req.MemberName == "Pi" && req.Kind == runtime.FFIMemberConst {
+	for _, req := range executable.ModuleRequirements {
+		if req.Path == "math" && req.MemberName == "Pi" && req.Kind == runtime.ModuleKindFFI && req.MemberKind == runtime.FFIMemberConst {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected math.Pi external requirement, got %#v", executable.ExternalRequirements)
+		t.Fatalf("expected math.Pi module requirement, got %#v", executable.ModuleRequirements)
+	}
+
+	dottedSchema := runtime.NewFFISurfaceSchema()
+	if err := dottedSchema.AddConst("acme.tools", "Pi", runtime.ConstFloat64(3.14)); err != nil {
+		t.Fatal(err)
+	}
+	dottedCompiler := New(Config{Surface: dottedSchema})
+	artifact, _, _, err = dottedCompiler.CompileSource("snippet", `
+package main
+
+import tools "acme.tools"
+
+var result = tools.Pi
+`, false)
+	if err != nil {
+		t.Fatalf("compile dotted module path failed: %v", err)
+	}
+	found = false
+	for _, req := range artifact.Bytecode.Executable.ModuleRequirements {
+		if req.Path == "acme.tools" && req.MemberName == "Pi" && req.Kind == runtime.ModuleKindFFI && req.MemberKind == runtime.FFIMemberConst {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected acme.tools.Pi module requirement, got %#v", artifact.Bytecode.Executable.ModuleRequirements)
 	}
 
 	_, _, _, err = c.CompileSource("snippet", `
@@ -357,6 +388,107 @@ var result = Pi
 `, false)
 	if err == nil {
 		t.Fatal("expected unqualified external constant to be rejected")
+	}
+}
+
+func TestDottedFFITypeMethodRequirementUsesStructuredOwner(t *testing.T) {
+	schema := runtime.NewFFISurfaceSchema()
+	if err := schema.AddFunc("acme", "Ping", "", 1, runtime.MustParseRuntimeFuncSig("function() Void"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddStruct("acme.tools", "Counter", runtime.MustParseRuntimeStructSpec(
+		"acme.tools.Counter",
+		runtime.StructOwnershipHostOpaque,
+		"struct { Value function(HostRef<acme.tools.Counter>) Int64; }",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddValue("acme.tools", "Default", &runtime.ValueSpec{
+		Type:     runtime.MustParseRuntimeType("HostRef<acme.tools.Counter>"),
+		ReadOnly: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]runtime.FFIRouteDecl{{
+		TypePackagePath: "acme.tools",
+		TypeMemberName:  "Counter",
+		MethodName:      "Value",
+		RouteName:       "acme.tools.Counter.Value",
+		MethodID:        9,
+		Sig:             runtime.MustParseRuntimeFuncSig("function(HostRef<acme.tools.Counter>) Int64"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	artifact, _, _, err := New(Config{Surface: schema}).CompileSource("snippet", `
+package main
+
+import tools "acme.tools"
+
+var result = tools.Default.Value()
+`, false)
+	if err != nil {
+		t.Fatalf("compile dotted type method failed: %v", err)
+	}
+	var foundMethod, foundType bool
+	for _, req := range artifact.Bytecode.Executable.ModuleRequirements {
+		if req.Path == "acme.tools" && req.MemberName == "Counter" && req.MemberKind == runtime.FFIMemberFunc && req.TypeName == "acme.tools.Counter" && req.MethodName == "Value" {
+			foundMethod = true
+		}
+		if req.Path == "acme.tools" && req.MemberName == "Counter" && req.MemberKind == runtime.FFIMemberType && req.TypeName == "acme.tools.Counter" {
+			foundType = true
+		}
+		if req.Path == "acme" && strings.Contains(req.MemberName, "Counter") {
+			t.Fatalf("requirement used overlapping package path acme: %#v", req)
+		}
+	}
+	if !foundMethod || !foundType {
+		t.Fatalf("expected structured acme.tools type method requirements, got %#v", artifact.Bytecode.Executable.ModuleRequirements)
+	}
+}
+
+func TestReflectLiteralRecordsFFITypeRequirement(t *testing.T) {
+	schema := runtime.CloneFFISurfaceSchema(reflectlib.SurfaceReflect().Schema)
+	ffiSchema := runtime.NewFFISurfaceSchema()
+	if err := ffiSchema.AddStruct("acme.tools", "Payload", runtime.MustParseRuntimeStructSpec(
+		"acme.tools.Payload",
+		runtime.StructOwnershipVMValue,
+		"struct { Value Int64; }",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Merge(ffiSchema); err != nil {
+		t.Fatal(err)
+	}
+
+	artifact, _, _, err := New(Config{Surface: schema}).CompileSource("snippet", `
+package main
+
+import "reflect"
+
+func main() {
+	pkg, ok := reflect.Package("acme.tools")
+	_ = pkg
+	_ = ok
+	typ, typeOK := reflect.TypeFrom("acme.tools.Payload")
+	_ = typ
+	_ = typeOK
+}
+`, false)
+	if err != nil {
+		t.Fatalf("compile reflect literal failed: %v", err)
+	}
+	found := false
+	for _, req := range artifact.Bytecode.Executable.ModuleRequirements {
+		if req.Path == "acme.tools" && req.MemberName == "Payload" && req.MemberKind == runtime.FFIMemberType && req.TypeName == "acme.tools.Payload" {
+			found = true
+		}
+		if req.Path == "acme" && strings.Contains(req.MemberName, "Payload") {
+			t.Fatalf("reflect literal requirement used overlapping package path acme: %#v", req)
+		}
+	}
+	if !found {
+		t.Fatalf("expected acme.tools.Payload reflect literal requirement, got %#v", artifact.Bytecode.Executable.ModuleRequirements)
 	}
 }
 

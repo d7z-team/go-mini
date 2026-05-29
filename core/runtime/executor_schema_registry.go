@@ -66,8 +66,24 @@ func SameRuntimeStructSchema(a, b *RuntimeStructSpec) bool {
 	case a == nil || b == nil:
 		return a == b
 	default:
-		return a.TypeID == b.TypeID && a.Spec == b.Spec && a.Name == b.Name && a.Ownership == b.Ownership
+		return a.TypeID == b.TypeID &&
+			a.Spec == b.Spec &&
+			a.Name == b.Name &&
+			a.Ownership == b.Ownership &&
+			sameRuntimeStructFields(a.Fields, b.Fields)
 	}
+}
+
+func sameRuntimeStructFields(a, b []RuntimeStructField) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Type != b[i].Type || a[i].Tag != b[i].Tag {
+			return false
+		}
+	}
+	return true
 }
 
 func MergeStructSchema(name string, existing, next *RuntimeStructSpec) (*RuntimeStructSpec, error) {
@@ -104,7 +120,17 @@ func runtimeStructSignature(spec *RuntimeStructSpec) string {
 	if spec == nil {
 		return "<nil>"
 	}
-	return string(spec.Spec)
+	parts := make([]string, 0, len(spec.Fields))
+	for _, field := range spec.Fields {
+		if field.Tag == "" {
+			continue
+		}
+		parts = append(parts, field.Name+"="+field.Tag)
+	}
+	if len(parts) == 0 {
+		return string(spec.Spec)
+	}
+	return fmt.Sprintf("%s tags=%q", spec.Spec, strings.Join(parts, ","))
 }
 
 func runtimeInterfaceSignature(spec *RuntimeInterfaceSpec) string {

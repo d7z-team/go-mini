@@ -79,11 +79,15 @@ func TestFFISerializationEdgeCases(t *testing.T) {
 	bridge := &ComplexBridge{t: t}
 
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddStruct("test.Handle", runtime.MustParseRuntimeStructSpec("test.Handle", runtime.StructOwnershipHostOpaque, "struct {}"))
-	schema.AddRouteDecls([]runtime.FFIRouteDecl{
+	if err := schema.AddStruct("test", "Handle", runtime.MustParseRuntimeStructSpec("test.Handle", runtime.StructOwnershipHostOpaque, "struct {}")); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]runtime.FFIRouteDecl{
 		testsurface.Route("test.Zero", 1, runtime.MustParseRuntimeFuncSig("function(Int64, String, Bool, HostRef<test.Handle>) Void"), ""),
 		testsurface.Route("test.Nested", 2, runtime.MustParseRuntimeFuncSig("function(Map<String, Array<Int64>>) Void"), ""),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := executor.UseSurface(testsurface.SchemaBundle(schema, bridge)); err != nil {
 		t.Fatal(err)
 	}

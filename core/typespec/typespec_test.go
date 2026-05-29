@@ -117,7 +117,7 @@ func TestParseStructInterfaceAndNamedTraversal(t *testing.T) {
 }
 
 func TestRejectGoStyleTypes(t *testing.T) {
-	for _, typ := range []Type{"[]int", "*File", "map[string]int", "interface{}", "Ptr<[]int>", "HostRef<gopkg.d7z.net/demo.Type>", "Async<Int64>"} {
+	for _, typ := range []Type{"[]int", "*File", "map[string]int", "interface{}", "Ptr<[]int>", "Async<Int64>"} {
 		t.Run(typ.String(), func(t *testing.T) {
 			if typ.IsCanonical() {
 				t.Fatalf("%q unexpectedly canonical", typ)
@@ -130,9 +130,13 @@ func TestRejectGoStyleTypes(t *testing.T) {
 }
 
 func TestModulePathNamedTypeIsCanonical(t *testing.T) {
-	typ := Type("HostRef<encoding/base64.Encoding>")
-	if !typ.IsCanonical() {
-		t.Fatalf("%q should be canonical", typ)
+	for _, typ := range []Type{
+		"HostRef<encoding/base64.Encoding>",
+		"HostRef<gopkg.d7z.net/demo.Type>",
+	} {
+		if !typ.IsCanonical() {
+			t.Fatalf("%q should be canonical", typ)
+		}
 	}
 }
 

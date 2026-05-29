@@ -350,9 +350,15 @@ var mathRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceMath(impl Math) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(mathRoutes)
-	schema.AddConst("math", "E", runtime.ConstFloat64(float64(2.71828182845904523536)))
-	schema.AddConst("math", "Pi", runtime.ConstFloat64(float64(3.14159265358979323846)))
+	if err := schema.AddRouteDecls(mathRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("math", "E", runtime.ConstFloat64(float64(2.71828182845904523536))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("math", "Pi", runtime.ConstFloat64(float64(3.14159265358979323846))); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return mathHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

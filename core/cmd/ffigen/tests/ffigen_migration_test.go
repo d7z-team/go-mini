@@ -37,7 +37,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			path: "../../../e2e/structtest/ffigen.go",
 			patterns: []string{
 				"schema.AddStruct(",
-				"TypeName: \"calc.Calculator\"",
+				"TypePackagePath: \"calc\", TypeMemberName: \"Calculator\"",
 				"bound.BindSchemaRoutes(schema, bridge)",
 				"HostRef<calc.Calculator>",
 			},
@@ -48,7 +48,7 @@ func TestFFIGenMigrationSamples(t *testing.T) {
 			patterns: []string{
 				"var orderServiceRoutes = []runtime.FFIRouteDecl{",
 				"HostRef<order.Order>",
-				"TypeName: \"order.Order\", MethodName: \"AddItem\"",
+				"TypePackagePath: \"order\", TypeMemberName: \"Order\", MethodName: \"AddItem\"",
 				"schema.AddRouteDecls(orderServiceRoutes)",
 			},
 		},
@@ -128,7 +128,7 @@ func TestFFIGenHostRefIsOpaqueHandleContract(t *testing.T) {
 }
 
 func TestFFIGenStructMethodsVariadicHostRefReturn(t *testing.T) {
-	content, err := os.ReadFile("dummy_ffigen_test.go")
+	content, err := os.ReadFile("surface_fixture_ffigen_test.go")
 	if err != nil {
 		t.Fatalf("read generated dummy sample: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestFFIGenStructMethodsVariadicHostRefReturn(t *testing.T) {
 		"r0 := __recv.GetByPlaceholder(text, exact...)",
 		"if r0 == nil {",
 		"resBuf.WriteUvarint(0)",
-		"resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, \"Selector\")))",
+		"resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, \"browser.Selector\")))",
 		"return resBuf.Bytes(), nil",
 	}
 	for _, pattern := range required {
@@ -147,7 +147,7 @@ func TestFFIGenStructMethodsVariadicHostRefReturn(t *testing.T) {
 			t.Fatalf("generated struct-method sample missing %q", pattern)
 		}
 	}
-	if count := strings.Count(code, "var Selector_FFI_StructSchema = "); count != 1 {
+	if count := strings.Count(code, "var browser_Selector_FFI_StructSchema = "); count != 1 {
 		t.Fatalf("expected Selector_FFI_StructSchema to be emitted once, got %d", count)
 	}
 }
@@ -180,7 +180,7 @@ func TestFFIGenProxyIsOptIn(t *testing.T) {
 		wantProxy bool
 	}{
 		{path: "array_ref_ffigen_test.go", wantProxy: true},
-		{path: "dummy_ffigen_test.go"},
+		{path: "surface_fixture_ffigen_test.go"},
 		{path: "ffi_struct_ffigen_test.go"},
 		{path: "ordertest/order_ffigen.go"},
 	}

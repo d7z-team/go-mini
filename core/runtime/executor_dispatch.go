@@ -1314,8 +1314,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		session.ImportChain[path] = true
 		defer delete(session.ImportChain, path)
 
-		if prepared := e.embeddedModules[path]; prepared != nil {
-			err := e.startImportedProgram(session, path, prepared)
+		module, ok := e.lookupRuntimeModule(path)
+		if ok && module.Kind == ModuleKindSource {
+			err := e.startImportedProgram(session, path, module.Prepared)
 			if err != nil && !errors.Is(err, errExecutionContextYield) {
 				waiters := session.Shared.finishModuleLoad(path, nil)
 				e.scheduleModuleWaiters(waiters, nil, err)
@@ -1324,9 +1325,9 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			return err
 		}
 
-		if pkg, ok := e.lookupFFIPackage(path); ok {
+		if ok && module.Kind == ModuleKindFFI {
 			ffiMod := &VMModule{Name: path, Data: make(map[string]*Var)}
-			for _, member := range sortedBoundPackageMembers(pkg) {
+			for _, member := range sortedRuntimeModuleMembers(module) {
 				if member == nil {
 					continue
 				}

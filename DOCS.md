@@ -8,6 +8,7 @@
 - FFI 通过 `ffigen` 生成 schema-only 桥接代码
 - FFI schema 冲突判断由 runtime 统一实现，compiler 与 runtime 注册路径共享同一套一致性规则
 - 对外扩展通过 `executor.UseSurface(...)` 装配 FFI schema/bind、模板和纯 VM 源码库
+- `reflect` 基于 Go-Mini runtime / FFI schema metadata，不调用 Go 原生 `reflect` API
 - 调用模板在编译阶段展开成真实代码
 - surface 可以携带纯 VM 源码库；编译后的 bytecode 可独立装载已使用的 VM 源码模块
 - 执行入口统一落在 `ExecutableArtifact` / bytecode；源码分析使用 `AnalysisProgram`
@@ -57,7 +58,7 @@ if err := program.Execute(context.Background()); err != nil {
 }
 ```
 
-`core` 默认提供核心引擎、native `errors` / `fmt.Errorf`，以及 `strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/context/fmt/image 等完整标准库 FFI，再通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface。
+`core` 默认提供核心引擎、native `errors` / `fmt.Errorf` / `reflect`，以及 `strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/context/fmt/image 等完整标准库 FFI，再通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface。
 
 `NewRuntimeByGoCode` 是便捷入口；对外持久化、跨进程传输和正式装载推荐使用 bytecode。
 
@@ -256,6 +257,8 @@ bytecode JSON 可以直接恢复为可执行程序，也可以先恢复为 `Exec
 
 FFI、编译期模板和纯 VM 源码库都通过 `UseSurface(...)` 装配。VM 模块源码使用 `surface.Library(...)` 注册；编译后的 bytecode 会携带已使用的 VM 源码模块。
 
+源码库和 FFI package 共享同一套 module namespace，FFI type-only schema 也会成为对应 FFI module 的 `type` member。`import` 只按精确 module path 解析；Go 源码里的默认 alias 仍来自 path 最后一段，但内部身份始终是完整 path，不做 suffix、短包名、slash/dot 互转或按最长已知 path 拆分的兜底。同一个 path 不能同时注册为源码库和 FFI package。
+
 ### 2.6 源码分析入口
 
 如果你需要 tolerant 语义分析、LSP 或调试辅助信息，而不是直接执行：
@@ -387,7 +390,9 @@ func main() {
 }
 ```
 
-源码库对外暴露 Go 风格 exported identifier，也就是 ASCII 大写字母开头的函数、变量、常量、类型、结构体和接口。小写 helper 只在库源码内可见。编译后的 bytecode 会携带已使用的源码库，因此 bytecode JSON 可以在新的 executor 中直接装载执行；FFI 依赖仍需要通过 `UseSurface(...)` 提供。
+源码库 path 必须唯一，且源码中的 `package` 声明必须匹配 path 最后一段，最后一段必须是可作为 Go package 的短标识符。例如 `surface.Library("example/mathx", ...)` 内部源码应声明 `package mathx`。源码库不能和 FFI package 或 FFI type-only module 使用同一个 path；需要隐藏 FFI 细节时，使用独立内部 FFI module path 再由源码库封装。
+
+源码库对外暴露 Go 风格 exported identifier，也就是 ASCII 大写字母开头的函数、变量、常量、类型、结构体和接口。小写 helper 只在库源码内可见。编译后的 bytecode 会携带已使用的源码库，并在 `ModuleRequirements` 中记录 module hash，因此 bytecode JSON 可以在新的 executor 中直接装载执行；FFI 依赖仍需要通过 `UseSurface(...)` 提供。
 
 ### 2.9 Error 语义
 
@@ -420,6 +425,60 @@ func main() {
 `fmt.Errorf` 复用 Go 的 `%w` 规则。单个 `%w` 可通过 `errors.Unwrap` 取得下一层；多个 `%w` 会形成 Go join-style wrapping，`errors.Is` 会遍历匹配，`errors.Unwrap` 与 Go 标准库一致返回 `nil`。`errors.As` 使用 Go-like 写法：先声明目标变量，再传入 `&target`。VM 侧目标使用 `Error` / `Any` slot 表达。
 
 FFI 返回的 Go `error` 会进入 `VMHostError` 包装。包装会保留 host handle/bridge identity，并在可解析时保留原始 Go error chain，因此 VM 内的 `errors.Is(hostWrapped, hostTarget)` 会走 Go `errors.Is` 语义。VM 创建的 error 另有 runtime-local identity，error equality 与 map key 不依赖 Go 反射 comparable 规则。跨 FFI 传递 error 时在 schema 中显式声明 `Error`。
+
+### 2.10 Reflect
+
+`reflect` 是 core 默认注册的 native 包，面向 VM struct 序列化/反序列化和 FFI schema 查看。它只读取 Go-Mini compiler/lowering/runtime 已注册的 metadata；FFI 函数、HostRef 类型和包成员之所以可见，是因为 `ffigen` 或 surface schema 显式注册了 route/type/package 信息，不来自 Go 原生反射。
+
+`Package`、`Packages`、`Members` 和 `MemberByName` 读取统一 runtime module registry，因此会同时看到已装载的源码库模块、FFI package 和 type-only FFI schema。源码库成员来自 `PreparedProgram.Exports`，FFI 成员来自 surface schema；二者使用同一个精确 module path namespace，FFI type owner 由 schema 的 package path 和 member name 显式给出。
+
+当 `reflect.Package("pkg")`、`reflect.TypeFrom("...")`、`reflect.Zero("...")` 或 `reflect.MakeMap("...")` 使用编译期字符串字面量时，compiler 会为已知 FFI package/type 记录 bytecode module requirement。动态字符串 lookup 仍然是运行期 metadata 查询，不会隐式装载源码库，也不会让 `Packages()` 把所有潜在模块变成执行依赖。
+
+常用 API：
+
+- `TypeOf(v) Type`、`TypeFrom(typeName) (Type, Bool)`、`KindOf(v) Int64`、`KindOfType(t) Int64`
+- `Fields(v) []StructField`、`FieldsOfType(t) []StructField`、`Field(v, name) (Any, Bool)`、`SetField(v, name, value) Error`
+- `Zero(typeName) Any`：返回可写入的 pure-Any zero value，便于按字段填充；不会返回 VM pointer
+- `Len(v) Int64`、`Index(v, i) (Any, Bool)`、`MapKeys(v) ([]Any, Bool)`、`MapIndex(v, key) (Any, Bool)`、`MakeMap(typeName) (Any, Bool)`、`SetMapIndex(v, key, value) Error`、`Unwrap(v) (Any, Bool)`
+- `Methods(v) []Method`、`MethodsOfType(t) []Method`
+- `IsNil`、`IsStruct`、`IsPtr`、`IsHostRef`、`IsChan`、`IsFunc`、`IsFFIFunc`、`IsVMFunc`、`IsNativeFunc`
+- `Package(path) (PackageInfo, Bool)`、`Packages() []PackageInfo`、`Members(p) []Member`、`MemberByName(p, name) (Member, Bool)`
+
+`reflect.Type` 提供 Go-like 方法：`String`、`Kind`、`Name`、`PkgPath`、`Elem`、`Key`、`AssignableTo`、`Comparable`、`NumField`、`Field`、`FieldByName`、`NumMethod`、`Method`、`MethodByName`、`NumIn`、`In`、`NumOut`、`Out`、`IsVariadic`。
+
+VM 源码中的 struct/interface 使用模块限定名作为 runtime 身份。`main.User`、`alpha.User` 和 `beta.User` 是三个不同类型，即使字段完全一致也不会互相 assignable；`Type.String()` 返回限定名，`Type.Name()` 返回短类型名，`Type.PkgPath()` 返回模块路径。`TypeFrom` 查询 VM 源码类型时也要求限定名，例如 `TypeFrom("alpha.User")`；`TypeFrom("User")` 不会隐式选择某个模块。FFI / ffigen / surface 注册的外部 schema 类型保持 schema 中声明的名字，不会自动加 VM 模块前缀。
+
+`TypeFrom` / `Package` 在 `Bool=false` 时返回零值 metadata。`TypeFrom` 要求类型表达式中的所有 named type 都来自已注册 metadata，`Ptr<Missing>`、`Array<Missing>` 或 `function(Missing) Void` 这类嵌套未知类型会返回 `Bool=false`。`Type.Elem()`、`Type.Key()`、`Type.In()` 和 `Type.Out()` 会解析 Mini named type alias 后读取底层 array/map/function 结构；对不适用或越界输入返回零值，不采用 Go 原生 reflect 的 panic 行为。
+
+`Field`、`Index`、`MapKeys`、`MapIndex` 和 `Unwrap` 只会把 pure value snapshot 放入返回的 `Any`；声明类型和实际值都会校验，空 array/map/struct 也不能凭空绕过 pointer、HostRef、channel、module、closure、function、host identity 或其他 FFI Any 禁止值。`MakeMap` 和 `Zero` 只创建可进入 pure `Any` 的类型。`SetField` 只修改 `*struct` 或 `Any` 包装的业务 struct 值；`SetMapIndex` 只写入 pure-value key/value。`reflect.Type`、`reflect.StructField`、`reflect.Method`、`reflect.Route`、`reflect.PackageInfo` 和 `reflect.Member` 是只读 metadata struct，不能通过 `SetField` 修改。
+
+```go
+package main
+
+import "reflect"
+
+type User struct {
+    Name string `json:"name"`
+    Age  int
+}
+
+func main() {
+    u := User{Name: "Ada", Age: 41}
+    t := reflect.TypeOf(u)
+    if t.Kind() != reflect.Struct {
+        panic("bad type")
+    }
+
+    f, ok := t.FieldByName("Name")
+    if !ok || f.Tag != "json:\"name\"" {
+        panic("bad field metadata")
+    }
+
+    if err := reflect.SetField(&u, "Age", 42); err != nil {
+        panic(err.Error())
+    }
+}
+```
 
 ## 3. CLI
 
@@ -734,6 +793,7 @@ type SampleAPI interface {
 ```
 
 ```go
+// ffigen:module sample
 // ffigen:methods
 type Counter struct {
     Value int64
@@ -763,8 +823,8 @@ var DefaultCounter = &Counter{Value: 100}
 
 - `ffigen:module <name>`
   定义 VM 暴露的模块名。
-- `ffigen:methods [prefix]`
-  只用于 `struct`，表示导出该结构体的方法集。
+- `ffigen:methods [member]`
+  只用于 `struct`，并且必须和同一声明上的 `ffigen:module <name>` 配套出现；表示导出该结构体的方法集。`member` 是当前 `ffigen:module` 下的本地类型名，不接受 `pkg.Type`、Go import path 或 slash path。
 - `ffigen:interface`
   只用于命名 `interface`，表示额外导出一个 VM 命名接口 schema。
 - `ffigen:proxy`
@@ -779,7 +839,7 @@ VM 可见类型名以 `ffigen:module` 为准：
 - 本地类型：`sample.Counter`
 - 值类型 struct：`sample.Pair`
 - 跨模块类型：优先解析为对方模块名，例如 `sampleio.ByteReader`
-- VM 可见类型名不包含完整 Go import path
+- VM 可见类型名不会隐式使用宿主 Go import path；如果你显式把 `ffigen:module` 设为带点号的完整 module path，canonical type grammar 可以表达该名称，但仍按精确 module path 解析，不做短名或后缀匹配。
 
 ### 5.5 导出模式
 
@@ -796,6 +856,8 @@ type Pair struct {
 // ffigen:global sample DefaultCounter HostRef<sample.Counter>
 var DefaultCounter = &Counter{Value: 100}
 
+// ffigen:module sample
+// ffigen:module sample
 // ffigen:methods
 type Counter struct {
     Value int64
@@ -834,7 +896,7 @@ func (Host) NewCounter(start int64) *Counter {
 
 生成：
 
-- route descriptor 列表，也就是 `[]runtime.FFIRouteDecl`
+- route descriptor 列表，也就是 `[]runtime.FFIRouteDecl`；type method 使用 `TypePackagePath` / `TypeMemberName` 标识 owner
 - host router
 - `SurfaceXxx(...) *surface.Bundle`
 - `SurfaceGlobals()`，用于只读 package value
@@ -953,13 +1015,14 @@ FFI channel endpoint 的宿主 goroutine 负责等待宿主 channel、完成 pay
 #### 结构体方法集导出
 
 ```go
+// ffigen:module sample
 // ffigen:methods
 type Counter struct {
     Value int64
 }
 ```
 
-结构体上只写 `ffigen:methods` 时，默认使用结构体名作为方法集前缀。这类会生成结构体方法 route descriptor 和对应 struct schema。结构体方法 route 会写入 type schema 的 methods，而不是包成员函数。
+结构体上写 `ffigen:methods` 时，必须显式写出同一类型的 `ffigen:module`。owner member 默认使用结构体名；也可以写 `ffigen:methods CounterLike` 改名，但该名称仍然只能是当前 `ffigen:module` 下的本地 member/type 名。这类会生成结构体方法 route descriptor 和对应 struct schema。结构体方法 route 会写入 type schema 的 methods，而不是包成员函数。
 
 ### 5.6 Struct ownership
 

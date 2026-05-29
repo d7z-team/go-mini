@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"gopkg.d7z.net/go-mini/core/reflectspec"
 )
 
 func invalidReason(node Node, fallback string) string {
@@ -120,7 +122,7 @@ func (c *IdentifierExpr) Check(ctx *SemanticContext) error {
 
 	if c.IsType {
 		// 处于类型上下文，将其视为类型名
-		c.Type = GoMiniType(c.Name)
+		c.Type = GoMiniType(c.Name).Resolve(ctx.ValidContext)
 		if err := c.Type.ValidateCanonical(); err != nil {
 			ctx.AddErrorf("%s, use canonical Mini type syntax", err.Error())
 			return err
@@ -393,7 +395,7 @@ func (c *ConstRefExpr) Check(ctx *SemanticContext) error {
 		return fmt.Errorf("invalid identifier: %s", c.Name)
 	}
 	if c.IsType {
-		c.Type = GoMiniType(c.Name)
+		c.Type = GoMiniType(c.Name).Resolve(ctx.ValidContext)
 		if err := c.Type.ValidateCanonical(); err != nil {
 			ctx.AddErrorf("%s, use canonical Mini type syntax", err.Error())
 			return err
@@ -681,6 +683,12 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 		return nil
 	}
 
+	if member, ok := c.Func.(*MemberExpr); ok {
+		if handled, err := c.checkReflectPackageCall(ctx, string(member.ResolvedPackageName)); handled || err != nil {
+			return err
+		}
+	}
+
 	fType, b := c.Func.GetBase().Type.ReadCallFunc()
 	if !b {
 		if c.Func.GetBase().Type.IsAny() {
@@ -856,6 +864,36 @@ done:
 	return nil
 }
 
+func (c *CallExprStmt) checkReflectPackageCall(ctx *SemanticContext, resolved string) (bool, error) {
+	const prefix = reflectspec.PackagePath + "."
+	if !strings.HasPrefix(resolved, prefix) {
+		return false, nil
+	}
+	member := strings.TrimPrefix(resolved, prefix)
+	spec, ok := reflectspec.PackageFunction(member)
+	if !ok {
+		return false, nil
+	}
+	c.Type = GoMiniType(spec.Return)
+	if len(c.Args) != len(spec.Params) {
+		err := fmt.Errorf("reflect.%s: requires %d arguments, got %d", member, len(spec.Params), len(c.Args))
+		ctx.AddErrorf("%s", err.Error())
+		return true, err
+	}
+	for i, expected := range spec.Params {
+		if spec.HasRawArg(i) {
+			continue
+		}
+		actual := c.Args[i].GetBase().Type
+		if !ctx.IsAssignableTo(actual, GoMiniType(expected)) {
+			err := fmt.Errorf("reflect.%s argument %d type mismatch: expected %s, got %s", member, i+1, expected, actual)
+			ctx.AddErrorAt(c.Args[i], "%s", err.Error())
+			return true, err
+		}
+	}
+	return true, nil
+}
+
 func (c *CallExprStmt) Optimize(ctx *OptimizeContext) Node {
 	if c.Func != nil {
 		if opt := c.Func.Optimize(ctx); opt != nil {
@@ -955,62 +993,46 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 				path = string(id.Name)
 			}
 
-			// 尝试多种路径格式
-			// 1. 原始路径 (Go-source 模块使用 /)
-			p1 := Ident(path + "." + string(m.Property))
-			// 2. FFI 风格路径 (FFI 标准库将 / 映射为 .)
-			p2 := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(m.Property))
-
-			targets := []Ident{p1}
-			if p1 != p2 {
-				targets = append(targets, p2)
+			fullPath := Ident(path + "." + string(m.Property))
+			if t, ok := ctx.GetVariable(fullPath); ok {
+				reportMissingImport()
+				m.ResolvedPackagePath = path
+				m.ResolvedPackageName = fullPath
+				m.ResolvedPackageMember = true
+				m.Type = t
+				return nil
 			}
-
-			for _, fullPath := range targets {
-				// 1. 尝试作为变量/常量查找
-				if t, ok := ctx.GetVariable(fullPath); ok {
-					reportMissingImport()
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = fullPath
-					m.ResolvedPackageMember = true
-					m.Type = t
-					return nil
-				}
-				if t, ok := ctx.getExternalConstant(fullPath); ok {
-					reportMissingImport()
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = fullPath
-					m.ResolvedPackageMember = true
-					m.Type = t
-					return nil
-				}
-				// 2. 尝试作为函数查找
-				if fn, ok := ctx.GetFunction(fullPath); ok {
-					reportMissingImport()
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = fullPath
-					m.ResolvedPackageMember = true
-					m.Type = fn.MiniType()
-					return nil
-				}
-				// 3. 尝试作为结构体查找
-				if _, ok := ctx.GetStruct(fullPath); ok {
-					reportMissingImport()
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = fullPath
-					m.ResolvedPackageMember = true
-					m.Type = GoMiniType(fullPath)
-					return nil
-				}
-				// 4. 尝试作为接口查找
-				if _, ok := ctx.GetInterface(fullPath); ok {
-					reportMissingImport()
-					m.ResolvedPackagePath = path
-					m.ResolvedPackageName = fullPath
-					m.ResolvedPackageMember = true
-					m.Type = GoMiniType(fullPath)
-					return nil
-				}
+			if t, ok := ctx.getExternalConstant(fullPath); ok {
+				reportMissingImport()
+				m.ResolvedPackagePath = path
+				m.ResolvedPackageName = fullPath
+				m.ResolvedPackageMember = true
+				m.Type = t
+				return nil
+			}
+			if fn, ok := ctx.GetFunction(fullPath); ok {
+				reportMissingImport()
+				m.ResolvedPackagePath = path
+				m.ResolvedPackageName = fullPath
+				m.ResolvedPackageMember = true
+				m.Type = fn.MiniType()
+				return nil
+			}
+			if _, ok := ctx.GetStruct(fullPath); ok {
+				reportMissingImport()
+				m.ResolvedPackagePath = path
+				m.ResolvedPackageName = fullPath
+				m.ResolvedPackageMember = true
+				m.Type = GoMiniType(fullPath)
+				return nil
+			}
+			if _, ok := ctx.GetInterface(fullPath); ok {
+				reportMissingImport()
+				m.ResolvedPackagePath = path
+				m.ResolvedPackageName = fullPath
+				m.ResolvedPackageMember = true
+				m.Type = GoMiniType(fullPath)
+				return nil
 			}
 
 			err := fmt.Errorf("package %s has no member %s", id.Name, m.Property)
@@ -1694,12 +1716,13 @@ func (f *FuncLitExpr) exprNode() {}
 
 func (f *FuncLitExpr) Check(ctx *SemanticContext) error {
 	ctx = ctx.WithNode(f)
-	f.Type = f.FunctionType.MiniType()
 
 	// 这里我们需要在 SemanticContext 中开启一个新的作用域来检查函数体
 	// 但这在现有的 check_*.go 或 ast_stmt.go 的 FunctionStmt.Check 中可能有现成的模式
 	// 为了简单起见，我们委托给一个在 ast_valid.go 里的专用检查函数
-	return checkFuncLit(f, ctx)
+	err := checkFuncLit(f, ctx)
+	f.Type = f.FunctionType.MiniType()
+	return err
 }
 
 func (f *FuncLitExpr) Optimize(ctx *OptimizeContext) Node {

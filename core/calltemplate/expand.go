@@ -1932,9 +1932,9 @@ func cloneStmt(stmt ast.Stmt) (ast.Stmt, error) {
 	case *ast.BadStmt:
 		return &ast.BadStmt{BaseNode: cloneBase(n.BaseNode), RawText: n.RawText}, nil
 	case *ast.InterfaceStmt:
-		return &ast.InterfaceStmt{BaseNode: cloneBase(n.BaseNode), Name: n.Name, Type: n.Type}, nil
+		return &ast.InterfaceStmt{BaseNode: cloneBase(n.BaseNode), Name: n.Name, QualifiedName: n.QualifiedName, Type: n.Type}, nil
 	case *ast.StructStmt:
-		return &ast.StructStmt{BaseNode: cloneBase(n.BaseNode), Name: n.Name, Fields: cloneIdentTypeMap(n.Fields), FieldNames: append([]ast.Ident(nil), n.FieldNames...), FieldLocs: cloneIdentPositionMap(n.FieldLocs), Doc: n.Doc}, nil
+		return &ast.StructStmt{BaseNode: cloneBase(n.BaseNode), Name: n.Name, QualifiedName: n.QualifiedName, Fields: cloneIdentTypeMap(n.Fields), FieldNames: append([]ast.Ident(nil), n.FieldNames...), FieldLocs: cloneIdentPositionMap(n.FieldLocs), FieldTags: cloneIdentStringMap(n.FieldTags), Doc: n.Doc}, nil
 	default:
 		return nil, fmt.Errorf("unsupported template argument statement %T", stmt)
 	}
@@ -2030,6 +2030,17 @@ func cloneIdentPositionMap(in map[ast.Ident]*ast.Position) map[ast.Ident]*ast.Po
 		}
 		pos := *v
 		out[k] = &pos
+	}
+	return out
+}
+
+func cloneIdentStringMap(in map[ast.Ident]string) map[ast.Ident]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[ast.Ident]string, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

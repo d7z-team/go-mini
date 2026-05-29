@@ -9,7 +9,7 @@ import (
 )
 
 func (c *Compiler) buildTemplatePlan(imported map[string]*ast.ProgramStmt) (*calltemplate.Plan, error) {
-	funcs, _, values, structs, interfaces, constants := c.externalSchemaMaps()
+	funcs, _, values, structs, interfaces, constants, _, _ := c.ffiSchemaMaps()
 	return calltemplate.BuildPlan(c.cfg.Templates, calltemplate.PlanOptions{
 		FuncSchemas:      funcs,
 		StructSchemas:    structs,
@@ -51,10 +51,9 @@ func (c *Compiler) templatePackageExists(
 }
 
 func (c *Compiler) templatePackageMemberSig(path, member string, funcs map[ast.Ident]*runtime.RuntimeFuncSig, imported map[string]*ast.ProgramStmt) (*runtime.RuntimeFuncSig, bool, error) {
-	for _, name := range packageMemberNames(path, member) {
-		if sig, ok := funcs[ast.Ident(name)]; ok && sig != nil {
-			return runtime.CloneRuntimeFuncSig(sig), true, nil
-		}
+	name := path + "." + member
+	if sig, ok := funcs[ast.Ident(name)]; ok && sig != nil {
+		return runtime.CloneRuntimeFuncSig(sig), true, nil
 	}
 	prog, ok := imported[path]
 	if !ok {
@@ -96,51 +95,33 @@ func externalPackageExists(
 	interfaces map[ast.Ident]*runtime.RuntimeInterfaceSpec,
 	constants map[string]string,
 ) bool {
-	for _, prefix := range packagePrefixes(path) {
-		for name := range funcs {
-			if strings.HasPrefix(string(name), prefix) {
-				return true
-			}
+	prefix := path + "."
+	for name := range funcs {
+		if strings.HasPrefix(string(name), prefix) {
+			return true
 		}
-		for name := range values {
-			if strings.HasPrefix(string(name), prefix) {
-				return true
-			}
+	}
+	for name := range values {
+		if strings.HasPrefix(string(name), prefix) {
+			return true
 		}
-		for name := range structs {
-			if strings.HasPrefix(string(name), prefix) {
-				return true
-			}
+	}
+	for name := range structs {
+		if strings.HasPrefix(string(name), prefix) {
+			return true
 		}
-		for name := range interfaces {
-			if strings.HasPrefix(string(name), prefix) {
-				return true
-			}
+	}
+	for name := range interfaces {
+		if strings.HasPrefix(string(name), prefix) {
+			return true
 		}
-		for name := range constants {
-			if strings.HasPrefix(name, prefix) {
-				return true
-			}
+	}
+	for name := range constants {
+		if strings.HasPrefix(name, prefix) {
+			return true
 		}
 	}
 	return false
-}
-
-func packagePrefixes(path string) []string {
-	dotted := strings.ReplaceAll(path, "/", ".")
-	if dotted == path {
-		return []string{path + "."}
-	}
-	return []string{path + ".", dotted + "."}
-}
-
-func packageMemberNames(path, member string) []string {
-	name := path + "." + member
-	dotted := strings.ReplaceAll(path, "/", ".") + "." + member
-	if dotted == name {
-		return []string{name}
-	}
-	return []string{name, dotted}
 }
 
 func pruneImportedPrograms(imported map[string]*ast.ProgramStmt, program *ast.ProgramStmt) map[string]*ast.ProgramStmt {

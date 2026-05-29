@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -63,7 +62,7 @@ func TestExecutorEvalExpressions(t *testing.T) {
 				}
 				got := results[0]
 				gotVal := got.Interface()
-				if !reflect.DeepEqual(gotVal, tt.want) {
+				if gotVal != tt.want {
 					t.Errorf("Eval() = %v, want %v", gotVal, tt.want)
 				}
 			}
@@ -198,7 +197,7 @@ func main() {}
 			if len(results) != 1 {
 				t.Fatalf("Eval() returned %d values, want 1", len(results))
 			}
-			if got := results[0].Interface(); !reflect.DeepEqual(got, tt.want) {
+			if got := results[0].Interface(); got != tt.want {
 				t.Fatalf("Eval() = %#v, want %#v", got, tt.want)
 			}
 		})

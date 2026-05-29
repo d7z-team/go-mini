@@ -11,9 +11,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-var Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Rect", runtime.StructOwnershipVMValue, "struct { A Point; B Point; }")
+var shape_Rect_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("shape.Rect", runtime.StructOwnershipVMValue, "struct { A shape.Point; B shape.Point; }")
 
-var Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Point", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
+var shape_Point_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("shape.Point", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
 	methodIDMockShapeAPIGetRect = 1
@@ -71,21 +71,21 @@ func mockShapeAPIHostRouter(ctx context.Context, impl MockShapeAPI, registry *ff
 }
 
 var mockShapeAPIRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "", MemberName: "GetRect", RouteName: ".GetRect", MethodID: methodIDMockShapeAPIGetRect, Sig: runtime.MustParseRuntimeFuncSig("function() Rect"), Doc: ""},
-	{PackagePath: "", MemberName: "Area", RouteName: ".Area", MethodID: methodIDMockShapeAPIArea, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Rect) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "shape", MemberName: "GetRect", RouteName: "shape.GetRect", MethodID: methodIDMockShapeAPIGetRect, Sig: runtime.MustParseRuntimeFuncSig("function() shape.Rect"), Doc: ""},
+	{PackagePath: "shape", MemberName: "Area", RouteName: "shape.Area", MethodID: methodIDMockShapeAPIArea, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(shape.Rect) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
-func SurfaceMockShapeAPILibrary(prefix string, impl MockShapeAPI) *surface.Bundle {
+func SurfaceMockShapeAPI(impl MockShapeAPI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	routes := make([]runtime.FFIRouteDecl, 0, len(mockShapeAPIRoutes))
-	for _, route := range mockShapeAPIRoutes {
-		route.PackagePath = prefix
-		route.RouteName = prefix + "." + route.MemberName
-		routes = append(routes, route)
+	if err := schema.AddRouteDecls(mockShapeAPIRoutes); err != nil {
+		panic(err)
 	}
-	schema.AddRouteDecls(routes)
-	schema.AddStruct("Rect", Rect_FFI_StructSchema)
-	schema.AddStruct("Point", Point_FFI_StructSchema)
+	if err := schema.AddStruct("shape", "Rect", shape_Rect_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("shape", "Point", shape_Point_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return mockShapeAPIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

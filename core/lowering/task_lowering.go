@@ -880,7 +880,9 @@ func (b *builder) lowerStmtTasks(stmt ast.Stmt, data interface{}, scope *lowerin
 			for _, expr := range clause.List {
 				if n.IsType {
 					var targetType runtime.RuntimeType
-					if id, ok := expr.(*ast.IdentifierExpr); ok {
+					if expr.GetBase() != nil && !expr.GetBase().Type.IsEmpty() {
+						targetType = b.runtimeType(expr.GetBase().Type, expr, "type switch case")
+					} else if id, ok := expr.(*ast.IdentifierExpr); ok {
 						targetType = b.runtimeType(ast.GoMiniType(id.Name), expr, "type switch case")
 					} else if ref, ok := expr.(*ast.ConstRefExpr); ok {
 						targetType = b.runtimeType(ast.GoMiniType(ref.Name), expr, "type switch case")

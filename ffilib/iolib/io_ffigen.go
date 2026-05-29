@@ -18,7 +18,9 @@ var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("inter
 
 func SurfaceReaderSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
+	if err := schema.AddInterface("io", "Reader", io_Reader_FFI_InterfaceSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		return bound, nil
@@ -29,7 +31,9 @@ var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("inter
 
 func SurfaceWriterSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+	if err := schema.AddInterface("io", "Writer", io_Writer_FFI_InterfaceSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		return bound, nil
@@ -197,12 +201,24 @@ var ioRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceIO(impl IO) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(ioRoutes)
-	schema.AddConst("io", "SeekCurrent", runtime.ConstInt64(int64(io.SeekCurrent)))
-	schema.AddConst("io", "SeekEnd", runtime.ConstInt64(int64(io.SeekEnd)))
-	schema.AddConst("io", "SeekStart", runtime.ConstInt64(int64(io.SeekStart)))
-	schema.AddInterface("io.Reader", io_Reader_FFI_InterfaceSchema)
-	schema.AddInterface("io.Writer", io_Writer_FFI_InterfaceSchema)
+	if err := schema.AddRouteDecls(ioRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("io", "SeekCurrent", runtime.ConstInt64(int64(io.SeekCurrent))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("io", "SeekEnd", runtime.ConstInt64(int64(io.SeekEnd))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("io", "SeekStart", runtime.ConstInt64(int64(io.SeekStart))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddInterface("io", "Reader", io_Reader_FFI_InterfaceSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddInterface("io", "Writer", io_Writer_FFI_InterfaceSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return ioHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -608,23 +624,27 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 }
 
 var fileRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "io.File", MethodName: "Write", RouteName: "io.File.Write", MethodID: methodIDFileWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{TypeName: "io.File", MethodName: "Read", RouteName: "io.File.Read", MethodID: methodIDFileRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), Doc: "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
-	{TypeName: "io.File", MethodName: "WriteAt", RouteName: "io.File.WriteAt", MethodID: methodIDFileWriteAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteAt 正常工作：支持偏移量写入"},
-	{TypeName: "io.File", MethodName: "ReadAt", RouteName: "io.File.ReadAt", MethodID: methodIDFileReadAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
-	{TypeName: "io.File", MethodName: "Seek", RouteName: "io.File.Seek", MethodID: methodIDFileSeek, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "Close", RouteName: "io.File.Close", MethodID: methodIDFileClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "Sync", RouteName: "io.File.Sync", MethodID: methodIDFileSync, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "Truncate", RouteName: "io.File.Truncate", MethodID: methodIDFileTruncate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "WriteString", RouteName: "io.File.WriteString", MethodID: methodIDFileWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "Name", RouteName: "io.File.Name", MethodID: methodIDFileName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "io.File", MethodName: "WriteNative", RouteName: "io.File.WriteNative", MethodID: methodIDFileWriteNative, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Write", RouteName: "io.File.Write", MethodID: methodIDFileWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Read", RouteName: "io.File.Read", MethodID: methodIDFileRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), Doc: "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteAt", RouteName: "io.File.WriteAt", MethodID: methodIDFileWriteAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteAt 正常工作：支持偏移量写入"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "ReadAt", RouteName: "io.File.ReadAt", MethodID: methodIDFileReadAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Seek", RouteName: "io.File.Seek", MethodID: methodIDFileSeek, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Close", RouteName: "io.File.Close", MethodID: methodIDFileClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Sync", RouteName: "io.File.Sync", MethodID: methodIDFileSync, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Truncate", RouteName: "io.File.Truncate", MethodID: methodIDFileTruncate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteString", RouteName: "io.File.WriteString", MethodID: methodIDFileWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Name", RouteName: "io.File.Name", MethodID: methodIDFileName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteNative", RouteName: "io.File.WriteNative", MethodID: methodIDFileWriteNative, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
 }
 
 func SurfaceFile() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(fileRoutes)
-	schema.AddStruct("io.File", io_File_FFI_StructSchema)
+	if err := schema.AddRouteDecls(fileRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("io", "File", io_File_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return fileHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

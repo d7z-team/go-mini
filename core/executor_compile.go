@@ -58,7 +58,7 @@ func (e *MiniExecutor) NewRuntimeByArtifact(artifact *ExecutableArtifact) (*Exec
 	if err := e.applyExecutorConfig(executor); err != nil {
 		return nil, err
 	}
-	if err := executor.ValidateExternalRequirements(); err != nil {
+	if err := executor.ValidateModuleRequirements(); err != nil {
 		return nil, err
 	}
 

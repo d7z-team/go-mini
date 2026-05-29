@@ -14,12 +14,14 @@ type TestCanonicalService interface {
 	NewB(ctx context.Context, id int) *b_other.Type
 }
 
-// ffigen:methods a_other.Type
+// ffigen:module a_other
+// ffigen:methods Type
 type ATypeService interface {
 	Hello(t *a_other.Type) string
 }
 
-// ffigen:methods b_other.Type
+// ffigen:module b_other
+// ffigen:methods Type
 type BTypeService interface {
 	Hello(t *b_other.Type) string
 }

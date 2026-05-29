@@ -237,7 +237,7 @@ func TestApplyBoundFFISurfaceRejectsConflictingStructDefinitions(t *testing.T) {
 	exec.metadata.registerStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }"))
 
 	surface := NewBoundFFISurface(nil)
-	surface.AddStruct("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
+	surface.AddStruct("demo", "Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 }
 
@@ -301,7 +301,9 @@ func TestCheckPublicFFIRouteSchemaRejectsPublicSchemaEscapes(t *testing.T) {
 
 func TestCheckPublicFFISurfaceSchemaRequiresConstType(t *testing.T) {
 	schema := NewFFISurfaceSchema()
-	schema.AddConst("demo", "Value", FFIConstValue{})
+	if err := schema.AddConst("demo", "Value", FFIConstValue{}); err != nil {
+		t.Fatal(err)
+	}
 	err := CheckPublicFFISurfaceSchema(schema)
 	if err == nil {
 		t.Fatal("expected FFI constant without type to be rejected")
@@ -326,7 +328,7 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPolluteRoutes(t *testing.T) {
 		Name:    "demo.Call",
 		FuncSig: MustParseRuntimeFuncSig("function(String) Void"),
 	})
-	surface.AddStruct("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	surface.AddStruct("demo", "Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
 
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 	if _, ok := exec.routes["demo.Call"]; ok {
@@ -370,27 +372,37 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPollutePackageMembers(t *test
 	}
 }
 
-func TestValidateExternalRequirementsChecksMethodID(t *testing.T) {
+func TestValidateModuleRequirementsChecksMethodID(t *testing.T) {
 	sig := MustParseRuntimeFuncSig("function(String) Void")
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 		routes: map[string]FFIRoute{
 			"demo.Call": {Name: "demo.Call", MethodID: 2, FuncSig: sig},
 		},
-		externalRequirements: []ExternalRequirement{
+		modules: newRuntimeModuleRegistry(),
+		moduleRequirements: []ModuleRequirement{
 			{
-				Version:     FFISurfaceHashVersion,
-				PackagePath: "demo",
-				MemberName:  "Call",
-				Kind:        FFIMemberFunc,
-				Type:        sig.Spec,
-				MethodID:    1,
-				Hash:        FuncRouteHash(1, sig),
+				Version:    FFISurfaceHashVersion,
+				Path:       "demo",
+				Kind:       ModuleKindFFI,
+				MemberName: "Call",
+				MemberKind: FFIMemberFunc,
+				Type:       sig.Spec,
+				MethodID:   1,
+				Hash:       FuncRouteHash(1, sig),
 			},
 		},
 	}
+	if err := exec.modules.RegisterFFIPackage(&BoundFFIPackage{
+		Path: "demo",
+		Members: map[string]*BoundFFIMember{
+			"Call": {Name: "Call", Kind: FFIMemberFunc, ReadOnly: true, RouteName: "demo.Call"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	err := exec.ValidateExternalRequirements()
+	err := exec.ValidateModuleRequirements()
 	if err == nil || !strings.Contains(err.Error(), "method id mismatch") {
 		t.Fatalf("expected method id mismatch, got %v", err)
 	}
@@ -399,13 +411,18 @@ func TestValidateExternalRequirementsChecksMethodID(t *testing.T) {
 func TestSurfaceRouteDeclsBindTypeMethods(t *testing.T) {
 	sig := MustParseRuntimeFuncSigWithModes("function(HostRef<demo.Handle>) Error", FFIParamIn)
 	schema := NewFFISurfaceSchema()
-	schema.AddStruct("demo.Handle", MustParseRuntimeStructSpec("demo.Handle", StructOwnershipHostOpaque, "struct { Close function(HostRef<demo.Handle>) Error; }"))
-	schema.AddRouteDecls([]FFIRouteDecl{{
-		TypeName:   "demo.Handle",
-		MethodName: "Close",
-		MethodID:   9,
-		Sig:        sig,
-	}})
+	if err := schema.AddStruct("demo", "Handle", MustParseRuntimeStructSpec("demo.Handle", StructOwnershipHostOpaque, "struct { Close function(HostRef<demo.Handle>) Error; }")); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]FFIRouteDecl{{
+		TypePackagePath: "demo",
+		TypeMemberName:  "Handle",
+		MethodName:      "Close",
+		MethodID:        9,
+		Sig:             sig,
+	}}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := CheckPublicFFISurfaceSchema(schema); err != nil {
 		t.Fatalf("schema validation failed: %v", err)
@@ -422,26 +439,49 @@ func TestSurfaceRouteDeclsBindTypeMethods(t *testing.T) {
 	if route.Name != "demo.Handle.Close" || route.MethodID != 9 || !SameRuntimeFuncSchema(route.FuncSig, sig) || route.Bridge == nil {
 		t.Fatalf("unexpected bound method route: %#v", route)
 	}
-	if len(bound.Packages) != 0 {
-		t.Fatalf("type method routes should not create package members: %#v", bound.Packages)
+	if pkg := bound.Packages["demo"]; pkg == nil || pkg.Members["Handle"] == nil || pkg.Members["Handle"].Kind != FFIMemberType {
+		t.Fatalf("expected type method to create package type member: %#v", bound.Packages)
+	}
+}
+
+func TestSurfaceSchemaRecordsInvalidTypeRouteOwner(t *testing.T) {
+	schema := NewFFISurfaceSchema()
+	err := schema.AddRouteDecls([]FFIRouteDecl{{
+		TypePackagePath: "demo",
+		MethodName:      "Close",
+		RouteName:       "demo.Handle.Close",
+		MethodID:        1,
+		Sig:             MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
+	}})
+	if err == nil || !strings.Contains(err.Error(), "incomplete owner") {
+		t.Fatalf("expected incomplete owner error, got %v", err)
+	}
+	if err := CheckPublicFFISurfaceSchema(schema); err == nil || !strings.Contains(err.Error(), "incomplete owner") {
+		t.Fatalf("expected schema validation to retain add error, got %v", err)
 	}
 }
 
 func TestSurfaceSchemaMergeTypeMethodConflictDoesNotPollute(t *testing.T) {
 	left := NewFFISurfaceSchema()
-	left.AddRouteDecls([]FFIRouteDecl{{
-		TypeName:   "demo.Handle",
-		MethodName: "Close",
-		MethodID:   1,
-		Sig:        MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
-	}})
+	if err := left.AddRouteDecls([]FFIRouteDecl{{
+		TypePackagePath: "demo",
+		TypeMemberName:  "Handle",
+		MethodName:      "Close",
+		MethodID:        1,
+		Sig:             MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
 	right := NewFFISurfaceSchema()
-	right.AddRouteDecls([]FFIRouteDecl{{
-		TypeName:   "demo.Handle",
-		MethodName: "Close",
-		MethodID:   2,
-		Sig:        MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
-	}})
+	if err := right.AddRouteDecls([]FFIRouteDecl{{
+		TypePackagePath: "demo",
+		TypeMemberName:  "Handle",
+		MethodName:      "Close",
+		MethodID:        2,
+		Sig:             MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Error"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
 
 	requireSchemaConflict(t, left.Merge(right), "surface type method")
 	if got := left.Types["demo.Handle"].Methods["Close"].MethodID; got != 1 {
@@ -451,8 +491,12 @@ func TestSurfaceSchemaMergeTypeMethodConflictDoesNotPollute(t *testing.T) {
 
 func TestBindSchemaRoutesRejectsDuplicateRouteNameConflict(t *testing.T) {
 	schema := NewFFISurfaceSchema()
-	schema.AddFunc("demo", "Call", "demo.Shared", 1, MustParseRuntimeFuncSig("function() Void"), "")
-	schema.AddTypeMethod("demo.Handle", "Close", "demo.Shared", 2, MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Void"), "")
+	if err := schema.AddFunc("demo", "Call", "demo.Shared", 1, MustParseRuntimeFuncSig("function() Void"), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddTypeMethod("demo", "Handle", "Close", "demo.Shared", 2, MustParseRuntimeFuncSig("function(HostRef<demo.Handle>) Void"), ""); err != nil {
+		t.Fatal(err)
+	}
 
 	requireSchemaConflict(t, NewBoundFFISurfaceFromSchema(schema).BindSchemaRoutes(schema, testFFIBridge{}), "route")
 }

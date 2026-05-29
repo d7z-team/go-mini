@@ -250,17 +250,6 @@ func parseGlobalMeta(doc *ast.CommentGroup) (globalMeta, bool) {
 	return globalMeta{}, false
 }
 
-func (g *Generator) derivePackageDefaultModule(files []*ast.File) string {
-	return deriveModuleFromFiles(g.fset, files)
-}
-
-func materializeTargetMeta(meta targetMeta, defaultModule string) targetMeta {
-	if meta.moduleName == "" && meta.methodsPrefix != "" {
-		meta.moduleName = defaultModule
-	}
-	return meta
-}
-
 func (g *Generator) resolveImportedModule(importPath string) string {
 	if importPath == "" {
 		return ""

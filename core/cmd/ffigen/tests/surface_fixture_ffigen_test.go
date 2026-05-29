@@ -21,9 +21,9 @@ var native_NativeStruct_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("n
 
 var native_NativeHandle_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("native.NativeHandle", runtime.StructOwnershipHostOpaque, "struct {}")
 
-var Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Selector", runtime.StructOwnershipHostOpaque, "struct {}")
+var browser_Selector_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("browser.Selector", runtime.StructOwnershipHostOpaque, "struct {}")
 
-var Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("Page", runtime.StructOwnershipHostOpaque, "struct { GetByPlaceholder function(HostRef<Page>, String, ...Bool) HostRef<Selector>; }")
+var browser_Page_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("browser.Page", runtime.StructOwnershipHostOpaque, "struct { GetByPlaceholder function(HostRef<browser.Page>, String, ...Bool) HostRef<browser.Selector>; }")
 
 const (
 	methodIDMockOSOpen  = 1
@@ -254,10 +254,18 @@ var mockOSRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceMockOS(impl MockOS) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(mockOSRoutes)
-	schema.AddStruct("os.File", os_File_FFI_StructSchema)
-	schema.AddStruct("os.FileInfo", os_FileInfo_FFI_StructSchema)
-	schema.AddStruct("os.Nested", os_Nested_FFI_StructSchema)
+	if err := schema.AddRouteDecls(mockOSRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("os", "File", os_File_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("os", "FileInfo", os_FileInfo_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("os", "Nested", os_Nested_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return mockOSHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -325,7 +333,9 @@ var contextMockRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceContextMock(impl ContextMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(contextMockRoutes)
+	if err := schema.AddRouteDecls(contextMockRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return contextMockHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -426,9 +436,15 @@ var nativeMockRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceNativeMock(impl NativeMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(nativeMockRoutes)
-	schema.AddStruct("native.NativeStruct", native_NativeStruct_FFI_StructSchema)
-	schema.AddStruct("native.NativeHandle", native_NativeHandle_FFI_StructSchema)
+	if err := schema.AddRouteDecls(nativeMockRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("native", "NativeStruct", native_NativeStruct_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("native", "NativeHandle", native_NativeHandle_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return nativeMockHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -460,7 +476,7 @@ func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 		// HostRef<T> is restored from the opaque handle ID written on the FFI wire.
 		if rawID, _ := reqBuf.ReadUvarint(); rawID != 0 {
 			id := uint32(rawID)
-			if obj, err := registry.GetTypedWithAudit(id, "Page"); err == nil {
+			if obj, err := registry.GetTypedWithAudit(id, "browser.Page"); err == nil {
 				__recv = obj.(*Page)
 			} else {
 				return nil, fmt.Errorf("FFI restore param '%s' failed: %v", "__recv", err)
@@ -489,7 +505,7 @@ func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 		if r0 == nil {
 			resBuf.WriteUvarint(0)
 		} else {
-			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "Selector")))
+			resBuf.WriteUvarint(uint64(registry.RegisterTyped(r0, "browser.Selector")))
 		}
 		return resBuf.Bytes(), nil
 	default:
@@ -498,14 +514,20 @@ func pageHostRouter(ctx context.Context, impl *Page, registry *ffigo.HandleRegis
 }
 
 var pageRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "Page", MethodName: "GetByPlaceholder", RouteName: "Page.GetByPlaceholder", MethodID: methodIDPageGetByPlaceholder, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<Page>, String, ...Bool) HostRef<Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "browser", TypeMemberName: "Page", MethodName: "GetByPlaceholder", RouteName: "browser.Page.GetByPlaceholder", MethodID: methodIDPageGetByPlaceholder, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<browser.Page>, String, ...Bool) HostRef<browser.Selector>", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfacePage() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(pageRoutes)
-	schema.AddStruct("Selector", Selector_FFI_StructSchema)
-	schema.AddStruct("Page", Page_FFI_StructSchema)
+	if err := schema.AddRouteDecls(pageRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("browser", "Selector", browser_Selector_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("browser", "Page", browser_Page_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return pageHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

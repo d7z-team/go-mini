@@ -130,11 +130,17 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 	}
 
 	pkgName := "main"
+	modulePath := "main"
 	if node != nil {
 		pkgName = node.Package
 		if pkgName == "" {
 			pkgName = "main"
 		}
+		modulePath = strings.TrimSpace(node.ModulePath)
+		if modulePath == "" {
+			modulePath = pkgName
+		}
+		node.ModulePath = modulePath
 	}
 
 	v := &ValidContext{
@@ -150,7 +156,7 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 				Ownership: StructOwnershipVMValue,
 			},
 			Package:            pkgName,
-			Path:               pkgName, // 默认为包名
+			Path:               modulePath,
 			Imports:            imports,
 			vars:               make(map[Ident]GoMiniType),
 			readOnlyVars:       make(map[Ident]bool),
@@ -182,7 +188,7 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 			v.root.readOnlyVars[ident] = true
 		}
 		sIdent := string(ident)
-		if idx := strings.Index(sIdent, "."); idx != -1 {
+		if idx := strings.LastIndex(sIdent, "."); idx != -1 {
 			pkgPath := sIdent[:idx]
 			v.root.registerKnownImportPath(pkgPath)
 
@@ -224,14 +230,27 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 		}
 		if t.IsInterface() {
 			v.root.types[ident] = t
-			v.root.interfaces[ident] = &InterfaceStmt{
-				Name: ident,
-				Type: t,
+			stmt := &InterfaceStmt{Name: ident, Type: t}
+			stmt.QualifiedName = v.QualifiedTypeName(ident)
+			v.root.interfaces[ident] = stmt
+			if stmt.QualifiedName != "" {
+				v.root.interfaces[stmt.QualifiedName] = stmt
 			}
+		}
+	}
+	for name := range externalConsts {
+		if idx := strings.LastIndex(name, "."); idx > 0 {
+			v.root.registerKnownImportPath(name[:idx])
 		}
 	}
 	// 注入命名接口
 	for ident, stmt := range node.Interfaces {
+		if stmt != nil {
+			stmt.QualifiedName = v.QualifiedTypeName(ident)
+			if stmt.QualifiedName != "" {
+				v.root.interfaces[stmt.QualifiedName] = stmt
+			}
+		}
 		v.root.interfaces[ident] = stmt
 	}
 
@@ -273,42 +292,14 @@ func (r *ValidRoot) registerKnownImportPath(path string) {
 		return
 	}
 	r.KnownImports[path] = struct{}{}
-	if dotted := strings.ReplaceAll(path, "/", "."); dotted != path {
-		r.KnownImports[dotted] = struct{}{}
-	}
-	if slashed := strings.ReplaceAll(path, ".", "/"); slashed != path {
-		r.KnownImports[slashed] = struct{}{}
-	}
 }
 
 func (r *ValidRoot) HasExternalImportPath(path string) bool {
 	if path == "" {
 		return false
 	}
-	if _, ok := r.KnownImports[path]; ok {
-		return true
-	}
-	dotted := strings.ReplaceAll(path, "/", ".")
-	if _, ok := r.KnownImports[dotted]; ok {
-		return true
-	}
-	prefixes := []string{path + ".", dotted + "."}
-	for name := range r.vars {
-		s := string(name)
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(s, prefix) {
-				return true
-			}
-		}
-	}
-	for name := range r.externalConsts {
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(name, prefix) {
-				return true
-			}
-		}
-	}
-	return false
+	_, ok := r.KnownImports[path]
+	return ok
 }
 
 func (r *ValidRoot) RegisterModuleExports(exports *ModuleExports) {
@@ -327,9 +318,6 @@ func (r *ValidRoot) DiscoverModule(path string) {
 		return
 	}
 	r.registerDiscoveredPackage(Ident(path), path)
-	if idx := strings.LastIndex(path, "/"); idx != -1 && idx+1 < len(path) {
-		r.registerDiscoveredPackage(Ident(path[idx+1:]), path)
-	}
 }
 
 func (r *ValidRoot) ResolveModule(name Ident) (*ModuleExports, string, bool, bool) {
@@ -366,18 +354,6 @@ func (r *ValidRoot) ModuleByPathOrAlias(prefix string) (*ModuleExports, string, 
 			return mod, path, true
 		}
 	}
-	dotted := strings.ReplaceAll(prefix, "/", ".")
-	slashed := strings.ReplaceAll(prefix, ".", "/")
-	for path, mod := range r.Modules {
-		switch {
-		case path == dotted || path == slashed:
-			return mod, path, true
-		case strings.ReplaceAll(path, "/", ".") == prefix:
-			return mod, path, true
-		case strings.HasSuffix(path, "/"+prefix):
-			return mod, path, true
-		}
-	}
 	return nil, "", false
 }
 
@@ -393,6 +369,24 @@ func (r *ValidRoot) ResolvePackage(name Ident) (string, bool, bool) {
 
 func (c *ValidContext) Root() *ValidRoot {
 	return c.root
+}
+
+func (c *ValidContext) TypeNamespace() string {
+	if c == nil || c.root == nil {
+		return ""
+	}
+	if ns := strings.TrimSpace(c.root.Path); ns != "" {
+		return ns
+	}
+	return strings.TrimSpace(c.root.Package)
+}
+
+func (c *ValidContext) QualifiedTypeName(name Ident) Ident {
+	if name == "" || strings.Contains(string(name), ".") {
+		return name
+	}
+	qualified := CreateQualifiedType(c.TypeNamespace(), string(name))
+	return Ident(qualified)
 }
 
 func (c *ValidContext) Child(b Node) *ValidContext {
@@ -564,12 +558,29 @@ func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
 				return t, true
 			}
 			if _, ok := mod.Structs[name]; ok {
-				return GoMiniType(mod.Path + "." + member), true
+				return CreateQualifiedType(mod.Path, member), true
 			}
 			if _, ok := mod.Interfaces[name]; ok {
-				return GoMiniType(mod.Path + "." + member), true
+				return CreateQualifiedType(mod.Path, member), true
 			}
 		}
+	}
+	if ident != "" && !strings.Contains(string(ident), ".") {
+		qualified := c.QualifiedTypeName(ident)
+		if qualified != ident {
+			if _, ok := c.root.structs[qualified]; ok {
+				return GoMiniType(qualified), true
+			}
+			if _, ok := c.root.interfaces[qualified]; ok {
+				return GoMiniType(qualified), true
+			}
+		}
+	}
+	if _, ok := c.GetStruct(ident); ok {
+		return GoMiniType(ident), true
+	}
+	if _, ok := c.GetInterface(ident); ok {
+		return GoMiniType(ident), true
 	}
 	ctx := c
 	for ctx != nil {
@@ -577,18 +588,6 @@ func (c *ValidContext) GetType(ident Ident) (GoMiniType, bool) {
 			return t, true
 		}
 		ctx = ctx.parent
-	}
-	var resolved GoMiniType
-	for _, mod := range c.root.Modules {
-		if t, ok := mod.Types[ident]; ok {
-			if resolved != "" {
-				return "", false
-			}
-			resolved = t
-		}
-	}
-	if resolved != "" {
-		return resolved, true
 	}
 	return "", false
 }
@@ -607,20 +606,12 @@ func (c *ValidContext) GetStruct(ident Ident) (*ValidStruct, bool) {
 		if miniType, ok := ctx.root.structs[ident]; ok {
 			return miniType, true
 		}
-		ctx = ctx.parent
-	}
-
-	var resolved *ValidStruct
-	for _, mod := range c.root.Modules {
-		if st, ok := mod.StructDefs[ident]; ok {
-			if resolved != nil {
-				return nil, false
+		if ident != "" && !strings.Contains(string(ident), ".") {
+			if miniType, ok := ctx.root.structs[ctx.QualifiedTypeName(ident)]; ok {
+				return miniType, true
 			}
-			resolved = st
 		}
-	}
-	if resolved != nil {
-		return resolved, true
+		ctx = ctx.parent
 	}
 
 	// 在隔离架构下，Array/Map 仅支持基本操作，不再动态生成方法集定义
@@ -730,21 +721,14 @@ func (c *ValidContext) GetInterface(ident Ident) (*InterfaceStmt, bool) {
 		if miniType, ok := ctx.root.interfaces[ident]; ok {
 			return miniType, true
 		}
+		if ident != "" && !strings.Contains(string(ident), ".") {
+			if miniType, ok := ctx.root.interfaces[ctx.QualifiedTypeName(ident)]; ok {
+				return miniType, true
+			}
+		}
 		ctx = ctx.parent
 	}
 
-	var resolved *InterfaceStmt
-	for _, mod := range c.root.Modules {
-		if it, ok := mod.Interfaces[ident]; ok {
-			if resolved != nil {
-				return nil, false
-			}
-			resolved = it
-		}
-	}
-	if resolved != nil {
-		return resolved, true
-	}
 	return nil, false
 }
 
@@ -754,6 +738,11 @@ func (c *ValidContext) IsAssignableTo(source, target GoMiniType) bool {
 	}
 	if c == nil {
 		return false
+	}
+	resolvedSource := source.Resolve(c)
+	resolvedTarget := target.Resolve(c)
+	if resolvedSource.IsAssignableTo(resolvedTarget) {
+		return true
 	}
 	targetInterface, ok := c.resolveInterfaceType(target)
 	if !ok {
@@ -856,13 +845,6 @@ func (c *ValidContext) IsReadOnlyVariable(variable Ident) bool {
 	if c.root.readOnlyVars[variable] {
 		return true
 	}
-	s := string(variable)
-	if strings.Contains(s, "/") {
-		return c.root.readOnlyVars[Ident(strings.ReplaceAll(s, "/", "."))]
-	}
-	if strings.Contains(s, ".") {
-		return c.root.readOnlyVars[Ident(strings.ReplaceAll(s, ".", "/"))]
-	}
 	return false
 }
 
@@ -926,22 +908,14 @@ func (c *ValidContext) getExternalConstant(name Ident) (GoMiniType, bool) {
 	if c == nil || c.root == nil {
 		return "", false
 	}
-	candidates := []string{string(name)}
-	if s := string(name); strings.Contains(s, "/") {
-		candidates = append(candidates, strings.ReplaceAll(s, "/", "."))
-	} else if strings.Contains(s, ".") {
-		candidates = append(candidates, strings.ReplaceAll(s, ".", "/"))
+	key := string(name)
+	if _, ok := c.root.externalConsts[key]; !ok {
+		return "", false
 	}
-	for _, candidate := range candidates {
-		if _, ok := c.root.externalConsts[candidate]; !ok {
-			continue
-		}
-		if typ := c.root.externalConstTypes[candidate]; typ != "" {
-			return typ, true
-		}
-		return "Constant", true
+	if typ := c.root.externalConstTypes[key]; typ != "" {
+		return typ, true
 	}
-	return "", false
+	return "Constant", true
 }
 
 func (c *ValidContext) GetVariable(variable Ident) (GoMiniType, bool) {
@@ -1103,6 +1077,7 @@ func (c *ValidContext) ImportPackage(path string) error {
 		}
 		return err
 	}
+	prog.ModulePath = path
 
 	// 在隔离的验证上下文中检查导入的程序，不合并符号
 	v, _ := NewValidatorWithExternalTypesAndConstTypes(prog, c.root.externalTypes, c.root.externalConsts, c.root.externalConstTypes, c.root.Tolerant)
@@ -1142,10 +1117,13 @@ func (c *ValidContext) SetTemplateBuiltins(items map[string]string) {
 func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {
 	funcCtx := ctx.Child(f)
 	funcCtx.closureNode = f
+	f.FunctionType.Return = f.FunctionType.Return.Resolve(funcCtx.ValidContext)
 
 	// 1. 检查参数有效性
 	seenParams := make(map[Ident]struct{}, len(f.Params))
-	for _, param := range f.Params {
+	for i, param := range f.Params {
+		f.Params[i].Type = param.Type.Resolve(funcCtx.ValidContext)
+		param.Type = f.Params[i].Type
 		if param.Name == "" || !param.Name.Valid(funcCtx.ValidContext) {
 			return fmt.Errorf("invalid param name: %s", param.Name)
 		}

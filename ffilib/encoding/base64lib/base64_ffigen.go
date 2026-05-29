@@ -57,9 +57,15 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(moduleRoutes)
-	schema.AddConst("encoding/base64", "NoPadding", runtime.ConstInt64(int64(base64.NoPadding)))
-	schema.AddConst("encoding/base64", "StdPadding", runtime.ConstInt64(int64(base64.StdPadding)))
+	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("encoding/base64", "NoPadding", runtime.ConstInt64(int64(base64.NoPadding))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("encoding/base64", "StdPadding", runtime.ConstInt64(int64(base64.StdPadding))); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -391,22 +397,26 @@ func encodingHostRouter(ctx context.Context, impl *Encoding, registry *ffigo.Han
 }
 
 var encodingRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "encoding/base64.Encoding", MethodName: "Encode", RouteName: "encoding/base64.Encoding.Encode", MethodID: methodIDEncodingEncode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) Void", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "Decode", RouteName: "encoding/base64.Encoding.Decode", MethodID: methodIDEncodingDecode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "EncodeToString", RouteName: "encoding/base64.Encoding.EncodeToString", MethodID: methodIDEncodingEncodeToString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "DecodeString", RouteName: "encoding/base64.Encoding.DecodeString", MethodID: methodIDEncodingDecodeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, String) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "AppendEncode", RouteName: "encoding/base64.Encoding.AppendEncode", MethodID: methodIDEncodingAppendEncode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "AppendDecode", RouteName: "encoding/base64.Encoding.AppendDecode", MethodID: methodIDEncodingAppendDecode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "EncodedLen", RouteName: "encoding/base64.Encoding.EncodedLen", MethodID: methodIDEncodingEncodedLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "DecodedLen", RouteName: "encoding/base64.Encoding.DecodedLen", MethodID: methodIDEncodingDecodedLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "WithPadding", RouteName: "encoding/base64.Encoding.WithPadding", MethodID: methodIDEncodingWithPadding, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "encoding/base64.Encoding", MethodName: "Strict", RouteName: "encoding/base64.Encoding.Strict", MethodID: methodIDEncodingStrict, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "Encode", RouteName: "encoding/base64.Encoding.Encode", MethodID: methodIDEncodingEncode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) Void", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "Decode", RouteName: "encoding/base64.Encoding.Decode", MethodID: methodIDEncodingDecode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "EncodeToString", RouteName: "encoding/base64.Encoding.EncodeToString", MethodID: methodIDEncodingEncodeToString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "DecodeString", RouteName: "encoding/base64.Encoding.DecodeString", MethodID: methodIDEncodingDecodeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, String) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "AppendEncode", RouteName: "encoding/base64.Encoding.AppendEncode", MethodID: methodIDEncodingAppendEncode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) TypeBytes", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "AppendDecode", RouteName: "encoding/base64.Encoding.AppendDecode", MethodID: methodIDEncodingAppendDecode, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, TypeBytes, TypeBytes) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "EncodedLen", RouteName: "encoding/base64.Encoding.EncodedLen", MethodID: methodIDEncodingEncodedLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "DecodedLen", RouteName: "encoding/base64.Encoding.DecodedLen", MethodID: methodIDEncodingDecodedLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "WithPadding", RouteName: "encoding/base64.Encoding.WithPadding", MethodID: methodIDEncodingWithPadding, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>, Int64) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "encoding/base64", TypeMemberName: "Encoding", MethodName: "Strict", RouteName: "encoding/base64.Encoding.Strict", MethodID: methodIDEncodingStrict, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<encoding/base64.Encoding>) HostRef<encoding/base64.Encoding>", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceEncoding() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(encodingRoutes)
-	schema.AddStruct("encoding/base64.Encoding", encoding_base64_Encoding_FFI_StructSchema)
+	if err := schema.AddRouteDecls(encodingRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("encoding/base64", "Encoding", encoding_base64_Encoding_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return encodingHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -422,13 +432,21 @@ func SurfaceEncoding() *surface.Bundle {
 func SurfaceGlobals() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	spec0 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
-	schema.AddValue("encoding/base64", "RawStdEncoding", spec0)
+	if err := schema.AddValue("encoding/base64", "RawStdEncoding", spec0); err != nil {
+		panic(err)
+	}
 	spec1 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
-	schema.AddValue("encoding/base64", "RawURLEncoding", spec1)
+	if err := schema.AddValue("encoding/base64", "RawURLEncoding", spec1); err != nil {
+		panic(err)
+	}
 	spec2 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
-	schema.AddValue("encoding/base64", "StdEncoding", spec2)
+	if err := schema.AddValue("encoding/base64", "StdEncoding", spec2); err != nil {
+		panic(err)
+	}
 	spec3 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
-	schema.AddValue("encoding/base64", "URLEncoding", spec3)
+	if err := schema.AddValue("encoding/base64", "URLEncoding", spec3); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurface(schema)
 		bridge0 := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

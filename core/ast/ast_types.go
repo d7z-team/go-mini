@@ -392,6 +392,12 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 		return resolved
 	}
 	if v != nil && v.root != nil {
+		if v.root.program != nil && v.root.program.Structs[Ident(o)] != nil {
+			return GoMiniType(v.QualifiedTypeName(Ident(o)))
+		}
+		if v.root.program != nil && v.root.program.Interfaces[Ident(o)] != nil {
+			return GoMiniType(v.QualifiedTypeName(Ident(o)))
+		}
 		if actual, ok := v.root.types[Ident(o)]; ok {
 			if actual == o {
 				return actual

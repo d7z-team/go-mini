@@ -3,6 +3,7 @@ package tests
 
 import "context"
 
+// ffigen:module ffigen_test
 type MapTest interface {
 	EchoMap(ctx context.Context, m map[string]string) (map[string]string, error)
 	GetMap(ctx context.Context) (map[string]int64, error)

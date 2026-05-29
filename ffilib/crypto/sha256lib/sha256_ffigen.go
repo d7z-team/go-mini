@@ -47,9 +47,15 @@ var sha256Routes = []runtime.FFIRouteDecl{
 
 func SurfaceSHA256(impl SHA256) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(sha256Routes)
-	schema.AddConst("crypto/sha256", "BlockSize", runtime.ConstInt64(int64(sha256.BlockSize)))
-	schema.AddConst("crypto/sha256", "Size", runtime.ConstInt64(int64(sha256.Size)))
+	if err := schema.AddRouteDecls(sha256Routes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("crypto/sha256", "BlockSize", runtime.ConstInt64(int64(sha256.BlockSize))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("crypto/sha256", "Size", runtime.ConstInt64(int64(sha256.Size))); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return sha256HostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

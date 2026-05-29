@@ -333,7 +333,15 @@ func (g *Generator) generatedRouteDeclLiteral(method generatedMethod, name, fixe
 	if packageMember {
 		return fmt.Sprintf("{PackagePath: %q, MemberName: %q, RouteName: %q, MethodID: %s,", routePrefix, method.Name, routeName, methodID)
 	}
-	return fmt.Sprintf("{TypeName: %q, MethodName: %q, RouteName: %q, MethodID: %s,", routePrefix, method.Name, routeName, methodID)
+	typeMember := methodsPrefix
+	if typeMember == "" {
+		typeMember = name
+	}
+	validateSchemaMemberName(typeMember, "type method route owner")
+	if moduleName == "" {
+		panic(fmt.Sprintf("ffigen: type method route %s.%s must declare ffigen:module", routePrefix, method.Name))
+	}
+	return fmt.Sprintf("{TypePackagePath: %q, TypeMemberName: %q, MethodName: %q, RouteName: %q, MethodID: %s,", moduleName, typeMember, method.Name, routeName, methodID)
 }
 
 func (g *Generator) writeSchemaRouteBinder(sb *strings.Builder, indent, name, implExpr string) {
@@ -389,7 +397,7 @@ func (g *Generator) generateGlobalsCode(globals []globalValue) string {
 	fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
 	for i, item := range items {
 		fmt.Fprintf(&sb, "\tspec%d := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType(%q), ReadOnly: true}\n", i, item.meta.MiniType)
-		fmt.Fprintf(&sb, "\tschema.AddValue(%q, %q, spec%d)\n", item.meta.PackagePath, item.meta.Name, i)
+		fmt.Fprintf(&sb, "\tif err := schema.AddValue(%q, %q, spec%d); err != nil { panic(err) }\n", item.meta.PackagePath, item.meta.Name, i)
 	}
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 	fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")

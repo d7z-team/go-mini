@@ -11,7 +11,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-var RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("RobustPoint", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
+var e2e_RobustPoint_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("e2e.RobustPoint", runtime.StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
 
 const (
 	methodIDMockGeometrySumX = 1
@@ -54,19 +54,17 @@ func mockGeometryHostRouter(ctx context.Context, impl MockGeometry, registry *ff
 }
 
 var mockGeometryRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "", MemberName: "SumX", RouteName: ".SumX", MethodID: methodIDMockGeometrySumX, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<RobustPoint>) Int64", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "e2e", MemberName: "SumX", RouteName: "e2e.SumX", MethodID: methodIDMockGeometrySumX, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<e2e.RobustPoint>) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
-func SurfaceMockGeometryLibrary(prefix string, impl MockGeometry) *surface.Bundle {
+func SurfaceMockGeometry(impl MockGeometry) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	routes := make([]runtime.FFIRouteDecl, 0, len(mockGeometryRoutes))
-	for _, route := range mockGeometryRoutes {
-		route.PackagePath = prefix
-		route.RouteName = prefix + "." + route.MemberName
-		routes = append(routes, route)
+	if err := schema.AddRouteDecls(mockGeometryRoutes); err != nil {
+		panic(err)
 	}
-	schema.AddRouteDecls(routes)
-	schema.AddStruct("RobustPoint", RobustPoint_FFI_StructSchema)
+	if err := schema.AddStruct("e2e", "RobustPoint", e2e_RobustPoint_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return mockGeometryHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

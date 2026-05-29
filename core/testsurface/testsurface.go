@@ -1,6 +1,7 @@
 package testsurface
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
@@ -13,7 +14,7 @@ type User interface {
 }
 
 func Route(fullName string, methodID uint32, sig *runtime.RuntimeFuncSig, doc string) runtime.FFIRouteDecl {
-	pkg, member := runtime.SplitExternalName(fullName)
+	pkg, member := splitRouteName(fullName)
 	if pkg == "" || member == "" {
 		panic("test FFI route must use package.member name: " + fullName)
 	}
@@ -25,6 +26,15 @@ func Route(fullName string, methodID uint32, sig *runtime.RuntimeFuncSig, doc st
 		Sig:         sig,
 		Doc:         doc,
 	}
+}
+
+func splitRouteName(fullName string) (string, string) {
+	fullName = strings.TrimSpace(fullName)
+	idx := strings.LastIndex(fullName, ".")
+	if idx <= 0 || idx == len(fullName)-1 {
+		return "", ""
+	}
+	return fullName[:idx], fullName[idx+1:]
 }
 
 func Routes(bridge ffigo.FFIBridge, routes ...runtime.FFIRouteDecl) *surface.Bundle {

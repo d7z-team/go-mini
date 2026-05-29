@@ -2,6 +2,7 @@ package ffilib
 
 import (
 	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
+	"gopkg.d7z.net/go-mini/core/ffilib/reflectlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/strconvlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/stringslib"
@@ -16,6 +17,7 @@ func Surface() *surface.Bundle {
 		mathlib.SurfaceMath(&mathlib.MathHost{}),
 		strconvlib.SurfaceStrconv(&strconvlib.StrconvHost{}),
 		sortlib.SurfaceSort(&sortlib.SortHost{}),
+		reflectlib.SurfaceReflect(),
 	)
 }
 
@@ -96,7 +98,9 @@ func nativeErrorSurface() *surface.Bundle {
 	}
 	schema := runtime.NewFFISurfaceSchema()
 	for _, r := range routes {
-		schema.AddFunc(r.pkg, r.member, r.route, r.methodID, r.sig, r.doc)
+		if err := schema.AddFunc(r.pkg, r.member, r.route, r.methodID, r.sig, r.doc); err != nil {
+			return &surface.Bundle{Err: err}
+		}
 	}
 	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurface(schema)

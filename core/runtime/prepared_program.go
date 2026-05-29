@@ -1,17 +1,18 @@
 package runtime
 
 type PreparedProgram struct {
-	Package              string                           `json:"package,omitempty"`
-	ImportAliases        map[string]string                `json:"import_aliases,omitempty"`
-	Constants            map[string]FFIConstValue         `json:"constants,omitempty"`
-	ConstantTypes        map[string]RuntimeType           `json:"constant_types,omitempty"`
-	NamedTypes           map[string]RuntimeType           `json:"named_types,omitempty"`
-	StructSchemas        map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
-	InterfaceSchemas     map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
-	Exports              map[string]PreparedExport        `json:"exports,omitempty"`
-	Modules              map[string]*PreparedProgram      `json:"modules,omitempty"`
-	ModuleHashes         map[string]string                `json:"module_hashes,omitempty"`
-	ExternalRequirements []ExternalRequirement            `json:"external_requirements,omitempty"`
+	Package            string                           `json:"package,omitempty"`
+	ModulePath         string                           `json:"module_path,omitempty"`
+	ImportAliases      map[string]string                `json:"import_aliases,omitempty"`
+	Constants          map[string]FFIConstValue         `json:"constants,omitempty"`
+	ConstantTypes      map[string]RuntimeType           `json:"constant_types,omitempty"`
+	NamedTypes         map[string]RuntimeType           `json:"named_types,omitempty"`
+	StructSchemas      map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
+	InterfaceSchemas   map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
+	Exports            map[string]PreparedExport        `json:"exports,omitempty"`
+	Modules            map[string]*PreparedProgram      `json:"modules,omitempty"`
+	ModuleHashes       map[string]string                `json:"module_hashes,omitempty"`
+	ModuleRequirements []ModuleRequirement              `json:"module_requirements,omitempty"`
 
 	GlobalInitOrder  []string                     `json:"global_init_order"`
 	GlobalInitGroups []*PreparedGlobalInit        `json:"global_init_groups,omitempty"`
@@ -63,22 +64,23 @@ func clonePreparedProgram(plan *PreparedProgram) *PreparedProgram {
 	}
 
 	cloned := &PreparedProgram{
-		Package:              plan.Package,
-		ImportAliases:        cloneStringMap(plan.ImportAliases),
-		Constants:            cloneFFIConstValueMap(plan.Constants),
-		ConstantTypes:        cloneRuntimeTypeMap(plan.ConstantTypes),
-		NamedTypes:           cloneRuntimeTypeMap(plan.NamedTypes),
-		StructSchemas:        cloneRuntimeStructSpecMap(plan.StructSchemas),
-		InterfaceSchemas:     cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
-		Exports:              clonePreparedExportMap(plan.Exports),
-		Modules:              clonePreparedProgramMap(plan.Modules),
-		ModuleHashes:         cloneStringMap(plan.ModuleHashes),
-		ExternalRequirements: append([]ExternalRequirement(nil), plan.ExternalRequirements...),
-		GlobalInitOrder:      append([]string(nil), plan.GlobalInitOrder...),
-		GlobalInitGroups:     make([]*PreparedGlobalInit, 0, len(plan.GlobalInitGroups)),
-		Globals:              make(map[string]*PreparedGlobal, len(plan.Globals)),
-		Functions:            make(map[string]*PreparedFunction, len(plan.Functions)),
-		MainTasks:            cloneTasks(plan.MainTasks),
+		Package:            plan.Package,
+		ModulePath:         plan.ModulePath,
+		ImportAliases:      cloneStringMap(plan.ImportAliases),
+		Constants:          cloneFFIConstValueMap(plan.Constants),
+		ConstantTypes:      cloneRuntimeTypeMap(plan.ConstantTypes),
+		NamedTypes:         cloneRuntimeTypeMap(plan.NamedTypes),
+		StructSchemas:      cloneRuntimeStructSpecMap(plan.StructSchemas),
+		InterfaceSchemas:   cloneRuntimeInterfaceSpecMap(plan.InterfaceSchemas),
+		Exports:            clonePreparedExportMap(plan.Exports),
+		Modules:            clonePreparedProgramMap(plan.Modules),
+		ModuleHashes:       cloneStringMap(plan.ModuleHashes),
+		ModuleRequirements: append([]ModuleRequirement(nil), plan.ModuleRequirements...),
+		GlobalInitOrder:    append([]string(nil), plan.GlobalInitOrder...),
+		GlobalInitGroups:   make([]*PreparedGlobalInit, 0, len(plan.GlobalInitGroups)),
+		Globals:            make(map[string]*PreparedGlobal, len(plan.Globals)),
+		Functions:          make(map[string]*PreparedFunction, len(plan.Functions)),
+		MainTasks:          cloneTasks(plan.MainTasks),
 	}
 
 	for _, group := range plan.GlobalInitGroups {

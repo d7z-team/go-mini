@@ -90,7 +90,9 @@ var imageLibRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceImageLib(impl ImageLib) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(imageLibRoutes)
+	if err := schema.AddRouteDecls(imageLibRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return imageLibHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -638,27 +640,31 @@ func imageHostRouter(ctx context.Context, impl *Image, registry *ffigo.HandleReg
 }
 
 var imageRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "image.Image", MethodName: "Bounds", RouteName: "image.Image.Bounds", MethodID: methodIDImageBounds, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn), Doc: "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
-	{TypeName: "image.Image", MethodName: "Size", RouteName: "image.Image.Size", MethodID: methodIDImageSize, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64)", runtime.FFIParamIn), Doc: "Size 返回 width, height"},
-	{TypeName: "image.Image", MethodName: "Width", RouteName: "image.Image.Width", MethodID: methodIDImageWidth, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), Doc: "Width 返回图像宽度"},
-	{TypeName: "image.Image", MethodName: "Height", RouteName: "image.Image.Height", MethodID: methodIDImageHeight, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), Doc: "Height 返回图像高度"},
-	{TypeName: "image.Image", MethodName: "At", RouteName: "image.Image.At", MethodID: methodIDImageAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "At 返回 r, g, b, a (0-255)"},
-	{TypeName: "image.Image", MethodName: "Set", RouteName: "image.Image.Set", MethodID: methodIDImageSet, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Set 设置指定像素的颜色"},
-	{TypeName: "image.Image", MethodName: "Fill", RouteName: "image.Image.Fill", MethodID: methodIDImageFill, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Fill 用指定颜色填充整个图像"},
-	{TypeName: "image.Image", MethodName: "Clear", RouteName: "image.Image.Clear", MethodID: methodIDImageClear, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Void", runtime.FFIParamIn), Doc: "Clear 将图像清空为透明"},
-	{TypeName: "image.Image", MethodName: "Clone", RouteName: "image.Image.Clone", MethodID: methodIDImageClone, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) HostRef<image.Image>", runtime.FFIParamIn), Doc: "Clone 复制当前图像"},
-	{TypeName: "image.Image", MethodName: "SubImage", RouteName: "image.Image.SubImage", MethodID: methodIDImageSubImage, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "SubImage 返回图像的子部分 (共享内存)"},
-	{TypeName: "image.Image", MethodName: "Draw", RouteName: "image.Image.Draw", MethodID: methodIDImageDraw, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, HostRef<image.Image>, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
-	{TypeName: "image.Image", MethodName: "Resize", RouteName: "image.Image.Resize", MethodID: methodIDImageResize, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Resize 缩放图像"},
-	{TypeName: "image.Image", MethodName: "Crop", RouteName: "image.Image.Crop", MethodID: methodIDImageCrop, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Crop 裁剪图像"},
-	{TypeName: "image.Image", MethodName: "EncodePNG", RouteName: "image.Image.EncodePNG", MethodID: methodIDImageEncodePNG, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: "EncodePNG 将图像编码为 PNG 字节数组"},
-	{TypeName: "image.Image", MethodName: "EncodeJPEG", RouteName: "image.Image.EncodeJPEG", MethodID: methodIDImageEncodeJPEG, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "EncodeJPEG 将图像编码为 JPEG 字节数组"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Bounds", RouteName: "image.Image.Bounds", MethodID: methodIDImageBounds, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn), Doc: "Bounds 返回 x1, y1, x2, y2 (对应 Go 的 Bounds() Rectangle)"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Size", RouteName: "image.Image.Size", MethodID: methodIDImageSize, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(Int64, Int64)", runtime.FFIParamIn), Doc: "Size 返回 width, height"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Width", RouteName: "image.Image.Width", MethodID: methodIDImageWidth, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), Doc: "Width 返回图像宽度"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Height", RouteName: "image.Image.Height", MethodID: methodIDImageHeight, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Int64", runtime.FFIParamIn), Doc: "Height 返回图像高度"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "At", RouteName: "image.Image.At", MethodID: methodIDImageAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(Int64, Int64, Int64, Int64)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "At 返回 r, g, b, a (0-255)"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Set", RouteName: "image.Image.Set", MethodID: methodIDImageSet, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Set 设置指定像素的颜色"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Fill", RouteName: "image.Image.Fill", MethodID: methodIDImageFill, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Fill 用指定颜色填充整个图像"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Clear", RouteName: "image.Image.Clear", MethodID: methodIDImageClear, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) Void", runtime.FFIParamIn), Doc: "Clear 将图像清空为透明"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Clone", RouteName: "image.Image.Clone", MethodID: methodIDImageClone, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) HostRef<image.Image>", runtime.FFIParamIn), Doc: "Clone 复制当前图像"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "SubImage", RouteName: "image.Image.SubImage", MethodID: methodIDImageSubImage, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "SubImage 返回图像的子部分 (共享内存)"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Draw", RouteName: "image.Image.Draw", MethodID: methodIDImageDraw, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, HostRef<image.Image>, Int64, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Draw 将另一张图像绘制到当前图像上 (支持透明度叠加)"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Resize", RouteName: "image.Image.Resize", MethodID: methodIDImageResize, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Resize 缩放图像"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "Crop", RouteName: "image.Image.Crop", MethodID: methodIDImageCrop, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64, Int64, Int64, Int64) tuple(HostRef<image.Image>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Crop 裁剪图像"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "EncodePNG", RouteName: "image.Image.EncodePNG", MethodID: methodIDImageEncodePNG, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: "EncodePNG 将图像编码为 PNG 字节数组"},
+	{TypePackagePath: "image", TypeMemberName: "Image", MethodName: "EncodeJPEG", RouteName: "image.Image.EncodeJPEG", MethodID: methodIDImageEncodeJPEG, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<image.Image>, Int64) tuple(TypeBytes, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "EncodeJPEG 将图像编码为 JPEG 字节数组"},
 }
 
 func SurfaceImage() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(imageRoutes)
-	schema.AddStruct("image.Image", image_Image_FFI_StructSchema)
+	if err := schema.AddRouteDecls(imageRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("image", "Image", image_Image_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return imageHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

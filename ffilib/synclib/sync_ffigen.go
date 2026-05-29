@@ -47,7 +47,9 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(moduleRoutes)
+	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -143,15 +145,19 @@ func waitGroupHostRouter(ctx context.Context, impl *WaitGroup, registry *ffigo.H
 }
 
 var waitGroupRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "sync.WaitGroup", MethodName: "Add", RouteName: "sync.WaitGroup.Add", MethodID: methodIDWaitGroupAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "sync.WaitGroup", MethodName: "Done", RouteName: "sync.WaitGroup.Done", MethodID: methodIDWaitGroupDone, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "sync.WaitGroup", MethodName: "Wait", RouteName: "sync.WaitGroup.Wait", MethodID: methodIDWaitGroupWait, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "sync", TypeMemberName: "WaitGroup", MethodName: "Add", RouteName: "sync.WaitGroup.Add", MethodID: methodIDWaitGroupAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>, Int64) Void", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "sync", TypeMemberName: "WaitGroup", MethodName: "Done", RouteName: "sync.WaitGroup.Done", MethodID: methodIDWaitGroupDone, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "sync", TypeMemberName: "WaitGroup", MethodName: "Wait", RouteName: "sync.WaitGroup.Wait", MethodID: methodIDWaitGroupWait, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<sync.WaitGroup>) Void", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceWaitGroup() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(waitGroupRoutes)
-	schema.AddStruct("sync.WaitGroup", sync_WaitGroup_FFI_StructSchema)
+	if err := schema.AddRouteDecls(waitGroupRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("sync", "WaitGroup", sync_WaitGroup_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return waitGroupHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

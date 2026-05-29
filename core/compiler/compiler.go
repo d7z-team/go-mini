@@ -179,7 +179,7 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		if err != nil {
 			return nil, err
 		}
-		_, _, _, _, _, constants := c.externalSchemaMaps()
+		_, _, _, _, _, constants, _, _ := c.ffiSchemaMaps()
 		validator, err := ast.NewValidatorWithExternalTypesAndConstTypes(target, specs, ffiConstValuesToStrings(constants), ffiConstValuesToAST(constants), tolerant)
 		if err != nil {
 			return nil, err
@@ -275,7 +275,7 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		return artifact, semanticCtx, err
 	}
 	if bytecodeProgram != nil && bytecodeProgram.Executable != nil {
-		bytecodeProgram.Executable.ExternalRequirements = c.externalRequirements(artifact.Program)
+		bytecodeProgram.Executable.ModuleRequirements = c.moduleRequirements(artifact.Program)
 		if err := runtime.ValidatePreparedProgram(bytecodeProgram.Executable); err != nil {
 			return artifact, semanticCtx, err
 		}
@@ -288,7 +288,7 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 }
 
 func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.Plan) (map[ast.Ident]ast.ExternalTypeSpec, error) {
-	funcSchemas, _, valueSchemas, structSchemas, interfaceSchemas, _ := c.externalSchemaMaps()
+	funcSchemas, _, valueSchemas, structSchemas, interfaceSchemas, _, _, _ := c.ffiSchemaMaps()
 	templateFuncs := map[ast.Ident]*runtime.RuntimeFuncSig(nil)
 	if includeTemplates && plan != nil {
 		templateFuncs = plan.FuncSchemas()
@@ -329,9 +329,6 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 		if v.Ownership == runtime.StructOwnershipHostOpaque {
 			ownership = ast.StructOwnershipHostOpaque
 		}
-		if _, ok := res[k]; ok {
-			return nil, errors.New("external struct schema conflicts with existing symbol " + string(k))
-		}
 		spec := ast.ExternalTypeSpec{
 			Type:      ast.GoMiniType(v.Spec),
 			Ownership: ownership,
@@ -349,6 +346,9 @@ func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.P
 			if ok && sig != nil {
 				spec.Methods[ast.Ident(method.Name)] = *sig
 			}
+		}
+		if _, ok := res[k]; ok {
+			return nil, errors.New("external struct schema conflicts with existing symbol " + string(k))
 		}
 		res[k] = spec
 	}

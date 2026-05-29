@@ -1,4 +1,4 @@
-//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg tests -out dummy_ffigen_test.go dummy_test.go coverage_test.go
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg tests -out surface_fixture_ffigen_test.go surface_fixture_test.go coverage_test.go
 package tests
 
 import "context"
@@ -28,8 +28,6 @@ type MockOS interface {
 	Deep(n Nested) Nested
 }
 
-// ContextMock 验证 Context 传递
-
 // ffigen:module ctx_test
 type ContextMock interface {
 	WithContext(ctx context.Context, key string) string
@@ -46,8 +44,6 @@ type NativeHandle struct {
 	Msg   string
 }
 
-// NativeMock 验证原生对象注入
-
 // ffigen:module native
 type NativeMock interface {
 	GetStruct() NativeStruct
@@ -60,6 +56,7 @@ type Selector struct {
 	Value int64
 }
 
+// ffigen:module browser
 // ffigen:methods Page
 type Page struct {
 	Value int64

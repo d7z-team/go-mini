@@ -52,8 +52,12 @@ func Router(schema *runtime.FFISurfaceSchema, bridge ffigo.FFIBridge) *Bundle {
 
 func Routes(bridge ffigo.FFIBridge, routes ...runtime.FFIRouteDecl) *Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(routes)
-	return Router(schema, bridge)
+	err := schema.AddRouteDecls(routes)
+	bundle := Router(schema, bridge)
+	if err != nil {
+		bundle.Err = err
+	}
+	return bundle
 }
 
 func GoFile(filename, code string) LibraryFile {
@@ -92,7 +96,7 @@ func (m LibraryModule) Hash() string {
 		}
 		parts = append(parts, strings.TrimSpace(file.Filename), language, file.Code)
 	}
-	return runtime.VersionedExternalRequirementHash(parts...)
+	return runtime.VersionedModuleRequirementHash(parts...)
 }
 
 func Merge(items ...*Bundle) *Bundle {

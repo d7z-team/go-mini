@@ -27,11 +27,17 @@ func requireSchemaConflict(t *testing.T, err error, kind string) {
 func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	ffiSchema := runtime.NewFFISurfaceSchema()
-	ffiSchema.AddRouteDecls([]runtime.FFIRouteDecl{
+	if err := ffiSchema.AddRouteDecls([]runtime.FFIRouteDecl{
 		testsurface.Route("demo.Call", 1, runtime.MustParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)"), "demo route"),
-	})
-	ffiSchema.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
-	ffiSchema.AddInterface("demo.Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ffiSchema.AddStruct("demo", "Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ffiSchema.AddInterface("demo", "Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")); err != nil {
+		t.Fatal(err)
+	}
 	if err := exec.UseSurface(testsurface.SchemaBundle(ffiSchema, nil)); err != nil {
 		t.Fatal(err)
 	}
@@ -203,10 +209,10 @@ func main() {
 	if executable.Constants["Version"].DisplayString() != "v1" {
 		t.Fatalf("unexpected executable constants: %#v", executable.Constants)
 	}
-	if executable.StructSchemas["Payload"] == nil {
+	if executable.StructSchemas["main.Payload"] == nil {
 		t.Fatalf("expected executable struct schema: %#v", executable.StructSchemas)
 	}
-	if executable.InterfaceSchemas["Reader"] == nil {
+	if executable.InterfaceSchemas["main.Reader"] == nil {
 		t.Fatalf("expected executable interface schema: %#v", executable.InterfaceSchemas)
 	}
 	payload, err := compiled.MarshalBytecodeJSON()
@@ -306,7 +312,9 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
 	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddValue("demo", "Value", stringSpec)
+	if err := schema.AddValue("demo", "Value", stringSpec); err != nil {
+		t.Fatal(err)
+	}
 	if err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
 		bound.AddPackageValue("demo", "Value", stringSpec, runtime.NewString("old"))
@@ -370,13 +378,17 @@ func TestUseSurfaceBindErrorRollsBackPinnedHandles(t *testing.T) {
 func TestMiniExecutorRejectsStructSchemaConflict(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	left := runtime.NewFFISurfaceSchema()
-	left.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }"))
+	if err := left.AddStruct("demo", "Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; }")); err != nil {
+		t.Fatal(err)
+	}
 	if err := exec.UseSurface(surface.Router(left, nil)); err != nil {
 		t.Fatal(err)
 	}
 
 	right := runtime.NewFFISurfaceSchema()
-	right.AddStruct("demo.Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	if err := right.AddStruct("demo", "Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }")); err != nil {
+		t.Fatal(err)
+	}
 	requireSchemaConflict(t, exec.UseSurface(surface.Router(right, nil)), "surface type")
 }
 

@@ -231,18 +231,42 @@ var osRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceOS(impl OS) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(osRoutes)
-	schema.AddConst("os", "DevNull", runtime.ConstString(string(os.DevNull)))
-	schema.AddConst("os", "O_APPEND", runtime.ConstInt64(int64(os.O_APPEND)))
-	schema.AddConst("os", "O_CREATE", runtime.ConstInt64(int64(os.O_CREATE)))
-	schema.AddConst("os", "O_EXCL", runtime.ConstInt64(int64(os.O_EXCL)))
-	schema.AddConst("os", "O_RDONLY", runtime.ConstInt64(int64(os.O_RDONLY)))
-	schema.AddConst("os", "O_RDWR", runtime.ConstInt64(int64(os.O_RDWR)))
-	schema.AddConst("os", "O_SYNC", runtime.ConstInt64(int64(os.O_SYNC)))
-	schema.AddConst("os", "O_TRUNC", runtime.ConstInt64(int64(os.O_TRUNC)))
-	schema.AddConst("os", "O_WRONLY", runtime.ConstInt64(int64(os.O_WRONLY)))
-	schema.AddConst("os", "PathListSeparator", runtime.ConstInt64(int64(os.PathListSeparator)))
-	schema.AddConst("os", "PathSeparator", runtime.ConstInt64(int64(os.PathSeparator)))
+	if err := schema.AddRouteDecls(osRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "DevNull", runtime.ConstString(string(os.DevNull))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_APPEND", runtime.ConstInt64(int64(os.O_APPEND))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_CREATE", runtime.ConstInt64(int64(os.O_CREATE))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_EXCL", runtime.ConstInt64(int64(os.O_EXCL))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_RDONLY", runtime.ConstInt64(int64(os.O_RDONLY))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_RDWR", runtime.ConstInt64(int64(os.O_RDWR))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_SYNC", runtime.ConstInt64(int64(os.O_SYNC))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_TRUNC", runtime.ConstInt64(int64(os.O_TRUNC))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "O_WRONLY", runtime.ConstInt64(int64(os.O_WRONLY))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "PathListSeparator", runtime.ConstInt64(int64(os.PathListSeparator))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("os", "PathSeparator", runtime.ConstInt64(int64(os.PathSeparator))); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return osHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

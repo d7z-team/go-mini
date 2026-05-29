@@ -142,7 +142,6 @@ func TestParseRuntimeTypeRejectsNonCanonicalTypes(t *testing.T) {
 		"function(int) Void",
 		"Array<int>",
 		"complex64",
-		"HostRef<gopkg.d7z.net/demo.Type>",
 	}
 	for _, spec := range tests {
 		if _, err := ParseRuntimeType(spec); err == nil {

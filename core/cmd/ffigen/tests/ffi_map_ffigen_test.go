@@ -165,21 +165,17 @@ func mapTestHostRouter(ctx context.Context, impl MapTest, registry *ffigo.Handle
 }
 
 var mapTestRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "", MemberName: "EchoMap", RouteName: ".EchoMap", MethodID: methodIDMapTestEchoMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, String>) tuple(Map<String, String>, Error)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "", MemberName: "GetMap", RouteName: ".GetMap", MethodID: methodIDMapTestGetMap, Sig: runtime.MustParseRuntimeFuncSig("function() tuple(Map<String, Int64>, Error)"), Doc: ""},
-	{PackagePath: "", MemberName: "ProcessMap", RouteName: ".ProcessMap", MethodID: methodIDMapTestProcessMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, Int64>) tuple(Int64, Error)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "", MemberName: "EchoIntMap", RouteName: ".EchoIntMap", MethodID: methodIDMapTestEchoIntMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "ffigen_test", MemberName: "EchoMap", RouteName: "ffigen_test.EchoMap", MethodID: methodIDMapTestEchoMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, String>) tuple(Map<String, String>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "ffigen_test", MemberName: "GetMap", RouteName: "ffigen_test.GetMap", MethodID: methodIDMapTestGetMap, Sig: runtime.MustParseRuntimeFuncSig("function() tuple(Map<String, Int64>, Error)"), Doc: ""},
+	{PackagePath: "ffigen_test", MemberName: "ProcessMap", RouteName: "ffigen_test.ProcessMap", MethodID: methodIDMapTestProcessMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<String, Int64>) tuple(Int64, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "ffigen_test", MemberName: "EchoIntMap", RouteName: "ffigen_test.EchoIntMap", MethodID: methodIDMapTestEchoIntMap, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Map<Int64, String>) tuple(Map<Int64, String>, Error)", runtime.FFIParamIn), Doc: ""},
 }
 
-func SurfaceMapTestLibrary(prefix string, impl MapTest) *surface.Bundle {
+func SurfaceMapTest(impl MapTest) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	routes := make([]runtime.FFIRouteDecl, 0, len(mapTestRoutes))
-	for _, route := range mapTestRoutes {
-		route.PackagePath = prefix
-		route.RouteName = prefix + "." + route.MemberName
-		routes = append(routes, route)
+	if err := schema.AddRouteDecls(mapTestRoutes); err != nil {
+		panic(err)
 	}
-	schema.AddRouteDecls(routes)
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return mapTestHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

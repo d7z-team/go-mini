@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-28
+更新时间: 2026-05-29
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -25,11 +25,12 @@
 - 公开 FFI schema 使用具体 `HostRef<T>`、typed interface schema、`Error` 和 channel endpoint 表达宿主身份、错误与 channel；`Any` 面向纯值数据。
 - VM `Any` slot 使用显式 wrapper 保持 nil 与动态值身份；VM pointer、HostRef、channel 和 module 不能进入 `Any`，FFI Any wire 继续拒绝 VM pointer、HostRef、channel、closure 和 host error/interface handle。
 - MethodID 0 / `Invoke` 用于显式 schema route 与 typed interface method 调用。
-- Runtime FFI surface 以 package/member 索引表达包函数、常量、包值和类型；FFI import 从已绑定 surface 构造 `VMModule`。
-- Compiler 会把已导入外部 surface 写入 bytecode `ExternalRequirements`，bytecode 装载会在执行前校验当前 executor 的函数、常量、包值、类型 schema、方法 route 与 route MethodID。
-- `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过 `FFIRouteDecl` 一次声明 schema route 并由 `RouterBridge + BindSchemaRoutes` 绑定；Go 端 proxy 在显式 `ffigen:proxy` 时生成，`ffigen:global` 生成只读 HostRef package value。
+- Runtime 以统一 module registry 表达源码库和 FFI package；FFI type-only schema 也注册为对应 FFI module 的 type member。module path 是唯一身份，source/FFI 不允许同路径共存，import、reflect 和 requirement 校验只查 registry。
+- Compiler 会把已导入源码库和 FFI package 写入 bytecode `ModuleRequirements`；bytecode 装载会在执行前校验源码 module hash，以及 FFI 函数、常量、包值、类型 schema、方法 route 与 route MethodID。
+- `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过结构化 `FFIRouteDecl` 一次声明 schema route，type method 使用 `TypePackagePath` / `TypeMemberName` 标识 owner，并由 `RouterBridge + BindSchemaRoutes` 绑定；Go 端 proxy 在显式 `ffigen:proxy` 时生成，`ffigen:global` 生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
-- 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
+- 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf` / `reflect`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
+- `reflect` 只读取 Go-Mini runtime / FFI schema metadata，用于 struct 字段、容器值、方法、函数、统一 module registry 包成员和基础 kind introspection；不会调用 Go 原生 `reflect` API。VM 源码 struct/interface 的 runtime identity 使用 `modulePath.Type`，不同模块中的同名同结构类型也不相等，`TypeFrom` 不做未限定短名查找；FFI 函数与 HostRef 类型可被反射，是因为 `ffigen` / surface schema 显式注册了 route/type metadata，FFI type owner 来自结构化 `PackagePath + MemberName` / `reflectspec.Owner`，不从 schema 文本拆分推断。编译期字符串字面量 `reflect.Package` / `TypeFrom` / `Zero` / `MakeMap` 会为已知 FFI package/type 记录 bytecode requirement，动态字符串 lookup 仅做运行期 metadata 查询。reflect API 声明集中在 `core/reflectspec`；`Zero` / `Field` / `Index` / `MapKeys` / `MapIndex` / `MakeMap` / `SetField` / `SetMapIndex` / `Unwrap` 保持 pure-Any 边界，读取 API 返回 snapshot，声明类型和实际值都会校验，空容器不能绕过 unsafe 元素类型，metadata struct 只读，缺失 lookup、嵌套 unknown named type 与不适用 index API 返回零值 metadata 或 `ok=false`。
 - VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用带 VM identity 的 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge identity 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
@@ -44,7 +45,7 @@
 - 纯 VM 模块不提供公开的预编译模块动态注册入口；VM 库只能通过 `surface.Library(...)` 装配，编译主程序时按实际 import 编译并嵌入 bytecode。
 - 纯 VM 源码库的可见成员来自 `ModuleExports` / `PreparedProgram.Exports` 显式导出表，导出范围限定为 ASCII 大写开头的 Go-style exported identifier；runtime `TypeModule` 成员访问读取 `VMModule.Data`。
 - executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再把 prepared module closure 写入主程序 bytecode，避免依赖失败留下半成品执行工件。
-- compiler 将导入的 surface library 写入 bytecode `ExternalRequirements`、`ModuleHashes` 和 `Modules`；runtime 只校验 embedded module hash 并从 `PreparedProgram.Modules` 装载 `PreparedProgram`，不提供动态 module loader。
+- compiler 将导入的 surface library 写入 bytecode `ModuleRequirements`、`ModuleHashes` 和 `Modules`；runtime 只校验 embedded module hash 并从 `PreparedProgram.Modules` 装载 `PreparedProgram`，不提供动态 module loader。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
 - 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验复用 `runtime/internal.Comparable` 的 VM 动态值可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。

@@ -37,6 +37,23 @@ func hostRouterName(typeName string) string {
 	return privateIdent(typeName) + "HostRouter"
 }
 
+func validateSchemaMemberName(member, context string) {
+	member = strings.TrimSpace(member)
+	if member == "" || strings.ContainsAny(member, "./") {
+		panic(fmt.Sprintf("ffigen: %s must be a module-local type/member name, got %q", context, member))
+	}
+}
+
+func emitSchemaAddStruct(sb *strings.Builder, indent, packageExpr, member, varName string) {
+	validateSchemaMemberName(member, "struct schema owner")
+	fmt.Fprintf(sb, "%sif err := schema.AddStruct(%s, %q, %s); err != nil { panic(err) }\n", indent, packageExpr, member, varName)
+}
+
+func emitSchemaAddInterface(sb *strings.Builder, indent, packageExpr, member, varName string) {
+	validateSchemaMemberName(member, "interface schema owner")
+	fmt.Fprintf(sb, "%sif err := schema.AddInterface(%s, %q, %s); err != nil { panic(err) }\n", indent, packageExpr, member, varName)
+}
+
 func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]constBinding, schemas *schemaRegistry, ownedStructs map[string]bool) string {
 	name := spec.Name.Name
 	iface, err := g.flattenInterfaceType(name, spec.Type.(*ast.InterfaceType), interfaces)
@@ -53,19 +70,29 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	if isStruct && methodsPrefix != "" {
 		currentOwned = methodsPrefix
 	}
+	if methodsPrefix != "" {
+		validateSchemaMemberName(methodsPrefix, "ffigen:methods receiver")
+	}
 
 	displayResolver := g.newDisplayTypeResolver(moduleName)
 	displayTypeName := func(typeName string) string { return displayResolver.NormalizeTypeString(typeName) }
 	interfaceSchemaVars := buildInterfaceSchemaVars(interfaceFFI, displayTypeName)
+	interfaceSchemaMembers := make(map[string]string, len(interfaceFFI))
+	for interfaceName := range interfaceFFI {
+		interfaceSchemaMembers[displayTypeName(interfaceName)] = interfaceName
+	}
 	vmType := func(expr ast.Expr) string { return displayResolver.VMType(expr) }
 	funcSpec := generatedFuncSpec(vmType)
 
 	if !isStruct && meta.interfaceMarked {
+		if moduleName == "" {
+			panic(fmt.Sprintf("ffigen:interface %s must declare ffigen:module", name))
+		}
 		interfaceSchemaVar := interfaceSchemaVarName(displayTypeName(name))
 		fmt.Fprintf(&sb, "var %s = runtime.MustParseRuntimeInterfaceSpec(%q)\n\n", interfaceSchemaVar, buildInterfaceSchemaLiteral(iface, funcSpec))
 		fmt.Fprintf(&sb, "func Surface%sSchema() *surface.Bundle {\n", name)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		fmt.Fprintf(&sb, "\tschema.AddInterface(\"%s\", %s)\n", displayTypeName(name), interfaceSchemaVar)
+		emitSchemaAddInterface(&sb, "\t", fmt.Sprintf("%q", moduleName), name, interfaceSchemaVar)
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 		fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurfaceFromSchema(schema)\n")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
@@ -135,7 +162,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		return structSchemaVarName(displayTypeName(structName))
 	}
-	emitStructAdds := func(skip ...string) {
+	emitStructAdds := func(packageExpr string, skip ...string) {
 		skipSet := make(map[string]bool, len(skip))
 		for _, structName := range skip {
 			skipSet[structName] = true
@@ -144,7 +171,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 			if skipSet[structName] {
 				continue
 			}
-			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(structName), structSchemaVar(structName))
+			emitSchemaAddStruct(&sb, "\t", packageExpr, structName, structSchemaVar(structName))
 		}
 	}
 	emitConstAdds := func() {
@@ -158,13 +185,17 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		sort.Strings(keys)
 		for _, key := range keys {
 			c := constants[key]
-			fmt.Fprintf(&sb, "\tschema.AddConst(\"%s\", %q, %s)\n", fixedPrefix, key, constConstructorExpr(c))
+			fmt.Fprintf(&sb, "\tif err := schema.AddConst(%q, %q, %s); err != nil { panic(err) }\n", fixedPrefix, key, constConstructorExpr(c))
 		}
 	}
 	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)
-	emitInterfaceAdds := func() {
+	emitInterfaceAdds := func(packageExpr string) {
 		for _, interfaceName := range referencedInterfaces {
-			fmt.Fprintf(&sb, "\tschema.AddInterface(\"%s\", %s)\n", interfaceName, interfaceSchemaVars[interfaceName])
+			member := interfaceSchemaMembers[interfaceName]
+			if member == "" {
+				panic(fmt.Sprintf("ffigen: interface %s has no structured schema owner", interfaceName))
+			}
+			emitSchemaAddInterface(&sb, "\t", packageExpr, member, interfaceSchemaVars[interfaceName])
 		}
 	}
 
@@ -216,10 +247,10 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		selfVar := selfStructSchemaVar(name)
 		fmt.Fprintf(&sb, "func Surface%s() *surface.Bundle {\n", name)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		fmt.Fprintf(&sb, "\tschema.AddRouteDecls(%s)\n", routeDeclVarName(name))
-		emitStructAdds(name)
-		emitInterfaceAdds()
-		fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(name), selfVar)
+		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { panic(err) }\n", routeDeclVarName(name))
+		emitStructAdds(fmt.Sprintf("%q", moduleName), name)
+		emitInterfaceAdds(fmt.Sprintf("%q", moduleName))
+		emitSchemaAddStruct(&sb, "\t", fmt.Sprintf("%q", moduleName), name, selfVar)
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 		g.writeSchemaRouteBinder(&sb, "\t\t", name, "nil")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
@@ -234,15 +265,15 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		fmt.Fprintf(&sb, "func Surface%s(impl %s) *surface.Bundle {\n", name, implType)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		fmt.Fprintf(&sb, "\tschema.AddRouteDecls(%s)\n", routeDeclVarName(name))
+		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { panic(err) }\n", routeDeclVarName(name))
 		emitConstAdds()
 		if methodsPrefix != "" {
-			emitStructAdds(methodsPrefix)
-			fmt.Fprintf(&sb, "\tschema.AddStruct(\"%s\", %s)\n", displayTypeName(methodsPrefix), selfStructSchemaVar(methodsPrefix))
+			emitStructAdds(fmt.Sprintf("%q", moduleName), methodsPrefix)
+			emitSchemaAddStruct(&sb, "\t", fmt.Sprintf("%q", moduleName), methodsPrefix, selfStructSchemaVar(methodsPrefix))
 		} else {
-			emitStructAdds()
+			emitStructAdds(fmt.Sprintf("%q", moduleName))
 		}
-		emitInterfaceAdds()
+		emitInterfaceAdds(fmt.Sprintf("%q", moduleName))
 		fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 		g.writeSchemaRouteBinder(&sb, "\t\t", name, "impl")
 		fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
@@ -259,9 +290,9 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	fmt.Fprintf(&sb, "\t\troute.RouteName = prefix + \".\" + route.MemberName\n")
 	fmt.Fprintf(&sb, "\t\troutes = append(routes, route)\n")
 	fmt.Fprintf(&sb, "\t}\n")
-	fmt.Fprintf(&sb, "\tschema.AddRouteDecls(routes)\n")
-	emitStructAdds()
-	emitInterfaceAdds()
+	fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(routes); err != nil { panic(err) }\n")
+	emitStructAdds("prefix")
+	emitInterfaceAdds("prefix")
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 	g.writeSchemaRouteBinder(&sb, "\t\t", name, "impl")
 	fmt.Fprintf(&sb, "\t\treturn bound, nil\n")

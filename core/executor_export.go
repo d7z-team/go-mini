@@ -94,36 +94,54 @@ func (e *MiniExecutor) ExportMetadata() string {
 		}
 	}
 
-	for name, spec := range e.interfacesMeta {
-		sName := string(name)
-		if !strings.Contains(sName, ".") {
-			continue
-		}
-		parts := strings.SplitN(sName, ".", 2)
-		getModule(parts[0]).Interfaces[parts[1]] = string(spec.Spec)
-	}
-
-	for routeName, route := range e.routes {
-		sig := e.formatRouteSchema(route)
-		if strings.Contains(routeName, ".") && strings.Count(routeName, ".") == 1 {
-			parts := strings.SplitN(routeName, ".", 2)
-			typeName, methodName := parts[0], parts[1]
-			if _, ok := e.structsMeta[ast.Ident(typeName)]; ok {
-				getStruct("ffi", typeName).Methods[methodName] = sig
+	if e.boundSurface != nil {
+		for path, pkg := range e.boundSurface.Packages {
+			if pkg == nil {
 				continue
 			}
+			mod := getModule(path)
+			for name, member := range pkg.Members {
+				if member == nil {
+					continue
+				}
+				switch member.Kind {
+				case runtime.FFIMemberFunc:
+					if route, ok := e.routes[member.RouteName]; ok {
+						mod.Functions[name] = e.formatRouteSchema(route)
+					}
+				case runtime.FFIMemberConst:
+					mod.Constants[name] = member.Const.DisplayString()
+				case runtime.FFIMemberValue:
+					mod.Values[name] = member.Type.Raw.String()
+				case runtime.FFIMemberType:
+					mod.Types[name] = member.Type.Raw.String()
+				}
+			}
 		}
-
-		if strings.Count(routeName, ".") >= 2 {
-			parts := strings.SplitN(routeName, ".", 3)
-			modName, typeName, methodName := parts[0], parts[1], parts[2]
-			getStruct(modName, typeName).Methods[methodName] = sig
-			continue
-		}
-		if strings.Contains(routeName, ".") {
-			parts := strings.SplitN(routeName, ".", 2)
-			modName, funcName := parts[0], parts[1]
-			getModule(modName).Functions[funcName] = sig
+		if e.boundSurface.Schema != nil {
+			for _, typ := range e.boundSurface.Schema.Types {
+				if typ == nil {
+					continue
+				}
+				pkg, member := typ.PackagePath, typ.MemberName
+				if pkg == "" || member == "" {
+					continue
+				}
+				if typ.Struct != nil {
+					st := getStruct(pkg, member)
+					for _, field := range typ.Struct.Fields {
+						st.Fields[field.Name] = string(field.Type)
+					}
+					for methodName, method := range typ.Methods {
+						if method != nil && method.Sig != nil {
+							st.Methods[methodName] = e.formatSchemaWithDoc(ast.GoMiniType(method.Sig.Spec), method.Doc, method.Sig)
+						}
+					}
+				}
+				if typ.Interface != nil {
+					getModule(pkg).Interfaces[member] = string(typ.Interface.Spec)
+				}
+			}
 		}
 	}
 

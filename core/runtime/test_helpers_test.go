@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -27,6 +28,7 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 	}
 	prepared := &PreparedProgram{
 		Package:          program.Package,
+		ModulePath:       testProgramNamespace(program),
 		Constants:        make(map[string]FFIConstValue, len(program.Constants)),
 		ConstantTypes:    make(map[string]RuntimeType, len(program.ConstantTypes)),
 		NamedTypes:       make(map[string]RuntimeType, len(program.Types)),
@@ -59,31 +61,60 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 		if err != nil {
 			return nil, err
 		}
-		prepared.NamedTypes[string(ident)] = parsed
+		typeName := testQualifiedProgramTypeName(program, ident)
+		prepared.NamedTypes[typeName] = parsed
 	}
 	for ident, stmt := range program.Structs {
 		if stmt == nil {
 			continue
 		}
+		typeName := testQualifiedProgramTypeName(program, ident)
+		if stmt.QualifiedName != "" {
+			typeName = string(stmt.QualifiedName)
+		}
 		fields := make([]ast.StructMemberType, 0, len(stmt.FieldNames))
 		for _, fieldName := range stmt.FieldNames {
 			fields = append(fields, ast.StructMemberType{Name: string(fieldName), Type: stmt.Fields[fieldName]})
 		}
-		spec, err := ParseRuntimeStructSpec(string(ident), StructOwnershipVMValue, ast.CreateStructType(fields))
+		spec, err := ParseRuntimeStructSpec(typeName, StructOwnershipVMValue, ast.CreateStructType(fields))
 		if err != nil {
 			return nil, err
 		}
-		prepared.StructSchemas[string(ident)] = spec
+		for i := range spec.Fields {
+			tag := stmt.FieldTags[ast.Ident(spec.Fields[i].Name)]
+			if tag == "" {
+				continue
+			}
+			spec.Fields[i].Tag = tag
+			if field, ok := spec.ByName[spec.Fields[i].Name]; ok {
+				field.Tag = tag
+				spec.ByName[spec.Fields[i].Name] = field
+			}
+			if i < len(spec.TypeInfo.Fields) {
+				spec.TypeInfo.Fields[i].Tag = tag
+			}
+		}
+		spec.Spec = TypeSpec(typeName)
+		spec.TypeInfo.Raw = TypeSpec(typeName)
+		spec.TypeInfo.TypeID = CanonicalTypeID(typeName)
+		prepared.StructSchemas[typeName] = spec
 	}
 	for ident, stmt := range program.Interfaces {
 		if stmt == nil {
 			continue
 		}
+		typeName := testQualifiedProgramTypeName(program, ident)
+		if stmt.QualifiedName != "" {
+			typeName = string(stmt.QualifiedName)
+		}
 		spec, err := ParseRuntimeInterfaceSpec(stmt.Type)
 		if err != nil {
 			return nil, err
 		}
-		prepared.InterfaceSchemas[string(ident)] = spec
+		spec.TypeID = CanonicalTypeID(typeName)
+		spec.TypeInfo.Raw = TypeSpec(typeName)
+		spec.TypeInfo.TypeID = spec.TypeID
+		prepared.InterfaceSchemas[typeName] = spec
 	}
 	for ident, expr := range program.Variables {
 		kind := MustParseRuntimeType(SpecAny)
@@ -105,6 +136,24 @@ func preparedFromTestProgram(program *ast.ProgramStmt) (*PreparedProgram, error)
 		}
 	}
 	return prepared, ValidatePreparedProgram(prepared)
+}
+
+func testProgramNamespace(program *ast.ProgramStmt) string {
+	if program == nil {
+		return ""
+	}
+	if ns := strings.TrimSpace(program.ModulePath); ns != "" {
+		return ns
+	}
+	return strings.TrimSpace(program.Package)
+}
+
+func testQualifiedProgramTypeName(program *ast.ProgramStmt, ident ast.Ident) string {
+	name := strings.TrimSpace(string(ident))
+	if name == "" || strings.Contains(name, ".") {
+		return name
+	}
+	return string(ast.CreateQualifiedType(testProgramNamespace(program), name))
 }
 
 func parseTestConstLiteral(val string, typ RuntimeType) (FFIConstValue, error) {

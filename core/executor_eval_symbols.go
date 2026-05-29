@@ -199,10 +199,9 @@ func cloneQualifiedStructSpec(modulePath, name string, spec *runtime.RuntimeStru
 	cloned.Name = qualified
 	cloned.TypeID = runtime.CanonicalTypeID(qualified)
 	cloned.Spec = runtime.TypeSpec(qualified)
-	if typ, err := runtime.ParseRuntimeType(runtime.TypeSpec(qualified)); err == nil {
-		cloned.TypeInfo = typ
-		cloned.TypeInfo.Fields = append([]runtime.RuntimeStructField(nil), cloned.Fields...)
-	}
+	cloned.TypeInfo.Raw = runtime.TypeSpec(qualified)
+	cloned.TypeInfo.TypeID = cloned.TypeID
+	cloned.TypeInfo.Fields = append([]runtime.RuntimeStructField(nil), cloned.Fields...)
 	return cloned
 }
 
@@ -216,10 +215,7 @@ func cloneQualifiedInterfaceSpec(modulePath, name string, spec *runtime.RuntimeI
 		return cloned
 	}
 	cloned.TypeID = runtime.CanonicalTypeID(qualified)
-	cloned.Spec = runtime.TypeSpec(qualified)
-	if typ, err := runtime.ParseRuntimeType(runtime.TypeSpec(qualified)); err == nil {
-		cloned.TypeInfo = typ
-		cloned.TypeInfo.Methods = append([]runtime.RuntimeInterfaceMethod(nil), cloned.Methods...)
-	}
+	cloned.TypeInfo.Raw = runtime.TypeSpec(qualified)
+	cloned.TypeInfo.TypeID = cloned.TypeID
 	return cloned
 }

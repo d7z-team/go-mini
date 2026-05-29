@@ -126,27 +126,27 @@ func (v FFIConstValue) Hash() string {
 		if v.Int64 != nil {
 			var buf [8]byte
 			binary.LittleEndian.PutUint64(buf[:], uint64(*v.Int64))
-			return VersionedExternalRequirementHash("const-value", v.Type.String(), hex.EncodeToString(buf[:]))
+			return VersionedModuleRequirementHash("const-value", v.Type.String(), hex.EncodeToString(buf[:]))
 		}
 	case SpecFloat64:
 		if v.Float64 != nil {
 			var buf [8]byte
 			binary.LittleEndian.PutUint64(buf[:], math.Float64bits(*v.Float64))
-			return VersionedExternalRequirementHash("const-value", v.Type.String(), hex.EncodeToString(buf[:]))
+			return VersionedModuleRequirementHash("const-value", v.Type.String(), hex.EncodeToString(buf[:]))
 		}
 	case SpecString:
 		if v.String != nil {
-			return VersionedExternalRequirementHash("const-value", v.Type.String(), *v.String)
+			return VersionedModuleRequirementHash("const-value", v.Type.String(), *v.String)
 		}
 	case SpecBool:
 		if v.Bool != nil {
 			if *v.Bool {
-				return VersionedExternalRequirementHash("const-value", v.Type.String(), "1")
+				return VersionedModuleRequirementHash("const-value", v.Type.String(), "1")
 			}
-			return VersionedExternalRequirementHash("const-value", v.Type.String(), "0")
+			return VersionedModuleRequirementHash("const-value", v.Type.String(), "0")
 		}
 	}
-	return VersionedExternalRequirementHash("const-value", v.Type.String(), "")
+	return VersionedModuleRequirementHash("const-value", v.Type.String(), "")
 }
 
 func cloneFFIConstValueMap(in map[string]FFIConstValue) map[string]FFIConstValue {

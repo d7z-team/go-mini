@@ -196,6 +196,7 @@ type RuntimeFuncSig struct {
 type RuntimeStructField struct {
 	Name string
 	Type TypeSpec
+	Tag  string
 
 	TypeInfo RuntimeType
 }

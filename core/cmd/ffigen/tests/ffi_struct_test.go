@@ -18,6 +18,7 @@ type Rect struct {
 	B Point
 }
 
+// ffigen:module shape
 type MockShapeAPI interface {
 	GetRect() Rect
 	Area(r Rect) int64
@@ -33,10 +34,10 @@ func (m *MockShapeHost) Area(r Rect) int64 {
 	return (r.B.X - r.A.X) * (r.B.Y - r.A.Y)
 }
 
-func TestFFIStruct(t *testing.T) {
+func TestFFIStructRoundTrip(t *testing.T) {
 	impl := &MockShapeHost{}
 	executor := engine.MustNewMiniExecutor()
-	if err := executor.UseSurface(SurfaceMockShapeAPILibrary("shape", impl)); err != nil {
+	if err := executor.UseSurface(SurfaceMockShapeAPI(impl)); err != nil {
 		t.Fatal(err)
 	}
 

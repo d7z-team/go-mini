@@ -9,7 +9,6 @@ import (
 	engine "gopkg.d7z.net/go-mini/core"
 )
 
-// CoverageMockOS 实现了复杂的 OS 接口用于测试覆盖率
 type CoverageMockOS struct {
 	LastBuffer []byte
 }
@@ -51,7 +50,7 @@ func (m *CoverageMockOS) Deep(n Nested) Nested {
 	return n
 }
 
-func TestFFICoverage(t *testing.T) {
+func TestGeneratedRouterReadsAndWritesBytes(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	mock := &CoverageMockOS{}
@@ -64,7 +63,6 @@ func TestFFICoverage(t *testing.T) {
 	import "os"
 
 	func main() {
-		// 1. 测试读写
 		h2, err := os.Open("test.txt")
 		if err != nil { panic(err) }
 
@@ -94,7 +92,7 @@ func TestFFICoverage(t *testing.T) {
 	}
 }
 
-func TestFFIErrorPropagation(t *testing.T) {
+func TestGeneratedRouterPropagatesHostErrors(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	mock := &CoverageMockOS{}
 	if err := executor.UseSurface(SurfaceMockOS(mock)); err != nil {

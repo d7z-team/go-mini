@@ -98,6 +98,7 @@ func (a writerAdapter) Write(p []byte) (int, error) {
 }
 
 // File 是文件句柄 (包装 *os.File)
+// ffigen:module io
 // ffigen:methods
 type File struct {
 	F *os.File

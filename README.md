@@ -8,7 +8,7 @@ Go-Mini is a Go-like scripting engine for embedding, bytecode execution, and sch
 - Bytecode-first compile and execution flow
 - Embeddable Go API
 - Schema-based FFI with generated bindings
-- Language support for functions, structs, interfaces, channels, select, errors, and modules
+- Language support for functions, structs, interfaces, channels, select, errors, schema-backed reflect, and modules
 - Optional standard-library FFI surface for packages such as `fmt`, `time`, `context`, `io`, and `os`
 - CLI examples and LSP helper APIs
 

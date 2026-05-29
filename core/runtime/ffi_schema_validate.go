@@ -102,6 +102,31 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 	if schema == nil {
 		return nil
 	}
+	if schema.err != nil {
+		return schema.err
+	}
+	packageByPath := func(path string) *FFIPackageSchema {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return nil
+		}
+		if pkg := schema.Packages[path]; pkg != nil {
+			return pkg
+		}
+		for key, pkg := range schema.Packages {
+			if pkg == nil {
+				continue
+			}
+			pkgPath := pkg.Path
+			if pkgPath == "" {
+				pkgPath = key
+			}
+			if pkgPath == path {
+				return pkg
+			}
+		}
+		return nil
+	}
 	for pkgPath, pkg := range schema.Packages {
 		if pkg == nil {
 			continue
@@ -114,7 +139,7 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 			if member == nil {
 				continue
 			}
-			name := ExternalFullName(path, memberName)
+			name := QualifiedMemberName(path, memberName)
 			switch member.Kind {
 			case FFIMemberFunc:
 				route := FFIRoute{Name: name}
@@ -143,12 +168,36 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 				if err := member.Const.Value.Validate(); err != nil {
 					return fmt.Errorf("FFI constant %s invalid: %w", name, err)
 				}
+			case FFIMemberType:
+				if member.Type == nil {
+					return fmt.Errorf("FFI type member %s missing schema", name)
+				}
+				if member.Type.PackagePath != path || member.Type.MemberName != memberName {
+					return fmt.Errorf("FFI type member %s owner mismatch", name)
+				}
+				typeName := member.Type.Name
+				if typeName == "" {
+					typeName = QualifiedMemberName(member.Type.PackagePath, member.Type.MemberName)
+				}
+				if typ := schema.Types[typeName]; typ == nil {
+					return fmt.Errorf("FFI type member %s references missing type schema %s", name, typeName)
+				}
 			}
 		}
 	}
-	for name, typ := range schema.Types {
+	for mapName, typ := range schema.Types {
 		if typ == nil {
 			continue
+		}
+		name := typ.CanonicalName()
+		if name == "" {
+			return fmt.Errorf("FFI type schema %s missing owner", mapName)
+		}
+		if typ.Name != "" && typ.Name != name {
+			return fmt.Errorf("FFI type schema %s name mismatch: %s", name, typ.Name)
+		}
+		if pkg := packageByPath(typ.PackagePath); pkg == nil || pkg.Members[typ.MemberName] == nil || pkg.Members[typ.MemberName].Kind != FFIMemberType {
+			return fmt.Errorf("FFI type schema %s missing package type member", name)
 		}
 		if err := CheckPublicFFIStructSchema(name, typ.Struct); err != nil {
 			return err
@@ -157,7 +206,7 @@ func CheckPublicFFISurfaceSchema(schema *FFISurfaceSchema) error {
 			return err
 		}
 		for methodName, method := range typ.Methods {
-			routeName := ExternalFullName(name, methodName)
+			routeName := QualifiedMemberName(name, methodName)
 			route := FFIRoute{Name: routeName}
 			if method != nil {
 				route.Name = method.RouteName

@@ -39,6 +39,7 @@ func ImportLocationKey(file, alias string) string {
 type ProgramStmt struct {
 	BaseNode      `json:",inline"`
 	Package       string                   `json:"package,omitempty"` // 包名，默认为main
+	ModulePath    string                   `json:"module_path,omitempty"`
 	Imports       []ImportSpec             `json:"imports,omitempty"` // 导入列表
 	Constants     map[string]string        `json:"constants"`         // 常量表
 	ConstantTypes map[string]GoMiniType    `json:"constant_types,omitempty"`
@@ -55,15 +56,20 @@ type ProgramStmt struct {
 
 // InterfaceStmt 表示接口定义
 type InterfaceStmt struct {
-	BaseNode `json:",inline"`
-	Name     Ident      `json:"name"`
-	Type     GoMiniType `json:"type"` // "interface{...}"
+	BaseNode      `json:",inline"`
+	Name          Ident      `json:"name"`
+	QualifiedName Ident      `json:"qualified_name,omitempty"`
+	Type          GoMiniType `json:"type"` // "interface{...}"
 }
 
 func (i *InterfaceStmt) GetBase() *BaseNode { return &i.BaseNode }
 func (i *InterfaceStmt) stmtNode()          {}
 
-func (i *InterfaceStmt) Check(_ *SemanticContext) error {
+func (i *InterfaceStmt) Check(ctx *SemanticContext) error {
+	if ctx != nil {
+		i.QualifiedName = ctx.QualifiedTypeName(i.Name)
+		i.Type = i.Type.Resolve(ctx.ValidContext)
+	}
 	return i.Type.ValidateCanonical()
 }
 
@@ -93,6 +99,9 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	for ident, t := range p.Types {
+		t = t.Resolve(ctx.ValidContext)
+		p.Types[ident] = t
+		ctx.root.types[ident] = t
 		if err := t.ValidateCanonical(); err != nil {
 			ctx.AddErrorf("type %s has %s", ident, err.Error())
 			hasError = true
@@ -128,6 +137,7 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	}
 
 	// 第二遍：预注册所有函数签名
+	normalizedFunctions := make(map[Ident]*FunctionStmt, len(p.Functions))
 	for name, function := range p.Functions {
 		if function == nil {
 			ctx.AddErrorf("function %s is nil", name)
@@ -139,7 +149,15 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 			ctx.AddErrorf("function %s pre-registration failed", name)
 			hasError = true
 		}
+		key := function.RegistryName()
+		if existing := normalizedFunctions[key]; existing != nil && existing != function {
+			ctx.AddErrorf("duplicate function definition: %s", key)
+			hasError = true
+			continue
+		}
+		normalizedFunctions[key] = function
 	}
+	p.Functions = normalizedFunctions
 	for _, stmt := range p.Main {
 		if stmt == nil {
 			continue
@@ -150,6 +168,13 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 				ctx.AddErrorf("function %s pre-registration failed", f.Name)
 				hasError = true
 			}
+			key := f.RegistryName()
+			if existing := p.Functions[key]; existing != nil && existing != f {
+				ctx.AddErrorf("duplicate function definition: %s", key)
+				hasError = true
+				continue
+			}
+			p.Functions[key] = f
 		}
 	}
 
@@ -225,6 +250,18 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 		}
 		logCount := ctx.LogCount()
 		if err := structDef.Check(ctx); ForwardStructuredError(ctx, structDef, logCount, err) {
+			hasError = true
+		}
+	}
+
+	for name, iface := range p.Interfaces {
+		if iface == nil {
+			ctx.AddErrorf("interface %s is nil", name)
+			hasError = true
+			continue
+		}
+		logCount := ctx.LogCount()
+		if err := iface.Check(ctx); ForwardStructuredError(ctx, iface, logCount, err) {
 			hasError = true
 		}
 	}
@@ -1813,7 +1850,12 @@ func (f *FunctionStmt) PreRegister(ctx *ValidContext) (*ValidStruct, bool) {
 
 	// 首先检查 ReceiverType 字段
 	if f.ReceiverType != "" {
-		st, ok := ctx.root.structs[f.ReceiverType]
+		receiver := GoMiniType(f.ReceiverType).Resolve(ctx)
+		if elem, ok := receiver.GetPtrElementType(); ok {
+			receiver = elem
+		}
+		f.ReceiverType = Ident(receiver)
+		st, ok := ctx.GetStruct(Ident(receiver))
 		if ok {
 			structType = st
 			isMethod = true
@@ -2806,11 +2848,13 @@ func (c *CatchClause) Optimize(ctx *OptimizeContext) Node { return c }
 // StructStmt 所有 struct 都注册到全局
 type StructStmt struct {
 	BaseNode
-	Name       Ident                `json:"name"`
-	Fields     map[Ident]GoMiniType `json:"fields"`
-	FieldNames []Ident              `json:"field_names,omitempty"`
-	FieldLocs  map[Ident]*Position  `json:"field_locs,omitempty"`
-	Doc        string               `json:"doc,omitempty"`
+	Name          Ident                `json:"name"`
+	QualifiedName Ident                `json:"qualified_name,omitempty"`
+	Fields        map[Ident]GoMiniType `json:"fields"`
+	FieldNames    []Ident              `json:"field_names,omitempty"`
+	FieldLocs     map[Ident]*Position  `json:"field_locs,omitempty"`
+	FieldTags     map[Ident]string     `json:"field_tags,omitempty"`
+	Doc           string               `json:"doc,omitempty"`
 }
 
 // PreRegister 预注册结构体 (用于支持相互引用)
@@ -2818,22 +2862,30 @@ func (s *StructStmt) PreRegister(ctx *ValidContext) bool {
 	if !s.Name.Valid(ctx) {
 		return false
 	}
+	s.QualifiedName = ctx.QualifiedTypeName(s.Name)
+	registryName := s.QualifiedName
+	if registryName == "" {
+		registryName = s.Name
+	}
 
 	// 提前注册一个空结构体，以支持自引用或循环引用
-	if v, ok := ctx.root.structs[s.Name]; ok {
+	if v, ok := ctx.root.structs[registryName]; ok {
 		// 检查是否已经定义了字段 (如果是 PreRegister 占位，Fields 通常为空)
 		if len(v.Fields) > 0 || len(v.Methods) > 0 {
 			ctx.AddErrorf("struct %s 已被定义", s.Name)
 			return false
 		}
+		ctx.root.structs[s.Name] = v
 		return true
 	}
 
-	ctx.root.structs[s.Name] = &ValidStruct{
+	vStru := &ValidStruct{
 		Fields:    make(map[Ident]GoMiniType),
 		Methods:   make(map[Ident]CallFunctionType),
 		Ownership: StructOwnershipVMValue,
 	}
+	ctx.root.structs[registryName] = vStru
+	ctx.root.structs[s.Name] = vStru
 	return true
 }
 
@@ -2841,7 +2893,14 @@ func (s *StructStmt) GetBase() *BaseNode { return &s.BaseNode }
 func (s *StructStmt) stmtNode()          {}
 
 func (s *StructStmt) Check(ctx *SemanticContext) error {
-	if v, ok := ctx.root.structs[s.Name]; ok {
+	if s.QualifiedName == "" {
+		s.QualifiedName = ctx.QualifiedTypeName(s.Name)
+	}
+	registryName := s.QualifiedName
+	if registryName == "" {
+		registryName = s.Name
+	}
+	if v, ok := ctx.root.structs[registryName]; ok {
 		if v.Defined {
 			err := fmt.Errorf("struct %s 已被定义", s.Name)
 			ctx.AddErrorf("%s", err.Error())
@@ -2879,12 +2938,13 @@ func (s *StructStmt) Check(ctx *SemanticContext) error {
 		}
 	}
 
-	if err := ctx.AddStructDefine(s.Name, s.Fields); err != nil {
+	if err := ctx.AddStructDefine(registryName, s.Fields); err != nil {
 		err2 := fmt.Errorf("定义struct失败: %v", err)
 		ctx.AddErrorf("%s", err2.Error())
 		return err2
 	}
-	ctx.root.structs[s.Name].Defined = true
+	ctx.root.structs[registryName].Defined = true
+	ctx.root.structs[s.Name] = ctx.root.structs[registryName]
 
 	if hasError {
 		return errors.New("struct validation failed")

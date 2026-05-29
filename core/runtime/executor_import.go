@@ -90,6 +90,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	modExecutor.ffiChannels = e.channelRegistry()
 	modExecutor.embeddedModules = e.embeddedModules
 	modExecutor.moduleHashes = cloneStringMap(e.moduleHashes)
+	modExecutor.modules = e.modules
 	for name, value := range e.consts {
 		if _, exists := modExecutor.consts[name]; !exists {
 			modExecutor.consts[name] = value
@@ -113,7 +114,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 			modExecutor.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
 		}
 	}
-	if err := modExecutor.ValidateExternalRequirements(); err != nil {
+	if err := modExecutor.ValidateModuleRequirements(); err != nil {
 		return err
 	}
 	modExecutor.scheduler = e.scheduler

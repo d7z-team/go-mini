@@ -94,6 +94,7 @@ type Point struct { X Int64 }
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 
 	mainCode := `package main
 import "my/math"
@@ -260,6 +261,7 @@ func Add(a Int64, b Int64) Int64 { return a + b }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 
 	mainCode := `package main
 func main() {
@@ -304,6 +306,7 @@ func Add(a Int64, b Int64) Int64 { return a + b }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 
 	mainCode := `package main
 func main() {
@@ -333,7 +336,7 @@ func main() {
 	}
 }
 
-func TestImportedRootPathCompletionWithoutExplicitImport(t *testing.T) {
+func TestImportedRootPathCompletionRequiresExplicitImport(t *testing.T) {
 	conv := gofrontend.NewConverter()
 
 	// 模拟已加载但未导入的子模块，路径带有层级
@@ -344,6 +347,7 @@ func Add(a Int64, b Int64) Int64 { return a + b }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 
 	mainCode := `package main
 func main() {
@@ -376,8 +380,8 @@ func main() {
 		}
 	}
 
-	if !foundAdd {
-		t.Errorf("Expected 'Add' in completions for 'my/math' package accessed as 'math', but got: %+v", completions)
+	if foundAdd {
+		t.Errorf("unexpected completion for non-imported module path alias: %+v", completions)
 	}
 }
 
@@ -392,6 +396,7 @@ func Add(a Int64, b Int64) Int64 { return a + b }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 
 	mainCode := `package main
 func main() {
@@ -543,6 +548,7 @@ func NewPoint(x Int64, y Int64) Point { return Point{X: x, Y: y} }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
 		t.Fatalf("sub module check failed: %v", err)
@@ -590,6 +596,7 @@ func SplitPoint() (Point, Bool) { return Point{X: 1, Y: 2}, true }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
@@ -636,6 +643,7 @@ func MakeAlias() PointAlias { return PointAlias{X: 1, Y: 2} }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 
@@ -684,6 +692,7 @@ func Factory() Builder { return BuilderImpl{} }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
 		t.Fatalf("sub module check failed: %v", err)

@@ -993,11 +993,11 @@ func isCanonicalModulePathType(s string) bool {
 		return false
 	}
 	for _, seg := range strings.Split(path, "/") {
-		if seg == "" || strings.Contains(seg, ".") {
+		if seg == "" || strings.HasPrefix(seg, ".") || strings.HasSuffix(seg, ".") || strings.Contains(seg, "..") {
 			return false
 		}
 		for _, ch := range seg {
-			if !isIdentChar(ch) && ch != '-' {
+			if !isIdentChar(ch) && ch != '-' && ch != '.' {
 				return false
 			}
 		}

@@ -67,9 +67,19 @@ func hostErrorSurface() *surface.Bundle {
 
 	sig := runtime.MustRuntimeFuncSig(runtime.SpecError, false)
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddFunc("hosterr", "Target", "hosterr.Target", 1, sig, "")
-	schema.AddFunc("hosterr", "Wrapped", "hosterr.Wrapped", 2, sig, "")
-	schema.AddFunc("hosterr", "Other", "hosterr.Other", 3, sig, "")
+	for _, route := range []struct {
+		member   string
+		route    string
+		methodID uint32
+	}{
+		{"Target", "hosterr.Target", 1},
+		{"Wrapped", "hosterr.Wrapped", 2},
+		{"Other", "hosterr.Other", 3},
+	} {
+		if err := schema.AddFunc("hosterr", route.member, route.route, route.methodID, sig, ""); err != nil {
+			return &surface.Bundle{Err: err}
+		}
+	}
 	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurface(schema)
 		bound.AddRoute("hosterr", "Target", runtime.FFIRoute{Name: "hosterr.Target", Bridge: bridge, MethodID: 1, FuncSig: sig})

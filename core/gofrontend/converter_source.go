@@ -117,6 +117,7 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 	}
 	if f != nil {
 		program.Package = f.Name.Name
+		program.ModulePath = program.Package
 	}
 
 	for _, imported := range importDecls {

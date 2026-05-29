@@ -82,7 +82,9 @@ var testCanonicalServiceRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceTestCanonicalService(impl TestCanonicalService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(testCanonicalServiceRoutes)
+	if err := schema.AddRouteDecls(testCanonicalServiceRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return testCanonicalServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -133,13 +135,17 @@ func aTypeServiceHostRouter(ctx context.Context, impl ATypeService, registry *ff
 }
 
 var aTypeServiceRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "a_other.Type", MethodName: "Hello", RouteName: "a_other.Type.Hello", MethodID: methodIDATypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<a_other.Type>) String", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "a_other", TypeMemberName: "Type", MethodName: "Hello", RouteName: "a_other.Type.Hello", MethodID: methodIDATypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<a_other.Type>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceATypeService(impl ATypeService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(aTypeServiceRoutes)
-	schema.AddStruct("a_other.Type", a_other_Type_FFI_StructSchema)
+	if err := schema.AddRouteDecls(aTypeServiceRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("a_other", "Type", a_other_Type_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return aTypeServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -190,13 +196,17 @@ func bTypeServiceHostRouter(ctx context.Context, impl BTypeService, registry *ff
 }
 
 var bTypeServiceRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "b_other.Type", MethodName: "Hello", RouteName: "b_other.Type.Hello", MethodID: methodIDBTypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<b_other.Type>) String", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "b_other", TypeMemberName: "Type", MethodName: "Hello", RouteName: "b_other.Type.Hello", MethodID: methodIDBTypeServiceHello, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<b_other.Type>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceBTypeService(impl BTypeService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(bTypeServiceRoutes)
-	schema.AddStruct("b_other.Type", b_other_Type_FFI_StructSchema)
+	if err := schema.AddRouteDecls(bTypeServiceRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("b_other", "Type", b_other_Type_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return bTypeServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

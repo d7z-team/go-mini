@@ -29,11 +29,11 @@ func (h *MapTestHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[i
 	return m, nil
 }
 
-func TestFFIMap(t *testing.T) {
+func TestFFIMapRoundTrip(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	host := &MapTestHost{}
 
-	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {
+	if err := executor.UseSurface(SurfaceMapTest(host)); err != nil {
 		t.Fatal(err)
 	}
 

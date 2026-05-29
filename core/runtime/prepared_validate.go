@@ -95,23 +95,29 @@ func validatePreparedProgram(plan *PreparedProgram, depth int, stack map[*Prepar
 			return fmt.Errorf("embedded module hash %s targets missing module", path)
 		}
 	}
-	for i, req := range plan.ExternalRequirements {
-		pkg := req.PackagePath
+	for i, req := range plan.ModuleRequirements {
+		pkg := req.Path
 		member := req.MemberName
 		if strings.TrimSpace(pkg) == "" {
-			return fmt.Errorf("external requirement %d missing package", i)
+			return fmt.Errorf("module requirement %d missing path", i)
 		}
-		if req.Kind != FFIMemberModule && strings.TrimSpace(member) == "" && req.TypeName == "" {
-			return fmt.Errorf("external requirement %d missing member", i)
+		if req.Kind == ModuleKindFFI && strings.TrimSpace(member) == "" {
+			return fmt.Errorf("module requirement %d missing member", i)
 		}
 		switch req.Kind {
-		case FFIMemberFunc, FFIMemberConst, FFIMemberValue, FFIMemberType, FFIMemberModule:
+		case ModuleKindSource:
+		case ModuleKindFFI:
+			switch req.MemberKind {
+			case FFIMemberFunc, FFIMemberConst, FFIMemberValue, FFIMemberType:
+			default:
+				return fmt.Errorf("module requirement %d has invalid ffi member kind %s", i, req.MemberKind)
+			}
 		default:
-			return fmt.Errorf("external requirement %d has invalid kind %s", i, req.Kind)
+			return fmt.Errorf("module requirement %d has invalid kind %s", i, req.Kind)
 		}
 		if !req.Type.IsEmpty() {
 			if err := req.Type.ValidateCanonical(); err != nil {
-				return fmt.Errorf("external requirement %d type: %w", i, err)
+				return fmt.Errorf("module requirement %d type: %w", i, err)
 			}
 		}
 	}
@@ -157,7 +163,11 @@ func validatePreparedProgram(plan *PreparedProgram, depth int, stack map[*Prepar
 		if err := validatePreparedFunctionReceiver(name, fn); err != nil {
 			return err
 		}
-		if err := validatePreparedMethodConflict(plan.Package, name, fn, methodBindings); err != nil {
+		methodPackage := plan.ModulePath
+		if methodPackage == "" {
+			methodPackage = plan.Package
+		}
+		if err := validatePreparedMethodConflict(methodPackage, name, fn, methodBindings); err != nil {
 			return err
 		}
 		if err := validatePreparedTaskPlan("function "+name, fn.BodyTasks, 0); err != nil {

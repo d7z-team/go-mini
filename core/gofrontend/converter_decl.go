@@ -2,6 +2,7 @@ package gofrontend
 
 import (
 	"go/ast"
+	"strconv"
 
 	miniast "gopkg.d7z.net/go-mini/core/ast"
 )
@@ -77,16 +78,29 @@ func (c *Converter) convertStruct(name string, s *ast.StructType, loc *miniast.P
 		Name:      miniast.Ident(name),
 		Fields:    make(map[miniast.Ident]miniast.GoMiniType),
 		FieldLocs: make(map[miniast.Ident]*miniast.Position),
+		FieldTags: make(map[miniast.Ident]string),
 		Doc:       doc,
 	}
 	for _, field := range s.Fields.List {
 		typeName := c.typeToString(field.Type)
+		tag := ""
+		if field.Tag != nil {
+			if unquoted, err := strconv.Unquote(field.Tag.Value); err == nil {
+				tag = unquoted
+			}
+		}
 		for _, fieldName := range field.Names {
 			ident := miniast.Ident(fieldName.Name)
 			res.Fields[ident] = miniast.GoMiniType(typeName)
 			res.FieldNames = append(res.FieldNames, ident)
 			res.FieldLocs[ident] = c.extractLoc(fieldName)
+			if tag != "" {
+				res.FieldTags[ident] = tag
+			}
 		}
+	}
+	if len(res.FieldTags) == 0 {
+		res.FieldTags = nil
 	}
 	return res
 }

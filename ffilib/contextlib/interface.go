@@ -14,6 +14,7 @@ type Module interface {
 	NewTimer(ctx context.Context, ns int64) *Timer
 }
 
+// ffigen:module context/internal
 // ffigen:methods
 type Timer struct {
 	impl *timerState

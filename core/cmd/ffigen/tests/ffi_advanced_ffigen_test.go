@@ -136,9 +136,15 @@ var advancedFFIRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceAdvancedFFI(impl AdvancedFFI) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(advancedFFIRoutes)
-	schema.AddStruct("test.TestObj", test_TestObj_FFI_StructSchema)
-	schema.AddStruct("test.EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema)
+	if err := schema.AddRouteDecls(advancedFFIRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("test", "TestObj", test_TestObj_FFI_StructSchema); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("test", "EmbeddedStruct", test_EmbeddedStruct_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return advancedFFIHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

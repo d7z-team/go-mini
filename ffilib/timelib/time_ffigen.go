@@ -199,25 +199,63 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(moduleRoutes)
-	schema.AddConst("time", "ANSIC", runtime.ConstString(string(time.ANSIC)))
-	schema.AddConst("time", "Hour", runtime.ConstInt64(int64(time.Hour)))
-	schema.AddConst("time", "Kitchen", runtime.ConstString(string(time.Kitchen)))
-	schema.AddConst("time", "Layout", runtime.ConstString(string(time.Layout)))
-	schema.AddConst("time", "Microsecond", runtime.ConstInt64(int64(time.Microsecond)))
-	schema.AddConst("time", "Millisecond", runtime.ConstInt64(int64(time.Millisecond)))
-	schema.AddConst("time", "Minute", runtime.ConstInt64(int64(time.Minute)))
-	schema.AddConst("time", "Nanosecond", runtime.ConstInt64(int64(time.Nanosecond)))
-	schema.AddConst("time", "RFC1123", runtime.ConstString(string(time.RFC1123)))
-	schema.AddConst("time", "RFC1123Z", runtime.ConstString(string(time.RFC1123Z)))
-	schema.AddConst("time", "RFC3339", runtime.ConstString(string(time.RFC3339)))
-	schema.AddConst("time", "RFC3339Nano", runtime.ConstString(string(time.RFC3339Nano)))
-	schema.AddConst("time", "RFC822", runtime.ConstString(string(time.RFC822)))
-	schema.AddConst("time", "RFC822Z", runtime.ConstString(string(time.RFC822Z)))
-	schema.AddConst("time", "RFC850", runtime.ConstString(string(time.RFC850)))
-	schema.AddConst("time", "RubyDate", runtime.ConstString(string(time.RubyDate)))
-	schema.AddConst("time", "Second", runtime.ConstInt64(int64(time.Second)))
-	schema.AddConst("time", "UnixDate", runtime.ConstString(string(time.UnixDate)))
+	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "ANSIC", runtime.ConstString(string(time.ANSIC))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Hour", runtime.ConstInt64(int64(time.Hour))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Kitchen", runtime.ConstString(string(time.Kitchen))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Layout", runtime.ConstString(string(time.Layout))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Microsecond", runtime.ConstInt64(int64(time.Microsecond))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Millisecond", runtime.ConstInt64(int64(time.Millisecond))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Minute", runtime.ConstInt64(int64(time.Minute))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Nanosecond", runtime.ConstInt64(int64(time.Nanosecond))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC1123", runtime.ConstString(string(time.RFC1123))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC1123Z", runtime.ConstString(string(time.RFC1123Z))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC3339", runtime.ConstString(string(time.RFC3339))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC3339Nano", runtime.ConstString(string(time.RFC3339Nano))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC822", runtime.ConstString(string(time.RFC822))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC822Z", runtime.ConstString(string(time.RFC822Z))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RFC850", runtime.ConstString(string(time.RFC850))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "RubyDate", runtime.ConstString(string(time.RubyDate))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "Second", runtime.ConstInt64(int64(time.Second))); err != nil {
+		panic(err)
+	}
+	if err := schema.AddConst("time", "UnixDate", runtime.ConstString(string(time.UnixDate))); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -701,31 +739,35 @@ func timeHostRouter(ctx context.Context, impl *Time, registry *ffigo.HandleRegis
 }
 
 var timeRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "time.Time", MethodName: "Year", RouteName: "time.Time.Year", MethodID: methodIDTimeYear, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Month", RouteName: "time.Time.Month", MethodID: methodIDTimeMonth, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Day", RouteName: "time.Time.Day", MethodID: methodIDTimeDay, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Hour", RouteName: "time.Time.Hour", MethodID: methodIDTimeHour, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Minute", RouteName: "time.Time.Minute", MethodID: methodIDTimeMinute, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Second", RouteName: "time.Time.Second", MethodID: methodIDTimeSecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Nanosecond", RouteName: "time.Time.Nanosecond", MethodID: methodIDTimeNanosecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Unix", RouteName: "time.Time.Unix", MethodID: methodIDTimeUnix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "UnixMilli", RouteName: "time.Time.UnixMilli", MethodID: methodIDTimeUnixMilli, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "UnixMicro", RouteName: "time.Time.UnixMicro", MethodID: methodIDTimeUnixMicro, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "UnixNano", RouteName: "time.Time.UnixNano", MethodID: methodIDTimeUnixNano, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Format", RouteName: "time.Time.Format", MethodID: methodIDTimeFormat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Add", RouteName: "time.Time.Add", MethodID: methodIDTimeAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Sub", RouteName: "time.Time.Sub", MethodID: methodIDTimeSub, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "IsZero", RouteName: "time.Time.IsZero", MethodID: methodIDTimeIsZero, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Bool", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Before", RouteName: "time.Time.Before", MethodID: methodIDTimeBefore, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "After", RouteName: "time.Time.After", MethodID: methodIDTimeAfter, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "Equal", RouteName: "time.Time.Equal", MethodID: methodIDTimeEqual, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "time.Time", MethodName: "String", RouteName: "time.Time.String", MethodID: methodIDTimeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) String", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Year", RouteName: "time.Time.Year", MethodID: methodIDTimeYear, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Month", RouteName: "time.Time.Month", MethodID: methodIDTimeMonth, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Day", RouteName: "time.Time.Day", MethodID: methodIDTimeDay, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Hour", RouteName: "time.Time.Hour", MethodID: methodIDTimeHour, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Minute", RouteName: "time.Time.Minute", MethodID: methodIDTimeMinute, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Second", RouteName: "time.Time.Second", MethodID: methodIDTimeSecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Nanosecond", RouteName: "time.Time.Nanosecond", MethodID: methodIDTimeNanosecond, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Unix", RouteName: "time.Time.Unix", MethodID: methodIDTimeUnix, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "UnixMilli", RouteName: "time.Time.UnixMilli", MethodID: methodIDTimeUnixMilli, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "UnixMicro", RouteName: "time.Time.UnixMicro", MethodID: methodIDTimeUnixMicro, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "UnixNano", RouteName: "time.Time.UnixNano", MethodID: methodIDTimeUnixNano, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Format", RouteName: "time.Time.Format", MethodID: methodIDTimeFormat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Add", RouteName: "time.Time.Add", MethodID: methodIDTimeAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, Int64) HostRef<time.Time>", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Sub", RouteName: "time.Time.Sub", MethodID: methodIDTimeSub, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "IsZero", RouteName: "time.Time.IsZero", MethodID: methodIDTimeIsZero, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) Bool", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Before", RouteName: "time.Time.Before", MethodID: methodIDTimeBefore, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "After", RouteName: "time.Time.After", MethodID: methodIDTimeAfter, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "Equal", RouteName: "time.Time.Equal", MethodID: methodIDTimeEqual, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>, HostRef<time.Time>) Bool", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "time", TypeMemberName: "Time", MethodName: "String", RouteName: "time.Time.String", MethodID: methodIDTimeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<time.Time>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTime() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(timeRoutes)
-	schema.AddStruct("time.Time", time_Time_FFI_StructSchema)
+	if err := schema.AddRouteDecls(timeRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("time", "Time", time_Time_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return timeHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

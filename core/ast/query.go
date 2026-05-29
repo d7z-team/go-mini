@@ -507,17 +507,27 @@ func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 		if fn, ok := prog.Functions[methodKey]; ok {
 			return fn
 		}
+		for _, localName := range lspTypeLookupNames(typeName) {
+			if localName == "" {
+				continue
+			}
+			if fn, ok := prog.Functions[Ident(string(localName)+"."+string(property))]; ok {
+				return fn
+			}
+		}
 		if fn, ok := prog.Functions[property]; ok && (typeName == "Package" || typeName == TypeModule) {
 			return fn
 		}
-		if st, ok := prog.Structs[Ident(baseName)]; ok {
-			if fieldDef := virtualFieldDefinition(st, property); fieldDef != nil {
-				return fieldDef
+		for _, localName := range lspTypeLookupNames(typeName) {
+			if st, ok := prog.Structs[localName]; ok {
+				if fieldDef := virtualFieldDefinition(st, property); fieldDef != nil {
+					return fieldDef
+				}
+				return st
 			}
-			return st
-		}
-		if it, ok := prog.Interfaces[Ident(baseName)]; ok {
-			return it
+			if it, ok := prog.Interfaces[localName]; ok {
+				return it
+			}
 		}
 		if st, ok := prog.Structs[property]; ok && (typeName == "Package" || typeName == TypeModule) {
 			return st
@@ -558,14 +568,16 @@ func resolveMemberDefinition(ctx *ValidContext, t *MemberExpr) Node {
 			if def := module.MethodDefinition(candidate, t.Property); def != nil {
 				return def
 			}
-			if st := module.Structs[Ident(candidate.BaseName())]; st != nil {
-				if fieldDef := virtualFieldDefinition(st, t.Property); fieldDef != nil {
-					return fieldDef
+			for _, localName := range lspTypeLookupNames(candidate) {
+				if st := module.Structs[localName]; st != nil {
+					if fieldDef := virtualFieldDefinition(st, t.Property); fieldDef != nil {
+						return fieldDef
+					}
+					return st
 				}
-				return st
-			}
-			if it := module.Interfaces[Ident(candidate.BaseName())]; it != nil {
-				return it
+				if it := module.Interfaces[localName]; it != nil {
+					return it
+				}
 			}
 		}
 	}
@@ -624,6 +636,20 @@ func FindDefinition(root, target Node, parentMap map[Node]Node) Node {
 				}
 				if s, ok := prog.Structs[ident.Name]; ok {
 					return s
+				}
+				for _, localName := range lspTypeLookupNames(GoMiniType(ident.Name)) {
+					if localName == ident.Name {
+						continue
+					}
+					if it, ok := prog.Interfaces[localName]; ok {
+						return it
+					}
+					if s, ok := prog.Structs[localName]; ok {
+						return s
+					}
+					if def := virtualTypeDefinition(prog, localName); def != nil {
+						return def
+					}
 				}
 				if def := virtualImportDefinition(prog, ident.Name, target); def != nil {
 					return def
@@ -1389,8 +1415,7 @@ func getMemberCompletions(ctx *ValidContext, obj Expr) []CompletionItem {
 				realPath = pkgName
 			}
 
-			// 尝试多种路径格式 (例如 net/http 或 net.http)
-			targets := []string{pkgName + ".", realPath + ".", strings.ReplaceAll(realPath, "/", ".") + "."}
+			targets := []string{pkgName + ".", realPath + "."}
 			seenSymbols := make(map[string]bool)
 
 			// 1. 查找 Go-source 模块显式导出成员
@@ -1507,18 +1532,6 @@ func resolveLSPType(ctx *ValidContext, t GoMiniType, depth int) GoMiniType {
 				}
 			}
 		}
-		var resolved GoMiniType
-		for _, module := range ctx.root.Modules {
-			if actual, ok := module.Types[Ident(t)]; ok {
-				if resolved != "" {
-					return t
-				}
-				resolved = actual
-			}
-		}
-		if resolved != "" {
-			return resolveLSPType(ctx, resolved, depth+1)
-		}
 	}
 	if t.IsTuple() {
 		parts, _ := t.ReadTuple()
@@ -1553,6 +1566,21 @@ func inferLSPObjectType(ctx *ValidContext, t GoMiniType, depth int) GoMiniType {
 	return t
 }
 
+func lspTypeLookupNames(t GoMiniType) []Ident {
+	baseName := t.BaseName()
+	if baseName == "" {
+		return nil
+	}
+	names := []Ident{Ident(baseName)}
+	if _, member, ok := splitQualifiedMember(baseName); ok {
+		short := Ident(member)
+		if short != "" && short != names[0] {
+			names = append(names, short)
+		}
+	}
+	return names
+}
+
 func lspTypeMemberCompletions(ctx *ValidContext, objType GoMiniType) []CompletionItem {
 	items := make([]CompletionItem, 0)
 	seen := make(map[string]struct{})
@@ -1562,31 +1590,33 @@ func lspTypeMemberCompletions(ctx *ValidContext, objType GoMiniType) []Completio
 	}
 
 	for _, candidate := range candidates {
-		typeName := candidate.BaseName()
-		if st, ok := ctx.GetStruct(Ident(typeName)); ok {
-			for f, t := range st.Fields {
-				key := "field:" + string(f)
-				if _, exists := seen[key]; exists {
-					continue
+		for _, lookup := range lspTypeLookupNames(candidate) {
+			if st, ok := ctx.GetStruct(lookup); ok {
+				for f, t := range st.Fields {
+					key := "field:" + string(f)
+					if _, exists := seen[key]; exists {
+						continue
+					}
+					seen[key] = struct{}{}
+					items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
 				}
-				seen[key] = struct{}{}
-				items = append(items, CompletionItem{Label: string(f), Kind: "field", Type: t})
-			}
-			for m, t := range st.Methods {
-				key := "method:" + string(m)
-				if _, exists := seen[key]; exists {
-					continue
+				for m, t := range st.Methods {
+					key := "method:" + string(m)
+					if _, exists := seen[key]; exists {
+						continue
+					}
+					seen[key] = struct{}{}
+					sig := t
+					if candidate != "Package" && candidate != TypeModule && len(sig.Params) > 0 {
+						sig.Params = sig.Params[1:]
+					}
+					items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: sig.MiniType()})
 				}
-				seen[key] = struct{}{}
-				sig := t
-				if candidate != "Package" && candidate != TypeModule && len(sig.Params) > 0 {
-					sig.Params = sig.Params[1:]
-				}
-				items = append(items, CompletionItem{Label: string(m), Kind: "method", Type: sig.MiniType()})
 			}
 		}
 
-		for _, lookup := range []Ident{Ident(typeName), Ident(candidate)} {
+		interfaceLookups := append(lspTypeLookupNames(candidate), Ident(candidate))
+		for _, lookup := range interfaceLookups {
 			if it, ok := ctx.GetInterface(lookup); ok {
 				if methods, ok := it.Type.ReadInterfaceMethods(); ok {
 					for m, t := range methods {
@@ -1630,16 +1660,18 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 			return ""
 		}
 		for _, candidate := range []GoMiniType{objType, resolveLSPType(ctx, objType, depth+1)} {
-			typeName := candidate.BaseName()
-			if st, ok := ctx.GetStruct(Ident(typeName)); ok {
-				if t, ok := st.Fields[e.Property]; ok {
-					return resolveLSPType(ctx, t, depth+1)
-				}
-				if m, ok := st.Methods[e.Property]; ok {
-					return resolveLSPType(ctx, m.MiniType(), depth+1)
+			for _, lookup := range lspTypeLookupNames(candidate) {
+				if st, ok := ctx.GetStruct(lookup); ok {
+					if t, ok := st.Fields[e.Property]; ok {
+						return resolveLSPType(ctx, t, depth+1)
+					}
+					if m, ok := st.Methods[e.Property]; ok {
+						return resolveLSPType(ctx, m.MiniType(), depth+1)
+					}
 				}
 			}
-			for _, lookup := range []Ident{Ident(typeName), Ident(candidate)} {
+			interfaceLookups := append(lspTypeLookupNames(candidate), Ident(candidate))
+			for _, lookup := range interfaceLookups {
 				if iStmt, ok := ctx.GetInterface(lookup); ok {
 					methods, _ := iStmt.Type.ReadInterfaceMethods()
 					if sig, ok := methods[string(e.Property)]; ok {
@@ -1659,8 +1691,7 @@ func inferLSPTypeRecursive(ctx *ValidContext, expr Node, depth int) GoMiniType {
 					if !known {
 						path = string(id.Name)
 					}
-					// FFI 包成员推导
-					fullPath := Ident(strings.ReplaceAll(path, "/", ".") + "." + string(e.Property))
+					fullPath := Ident(path + "." + string(e.Property))
 					if t, ok := ctx.GetVariable(fullPath); ok {
 						return resolveLSPType(ctx, t, depth+1)
 					}

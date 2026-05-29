@@ -145,7 +145,7 @@ func main() {
 	_ = p + b
 }
 `,
-			want: "OpAdd method receiver type mismatch: expected Vec, got Ptr<Vec>",
+			want: "OpAdd method receiver type mismatch: expected main.Vec, got Ptr<main.Vec>",
 		},
 		{
 			name: "value operand pointer receiver",
@@ -166,7 +166,7 @@ func main() {
 	_ = a + b
 }
 `,
-			want: "OpAdd method receiver type mismatch: expected Ptr<Vec>, got Vec",
+			want: "OpAdd method receiver type mismatch: expected Ptr<main.Vec>, got main.Vec",
 		},
 	}
 	for _, tc := range cases {

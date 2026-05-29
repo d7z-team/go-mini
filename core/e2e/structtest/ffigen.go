@@ -110,15 +110,19 @@ func calculatorHostRouter(ctx context.Context, impl *Calculator, registry *ffigo
 }
 
 var calculatorRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "calc.Calculator", MethodName: "Add", RouteName: "calc.Calculator.Add", MethodID: methodIDCalculatorAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "calc.Calculator", MethodName: "Multiply", RouteName: "calc.Calculator.Multiply", MethodID: methodIDCalculatorMultiply, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "calc.Calculator", MethodName: "GetBase", RouteName: "calc.Calculator.GetBase", MethodID: methodIDCalculatorGetBase, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>) Int64", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "calc", TypeMemberName: "Calculator", MethodName: "Add", RouteName: "calc.Calculator.Add", MethodID: methodIDCalculatorAdd, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "calc", TypeMemberName: "Calculator", MethodName: "Multiply", RouteName: "calc.Calculator.Multiply", MethodID: methodIDCalculatorMultiply, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>, Int64, Int64) Int64", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "calc", TypeMemberName: "Calculator", MethodName: "GetBase", RouteName: "calc.Calculator.GetBase", MethodID: methodIDCalculatorGetBase, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Calculator>) Int64", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceCalculator() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(calculatorRoutes)
-	schema.AddStruct("calc.Calculator", calc_Calculator_FFI_StructSchema)
+	if err := schema.AddRouteDecls(calculatorRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("calc", "Calculator", calc_Calculator_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return calculatorHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -214,14 +218,18 @@ func tableHostRouter(ctx context.Context, impl *Table, registry *ffigo.HandleReg
 }
 
 var tableRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "calc.Table", MethodName: "SetString", RouteName: "calc.Table.SetString", MethodID: methodIDTableSetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64, String) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{TypeName: "calc.Table", MethodName: "GetString", RouteName: "calc.Table.GetString", MethodID: methodIDTableGetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "calc", TypeMemberName: "Table", MethodName: "SetString", RouteName: "calc.Table.SetString", MethodID: methodIDTableSetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64, String) Void", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "calc", TypeMemberName: "Table", MethodName: "GetString", RouteName: "calc.Table.GetString", MethodID: methodIDTableGetString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<calc.Table>, Int64, Int64) String", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTable() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(tableRoutes)
-	schema.AddStruct("calc.Table", calc_Table_FFI_StructSchema)
+	if err := schema.AddRouteDecls(tableRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("calc", "Table", calc_Table_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return tableHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -291,7 +299,9 @@ var factoryRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceFactory(impl *Factory) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(factoryRoutes)
+	if err := schema.AddRouteDecls(factoryRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return factoryHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

@@ -82,12 +82,16 @@ func TestHandleGCLifecycleRegression(t *testing.T) {
 	bridge := &lifecycleMockBridge{registry: registry, t: t}
 
 	schema := miniruntime.NewFFISurfaceSchema()
-	schema.AddStruct("mock.Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }"))
-	schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
+	if err := schema.AddStruct("mock", "Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }")); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
 		testsurface.Route("mock.Screenshot", 1, miniruntime.MustParseRuntimeFuncSig("function() HostRef<mock.Resource>"), ""),
 		testsurface.Route("mock.GetWidth", 2, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Resource>) Int64"), ""),
 		testsurface.Route("mock.TriggerGC", 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), ""),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := executor.UseSurface(testsurface.SchemaBundle(schema, bridge)); err != nil {
 		t.Fatal(err)
 	}

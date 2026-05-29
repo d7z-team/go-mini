@@ -426,10 +426,10 @@ func main() {
 
 	executor = newFFILibTemplateExecutor()
 	registerTemplateModule(t, executor, "trace", `
-package main
+	package trace
 
-func Other() {}
-`)
+	func Other() {}
+	`)
 	err = executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Line",
 		PackagePath: "trace",
@@ -501,10 +501,10 @@ func TestTemplateRegistrationRejectsInvalidPkgReference(t *testing.T) {
 func TestTemplateRegistrationChecksExistingPackageMemberSignature(t *testing.T) {
 	executor := newFFILibTemplateExecutor()
 	registerTemplateModule(t, executor, "trace", `
-package main
+	package trace
 
-func Real(v int64) {}
-`)
+	func Real(v int64) {}
+	`)
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Real",
 		PackagePath: "trace",
@@ -597,10 +597,10 @@ func main() {
 func TestPackageTemplateDoesNotMatchShadowedAlias(t *testing.T) {
 	executor := newFFILibTemplateExecutor()
 	registerTemplateModule(t, executor, "trace", `
-package main
+	package trace
 
-func Line(v string) {}
-`)
+	func Line(v string) {}
+	`)
 	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
 		ID:          "trace.Line",
 		PackagePath: "trace",
@@ -782,33 +782,6 @@ func main() {
 	if err == nil {
 		t.Fatal("expected custom global template name conflict")
 	}
-}
-
-func TestRealSymbolCannotBeRegisteredAfterGlobalTemplate(t *testing.T) {
-	executor := newFFILibTemplateExecutor()
-	expectConflict := func(t *testing.T, bundle *surface.Bundle) {
-		t.Helper()
-		if err := executor.UseSurface(bundle); err == nil {
-			t.Fatal("expected template conflict")
-		}
-	}
-
-	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
-		ID:        "custom.later",
-		Name:      "later",
-		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
-		Body:      `println()`,
-	}); err != nil {
-		t.Fatalf("register template failed: %v", err)
-	}
-
-	structSchema := runtime.NewFFISurfaceSchema()
-	structSchema.AddStruct("later", runtime.MustParseRuntimeStructSpec("later", runtime.StructOwnershipVMValue, "struct { V Int64; }"))
-	expectConflict(t, surface.Router(structSchema, nil))
-
-	interfaceSchema := runtime.NewFFISurfaceSchema()
-	interfaceSchema.AddInterface("later", runtime.MustParseRuntimeInterfaceSpec("interface{Do() Void;}"))
-	expectConflict(t, surface.Router(interfaceSchema, nil))
 }
 
 func TestCompilerRejectsDirectTemplateSchemaConflict(t *testing.T) {

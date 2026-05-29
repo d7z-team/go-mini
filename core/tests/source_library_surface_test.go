@@ -14,7 +14,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-func TestSurfaceLibraryRunCases(t *testing.T) {
+func TestSurfaceLibraryExportsAndIsolation(t *testing.T) {
 	bundle := surface.Merge(mathxLibrary(2), labelsLibrary(), multiFileLibrary(), privateLibrary(), leakyLibrary())
 	testutil.RunCases(t, nil, []testutil.Case{
 		{
@@ -148,8 +148,8 @@ func main() {
 	if err != nil {
 		t.Fatalf("marshal tampered bytecode: %v", err)
 	}
-	if _, err := loader.NewRuntimeByBytecodeJSON(tampered); err == nil || !strings.Contains(err.Error(), "embedded VM module labels schema mismatch") {
-		t.Fatalf("expected embedded module hash mismatch, got %v", err)
+	if _, err := loader.NewRuntimeByBytecodeJSON(tampered); err == nil || !strings.Contains(err.Error(), "source module labels schema mismatch") {
+		t.Fatalf("expected source module hash mismatch, got %v", err)
 	}
 }
 
@@ -193,6 +193,44 @@ func Value() int { return a.Value() }
 	)
 	if err := exec.UseSurface(circular); err == nil || !strings.Contains(err.Error(), "circular import dependency") {
 		t.Fatalf("expected circular library dependency error, got %v", err)
+	}
+
+	conflictSchema := miniruntime.NewFFISurfaceSchema()
+	if err := conflictSchema.AddFunc("dup", "Call", "", 1, miniruntime.MustParseRuntimeFuncSig("function() Void"), ""); err != nil {
+		t.Fatal(err)
+	}
+	exec = engine.MustNewMiniExecutor()
+	err := exec.UseSurface(surface.Merge(
+		surface.Library("dup", surface.GoFile("dup.mgo", `package dup
+func Local() {}
+`)),
+		surface.New(conflictSchema, nil),
+	))
+	if err == nil || !strings.Contains(err.Error(), "conflicts between source library and ffi package") {
+		t.Fatalf("expected source/ffi module namespace conflict, got %v", err)
+	}
+
+	typeConflictSchema := miniruntime.NewFFISurfaceSchema()
+	if err := typeConflictSchema.AddStruct("dup", "Payload", miniruntime.MustParseRuntimeStructSpec("dup.Payload", miniruntime.StructOwnershipVMValue, "struct { Value Int64; }")); err != nil {
+		t.Fatal(err)
+	}
+	exec = engine.MustNewMiniExecutor()
+	err = exec.UseSurface(surface.Merge(
+		surface.Library("dup", surface.GoFile("dup.mgo", `package dup
+func Local() {}
+`)),
+		surface.New(typeConflictSchema, nil),
+	))
+	if err == nil || !strings.Contains(err.Error(), "conflicts between source library and ffi package") {
+		t.Fatalf("expected source/ffi type module namespace conflict, got %v", err)
+	}
+
+	exec = engine.MustNewMiniExecutor()
+	err = exec.UseSurface(surface.Library("acme.tools", surface.GoFile("tools.mgo", `package tools
+func Local() {}
+`)))
+	if err == nil || !strings.Contains(err.Error(), "module path leaf acme.tools is not a valid package identifier") {
+		t.Fatalf("expected dotted module leaf rejection, got %v", err)
 	}
 }
 

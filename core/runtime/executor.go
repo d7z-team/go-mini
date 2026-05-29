@@ -25,13 +25,14 @@ type Executor struct {
 	globalInitGroups []*RuntimeGlobalInit
 	importAliases    map[string]string
 
-	routes               map[string]FFIRoute
-	packageValues        map[string]*BoundPackageValue
-	ffiPackages          map[string]*BoundFFIPackage
-	ffiChannels          ffigo.ChannelRegistry
-	externalRequirements []ExternalRequirement
-	embeddedModules      map[string]*PreparedProgram
-	moduleHashes         map[string]string
+	routes             map[string]FFIRoute
+	packageValues      map[string]*BoundPackageValue
+	ffiPackages        map[string]*BoundFFIPackage
+	ffiChannels        ffigo.ChannelRegistry
+	moduleRequirements []ModuleRequirement
+	embeddedModules    map[string]*PreparedProgram
+	moduleHashes       map[string]string
+	modules            *runtimeModuleRegistry
 
 	stepLimit int64
 
@@ -203,28 +204,33 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 	if err := ValidatePreparedProgram(prepared); err != nil {
 		return nil, err
 	}
+	packageName := prepared.ModulePath
+	if packageName == "" {
+		packageName = prepared.Package
+	}
 	result := &Executor{
-		packageName:          prepared.Package,
-		globalInitOrder:      append([]string(nil), prepared.GlobalInitOrder...),
-		globalInitGroups:     cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
-		importAliases:        make(map[string]string, len(prepared.ImportAliases)),
-		metadata:             newRuntimeMetadataRegistry(),
-		globals:              make(map[string]*RuntimeGlobal),
-		functions:            make(map[string]*RuntimeFunction),
-		methodFunctions:      make(map[string]map[string]string),
-		exports:              clonePreparedExportMap(prepared.Exports),
-		consts:               make(map[string]FFIConstValue),
-		constTypes:           make(map[string]RuntimeType),
-		routes:               make(map[string]FFIRoute),
-		packageValues:        make(map[string]*BoundPackageValue),
-		ffiPackages:          make(map[string]*BoundFFIPackage),
-		ffiChannels:          ffigo.NewChannelRegistry(),
-		externalRequirements: append([]ExternalRequirement(nil), prepared.ExternalRequirements...),
-		embeddedModules:      clonePreparedProgramMap(prepared.Modules),
-		moduleHashes:         cloneStringMap(prepared.ModuleHashes),
-		interfaceCache:       make(map[TypeSpec]*RuntimeInterfaceSpec),
-		shared:               NewSharedState(),
-		scheduler:            NewExecutionContextScheduler(),
+		packageName:        packageName,
+		globalInitOrder:    append([]string(nil), prepared.GlobalInitOrder...),
+		globalInitGroups:   cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups),
+		importAliases:      make(map[string]string, len(prepared.ImportAliases)),
+		metadata:           newRuntimeMetadataRegistry(),
+		globals:            make(map[string]*RuntimeGlobal),
+		functions:          make(map[string]*RuntimeFunction),
+		methodFunctions:    make(map[string]map[string]string),
+		exports:            clonePreparedExportMap(prepared.Exports),
+		consts:             make(map[string]FFIConstValue),
+		constTypes:         make(map[string]RuntimeType),
+		routes:             make(map[string]FFIRoute),
+		packageValues:      make(map[string]*BoundPackageValue),
+		ffiPackages:        make(map[string]*BoundFFIPackage),
+		ffiChannels:        ffigo.NewChannelRegistry(),
+		moduleRequirements: append([]ModuleRequirement(nil), prepared.ModuleRequirements...),
+		embeddedModules:    clonePreparedProgramMap(prepared.Modules),
+		moduleHashes:       cloneStringMap(prepared.ModuleHashes),
+		modules:            newRuntimeModuleRegistry(),
+		interfaceCache:     make(map[TypeSpec]*RuntimeInterfaceSpec),
+		shared:             NewSharedState(),
+		scheduler:          NewExecutionContextScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -246,7 +252,10 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 		return
 	}
 	e.globalInitOrder = append([]string(nil), prepared.GlobalInitOrder...)
-	e.packageName = prepared.Package
+	e.packageName = prepared.ModulePath
+	if e.packageName == "" {
+		e.packageName = prepared.Package
+	}
 	e.globalInitGroups = cloneRuntimeGlobalInitGroupsFromPrepared(prepared.GlobalInitGroups)
 	e.importAliases = cloneStringMap(prepared.ImportAliases)
 	e.consts = cloneFFIConstValueMap(prepared.Constants)
@@ -265,16 +274,12 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 	e.exports = clonePreparedExportMap(prepared.Exports)
 	e.embeddedModules = clonePreparedProgramMap(prepared.Modules)
 	e.moduleHashes = cloneStringMap(prepared.ModuleHashes)
-	e.externalRequirements = append([]ExternalRequirement(nil), prepared.ExternalRequirements...)
+	e.rebuildPreparedModuleRegistry()
+	e.moduleRequirements = append([]ModuleRequirement(nil), prepared.ModuleRequirements...)
 	e.methodFunctions = make(map[string]map[string]string)
-	for name, typeInfo := range prepared.NamedTypes {
-		e.metadata.registerNamedType(name, typeInfo)
-	}
-	for name, spec := range prepared.StructSchemas {
-		e.metadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
-	}
-	for name, spec := range prepared.InterfaceSchemas {
-		e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
+	e.registerPreparedMetadata(prepared)
+	for _, module := range prepared.Modules {
+		e.registerPreparedMetadata(module)
 	}
 	for name, global := range prepared.Globals {
 		rg, ok := e.globals[name]
@@ -299,9 +304,43 @@ func (e *Executor) applyPreparedProgram(prepared *PreparedProgram) {
 			rf.BodyTasks = cloneTasks(fn.BodyTasks)
 		}
 		e.functions[name] = rf
-		e.registerMethodFunction(prepared.Package, name, rf)
+		e.registerMethodFunction(e.packageName, name, rf)
 	}
 	e.mainTasks = cloneTasks(prepared.MainTasks)
+}
+
+func (e *Executor) rebuildPreparedModuleRegistry() {
+	if e == nil {
+		return
+	}
+	next := cloneRuntimeModuleRegistry(e.modules)
+	if next == nil {
+		next = newRuntimeModuleRegistry()
+	}
+	for path, prepared := range e.embeddedModules {
+		if prepared == nil {
+			continue
+		}
+		if err := next.RegisterSource(path, prepared, e.moduleHashes[path]); err != nil {
+			continue
+		}
+	}
+	e.modules = next
+}
+
+func (e *Executor) registerPreparedMetadata(prepared *PreparedProgram) {
+	if e == nil || prepared == nil {
+		return
+	}
+	for name, typeInfo := range prepared.NamedTypes {
+		e.metadata.registerNamedType(name, typeInfo)
+	}
+	for name, spec := range prepared.StructSchemas {
+		e.metadata.registerStructSchema(name, CloneRuntimeStructSpec(spec))
+	}
+	for name, spec := range prepared.InterfaceSchemas {
+		e.metadata.registerInterfaceSpec(name, CloneRuntimeInterfaceSpec(spec))
+	}
 }
 
 func (e *Executor) registerMethodFunction(pkg, name string, fn *RuntimeFunction) {
@@ -662,16 +701,24 @@ func (e *Executor) CheckSatisfaction(val *Var, interfaceType string) (*Var, erro
 		// 3. Resolve named type ONLY if it could be an interface or struct
 		if actual, ok := e.resolveNamedType(interfaceSpec); ok {
 			if actual.Kind == RuntimeTypeInterface {
-				return e.CheckSatisfaction(val, actual.Raw.String())
+				if actual.Raw.Equals(interfaceSpec) {
+					actualInterfaceType = InterfaceType(actual.Methods)
+				} else {
+					return e.CheckSatisfaction(val, actual.Raw.String())
+				}
 			}
 		}
 
 		// 4. Resolve named interface
-		if spec, ok := e.resolveInterfaceSpec(interfaceSpec); ok {
+		if !actualInterfaceType.IsInterface() {
+			if spec, ok := e.resolveInterfaceSpec(interfaceSpec); ok {
+				actualInterfaceType = spec.Spec
+			} else {
+				// If it wasn't an exact match and isn't an interface, it fails (like Go)
+				return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceSpec)
+			}
+		} else if spec, ok := e.resolveInterfaceSpec(interfaceSpec); ok && spec.Spec.IsInterface() {
 			actualInterfaceType = spec.Spec
-		} else {
-			// If it wasn't an exact match and isn't an interface, it fails (like Go)
-			return nil, fmt.Errorf("interface conversion: interface is %s, not %s", inner.RawType(), interfaceSpec)
 		}
 	}
 
@@ -750,6 +797,9 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 			if methodName, ok := e.resolveVMMethodRoute(tName, name, staticType); ok {
 				return e.methodClosure(val, methodName), true
 			}
+			if methodName, ok := e.resolveHostMethodRoute(tName, name, staticType); ok {
+				return e.methodClosure(val, methodName), true
+			}
 		}
 		if target, ok := e.slotPointerTarget(val); ok {
 			return e.resolveMethodValueWithStaticType(target, name, staticType)
@@ -763,6 +813,9 @@ func (e *Executor) resolveMethodValueWithStaticType(val *Var, name string, stati
 		tName := string(val.RawType())
 		if tName != "" && tName != "Any" {
 			if methodName, ok := e.resolveVMMethodRoute(tName, name, staticType); ok {
+				return e.methodClosure(val, methodName), true
+			}
+			if methodName, ok := e.resolveHostMethodRoute(tName, name, staticType); ok {
 				return e.methodClosure(val, methodName), true
 			}
 		}
@@ -787,8 +840,14 @@ func (e *Executor) methodClosure(receiver *Var, methodName string) *Var {
 	if fn, ok := e.lookupFunction(methodName); ok && fn != nil {
 		method.FuncSig = CloneRuntimeFuncSig(fn.FunctionSig)
 		method.BodyTasks = cloneTasks(fn.BodyTasks)
+	} else if route, ok := e.routes[methodName]; ok && route.FuncSig != nil {
+		method.FuncSig = CloneRuntimeFuncSig(route.FuncSig)
 	}
-	return &Var{VType: TypeClosure, Ref: method}
+	res := &Var{VType: TypeClosure, Ref: method}
+	if method.FuncSig != nil {
+		res.SetRawType(method.FuncSig.Spec.String())
+	}
+	return res
 }
 
 func (e *Executor) isCallableCompatible(v *Var, expectedSig *RuntimeFuncSig) bool {

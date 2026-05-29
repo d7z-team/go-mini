@@ -25,6 +25,7 @@ func (h *ModuleHost) NewEncoding(encoder string) *Encoding {
 	return &Encoding{Enc: base64.NewEncoding(encoder)}
 }
 
+// ffigen:module encoding/base64
 // ffigen:methods
 type Encoding struct {
 	Enc *base64.Encoding

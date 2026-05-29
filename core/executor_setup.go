@@ -93,6 +93,9 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 		if err := e.validateSurfaceLibrariesLocked(libraries, librarySourceHashes); err != nil {
 			return err
 		}
+		if err := e.validateSurfaceModuleNamespaceLocked(libraries, nextSchema, nil); err != nil {
+			return err
+		}
 		resolvedLibraryHashes := e.libraryHashes
 		if len(libraries) > 0 {
 			existingLibraryASTs, err := e.parseRegisteredLibraryASTsLocked()
@@ -154,13 +157,20 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 				if _, ok := bundle.Schema.Types[name]; ok {
 					return true
 				}
-				pkgPath, memberName := runtime.SplitExternalName(name)
-				if pkgPath == "" || memberName == "" {
-					return false
-				}
-				if pkg := bundle.Schema.Packages[pkgPath]; pkg != nil {
-					_, ok := pkg.Members[memberName]
-					return ok
+				for key, pkg := range bundle.Schema.Packages {
+					if pkg == nil {
+						continue
+					}
+					pkgPath := pkg.Path
+					if pkgPath == "" {
+						pkgPath = key
+					}
+					prefix := pkgPath + "."
+					if strings.HasPrefix(name, prefix) {
+						if _, ok := pkg.Members[strings.TrimPrefix(name, prefix)]; ok {
+							return true
+						}
+					}
 				}
 				return false
 			}
@@ -181,6 +191,9 @@ func (e *MiniExecutor) UseSurface(bundle *surface.Bundle) error {
 			}
 		}
 		if bound != nil {
+			if err := e.validateSurfaceModuleNamespaceLocked(libraries, nextSchema, bound); err != nil {
+				return err
+			}
 			if err := nextBound.Merge(bound); err != nil {
 				return err
 			}
@@ -307,6 +320,7 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 		if prog == nil {
 			continue
 		}
+		prog.ModulePath = path
 		if visiting[path] {
 			return fmt.Errorf("circular module dependency while preparing %s", path)
 		}

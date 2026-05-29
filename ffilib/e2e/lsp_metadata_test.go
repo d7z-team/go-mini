@@ -74,7 +74,7 @@ func main() {}`
 		t.Fatalf("expected Total value type Int64, got %v", typ)
 	}
 	mainTypes := mainMod["types"].(map[string]interface{})
-	if typ, ok := mainTypes["Count"]; !ok || typ != "Int64" {
-		t.Fatalf("expected Count type Int64, got %v", typ)
+	if typ, ok := mainTypes["Count"]; !ok || typ != "main.Count" {
+		t.Fatalf("expected Count type main.Count, got %v", typ)
 	}
 }

@@ -35,7 +35,7 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	if err := e.applyExecutorConfig(executor); err != nil {
 		return nil, err
 	}
-	if err := executor.ValidateExternalRequirements(); err != nil {
+	if err := executor.ValidateModuleRequirements(); err != nil {
 		return nil, err
 	}
 	fn := compiled.Bytecode.Executable.Functions["__eval__"]

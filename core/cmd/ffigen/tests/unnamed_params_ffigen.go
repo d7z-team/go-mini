@@ -84,7 +84,9 @@ var loggerRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceLogger(impl Logger) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(loggerRoutes)
+	if err := schema.AddRouteDecls(loggerRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return loggerHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

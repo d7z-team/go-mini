@@ -3,6 +3,7 @@ package lowering
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/internal/miniident"
@@ -95,6 +96,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 
 	prepared := &runtime.PreparedProgram{
 		Package:          program.Package,
+		ModulePath:       programNamespace(program),
 		ImportAliases:    importAliases,
 		Constants:        make(map[string]runtime.FFIConstValue, len(program.Constants)),
 		ConstantTypes:    make(map[string]runtime.RuntimeType, len(program.ConstantTypes)),
@@ -137,15 +139,22 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		if err != nil {
 			return nil, err
 		}
-		prepared.NamedTypes[string(ident)] = typeInfo
+		typeName := qualifiedProgramTypeName(program, ident)
+		typeInfo.Raw = runtime.TypeSpec(typeName)
+		typeInfo.TypeID = runtime.CanonicalTypeID(typeName)
+		prepared.NamedTypes[typeName] = typeInfo
 	}
 	for ident, stmt := range program.Structs {
-		spec, err := runtimeStructSpecFromStmt(stmt)
+		typeName := qualifiedProgramTypeName(program, ident)
+		if stmt != nil && stmt.QualifiedName != "" {
+			typeName = string(stmt.QualifiedName)
+		}
+		spec, err := runtimeStructSpecFromStmt(typeName, stmt)
 		if err != nil {
 			return nil, err
 		}
 		if spec != nil {
-			prepared.StructSchemas[string(ident)] = spec
+			prepared.StructSchemas[typeName] = spec
 		}
 	}
 	for ident, stmt := range program.Interfaces {
@@ -154,7 +163,14 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 			return nil, err
 		}
 		if spec != nil {
-			prepared.InterfaceSchemas[string(ident)] = spec
+			typeName := qualifiedProgramTypeName(program, ident)
+			if stmt != nil && stmt.QualifiedName != "" {
+				typeName = string(stmt.QualifiedName)
+			}
+			spec.TypeID = runtime.CanonicalTypeID(typeName)
+			spec.TypeInfo.Raw = runtime.TypeSpec(typeName)
+			spec.TypeInfo.TypeID = spec.TypeID
+			prepared.InterfaceSchemas[typeName] = spec
 		}
 	}
 
@@ -302,37 +318,52 @@ func populatePreparedExports(prepared *runtime.PreparedProgram, program *ast.Pro
 			TargetName: name,
 		}
 	}
-	for name, typ := range prepared.NamedTypes {
-		if !isExportedIdent(name) {
+	for ident := range program.Types {
+		name := string(ident)
+		target := qualifiedProgramTypeName(program, ident)
+		typ, ok := prepared.NamedTypes[target]
+		if !ok || !isExportedIdent(name) {
 			continue
 		}
 		prepared.Exports[name] = runtime.PreparedExport{
 			Name:       name,
 			Kind:       runtime.PreparedExportType,
 			Type:       typ,
-			TargetName: name,
+			TargetName: target,
 		}
 	}
-	for ident, spec := range prepared.StructSchemas {
-		if !isExportedIdent(ident) || spec == nil {
+	for ident := range program.Structs {
+		name := string(ident)
+		target := qualifiedProgramTypeName(program, ident)
+		if stmt := program.Structs[ident]; stmt != nil && stmt.QualifiedName != "" {
+			target = string(stmt.QualifiedName)
+		}
+		spec := prepared.StructSchemas[target]
+		if !isExportedIdent(name) || spec == nil {
 			continue
 		}
-		prepared.Exports[ident] = runtime.PreparedExport{
-			Name:       ident,
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
 			Kind:       runtime.PreparedExportStruct,
 			Type:       spec.TypeInfo,
-			TargetName: ident,
+			TargetName: target,
 		}
 	}
-	for ident, spec := range prepared.InterfaceSchemas {
-		if !isExportedIdent(ident) || spec == nil {
+	for ident := range program.Interfaces {
+		name := string(ident)
+		target := qualifiedProgramTypeName(program, ident)
+		if stmt := program.Interfaces[ident]; stmt != nil && stmt.QualifiedName != "" {
+			target = string(stmt.QualifiedName)
+		}
+		spec := prepared.InterfaceSchemas[target]
+		if !isExportedIdent(name) || spec == nil {
 			continue
 		}
-		prepared.Exports[ident] = runtime.PreparedExport{
-			Name:       ident,
+		prepared.Exports[name] = runtime.PreparedExport{
+			Name:       name,
 			Kind:       runtime.PreparedExportInterface,
 			Type:       spec.TypeInfo,
-			TargetName: ident,
+			TargetName: target,
 		}
 	}
 	for name, global := range prepared.Globals {
@@ -385,9 +416,12 @@ func funcSigFromFunction(fn ast.FunctionType) (*runtime.RuntimeFuncSig, error) {
 	return sig, nil
 }
 
-func runtimeStructSpecFromStmt(stmt *ast.StructStmt) (*runtime.RuntimeStructSpec, error) {
+func runtimeStructSpecFromStmt(typeName string, stmt *ast.StructStmt) (*runtime.RuntimeStructSpec, error) {
 	if stmt == nil {
 		return nil, nil
+	}
+	if typeName == "" {
+		typeName = string(stmt.Name)
 	}
 	fields := make([]ast.StructMemberType, 0, len(stmt.FieldNames))
 	for _, fieldName := range stmt.FieldNames {
@@ -396,17 +430,52 @@ func runtimeStructSpecFromStmt(stmt *ast.StructStmt) (*runtime.RuntimeStructSpec
 			Type: stmt.Fields[fieldName],
 		})
 	}
-	spec, err := runtime.ParseRuntimeStructSpec(string(stmt.Name), runtime.StructOwnershipVMValue, ast.CreateStructType(fields))
+	spec, err := runtime.ParseRuntimeStructSpec(typeName, runtime.StructOwnershipVMValue, ast.CreateStructType(fields))
 	if err != nil {
 		return nil, err
 	}
 	if spec == nil {
 		return nil, nil
 	}
-	spec.Spec = runtime.TypeSpec(stmt.Name)
-	spec.TypeInfo.Raw = runtime.TypeSpec(stmt.Name)
-	spec.TypeInfo.TypeID = runtime.CanonicalTypeID(string(stmt.Name))
+	spec.Spec = runtime.TypeSpec(typeName)
+	spec.TypeInfo.Raw = runtime.TypeSpec(typeName)
+	spec.TypeInfo.TypeID = runtime.CanonicalTypeID(typeName)
+	if len(stmt.FieldTags) > 0 {
+		for i := range spec.Fields {
+			name := ast.Ident(spec.Fields[i].Name)
+			tag := stmt.FieldTags[name]
+			if tag == "" {
+				continue
+			}
+			spec.Fields[i].Tag = tag
+			if field, ok := spec.ByName[spec.Fields[i].Name]; ok {
+				field.Tag = tag
+				spec.ByName[spec.Fields[i].Name] = field
+			}
+			if i < len(spec.TypeInfo.Fields) {
+				spec.TypeInfo.Fields[i].Tag = tag
+			}
+		}
+	}
 	return spec, nil
+}
+
+func programNamespace(program *ast.ProgramStmt) string {
+	if program == nil {
+		return ""
+	}
+	if ns := strings.TrimSpace(program.ModulePath); ns != "" {
+		return ns
+	}
+	return strings.TrimSpace(program.Package)
+}
+
+func qualifiedProgramTypeName(program *ast.ProgramStmt, ident ast.Ident) string {
+	name := strings.TrimSpace(string(ident))
+	if name == "" || strings.Contains(name, ".") {
+		return name
+	}
+	return string(ast.CreateQualifiedType(programNamespace(program), name))
 }
 
 func isGlobalDecl(program *ast.ProgramStmt, decl *ast.GenDeclStmt) bool {

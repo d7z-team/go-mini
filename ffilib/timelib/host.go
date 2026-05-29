@@ -90,6 +90,7 @@ func (h *TimeHost) ParseDuration(s string) (int64, error) {
 }
 
 // Time 是时间句柄
+// ffigen:module time
 // ffigen:methods
 type Time struct {
 	T time.Time

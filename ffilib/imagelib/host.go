@@ -14,6 +14,7 @@ import (
 )
 
 // Image 是图像句柄 (对应 Go 的 image.RGBA)
+// ffigen:module image
 // ffigen:methods
 type Image struct {
 	RGBA *image.RGBA

@@ -110,7 +110,13 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 			continue
 		}
 		exports.Structs[name] = st
-		if def, ok := root.structs[name]; ok {
+		qualified := Ident(CreateQualifiedType(exports.Path, string(name)))
+		if st.QualifiedName != "" {
+			qualified = st.QualifiedName
+		}
+		if def, ok := root.structs[qualified]; ok {
+			exports.StructDefs[name] = def
+		} else if def, ok := root.structs[name]; ok {
 			exports.StructDefs[name] = def
 		}
 	}
@@ -122,7 +128,7 @@ func NewModuleExportsFromRoot(path string, root *ValidRoot) *ModuleExports {
 			continue
 		}
 		exports.Interfaces[name] = it
-		exports.Types[name] = it.Type
+		exports.Types[name] = CreateQualifiedType(exports.Path, string(name))
 	}
 	return exports
 }
@@ -143,10 +149,10 @@ func (m *ModuleExports) MemberType(name Ident) (GoMiniType, bool) {
 		return t, true
 	}
 	if _, ok := m.Structs[name]; ok {
-		return GoMiniType(m.Path + "." + string(name)), true
+		return CreateQualifiedType(m.Path, string(name)), true
 	}
 	if it, ok := m.Interfaces[name]; ok && it != nil {
-		return GoMiniType(m.Path + "." + string(name)), true
+		return CreateQualifiedType(m.Path, string(name)), true
 	}
 	if t, ok := m.Types[name]; ok {
 		return t, true

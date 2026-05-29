@@ -2,7 +2,7 @@ package engine_test
 
 import (
 	"context"
-	"reflect"
+	"os"
 	"strings"
 	"testing"
 
@@ -81,22 +81,45 @@ func TestFrontendCanSupplyMiniASTWithoutRuntimeASTRetention(t *testing.T) {
 }
 
 func TestExecutableProgramTypeHasNoASTFields(t *testing.T) {
-	for _, programType := range []reflect.Type{reflect.TypeOf(engine.ExecutableProgram{}), reflect.TypeOf(engine.ExecutableArtifact{})} {
-		assertNoASTFields(t, programType)
-	}
+	assertStructSourceHasNoASTFields(t, "../mini_program.go", "ExecutableProgram")
+	assertStructSourceHasNoASTFields(t, "../artifact.go", "ExecutableArtifact")
 }
 
-func assertNoASTFields(t *testing.T, programType reflect.Type) {
+func assertStructSourceHasNoASTFields(t *testing.T, filename, typeName string) {
 	t.Helper()
-	for _, forbidden := range []string{"Program", "TemplatePreviews", "parentMap"} {
-		if _, ok := programType.FieldByName(forbidden); ok {
-			t.Fatalf("%s should not expose %s", programType.Name(), forbidden)
+	raw, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatalf("read %s: %v", filename, err)
+	}
+	source := string(raw)
+	start := strings.Index(source, "type "+typeName+" struct {")
+	if start < 0 {
+		t.Fatalf("%s missing struct declaration", typeName)
+	}
+	body := source[start:]
+	if lineEnd := strings.IndexByte(body, '\n'); lineEnd >= 0 {
+		body = body[lineEnd+1:]
+	}
+	end := strings.Index(body, "\n}")
+	if end < 0 {
+		t.Fatalf("%s struct declaration is not closed", typeName)
+	}
+	body = body[:end]
+	fields := map[string]string{}
+	for _, line := range strings.Split(body, "\n") {
+		parts := strings.Fields(strings.TrimSpace(line))
+		if len(parts) >= 2 {
+			fields[parts[0]] = parts[1]
 		}
 	}
-	for i := 0; i < programType.NumField(); i++ {
-		field := programType.Field(i)
-		if strings.Contains(field.Type.String(), "/ast.") {
-			t.Fatalf("%s field %s retains AST type %s", programType.Name(), field.Name, field.Type)
+	for _, forbidden := range []string{"Program", "TemplatePreviews", "parentMap"} {
+		if _, ok := fields[forbidden]; ok {
+			t.Fatalf("%s should not expose %s", typeName, forbidden)
+		}
+	}
+	for field, typ := range fields {
+		if strings.Contains(typ, "*ast.") || strings.Contains(typ, "ast.") || strings.Contains(typ, "/ast.") {
+			t.Fatalf("%s field %s retains AST type %s", typeName, field, typ)
 		}
 	}
 }

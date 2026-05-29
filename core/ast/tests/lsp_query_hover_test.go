@@ -119,6 +119,7 @@ func SplitPoint() (Point, Bool) { return Point{X: 1, Y: 2}, true }`
 		t.Fatal(err)
 	}
 	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
 	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
 	_ = subProg.Check(ast.NewSemanticContext(subValidator))
 

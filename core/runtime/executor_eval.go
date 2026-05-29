@@ -451,6 +451,9 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 			if methodName, ok := e.resolveVMMethodRoute(tName, property, staticType); ok {
 				return e.methodClosure(obj, methodName), nil
 			}
+			if methodName, ok := e.resolveHostMethodRoute(tName, property, staticType); ok {
+				return e.methodClosure(obj, methodName), nil
+			}
 		}
 		return nil, nil
 	case TypePointer:
@@ -462,6 +465,9 @@ func (e *Executor) evalMemberExprDirectWithType(obj *Var, property string, stati
 		}
 		if tName != "" && tName != "Any" {
 			if methodName, ok := e.resolveVMMethodRoute(tName, property, staticType); ok {
+				return e.methodClosure(obj, methodName), nil
+			}
+			if methodName, ok := e.resolveHostMethodRoute(tName, property, staticType); ok {
 				return e.methodClosure(obj, methodName), nil
 			}
 		}
@@ -1363,17 +1369,6 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 		return NewVarWithRuntimeType(t, TypeAny), nil
 	}
 
-	// 基础类型初始化
-	zero := shape.ZeroVar()
-	res, err := e.ToVar(ctx, zero, nil)
-	if err != nil {
-		return nil, err
-	}
-	if res != nil {
-		res.SetRuntimeType(t) // 还原为用户请求的命名类型
-		return res, nil
-	}
-
 	if sDef, ok := e.runtimeStructSchemaForType(shape); ok {
 		fields := make([]*Slot, len(sDef.Fields))
 		byName := make(map[string]int, len(sDef.Fields))
@@ -1388,6 +1383,17 @@ func (e *Executor) initializeType(ctx *StackContext, t RuntimeType, depth int) (
 		v := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: sDef, Fields: fields, ByName: byName}}
 		v.SetRuntimeType(t)
 		return v, nil
+	}
+
+	// 基础类型初始化
+	zero := shape.ZeroVar()
+	res, err := e.ToVar(ctx, zero, nil)
+	if err != nil {
+		return nil, err
+	}
+	if res != nil {
+		res.SetRuntimeType(t) // 还原为用户请求的命名类型
+		return res, nil
 	}
 
 	return NewVarWithRuntimeType(t, TypeAny), nil

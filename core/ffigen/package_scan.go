@@ -96,14 +96,13 @@ func (g *Generator) parseFileInputs(args []string, outFile string) ([]*ast.File,
 }
 
 type packageData struct {
-	defaultModule string
-	targets       []ffigenTarget
-	structs       map[string]*ast.StructType
-	interfaces    map[string]*ast.InterfaceType
-	interfaceFFI  map[string]bool
-	constants     map[string]constBinding
-	globals       []globalValue
-	ownedStructs  map[string]bool
+	targets      []ffigenTarget
+	structs      map[string]*ast.StructType
+	interfaces   map[string]*ast.InterfaceType
+	interfaceFFI map[string]bool
+	constants    map[string]constBinding
+	globals      []globalValue
+	ownedStructs map[string]bool
 }
 
 func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[string]bool, packageData) {
@@ -182,7 +181,6 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 		})
 	}
 
-	defaultModule := g.derivePackageDefaultModule(allFiles)
 	packageMode := len(allFiles) == len(targetFiles)
 	moduleNames := make(map[string]bool)
 	var targets []ffigenTarget
@@ -199,8 +197,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 				if !ok {
 					continue
 				}
-				meta := parseTargetMeta(g.resolveTargetDoc(node, gd, typeSpec))
-				mat := materializeTargetMeta(meta, defaultModule)
+				mat := parseTargetMeta(g.resolveTargetDoc(node, gd, typeSpec))
 				if mat.moduleName != "" {
 					moduleNames[mat.moduleName] = true
 				}
@@ -219,6 +216,9 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 				if mat.moduleName == "" && !mat.methodsMarked {
 					continue
 				}
+				if mat.methodsMarked && mat.moduleName == "" {
+					panic(fmt.Sprintf("ffigen:methods %s requires ffigen:module", typeSpec.Name.Name))
+				}
 				methodsPrefix := mat.methodsPrefix
 				if mat.methodsMarked && methodsPrefix == "" {
 					methodsPrefix = typeSpec.Name.Name
@@ -232,13 +232,13 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 				virtualSpec.Type = virtualIface
 				targets = append(targets, ffigenTarget{
 					spec: &virtualSpec,
-					meta: materializeTargetMeta(targetMeta{
+					meta: targetMeta{
 						moduleName:    mat.moduleName,
 						methodsPrefix: methodsPrefix,
 						methodsMarked: mat.methodsMarked,
 						proxyMarked:   mat.proxyMarked,
 						structTarget:  true,
-					}, defaultModule),
+					},
 				})
 				ownedStructs[typeSpec.Name.Name] = true
 			}
@@ -247,14 +247,13 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 	}
 
 	return moduleNames, packageData{
-		defaultModule: defaultModule,
-		targets:       targets,
-		structs:       structs,
-		interfaces:    interfaces,
-		interfaceFFI:  interfaceFFI,
-		constants:     globalConsts,
-		globals:       globals,
-		ownedStructs:  ownedStructs,
+		targets:      targets,
+		structs:      structs,
+		interfaces:   interfaces,
+		interfaceFFI: interfaceFFI,
+		constants:    globalConsts,
+		globals:      globals,
+		ownedStructs: ownedStructs,
 	}
 }
 

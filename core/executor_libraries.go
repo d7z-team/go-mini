@@ -60,7 +60,44 @@ func parseSurfaceLibraryModule(module surface.LibraryModule) (*ast.ProgramStmt, 
 	if err != nil {
 		return nil, fmt.Errorf("merge surface library %s: %w", module.Path, err)
 	}
+	if pkg := strings.TrimSpace(program.Package); pkg != "" {
+		last := surfaceModulePathLeaf(module.Path)
+		if !isSurfaceLibraryPackageLeaf(last) {
+			return nil, fmt.Errorf("surface library %s module path leaf %s is not a valid package identifier", module.Path, last)
+		}
+		if pkg != last {
+			return nil, fmt.Errorf("surface library %s package %s must match module path leaf %s", module.Path, pkg, last)
+		}
+	}
+	program.ModulePath = module.Path
 	return program, nil
+}
+
+func surfaceModulePathLeaf(path string) string {
+	last := strings.TrimSpace(path)
+	if idx := strings.LastIndex(last, "/"); idx >= 0 {
+		last = last[idx+1:]
+	}
+	return last
+}
+
+func isSurfaceLibraryPackageLeaf(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		ch := name[i]
+		if i == 0 {
+			if ch != '_' && (ch < 'A' || ch > 'Z') && (ch < 'a' || ch > 'z') {
+				return false
+			}
+			continue
+		}
+		if ch != '_' && (ch < 'A' || ch > 'Z') && (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *MiniExecutor) parseRegisteredLibraryASTsLocked() (map[string]*ast.ProgramStmt, error) {
@@ -149,7 +186,7 @@ func resolveSurfaceLibraryHashes(asts map[string]*ast.ProgramStmt, sourceHashes 
 			}
 		}
 		visiting[path] = false
-		hash := runtime.VersionedExternalRequirementHash(parts...)
+		hash := runtime.VersionedModuleRequirementHash(parts...)
 		resolved[path] = hash
 		return hash, nil
 	}
@@ -171,6 +208,43 @@ func (e *MiniExecutor) validateSurfaceLibrariesLocked(modules []surface.LibraryM
 				return fmt.Errorf("surface library %s conflicts with existing source", path)
 			}
 			continue
+		}
+	}
+	return nil
+}
+
+func (e *MiniExecutor) validateSurfaceModuleNamespaceLocked(modules []surface.LibraryModule, schema *runtime.FFISurfaceSchema, bound *runtime.BoundFFISurface) error {
+	sourcePaths := make(map[string]struct{}, len(e.sourceLibraries)+len(modules))
+	for path := range e.sourceLibraries {
+		sourcePaths[path] = struct{}{}
+	}
+	for _, module := range modules {
+		sourcePaths[module.Path] = struct{}{}
+	}
+	if schema != nil {
+		for key, pkg := range schema.Packages {
+			path := key
+			if pkg != nil && strings.TrimSpace(pkg.Path) != "" {
+				path = strings.TrimSpace(pkg.Path)
+			}
+			if _, exists := sourcePaths[path]; exists {
+				return fmt.Errorf("module %s conflicts between source library and ffi package", path)
+			}
+		}
+		for _, typ := range schema.Types {
+			if typ == nil || typ.PackagePath == "" {
+				continue
+			}
+			if _, exists := sourcePaths[typ.PackagePath]; exists {
+				return fmt.Errorf("module %s conflicts between source library and ffi package", typ.PackagePath)
+			}
+		}
+	}
+	if bound != nil {
+		for path := range bound.Packages {
+			if _, exists := sourcePaths[path]; exists {
+				return fmt.Errorf("module %s conflicts between source library and ffi package", path)
+			}
 		}
 	}
 	return nil

@@ -90,7 +90,9 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(moduleRoutes)
+	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return moduleHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)
@@ -163,14 +165,18 @@ func timerHostRouter(ctx context.Context, impl *Timer, registry *ffigo.HandleReg
 }
 
 var timerRoutes = []runtime.FFIRouteDecl{
-	{TypeName: "context/internal.Timer", MethodName: "Wait", RouteName: "context/internal.Timer.Wait", MethodID: methodIDTimerWait, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<context/internal.Timer>) Bool", runtime.FFIParamIn), Doc: ""},
-	{TypeName: "context/internal.Timer", MethodName: "Stop", RouteName: "context/internal.Timer.Stop", MethodID: methodIDTimerStop, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<context/internal.Timer>) Bool", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "context/internal", TypeMemberName: "Timer", MethodName: "Wait", RouteName: "context/internal.Timer.Wait", MethodID: methodIDTimerWait, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<context/internal.Timer>) Bool", runtime.FFIParamIn), Doc: ""},
+	{TypePackagePath: "context/internal", TypeMemberName: "Timer", MethodName: "Stop", RouteName: "context/internal.Timer.Stop", MethodID: methodIDTimerStop, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<context/internal.Timer>) Bool", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceTimer() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(timerRoutes)
-	schema.AddStruct("context/internal.Timer", context_internal_Timer_FFI_StructSchema)
+	if err := schema.AddRouteDecls(timerRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("context/internal", "Timer", context_internal_Timer_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return timerHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)

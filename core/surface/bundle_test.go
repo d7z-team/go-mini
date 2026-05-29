@@ -8,9 +8,13 @@ import (
 
 func TestMergeReturnsSchemaConflictInBundle(t *testing.T) {
 	left := runtime.NewFFISurfaceSchema()
-	left.AddConst("demo", "Value", runtime.ConstInt64(1))
+	if err := left.AddConst("demo", "Value", runtime.ConstInt64(1)); err != nil {
+		t.Fatal(err)
+	}
 	right := runtime.NewFFISurfaceSchema()
-	right.AddConst("demo", "Value", runtime.ConstInt64(2))
+	if err := right.AddConst("demo", "Value", runtime.ConstInt64(2)); err != nil {
+		t.Fatal(err)
+	}
 
 	bundle := Merge(New(left, nil), New(right, nil))
 	if bundle == nil || bundle.Err == nil {

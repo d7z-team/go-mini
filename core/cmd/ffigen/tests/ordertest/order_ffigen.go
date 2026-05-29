@@ -159,15 +159,19 @@ func orderServiceHostRouter(ctx context.Context, impl OrderService, registry *ff
 
 var orderServiceRoutes = []runtime.FFIRouteDecl{
 	{PackagePath: "order", MemberName: "New", RouteName: "order.New", MethodID: methodIDOrderServiceNew, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<order.Order>, Error)", runtime.FFIParamIn), Doc: "New 创建新订单"},
-	{TypeName: "order.Order", MethodName: "AddItem", RouteName: "order.Order.AddItem", MethodID: methodIDOrderServiceAddItem, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
-	{TypeName: "order.Order", MethodName: "GetTotal", RouteName: "order.Order.GetTotal", MethodID: methodIDOrderServiceGetTotal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), Doc: "GetTotal 获取总价"},
-	{TypeName: "order.Order", MethodName: "Close", RouteName: "order.Order.Close", MethodID: methodIDOrderServiceClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) Error", runtime.FFIParamIn), Doc: "Close 关闭订单"},
+	{TypePackagePath: "order", TypeMemberName: "Order", MethodName: "AddItem", RouteName: "order.Order.AddItem", MethodID: methodIDOrderServiceAddItem, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>, String, Float64) Error", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "AddItem 向订单添加商品 注意：这里使用 *Order 替代 uint32，ffigen 将自动处理句柄映射"},
+	{TypePackagePath: "order", TypeMemberName: "Order", MethodName: "GetTotal", RouteName: "order.Order.GetTotal", MethodID: methodIDOrderServiceGetTotal, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) tuple(Float64, Error)", runtime.FFIParamIn), Doc: "GetTotal 获取总价"},
+	{TypePackagePath: "order", TypeMemberName: "Order", MethodName: "Close", RouteName: "order.Order.Close", MethodID: methodIDOrderServiceClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<order.Order>) Error", runtime.FFIParamIn), Doc: "Close 关闭订单"},
 }
 
 func SurfaceOrderService(impl OrderService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddRouteDecls(orderServiceRoutes)
-	schema.AddStruct("order.Order", order_Order_FFI_StructSchema)
+	if err := schema.AddRouteDecls(orderServiceRoutes); err != nil {
+		panic(err)
+	}
+	if err := schema.AddStruct("order", "Order", order_Order_FFI_StructSchema); err != nil {
+		panic(err)
+	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return orderServiceHostRouter(callCtx, impl, ctx.Registry, req.MethodID, req.Method, req.Args)

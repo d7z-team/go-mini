@@ -13,10 +13,14 @@ import (
 func TestFFIMethodBindingKeepsFirstParam(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	schema := runtime.NewFFISurfaceSchema()
-	schema.AddStruct("demo.Table", runtime.MustParseRuntimeStructSpec("demo.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<demo.Table>, Int64, Int64, String) Void; }"))
-	schema.AddRouteDecls([]runtime.FFIRouteDecl{
+	if err := schema.AddStruct("demo", "Table", runtime.MustParseRuntimeStructSpec("demo.Table", runtime.StructOwnershipHostOpaque, "struct { SetString function(HostRef<demo.Table>, Int64, Int64, String) Void; }")); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]runtime.FFIRouteDecl{
 		testsurface.Route("demo.NewTable", 1, runtime.MustParseRuntimeFuncSig("function() HostRef<demo.Table>"), ""),
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := exec.UseSurface(testsurface.SchemaBundle(schema, nil)); err != nil {
 		t.Fatal(err)
 	}

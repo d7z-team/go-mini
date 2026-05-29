@@ -13,21 +13,35 @@
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
 - 纯 VM 源码库只能作为 `surface.Bundle` 的 compiler/engine 侧输入；executor 状态只保留源码描述并按需重新解析 fresh AST，导出成员必须来自显式 `ModuleExports` / `PreparedProgram.Exports`，不得复用已语义检查改写过的 AST 或继承父程序/FFI 注入 scope；bytecode 必须记录 module requirement 和 prepared exports，runtime 只校验 module hash 并装载 `PreparedProgram`，不得解析源码或引入 AST。
+- VM 源码库和 FFI package 必须进入同一套 runtime module registry；import、reflect、bytecode requirement、LSP/metadata 查询不得各自维护第二套模块解析或回退顺序。
+- 内部模块身份只接受 exact canonical module path；import alias 只属于源码层，不得用最后路径段、suffix、slash/dot 互转或短类型名兜底解析跨模块符号。
+- 同一 module path 不允许同时作为源码库和 FFI package；源码库 `package` 声明必须匹配 module path 最后一段；确实需要包装 FFI 时使用独立内部 FFI module path。
+- FFI type schema 必须显式记录 `PackagePath + MemberName` owner，并作为对应 FFI module 的 `type` member 注册；不得从 `pkg.Type` / `pkg.Type.Method` 字符串、最长已知 module path、最后一个点或旧 `TypeName` 字段反推 owner。
+- bytecode 只记录 `ModuleRequirements`；不得恢复 `ExternalRequirements`、`FFIMemberModule` 或 source/FFI 两套 requirement 结构。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - 对外 FFI / 源码库装配只通过 `executor.UseSurface(...)`；不要恢复 executor/runtime 上的直接 route、schema、constant、package value 注册 API，也不要恢复公开 AST module loader。
+- `reflect` 只能基于 Go-Mini lowering / compiler / runtime / surface / ffigen 已注册的 schema metadata；严禁通过 Go 标准库 `reflect` 或宿主原生值动态解构来获得类型、字段、方法或函数信息。
+- `reflect` 不得反射 Go 原生对象、Go struct、Go function、Go pointer、Go interface 或宿主 runtime identity；FFI 函数、HostRef 类型、package member、route 和方法可被反射，仅因为它们来自 `ffigen` / `surface` 显式注册的 schema/route metadata。
+- `reflect` 的类型名、route、methodID、签名和 raw 参数规则必须集中声明在 `core/reflectspec`，schema 注册、AST 语义检查和 runtime native 分派不得各自维护重复表。
+- `reflect.Package("pkg")`、`reflect.TypeFrom("...")`、`reflect.Zero("...")`、`reflect.MakeMap("...")` 只有在参数是编译期字符串字面量时，compiler 才能为已知 FFI package/type 记录 `ModuleRequirements`；动态字符串 lookup 只能做运行期 metadata 查询，不得隐式装载源码库或推断 requirement。
+- VM 源码 struct/interface 的运行时类型身份必须使用模块限定名 `modulePath.Type`，同名同结构类型在不同模块中也必须不相等；源码内可使用本地短名，lowering / prepared / runtime / reflect metadata 必须使用限定名，`TypeFrom("User")` 这类未限定 VM 源码类型 lookup 不得成功。FFI / ffigen / surface 提供的外部 schema 类型保持显式 schema 名，不做 VM 模块自动限定。
+- `reflect` 的 raw value API 只能在 VM runtime 内部检查 VM 值形态和已注册 schema，不得放宽 `Any` / FFI wire / host identity 边界；`Field` / `Index` / `MapKeys` / `MapIndex` / `MakeMap` / `Zero` / `SetField` / `SetMapIndex` / `Unwrap` 涉及 `Any` 时必须保持 pure-value 规则，并同时校验声明类型与实际值，空 array/map/struct 也不得绕过 unsafe 元素或字段类型；读取 API 返回可变容器 snapshot，reflect metadata struct 只读，VM pointer、HostRef、channel、module、closure 和 host identity 不得因此进入 `Any`、FFI `Any` 或持久化 wire。
+- struct tag 只能由 Go frontend 捕获并经 AST / lowering 写入 runtime struct schema；runtime、FFI bridge、`core/ffigo` 和 `reflect` 实现不得重新解析 Go 源码、Go AST 或使用 Go 原生反射补 tag。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
 - VM pointer 只能是 runtime-only slot 引用，不得使用 host handle ID 表示，也不得进入 FFI wire、`Any` 或 host identity 路径；`Ptr<T>` 与 `T` 之间不得恢复隐式互转。
 - FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，decode 必须校验 endpoint 方向，bridge 不得持有 VM pointer 或执行 VM task。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。
-- `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
+- runtime/surface schema builder 的 `AddFunc` / `AddConst` / `AddValue` / `AddStruct` / `AddInterface` / `AddTypeMethod` / `AddRouteDecls` 返回错误必须处理并向上返回；无效 owner、缺失 schema 或无效 route descriptor 不得被忽略或延后成 runtime panic。
+- `ffigen` 生成物必须保持 descriptor-first：通过 `FFIRouteDecl`、`RouterBridge` 和 `BindSchemaRoutes` 绑定；type method descriptor 只能使用结构化 `TypePackagePath` / `TypeMemberName`，struct/interface schema 只能用结构化 owner 注册，不恢复默认 `_Bridge` / `_FFI_Schemas` / `MethodID_` 胶水；Go 端 proxy 只能在显式 `ffigen:proxy` 时生成。
+- `ffigen:methods` 参数只能表示当前 `ffigen:module` 下的本地 member/type 名，不能传入 `pkg.Type`、Go import path、slash path 或通过字符串拆分反推 owner；需要跨 module owner 时必须显式切换 `ffigen:module`。
 - `ffigen` 对 channel 参数必须使用 `<-chan T` 或 `chan<- T` 这种方向类型；不要生成 bidirectional `chan T` 参数代理。
 - `core/ffigo` 只承载 FFI wire / bridge / helper 类型，不得 import `core/ast` 或 Go parser/AST 包。
 - `core` 不得 import 或调用顶层 `ffilib`；`core/ffilib` 只承载 native error/fmt.Errorf 与纯原生类型标准库 FFI 子集，并由 `engine.NewMiniExecutor()` 默认注册（失败通过 error 返回）；完整标准库 FFI 只能由顶层 `ffilib.Surface()` 通过 `executor.UseSurface(...)` 装配。
 - 非 `core/ffilib` 或顶层 `ffilib` 测试不得依赖标准库 FFI；`core/e2e` 只保留核心语言、runtime、module、FFI 机制测试。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型。
-- VM 可见类型名保持短路径 / 模块路径语义，不把完整 Go import path 写回 schema 文本。
+- VM 可见类型名由显式 module path / schema name 决定；`ffigen` 默认使用 `ffigen:module` 声明，不把宿主 Go import path 隐式写回 schema 文本。canonical type grammar 允许带点号的 module path 段，但不得作为短名兜底解析依据。
 - canonical type 文本格式只允许由 `core/typespec` 实现；前端使用 `core/ast/ast_types.go` 门面，VM/runtime 使用 `runtime.TypeSpec` / schema 门面。
 - 除上述类型格式化层外，不得手动拼接 `Array<T>`、`Map<K, V>`、`Ptr<T>`、`HostRef<T>`、`tuple(...)`、`function(...)`、`interface{...}`、`struct {...}`。
 - 闭包运行时结构只保留执行必要信息，不重新引入 AST 函数字段作为执行依赖。

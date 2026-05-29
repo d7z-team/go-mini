@@ -141,8 +141,8 @@ func main() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil || len(compiled.Bytecode.Executable.ExternalRequirements) == 0 {
-		t.Fatal("compiled bytecode missing external requirements")
+	if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil || len(compiled.Bytecode.Executable.ModuleRequirements) == 0 {
+		t.Fatal("compiled bytecode missing module requirements")
 	}
 	payload, err := compiled.MarshalBytecodeJSON()
 	if err != nil {
@@ -154,7 +154,7 @@ func main() {
 	if err == nil {
 		t.Fatal("expected bytecode load to reject missing external surface")
 	}
-	if !strings.Contains(err.Error(), "missing external FFI") {
+	if !strings.Contains(err.Error(), "missing ffi module mock") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -184,20 +184,35 @@ func registerMockCounterSurface(t *testing.T, executor *engine.MiniExecutor, bri
 	hostRefType := miniruntime.MustParseRuntimeType(miniruntime.HostRefType(counterType))
 
 	schema := miniruntime.NewFFISurfaceSchema()
-	schema.AddStruct("mock.Counter", miniruntime.MustParseRuntimeStructSpec(
+	if err := schema.AddStruct("mock", "Counter", miniruntime.MustParseRuntimeStructSpec(
 		"mock.Counter",
 		miniruntime.StructOwnershipHostOpaque,
 		"struct { Value function(HostRef<mock.Counter>) Int64; }",
-	))
-	if withValueMethod {
-		schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
-			testsurface.Route("mock.Counter.Value", 1, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Counter>) Int64"), ""),
-		})
+	)); err != nil {
+		t.Fatal(err)
 	}
-	schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
+	if withValueMethod {
+		if err := schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
+			{
+				TypePackagePath: "mock",
+				TypeMemberName:  "Counter",
+				MethodName:      "Value",
+				RouteName:       "mock.Counter.Value",
+				MethodID:        1,
+				Sig:             miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Counter>) Int64"),
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
 		testsurface.Route("mock.Assert", 2, miniruntime.MustParseRuntimeFuncSig("function(Int64) Void"), ""),
-	})
-	schema.AddValue("mock", "Default", &miniruntime.ValueSpec{Type: hostRefType, ReadOnly: true})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddValue("mock", "Default", &miniruntime.ValueSpec{Type: hostRefType, ReadOnly: true}); err != nil {
+		t.Fatal(err)
+	}
 	if err := executor.UseSurface(surface.New(schema, func(ctx miniruntime.FFIBindContext) (*miniruntime.BoundFFISurface, error) {
 		bridge.registry = ctx.Registry
 		bound := miniruntime.NewBoundFFISurfaceFromSchema(schema)

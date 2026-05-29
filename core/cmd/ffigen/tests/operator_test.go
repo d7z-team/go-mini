@@ -61,7 +61,7 @@ func (h *IntMapHost) EchoIntMap(ctx context.Context, m map[int64]string) (map[in
 func TestGeneratedMapBindingsPreserveIntKeyTypes(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	host := &IntMapHost{}
-	if err := executor.UseSurface(SurfaceMapTestLibrary("ffigen_test", host)); err != nil {
+	if err := executor.UseSurface(SurfaceMapTest(host)); err != nil {
 		t.Fatal(err)
 	}
 

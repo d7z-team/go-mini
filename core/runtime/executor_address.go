@@ -140,11 +140,15 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			if !ok {
 				return nil, fmt.Errorf("unknown field %s", desc.Property)
 			}
+			readOnlyMetadata := st.Spec != nil && reflectMetadataStruct(st.Spec.Name)
 			return &resolvedAddress{
 				load: func() (*Var, error) {
 					return field.Value, nil
 				},
 				store: func(val *Var) error {
+					if readOnlyMetadata {
+						return fmt.Errorf("metadata type %s is read-only", st.Spec.Name)
+					}
 					return session.Assign(field, val)
 				},
 			}, nil
@@ -259,6 +263,9 @@ func (e *Executor) resolvePointerSlot(session *StackContext, lhs LHSValue) (*Slo
 		switch obj.VType {
 		case TypeStruct:
 			st := obj.Ref.(*VMStruct)
+			if st.Spec != nil && reflectMetadataStruct(st.Spec.Name) {
+				return nil, fmt.Errorf("metadata type %s is read-only", st.Spec.Name)
+			}
 			field, ok := st.Field(desc.Property)
 			if !ok {
 				return nil, fmt.Errorf("unknown field %s", desc.Property)
