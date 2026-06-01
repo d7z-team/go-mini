@@ -67,19 +67,28 @@ func TestAppendRejectsElementTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestPrepareAnyRejectsNestedPointer(t *testing.T) {
+func TestPrepareAnyAllowsNestedPointer(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
-	ptr := exec.newSlotPointer(MustParseRuntimeType("Int64"), NewSlot(MustParseRuntimeType("Int64"), NewInt(1)))
+	slot := NewSlot(MustParseRuntimeType("Int64"), NewInt(1))
+	ptr := exec.newSlotPointer(MustParseRuntimeType("Int64"), slot)
 	arr := &Var{
 		VType:    TypeArray,
 		TypeInfo: MustParseRuntimeType("Array<Any>"),
 		Ref:      &VMArray{Data: []*Var{ptr}},
 	}
 
-	_, err := exec.prepareValueForType(session, arr, MustParseRuntimeType("Any"))
-	if err == nil || !strings.Contains(err.Error(), "VM pointer") {
-		t.Fatalf("expected nested pointer Any rejection, got %v", err)
+	got, err := exec.prepareValueForType(session, arr, MustParseRuntimeType("Any"))
+	if err != nil {
+		t.Fatalf("Any assignment rejected nested pointer: %v", err)
+	}
+	outer, ok := got.Ref.(*Var)
+	if !ok || outer.VType != TypeArray {
+		t.Fatalf("unexpected prepared Any value: %#v", got)
+	}
+	items := arrayRef(outer).Snapshot()
+	if len(items) != 1 || items[0].VType != TypePointer || items[0].Ref != slot {
+		t.Fatalf("nested pointer identity was not preserved: %#v", items)
 	}
 }
 

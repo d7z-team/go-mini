@@ -63,8 +63,8 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 		mode := sig.ParamModes[idx]
 		switch mode {
 		case FFIParamInOutBytes:
-			if current == nil || current.VType != TypeBytes {
-				return nil, fmt.Errorf("inout bytes argument %d must be TypeBytes", idx)
+			if current == nil || current.VType != TypeArray || !isByteArrayType(current.RuntimeType()) {
+				return nil, fmt.Errorf("inout bytes argument %d must be Array<Byte>", idx)
 			}
 		case FFIParamInOutArray:
 			if current == nil || current.VType != TypeArray {
@@ -94,7 +94,7 @@ func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridg
 		if err != nil {
 			return err
 		}
-		next := NewBytes(bytes)
+		next := NewByteArray(bytes)
 		if !target.Type.IsEmpty() {
 			next.SetRuntimeType(target.Type)
 		}

@@ -463,10 +463,6 @@ func zeroVarForRuntimeType(typ RuntimeType) *Var {
 		v := NewBool(false)
 		v.SetRuntimeType(typ)
 		return v
-	case typ.Raw == SpecBytes:
-		v := NewBytes(nil)
-		v.SetRuntimeType(typ)
-		return v
 	case typ.IsArray():
 		return &Var{TypeInfo: typ, VType: TypeArray}
 	case typ.IsMap():

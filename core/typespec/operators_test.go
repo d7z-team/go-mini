@@ -8,10 +8,10 @@ func TestBinaryResultTypeRejectsMixedEquality(t *testing.T) {
 	}
 }
 
-func TestAssignableToAnyRejectsHostIdentity(t *testing.T) {
-	for _, typ := range []Type{"Ptr<Int64>", "HostRef<demo.Handle>", "Chan<Int64>", Module} {
-		if typ.IsAssignableTo(Any) {
-			t.Fatalf("expected %s to be rejected by Any assignment", typ)
+func TestAssignableToAnyAllowsVMRuntimeValues(t *testing.T) {
+	for _, typ := range []Type{"Ptr<Int64>", "HostRef<demo.Handle>", "Chan<Int64>", Module, Closure, "Array<Ptr<Int64>>", "Map<String, HostRef<demo.Handle>>"} {
+		if !typ.IsAssignableTo(Any) {
+			t.Fatalf("expected %s to be assignable to Any", typ)
 		}
 	}
 }

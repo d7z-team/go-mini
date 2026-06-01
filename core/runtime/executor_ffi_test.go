@@ -206,6 +206,50 @@ func TestDeserializeChannelRejectsDirectionMismatch(t *testing.T) {
 	}
 }
 
+func TestFFIByteRuneScalarCodecPreservesTypeAndRejectsInvalidValues(t *testing.T) {
+	exec := &Executor{}
+	byteType := MustParseRuntimeType(SpecByte)
+	runeType := MustParseRuntimeType(SpecRune)
+
+	buf := ffigo.GetBuffer()
+	buf.WriteVarint(65)
+	byteValue, err := exec.deserializeParsedType(nil, ffigo.NewReader(buf.Bytes()), byteType, nil)
+	ffigo.ReleaseBuffer(buf)
+	if err != nil {
+		t.Fatalf("deserialize byte failed: %v", err)
+	}
+	if byteValue == nil || byteValue.I64 != 65 || byteValue.RuntimeType().Raw != SpecByte {
+		t.Fatalf("bad byte value: %#v", byteValue)
+	}
+
+	buf = ffigo.GetBuffer()
+	buf.WriteVarint(256)
+	if _, err := exec.deserializeParsedType(nil, ffigo.NewReader(buf.Bytes()), byteType, nil); err == nil || !strings.Contains(err.Error(), "overflows Byte") {
+		ffigo.ReleaseBuffer(buf)
+		t.Fatalf("expected byte overflow, got %v", err)
+	}
+	ffigo.ReleaseBuffer(buf)
+
+	buf = ffigo.GetBuffer()
+	buf.WriteVarint(-1)
+	runeValue, err := exec.deserializeParsedType(nil, ffigo.NewReader(buf.Bytes()), runeType, nil)
+	if err != nil {
+		ffigo.ReleaseBuffer(buf)
+		t.Fatalf("deserialize negative rune failed: %v", err)
+	}
+	if runeValue == nil || runeValue.I64 != -1 || runeValue.RuntimeType().Raw != SpecRune {
+		ffigo.ReleaseBuffer(buf)
+		t.Fatalf("bad rune value: %#v", runeValue)
+	}
+	ffigo.ReleaseBuffer(buf)
+
+	buf = ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	if err := exec.serializeRuntimeType(buf, NewInt(256), byteType); err == nil || !strings.Contains(err.Error(), "overflows Byte") {
+		t.Fatalf("expected byte encode overflow, got %v", err)
+	}
+}
+
 func TestApplyBoundFFISurfaceRejectsConflictingRouteDefinitions(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
@@ -262,7 +306,7 @@ func TestApplyBoundFFISurfaceReportsParamModeConflict(t *testing.T) {
 	first := NewBoundFFISurface(nil)
 	first.AddRoute("demo", "Mutate", FFIRoute{
 		Name:    "demo.Mutate",
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamInOutBytes),
 	})
 	if err := exec.ApplyBoundFFISurface(first); err != nil {
 		t.Fatalf("register route failed: %v", err)
@@ -271,7 +315,7 @@ func TestApplyBoundFFISurfaceReportsParamModeConflict(t *testing.T) {
 	second := NewBoundFFISurface(nil)
 	second.AddRoute("demo", "Mutate", FFIRoute{
 		Name:    "demo.Mutate",
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamIn),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamIn),
 	})
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(second), "route")
 }
@@ -592,10 +636,10 @@ func (b arrayCopyBackFFIBridge) DestroyHandle(uint32) error { return nil }
 func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
-	if err := session.NewVar("buf", MustParseRuntimeType("TypeBytes")); err != nil {
+	if err := session.NewVar("buf", MustParseRuntimeType("Array<Byte>")); err != nil {
 		t.Fatalf("new var failed: %v", err)
 	}
-	initial := NewBytes([]byte("ab"))
+	initial := NewByteArray([]byte("ab"))
 	if err := session.Store("buf", initial); err != nil {
 		t.Fatalf("store failed: %v", err)
 	}
@@ -603,7 +647,7 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	route := FFIRoute{
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", FFIParamInOutBytes),
 	}
 
 	arg, err := session.Load("buf")
@@ -615,7 +659,7 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evalFFI failed: %v", err)
 	}
-	if res == nil || res.VType != TypeBytes || string(res.B) != "ret" {
+	if res == nil || res.VType != TypeArray || byteArrayText(t, exec, res) != "ret" {
 		t.Fatalf("unexpected ffi return: %#v", res)
 	}
 
@@ -623,7 +667,7 @@ func TestEvalFFICopyBackWritesInOutBytesBackToCaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load updated failed: %v", err)
 	}
-	if updated == nil || updated.VType != TypeBytes || string(updated.B) != "AB!" {
+	if updated == nil || updated.VType != TypeArray || byteArrayText(t, exec, updated) != "AB!" {
 		t.Fatalf("unexpected copy-back bytes: %#v", updated)
 	}
 }
@@ -634,10 +678,10 @@ func TestEvalFFICopyBackRejectsNonAssignableArgument(t *testing.T) {
 	route := FFIRoute{
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", FFIParamInOutBytes),
 	}
 
-	_, err := exec.evalFFI(session, route, []*Var{NewBytes([]byte("ab"))}, []LHSValue{nil})
+	_, err := exec.evalFFI(session, route, []*Var{NewByteArray([]byte("ab"))}, []LHSValue{nil})
 	if err == nil || !strings.Contains(err.Error(), "requires assignable argument") {
 		t.Fatalf("expected non-assignable inout rejection, got %v", err)
 	}
@@ -667,10 +711,10 @@ func TestDecodeChannelPayloadReturnsErrorForMalformedPayload(t *testing.T) {
 func TestEvalFFICopyBackRejectsMalformedPayloadWithoutWriting(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
-	if err := session.NewVar("buf", MustParseRuntimeType("TypeBytes")); err != nil {
+	if err := session.NewVar("buf", MustParseRuntimeType("Array<Byte>")); err != nil {
 		t.Fatalf("new var failed: %v", err)
 	}
-	if err := session.Store("buf", NewBytes([]byte("original"))); err != nil {
+	if err := session.Store("buf", NewByteArray([]byte("original"))); err != nil {
 		t.Fatalf("store failed: %v", err)
 	}
 	arg, err := session.Load("buf")
@@ -680,7 +724,7 @@ func TestEvalFFICopyBackRejectsMalformedPayloadWithoutWriting(t *testing.T) {
 	route := FFIRoute{
 		Name:    "demo.Mutate",
 		Bridge:  malformedCopyBackFFIBridge{},
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamInOutBytes),
 	}
 
 	_, err = exec.evalFFI(session, route, []*Var{arg}, []LHSValue{&LHSEnv{Name: "buf"}})
@@ -691,7 +735,7 @@ func TestEvalFFICopyBackRejectsMalformedPayloadWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load updated failed: %v", err)
 	}
-	if updated == nil || string(updated.B) != "original" {
+	if updated == nil || byteArrayText(t, exec, updated) != "original" {
 		t.Fatalf("copy-back mutated value after decode failure: %#v", updated)
 	}
 }

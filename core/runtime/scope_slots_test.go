@@ -391,8 +391,26 @@ func TestMapKeysPreservePrimitiveType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bool key failed: %v", err)
 	}
-	if intKey == stringKey || boolKey == stringKey || boolKey == intKey {
-		t.Fatalf("map keys should keep primitive type: int=%q string=%q bool=%q", intKey, stringKey, boolKey)
+	byteKey, _, err := exec.comparableMapKey(NewByteValue(1), MustParseRuntimeType("Any"))
+	if err != nil {
+		t.Fatalf("byte key failed: %v", err)
+	}
+	runeKey, _, err := exec.comparableMapKey(NewRuneValue(1), MustParseRuntimeType("Any"))
+	if err != nil {
+		t.Fatalf("rune key failed: %v", err)
+	}
+	seen := map[string]string{}
+	for name, key := range map[string]string{
+		"int":    intKey,
+		"string": stringKey,
+		"bool":   boolKey,
+		"byte":   byteKey,
+		"rune":   runeKey,
+	} {
+		if prev, ok := seen[key]; ok {
+			t.Fatalf("map keys should keep primitive type: %s and %s both encoded as %q", prev, name, key)
+		}
+		seen[key] = name
 	}
 }
 

@@ -241,15 +241,20 @@ func main() {
 	if !ok || name.(String) != "safe" {
 		panic("safe field should be reflected")
 	}
-	if _, ok := reflect.Field(box, "Ptr"); ok {
-		panic("pointer field must not enter reflect Any")
+	ptr, ok := reflect.Field(box, "Ptr")
+	if !ok || !reflect.IsPtr(ptr) {
+		panic("pointer field should be reflected as VM Any")
 	}
-	if _, ok := reflect.Field(box, "Ch"); ok {
-		panic("channel field must not enter reflect Any")
+	ch, ok := reflect.Field(box, "Ch")
+	if !ok || !reflect.IsChan(ch) {
+		panic("channel field should be reflected as VM Any")
 	}
 	anyBox := AnyBox{}
-	if err := reflect.SetField(&anyBox, "Value", local); err == nil {
-		panic("function value must not enter reflect Any")
+	if err := reflect.SetField(&anyBox, "Value", local); err != nil {
+		panic(err.Error())
+	}
+	if !reflect.IsVMFunc(anyBox.Value) {
+		panic("function value should be stored in VM Any")
 	}
 
 	missing, ok := reflect.TypeFrom("Missing")
@@ -292,7 +297,7 @@ func main() {
 	items := rawItems.([]int64)
 	items[0] = 99
 	if collections.Items[0] != 1 {
-		panic("array field reflection must return a snapshot")
+		panic("array field reflection should return snapshot")
 	}
 	rawLookup, ok := reflect.Field(&collections, "Lookup")
 	if !ok {
@@ -301,7 +306,7 @@ func main() {
 	lookup := rawLookup.(map[string]int64)
 	lookup["a"] = 99
 	if collections.Lookup["a"] != 1 {
-		panic("map field reflection must return a snapshot")
+		panic("map field reflection should return snapshot")
 	}
 }
 `
@@ -410,6 +415,13 @@ type User struct {
 	Name string
 }
 
+type Box struct {
+	Values []int64
+	Lookup map[string]int64
+	Inner User
+	Ptr *int64
+}
+
 func (u User) Label() string {
 	return u.Name
 }
@@ -431,7 +443,7 @@ func main() {
 	if reflect.Len(ch) != 1 {
 		panic("bad reflected channel length")
 	}
-	if b, ok := reflect.Index([]byte("az"), 1); !ok || b.(Int64) != 122 {
+	if b, ok := reflect.Index([]byte("az"), 1); !ok || b.(byte) != 122 {
 		panic("bad reflected bytes index")
 	}
 	if c, ok := reflect.Index("go", 1); !ok || c.(Int64) != 111 {
@@ -472,8 +484,9 @@ func main() {
 	if !ok || madeValue.(Int64) != 7 || reflect.Len(dynamic) != 1 {
 		panic("bad reflected SetMapIndex result")
 	}
-	if _, ok := reflect.MakeMap("Map<String, Ptr<Int64>>"); ok {
-		panic("unsafe map value type should not enter reflected Any")
+	ptrMap, ok := reflect.MakeMap("Map<String, Ptr<Int64>>")
+	if !ok || reflect.KindOf(ptrMap) != reflect.Map {
+		panic("pointer map value type should be valid VM Any")
 	}
 	if _, ok := reflect.MakeMap("Array<Int64>"); ok {
 		panic("non-map MakeMap should fail")
@@ -501,24 +514,133 @@ func main() {
 
 	n := int64(1)
 	unsafeKeys := map[*int64]string{&n: "x"}
-	if _, ok := reflect.MapKeys(unsafeKeys); ok {
-		panic("unsafe map key should not enter reflected Any")
+	ptrKeys, ok := reflect.MapKeys(unsafeKeys)
+	if !ok || len(ptrKeys) != 1 || !reflect.IsPtr(ptrKeys[0]) {
+		panic("pointer map key should be reflected")
 	}
 	emptyUnsafeKeys := map[*int64]string{}
-	if _, ok := reflect.MapKeys(emptyUnsafeKeys); ok {
-		panic("empty unsafe map key type should not enter reflected Any")
+	emptyPtrKeys, ok := reflect.MapKeys(emptyUnsafeKeys)
+	if !ok || len(emptyPtrKeys) != 0 {
+		panic("empty pointer-key map should be reflected")
 	}
 	unsafeKeyValues := map[string]*int64{"n": &n}
-	if _, ok := reflect.MapKeys(unsafeKeyValues); ok {
-		panic("unsafe map value type should block reflected keys")
+	ptrValueKeys, ok := reflect.MapKeys(unsafeKeyValues)
+	if !ok || len(ptrValueKeys) != 1 {
+		panic("pointer map values should not block key reflection")
 	}
 	emptyUnsafeKeyValues := map[string]*int64{}
-	if _, ok := reflect.MapKeys(emptyUnsafeKeyValues); ok {
-		panic("empty unsafe map value type should block reflected keys")
+	emptyPtrValueKeys, ok := reflect.MapKeys(emptyUnsafeKeyValues)
+	if !ok || len(emptyPtrValueKeys) != 0 {
+		panic("empty pointer-value map should be reflected")
 	}
 	unsafeValues := map[string]*int64{}
-	if err := reflect.SetMapIndex(unsafeValues, "n", &n); err == nil {
-		panic("unsafe map value should not enter reflected Any")
+	if err := reflect.SetMapIndex(unsafeValues, "n", &n); err != nil {
+		panic(err.Error())
+	}
+
+	box := Box{
+		Values: []int64{1},
+		Lookup: map[string]int64{"a": 1},
+		Inner: User{Name: "Ada"},
+		Ptr: &n,
+	}
+	values, ok := reflect.Field(box, "Values")
+	if !ok {
+		panic("array field should be reflected")
+	}
+	if err := reflect.Append(values, 2); err != nil {
+		panic(err.Error())
+	}
+	if reflect.Len(values) != 2 || len(box.Values) != 1 {
+		panic("reflected array field must be a snapshot")
+	}
+	snapshotMap, ok := reflect.Field(box, "Lookup")
+	if !ok {
+		panic("map field should be reflected")
+	}
+	if err := reflect.SetMapIndex(snapshotMap, "b", 2); err != nil {
+		panic(err.Error())
+	}
+	if reflect.Len(snapshotMap) != 2 || len(box.Lookup) != 1 {
+		panic("reflected map field must be a snapshot")
+	}
+	cyclic := []any{}
+	cyclic = append(cyclic, nil)
+	cyclic[0] = cyclic
+	cyclicItem, ok := reflect.Index(cyclic, 0)
+	if !ok || reflect.KindOf(cyclicItem) != reflect.Array {
+		panic("reflect snapshot should preserve cyclic array shape")
+	}
+	inner, ok := reflect.Field(box, "Inner")
+	if !ok {
+		panic("struct field should be reflected")
+	}
+	if err := reflect.SetField(inner, "Name", "Lin"); err != nil {
+		panic(err.Error())
+	}
+	if box.Inner.Name != "Ada" {
+		panic("reflected struct field must be a snapshot")
+	}
+	ptr, ok := reflect.Field(box, "Ptr")
+	if !ok || !reflect.IsPtr(ptr) {
+		panic("pointer field should preserve pointer identity")
+	}
+	if err := reflect.Assign(ptr, 9); err != nil {
+		panic(err.Error())
+	}
+	if n != 9 || *box.Ptr != 9 {
+		panic("reflected pointer field should preserve target identity")
+	}
+}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestReflectElemReturnsPointerAndInterfaceValues(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	code := `
+package main
+
+import "reflect"
+
+type Labeler interface {
+	Label() string
+}
+
+type User struct {
+	Name string
+}
+
+func (u User) Label() string {
+	return u.Name
+}
+
+func main() {
+	n := int64(7)
+	elem, ok := reflect.Elem(&n)
+	if !ok || elem.(Int64) != 7 {
+		panic("bad reflected pointer elem")
+	}
+
+	var missing *int64
+	if _, ok := reflect.Elem(missing); ok {
+		panic("nil pointer elem should fail")
+	}
+
+	var labeler Labeler = User{Name: "mini"}
+	elem, ok = reflect.Elem(labeler)
+	if !ok || reflect.KindOf(elem) != reflect.Struct {
+		panic("bad reflected interface elem")
+	}
+	name, ok := reflect.Field(elem, "Name")
+	if !ok || name.(String) != "mini" {
+		panic("bad reflected interface elem field")
 	}
 }
 `
@@ -677,7 +799,7 @@ func main() {
 	}
 }
 
-func TestReflectPureAnyTypeBoundaries(t *testing.T) {
+func TestReflectVMAnyTypeBoundaries(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	code := `
 package main
@@ -692,17 +814,20 @@ type UnsafeCollections struct {
 
 func main() {
 	box := UnsafeCollections{}
-	if _, ok := reflect.Field(box, "Ptrs"); ok {
-		panic("empty pointer array field must not enter reflect Any")
+	ptrs, ok := reflect.Field(box, "Ptrs")
+	if !ok || reflect.KindOf(ptrs) != reflect.Array {
+		panic("empty pointer array field should be reflected")
 	}
-	if _, ok := reflect.Field(box, "Lookup"); ok {
-		panic("empty pointer map field must not enter reflect Any")
+	lookup, ok := reflect.Field(box, "Lookup")
+	if !ok || reflect.KindOf(lookup) != reflect.Map {
+		panic("empty pointer map field should be reflected")
 	}
-	if _, ok := reflect.Field(box, "Callbacks"); ok {
-		panic("empty function array field must not enter reflect Any")
+	callbacks, ok := reflect.Field(box, "Callbacks")
+	if !ok || reflect.KindOf(callbacks) != reflect.Array {
+		panic("empty function array field should be reflected")
 	}
-	if _, ok := reflect.MakeMap("Map<String, function() Int64>"); ok {
-		panic("function map values must not enter reflect Any")
+	if made, ok := reflect.MakeMap("Map<String, function() Int64>"); !ok || reflect.KindOf(made) != reflect.Map {
+		panic("function map values should be valid VM Any")
 	}
 }
 `
@@ -734,7 +859,7 @@ func main() {
 	}
 }
 
-func TestReflectZeroRejectsUnsafeAnyType(t *testing.T) {
+func TestReflectZeroAllowsPointerValueTypes(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
@@ -742,14 +867,21 @@ package main
 import "reflect"
 
 func main() {
-	reflect.Zero("Map<String, Ptr<Int64>>")
+	bytes := reflect.Zero("Array<Byte>")
+	if reflect.KindOf(bytes) != reflect.Array || !reflect.IsNil(bytes) {
+		panic("bad zero byte array value")
+	}
+	value := reflect.Zero("Map<String, Ptr<Int64>>")
+	if reflect.KindOf(value) != reflect.Map {
+		panic("bad zero map kind")
+	}
 }
 `)
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	if err := prog.Execute(context.Background()); err == nil {
-		t.Fatal("expected reflect.Zero to reject unsafe Any type")
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
 	}
 }
 

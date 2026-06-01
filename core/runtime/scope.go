@@ -729,11 +729,18 @@ func (ctx *StackContext) prepareAssignedValue(target RuntimeType, expr *Var) (*V
 		case target.IsInt():
 			switch actual.VType {
 			case TypeInt:
+				if err := checkIntegerSubtypeRange(target.Raw, actual.I64); err != nil {
+					return nil, err
+				}
 				value := NewInt(actual.I64)
 				value.SetRuntimeType(target)
 				return value, nil
 			case TypeFloat:
-				value := NewInt(int64(actual.F64))
+				intValue := int64(actual.F64)
+				if err := checkIntegerSubtypeRange(target.Raw, intValue); err != nil {
+					return nil, err
+				}
+				value := NewInt(intValue)
 				value.SetRuntimeType(target)
 				return value, nil
 			}
@@ -782,8 +789,6 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 		return MustParseRuntimeType("Float64")
 	case TypeString:
 		return MustParseRuntimeType("String")
-	case TypeBytes:
-		return MustParseRuntimeType("TypeBytes")
 	case TypeBool:
 		return MustParseRuntimeType("Bool")
 	case TypeAny:
@@ -819,6 +824,16 @@ func runtimeTypeForAssignment(v *Var) RuntimeType {
 	default:
 		return declared
 	}
+}
+
+func checkIntegerSubtypeRange(target TypeSpec, value int64) error {
+	switch target {
+	case SpecByte:
+		if value < 0 || value > 255 {
+			return fmt.Errorf("value %d overflows Byte", value)
+		}
+	}
+	return nil
 }
 
 func runtimeTypeFromFuncSig(sig *RuntimeFuncSig) RuntimeType {
@@ -858,8 +873,6 @@ func nilValueForType(target RuntimeType) (*Var, error) {
 		return NewVarWithRuntimeType(target, TypeClosure), nil
 	case target.Raw == SpecClosure:
 		return NewVarWithRuntimeType(target, TypeClosure), nil
-	case target.Raw == "TypeBytes":
-		return &Var{TypeInfo: target, VType: TypeBytes}, nil
 	case target.Raw == "Error":
 		return nil, nil
 	default:
@@ -1017,8 +1030,6 @@ func isNilValue(v *Var) bool {
 			return iface == nil || iface.Target == nil
 		}
 		return false
-	case TypeBytes:
-		return v.B == nil
 	case TypeError:
 		return v.Ref == nil
 	}

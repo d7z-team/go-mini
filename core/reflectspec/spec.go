@@ -47,6 +47,7 @@ const (
 	RouteUnwrap        = "reflect.Unwrap"
 	RouteAssign        = "reflect.Assign"
 	RouteAppend        = "reflect.Append"
+	RouteElem          = "reflect.Elem"
 
 	RouteTypeString       = "reflect.Type.String"
 	RouteTypeKind         = "reflect.Type.Kind"
@@ -197,9 +198,9 @@ func PackageFunctions() []Route {
 		{PackagePath: PackagePath, MemberName: "KindOfType", RouteName: RouteKindOfType, MethodID: 4, Return: typespec.Int64, Params: []typespec.Type{TypeType}, Doc: "Return the reflect kind for a type"},
 		{PackagePath: PackagePath, MemberName: "Fields", RouteName: RouteFields, MethodID: 5, Return: typespec.Array(StructFieldType), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return struct field metadata for a value"},
 		{PackagePath: PackagePath, MemberName: "FieldsOfType", RouteName: RouteFieldsOfType, MethodID: 6, Return: typespec.Array(StructFieldType), Params: []typespec.Type{TypeType}, Doc: "Return struct field metadata for a type"},
-		{PackagePath: PackagePath, MemberName: "Field", RouteName: RouteField, MethodID: 7, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.String}, RawArgs: []int{0}, Doc: "Read a pure-value struct field by name"},
+		{PackagePath: PackagePath, MemberName: "Field", RouteName: RouteField, MethodID: 7, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.String}, RawArgs: []int{0}, Doc: "Read a VM struct field by name"},
 		{PackagePath: PackagePath, MemberName: "SetField", RouteName: RouteSetField, MethodID: 8, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.String, typespec.Any}, RawArgs: []int{0, 2}, Doc: "Assign a struct field on a pointer or Any-wrapped struct value"},
-		{PackagePath: PackagePath, MemberName: "Zero", RouteName: RouteZero, MethodID: 9, Return: typespec.Any, Params: []typespec.Type{typespec.String}, Doc: "Create a pure Any zero value for a type"},
+		{PackagePath: PackagePath, MemberName: "Zero", RouteName: RouteZero, MethodID: 9, Return: typespec.Any, Params: []typespec.Type{typespec.String}, Doc: "Create a VM zero value for a type"},
 		{PackagePath: PackagePath, MemberName: "Methods", RouteName: RouteMethods, MethodID: 10, Return: typespec.Array(MethodType), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return method metadata for a value"},
 		{PackagePath: PackagePath, MemberName: "MethodsOfType", RouteName: RouteMethodsOfType, MethodID: 11, Return: typespec.Array(MethodType), Params: []typespec.Type{TypeType}, Doc: "Return method metadata for a type"},
 		{PackagePath: PackagePath, MemberName: "IsNil", RouteName: RouteIsNil, MethodID: 12, Return: typespec.Bool, Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Report whether a VM value is nil"},
@@ -216,14 +217,15 @@ func PackageFunctions() []Route {
 		{PackagePath: PackagePath, MemberName: "Members", RouteName: RouteMembers, MethodID: 23, Return: typespec.Array(MemberType), Params: []typespec.Type{PackageInfoType}, Doc: "List registered FFI package members"},
 		{PackagePath: PackagePath, MemberName: "MemberByName", RouteName: RouteMemberByName, MethodID: 24, Return: typespec.Tuple(MemberType, typespec.Bool), Params: []typespec.Type{PackageInfoType, typespec.String}, Doc: "Resolve an FFI package member by name"},
 		{PackagePath: PackagePath, MemberName: "Len", RouteName: RouteLen, MethodID: 25, Return: typespec.Int64, Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return length for a VM string, bytes, array, map, or channel value"},
-		{PackagePath: PackagePath, MemberName: "Index", RouteName: RouteIndex, MethodID: 26, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.Int64}, RawArgs: []int{0}, Doc: "Read a pure-value array, string, or bytes item by index"},
-		{PackagePath: PackagePath, MemberName: "MapKeys", RouteName: RouteMapKeys, MethodID: 27, Return: typespec.Tuple(typespec.Array(typespec.Any), typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return pure-value map keys as a snapshot"},
-		{PackagePath: PackagePath, MemberName: "MapIndex", RouteName: RouteMapIndex, MethodID: 28, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Read a pure-value map item by key"},
-		{PackagePath: PackagePath, MemberName: "MakeMap", RouteName: RouteMakeMap, MethodID: 29, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.String}, Doc: "Create an empty pure Any map for a canonical map type"},
-		{PackagePath: PackagePath, MemberName: "SetMapIndex", RouteName: RouteSetMapIndex, MethodID: 30, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any, typespec.Any}, RawArgs: []int{0, 1, 2}, Doc: "Assign a pure-value map entry using VM map assignment rules"},
-		{PackagePath: PackagePath, MemberName: "Unwrap", RouteName: RouteUnwrap, MethodID: 31, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return the pure value inside Any or interface wrappers"},
+		{PackagePath: PackagePath, MemberName: "Index", RouteName: RouteIndex, MethodID: 26, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.Int64}, RawArgs: []int{0}, Doc: "Read a VM array, string, or bytes item by index"},
+		{PackagePath: PackagePath, MemberName: "MapKeys", RouteName: RouteMapKeys, MethodID: 27, Return: typespec.Tuple(typespec.Array(typespec.Any), typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return VM map keys"},
+		{PackagePath: PackagePath, MemberName: "MapIndex", RouteName: RouteMapIndex, MethodID: 28, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Read a VM map item by key"},
+		{PackagePath: PackagePath, MemberName: "MakeMap", RouteName: RouteMakeMap, MethodID: 29, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.String}, Doc: "Create an empty VM map for a canonical map type"},
+		{PackagePath: PackagePath, MemberName: "SetMapIndex", RouteName: RouteSetMapIndex, MethodID: 30, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any, typespec.Any}, RawArgs: []int{0, 1, 2}, Doc: "Assign a VM map entry using normal VM assignment rules"},
+		{PackagePath: PackagePath, MemberName: "Unwrap", RouteName: RouteUnwrap, MethodID: 31, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return the VM value inside Any or interface wrappers"},
 		{PackagePath: PackagePath, MemberName: "Assign", RouteName: RouteAssign, MethodID: 32, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Assign a VM value into a writable target using normal VM assignment rules"},
 		{PackagePath: PackagePath, MemberName: "Append", RouteName: RouteAppend, MethodID: 33, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Append a value into an array target using normal VM append and assignment rules"},
+		{PackagePath: PackagePath, MemberName: "Elem", RouteName: RouteElem, MethodID: 34, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return the value referenced by a VM pointer or typed interface"},
 	}
 }
 

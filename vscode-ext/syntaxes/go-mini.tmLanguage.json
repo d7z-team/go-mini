@@ -37,7 +37,7 @@
     "types": {
       "patterns": [{
         "name": "entity.name.type.mgo",
-        "match": "\\b(Int64|Float64|String|Bool|Any|Void|TypeBytes|TypeModule|TypeClosure|Ptr|Array|Map)\\b"
+        "match": "\\b(Int64|Float64|String|Bool|Byte|Rune|Any|Void|TypeModule|TypeClosure|Ptr|Array|Map)\\b"
       }]
     }
   }

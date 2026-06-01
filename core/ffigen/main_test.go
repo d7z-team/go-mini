@@ -62,6 +62,9 @@ func TestRunUsesOptions(t *testing.T) {
 	workspace := makeModuleTempDir(t)
 	writeTestFile(t, workspace, "api.go", `package pkgmode
 
+const Small byte = 7
+const Mark rune = 'A'
+
 // ffigen:module demo
 type DemoModule interface {
 	Echo(s string) string
@@ -80,6 +83,12 @@ type DemoModule interface {
 	code := readGeneratedCode(t, outputPath)
 	if !strings.Contains(code, "func SurfaceDemoModule(") {
 		t.Fatalf("expected generated module surface, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Small", runtime.ConstByte(byte(7)))`) {
+		t.Fatalf("expected byte constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Mark", runtime.ConstRune(int64('A')))`) {
+		t.Fatalf("expected rune constant schema, got:\n%s", code)
 	}
 }
 
@@ -354,7 +363,7 @@ type Mutator interface {
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
 	code := readGeneratedCode(t, generatedPath)
-	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamInOutBytes)`) {
+	if !strings.Contains(code, `runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", runtime.FFIParamInOutBytes)`) {
 		t.Fatalf("expected BytesRef schema to emit inout bytes mode, got:\n%s", code)
 	}
 	if !strings.Contains(code, `resBuf.WriteUvarint(uint64(1))`) {
@@ -888,13 +897,13 @@ type IO interface {
 
 	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
 	code := readGeneratedCode(t, generatedPath)
-	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);Write(TypeBytes) tuple(Int64, Error);}`) {
+	if !strings.Contains(code, `var io_ReadWriter_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(Array<Byte>) tuple(Int64, Error);Write(Array<Byte>) tuple(Int64, Error);}`) {
 		t.Fatalf("expected flattened ReadWriter interface schema, got:\n%s", code)
 	}
 	if !strings.Contains(code, "func SurfaceReadWriterSchema(") {
 		t.Fatalf("expected schema surface helper for interface target")
 	}
-	if !strings.Contains(code, `function(io.Reader) tuple(TypeBytes, Error)`) {
+	if !strings.Contains(code, `function(io.Reader) tuple(Array<Byte>, Error)`) {
 		t.Fatalf("expected named Reader parameter schema, got:\n%s", code)
 	}
 	if !strings.Contains(code, `function(io.Writer, io.Reader) tuple(Int64, Error)`) {

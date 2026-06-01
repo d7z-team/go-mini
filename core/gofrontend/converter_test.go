@@ -9,19 +9,29 @@ import (
 
 func TestCanonicalBuiltinTypeNameCoversGoIntegerAliases(t *testing.T) {
 	converter := NewConverter()
-	for _, name := range []string{"uint64", "uintptr", "byte", "rune"} {
+	for _, name := range []string{"uint64", "uintptr"} {
 		if got := converter.canonicalBuiltinTypeName(name); got != "Int64" {
 			t.Fatalf("expected %s to normalize to Int64, got %s", name, got)
 		}
 	}
+	if got := converter.canonicalBuiltinTypeName("byte"); got != "Byte" {
+		t.Fatalf("expected byte to normalize to Byte, got %s", got)
+	}
+	if got := converter.canonicalBuiltinTypeName("rune"); got != "Rune" {
+		t.Fatalf("expected rune to normalize to Rune, got %s", got)
+	}
 }
 
-func TestConvertSourceNormalizesRuneLiteralsToInt64(t *testing.T) {
+func TestConvertSourceNormalizesRuneLiteralsToRune(t *testing.T) {
 	node, err := NewConverter().ConvertSource("rune.mgo", `package main
 const Space = ' '
 const Han = '你'
 const Hex = '\xff'
 const RawByte = '\x80'
+const Small byte = 7
+const Alias uint8 = 8
+const Mark rune = 'A'
+const Count int32 = 9
 
 func main() {
 	a := 'A'
@@ -38,8 +48,8 @@ func main() {
 	if !ok {
 		t.Fatalf("converted node = %T, want ProgramStmt", node)
 	}
-	if got := prog.ConstantTypes["Space"]; got != miniast.TypeInt64 {
-		t.Fatalf("Space type = %s, want Int64", got)
+	if got := prog.ConstantTypes["Space"]; got != miniast.TypeRune {
+		t.Fatalf("Space type = %s, want Rune", got)
 	}
 	if got := prog.Constants["Space"]; got != "32" {
 		t.Fatalf("Space value = %q, want 32", got)
@@ -53,6 +63,18 @@ func main() {
 	if got := prog.Constants["RawByte"]; got != "128" {
 		t.Fatalf("RawByte value = %q, want 128", got)
 	}
+	if got := prog.ConstantTypes["Small"]; got != miniast.TypeByte {
+		t.Fatalf("Small type = %s, want Byte", got)
+	}
+	if got := prog.ConstantTypes["Alias"]; got != miniast.TypeByte {
+		t.Fatalf("Alias type = %s, want Byte", got)
+	}
+	if got := prog.ConstantTypes["Mark"]; got != miniast.TypeRune {
+		t.Fatalf("Mark type = %s, want Rune", got)
+	}
+	if got := prog.ConstantTypes["Count"]; got != miniast.TypeInt64 {
+		t.Fatalf("Count type = %s, want Int64", got)
+	}
 
 	mainFn := prog.Functions["main"]
 	if mainFn == nil || len(mainFn.Body.Children) < 3 {
@@ -63,24 +85,24 @@ func main() {
 		t.Fatalf("first stmt = %#v, want assignment", mainFn.Body.Children[0])
 	}
 	firstLit, ok := firstAssign.Value.(*miniast.LiteralExpr)
-	if !ok || firstLit.Type != miniast.TypeInt64 || firstLit.Value != "65" {
-		t.Fatalf("first literal = %#v, want Int64 65", firstAssign.Value)
+	if !ok || firstLit.Type != miniast.TypeRune || firstLit.Value != "65" {
+		t.Fatalf("first literal = %#v, want Rune 65", firstAssign.Value)
 	}
 	secondAssign, ok := mainFn.Body.Children[1].(*miniast.AssignmentStmt)
 	if !ok {
 		t.Fatalf("second stmt = %#v, want assignment", mainFn.Body.Children[1])
 	}
 	secondLit, ok := secondAssign.Value.(*miniast.LiteralExpr)
-	if !ok || secondLit.Type != miniast.TypeInt64 || secondLit.Value != "10" {
-		t.Fatalf("second literal = %#v, want Int64 10", secondAssign.Value)
+	if !ok || secondLit.Type != miniast.TypeRune || secondLit.Value != "10" {
+		t.Fatalf("second literal = %#v, want Rune 10", secondAssign.Value)
 	}
 	thirdAssign, ok := mainFn.Body.Children[2].(*miniast.AssignmentStmt)
 	if !ok {
 		t.Fatalf("third stmt = %#v, want assignment", mainFn.Body.Children[2])
 	}
 	thirdLit, ok := thirdAssign.Value.(*miniast.LiteralExpr)
-	if !ok || thirdLit.Type != miniast.TypeInt64 || thirdLit.Value != "128512" {
-		t.Fatalf("third literal = %#v, want Int64 128512", thirdAssign.Value)
+	if !ok || thirdLit.Type != miniast.TypeRune || thirdLit.Value != "128512" {
+		t.Fatalf("third literal = %#v, want Rune 128512", thirdAssign.Value)
 	}
 }
 

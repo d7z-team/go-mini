@@ -14,7 +14,7 @@ import (
 
 func isBuiltinScalarType(name string) bool {
 	switch name {
-	case "Int64", "Float64", "String", "Bool", "Any", "Error", "Void", "TypeBytes",
+	case "Int64", "Float64", "String", "Bool", "Byte", "Rune", "Any", "Error", "Void",
 		"int", "int8", "int16", "int32", "int64", "rune",
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "byte",
 		"float32", "float64", "string", "bool", "any", "error":
@@ -171,10 +171,10 @@ func constKindFromObject(obj types.Object) string {
 	if !ok {
 		return ""
 	}
-	if kind := constKindFromValue(c.Val()); kind != "" {
+	if kind := constKindFromType(c.Type()); kind != "" {
 		return kind
 	}
-	return constKindFromType(c.Type())
+	return constKindFromValue(c.Val())
 }
 
 func constKindFromValue(v constant.Value) string {
@@ -199,9 +199,21 @@ func constKindFromType(typ types.Type) string {
 	if typ == nil {
 		return ""
 	}
+	switch typ.String() {
+	case "byte", "uint8":
+		return "byte"
+	case "rune":
+		return "rune"
+	}
 	basic, ok := typ.Underlying().(*types.Basic)
 	if !ok {
 		return ""
+	}
+	switch basic.Kind() {
+	case types.UntypedRune:
+		return "rune"
+	case types.Uint8:
+		return "byte"
 	}
 	info := basic.Info()
 	switch {
@@ -226,6 +238,10 @@ func constConstructorExpr(c constBinding) string {
 		return fmt.Sprintf("runtime.ConstString(string(%s))", c.Expr)
 	case "float64":
 		return fmt.Sprintf("runtime.ConstFloat64(float64(%s))", c.Expr)
+	case "byte":
+		return fmt.Sprintf("runtime.ConstByte(byte(%s))", c.Expr)
+	case "rune":
+		return fmt.Sprintf("runtime.ConstRune(int64(%s))", c.Expr)
 	case "int64":
 		return fmt.Sprintf("runtime.ConstInt64(int64(%s))", c.Expr)
 	default:
@@ -251,8 +267,11 @@ func (g *Generator) toGoType(pType string) string {
 	}
 	if innerType, ok := miniType.ReadArrayItemType(); ok {
 		inner := string(innerType)
-		if inner == "Uint8" || inner == "byte" || inner == "uint8" {
+		if inner == "Byte" || inner == "Uint8" || inner == "byte" || inner == "uint8" {
 			return "[]byte"
+		}
+		if inner == "Rune" {
+			return "[]rune"
 		}
 		return "[]" + g.toGoType(inner)
 	}
@@ -273,7 +292,7 @@ func (g *Generator) toGoType(pType string) string {
 		return "uint32"
 	case "uint16":
 		return "uint16"
-	case "byte", "uint8":
+	case "Byte", "byte", "uint8":
 		return "uint8"
 	case "uintptr":
 		return "uintptr"
@@ -287,7 +306,7 @@ func (g *Generator) toGoType(pType string) string {
 		return "int16"
 	case "int8":
 		return "int8"
-	case "rune":
+	case "Rune", "rune":
 		return "rune"
 	case "uint":
 		return "uint"
@@ -303,8 +322,6 @@ func (g *Generator) toGoType(pType string) string {
 		return "context.Context"
 	case "Any", "any", "interface{}":
 		return "any"
-	case "TypeBytes":
-		return "[]byte"
 	case "Void":
 		return "ffigo.Void"
 	case "error":
@@ -513,8 +530,8 @@ func zeroValue(t string) string {
 		return "nil"
 	}
 	switch t {
-	case "int", "int8", "int16", "int32", "Int64", "int64", "rune",
-		"uint", "uint8", "byte", "uint16", "uint32", "uint64", "uintptr":
+	case "int", "int8", "int16", "int32", "Int64", "int64", "Rune", "rune",
+		"uint", "uint8", "Byte", "byte", "uint16", "uint32", "uint64", "uintptr":
 		return "0"
 	case "String", "string":
 		return "\"\""
@@ -522,8 +539,6 @@ func zeroValue(t string) string {
 		return "false"
 	case "float32", "Float64", "float64":
 		return "0.0"
-	case "TypeBytes":
-		return "nil"
 	default:
 		return t + "{}"
 	}

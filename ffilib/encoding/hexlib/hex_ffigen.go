@@ -79,9 +79,9 @@ func hexHostRouter(ctx context.Context, impl Hex, registry *ffigo.HandleRegistry
 }
 
 var hexRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "encoding/hex", MemberName: "EncodeToString", RouteName: "encoding/hex.EncodeToString", MethodID: methodIDHexEncodeToString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "encoding/hex", MemberName: "DecodeString", RouteName: "encoding/hex.DecodeString", MethodID: methodIDHexDecodeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "encoding/hex", MemberName: "Dump", RouteName: "encoding/hex.Dump", MethodID: methodIDHexDump, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/hex", MemberName: "EncodeToString", RouteName: "encoding/hex.EncodeToString", MethodID: methodIDHexEncodeToString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) String", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/hex", MemberName: "DecodeString", RouteName: "encoding/hex.DecodeString", MethodID: methodIDHexDecodeString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Array<Byte>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "encoding/hex", MemberName: "Dump", RouteName: "encoding/hex.Dump", MethodID: methodIDHexDump, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) String", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceHex(impl Hex) *surface.Bundle {

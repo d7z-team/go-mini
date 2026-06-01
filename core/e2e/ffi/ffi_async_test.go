@@ -85,7 +85,7 @@ func TestAsyncFFIResumesWithReturnAndCopyBack(t *testing.T) {
 	bridge := asyncBridge{}
 	testsurface.UseRoutes(t, executor, bridge,
 		testsurface.Route("async.Value", 1, runtime.MustParseRuntimeFuncSig("function() Int64"), ""),
-		testsurface.Route("async.Mutate", 2, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), ""),
+		testsurface.Route("async.Mutate", 2, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", runtime.FFIParamInOutBytes), ""),
 	)
 
 	prog, err := executor.NewRuntimeByGoCode(`

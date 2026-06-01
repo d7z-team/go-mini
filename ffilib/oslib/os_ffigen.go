@@ -223,8 +223,8 @@ var osRoutes = []runtime.FFIRouteDecl{
 	{PackagePath: "os", MemberName: "Open", RouteName: "os.Open", MethodID: methodIDOSOpen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Create", RouteName: "os.Create", MethodID: methodIDOSCreate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "OpenFile", RouteName: "os.OpenFile", MethodID: methodIDOSOpenFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Int64, Int64) tuple(HostRef<io.File>, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "os", MemberName: "ReadFile", RouteName: "os.ReadFile", MethodID: methodIDOSReadFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "os", MemberName: "WriteFile", RouteName: "os.WriteFile", MethodID: methodIDOSWriteFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "ReadFile", RouteName: "os.ReadFile", MethodID: methodIDOSReadFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Array<Byte>, Error)", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "WriteFile", RouteName: "os.WriteFile", MethodID: methodIDOSWriteFile, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Array<Byte>) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Remove", RouteName: "os.Remove", MethodID: methodIDOSRemove, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Error", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Getenv", RouteName: "os.Getenv", MethodID: methodIDOSGetenv, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
 }
@@ -261,10 +261,10 @@ func SurfaceOS(impl OS) *surface.Bundle {
 	if err := schema.AddConst("os", "O_WRONLY", runtime.ConstInt64(int64(os.O_WRONLY))); err != nil {
 		panic(err)
 	}
-	if err := schema.AddConst("os", "PathListSeparator", runtime.ConstInt64(int64(os.PathListSeparator))); err != nil {
+	if err := schema.AddConst("os", "PathListSeparator", runtime.ConstRune(int64(os.PathListSeparator))); err != nil {
 		panic(err)
 	}
-	if err := schema.AddConst("os", "PathSeparator", runtime.ConstInt64(int64(os.PathSeparator))); err != nil {
+	if err := schema.AddConst("os", "PathSeparator", runtime.ConstRune(int64(os.PathSeparator))); err != nil {
 		panic(err)
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {

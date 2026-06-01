@@ -9,9 +9,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/calltemplate"
 	"gopkg.d7z.net/go-mini/core/compiler"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/runtime"
 	"gopkg.d7z.net/go-mini/core/surface"
-	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 )
 
 type templateOutputRecorder struct {

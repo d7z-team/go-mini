@@ -109,9 +109,6 @@ func BinaryResultType(op BinaryOperator, left, right Type) (Type, error) {
 		if left == String && right == String {
 			return String, nil
 		}
-		if left == Bytes && right == Bytes {
-			return Bytes, nil
-		}
 		return "", fmt.Errorf("%s operator does not support %s and %s", op, left, right)
 	case OpMinus, OpMult, OpDiv:
 		if IsDynamicAny(left) || IsDynamicAny(right) {
@@ -230,5 +227,5 @@ func IsNilComparable(t Type) bool {
 		t.IsMap() || t.IsInterface() || t.IsFunction() || t.IsModule() || t.IsClosure() {
 		return true
 	}
-	return t == Bytes || t == Error
+	return t == Error
 }

@@ -20,6 +20,15 @@ func ConstInt64(v int64) FFIConstValue {
 	return FFIConstValue{Type: SpecInt64, Int64: &v}
 }
 
+func ConstByte(v byte) FFIConstValue {
+	i := int64(v)
+	return FFIConstValue{Type: SpecByte, Int64: &i}
+}
+
+func ConstRune(v int64) FFIConstValue {
+	return FFIConstValue{Type: SpecRune, Int64: &v}
+}
+
 func ConstFloat64(v float64) FFIConstValue {
 	return FFIConstValue{Type: SpecFloat64, Float64: &v}
 }
@@ -54,9 +63,12 @@ func (v FFIConstValue) Validate() error {
 		return fmt.Errorf("ffi const %s must carry exactly one value payload", v.Type)
 	}
 	switch v.Type {
-	case SpecInt64:
+	case SpecInt64, SpecByte, SpecRune:
 		if v.Int64 == nil {
 			return fmt.Errorf("ffi const %s requires Int64 payload", v.Type)
+		}
+		if err := checkIntegerSubtypeRange(v.Type, *v.Int64); err != nil {
+			return err
 		}
 	case SpecFloat64:
 		if v.Float64 == nil {
@@ -82,6 +94,14 @@ func (v FFIConstValue) ToVar() *Var {
 		if v.Int64 != nil {
 			return NewInt(*v.Int64)
 		}
+	case SpecByte:
+		if v.Int64 != nil && checkIntegerSubtypeRange(SpecByte, *v.Int64) == nil {
+			return NewByteValue(byte(*v.Int64))
+		}
+	case SpecRune:
+		if v.Int64 != nil && checkIntegerSubtypeRange(SpecRune, *v.Int64) == nil {
+			return NewRuneValue(*v.Int64)
+		}
 	case SpecFloat64:
 		if v.Float64 != nil {
 			return NewFloat(*v.Float64)
@@ -100,7 +120,7 @@ func (v FFIConstValue) ToVar() *Var {
 
 func (v FFIConstValue) DisplayString() string {
 	switch v.Type {
-	case SpecInt64:
+	case SpecInt64, SpecByte, SpecRune:
 		if v.Int64 != nil {
 			return strconv.FormatInt(*v.Int64, 10)
 		}
@@ -122,7 +142,7 @@ func (v FFIConstValue) DisplayString() string {
 
 func (v FFIConstValue) Hash() string {
 	switch v.Type {
-	case SpecInt64:
+	case SpecInt64, SpecByte, SpecRune:
 		if v.Int64 != nil {
 			var buf [8]byte
 			binary.LittleEndian.PutUint64(buf[:], uint64(*v.Int64))

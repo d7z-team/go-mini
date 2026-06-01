@@ -36,7 +36,8 @@ const (
 	SpecFloat64 TypeSpec = typespec.Float64
 	SpecString  TypeSpec = typespec.String
 	SpecBool    TypeSpec = typespec.Bool
-	SpecBytes   TypeSpec = typespec.Bytes
+	SpecByte    TypeSpec = typespec.Byte
+	SpecRune    TypeSpec = typespec.Rune
 	SpecAny     TypeSpec = typespec.Any
 	SpecError   TypeSpec = typespec.Error
 	SpecVoid    TypeSpec = typespec.Void

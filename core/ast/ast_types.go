@@ -15,7 +15,8 @@ const (
 	TypeFloat64 GoMiniType = "Float64"
 	TypeString  GoMiniType = "String"
 	TypeBool    GoMiniType = "Bool"
-	TypeBytes   GoMiniType = "TypeBytes"
+	TypeByte    GoMiniType = "Byte"
+	TypeRune    GoMiniType = "Rune"
 	TypeAny     GoMiniType = "Any"
 	TypeError   GoMiniType = "Error"
 	TypeVoid    GoMiniType = "Void"
@@ -52,6 +53,8 @@ func (o GoMiniType) IsModule() bool  { return typespec.Type(o).IsModule() }
 func (o GoMiniType) IsClosure() bool { return typespec.Type(o).IsClosure() }
 func (o GoMiniType) IsString() bool  { return typespec.Type(o).IsString() }
 func (o GoMiniType) IsInt() bool     { return typespec.Type(o).IsInt() }
+func (o GoMiniType) IsByte() bool    { return typespec.Type(o).IsByte() }
+func (o GoMiniType) IsRune() bool    { return typespec.Type(o).IsRune() }
 func (o GoMiniType) IsBool() bool    { return typespec.Type(o).IsBool() }
 func (o GoMiniType) IsNumeric() bool {
 	return typespec.Type(o).IsNumeric()
@@ -259,7 +262,7 @@ func (o GoMiniType) StructName() (Ident, bool) {
 	}
 	// 排除基础类型
 	switch s {
-	case "Any", "String", "Int64", "Float64", "Bool", "Void", "TypeBytes":
+	case "Any", "String", "Int64", "Float64", "Bool", "Byte", "Rune", "Void":
 		return "", false
 	}
 	return Ident(s), true
@@ -287,7 +290,7 @@ func (o GoMiniType) Resolve(v *ValidContext) GoMiniType {
 	}
 
 	// 1. 处理已有的规范化逻辑
-	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() {
 		return o
 	}
 	if o.IsArray() {
@@ -417,7 +420,7 @@ func (o GoMiniType) Valid(v *ValidContext) bool {
 	if !o.IsCanonical() {
 		return false
 	}
-	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() || o == TypeBytes {
+	if o.IsAny() || o == TypeVoid || o == TypeError || o.IsModule() || o.IsClosure() || o.IsNumeric() || o.IsString() || o.IsBool() {
 		return true
 	}
 	if o.IsArray() {

@@ -230,6 +230,18 @@ func literalDirect(n *ast.LiteralExpr) (*runtime.Var, error) {
 	case ast.GoMiniType(runtime.SpecInt64):
 		v, _ := strconv.ParseInt(n.Value, 10, 64)
 		return runtime.NewInt(v), nil
+	case ast.GoMiniType(runtime.SpecByte):
+		value, err := integerConstValue(n.Value, 10, runtime.SpecByte)
+		if err != nil {
+			return nil, err
+		}
+		return value.ToVar(), nil
+	case ast.GoMiniType(runtime.SpecRune):
+		value, err := integerConstValue(n.Value, 10, runtime.SpecRune)
+		if err != nil {
+			return nil, err
+		}
+		return value.ToVar(), nil
 	case ast.GoMiniType(runtime.SpecFloat64):
 		v, _ := strconv.ParseFloat(n.Value, 64)
 		return runtime.NewFloat(v), nil
@@ -254,11 +266,7 @@ func parseTypedConstLiteral(val string, typ runtime.RuntimeType) (runtime.FFICon
 	case typ.IsString():
 		return runtime.ConstString(val), nil
 	case typ.IsInt():
-		v, err := strconv.ParseInt(val, 0, 64)
-		if err != nil {
-			return runtime.FFIConstValue{}, err
-		}
-		return runtime.ConstInt64(v), nil
+		return integerConstValue(val, 0, typ.Raw)
 	case typ.Raw == runtime.SpecFloat64:
 		v, err := strconv.ParseFloat(val, 64)
 		if err != nil {
@@ -275,6 +283,18 @@ func parseTypedConstLiteral(val string, typ runtime.RuntimeType) (runtime.FFICon
 		return runtime.FFIConstValue{}, fmt.Errorf("invalid bool literal %q", val)
 	}
 	return runtime.FFIConstValue{}, fmt.Errorf("unsupported constant type %s", typ.Raw)
+}
+
+func integerConstValue(val string, base int, typ runtime.TypeSpec) (runtime.FFIConstValue, error) {
+	v, err := strconv.ParseInt(val, base, 64)
+	if err != nil {
+		return runtime.FFIConstValue{}, err
+	}
+	value := runtime.FFIConstValue{Type: typ, Int64: &v}
+	if err := value.Validate(); err != nil {
+		return runtime.FFIConstValue{}, err
+	}
+	return value, nil
 }
 
 func (b *builder) tasksForStmt(stmt ast.Stmt, data interface{}) []runtime.Task {
@@ -1052,19 +1072,21 @@ func (b *builder) lowerExprTasks(expr ast.Expr, scope *loweringScope) ([]runtime
 			return []runtime.Task{{Op: runtime.OpPush}}, true
 		}
 		entries := make([]runtime.CompositeEntryData, len(n.Values))
+		compositeType := n.Type
+		isElementKeyed := compositeType.IsArray() || compositeType.IsMap()
 		out := []runtime.Task{{Op: runtime.OpComposite, Data: &runtime.CompositeData{
 			Type:    b.runtimeType(n.Type, n, "composite type"),
 			Entries: entries,
 		}}}
 		for i := len(n.Values) - 1; i >= 0; i-- {
 			v := n.Values[i]
-			if ident, ok := v.Key.(*ast.IdentifierExpr); ok {
-				entries[i].IdentKey = string(ident.Name)
+			if ident, ok := v.Key.(*ast.IdentifierExpr); ok && !isElementKeyed {
+				entries[i].FieldKey = string(ident.Name)
 			} else if v.Key != nil {
-				entries[i].HasExprKey = true
+				entries[i].HasKeyExpr = true
 			}
 			out = append(out, b.tasksForExprInScope(v.Value, scope)...)
-			if entries[i].HasExprKey {
+			if entries[i].HasKeyExpr {
 				out = append(out, b.tasksForExprInScope(v.Key, scope)...)
 			}
 		}

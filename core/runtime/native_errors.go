@@ -1,9 +1,6 @@
 package runtime
 
-import (
-	goerrors "errors"
-	"fmt"
-)
+import goerrors "errors"
 
 func NativeErrorsNew(e *Executor, session *StackContext, _ FFIRoute, args []*Var, _ []LHSValue) (*Var, error) {
 	text := ""
@@ -86,17 +83,83 @@ func NativeErrorsStack(_ *Executor, _ *StackContext, _ FFIRoute, args []*Var, _ 
 
 func NativeFmtErrorf(e *Executor, session *StackContext, _ FFIRoute, args []*Var, _ []LHSValue) (*Var, error) {
 	if len(args) == 0 {
-		return nil, e.newPanicError(session, "fmt.Errorf requires a format string")
+		return nil, e.newPanicError(session, "fmt/internal.Errorf requires a message")
 	}
-	formatArg := e.unwrapValue(args[0])
-	if formatArg == nil || formatArg.VType != TypeString {
-		return nil, e.newPanicError(session, "fmt.Errorf requires a format string")
+	messageArg := e.unwrapValue(args[0])
+	if messageArg == nil || messageArg.VType != TypeString {
+		return nil, e.newPanicError(session, "fmt/internal.Errorf requires a message")
 	}
-	goArgs := make([]any, 0, len(args)-1)
-	for _, arg := range args[1:] {
-		goArgs = append(goArgs, nativeFormatArg(e, arg))
+	causes := nativeErrorCauses(e, args)
+	var err error
+	switch len(causes) {
+	case 0:
+		err = goerrors.New(messageArg.Str)
+	case 1:
+		err = &vmFmtWrapError{message: messageArg.Str, cause: causes[0]}
+	default:
+		err = &vmFmtMultiWrapError{message: messageArg.Str, causes: causes}
 	}
-	return e.newStackErrorVar(session, fmt.Errorf(formatArg.Str, goArgs...)), nil
+	return e.newStackErrorVar(session, err), nil
+}
+
+type vmFmtWrapError struct {
+	message string
+	cause   error
+}
+
+func (e *vmFmtWrapError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.message
+}
+
+func (e *vmFmtWrapError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.cause
+}
+
+type vmFmtMultiWrapError struct {
+	message string
+	causes  []error
+}
+
+func (e *vmFmtMultiWrapError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.message
+}
+
+func (e *vmFmtMultiWrapError) Unwrap() []error {
+	if e == nil || len(e.causes) == 0 {
+		return nil
+	}
+	return append([]error(nil), e.causes...)
+}
+
+func nativeErrorCauses(e *Executor, args []*Var) []error {
+	if len(args) < 2 {
+		return nil
+	}
+	target := e.unwrapValue(args[1])
+	if target == nil || target.VType != TypeArray {
+		return nil
+	}
+	arr, ok := target.Ref.(*VMArray)
+	if !ok || arr == nil {
+		return nil
+	}
+	items := arr.Snapshot()
+	causes := make([]error, 0, len(items))
+	for _, item := range items {
+		if err := goErrorFromVar(e.unwrapValue(item)); err != nil {
+			causes = append(causes, err)
+		}
+	}
+	return causes
 }
 
 func (e *Executor) evalRoute(session *StackContext, route FFIRoute, args []*Var, argLHS []LHSValue) (*Var, error) {
@@ -146,28 +209,5 @@ func nativeStringArg(e *Executor, v *Var) string {
 	if text, err := v.ToError(); err == nil {
 		return text
 	}
-	return fmt.Sprint(v.Interface())
-}
-
-func nativeFormatArg(e *Executor, v *Var) any {
-	v = e.unwrapValue(v)
-	if v == nil {
-		return nil
-	}
-	switch v.VType {
-	case TypeError:
-		return goErrorFromVar(v)
-	case TypeInt:
-		return v.I64
-	case TypeFloat:
-		return v.F64
-	case TypeString:
-		return v.Str
-	case TypeBytes:
-		return v.B
-	case TypeBool:
-		return v.Bool
-	default:
-		return v.Interface()
-	}
+	return ""
 }

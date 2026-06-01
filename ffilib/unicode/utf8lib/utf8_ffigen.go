@@ -126,7 +126,7 @@ func utf8HostRouter(ctx context.Context, impl UTF8, registry *ffigo.HandleRegist
 
 var utf8Routes = []runtime.FFIRouteDecl{
 	{PackagePath: "unicode/utf8", MemberName: "DecodeRuneInString", RouteName: "unicode/utf8.DecodeRuneInString", MethodID: methodIDUTF8DecodeRuneInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(Int64, Int64)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "unicode/utf8", MemberName: "EncodeRune", RouteName: "unicode/utf8.EncodeRune", MethodID: methodIDUTF8EncodeRune, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "unicode/utf8", MemberName: "EncodeRune", RouteName: "unicode/utf8.EncodeRune", MethodID: methodIDUTF8EncodeRune, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Byte>", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "unicode/utf8", MemberName: "FullRuneInString", RouteName: "unicode/utf8.FullRuneInString", MethodID: methodIDUTF8FullRuneInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Bool", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "unicode/utf8", MemberName: "RuneCountInString", RouteName: "unicode/utf8.RuneCountInString", MethodID: methodIDUTF8RuneCountInString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) Int64", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "unicode/utf8", MemberName: "RuneLen", RouteName: "unicode/utf8.RuneLen", MethodID: methodIDUTF8RuneLen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},

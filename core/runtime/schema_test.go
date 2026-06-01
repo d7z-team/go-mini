@@ -72,7 +72,7 @@ func TestParseHostOpaqueStructSpecSplitsMethods(t *testing.T) {
 }
 
 func TestParseRuntimeInterfaceSpec(t *testing.T) {
-	spec, err := ParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error); Close() Error;}")
+	spec, err := ParseRuntimeInterfaceSpec("interface{Read(Array<Byte>) tuple(Int64, Error); Close() Error;}")
 	if err != nil {
 		t.Fatalf("ParseRuntimeInterfaceSpec failed: %v", err)
 	}

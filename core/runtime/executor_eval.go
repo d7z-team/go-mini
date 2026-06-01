@@ -50,12 +50,6 @@ func (e *Executor) evalArithmetic(op string, l, r *Var) (*Var, error) {
 		if l.VType == TypeString && r.VType == TypeString {
 			return NewString(l.Str + r.Str), nil
 		}
-		if l.VType == TypeBytes && r.VType == TypeBytes {
-			resB := make([]byte, len(l.B)+len(r.B))
-			copy(resB, l.B)
-			copy(resB[len(l.B):], r.B)
-			return NewBytes(resB), nil
-		}
 	}
 	if l.VType != TypeInt && l.VType != TypeFloat {
 		return nil, &VMError{Message: fmt.Sprintf("arithmetic operation %s on non-numeric type %v", op, l.VType), IsPanic: true}
@@ -270,7 +264,7 @@ func runtimeValueNilComparable(v *Var) bool {
 		return true
 	}
 	switch v.VType {
-	case TypeAny, TypePointer, TypeHostRef, TypeChannel, TypeArray, TypeMap, TypeModule, TypeClosure, TypeInterface, TypeBytes, TypeError:
+	case TypeAny, TypePointer, TypeHostRef, TypeChannel, TypeArray, TypeMap, TypeModule, TypeClosure, TypeInterface, TypeError:
 		return true
 	}
 	return false
@@ -333,15 +327,6 @@ func (e *Executor) evalIndexExprDirect(_ *StackContext, obj, idx *Var) (*Var, er
 	}
 
 	switch obj.VType {
-	case TypeBytes:
-		if idx.VType != TypeInt {
-			return nil, &VMError{Message: fmt.Sprintf("bytes index must be Int64, got %v", idx.VType), IsPanic: true}
-		}
-		i := int(idx.I64)
-		if i < 0 || i >= len(obj.B) {
-			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length %d", i, len(obj.B)), IsPanic: true}
-		}
-		return NewInt(int64(obj.B[i])), nil
 	case TypeString:
 		if idx.VType != TypeInt {
 			return nil, &VMError{Message: fmt.Sprintf("string index must be Int64, got %v", idx.VType), IsPanic: true}
@@ -356,6 +341,9 @@ func (e *Executor) evalIndexExprDirect(_ *StackContext, obj, idx *Var) (*Var, er
 			return nil, &VMError{Message: fmt.Sprintf("array index must be Int64, got %v", idx.VType), IsPanic: true}
 		}
 		arr := arrayRef(obj)
+		if arr == nil {
+			return nil, &VMError{Message: fmt.Sprintf("index out of range [%d] with length 0", idx.I64), IsPanic: true}
+		}
 		i := int(idx.I64)
 		val, ok := arr.Load(i)
 		if !ok {
@@ -535,15 +523,6 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 	}
 
 	switch obj.VType {
-	case TypeBytes:
-		l := len(obj.B)
-		if high == -1 {
-			high = l
-		}
-		if low < 0 || high < low || high > l {
-			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
-		}
-		return NewBytes(obj.B[low:high]), nil
 	case TypeString:
 		l := len(obj.Str)
 		if high == -1 {
@@ -555,14 +534,21 @@ func (e *Executor) evalSliceExprDirect(_ *StackContext, obj, lowVar, highVar *Va
 		return NewString(obj.Str[low:high]), nil
 	case TypeArray:
 		arr := arrayRef(obj)
-		l := arr.Len()
+		l := 0
+		if arr != nil {
+			l = arr.Len()
+		}
 		if high == -1 {
 			high = l
 		}
 		if low < 0 || high < low || high > l {
 			return nil, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, l), IsPanic: true}
 		}
-		v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Slice(low, high)}}
+		items := []*Var(nil)
+		if arr != nil {
+			items = arr.Slice(low, high)
+		}
+		v := &Var{VType: TypeArray, Ref: &VMArray{Data: items}}
 		v.SetRuntimeType(obj.RuntimeType())
 		return v, nil
 	}
@@ -625,7 +611,7 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				v.SetRawType(tStr)
 				session.ValueStack.Push(v)
 				return nil
-			} else if targetType.IsArray() || targetType.Raw == SpecBytes {
+			} else if targetType.IsArray() {
 				length := 0
 				capacity := 0
 				if len(args) > 1 && args[1] != nil {
@@ -655,24 +641,18 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 					}
 					capacity = int(cInt)
 				}
-				if targetType.Raw == SpecBytes {
-					v := &Var{VType: TypeBytes, B: make([]byte, length, capacity)}
-					v.SetRawType(tStr)
-					session.ValueStack.Push(v)
-				} else {
-					arr := make([]*Var, length, capacity)
-					innerType, _ := targetType.ReadArrayItemType()
-					for i := 0; i < length; i++ {
-						item, err := e.initializeType(session, innerType, 0)
-						if err != nil {
-							return err
-						}
-						arr[i] = item
+				arr := make([]*Var, length, capacity)
+				innerType, _ := targetType.ReadArrayItemType()
+				for i := 0; i < length; i++ {
+					item, err := e.initializeType(session, innerType, 0)
+					if err != nil {
+						return err
 					}
-					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr}}
-					v.SetRawType(tStr)
-					session.ValueStack.Push(v)
+					arr[i] = item
 				}
+				v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr}}
+				v.SetRawType(tStr)
+				session.ValueStack.Push(v)
 				return nil
 			}
 			// Fallback
@@ -696,11 +676,12 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			case TypeString:
 				session.ValueStack.Push(NewInt(int64(len(obj.Str))))
 				return nil
-			case TypeBytes:
-				session.ValueStack.Push(NewInt(int64(len(obj.B))))
-				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(arrayRef(obj).Len())))
+				if arr := arrayRef(obj); arr != nil {
+					session.ValueStack.Push(NewInt(int64(arr.Len())))
+				} else {
+					session.ValueStack.Push(NewInt(0))
+				}
 				return nil
 			case TypeMap:
 				session.ValueStack.Push(NewInt(int64(mapRef(obj).Len())))
@@ -725,11 +706,12 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return nil
 			}
 			switch obj.VType {
-			case TypeBytes:
-				session.ValueStack.Push(NewInt(int64(cap(obj.B))))
-				return nil
 			case TypeArray:
-				session.ValueStack.Push(NewInt(int64(arrayRef(obj).Cap())))
+				if arr := arrayRef(obj); arr != nil {
+					session.ValueStack.Push(NewInt(int64(arr.Cap())))
+				} else {
+					session.ValueStack.Push(NewInt(0))
+				}
 				return nil
 			case TypeChannel:
 				if ch, ok := obj.Ref.(*VMChannel); ok && ch != nil {
@@ -766,12 +748,15 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			}
 			base := e.unwrapValue(args[0])
 			if base == nil {
-				return &VMError{Message: "append requires array or bytes as first argument", IsPanic: true}
+				return &VMError{Message: "append requires array as first argument", IsPanic: true}
 			}
 			switch base.VType {
 			case TypeArray:
 				arr := arrayRef(base)
-				items := arr.Snapshot()
+				var items []*Var
+				if arr != nil {
+					items = arr.Snapshot()
+				}
 				newArr := make([]*Var, len(items), len(items)+len(args)-1)
 				for i, item := range items {
 					newArr[i] = cloneVarForAssign(item)
@@ -791,28 +776,8 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				v.SetRuntimeType(base.RuntimeType())
 				session.ValueStack.Push(v)
 				return nil
-			case TypeBytes:
-				buf := make([]byte, len(base.B))
-				copy(buf, base.B)
-				for i, arg := range args[1:] {
-					if arg == nil {
-						return fmt.Errorf("append bytes argument %d is nil", i+2)
-					}
-					val, err := e.unwrapValue(arg).ToInt()
-					if err != nil {
-						return fmt.Errorf("append bytes argument %d: %w", i+2, err)
-					}
-					if val < 0 || val > 255 {
-						return &VMError{Message: fmt.Sprintf("append bytes argument %d out of byte range: %d", i+2, val), IsPanic: true}
-					}
-					buf = append(buf, byte(val))
-				}
-				v := &Var{VType: TypeBytes, B: buf}
-				v.SetRuntimeType(base.RuntimeType())
-				session.ValueStack.Push(v)
-				return nil
 			}
-			return &VMError{Message: "append requires array or bytes as first argument", IsPanic: true}
+			return &VMError{Message: "append requires array as first argument", IsPanic: true}
 		case "delete":
 			if len(args) != 2 || args[0] == nil || args[1] == nil {
 				return &VMError{Message: "delete requires map and key", IsPanic: true}
@@ -864,9 +829,23 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				case TypeString:
 					session.ValueStack.Push(NewString(arg.Str))
 					return nil
-				case TypeBytes:
-					session.ValueStack.Push(NewString(string(arg.B)))
-					return nil
+				case TypeArray:
+					switch {
+					case isByteArrayType(arg.RuntimeType()):
+						buf, err := e.byteSliceFromArray(arg)
+						if err != nil {
+							return err
+						}
+						session.ValueStack.Push(NewString(string(buf)))
+						return nil
+					case isRuneArrayType(arg.RuntimeType()):
+						text, err := e.stringFromRuneArray(arg)
+						if err != nil {
+							return err
+						}
+						session.ValueStack.Push(NewString(text))
+						return nil
+					}
 				case TypeInt:
 					session.ValueStack.Push(NewString(strconv.FormatInt(arg.I64, 10)))
 					return nil
@@ -885,21 +864,38 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 			}
 			session.ValueStack.Push(NewString(""))
 			return nil
-		case "TypeBytes":
+		case ArrayType(SpecByte).String():
 			if len(args) > 0 && args[0] != nil {
 				arg := args[0]
 				arg = e.unwrapValue(arg)
 				switch arg.VType {
-				case TypeBytes:
-					session.ValueStack.Push(arg)
-					return nil
 				case TypeString:
-					session.ValueStack.Push(NewBytes([]byte(arg.Str)))
+					session.ValueStack.Push(NewByteArray([]byte(arg.Str)))
 					return nil
 				}
-				return &VMError{Message: fmt.Sprintf("cannot convert %v to TypeBytes", arg.VType), IsPanic: true}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to Array<Byte>", arg.VType), IsPanic: true}
 			}
-			session.ValueStack.Push(NewBytes(nil))
+			session.ValueStack.Push(NewByteArray(nil))
+			return nil
+		case ArrayType(SpecRune).String():
+			if len(args) > 0 && args[0] != nil {
+				arg := e.unwrapValue(args[0])
+				if arg != nil && arg.VType == TypeString {
+					runes := []rune(arg.Str)
+					items := make([]*Var, len(runes))
+					for i, r := range runes {
+						items[i] = NewRuneValue(int64(r))
+					}
+					v := &Var{VType: TypeArray, Ref: &VMArray{Data: items}}
+					v.SetRawType(ArrayType(SpecRune).String())
+					session.ValueStack.Push(v)
+					return nil
+				}
+				return &VMError{Message: fmt.Sprintf("cannot convert %v to Array<Rune>", valueTypeOf(arg)), IsPanic: true}
+			}
+			v := &Var{VType: TypeArray, Ref: &VMArray{Data: nil}}
+			v.SetRawType(ArrayType(SpecRune).String())
+			session.ValueStack.Push(v)
 			return nil
 		case "Int64":
 			if len(args) > 0 && args[0] != nil {
@@ -930,6 +926,47 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 				return &VMError{Message: fmt.Sprintf("cannot convert %v to Int64", arg.VType), IsPanic: true}
 			}
 			session.ValueStack.Push(NewInt(0))
+			return nil
+		case "Byte", "Rune":
+			target := SpecByte
+			if name == "Rune" {
+				target = SpecRune
+			}
+			if len(args) > 0 && args[0] != nil {
+				arg := e.unwrapValue(args[0])
+				if arg == nil {
+					return &VMError{Message: "cannot convert nil to " + name, IsPanic: true}
+				}
+				var val int64
+				switch arg.VType {
+				case TypeInt:
+					val = arg.I64
+				case TypeFloat:
+					val = int64(arg.F64)
+				case TypeString:
+					parsed, err := strconv.ParseInt(arg.Str, 10, 64)
+					if err != nil {
+						return &VMError{Message: fmt.Sprintf("cannot convert String to %s: %v", name, err), IsPanic: true}
+					}
+					val = parsed
+				case TypeBool:
+					if arg.Bool {
+						val = 1
+					}
+				default:
+					return &VMError{Message: fmt.Sprintf("cannot convert %v to %s", valueTypeOf(arg), name), IsPanic: true}
+				}
+				if err := checkIntegerSubtypeRange(target, val); err != nil {
+					return &VMError{Message: err.Error(), IsPanic: true}
+				}
+				v := NewInt(val)
+				v.SetRawType(target.String())
+				session.ValueStack.Push(v)
+				return nil
+			}
+			v := NewInt(0)
+			v.SetRawType(target.String())
+			session.ValueStack.Push(v)
 			return nil
 		case "Float64":
 			if len(args) > 0 && args[0] != nil {

@@ -22,7 +22,7 @@ func main() {
 
 	// 模拟 FFI 符号
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"os.ReadFile": "function(String) (TypeBytes, String)",
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
 	}
 
 	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
@@ -56,8 +56,8 @@ func main() {
 	prog := node.(*ast.ProgramStmt)
 
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"os.ReadFile":  "function(String) (TypeBytes, String)",
-		"os.WriteFile": "function(String, TypeBytes) String",
+		"os.ReadFile":  "function(String) (Array<Byte>, String)",
+		"os.WriteFile": "function(String, Array<Byte>) String",
 	}
 
 	ast.NewValidator(prog, externalSpecs, nil, true)
@@ -148,7 +148,7 @@ func main() {
 	prog := node.(*ast.ProgramStmt)
 
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"os.ReadFile": "function(String) (TypeBytes, String)",
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
 		"fmt.Printf":  "function(String, ...Any) Void",
 	}
 
@@ -186,7 +186,7 @@ func main() {
 
 	// 模拟 FFI 符号，但不包含 NonExistentFunction
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"os.ReadFile": "function(String) (TypeBytes, String)",
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
 	}
 
 	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
@@ -214,7 +214,7 @@ func main() {
 	prog := node.(*ast.ProgramStmt)
 
 	externalSpecs := map[ast.Ident]ast.GoMiniType{
-		"os.ReadFile": "function(String) (TypeBytes, String)",
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
 	}
 
 	ast.NewValidator(prog, externalSpecs, nil, true)

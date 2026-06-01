@@ -5,22 +5,31 @@ import (
 	"testing"
 )
 
+func byteArrayText(t *testing.T, exec *Executor, v *Var) string {
+	t.Helper()
+	data, err := exec.byteSliceFromArray(v)
+	if err != nil {
+		t.Fatalf("read byte array failed: %v", err)
+	}
+	return string(data)
+}
+
 func TestEvalFFICopyBackWritesToMemberField(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
 	holder := &Var{
 		VType:    TypeMap,
-		TypeInfo: MustParseRuntimeType("Map<String,TypeBytes>"),
+		TypeInfo: MustParseRuntimeType("Map<String,Array<Byte>>"),
 		Ref: &VMMap{Data: map[string]*Var{
-			"buf": NewBytes([]byte("xy")),
+			"buf": NewByteArray([]byte("xy")),
 		}},
 	}
 
 	route := FFIRoute{
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", FFIParamInOutBytes),
 	}
 
 	arg := holder.Ref.(*VMMap).Data["buf"]
@@ -28,11 +37,11 @@ func TestEvalFFICopyBackWritesToMemberField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evalFFI failed: %v", err)
 	}
-	if res == nil || string(res.B) != "ret" {
+	if byteArrayText(t, exec, res) != "ret" {
 		t.Fatalf("unexpected ffi return: %#v", res)
 	}
 	got := holder.Ref.(*VMMap).Data["buf"]
-	if got == nil || got.VType != TypeBytes || string(got.B) != "XY!" {
+	if got == nil || got.VType != TypeArray || byteArrayText(t, exec, got) != "XY!" {
 		t.Fatalf("unexpected member copy-back: %#v", got)
 	}
 }
@@ -43,17 +52,17 @@ func TestEvalFFICopyBackWritesToArrayIndex(t *testing.T) {
 
 	arr := &Var{
 		VType:    TypeArray,
-		TypeInfo: MustParseRuntimeType("Array<TypeBytes>"),
+		TypeInfo: MustParseRuntimeType("Array<Array<Byte>>"),
 		Ref: &VMArray{Data: []*Var{
-			NewBytes([]byte("aa")),
-			NewBytes([]byte("bc")),
+			NewByteArray([]byte("aa")),
+			NewByteArray([]byte("bc")),
 		}},
 	}
 
 	route := FFIRoute{
 		Name:    "demo.Mutate",
 		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", FFIParamInOutBytes),
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", FFIParamInOutBytes),
 	}
 
 	arg := arr.Ref.(*VMArray).Data[1]
@@ -62,7 +71,7 @@ func TestEvalFFICopyBackWritesToArrayIndex(t *testing.T) {
 		t.Fatalf("evalFFI failed: %v", err)
 	}
 	got := arr.Ref.(*VMArray).Data[1]
-	if got == nil || got.VType != TypeBytes || string(got.B) != "BC!" {
+	if got == nil || got.VType != TypeArray || byteArrayText(t, exec, got) != "BC!" {
 		t.Fatalf("unexpected index copy-back: %#v", got)
 	}
 }

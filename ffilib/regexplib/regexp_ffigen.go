@@ -399,7 +399,7 @@ func regexpHostRouter(ctx context.Context, impl Regexp, registry *ffigo.HandleRe
 }
 
 var regexpRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "regexp", MemberName: "Match", RouteName: "regexp.Match", MethodID: methodIDRegexpMatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, TypeBytes) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "regexp", MemberName: "Match", RouteName: "regexp.Match", MethodID: methodIDRegexpMatch, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, Array<Byte>) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "regexp", MemberName: "MatchString", RouteName: "regexp.MatchString", MethodID: methodIDRegexpMatchString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) tuple(Bool, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "regexp", MemberName: "QuoteMeta", RouteName: "regexp.QuoteMeta", MethodID: methodIDRegexpQuoteMeta, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) String", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "regexp", MemberName: "FindString", RouteName: "regexp.FindString", MethodID: methodIDRegexpFindString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String, String) String", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},

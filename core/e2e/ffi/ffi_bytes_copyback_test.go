@@ -38,7 +38,7 @@ func (bytesCopyBackBridge) DestroyHandle(uint32) error { return nil }
 
 func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
-	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
@@ -65,19 +65,19 @@ func TestFFIBytesCopyBackUpdatesScriptVariable(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
-	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
 	import "demo"
 
 	type Holder struct {
-		Buf TypeBytes
+		Buf []byte
 	}
 
 	func main() {
 		holder := Holder{Buf: []byte("xy")}
-		arr := []TypeBytes{[]byte("aa"), []byte("bc")}
+		arr := [][]byte{[]byte("aa"), []byte("bc")}
 
 		n1 := demo.Mutate(holder.Buf)
 		n2 := demo.Mutate(arr[1])
@@ -104,14 +104,14 @@ func TestFFIBytesCopyBackUpdatesScriptMemberAndIndex(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
-	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main
 	import "demo"
 
 	func main() {
-		p := new(TypeBytes)
+		p := new([]byte)
 		*p = []byte("ok")
 		n := demo.Mutate(*p)
 		if n != 3 {
@@ -133,7 +133,7 @@ func TestFFIBytesCopyBackUpdatesDereferencedPointer(t *testing.T) {
 
 func TestFFIBytesCopyBackUpdatesSliceWindow(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
-	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), "")
+	testsurface.UseRoute(t, executor, "demo.Mutate", bytesCopyBackBridge{}, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Int64", runtime.FFIParamInOutBytes), "")
 
 	code := `
 	package main

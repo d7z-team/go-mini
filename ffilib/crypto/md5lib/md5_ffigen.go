@@ -42,7 +42,7 @@ func md5HostRouter(ctx context.Context, impl MD5, registry *ffigo.HandleRegistry
 }
 
 var md5Routes = []runtime.FFIRouteDecl{
-	{PackagePath: "crypto/md5", MemberName: "Sum", RouteName: "crypto/md5.Sum", MethodID: methodIDMD5Sum, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "crypto/md5", MemberName: "Sum", RouteName: "crypto/md5.Sum", MethodID: methodIDMD5Sum, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceMD5(impl MD5) *surface.Bundle {

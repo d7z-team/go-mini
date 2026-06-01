@@ -6,27 +6,27 @@ import (
 	"testing"
 )
 
-func TestAssignAnyRejectsSlotPointer(t *testing.T) {
+func TestAssignAnyAllowsSlotPointer(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")
 
-	ptr := &Var{
-		VType:    TypePointer,
-		Handle:   1,
-		TypeInfo: MustParseRuntimeType("Ptr<Int64>"),
-		Ref:      NewSlot(MustParseRuntimeType("Int64"), NewInt(7)),
-	}
+	slot := NewSlot(MustParseRuntimeType("Int64"), NewInt(7))
+	ptr := exec.newSlotPointer(MustParseRuntimeType("Int64"), slot)
 
-	_, err := exec.prepareValueForType(session, ptr, MustParseRuntimeType("Any"))
-	if err == nil {
-		t.Fatal("expected Any assignment to reject VM pointer")
+	got, err := exec.prepareValueForType(session, ptr, MustParseRuntimeType("Any"))
+	if err != nil {
+		t.Fatalf("Any assignment rejected VM pointer: %v", err)
 	}
-	if !strings.Contains(err.Error(), "VM pointer") {
-		t.Fatalf("unexpected Any assignment error: %v", err)
+	if got == nil || got.VType != TypeAny || got.Handle != 0 || got.Bridge != nil {
+		t.Fatalf("unexpected Any wrapper: %#v", got)
+	}
+	inner, ok := got.Ref.(*Var)
+	if !ok || inner.VType != TypePointer || inner.Ref != slot {
+		t.Fatalf("Any did not preserve pointer identity: %#v", got.Ref)
 	}
 }
 
-func TestAnyValidationRejectsHostInterfaceHandle(t *testing.T) {
+func TestAnyValidationAllowsHostInterfaceHandle(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	iface := &Var{
 		VType: TypeInterface,
@@ -34,12 +34,8 @@ func TestAnyValidationRejectsHostInterfaceHandle(t *testing.T) {
 			Target: &Var{VType: TypeString, TypeInfo: MustParseRuntimeType("String"), Str: "host", Handle: 7},
 		},
 	}
-	err := exec.validateAnyValue(iface)
-	if err == nil {
-		t.Fatal("expected Any validation to reject host interface identity")
-	}
-	if !strings.Contains(err.Error(), "host interface handle") {
-		t.Fatalf("unexpected Any validation error: %v", err)
+	if err := exec.validateAnyValue(iface); err != nil {
+		t.Fatalf("VM Any validation rejected interface identity: %v", err)
 	}
 }
 

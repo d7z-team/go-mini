@@ -51,25 +51,19 @@ func main() {
 	requireCompileErrorContains(t, executor, `
 package main
 func main() {
-	var x int64 = 1
-	var y any = &x
-	_ = y
-}`, "cannot assign Ptr<Int64> to y (Any)")
-
-	requireCompileErrorContains(t, executor, `
-package main
-func main() {
 	arr := []int64{1, 2}
 	_ = arr[0.0:1]
 }`, "slice low index must be Int64")
 }
 
-func TestTypeGateAllowsValidAnyPureValues(t *testing.T) {
+func TestTypeGateAllowsValidVMAnyValues(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	prog, err := executor.NewRuntimeByGoCode(`
 package main
 func main() {
+	x := int64(1)
 	values := []any{int64(10), "10", true, []any{int64(1), "x"}}
+	var ptr any = &x
 	if values[0] != int64(10) {
 		panic("bad int")
 	}
@@ -78,6 +72,9 @@ func main() {
 	}
 	if values[2] != true {
 		panic("bad bool")
+	}
+	if ptr == nil {
+		panic("bad pointer any")
 	}
 }`)
 	if err != nil {

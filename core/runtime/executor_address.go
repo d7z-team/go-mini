@@ -193,30 +193,25 @@ func (e *Executor) resolveAddress(session *StackContext, lhs LHSValue) (*resolve
 			return nil, err
 		}
 		switch obj.VType {
-		case TypeBytes:
-			return &resolvedAddress{
-				load: func() (*Var, error) {
-					return NewBytes(obj.B[low:high]), nil
-				},
-				store: func(val *Var) error {
-					if val == nil || val.VType != TypeBytes {
-						return fmt.Errorf("slice copy-back expects TypeBytes, got %v", valueTypeOf(val))
-					}
-					obj.B = spliceByteWindow(obj.B, low, high, val.B)
-					return nil
-				},
-			}, nil
 		case TypeArray:
 			arr := arrayRef(obj)
 			return &resolvedAddress{
 				load: func() (*Var, error) {
-					v := &Var{VType: TypeArray, Ref: &VMArray{Data: arr.Slice(low, high)}}
+					var items []*Var
+					if arr != nil {
+						items = arr.Slice(low, high)
+					}
+					v := &Var{VType: TypeArray, Ref: &VMArray{Data: items}}
 					v.SetRuntimeType(obj.RuntimeType())
 					return v, nil
 				},
 				store: func(val *Var) error {
 					if val == nil || val.VType != TypeArray {
 						return fmt.Errorf("slice copy-back expects Array, got %v", valueTypeOf(val))
+					}
+					if arr == nil {
+						arr = &VMArray{}
+						obj.Ref = arr
 					}
 					items := arrayRef(val).Snapshot()
 					if !arr.ReplaceSlice(low, high, items) {
@@ -334,10 +329,10 @@ func (e *Executor) resolveSliceBoundsForAddress(obj, lowVar, highVar *Var) (int,
 	}
 	var length int
 	switch obj.VType {
-	case TypeBytes:
-		length = len(obj.B)
 	case TypeArray:
-		length = arrayRef(obj).Len()
+		if arr := arrayRef(obj); arr != nil {
+			length = arr.Len()
+		}
 	default:
 		return 0, 0, fmt.Errorf("type %v does not support slice access", obj.VType)
 	}
@@ -348,14 +343,6 @@ func (e *Executor) resolveSliceBoundsForAddress(obj, lowVar, highVar *Var) (int,
 		return 0, 0, &VMError{Message: fmt.Sprintf("slice bounds out of range [%d:%d] with capacity %d", low, high, length), IsPanic: true}
 	}
 	return low, high, nil
-}
-
-func spliceByteWindow(base []byte, low, high int, replacement []byte) []byte {
-	next := make([]byte, 0, low+len(replacement)+len(base)-high)
-	next = append(next, base[:low]...)
-	next = append(next, replacement...)
-	next = append(next, base[high:]...)
-	return next
 }
 
 func valueTypeOf(v *Var) string {

@@ -20,8 +20,6 @@ func (v VarType) String() string {
 		return "Float64"
 	case TypeString:
 		return "String"
-	case TypeBytes:
-		return "TypeBytes"
 	case TypeBool:
 		return "Bool"
 	case TypeMap:
@@ -54,7 +52,6 @@ const (
 	TypeInt   VarType = iota // Always int64
 	TypeFloat                // Always float64
 	TypeString
-	TypeBytes // Raw buffer
 	TypeBool
 	TypeMap     // Internal VM Map
 	TypeArray   // Internal VM Array ([]*Var)
@@ -85,7 +82,6 @@ func cloneVarForAssign(v *Var) *Var {
 		I64:      v.I64,
 		F64:      v.F64,
 		Str:      v.Str,
-		B:        v.B,
 		Bool:     v.Bool,
 		Handle:   v.Handle,
 		Bridge:   v.Bridge,
@@ -152,10 +148,6 @@ func (v *Var) deepCopy(seen map[*Var]*Var) *Var {
 		Bridge:   v.Bridge,
 	}
 	seen[v] = res
-	if v.B != nil {
-		res.B = make([]byte, len(v.B))
-		copy(res.B, v.B)
-	}
 	switch ref := v.Ref.(type) {
 	case *VMArray:
 		items := ref.Snapshot()
@@ -243,7 +235,6 @@ type Var struct {
 	I64      int64
 	F64      float64
 	Str      string
-	B        []byte
 	Bool     bool
 	Handle   uint32
 	Bridge   ffigo.FFIBridge
@@ -652,16 +643,6 @@ func (v *Var) ToBool() (bool, error) {
 	return v.Bool, nil
 }
 
-func (v *Var) ToBytes() ([]byte, error) {
-	if v == nil {
-		return nil, errors.New("accessing nil variable")
-	}
-	if v.VType != TypeBytes {
-		return nil, fmt.Errorf("type mismatch: expected TypeBytes, got %v", v.VType)
-	}
-	return v.B, nil
-}
-
 func (v *Var) ToHandle() (uint32, error) {
 	if v == nil {
 		return 0, errors.New("accessing nil variable")
@@ -713,8 +694,6 @@ func (v *Var) String() string {
 		return fmt.Sprintf("\"%s\"", v.Str)
 	case TypeBool:
 		return strconv.FormatBool(v.Bool)
-	case TypeBytes:
-		return fmt.Sprintf("bytes(%d)", len(v.B))
 	case TypePointer:
 		if v.Ref == nil {
 			return "ptr(nil)"
@@ -768,8 +747,6 @@ func (v *Var) interfaceWithDepth(depth int) interface{} {
 		return v.F64
 	case TypeString:
 		return v.Str
-	case TypeBytes:
-		return v.B
 	case TypeBool:
 		return v.Bool
 	case TypePointer:
@@ -852,8 +829,38 @@ func NewBool(v bool) *Var {
 	return res
 }
 
-func NewBytes(v []byte) *Var {
-	res := NewVar("TypeBytes", TypeBytes)
-	res.B = v
+func NewByteValue(v byte) *Var {
+	res := NewInt(int64(v))
+	res.SetRawType(SpecByte.String())
 	return res
+}
+
+func NewRuneValue(v int64) *Var {
+	res := NewInt(v)
+	res.SetRawType(SpecRune.String())
+	return res
+}
+
+func NewByteArray(v []byte) *Var {
+	items := make([]*Var, len(v))
+	for i, b := range v {
+		items[i] = NewByteValue(b)
+	}
+	res := &Var{VType: TypeArray, Ref: &VMArray{Data: items}}
+	res.SetRawType(ArrayType(SpecByte).String())
+	return res
+}
+
+func isByteArrayType(t RuntimeType) bool {
+	if !t.IsArray() || t.Elem == nil {
+		return false
+	}
+	return t.Elem.Raw == SpecByte
+}
+
+func isRuneArrayType(t RuntimeType) bool {
+	if !t.IsArray() || t.Elem == nil {
+		return false
+	}
+	return t.Elem.Raw == SpecRune
 }

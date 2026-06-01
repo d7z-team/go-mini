@@ -187,13 +187,20 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 											c.addError(lit, err.Error())
 											continue
 										}
+										if s.Type != nil {
+											typ = miniast.GoMiniType(c.typeToString(s.Type))
+										}
 										program.Constants[name.Name] = val
 										program.ConstantTypes[name.Name] = typ
 										program.ConstantLocs[name.Name] = c.extractLoc(name)
 									case *ast.Ident:
 										if lit.Name == "true" || lit.Name == "false" {
+											typ := miniast.TypeBool
+											if s.Type != nil {
+												typ = miniast.GoMiniType(c.typeToString(s.Type))
+											}
 											program.Constants[name.Name] = lit.Name
-											program.ConstantTypes[name.Name] = miniast.TypeBool
+											program.ConstantTypes[name.Name] = typ
 											program.ConstantLocs[name.Name] = c.extractLoc(name)
 										}
 									}

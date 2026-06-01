@@ -18,7 +18,6 @@ type literalTaskValue struct {
 	I64    int64       `json:"i64,omitempty"`
 	F64    float64     `json:"f64,omitempty"`
 	Str    string      `json:"str,omitempty"`
-	B      []byte      `json:"b,omitempty"`
 	Bool   bool        `json:"bool,omitempty"`
 	Handle uint32      `json:"handle,omitempty"`
 }
@@ -135,7 +134,6 @@ func marshalTaskData(op OpCode, data interface{}) (string, json.RawMessage, erro
 			I64:    v.I64,
 			F64:    v.F64,
 			Str:    v.Str,
-			B:      v.B,
 			Bool:   v.Bool,
 			Handle: v.Handle,
 		}
@@ -240,7 +238,6 @@ func unmarshalTaskData(op OpCode, kind string, raw json.RawMessage) (interface{}
 			I64:    literal.I64,
 			F64:    literal.F64,
 			Str:    literal.Str,
-			B:      literal.B,
 			Bool:   literal.Bool,
 			Handle: literal.Handle,
 		}

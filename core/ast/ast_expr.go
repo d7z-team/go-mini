@@ -73,27 +73,7 @@ func checkAppendBuiltin(ctx *SemanticContext, call *CallExprStmt) error {
 		}
 		return nil
 	}
-	if baseType == TypeBytes {
-		if call.Ellipsis {
-			lastType := call.Args[len(call.Args)-1].GetBase().Type
-			if lastType != TypeBytes {
-				err := fmt.Errorf("append: bytes ellipsis argument must be TypeBytes, got %s", lastType)
-				ctx.AddErrorAt(call.Args[len(call.Args)-1], "%s", err.Error())
-				return err
-			}
-			return nil
-		}
-		for i := 1; i < len(call.Args); i++ {
-			argType := call.Args[i].GetBase().Type
-			if argType != TypeInt64 {
-				err := fmt.Errorf("append: bytes argument %d must be Int64, got %s", i+1, argType)
-				ctx.AddErrorAt(call.Args[i], "%s", err.Error())
-				return err
-			}
-		}
-		return nil
-	}
-	err := fmt.Errorf("append: first argument must be array or TypeBytes, got %s", baseType)
+	err := fmt.Errorf("append: first argument must be array, got %s", baseType)
 	ctx.AddErrorAt(call.Args[0], "%s", err.Error())
 	return err
 }
@@ -550,7 +530,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 			if ident.Name == "new" {
 				return nil
 			}
-			if !target.IsArray() && target != TypeBytes && !target.IsMap() && !target.IsChan() {
+			if !target.IsArray() && !target.IsMap() && !target.IsChan() {
 				err := fmt.Errorf("make: unsupported type %s", target)
 				ctx.AddErrorAt(c.Args[0], "%s", err.Error())
 				return err
@@ -579,7 +559,7 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 				return err
 			}
 			argType := c.Args[0].GetBase().Type
-			valid := argType == TypeAny || argType.IsArray() || argType.IsChan() || argType == TypeBytes
+			valid := argType == TypeAny || argType.IsArray() || argType.IsChan()
 			if ident.Name == "len" {
 				valid = valid || argType.IsMap() || argType == TypeString
 			}
@@ -805,7 +785,7 @@ done:
 			c.Type = "Int64"
 			if len(c.Args) > 0 {
 				argType := c.Args[0].GetBase().Type
-				valid := argType.IsArray() || argType.IsChan() || argType == TypeBytes || argType.IsAny()
+				valid := argType.IsArray() || argType.IsChan() || argType.IsAny()
 				if ident.Name == "len" {
 					valid = valid || argType.IsMap() || argType == TypeString
 				}
@@ -1385,16 +1365,50 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 	}
 
 	for idx, elem := range c.Values {
+		var valueTarget GoMiniType
 		if elem.Key != nil {
 			if isMap {
 				if sub, ok := elem.Key.(*CompositeExpr); ok && sub.Kind == "" {
 					sub.BaseNode.Type = keyType
 				}
+				if err := elem.Key.Check(ctx); err != nil {
+					return err
+				}
+				if elem.Key.GetBase().IsInvalid() {
+					if invalidCause == "" {
+						invalidCause = compositeInvalidCause("key", idx, elem.Key)
+					}
+				} else if !ctx.IsAssignableTo(elem.Key.GetBase().Type, keyType) {
+					err := fmt.Errorf("map literal key %d type mismatch: expected %s, got %s", idx+1, keyType, elem.Key.GetBase().Type)
+					ctx.AddErrorAt(elem.Key, "%s", err.Error())
+					return err
+				}
+				valueTarget = valType
+				goto checkValue
+			} else if isArray {
+				if err := elem.Key.Check(ctx); err != nil {
+					return err
+				}
+				if elem.Key.GetBase().IsInvalid() {
+					if invalidCause == "" {
+						invalidCause = compositeInvalidCause("key", idx, elem.Key)
+					}
+				} else {
+					key := elem.Key.GetBase().Type
+					if key != TypeAny && !key.IsInt() {
+						err := fmt.Errorf("array literal key %d must be Int64-compatible, got %s", idx+1, key)
+						ctx.AddErrorAt(elem.Key, "%s", err.Error())
+						return err
+					}
+				}
+				valueTarget = elemType
+				goto checkValue
 			} else if !isArray {
 				// 结构体 Key 必须是字段名
 				if ident, ok := elem.Key.(*IdentifierExpr); ok {
 					if hasStruct {
 						if fieldType, ok2 := structFields[ident.Name]; ok2 {
+							valueTarget = fieldType
 							// 记录字段类型以便后续 Value 校验
 							if sub, ok3 := elem.Value.(*CompositeExpr); ok3 && sub.Kind == "" {
 								sub.BaseNode.Type = fieldType
@@ -1406,6 +1420,9 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 					ident.Type = "Any"
 					goto checkValue
 				}
+				err := fmt.Errorf("struct literal key %d must be a field name", idx+1)
+				ctx.AddErrorAt(elem.Key, "%s", err.Error())
+				return err
 			}
 			if err := elem.Key.Check(ctx); err != nil {
 				return err
@@ -1423,12 +1440,25 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 		}
 		// 预设子元素类型
 		if sub, ok := elem.Value.(*CompositeExpr); ok && sub.Kind == "" {
-			if isArray {
+			if !valueTarget.IsEmpty() {
+				sub.BaseNode.Type = valueTarget
+			} else if isArray {
+				valueTarget = elemType
 				sub.BaseNode.Type = elemType
 			} else if isMap {
+				valueTarget = valType
 				sub.BaseNode.Type = valType
 			} else if hasStruct && idx < len(structOrder) {
+				valueTarget = structOrder[idx].Type
 				sub.BaseNode.Type = structOrder[idx].Type
+			}
+		} else if valueTarget.IsEmpty() {
+			if isArray {
+				valueTarget = elemType
+			} else if isMap {
+				valueTarget = valType
+			} else if hasStruct && elem.Key == nil && idx < len(structOrder) {
+				valueTarget = structOrder[idx].Type
 			}
 		}
 		if err := elem.Value.Check(ctx); err != nil {
@@ -1438,6 +1468,10 @@ func (c *CompositeExpr) Check(ctx *SemanticContext) error {
 			if invalidCause == "" {
 				invalidCause = compositeInvalidCause("value", idx, elem.Value)
 			}
+		} else if !valueTarget.IsEmpty() && !ctx.IsAssignableTo(elem.Value.GetBase().Type, valueTarget) {
+			err := fmt.Errorf("composite literal element %d type mismatch: expected %s, got %s", idx+1, valueTarget, elem.Value.GetBase().Type)
+			ctx.AddErrorAt(elem.Value, "%s", err.Error())
+			return err
 		}
 	}
 
@@ -1546,20 +1580,6 @@ func (i *IndexExpr) Check(ctx *SemanticContext) error {
 		}
 		return nil
 	}
-	if objType == "TypeBytes" {
-		if i.Multi {
-			err := errors.New("Bytes 索引不支持二元解构语法")
-			ctx.AddErrorf("%s", err.Error())
-			return err
-		}
-		if i.Index.GetBase().Type != "Int64" {
-			err := fmt.Errorf("Bytes 索引只支持 Int64 类型 (%s)", i.Index.GetBase().Type)
-			ctx.AddErrorAt(i.Index, "%s", err.Error())
-			return err
-		}
-		i.Type = "Int64"
-		return nil
-	}
 	if objType == "String" {
 		if i.Multi {
 			err := errors.New("String 索引不支持二元解构语法")
@@ -1645,7 +1665,7 @@ func (s *SliceExpr) Check(ctx *SemanticContext) error {
 		return err
 	}
 	xType := s.X.GetBase().Type
-	if !xType.IsArray() && xType != "TypeBytes" && xType != "String" && !xType.IsAny() {
+	if !xType.IsArray() && xType != "String" && !xType.IsAny() {
 		err := fmt.Errorf("类型 %s 不支持切片操作", xType)
 		ctx.AddErrorAt(s.X, "%s", err.Error())
 		return err

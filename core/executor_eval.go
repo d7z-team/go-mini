@@ -137,7 +137,7 @@ func evalEnvType(value interface{}) ast.GoMiniType {
 	case string:
 		return ast.TypeString
 	case []byte:
-		return ast.TypeBytes
+		return ast.CreateArrayType(ast.TypeByte)
 	case *runtime.Var:
 		if typed != nil && !typed.RawType().IsEmpty() {
 			return ast.GoMiniType(typed.RawType())

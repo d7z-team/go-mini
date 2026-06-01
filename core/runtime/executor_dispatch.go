@@ -458,15 +458,57 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 
 		if isArray {
 			elemType, _ := typ.ReadArrayItemType()
-			res := make([]*Var, len(entries))
-			// ValueStack has [V1, V2, ..., VN]
-			// So we must pop in reverse: V_N first, then V_N-1...
+			values := make([]*Var, len(entries))
+			keys := make([]*Var, len(entries))
 			for i := len(entries) - 1; i >= 0; i-- {
-				val, err := e.prepareValueForType(session, session.ValueStack.Pop(), elemType)
+				values[i] = session.ValueStack.Pop()
+				if entries[i].HasKeyExpr {
+					keys[i] = session.ValueStack.Pop()
+				}
+			}
+			indexes := make([]int, len(entries))
+			nextIndex := 0
+			maxIndex := -1
+			seen := make(map[int]struct{}, len(entries))
+			for i, entry := range entries {
+				index := nextIndex
+				if entry.HasKeyExpr {
+					key := e.unwrapValue(keys[i])
+					if key == nil || key.VType != TypeInt {
+						return &VMError{Message: fmt.Sprintf("array literal key %d must be Int64", i), IsPanic: true}
+					}
+					if key.I64 < 0 || key.I64 > int64(int(^uint(0)>>1)) {
+						return &VMError{Message: fmt.Sprintf("array literal key %d out of range: %d", i, key.I64), IsPanic: true}
+					}
+					index = int(key.I64)
+				}
+				if _, ok := seen[index]; ok {
+					return &VMError{Message: fmt.Sprintf("array literal duplicate index %d", index), IsPanic: true}
+				}
+				seen[index] = struct{}{}
+				indexes[i] = index
+				if index > maxIndex {
+					maxIndex = index
+				}
+				nextIndex = index + 1
+			}
+			res := make([]*Var, maxIndex+1)
+			for i, val := range values {
+				prepared, err := e.prepareValueForType(session, val, elemType)
 				if err != nil {
 					return fmt.Errorf("array literal element %d: %w", i, err)
 				}
-				res[i] = val
+				res[indexes[i]] = prepared
+			}
+			for i := range res {
+				if res[i] != nil {
+					continue
+				}
+				zero, err := e.initializeType(session, elemType, 0)
+				if err != nil {
+					return fmt.Errorf("array literal zero element %d: %w", i, err)
+				}
+				res[i] = zero
 			}
 			v := &Var{VType: TypeArray, Ref: &VMArray{Data: res}}
 			v.SetRuntimeType(typ)
@@ -485,7 +527,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				specFields := make([]RuntimeStructField, len(entries))
 				for i := len(entries) - 1; i >= 0; i-- {
 					val := session.ValueStack.Pop()
-					fieldName := entries[i].IdentKey
+					fieldName := entries[i].FieldKey
 					if fieldName == "" {
 						fieldName = strconv.Itoa(i)
 					}
@@ -512,7 +554,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			st := v.Ref.(*VMStruct)
 			for i := len(entries) - 1; i >= 0; i-- {
 				val := session.ValueStack.Pop()
-				fieldName := entries[i].IdentKey
+				fieldName := entries[i].FieldKey
 				if fieldName == "" && i < len(st.Fields) && st.Spec != nil && i < len(st.Spec.Fields) {
 					fieldName = st.Spec.Fields[i].Name
 				}
@@ -541,23 +583,20 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		// So we must pop in reverse order: V_i then K_i
 		for i := len(entries) - 1; i >= 0; i-- {
 			val := session.ValueStack.Pop()
+			var keyVal *Var
+			if entries[i].HasKeyExpr {
+				keyVal = session.ValueStack.Pop()
+			}
 			preparedVal, err := e.prepareValueForType(session, val, valType)
 			if err != nil {
 				return fmt.Errorf("map literal value %d: %w", i, err)
 			}
-
-			keyName := ""
-			var keyVar *Var
-			if entries[i].IdentKey != "" {
-				keyName = entries[i].IdentKey
-				keyVar = NewString(entries[i].IdentKey)
-			} else if entries[i].HasExprKey {
-				keyVal := session.ValueStack.Pop()
-				var err error
-				keyName, keyVar, err = exec.comparableMapKey(keyVal, keyType)
-				if err != nil {
-					return err
-				}
+			if !entries[i].HasKeyExpr {
+				return &VMError{Message: fmt.Sprintf("map literal element %d missing key", i), IsPanic: true}
+			}
+			keyName, keyVar, err := exec.comparableMapKey(keyVal, keyType)
+			if err != nil {
+				return err
 			}
 			vmMap.StoreWithKey(keyName, keyVar, preparedVal)
 		}
@@ -618,13 +657,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
 				copy(newArgs[len(args)-1:], items)
-				args = newArgs
-			} else if last != nil && last.VType == TypeBytes {
-				newArgs := make([]*Var, len(args)-1+len(last.B))
-				copy(newArgs, args[:len(args)-1])
-				for i, b := range last.B {
-					newArgs[len(args)-1+i] = NewInt(int64(b))
-				}
 				args = newArgs
 			}
 		}
@@ -715,13 +747,6 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 				newArgs := make([]*Var, len(args)-1+len(items))
 				copy(newArgs, args[:len(args)-1])
 				copy(newArgs[len(args)-1:], items)
-				args = newArgs
-			} else if last != nil && last.VType == TypeBytes {
-				newArgs := make([]*Var, len(args)-1+len(last.B))
-				copy(newArgs, args[:len(args)-1])
-				for i, b := range last.B {
-					newArgs[len(args)-1+i] = NewInt(int64(b))
-				}
 				args = newArgs
 			}
 		}

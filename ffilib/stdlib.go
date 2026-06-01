@@ -9,7 +9,6 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/encoding/base64lib"
 	"gopkg.d7z.net/go-mini/ffilib/encoding/hexlib"
 	"gopkg.d7z.net/go-mini/ffilib/filepathlib"
-	"gopkg.d7z.net/go-mini/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/ffilib/imagelib"
 	"gopkg.d7z.net/go-mini/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/ffilib/jsonlib"
@@ -47,6 +46,5 @@ func Surface() *surface.Bundle {
 		imagelib.SurfaceImageLib(&imagelib.ImageHost{}),
 		imagelib.SurfaceImage(),
 		oslib.SurfaceOS(&oslib.OSHost{}),
-		fmtlib.Surface(&fmtlib.FmtHost{}),
 	)
 }

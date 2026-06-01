@@ -59,9 +59,7 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 	case *ast.CallExpr:
 		var funExpr miniast.Expr
 		if array, ok := ex.Fun.(*ast.ArrayType); ok {
-			if ident, ok := array.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-				funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex.Fun, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(ex.Fun)}, Name: miniast.Ident(miniast.TypeBytes)}
-			}
+			funExpr = &miniast.ConstRefExpr{BaseNode: miniast.BaseNode{ID: c.genID(array, "const_ref"), Meta: "const_ref", Loc: c.extractLoc(array)}, Name: miniast.Ident(c.typeToString(array))}
 		}
 		if funExpr == nil {
 			funExpr = c.convertExpr(ex.Fun)

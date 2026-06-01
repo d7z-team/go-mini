@@ -401,8 +401,8 @@ type CatchData struct {
 }
 
 type CompositeEntryData struct {
-	IdentKey   string
-	HasExprKey bool
+	FieldKey   string
+	HasKeyExpr bool
 }
 
 type CompositeData struct {

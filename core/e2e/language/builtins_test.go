@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	engine "gopkg.d7z.net/go-mini/core"
@@ -32,6 +33,14 @@ func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 		}
 		if string(b) != "abc" {
 			panic("append byte slice value mismatch")
+		}
+		var nilBytes []byte
+		if len(nilBytes) != 0 || cap(nilBytes) != 0 || string(nilBytes) != "" {
+			panic("nil byte slice zero semantics failed")
+		}
+		nilBytes = append(nilBytes, 'x')
+		if string(nilBytes) != "x" {
+			panic("append nil byte slice failed")
 		}
 
 		// 3. Test delete on map
@@ -94,7 +103,7 @@ func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 			panic("cap bytes mismatch")
 		}
 
-		// 7. Test indexing on String/Bytes
+		// 7. Test indexing on String and []byte
 		s3 := "abc"
 		if s3[1] != 98 { // 'b'
 			panic("string indexing failed")
@@ -102,6 +111,23 @@ func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 		b3 := []byte("def")
 		if b3[2] != 102 { // 'f'
 			panic("bytes indexing failed")
+		}
+		cp := int64(233)
+		utf := []byte{192 + cp/64, 128 + cp%64}
+		if string(utf) != "é" {
+			panic("byte composite arithmetic failed")
+		}
+		keyed := []byte{2: 'c', 0: 'a', 1: 'b'}
+		if string(keyed) != "abc" {
+			panic("keyed byte array literal failed")
+		}
+		mapKey := "dynamic"
+		keyedMap := map[string]int64{mapKey: 7}
+		if keyedMap["dynamic"] != 7 {
+			panic("map identifier key should evaluate as expression")
+		}
+		if _, ok := keyedMap["mapKey"]; ok {
+			panic("map identifier key must not become a field name")
 		}
 
 		// 8. Test new on pointer type
@@ -121,60 +147,186 @@ func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 	}
 }
 
-func TestRuneAliasesAndLiteralsUseInt64(t *testing.T) {
+func TestRuneAliasesAndLiteralsUseRune(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 
 	code := `
-	package main
+package main
 
-	func main() {
-		var r rune = 'A'
-		if r != 65 {
-			panic("rune variable must store Int64 code point")
-		}
-		if '\n' != 10 {
-			panic("escaped rune literal mismatch")
-		}
-		if '你' != 20320 {
-			panic("unicode rune literal mismatch")
-		}
-		if '\xff' != 255 || '\x80' != 128 {
-			panic("byte escaped rune literal mismatch")
-		}
+const ConstByte byte = 7
+const ConstRune rune = 'A'
 
-		items := []rune{'a', '你'}
-		if len(items) != 2 || items[0] != 97 || items[1] != 20320 {
-			panic("rune array must be Array<Int64>")
-		}
-
-		lookup := map[rune]string{'a': "ascii", '你': "han"}
-		if lookup['a'] != "ascii" || lookup['你'] != "han" {
-			panic("rune map key must be Int64")
-		}
-
-		data := []byte("ab")
-		data = append(data, 'c')
-		if string(data) != "abc" {
-			panic("rune literal must append to bytes as Int64")
-		}
-
-		var v any = r
-		switch x := v.(type) {
-		case rune:
-			if x != 65 {
-				panic("type switch rune case must be Int64")
-			}
-		default:
-			panic("type switch rune case did not match Int64")
-		}
+func main() {
+	var r rune = 'A'
+	if r != 65 {
+		panic("rune variable must store Rune code point")
 	}
-	`
+	if '\n' != 10 {
+		panic("escaped rune literal mismatch")
+	}
+	if '你' != 20320 {
+		panic("unicode rune literal mismatch")
+	}
+	var sentinel rune = -1
+	if sentinel != -1 {
+		panic("negative rune sentinel must be valid")
+	}
+	if '\xff' != 255 || '\x80' != 128 {
+		panic("byte escaped rune literal mismatch")
+	}
+
+	items := []rune{'a', '你'}
+	if len(items) != 2 || items[0] != 97 || items[1] != 20320 {
+		panic("rune array must be Array<Rune>")
+	}
+
+	lookup := map[rune]string{'a': "ascii", '你': "han"}
+	if lookup['a'] != "ascii" || lookup['你'] != "han" {
+		panic("rune map key must be Rune")
+	}
+
+	data := []byte("ab")
+	data = append(data, 'c')
+	if string(data) != "abc" {
+		panic("rune literal must append to bytes as Int64")
+	}
+
+	var v any = r
+	switch x := v.(type) {
+	case rune:
+		if x != 65 {
+			panic("type switch rune case must be Rune")
+		}
+	default:
+		panic("type switch rune case did not match Rune")
+	}
+
+	var b any = ConstByte
+	switch x := b.(type) {
+	case byte:
+		if x != 7 {
+			panic("const byte case must preserve Byte")
+		}
+	default:
+		panic("const byte did not preserve Byte")
+	}
+
+	var cr any = ConstRune
+	switch x := cr.(type) {
+	case rune:
+		if x != 65 {
+			panic("const rune case must preserve Rune")
+		}
+	default:
+		panic("const rune did not preserve Rune")
+	}
+
+	keys := map[any]string{byte(65): "byte", rune(65): "rune", int64(65): "int"}
+	if len(keys) != 3 || keys[byte(65)] != "byte" || keys[rune(65)] != "rune" || keys[int64(65)] != "int" {
+		panic("Map<Any> must preserve numeric subtype key identity")
+	}
+}
+`
 	prog, err := executor.NewRuntimeByGoCode(code)
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
 	if err := prog.Execute(context.Background()); err != nil {
 		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestCompositeLiteralRejectsInvalidByteAndArrayKeys(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+
+	runtimeCases := []struct {
+		name string
+		code string
+		want string
+	}{
+		{
+			name: "byte overflow",
+			code: `
+package main
+func main() {
+	_ = []byte{256}
+}`,
+			want: "value 256 overflows Byte",
+		},
+		{
+			name: "byte negative",
+			code: `
+package main
+func main() {
+	_ = []byte{-1}
+}`,
+			want: "value -1 overflows Byte",
+		},
+		{
+			name: "duplicate array key",
+			code: `
+package main
+func main() {
+	_ = []byte{0: 1, 0: 2}
+}`,
+			want: "array literal duplicate index 0",
+		},
+		{
+			name: "negative array key",
+			code: `
+package main
+func main() {
+	_ = []byte{-1: 1}
+}`,
+			want: "array literal key 0 out of range: -1",
+		},
+	}
+
+	for _, tc := range runtimeCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prog, err := executor.NewRuntimeByGoCode(tc.code)
+			if err != nil {
+				t.Fatalf("compile failed: %v", err)
+			}
+			err = prog.Execute(context.Background())
+			if err == nil {
+				t.Fatalf("expected runtime error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected runtime error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+
+	compileCases := []struct {
+		name string
+		code string
+		want string
+	}{
+		{
+			name: "non numeric array key",
+			code: `
+package main
+func main() {
+	_ = []byte{"x": 1}
+}`,
+			want: "array literal key 1 must be Int64-compatible, got String",
+		},
+		{
+			name: "float array key",
+			code: `
+package main
+func main() {
+	_ = []byte{1.2: 1}
+}`,
+			want: "array literal key 1 must be Int64-compatible, got Float64",
+		},
+	}
+
+	for _, tc := range compileCases {
+		t.Run(tc.name, func(t *testing.T) {
+			requireCompileErrorContains(t, executor, tc.code, tc.want)
+		})
 	}
 }
 

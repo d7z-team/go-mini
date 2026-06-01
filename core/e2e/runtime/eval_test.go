@@ -89,9 +89,20 @@ func TestEvalByteCopy(t *testing.T) {
 
 	original[0] = 'H'
 
-	got := res.Interface().([]byte)
+	items, ok := res.Interface().([]interface{})
+	if !ok {
+		t.Fatalf("Eval() returned %T, want byte array projection", res.Interface())
+	}
+	got := make([]byte, len(items))
+	for i, item := range items {
+		n, ok := item.(int64)
+		if !ok {
+			t.Fatalf("Eval() byte item %d = %T, want int64", i, item)
+		}
+		got[i] = byte(n)
+	}
 	if string(got) != "hello" {
-		t.Errorf("Eval result aliased host byte slice: got %q", string(got))
+		t.Errorf("Eval result aliased host byte slice: got %#v", got)
 	}
 }
 

@@ -56,7 +56,7 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		}
 		buf := make([]byte, len(v))
 		copy(buf, v)
-		return NewBytes(buf), nil
+		return NewByteArray(buf), nil
 	case bool:
 		return NewBool(v), nil
 	case uint32:
@@ -213,10 +213,8 @@ func (e *Executor) wrapAnyVar(inner *Var) *Var {
 		return inner
 	}
 	res := &Var{
-		VType:  TypeAny,
-		Ref:    inner,
-		Bridge: inner.Bridge,
-		Handle: inner.Handle,
+		VType: TypeAny,
+		Ref:   inner,
 	}
 	res.SetRawType(SpecAny.String())
 	return res

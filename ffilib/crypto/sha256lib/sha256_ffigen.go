@@ -42,7 +42,7 @@ func sha256HostRouter(ctx context.Context, impl SHA256, registry *ffigo.HandleRe
 }
 
 var sha256Routes = []runtime.FFIRouteDecl{
-	{PackagePath: "crypto/sha256", MemberName: "Sum256", RouteName: "crypto/sha256.Sum256", MethodID: methodIDSHA256Sum256, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) TypeBytes", runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "crypto/sha256", MemberName: "Sum256", RouteName: "crypto/sha256.Sum256", MethodID: methodIDSHA256Sum256, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", runtime.FFIParamIn), Doc: ""},
 }
 
 func SurfaceSHA256(impl SHA256) *surface.Bundle {

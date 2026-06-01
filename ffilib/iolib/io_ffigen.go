@@ -12,9 +12,9 @@ import (
 	"gopkg.d7z.net/go-mini/core/surface"
 )
 
-var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", runtime.StructOwnershipHostOpaque, "struct { Write function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); Read function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); WriteAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); ReadAt function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error); Seek function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error); Close function(HostRef<io.File>) Error; Sync function(HostRef<io.File>) Error; Truncate function(HostRef<io.File>, Int64) Error; WriteString function(HostRef<io.File>, String) tuple(Int64, Error); Name function(HostRef<io.File>) String; WriteNative function(HostRef<io.File>, TypeBytes) tuple(Int64, Error); }")
+var io_File_FFI_StructSchema = runtime.MustParseRuntimeStructSpec("io.File", runtime.StructOwnershipHostOpaque, "struct { Write function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error); Read function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error); WriteAt function(HostRef<io.File>, Array<Byte>, Int64) tuple(Int64, Error); ReadAt function(HostRef<io.File>, Array<Byte>, Int64) tuple(Int64, Error); Seek function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error); Close function(HostRef<io.File>) Error; Sync function(HostRef<io.File>) Error; Truncate function(HostRef<io.File>, Int64) Error; WriteString function(HostRef<io.File>, String) tuple(Int64, Error); Name function(HostRef<io.File>) String; WriteNative function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error); }")
 
-var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")
+var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Read(Array<Byte>) tuple(Int64, Error);}")
 
 func SurfaceReaderSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
@@ -27,7 +27,7 @@ func SurfaceReaderSchema() *surface.Bundle {
 	})
 }
 
-var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Write(TypeBytes) tuple(Int64, Error);}")
+var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("interface{Write(Array<Byte>) tuple(Int64, Error);}")
 
 func SurfaceWriterSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
@@ -194,7 +194,7 @@ func ioHostRouter(ctx context.Context, impl IO, registry *ffigo.HandleRegistry, 
 }
 
 var ioRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "io", MemberName: "ReadAll", RouteName: "io.ReadAll", MethodID: methodIDIOReadAll, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Reader) tuple(TypeBytes, Error)", runtime.FFIParamIn), Doc: "ReadAll 读取所有数据"},
+	{PackagePath: "io", MemberName: "ReadAll", RouteName: "io.ReadAll", MethodID: methodIDIOReadAll, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Reader) tuple(Array<Byte>, Error)", runtime.FFIParamIn), Doc: "ReadAll 读取所有数据"},
 	{PackagePath: "io", MemberName: "Copy", RouteName: "io.Copy", MethodID: methodIDIOCopy, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, io.Reader) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Copy 将 src 的数据拷贝到 dst"},
 	{PackagePath: "io", MemberName: "WriteString", RouteName: "io.WriteString", MethodID: methodIDIOWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(io.Writer, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteString 将字符串写入 w"},
 }
@@ -624,17 +624,17 @@ func fileHostRouter(ctx context.Context, impl *File, registry *ffigo.HandleRegis
 }
 
 var fileRoutes = []runtime.FFIRouteDecl{
-	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Write", RouteName: "io.File.Write", MethodID: methodIDFileWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
-	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Read", RouteName: "io.File.Read", MethodID: methodIDFileRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), Doc: "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
-	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteAt", RouteName: "io.File.WriteAt", MethodID: methodIDFileWriteAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteAt 正常工作：支持偏移量写入"},
-	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "ReadAt", RouteName: "io.File.ReadAt", MethodID: methodIDFileReadAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Write", RouteName: "io.File.Write", MethodID: methodIDFileWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "Write 正常工作：宿主读取脚本提供的 []byte 内容"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Read", RouteName: "io.File.Read", MethodID: methodIDFileRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes), Doc: "Read 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.Reader 的 n, err 语义。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteAt", RouteName: "io.File.WriteAt", MethodID: methodIDFileWriteAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Array<Byte>, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteAt 正常工作：支持偏移量写入"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "ReadAt", RouteName: "io.File.ReadAt", MethodID: methodIDFileReadAt, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Array<Byte>, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamInOutBytes, runtime.FFIParamIn), Doc: "ReadAt 通过 BytesRef 将读取结果整体回写给 VM，匹配 io.ReaderAt 的 n, err 语义。"},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Seek", RouteName: "io.File.Seek", MethodID: methodIDFileSeek, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64, Int64) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Close", RouteName: "io.File.Close", MethodID: methodIDFileClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Sync", RouteName: "io.File.Sync", MethodID: methodIDFileSync, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) Error", runtime.FFIParamIn), Doc: ""},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Truncate", RouteName: "io.File.Truncate", MethodID: methodIDFileTruncate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Int64) Error", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteString", RouteName: "io.File.WriteString", MethodID: methodIDFileWriteString, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, String) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "Name", RouteName: "io.File.Name", MethodID: methodIDFileName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>) String", runtime.FFIParamIn), Doc: ""},
-	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteNative", RouteName: "io.File.WriteNative", MethodID: methodIDFileWriteNative, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
+	{TypePackagePath: "io", TypeMemberName: "File", MethodName: "WriteNative", RouteName: "io.File.WriteNative", MethodID: methodIDFileWriteNative, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<io.File>, Array<Byte>) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: "WriteNative 提供原生 int 返回值的写入入口，便于宿主侧适配标准 io.Writer。"},
 }
 
 func SurfaceFile() *surface.Bundle {

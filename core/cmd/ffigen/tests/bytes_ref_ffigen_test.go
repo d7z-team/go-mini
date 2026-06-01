@@ -50,7 +50,7 @@ func bytesRefAPIHostRouter(ctx context.Context, impl BytesRefAPI, registry *ffig
 }
 
 var bytesRefAPIRoutes = []runtime.FFIRouteDecl{
-	{PackagePath: "copyback", MemberName: "Mutate", RouteName: "copyback.Mutate", MethodID: methodIDBytesRefAPIMutate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Int64", runtime.FFIParamInOutBytes), Doc: ""},
+	{PackagePath: "copyback", MemberName: "Mutate", RouteName: "copyback.Mutate", MethodID: methodIDBytesRefAPIMutate, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Int64", runtime.FFIParamInOutBytes), Doc: ""},
 }
 
 func SurfaceBytesRefAPI(impl BytesRefAPI) *surface.Bundle {

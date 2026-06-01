@@ -150,38 +150,67 @@ func comparableValuesEqual(left, right *Var) (bool, error) {
 }
 
 func comparableValueString(v *Var) (string, error) {
+	return comparableValueStringSeen(v, &comparableSeen{})
+}
+
+type comparableSeen struct {
+	vars       map[*Var]struct{}
+	arrays     map[*VMArray]struct{}
+	structs    map[*VMStruct]struct{}
+	interfaces map[*VMInterface]struct{}
+}
+
+func comparableValueStringSeen(v *Var, seen *comparableSeen) (string, error) {
 	inner, wrappedAny, nilAny := anyWrapper(v)
 	if wrappedAny {
 		if nilAny {
 			return "nil", nil
 		}
-		return comparableValueString(inner)
+		return comparableValueStringSeen(inner, seen)
 	}
 	if v == nil {
 		return "nil", nil
+	}
+	if seen != nil {
+		if seen.vars == nil {
+			seen.vars = make(map[*Var]struct{})
+		}
+		if _, ok := seen.vars[v]; ok {
+			return "", errors.New("cyclic value is not comparable")
+		}
+		seen.vars[v] = struct{}{}
+		defer delete(seen.vars, v)
 	}
 	if v.VType == TypeInterface {
 		iface, _ := v.Ref.(*VMInterface)
 		if iface == nil || iface.Target == nil {
 			return "nil", nil
 		}
-		return comparableValueString(iface.Target)
+		if seen != nil && iface != nil {
+			if seen.interfaces == nil {
+				seen.interfaces = make(map[*VMInterface]struct{})
+			}
+			if _, ok := seen.interfaces[iface]; ok {
+				return "", errors.New("cyclic value is not comparable")
+			}
+			seen.interfaces[iface] = struct{}{}
+			defer delete(seen.interfaces, iface)
+		}
+		return comparableValueStringSeen(iface.Target, seen)
 	}
 	rt := comparableRuntimeType(v)
 	switch v.VType {
 	case TypeInt:
-		return "i#" + strconv.FormatInt(v.I64, 10), nil
+		return "i#" + rt.Raw.String() + "#" + strconv.FormatInt(v.I64, 10), nil
 	case TypeFloat:
-		return "f#" + strconv.FormatUint(math.Float64bits(v.F64), 16), nil
+		return "f#" + rt.Raw.String() + "#" + strconv.FormatUint(math.Float64bits(v.F64), 16), nil
 	case TypeString:
-		return "s#" + escapeMapKeyString(v.Str), nil
+		return "s#" + rt.Raw.String() + "#" + escapeMapKeyString(v.Str), nil
 	case TypeBool:
 		if v.Bool {
-			return "b#1", nil
+			return "b#" + rt.Raw.String() + "#1", nil
 		}
-		return "b#0", nil
-	case TypeBytes:
-		return "", errors.New("TypeBytes is not comparable")
+		return "b#" + rt.Raw.String() + "#0", nil
 	case TypePointer:
 		if !isEqualityComparableRuntimeType(rt) {
 			return "", fmt.Errorf("%s is not comparable", rt.Raw)
@@ -233,64 +262,112 @@ func comparableValueString(v *Var) (string, error) {
 		}
 		return fmt.Sprintf("closure#%s#%p", rt.Raw, v.Ref), nil
 	case TypeStruct:
-		if !isEqualityComparableRuntimeType(rt) {
-			return "", fmt.Errorf("%s is not comparable", rt.Raw)
-		}
-		st, _ := v.Ref.(*VMStruct)
-		if st == nil {
-			return "struct#" + rt.Raw.String() + "#nil", nil
-		}
-		parts := make([]string, 0, len(st.Fields))
-		for i, field := range st.Fields {
-			if field == nil {
-				parts = append(parts, strconv.Itoa(i)+"=nil")
-				continue
-			}
-			part, err := comparableValueString(field.Value)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, strconv.Itoa(i)+"="+part)
-		}
-		return "struct#" + rt.Raw.String() + "#" + strings.Join(parts, ";"), nil
+		return comparableStructStringSeen(v, rt, seen, false)
 	default:
 		return "", fmt.Errorf("%s is not comparable", v.VType)
 	}
 }
 
+func comparableStructStringSeen(v *Var, rt RuntimeType, seen *comparableSeen, mapKey bool) (string, error) {
+	if mapKey {
+		if !isMapKeyRuntimeType(rt) {
+			return "", fmt.Errorf("%s is not comparable", rt.Raw)
+		}
+	} else if !isEqualityComparableRuntimeType(rt) {
+		return "", fmt.Errorf("%s is not comparable", rt.Raw)
+	}
+	st, _ := v.Ref.(*VMStruct)
+	if st == nil {
+		return "struct#" + rt.Raw.String() + "#nil", nil
+	}
+	if seen != nil {
+		if seen.structs == nil {
+			seen.structs = make(map[*VMStruct]struct{})
+		}
+		if _, ok := seen.structs[st]; ok {
+			return "", errors.New("cyclic value is not comparable")
+		}
+		seen.structs[st] = struct{}{}
+		defer delete(seen.structs, st)
+	}
+	parts := make([]string, 0, len(st.Fields))
+	for i, field := range st.Fields {
+		if field == nil {
+			parts = append(parts, strconv.Itoa(i)+"=nil")
+			continue
+		}
+		var (
+			part string
+			err  error
+		)
+		if mapKey {
+			part, err = comparableMapKeyStringSeen(field.Value, seen)
+		} else {
+			part, err = comparableValueStringSeen(field.Value, seen)
+		}
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, strconv.Itoa(i)+"="+part)
+	}
+	return "struct#" + rt.Raw.String() + "#" + strings.Join(parts, ";"), nil
+}
+
 func comparableMapKeyString(v *Var) (string, error) {
+	return comparableMapKeyStringSeen(v, &comparableSeen{})
+}
+
+func comparableMapKeyStringSeen(v *Var, seen *comparableSeen) (string, error) {
 	inner, wrappedAny, nilAny := anyWrapper(v)
 	if wrappedAny {
 		if nilAny {
 			return "nil", nil
 		}
-		return comparableMapKeyString(inner)
+		return comparableMapKeyStringSeen(inner, seen)
 	}
 	if v == nil {
 		return "nil", nil
+	}
+	if seen != nil {
+		if seen.vars == nil {
+			seen.vars = make(map[*Var]struct{})
+		}
+		if _, ok := seen.vars[v]; ok {
+			return "", errors.New("cyclic value is not comparable")
+		}
+		seen.vars[v] = struct{}{}
+		defer delete(seen.vars, v)
 	}
 	if v.VType == TypeInterface {
 		iface, _ := v.Ref.(*VMInterface)
 		if iface == nil || iface.Target == nil {
 			return "nil", nil
 		}
-		return comparableMapKeyString(iface.Target)
+		if seen != nil && iface != nil {
+			if seen.interfaces == nil {
+				seen.interfaces = make(map[*VMInterface]struct{})
+			}
+			if _, ok := seen.interfaces[iface]; ok {
+				return "", errors.New("cyclic value is not comparable")
+			}
+			seen.interfaces[iface] = struct{}{}
+			defer delete(seen.interfaces, iface)
+		}
+		return comparableMapKeyStringSeen(iface.Target, seen)
 	}
 	rt := comparableRuntimeType(v)
 	switch v.VType {
 	case TypeInt:
-		return "i#" + strconv.FormatInt(v.I64, 10), nil
+		return "i#" + rt.Raw.String() + "#" + strconv.FormatInt(v.I64, 10), nil
 	case TypeFloat:
-		return "f#" + strconv.FormatUint(math.Float64bits(v.F64), 16), nil
+		return "f#" + rt.Raw.String() + "#" + strconv.FormatUint(math.Float64bits(v.F64), 16), nil
 	case TypeString:
-		return "s#" + escapeMapKeyString(v.Str), nil
+		return "s#" + rt.Raw.String() + "#" + escapeMapKeyString(v.Str), nil
 	case TypeBool:
 		if v.Bool {
-			return "b#1", nil
+			return "b#" + rt.Raw.String() + "#1", nil
 		}
-		return "b#0", nil
-	case TypeBytes:
-		return "", errors.New("TypeBytes is not comparable")
+		return "b#" + rt.Raw.String() + "#0", nil
 	case TypePointer:
 		if !isMapKeyRuntimeType(rt) {
 			return "", fmt.Errorf("%s is not comparable", rt.Raw)
@@ -310,16 +387,39 @@ func comparableMapKeyString(v *Var) (string, error) {
 		}
 		return fmt.Sprintf("chan#%s#%p", rt.Raw, v.Ref), nil
 	case TypeError:
-		return comparableValueString(v)
+		errVal := goErrorFromVar(v)
+		if errVal == nil {
+			return "err#nil", nil
+		}
+		if host := hostErrorFromError(errVal); host != nil && host.Handle != 0 {
+			return fmt.Sprintf("err#host#%s#%d", runtimeBridgeIdentity(host.Bridge), host.Handle), nil
+		}
+		if id, ok := vmErrorIdentity(errVal); ok {
+			return "err#" + id, nil
+		}
+		return "", fmt.Errorf("error %T has no VM identity", errVal)
 	case TypeArray:
 		if !isMapKeyRuntimeType(rt) {
 			return "", fmt.Errorf("%s is not comparable", rt.Raw)
 		}
 		arr := arrayRef(v)
+		if arr == nil {
+			return "arr#" + rt.Raw.String() + "#nil", nil
+		}
+		if arr != nil && seen != nil {
+			if seen.arrays == nil {
+				seen.arrays = make(map[*VMArray]struct{})
+			}
+			if _, ok := seen.arrays[arr]; ok {
+				return "", errors.New("cyclic value is not comparable")
+			}
+			seen.arrays[arr] = struct{}{}
+			defer delete(seen.arrays, arr)
+		}
 		items := arr.Snapshot()
 		parts := make([]string, len(items))
 		for i, item := range items {
-			part, err := comparableMapKeyString(item)
+			part, err := comparableMapKeyStringSeen(item, seen)
 			if err != nil {
 				return "", err
 			}
@@ -327,26 +427,7 @@ func comparableMapKeyString(v *Var) (string, error) {
 		}
 		return "arr#" + rt.Raw.String() + "#" + strings.Join(parts, "|"), nil
 	case TypeStruct:
-		if !isMapKeyRuntimeType(rt) {
-			return "", fmt.Errorf("%s is not comparable", rt.Raw)
-		}
-		st, _ := v.Ref.(*VMStruct)
-		if st == nil {
-			return "struct#" + rt.Raw.String() + "#nil", nil
-		}
-		parts := make([]string, 0, len(st.Fields))
-		for i, field := range st.Fields {
-			if field == nil {
-				parts = append(parts, strconv.Itoa(i)+"=nil")
-				continue
-			}
-			part, err := comparableMapKeyString(field.Value)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, strconv.Itoa(i)+"="+part)
-		}
-		return "struct#" + rt.Raw.String() + "#" + strings.Join(parts, ";"), nil
+		return comparableStructStringSeen(v, rt, seen, true)
 	default:
 		return "", fmt.Errorf("%s is not comparable", v.VType)
 	}

@@ -13,7 +13,8 @@ const (
 	Float64 Type = "Float64"
 	String  Type = "String"
 	Bool    Type = "Bool"
-	Bytes   Type = "TypeBytes"
+	Byte    Type = "Byte"
+	Rune    Type = "Rune"
 	Any     Type = "Any"
 	Error   Type = "Error"
 	Void    Type = "Void"
@@ -81,14 +82,16 @@ func (t Type) IsAny() bool     { return t == Any }
 func (t Type) IsModule() bool  { return t == Module }
 func (t Type) IsClosure() bool { return t == Closure }
 func (t Type) IsString() bool  { return t == String }
-func (t Type) IsInt() bool     { return t == Int64 }
+func (t Type) IsInt() bool     { return t == Int64 || t == Byte || t == Rune }
+func (t Type) IsByte() bool    { return t == Byte }
+func (t Type) IsRune() bool    { return t == Rune }
 func (t Type) IsBool() bool    { return t == Bool }
 func (t Type) IsNumeric() bool {
-	return t == Int64 || t == Float64
+	return t == Int64 || t == Float64 || t == Byte || t == Rune
 }
 
 func (t Type) IsPrimitive() bool {
-	return t.IsAny() || t.IsModule() || t.IsClosure() || t.IsString() || t.IsNumeric() || t.IsBool() || t == Bytes || t == Error
+	return t.IsAny() || t.IsModule() || t.IsClosure() || t.IsString() || t.IsNumeric() || t.IsBool() || t == Error
 }
 
 func (t Type) IsPtr() bool {
@@ -539,7 +542,7 @@ func (t Type) ValidateCanonical() error {
 
 func (t Type) IsCanonical() bool {
 	switch t {
-	case Int64, Float64, String, Bool, Bytes, Any, Error, Void, Module, Closure:
+	case Int64, Float64, String, Bool, Byte, Rune, Any, Error, Void, Module, Closure:
 		return true
 	}
 	if t.IsTuple() {
@@ -724,53 +727,15 @@ func (t Type) isAssignableTo(target Type) bool {
 }
 
 func (t Type) canAssignToAny() bool {
-	if t.IsEmpty() || t == Any || t == "nil" || t == "Constant" {
-		return true
-	}
-	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsModule() {
-		return false
-	}
-	if t.IsArray() {
-		elem, ok := t.Element()
-		return ok && elem.canAssignToAny()
-	}
-	if t.IsMap() {
-		_, value, ok := t.MapTypes()
-		return ok && value.canAssignToAny()
-	}
-	if t.IsTuple() {
-		items, ok := t.TupleTypes()
-		if !ok {
-			return false
-		}
-		for _, item := range items {
-			if !item.canAssignToAny() {
-				return false
-			}
-		}
-		return true
-	}
-	if t.IsStruct() {
-		fields, ok := t.StructFields()
-		if !ok {
-			return false
-		}
-		for _, field := range fields {
-			if !field.Type.canAssignToAny() {
-				return false
-			}
-		}
-		return true
-	}
 	return true
 }
 
 func (t Type) ZeroValue() interface{} {
-	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() || t.IsMap() || t.IsAny() || t.IsModule() || t.IsClosure() || t == Bytes {
+	if t.IsPtr() || t.IsHostRef() || t.IsChan() || t.IsArray() || t.IsMap() || t.IsAny() || t.IsModule() || t.IsClosure() {
 		return nil
 	}
 	switch t {
-	case Int64:
+	case Int64, Byte, Rune:
 		return int64(0)
 	case Float64:
 		return 0.0

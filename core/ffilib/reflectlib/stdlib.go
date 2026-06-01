@@ -66,11 +66,12 @@ func reflectConsts() map[string]int64 {
 	return map[string]int64{
 		"Invalid":   runtime.ReflectKindInvalid,
 		"Bool":      runtime.ReflectKindBool,
+		"Byte":      runtime.ReflectKindByte,
+		"Rune":      runtime.ReflectKindRune,
 		"Int":       runtime.ReflectKindInt64,
 		"Int64":     runtime.ReflectKindInt64,
 		"Float64":   runtime.ReflectKindFloat64,
 		"String":    runtime.ReflectKindString,
-		"Bytes":     runtime.ReflectKindBytes,
 		"Array":     runtime.ReflectKindArray,
 		"Map":       runtime.ReflectKindMap,
 		"Struct":    runtime.ReflectKindStruct,

@@ -7,6 +7,7 @@ import (
 )
 
 func ptrString(v string) *string { return &v }
+func ptrInt64(v int64) *int64    { return &v }
 
 func TestNewExecutorFromPreparedRequiresPreparedProgram(t *testing.T) {
 	_, err := NewExecutorFromPrepared(nil)
@@ -54,6 +55,46 @@ func TestNewExecutorFromPreparedRejectsUnsupportedConstantType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "constant Data invalid: unsupported ffi const type Any") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestFFIConstValuePreservesByteAndRuneTypes(t *testing.T) {
+	byteConst := ConstByte(65)
+	if err := byteConst.Validate(); err != nil {
+		t.Fatalf("byte const validate failed: %v", err)
+	}
+	byteValue := byteConst.ToVar()
+	if byteValue == nil || byteValue.I64 != 65 || byteValue.RuntimeType().Raw != SpecByte {
+		t.Fatalf("byte const runtime value = %#v", byteValue)
+	}
+	if byteConst.DisplayString() != "65" || byteConst.Hash() == ConstInt64(65).Hash() {
+		t.Fatalf("byte const display/hash did not preserve subtype")
+	}
+
+	runeConst := ConstRune('你')
+	if err := runeConst.Validate(); err != nil {
+		t.Fatalf("rune const validate failed: %v", err)
+	}
+	runeValue := runeConst.ToVar()
+	if runeValue == nil || runeValue.I64 != 20320 || runeValue.RuntimeType().Raw != SpecRune {
+		t.Fatalf("rune const runtime value = %#v", runeValue)
+	}
+	if runeConst.DisplayString() != "20320" || runeConst.Hash() == ConstInt64(20320).Hash() {
+		t.Fatalf("rune const display/hash did not preserve subtype")
+	}
+
+	sentinelRuneConst := ConstRune(-1)
+	if err := sentinelRuneConst.Validate(); err != nil {
+		t.Fatalf("negative rune const validate failed: %v", err)
+	}
+	sentinelRuneValue := sentinelRuneConst.ToVar()
+	if sentinelRuneValue == nil || sentinelRuneValue.I64 != -1 || sentinelRuneValue.RuntimeType().Raw != SpecRune {
+		t.Fatalf("negative rune const runtime value = %#v", sentinelRuneValue)
+	}
+
+	invalid := FFIConstValue{Type: SpecByte, Int64: ptrInt64(256)}
+	if err := invalid.Validate(); err == nil || !strings.Contains(err.Error(), "overflows Byte") {
+		t.Fatalf("expected invalid byte constant, got %v", err)
 	}
 }
 

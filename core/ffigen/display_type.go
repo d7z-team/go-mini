@@ -65,14 +65,17 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 		return "String"
 	case "bool":
 		return "Bool"
+	case "byte", "uint8":
+		return "Byte"
+	case "rune":
+		return "Rune"
 	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-		"byte", "rune":
+		"uint", "uint16", "uint32", "uint64", "uintptr":
 		return "Int64"
 	case "float32", "float64":
 		return "Float64"
 	case "[]byte":
-		return "TypeBytes"
+		return string(miniast.CreateArrayType(miniast.TypeByte))
 	case "error":
 		return "Error"
 	case ffigo.VoidQualifiedType, "ffigo.Void", "Void":
@@ -87,7 +90,7 @@ func (r *displayTypeResolver) NormalizeTypeString(typeName string) string {
 
 func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	if r.gen.isBytesRefExpr(expr) {
-		return "TypeBytes"
+		return string(miniast.CreateArrayType(miniast.TypeByte))
 	}
 	if inner, ok := r.gen.asyncElemExpr(expr); ok {
 		return r.VMType(inner)
@@ -103,6 +106,10 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	}
 	if bt := r.gen.resolveToBasicType(expr); bt != "" {
 		switch {
+		case bt == "byte" || bt == "uint8":
+			return "Byte"
+		case bt == "rune":
+			return "Rune"
 		case strings.HasPrefix(bt, "int") || strings.HasPrefix(bt, "uint"):
 			return "Int64"
 		case strings.HasPrefix(bt, "float"):
@@ -115,9 +122,6 @@ func (r *displayTypeResolver) VMType(expr ast.Expr) string {
 	}
 	switch t := expr.(type) {
 	case *ast.ArrayType:
-		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-			return "TypeBytes"
-		}
 		return string(miniast.CreateArrayType(miniast.GoMiniType(r.VMType(t.Elt))))
 	case *ast.MapType:
 		return string(miniast.CreateMapType(miniast.GoMiniType(r.VMType(t.Key)), miniast.GoMiniType(r.VMType(t.Value))))

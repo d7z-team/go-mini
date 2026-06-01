@@ -14,9 +14,10 @@ const (
 	ReflectKindInvalid int64 = iota
 	ReflectKindBool
 	ReflectKindInt64
+	ReflectKindByte
+	ReflectKindRune
 	ReflectKindFloat64
 	ReflectKindString
-	ReflectKindBytes
 	ReflectKindArray
 	ReflectKindMap
 	ReflectKindStruct
@@ -140,6 +141,9 @@ func NativeReflect(e *Executor, session *StackContext, route FFIRoute, args []*V
 	case reflectspec.RouteUnwrap:
 		value, ok := e.reflectUnwrapValue(reflectArg(args, 0))
 		return e.reflectAnyTuple(value, RuntimeType{}, ok), nil
+	case reflectspec.RouteElem:
+		value, declared, ok := e.reflectElemValue(reflectArg(args, 0))
+		return e.reflectAnyTuple(value, declared, ok), nil
 	case reflectspec.RouteAssign:
 		return e.reflectAssign(session, reflectArg(args, 0), reflectArg(args, 1)), nil
 	case reflectspec.RouteAppend:
@@ -450,8 +454,6 @@ func (e *Executor) reflectTypeSpecOfVar(v *Var) TypeSpec {
 		return SpecFloat64
 	case TypeString:
 		return SpecString
-	case TypeBytes:
-		return SpecBytes
 	case TypeBool:
 		return SpecBool
 	case TypeError:
@@ -652,13 +654,17 @@ func (e *Executor) reflectKindOfVar(v *Var) int64 {
 	case TypeBool:
 		return ReflectKindBool
 	case TypeInt:
+		switch v.RuntimeType().Raw {
+		case SpecByte:
+			return ReflectKindByte
+		case SpecRune:
+			return ReflectKindRune
+		}
 		return ReflectKindInt64
 	case TypeFloat:
 		return ReflectKindFloat64
 	case TypeString:
 		return ReflectKindString
-	case TypeBytes:
-		return ReflectKindBytes
 	case TypeArray:
 		return ReflectKindArray
 	case TypeMap:
@@ -719,14 +725,16 @@ func reflectKindForRuntimeType(typ RuntimeType) int64 {
 		return ReflectKindAny
 	case typ.IsBool():
 		return ReflectKindBool
+	case typ.Raw == SpecByte:
+		return ReflectKindByte
+	case typ.Raw == SpecRune:
+		return ReflectKindRune
 	case typ.IsInt():
 		return ReflectKindInt64
 	case typ.Raw == SpecFloat64:
 		return ReflectKindFloat64
 	case typ.IsString():
 		return ReflectKindString
-	case typ.Raw == SpecBytes:
-		return ReflectKindBytes
 	case typ.IsArray():
 		return ReflectKindArray
 	case typ.IsMap():
@@ -854,10 +862,11 @@ func (e *Executor) reflectLen(v *Var) int64 {
 	switch v.VType {
 	case TypeString:
 		return int64(len(v.Str))
-	case TypeBytes:
-		return int64(len(v.B))
 	case TypeArray:
-		return int64(arrayRef(v).Len())
+		if arr := arrayRef(v); arr != nil {
+			return int64(arr.Len())
+		}
+		return 0
 	case TypeMap:
 		return int64(mapRef(v).Len())
 	case TypeChannel:
@@ -882,13 +891,12 @@ func (e *Executor) reflectIndexValue(v *Var, idx int64) (*Var, RuntimeType, bool
 			return nil, RuntimeType{}, false
 		}
 		return NewInt(int64(v.Str[i])), intType, true
-	case TypeBytes:
-		if i >= len(v.B) {
+	case TypeArray:
+		arr := arrayRef(v)
+		if arr == nil {
 			return nil, RuntimeType{}, false
 		}
-		return NewInt(int64(v.B[i])), intType, true
-	case TypeArray:
-		val, ok := arrayRef(v).Load(i)
+		val, ok := arr.Load(i)
 		elem, _ := e.reflectResolvedValueType(v).ReadArrayItemType()
 		return val, elem, ok
 	default:
@@ -907,7 +915,7 @@ func (e *Executor) reflectMapKeys(v *Var) (*Var, bool) {
 		return empty, true
 	}
 	keyType, valueType, ok := e.reflectResolvedValueType(v).GetMapKeyValueTypes()
-	if !ok || !e.reflectTypeCanEnterAny(keyType, 0) || !e.reflectTypeCanEnterAny(valueType, 0) {
+	if !ok || keyType.IsEmpty() || valueType.IsEmpty() {
 		return empty, false
 	}
 	entries := m.Entries()
@@ -939,10 +947,7 @@ func (e *Executor) reflectMapIndexValue(v, key *Var) (*Var, RuntimeType, bool) {
 	if !ok {
 		return nil, RuntimeType{}, false
 	}
-	if !e.reflectTypeCanEnterAny(keyType, 0) || !e.reflectTypeCanEnterAny(valueType, 0) {
-		return nil, RuntimeType{}, false
-	}
-	if _, keyOK := e.reflectAnyValue(key, keyType); !keyOK {
+	if keyType.IsEmpty() || valueType.IsEmpty() {
 		return nil, RuntimeType{}, false
 	}
 	encoded, _, err := e.comparableMapKey(key, keyType)
@@ -959,7 +964,7 @@ func (e *Executor) reflectMapIndexValue(v, key *Var) (*Var, RuntimeType, bool) {
 func (e *Executor) reflectMakeMap(name string) (*Var, bool) {
 	raw := TypeSpec(strings.TrimSpace(name))
 	typ, ok := e.reflectResolvedRuntimeType(raw, true)
-	if !ok || !typ.IsMap() || !e.reflectTypeCanEnterAny(typ, 0) {
+	if !ok || !typ.IsMap() {
 		return nil, false
 	}
 	res := &Var{VType: TypeMap, Ref: &VMMap{Data: make(map[string]*Var)}}
@@ -980,15 +985,6 @@ func (e *Executor) reflectSetMapIndex(session *StackContext, v, key, value *Var)
 	if !ok {
 		return newErrorVar(fmt.Errorf("reflect.SetMapIndex invalid map type %s", target.RuntimeType().Raw))
 	}
-	if !e.reflectTypeCanEnterAny(keyType, 0) {
-		return newErrorVar(fmt.Errorf("reflect.SetMapIndex key type %s cannot enter Any", keyType.Raw))
-	}
-	if !e.reflectTypeCanEnterAny(valueType, 0) {
-		return newErrorVar(fmt.Errorf("reflect.SetMapIndex value type %s cannot enter Any", valueType.Raw))
-	}
-	if _, ok := e.reflectAnyValue(key, keyType); !ok {
-		return newErrorVar(fmt.Errorf("reflect.SetMapIndex key type %s cannot enter Any", keyType.Raw))
-	}
 	encoded, keyVar, err := e.comparableMapKey(key, keyType)
 	if err != nil {
 		return newErrorVar(err)
@@ -997,9 +993,6 @@ func (e *Executor) reflectSetMapIndex(session *StackContext, v, key, value *Var)
 	prepared, err := e.prepareValueForType(session, value, valueType)
 	if err != nil {
 		return newErrorVar(err)
-	}
-	if _, ok := e.reflectAnyValue(prepared, valueType); !ok {
-		return newErrorVar(fmt.Errorf("reflect.SetMapIndex value type %s cannot enter Any", valueType.Raw))
 	}
 	m.StoreWithKey(encoded, keyVar, prepared)
 	return nil
@@ -1040,15 +1033,6 @@ func (e *Executor) reflectSetField(session *StackContext, v *Var, name string, v
 	if !ok || slot == nil {
 		return newErrorVar(fmt.Errorf("reflect.SetField field %s not found", name))
 	}
-	targetType := slot.Decl
-	if targetType.IsEmpty() && slot.Value != nil {
-		targetType = slot.Value.RuntimeType()
-	}
-	if targetType.IsAny() {
-		if err := e.validateFFIAnyValue(value); err != nil {
-			return newErrorVar(err)
-		}
-	}
 	session = e.reflectSession(session)
 	if err := session.Assign(slot, value); err != nil {
 		return newErrorVar(err)
@@ -1065,19 +1049,184 @@ func (e *Executor) reflectAnyTuple(value *Var, declared RuntimeType, ok bool) *V
 }
 
 func (e *Executor) reflectAnyValue(value *Var, declared RuntimeType) (*Var, bool) {
-	if !declared.IsEmpty() && !e.reflectTypeCanEnterAny(declared, 0) {
+	if !declared.IsEmpty() && declared.IsVoid() {
 		return e.wrapAnyVar(nil), false
 	}
-	if err := e.validateFFIAnyValue(value); err != nil {
+	if err := e.validateAnyValue(value); err != nil {
 		return e.wrapAnyVar(nil), false
 	}
 	if value == nil {
 		return e.wrapAnyVar(nil), true
 	}
-	if actual := e.reflectResolvedValueType(e.unwrapValue(value)); !actual.IsEmpty() && !e.reflectTypeCanEnterAny(actual, 0) {
-		return e.wrapAnyVar(nil), false
+	return e.wrapAnyVar(e.reflectSnapshotValue(value, &reflectSnapshotSeen{})), true
+}
+
+type reflectSnapshotSeen struct {
+	vars       map[*Var]*Var
+	arrays     map[*VMArray]*Var
+	maps       map[*VMMap]*Var
+	structs    map[*VMStruct]*Var
+	interfaces map[*VMInterface]*Var
+}
+
+func (e *Executor) reflectSnapshotValue(value *Var, seen *reflectSnapshotSeen) *Var {
+	if value == nil {
+		return nil
 	}
-	return e.wrapAnyVar(value.DeepCopy()), true
+	if seen == nil {
+		seen = &reflectSnapshotSeen{}
+	}
+	if seen.vars == nil {
+		seen.vars = make(map[*Var]*Var)
+	}
+	if seen.arrays == nil {
+		seen.arrays = make(map[*VMArray]*Var)
+	}
+	if seen.maps == nil {
+		seen.maps = make(map[*VMMap]*Var)
+	}
+	if seen.structs == nil {
+		seen.structs = make(map[*VMStruct]*Var)
+	}
+	if seen.interfaces == nil {
+		seen.interfaces = make(map[*VMInterface]*Var)
+	}
+	if snapshot, ok := seen.vars[value]; ok {
+		return snapshot
+	}
+	switch value.VType {
+	case TypeAny:
+		if inner, ok := value.Ref.(*Var); ok {
+			res := NewVarWithRuntimeType(MustParseRuntimeType(SpecAny), TypeAny)
+			seen.vars[value] = res
+			res.Ref = e.reflectSnapshotValue(inner, seen)
+			return res
+		}
+		return cloneVarForAssign(value)
+	case TypeArray:
+		arr := arrayRef(value)
+		if arr != nil {
+			if snapshot, ok := seen.arrays[arr]; ok {
+				seen.vars[value] = snapshot
+				return snapshot
+			}
+		}
+		res := reflectSnapshotHeader(value)
+		seen.vars[value] = res
+		if arr == nil {
+			res.Ref = nil
+			return res
+		}
+		seen.arrays[arr] = res
+		items := arr.Snapshot()
+		copied := make([]*Var, len(items))
+		for i, item := range items {
+			copied[i] = e.reflectSnapshotValue(item, seen)
+		}
+		res.Ref = &VMArray{Data: copied}
+		return res
+	case TypeMap:
+		m := mapRef(value)
+		if m != nil {
+			if snapshot, ok := seen.maps[m]; ok {
+				seen.vars[value] = snapshot
+				return snapshot
+			}
+		}
+		res := reflectSnapshotHeader(value)
+		seen.vars[value] = res
+		if m == nil {
+			res.Ref = nil
+			return res
+		}
+		seen.maps[m] = res
+		data := make(map[string]*Var)
+		keyVars := make(map[string]*Var)
+		for _, entry := range m.Entries() {
+			data[entry.Encoded] = e.reflectSnapshotValue(entry.Value, seen)
+			if entry.Key != nil {
+				keyVars[entry.Encoded] = e.reflectSnapshotValue(entry.Key, seen)
+			}
+		}
+		if len(keyVars) == 0 {
+			keyVars = nil
+		}
+		res.Ref = &VMMap{Data: data, KeyVars: keyVars}
+		return res
+	case TypeStruct:
+		st, _ := value.Ref.(*VMStruct)
+		if st != nil {
+			if snapshot, ok := seen.structs[st]; ok {
+				seen.vars[value] = snapshot
+				return snapshot
+			}
+		}
+		res := reflectSnapshotHeader(value)
+		seen.vars[value] = res
+		if st == nil {
+			res.Ref = nil
+			return res
+		}
+		seen.structs[st] = res
+		fields := make([]*Slot, len(st.Fields))
+		for i, field := range st.Fields {
+			if field != nil {
+				fields[i] = &Slot{Decl: field.Decl, Value: e.reflectSnapshotValue(field.Value, seen)}
+			}
+		}
+		byName := make(map[string]int, len(st.ByName))
+		for name, idx := range st.ByName {
+			byName[name] = idx
+		}
+		res.Ref = &VMStruct{Spec: st.Spec, Fields: fields, ByName: byName}
+		return res
+	case TypeInterface:
+		iface, _ := value.Ref.(*VMInterface)
+		if iface != nil {
+			if snapshot, ok := seen.interfaces[iface]; ok {
+				seen.vars[value] = snapshot
+				return snapshot
+			}
+		}
+		res := reflectSnapshotHeader(value)
+		seen.vars[value] = res
+		if iface == nil {
+			res.Ref = nil
+			return res
+		}
+		seen.interfaces[iface] = res
+		target := e.reflectSnapshotValue(iface.Target, seen)
+		vtable := make([]*Var, len(iface.VTable))
+		for i, item := range iface.VTable {
+			vtable[i] = cloneVarForAssign(item)
+			if vtable[i] != nil {
+				if method, ok := vtable[i].Ref.(*VMMethodValue); ok {
+					method.Receiver = target
+				}
+			}
+		}
+		res.Ref = &VMInterface{Target: target, Spec: iface.Spec, VTable: vtable}
+		return res
+	default:
+		return cloneVarForAssign(value)
+	}
+}
+
+func reflectSnapshotHeader(v *Var) *Var {
+	if v == nil {
+		return nil
+	}
+	return &Var{
+		TypeInfo: v.TypeInfo,
+		VType:    v.VType,
+		I64:      v.I64,
+		F64:      v.F64,
+		Str:      v.Str,
+		Bool:     v.Bool,
+		Handle:   v.Handle,
+		Bridge:   v.Bridge,
+		Ref:      v.Ref,
+	}
 }
 
 func (e *Executor) reflectUnwrapValue(v *Var) (*Var, bool) {
@@ -1106,6 +1255,33 @@ func (e *Executor) reflectUnwrapValue(v *Var) (*Var, bool) {
 		return nil, true
 	}
 	return iface.Target, true
+}
+
+func (e *Executor) reflectElemValue(v *Var) (*Var, RuntimeType, bool) {
+	target := e.unwrapValue(v)
+	if target == nil {
+		return nil, RuntimeType{}, false
+	}
+	if target.VType == TypeInterface {
+		iface, ok := target.Ref.(*VMInterface)
+		if !ok || iface == nil || iface.Target == nil {
+			return nil, RuntimeType{}, false
+		}
+		value := e.unwrapValue(iface.Target)
+		return value, runtimeTypeForAssignment(value), true
+	}
+	if target.VType != TypePointer {
+		return nil, RuntimeType{}, false
+	}
+	declared := RuntimeType{}
+	if elem := e.reflectResolvedValueType(target).Elem; elem != nil {
+		declared = *elem
+	}
+	value, ok := e.slotPointerTarget(target)
+	if !ok || value == nil {
+		return nil, declared, false
+	}
+	return value, declared, true
 }
 
 func (e *Executor) reflectSession(session *StackContext) *StackContext {
@@ -1190,54 +1366,6 @@ func (e *Executor) reflectAppend(session *StackContext, target, value *Var) *Var
 	return nil
 }
 
-func (e *Executor) reflectTypeCanEnterAny(typ RuntimeType, depth int) bool {
-	if depth > 64 || typ.IsEmpty() || typ.IsVoid() {
-		return false
-	}
-	if !typ.Raw.IsEmpty() {
-		if resolved, ok := e.reflectResolvedRuntimeType(typ.Raw, false); ok && (!resolved.Raw.Equals(typ.Raw) || resolved.Kind != typ.Kind) {
-			typ = resolved
-		}
-	}
-	if typ.IsAny() || typ.IsBool() || typ.IsInt() || typ.IsString() || typ.IsNumeric() || typ.Raw == SpecBytes || typ.Raw == SpecError {
-		return true
-	}
-	if typ.IsPtr() || typ.IsHostRef() || typ.IsChan() || typ.IsInterface() || typ.Kind == RuntimeTypeFunction || typ.Raw.IsFunction() || typ.Raw == SpecModule || typ.Raw == SpecClosure {
-		return false
-	}
-	if typ.IsArray() {
-		elem, ok := typ.ReadArrayItemType()
-		return ok && e.reflectTypeCanEnterAny(elem, depth+1)
-	}
-	if typ.IsMap() {
-		key, value, ok := typ.GetMapKeyValueTypes()
-		return ok && e.reflectTypeCanEnterAny(key, depth+1) && e.reflectTypeCanEnterAny(value, depth+1)
-	}
-	if typ.Kind == RuntimeTypeTuple {
-		for _, item := range typ.Params {
-			if !e.reflectTypeCanEnterAny(item, depth+1) {
-				return false
-			}
-		}
-		return true
-	}
-	if spec, ok := e.runtimeStructSchemaForType(typ); ok && spec != nil {
-		if spec.Ownership == StructOwnershipHostOpaque {
-			return false
-		}
-		for _, field := range spec.Fields {
-			if !e.reflectTypeCanEnterAny(field.TypeInfo, depth+1) {
-				return false
-			}
-		}
-		return true
-	}
-	if typ.Kind == RuntimeTypeNamed {
-		return false
-	}
-	return true
-}
-
 func reflectMetadataStruct(name string) bool {
 	switch TypeSpec(name) {
 	case reflectTypeSpec, reflectStructFieldSpec, reflectMethodSpec, reflectRouteSpec, reflectPackageInfoSpec, reflectMemberSpec:
@@ -1253,16 +1381,10 @@ func (e *Executor) reflectZeroValue(session *StackContext, name string) (*Var, e
 	if !ok {
 		return nil, fmt.Errorf("reflect type %s not found", name)
 	}
-	if !e.reflectTypeCanEnterAny(typ, 0) {
-		return nil, fmt.Errorf("reflect.Zero type %s cannot enter Any", name)
-	}
 	session = e.reflectSession(session)
 	value, err := e.initializeType(session, typ, 0)
 	if err != nil {
 		return nil, err
-	}
-	if err := e.validateFFIAnyValue(value); err != nil {
-		return nil, fmt.Errorf("reflect.Zero type %s cannot enter Any: %w", name, err)
 	}
 	return e.wrapAnyVar(value), nil
 }
@@ -1564,12 +1686,14 @@ func reflectKindName(kind int64) string {
 		return "Bool"
 	case ReflectKindInt64:
 		return "Int64"
+	case ReflectKindByte:
+		return "Byte"
+	case ReflectKindRune:
+		return "Rune"
 	case ReflectKindFloat64:
 		return "Float64"
 	case ReflectKindString:
 		return "String"
-	case ReflectKindBytes:
-		return "TypeBytes"
 	case ReflectKindArray:
 		return "Array"
 	case ReflectKindMap:

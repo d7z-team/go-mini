@@ -35,7 +35,7 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	if err := ffiSchema.AddStruct("demo", "Payload", runtime.MustParseRuntimeStructSpec("demo.Payload", runtime.StructOwnershipVMValue, "struct { Msg String; Count Int64; }")); err != nil {
 		t.Fatal(err)
 	}
-	if err := ffiSchema.AddInterface("demo", "Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(TypeBytes) tuple(Int64, Error);}")); err != nil {
+	if err := ffiSchema.AddInterface("demo", "Reader", runtime.MustParseRuntimeInterfaceSpec("interface{Read(Array<Byte>) tuple(Int64, Error);}")); err != nil {
 		t.Fatal(err)
 	}
 	if err := exec.UseSurface(testsurface.SchemaBundle(ffiSchema, nil)); err != nil {
@@ -75,7 +75,7 @@ func TestMiniExecutorExportsParsedSchema(t *testing.T) {
 	if got := snapshot.Structs["demo.Payload"].Spec; got != "struct { Msg String; Count Int64; }" {
 		t.Fatalf("unexpected exported struct spec: %s", got)
 	}
-	if got := snapshot.Interfaces["demo.Reader"].Spec; got != "interface{Read(TypeBytes) tuple(Int64, Error);}" {
+	if got := snapshot.Interfaces["demo.Reader"].Spec; got != "interface{Read(Array<Byte>) tuple(Int64, Error);}" {
 		t.Fatalf("unexpected exported interface spec: %s", got)
 	}
 }
@@ -288,9 +288,9 @@ func TestMiniExecutorRejectsConflictingFFIRouteRegistration(t *testing.T) {
 
 func TestMiniExecutorUseSurfaceReportsSchemaConflict(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
-	testsurface.UseRoute(t, exec, "demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamInOutBytes), "")
+	testsurface.UseRoute(t, exec, "demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", runtime.FFIParamInOutBytes), "")
 
-	requireSchemaConflict(t, exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) Void", runtime.FFIParamIn), "")), "surface member")
+	requireSchemaConflict(t, exec.UseSurface(testsurface.RouteBundle("demo.Mutate", nil, 1, runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", runtime.FFIParamIn), "")), "surface member")
 }
 
 func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {

@@ -1,6 +1,7 @@
 package ffilib
 
 import (
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/mathlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/reflectlib"
 	"gopkg.d7z.net/go-mini/core/ffilib/sortlib"
@@ -18,6 +19,7 @@ func Surface() *surface.Bundle {
 		strconvlib.SurfaceStrconv(&strconvlib.StrconvHost{}),
 		sortlib.SurfaceSort(&sortlib.SortHost{}),
 		reflectlib.SurfaceReflect(),
+		fmtlib.Surface(),
 	)
 }
 
@@ -76,15 +78,6 @@ func nativeErrorSurface() *surface.Bundle {
 			sig:      runtime.MustRuntimeFuncSig(runtime.SpecString, false, runtime.SpecError),
 			fn:       runtime.NativeErrorsStack,
 			doc:      "Return VM stack text attached to an error",
-		},
-		{
-			pkg:      "fmt",
-			member:   "Errorf",
-			route:    "fmt.Errorf",
-			methodID: 1,
-			sig:      runtime.MustRuntimeFuncSig(runtime.SpecError, true, runtime.SpecString, runtime.SpecAny),
-			fn:       runtime.NativeFmtErrorf,
-			doc:      "Format an error using Go fmt.Errorf semantics",
 		},
 	}
 	schema := runtime.NewFFISurfaceSchema()

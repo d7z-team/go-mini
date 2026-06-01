@@ -246,8 +246,8 @@ var mockOSRoutes = []runtime.FFIRouteDecl{
 	{PackagePath: "os", MemberName: "Open", RouteName: "os.Open", MethodID: methodIDMockOSOpen, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(String) tuple(HostRef<os.File>, Error)", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Name", RouteName: "os.Name", MethodID: methodIDMockOSName, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) String", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Stat", RouteName: "os.Stat", MethodID: methodIDMockOSStat, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) tuple(os.FileInfo, Error)", runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "os", MemberName: "Read", RouteName: "os.Read", MethodID: methodIDMockOSRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
-	{PackagePath: "os", MemberName: "Write", RouteName: "os.Write", MethodID: methodIDMockOSWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, TypeBytes) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Read", RouteName: "os.Read", MethodID: methodIDMockOSRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, Array<Byte>) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
+	{PackagePath: "os", MemberName: "Write", RouteName: "os.Write", MethodID: methodIDMockOSWrite, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>, Array<Byte>) tuple(Int64, Error)", runtime.FFIParamIn, runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Close", RouteName: "os.Close", MethodID: methodIDMockOSClose, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(HostRef<os.File>) Error", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "os", MemberName: "Deep", RouteName: "os.Deep", MethodID: methodIDMockOSDeep, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(os.Nested) os.Nested", runtime.FFIParamIn), Doc: ""},
 }

@@ -84,7 +84,7 @@ func TestFFIReturnBytesAreDeepCopied(t *testing.T) {
 			return buf.Bytes(), nil
 		},
 	}
-	testsurface.UseRoute(t, e, "test.getBytes", bridge, 1002, runtime.MustParseRuntimeFuncSig("function() TypeBytes"), "Test deep copy")
+	testsurface.UseRoute(t, e, "test.getBytes", bridge, 1002, runtime.MustParseRuntimeFuncSig("function() Array<Byte>"), "Test deep copy")
 
 	code := `package main
 		import "test"

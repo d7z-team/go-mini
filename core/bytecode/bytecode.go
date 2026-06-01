@@ -965,8 +965,6 @@ func formatRuntimeVarInline(v *runtime.Var) string {
 			return "true"
 		}
 		return "false"
-	case runtime.TypeBytes:
-		return fmt.Sprintf("bytes[%d]", len(v.B))
 	case runtime.TypePointer:
 		if v.Ref == nil {
 			return "ptr(nil)"

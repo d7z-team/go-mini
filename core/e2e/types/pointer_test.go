@@ -145,6 +145,23 @@ func main() {
 }
 `,
 		},
+		{
+			name: "pointer-can-enter-vm-any",
+			code: `
+package main
+
+import "reflect"
+
+func main() {
+	raw := new(Int64)
+	*raw = 7
+	var boxed Any = raw
+	if !reflect.IsPtr(boxed) || reflect.TypeOf(boxed).String() != "Ptr<Int64>" {
+		panic("pointer Any identity failed")
+	}
+}
+`,
+		},
 	}
 	for _, tc := range passCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -213,18 +230,6 @@ func takePointer(p *Int64) {}
 func main() {
 	n := 1
 	takePointer(n)
-}
-`,
-		},
-		{
-			name: "pointer-cannot-enter-any",
-			code: `
-package main
-
-func main() {
-	raw := new(Int64)
-	var boxed Any = raw
-	_ = boxed
 }
 `,
 		},

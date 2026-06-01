@@ -34,7 +34,7 @@ func convertBasicLiteralParts(kind token.Token, raw string) (miniast.GoMiniType,
 		if err != nil || tail != "" {
 			return "", "", fmt.Errorf("invalid rune literal %s", raw)
 		}
-		return miniast.TypeInt64, strconv.FormatInt(int64(value), 10), nil
+		return miniast.TypeRune, strconv.FormatInt(int64(value), 10), nil
 	default:
 		return "", "", fmt.Errorf("unsupported literal %s", kind)
 	}

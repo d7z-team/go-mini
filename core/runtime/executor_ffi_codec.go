@@ -147,9 +147,6 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			case TypeString:
 				buf.WriteString(v.Str)
 				return nil
-			case TypeBytes:
-				buf.WriteString(string(v.B))
-				return nil
 			case TypeError:
 				str, err := v.ToError()
 				if err != nil {
@@ -204,17 +201,6 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 			}
 			buf.WriteRawError(msg, handle)
 			return nil
-		case "TypeBytes":
-			var bVal []byte
-			if v != nil {
-				var err error
-				bVal, err = v.ToBytes()
-				if err != nil {
-					return err
-				}
-			}
-			buf.WriteBytes(bVal)
-			return nil
 		}
 		if typ.Raw.IsNumeric() {
 			iVal := int64(0)
@@ -224,6 +210,9 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 				if err != nil {
 					return err
 				}
+			}
+			if err := checkIntegerSubtypeRange(typ.Raw, iVal); err != nil {
+				return err
 			}
 			buf.WriteVarint(iVal)
 			return nil
@@ -253,6 +242,14 @@ func (e *Executor) serializeParsedType(buf *ffigo.Buffer, v *Var, typ RuntimeTyp
 	case RuntimeTypePointer:
 		return fmt.Errorf("FFI cannot accept VM pointer type %s", typ.Raw)
 	case RuntimeTypeArray:
+		if isByteArrayType(typ) {
+			bVal, err := e.byteSliceFromArray(v)
+			if err != nil {
+				return err
+			}
+			buf.WriteBytes(bVal)
+			return nil
+		}
 		if v == nil || v.VType != TypeArray {
 			buf.WriteUvarint(0)
 			return nil
@@ -384,8 +381,6 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 		buf.WriteAny(v.F64)
 	case TypeString:
 		buf.WriteAny(v.Str)
-	case TypeBytes:
-		buf.WriteAny(v.B)
 	case TypeBool:
 		buf.WriteAny(v.Bool)
 	case TypeError:
@@ -482,12 +477,17 @@ func (e *Executor) deserializeKey(reader *ffigo.Reader, kType RuntimeType) (*Var
 			return nil, err
 		}
 		return NewString(v), nil
-	case "Int64", "Int", "int", "int64":
+	case "Int64", "Int", "int", "int64", "Byte", "Rune":
 		v, err := reader.ReadVarint()
 		if err != nil {
 			return nil, err
 		}
-		return NewInt(v), nil
+		if err := checkIntegerSubtypeRange(kType.Raw, v); err != nil {
+			return nil, err
+		}
+		res := NewInt(v)
+		res.SetRuntimeType(kType)
+		return res, nil
 	case "Bool", "bool":
 		v, err := reader.ReadBool()
 		if err != nil {
@@ -568,15 +568,16 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 			if err == nil {
 				res, err = e.ToVar(session, raw, bridge)
 			}
-		case "TypeBytes":
-			var v []byte
-			v, err = reader.ReadBytes()
-			res = &Var{VType: TypeBytes, B: v}
 		default:
 			if typ.Raw.IsNumeric() {
 				var v int64
 				v, err = reader.ReadVarint()
-				res = NewInt(v)
+				if err == nil {
+					if err = checkIntegerSubtypeRange(typ.Raw, v); err == nil {
+						res = NewInt(v)
+						res.SetRuntimeType(typ)
+					}
+				}
 				break
 			}
 			if schema, ok := e.lookupStructSchema(typ); ok {
@@ -613,6 +614,12 @@ func (e *Executor) deserializeParsedType(session *StackContext, reader *ffigo.Re
 	case RuntimeTypePointer:
 		err = fmt.Errorf("FFI cannot return VM pointer type %s", typ.Raw)
 	case RuntimeTypeArray:
+		if isByteArrayType(typ) {
+			var data []byte
+			data, err = reader.ReadBytes()
+			res = NewByteArray(data)
+			break
+		}
 		count, err := readRuntimeWireCount(reader, "array")
 		if err != nil {
 			return nil, err

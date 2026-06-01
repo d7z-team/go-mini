@@ -226,7 +226,7 @@ var randRoutes = []runtime.FFIRouteDecl{
 	{PackagePath: "math/rand", MemberName: "Int63", RouteName: "math/rand.Int63", MethodID: methodIDRandInt63, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},
 	{PackagePath: "math/rand", MemberName: "Int63n", RouteName: "math/rand.Int63n", MethodID: methodIDRandInt63n, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Int64", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "math/rand", MemberName: "NormFloat64", RouteName: "math/rand.NormFloat64", MethodID: methodIDRandNormFloat64, Sig: runtime.MustParseRuntimeFuncSig("function() Float64"), Doc: ""},
-	{PackagePath: "math/rand", MemberName: "Read", RouteName: "math/rand.Read", MethodID: methodIDRandRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(TypeBytes) tuple(Int64, Error)", runtime.FFIParamInOutBytes), Doc: ""},
+	{PackagePath: "math/rand", MemberName: "Read", RouteName: "math/rand.Read", MethodID: methodIDRandRead, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Array<Byte>) tuple(Int64, Error)", runtime.FFIParamInOutBytes), Doc: ""},
 	{PackagePath: "math/rand", MemberName: "Seed", RouteName: "math/rand.Seed", MethodID: methodIDRandSeed, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Void", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "math/rand", MemberName: "Perm", RouteName: "math/rand.Perm", MethodID: methodIDRandPerm, Sig: runtime.MustParseRuntimeFuncSigWithModes("function(Int64) Array<Int64>", runtime.FFIParamIn), Doc: ""},
 	{PackagePath: "math/rand", MemberName: "Uint32", RouteName: "math/rand.Uint32", MethodID: methodIDRandUint32, Sig: runtime.MustParseRuntimeFuncSig("function() Int64"), Doc: ""},

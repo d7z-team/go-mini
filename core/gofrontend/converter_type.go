@@ -12,9 +12,12 @@ import (
 func (c *Converter) canonicalBuiltinTypeName(name string) string {
 	switch name {
 	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-		"byte", "rune":
+		"uint", "uint16", "uint32", "uint64", "uintptr":
 		return string(miniast.TypeInt64)
+	case "byte", "uint8":
+		return string(miniast.TypeByte)
+	case "rune":
+		return string(miniast.TypeRune)
 	case "float32", "float64":
 		return string(miniast.TypeFloat64)
 	case "string":
@@ -52,20 +55,13 @@ func (c *Converter) typeToStringWithDepth(e ast.Expr, depth int) string {
 		}
 		return val
 	case *ast.Ident:
-		name := t.Name
-		if name == "byte" {
-			return string(miniast.TypeInt64)
-		}
-		name = c.canonicalBuiltinTypeName(name)
+		name := c.canonicalBuiltinTypeName(t.Name)
 		// 检查是否是当前程序中定义的接口名
 		if iface, ok := c.interfaces[name]; ok {
 			return c.expandInterface(iface, depth+1)
 		}
 		return name
 	case *ast.ArrayType:
-		if ident, ok := t.Elt.(*ast.Ident); ok && (ident.Name == "byte" || ident.Name == "uint8") {
-			return string(miniast.TypeBytes)
-		}
 		return string(miniast.CreateArrayType(miniast.GoMiniType(c.typeToStringWithDepth(t.Elt, depth+1))))
 	case *ast.ChanType:
 		elem := miniast.GoMiniType(c.typeToStringWithDepth(t.Value, depth+1))

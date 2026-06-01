@@ -374,7 +374,7 @@ func testSurface(output *recorder) *surface.Bundle {
 		{"OutBool", methodOutBool, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBool)},
 		{"OutInt", methodOutInt, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecInt64)},
 		{"OutFloat", methodOutFloat, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecFloat64)},
-		{"OutBytes", methodOutBytes, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecBytes)},
+		{"OutBytes", methodOutBytes, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.ArrayType(runtime.SpecByte))},
 		{"Done", methodDone, runtime.MustRuntimeFuncSig(runtime.SpecVoid, false)},
 	}
 	schema := runtime.NewFFISurfaceSchema()

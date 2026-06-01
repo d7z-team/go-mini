@@ -5,10 +5,10 @@ import "testing"
 func TestConstructorsRenderCanonicalTypes(t *testing.T) {
 	got := Func([]Param{
 		{Type: HostRef("io.File")},
-		{Type: Bytes},
-		{Type: Array(Int64)},
+		{Type: Array(Byte)},
+		{Type: Array(Rune)},
 	}, Tuple(Int64, Error), false)
-	want := Type("function(HostRef<io.File>, TypeBytes, Array<Int64>) tuple(Int64, Error)")
+	want := Type("function(HostRef<io.File>, Array<Byte>, Array<Rune>) tuple(Int64, Error)")
 	if got != want {
 		t.Fatalf("Func() = %q, want %q", got, want)
 	}
@@ -26,10 +26,10 @@ func TestConstructorsRenderNamesVariadicAndContainers(t *testing.T) {
 		t.Fatalf("Func() = %q, want %q", got, want)
 	}
 	methods := map[string]Function{
-		"Write": {Params: []Param{{Type: Bytes}}, Return: Tuple(Int64, Error)},
+		"Write": {Params: []Param{{Type: Array(Byte)}}, Return: Tuple(Int64, Error)},
 		"Close": {Return: Error},
 	}
-	if got, want := Interface(SortedMethods(methods)), Type("interface{Close() Error;Write(TypeBytes) tuple(Int64, Error);}"); got != want {
+	if got, want := Interface(SortedMethods(methods)), Type("interface{Close() Error;Write(Array<Byte>) tuple(Int64, Error);}"); got != want {
 		t.Fatalf("Interface() = %q, want %q", got, want)
 	}
 }
@@ -103,7 +103,7 @@ func TestParseStructInterfaceAndNamedTraversal(t *testing.T) {
 		Name: "Reader",
 		Type: Interface([]Method{{
 			Name: "Read",
-			Sig:  Function{Params: []Param{{Type: Bytes}}, Return: Tuple(Int64, Error)},
+			Sig:  Function{Params: []Param{{Type: Array(Byte)}}, Return: Tuple(Int64, Error)},
 		}}),
 	}})
 	if fields, ok := nestedStruct.StructFields(); !ok || len(fields) != 1 || !fields[0].Type.IsInterface() {

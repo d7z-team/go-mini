@@ -13,7 +13,7 @@ import (
 func TestLSPHostFFICompletion(t *testing.T) {
 	testExecutor := engine.MustNewMiniExecutor()
 	schema := runtime.NewFFISurfaceSchema()
-	if err := schema.AddStruct("hostfs", "File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, TypeBytes) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }")); err != nil {
+	if err := schema.AddStruct("hostfs", "File", runtime.MustParseRuntimeStructSpec("hostfs.File", runtime.StructOwnershipHostOpaque, "struct { Read function(HostRef<hostfs.File>, Array<Byte>) tuple(Int64, Error); Close function(HostRef<hostfs.File>) Error; }")); err != nil {
 		t.Fatal(err)
 	}
 	if err := schema.AddRouteDecls([]runtime.FFIRouteDecl{

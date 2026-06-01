@@ -289,7 +289,7 @@ func (m generatedMethod) copyBackParams() []copyBackParam {
 	for _, param := range m.Params {
 		switch param.CopyBackKind {
 		case "bytes":
-			params = append(params, copyBackParam{name: param.Name, kind: "bytes", vmType: "TypeBytes", expr: param.Expr})
+			params = append(params, copyBackParam{name: param.Name, kind: "bytes", vmType: "Array<Byte>", expr: param.Expr})
 		case "array":
 			params = append(params, copyBackParam{name: param.Name, kind: "array", vmType: param.VMType, expr: param.Expr})
 		}

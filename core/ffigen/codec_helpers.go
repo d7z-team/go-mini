@@ -64,7 +64,7 @@ func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr as
 	}
 
 	switch pType {
-	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
+	case "[]byte", "Array<Byte>", "Array<Uint8>", "Array<byte>", "Array<uint8>":
 		fmt.Fprintf(sb, "\t%s.WriteBytes(%s)\n", bufName, prefix)
 	case "Any", "any":
 		fmt.Fprintf(sb, "\t%s.WriteAny(%s)\n", bufName, prefix)
@@ -170,7 +170,7 @@ func (g *Generator) emitReadAssign(sb *strings.Builder, varName, pType string, e
 	}
 
 	switch pType {
-	case "[]byte", "TypeBytes", "Array<Uint8>", "Array<byte>":
+	case "[]byte", "Array<Byte>", "Array<Uint8>", "Array<byte>", "Array<uint8>":
 		fmt.Fprintf(sb, "\t%s, _ = %s.ReadBytes()\n", varName, readerName)
 	case "bool", "Bool":
 		fmt.Fprintf(sb, "\t%s, _ = %s.ReadBool()\n", varName, readerName)
@@ -515,13 +515,13 @@ func codecBasicType(typeName string) string {
 		return "int8"
 	case "int16":
 		return "int16"
-	case "int32", "rune":
+	case "int32", "Rune", "rune":
 		return "int32"
 	case "Int64", "int64":
 		return "int64"
 	case "uint":
 		return "uint"
-	case "uint8", "byte":
+	case "Byte", "uint8", "byte":
 		return "uint8"
 	case "uint16":
 		return "uint16"

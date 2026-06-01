@@ -31,7 +31,7 @@ func TestMakeAllocation(t *testing.T) {
 			panic("map make failed")
 		}
 
-		// Bytes
+		// []byte
 		b := make([]byte, 3, 5)
 		if len(b) != 3 {
 			panic("bytes length")
