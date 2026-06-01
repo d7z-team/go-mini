@@ -245,8 +245,16 @@ func (c *Converter) convertStmt(s ast.Stmt) miniast.Stmt {
 			if clause, ok := stmt.(*ast.CaseClause); ok {
 				cClause := &miniast.CaseClause{BaseNode: miniast.BaseNode{ID: c.genID(clause, "case"), Meta: "case", Loc: c.extractLoc(clause)}}
 				for _, expr := range clause.List {
-					// Type Switch 的 Case List 是类型名
-					cClause.List = append(cClause.List, c.convertExpr(expr))
+					switch expr.(type) {
+					case *ast.ArrayType, *ast.ChanType, *ast.StarExpr, *ast.MapType, *ast.InterfaceType, *ast.StructType, *ast.FuncType:
+						typeName := miniast.GoMiniType(c.typeToString(expr))
+						cClause.List = append(cClause.List, &miniast.LiteralExpr{
+							BaseNode: miniast.BaseNode{ID: c.genID(expr, "type_case"), Meta: "literal", Loc: c.extractLoc(expr), Type: typeName},
+							Value:    string(typeName),
+						})
+					default:
+						cClause.List = append(cClause.List, c.convertExpr(expr))
+					}
 				}
 				for _, bStmt := range clause.Body {
 					if stmt := c.convertStmt(bStmt); stmt != nil {

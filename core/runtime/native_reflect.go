@@ -140,6 +140,10 @@ func NativeReflect(e *Executor, session *StackContext, route FFIRoute, args []*V
 	case reflectspec.RouteUnwrap:
 		value, ok := e.reflectUnwrapValue(reflectArg(args, 0))
 		return e.reflectAnyTuple(value, RuntimeType{}, ok), nil
+	case reflectspec.RouteAssign:
+		return e.reflectAssign(session, reflectArg(args, 0), reflectArg(args, 1)), nil
+	case reflectspec.RouteAppend:
+		return e.reflectAppend(session, reflectArg(args, 0), reflectArg(args, 1)), nil
 	case reflectspec.RouteTypeString:
 		return NewString(e.reflectTypeRaw(reflectArg(args, 0)).String()), nil
 	case reflectspec.RouteTypeName:
@@ -465,8 +469,18 @@ func (e *Executor) reflectRuntimeType(raw TypeSpec, requireKnown bool) (RuntimeT
 	if raw.IsEmpty() {
 		return RuntimeType{}, false
 	}
+	if raw.IsPtr() || raw.IsHostRef() || raw.IsChan() || raw.IsArray() || raw.IsMap() {
+		typ, err := ParseRuntimeType(raw)
+		if err != nil {
+			return RuntimeType{}, false
+		}
+		if requireKnown && !e.reflectTypeMetadataKnown(raw) {
+			return RuntimeType{}, false
+		}
+		return typ, true
+	}
 	if spec, ok := e.resolveStructSchema(raw); ok && spec != nil {
-		if requireKnown && !e.reflectNamedLeavesKnown(raw) {
+		if requireKnown && !e.reflectTypeMetadataKnown(raw) {
 			return RuntimeType{}, false
 		}
 		typ := spec.TypeInfo
@@ -477,7 +491,7 @@ func (e *Executor) reflectRuntimeType(raw TypeSpec, requireKnown bool) (RuntimeT
 		return typ, true
 	}
 	if spec, ok := e.resolveInterfaceSpec(raw); ok && spec != nil {
-		if requireKnown && !e.reflectNamedLeavesKnown(raw) {
+		if requireKnown && !e.reflectTypeMetadataKnown(raw) {
 			return RuntimeType{}, false
 		}
 		typ := spec.TypeInfo
@@ -488,7 +502,7 @@ func (e *Executor) reflectRuntimeType(raw TypeSpec, requireKnown bool) (RuntimeT
 		return typ, true
 	}
 	if typ, ok := e.resolveNamedType(raw); ok {
-		if requireKnown && !e.reflectNamedLeavesKnown(typ.Raw) {
+		if requireKnown && !e.reflectTypeMetadataKnown(typ.Raw) {
 			return RuntimeType{}, false
 		}
 		return typ, true
@@ -497,7 +511,7 @@ func (e *Executor) reflectRuntimeType(raw TypeSpec, requireKnown bool) (RuntimeT
 	if err != nil {
 		return RuntimeType{}, false
 	}
-	if requireKnown && !e.reflectNamedLeavesKnown(raw) {
+	if requireKnown && !e.reflectTypeMetadataKnown(raw) {
 		return RuntimeType{}, false
 	}
 	return typ, true
@@ -559,6 +573,68 @@ func (e *Executor) reflectNamedLeavesKnown(raw TypeSpec) bool {
 	return known
 }
 
+func (e *Executor) reflectTypeMetadataKnown(raw TypeSpec) bool {
+	return e.reflectNamedLeavesKnown(raw) && e.reflectHostRefsKnown(raw, 0)
+}
+
+func (e *Executor) reflectHostRefsKnown(raw TypeSpec, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	parsed, err := typespec.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch parsed.Kind {
+	case typespec.KindHostRef:
+		elem := TypeSpec(strings.TrimSpace(parsed.Elem.String()))
+		if elem.IsEmpty() || elem == SpecAny {
+			return false
+		}
+		elemParsed, err := typespec.Parse(elem)
+		if err != nil || elemParsed.Kind != typespec.KindNamed {
+			return false
+		}
+		spec, ok := e.resolveStructSchema(elem)
+		return ok && spec != nil && spec.Ownership == StructOwnershipHostOpaque
+	case typespec.KindPtr, typespec.KindChan, typespec.KindArray:
+		return e.reflectHostRefsKnown(parsed.Elem, depth+1)
+	case typespec.KindMap:
+		return e.reflectHostRefsKnown(parsed.Key, depth+1) && e.reflectHostRefsKnown(parsed.Value, depth+1)
+	case typespec.KindTuple:
+		for _, item := range parsed.Items {
+			if !e.reflectHostRefsKnown(item, depth+1) {
+				return false
+			}
+		}
+	case typespec.KindFunction:
+		for _, param := range parsed.Function.Params {
+			if !e.reflectHostRefsKnown(param.Type, depth+1) {
+				return false
+			}
+		}
+		return e.reflectHostRefsKnown(parsed.Function.Return, depth+1)
+	case typespec.KindStruct:
+		for _, field := range parsed.Fields {
+			if !e.reflectHostRefsKnown(field.Type, depth+1) {
+				return false
+			}
+		}
+	case typespec.KindInterface:
+		for _, method := range parsed.Methods {
+			for _, param := range method.Sig.Params {
+				if !e.reflectHostRefsKnown(param.Type, depth+1) {
+					return false
+				}
+			}
+			if !e.reflectHostRefsKnown(method.Sig.Return, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (e *Executor) reflectKindOfVar(v *Var) int64 {
 	if v == nil {
 		return ReflectKindInvalid
@@ -613,6 +689,13 @@ func (e *Executor) reflectKindOfVar(v *Var) int64 {
 func (e *Executor) reflectKindOfType(raw TypeSpec) int64 {
 	if raw.IsEmpty() {
 		return ReflectKindInvalid
+	}
+	if raw.IsPtr() || raw.IsHostRef() || raw.IsChan() || raw.IsArray() || raw.IsMap() || raw.IsFunction() || raw.IsTuple() {
+		typ, err := ParseRuntimeType(raw)
+		if err != nil {
+			return ReflectKindInvalid
+		}
+		return reflectKindForRuntimeType(typ)
 	}
 	if spec, ok := e.resolveStructSchema(raw); ok && spec != nil {
 		return ReflectKindStruct
@@ -721,10 +804,14 @@ func (e *Executor) reflectStructFieldVar(field RuntimeStructField, index int) *V
 		ch := field.Name[0]
 		exported = ch >= 'A' && ch <= 'Z'
 	}
+	fieldType := field.Type
+	if fieldType == "" && !field.TypeInfo.IsEmpty() {
+		fieldType = field.TypeInfo.Raw
+	}
 	return e.reflectStructValue(reflectStructFieldSpec, map[string]*Var{
 		"Name":      NewString(field.Name),
-		"Type":      e.reflectTypeVar(field.Type),
-		"Kind":      NewInt(e.reflectKindOfType(field.Type)),
+		"Type":      e.reflectTypeVar(fieldType),
+		"Kind":      NewInt(e.reflectKindOfType(fieldType)),
 		"Index":     NewInt(int64(index)),
 		"Tag":       NewString(field.Tag),
 		"Exported":  NewBool(exported),
@@ -906,12 +993,7 @@ func (e *Executor) reflectSetMapIndex(session *StackContext, v, key, value *Var)
 	if err != nil {
 		return newErrorVar(err)
 	}
-	if session == nil {
-		session = &StackContext{Executor: e}
-	}
-	if session.Executor == nil {
-		session.Executor = e
-	}
+	session = e.reflectSession(session)
 	prepared, err := e.prepareValueForType(session, value, valueType)
 	if err != nil {
 		return newErrorVar(err)
@@ -967,12 +1049,7 @@ func (e *Executor) reflectSetField(session *StackContext, v *Var, name string, v
 			return newErrorVar(err)
 		}
 	}
-	if session == nil {
-		session = &StackContext{Executor: e}
-	}
-	if session.Executor == nil {
-		session.Executor = e
-	}
+	session = e.reflectSession(session)
 	if err := session.Assign(slot, value); err != nil {
 		return newErrorVar(err)
 	}
@@ -1029,6 +1106,88 @@ func (e *Executor) reflectUnwrapValue(v *Var) (*Var, bool) {
 		return nil, true
 	}
 	return iface.Target, true
+}
+
+func (e *Executor) reflectSession(session *StackContext) *StackContext {
+	if session == nil {
+		return &StackContext{Executor: e}
+	}
+	if session.Executor == nil {
+		session.Executor = e
+	}
+	return session
+}
+
+func (e *Executor) reflectAssign(session *StackContext, target, value *Var) *Var {
+	if target == nil {
+		return newErrorVar(errors.New("reflect.Assign target is nil"))
+	}
+	if target.VType == TypeAny {
+		inner, ok := target.Ref.(*Var)
+		if !ok || inner == nil {
+			return newErrorVar(errors.New("reflect.Assign target is nil"))
+		}
+		target = inner
+	}
+	if target.VType != TypePointer {
+		return newErrorVar(fmt.Errorf("reflect.Assign target must be pointer, got %s", reflectKindName(e.reflectKindOfVar(target))))
+	}
+	slot, ok := e.slotPointerSlot(target)
+	if !ok || slot == nil {
+		return newErrorVar(errors.New("reflect.Assign target pointer is nil"))
+	}
+	if slot.Value != nil && slot.Value.VType == TypeStruct {
+		if st, _ := slot.Value.Ref.(*VMStruct); st != nil && st.Spec != nil && reflectMetadataStruct(st.Spec.Name) {
+			return newErrorVar(fmt.Errorf("reflect.Assign metadata type %s is read-only", st.Spec.Name))
+		}
+	}
+	session = e.reflectSession(session)
+	if err := session.Assign(slot, value); err != nil {
+		return newErrorVar(err)
+	}
+	return nil
+}
+
+func (e *Executor) reflectAppend(session *StackContext, target, value *Var) *Var {
+	if target == nil {
+		return newErrorVar(errors.New("reflect.Append target is nil"))
+	}
+	if target.VType == TypeAny {
+		inner, ok := target.Ref.(*Var)
+		if !ok || inner == nil {
+			return newErrorVar(errors.New("reflect.Append target is nil"))
+		}
+		target = inner
+	}
+	if target.VType == TypePointer {
+		pointee, ok := e.slotPointerTarget(target)
+		if !ok {
+			return newErrorVar(errors.New("reflect.Append target pointer is nil"))
+		}
+		target = pointee
+	}
+	target = e.unwrapValue(target)
+	if target == nil || target.VType != TypeArray {
+		return newErrorVar(fmt.Errorf("reflect.Append target must be Array, got %s", reflectKindName(e.reflectKindOfVar(target))))
+	}
+	elemType, ok := e.reflectResolvedValueType(target).ReadArrayItemType()
+	if !ok {
+		return newErrorVar(fmt.Errorf("reflect.Append invalid array type %s", target.RuntimeType().Raw))
+	}
+	session = e.reflectSession(session)
+	prepared, err := e.prepareValueForType(session, value, elemType)
+	if err != nil {
+		return newErrorVar(err)
+	}
+	arr := arrayRef(target)
+	if arr == nil {
+		arr = &VMArray{}
+		target.Ref = arr
+	}
+	arr.mu.Lock()
+	arr.Data = append(arr.Data, prepared)
+	arr.mu.Unlock()
+	return nil
 }
 
 func (e *Executor) reflectTypeCanEnterAny(typ RuntimeType, depth int) bool {
@@ -1097,12 +1256,7 @@ func (e *Executor) reflectZeroValue(session *StackContext, name string) (*Var, e
 	if !e.reflectTypeCanEnterAny(typ, 0) {
 		return nil, fmt.Errorf("reflect.Zero type %s cannot enter Any", name)
 	}
-	if session == nil {
-		session = &StackContext{Executor: e}
-	}
-	if session.Executor == nil {
-		session.Executor = e
-	}
+	session = e.reflectSession(session)
 	value, err := e.initializeType(session, typ, 0)
 	if err != nil {
 		return nil, err

@@ -182,26 +182,13 @@ func (c *Converter) convert(filename, code string, tolerant bool) (miniast.Node,
 								if i < len(s.Values) {
 									switch lit := s.Values[i].(type) {
 									case *ast.BasicLit:
-										val := lit.Value
-										switch lit.Kind {
-										case token.STRING:
-											program.ConstantTypes[name.Name] = miniast.TypeString
-											if unquoted, err := strconv.Unquote(val); err == nil {
-												val = unquoted
-											} else if len(val) >= 2 {
-												val = val[1 : len(val)-1]
-											}
-										case token.INT:
-											program.ConstantTypes[name.Name] = miniast.TypeInt64
-										case token.CHAR:
-											program.ConstantTypes[name.Name] = miniast.TypeInt64
-											if unquoted, _, _, err := strconv.UnquoteChar(strings.Trim(lit.Value, "'"), '\''); err == nil {
-												val = strconv.FormatInt(int64(unquoted), 10)
-											}
-										case token.FLOAT:
-											program.ConstantTypes[name.Name] = miniast.TypeFloat64
+										typ, val, err := convertBasicLiteralParts(lit.Kind, lit.Value)
+										if err != nil {
+											c.addError(lit, err.Error())
+											continue
 										}
 										program.Constants[name.Name] = val
+										program.ConstantTypes[name.Name] = typ
 										program.ConstantLocs[name.Name] = c.extractLoc(name)
 									case *ast.Ident:
 										if lit.Name == "true" || lit.Name == "false" {

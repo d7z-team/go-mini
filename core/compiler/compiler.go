@@ -201,6 +201,8 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		}
 		if includeTemplates && c.cfg.Templates != nil {
 			validator.SetTemplateBuiltins(c.cfg.Templates.CompletionSchemas())
+			validator.SetTemplateRawArgs(templatePlan.RawArgs())
+			validator.SetTemplateOnlyMembers(templatePlan.TemplateOnlyMembers())
 		}
 		return validator, nil
 	}

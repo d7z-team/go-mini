@@ -180,4 +180,38 @@ func TestTypeSwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+
+	t.Run("composite type cases", func(t *testing.T) {
+		code := `
+		package main
+
+		func classify(v Any) String {
+			switch x := v.(type) {
+			case []byte:
+				return "bytes:" + string(x)
+			case []any:
+				return "array:" + String(len(x))
+			case map[string]any:
+				return "map:" + String(len(x))
+			default:
+				return "other"
+			}
+		}
+
+		func main() {
+			if classify([]byte("ok")) != "bytes:ok" { panic("bytes case failed") }
+			if classify([]any{1, true, "x"}) != "array:3" { panic("array case failed") }
+			if classify(map[string]any{"name": "mini", "age": 7}) != "map:2" { panic("map case failed") }
+			if classify(10) != "other" { panic("fallback case failed") }
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 }

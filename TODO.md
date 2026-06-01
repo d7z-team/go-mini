@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-05-29
+更新时间: 2026-06-01
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -14,6 +14,7 @@
 - Runtime 执行 `lowered task plan`，`Task` 只保留 opcode、payload 和 `SourceRef`。
 - `PreparedProgram` 在生成、bytecode 装载和 executor 初始化阶段执行 task payload / scope-flow / exports 校验。
 - canonical type 是 Mini AST / lowering / compiler / runtime 的统一类型格式；Go 风格类型在 Go 前端输入层规范化。
+- Go 前端将标量 `byte` / `rune` 与字符字面量规范化为 `Int64`；`[]byte` 保持 `TypeBytes`，`[]rune` 为 `Array<Int64>`。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面。
 - 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
 - 运算符重载是 compiler 阶段 AST 语法糖：前端只输出普通一元/二元表达式，AST 检查在原生运算不支持时解析接收者 `Op*` 方法，模板展开后、优化前改写为真实方法调用，lowering / bytecode / runtime 不保留重载分派。
@@ -30,13 +31,14 @@
 - `ffigen` 生成 `SurfaceXxx(...) *surface.Bundle` / `SurfaceXxxSchema()`，通过结构化 `FFIRouteDecl` 一次声明 schema route，type method 使用 `TypePackagePath` / `TypeMemberName` 标识 owner，并由 `RouterBridge + BindSchemaRoutes` 绑定；Go 端 proxy 在显式 `ffigen:proxy` 时生成，`ffigen:global` 生成只读 HostRef package value。
 - FFI 包值是 runtime 绑定的只读成员；HostRef 包值通过 pinned handle 保持生命周期，不受普通 handle destroy/remove 释放。
 - 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack` / `fmt.Errorf` / `reflect`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
-- `reflect` 只读取 Go-Mini runtime / FFI schema metadata，用于 struct 字段、容器值、方法、函数、统一 module registry 包成员和基础 kind introspection；不会调用 Go 原生 `reflect` API。VM 源码 struct/interface 的 runtime identity 使用 `modulePath.Type`，不同模块中的同名同结构类型也不相等，`TypeFrom` 不做未限定短名查找；FFI 函数与 HostRef 类型可被反射，是因为 `ffigen` / surface schema 显式注册了 route/type metadata，FFI type owner 来自结构化 `PackagePath + MemberName` / `reflectspec.Owner`，不从 schema 文本拆分推断。编译期字符串字面量 `reflect.Package` / `TypeFrom` / `Zero` / `MakeMap` 会为已知 FFI package/type 记录 bytecode requirement，动态字符串 lookup 仅做运行期 metadata 查询。reflect API 声明集中在 `core/reflectspec`；`Zero` / `Field` / `Index` / `MapKeys` / `MapIndex` / `MakeMap` / `SetField` / `SetMapIndex` / `Unwrap` 保持 pure-Any 边界，读取 API 返回 snapshot，声明类型和实际值都会校验，空容器不能绕过 unsafe 元素类型，metadata struct 只读，缺失 lookup、嵌套 unknown named type 与不适用 index API 返回零值 metadata 或 `ok=false`。
+- `reflect` 只读取 Go-Mini runtime / FFI schema metadata，用于 struct 字段、容器值、方法、函数、统一 module registry 包成员和基础 kind introspection；不会调用 Go 原生 `reflect` API。VM 源码 struct/interface 的 runtime identity 使用 `modulePath.Type`，不同模块中的同名同结构类型也不相等，`TypeFrom` 不做未限定短名查找；FFI 函数与 HostRef 类型可被反射，是因为 `ffigen` / surface schema 显式注册了 route/type metadata，FFI type owner 来自结构化 `PackagePath + MemberName` / `reflectspec.Owner`，不从 schema 文本拆分推断。编译期字符串字面量 `reflect.Package` / `TypeFrom` / `Zero` / `MakeMap` 会为已知 FFI package/type 记录 bytecode requirement，动态字符串 lookup 仅做运行期 metadata 查询。reflect API 声明集中在 `core/reflectspec`；`Zero` / `Field` / `Index` / `MapKeys` / `MapIndex` / `MakeMap` / `SetField` / `SetMapIndex` / `Unwrap` / `Assign` / `Append` 保持 pure-Any 边界，读取 API 返回 snapshot，声明类型和实际值都会校验，空容器不能绕过 unsafe 元素类型，metadata struct 只读；缺失 lookup、嵌套 unknown named type 与不适用 index API 返回零值 metadata 或 `ok=false`。
 - VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用带 VM identity 的 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge identity 和可解析的 host error chain，`errors.Is/As` 与 `fmt.Errorf("%w")` 复用 Go error 语义。
 - 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/fmt/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
+- 顶层 `ffilib` 的 `encoding/json` 是 VM 源码库实现：`Marshal` / `Decode` / typed direct-call `Unmarshal(data, &out)` 通过 VM `reflect`、源码 parser/emitter 和 compiler call template 完成，不调用 Go 标准库 `encoding/json`，也不让 VM pointer 进入 `Any`；`Unmarshal` 不作为 runtime package member 或函数值暴露，`encoding/json/internal` 只作为内部 helper module 使用。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
-- 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 校验签名一致，编译期 facade 参与 fixed-point 展开。
+- 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 校验签名一致，template-only package member 只允许 direct call 且不进入 runtime exports。导入的 VM 源码库语义检查继承 template raw arg / template-only metadata。模板 raw arg 只在首次语义检查时跳过普通参数 assignability，展开后仍是普通 AST；模板可读取实参静态 canonical type，用于 `json.Unmarshal(data, &out)` 这类不应把 pointer 放进 `Any` 的 API。
 - `core/ffigo` 承载 FFI wire / bridge / helper 类型。
 - `core/e2e` 聚焦核心语言、runtime、module、FFI 机制测试；完整标准库 FFI 覆盖位于顶层 `ffilib`。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
@@ -48,7 +50,7 @@
 - compiler 将导入的 surface library 写入 bytecode `ModuleRequirements`、`ModuleHashes` 和 `Modules`；runtime 只校验 embedded module hash 并从 `PreparedProgram.Modules` 装载 `PreparedProgram`，不提供动态 module loader。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
-- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验复用 `runtime/internal.Comparable` 的 VM 动态值可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。
+- 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验通过 VM `reflect` 的 `Map<Any, Bool>` 写入路径复用 map key 可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。
 - runtime run 统一挂载 `RunController`；独立 pause/resume、debugger breakpoint pause 和 continue/step 共用同一控制面，`ExecutableProgram.Start(...)` / `MiniExecutor.StartExecute(...)` 返回 `RunHandle` 供宿主控制当前 run。
 - VM timer 统一来自 `VMClock` / `VMTimer`；pause 会冻结 `time.Sleep` 这类脚本等待，但 `time.Now` / `Since` / `Until`、`context.WithTimeout`、`context.WithDeadline` 和宿主 `context.Context` 的取消/截止时间继续使用真实时间。
 - Eval 便捷入口先由 compiler/lowering 产出临时 `PreparedFunction`，runtime 执行 prepared function。

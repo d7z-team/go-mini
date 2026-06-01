@@ -93,6 +93,74 @@ func main() {
 	}
 }
 
+func TestReflectAssignAndAppend(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	code := `
+package main
+
+import "reflect"
+
+type User struct {
+	Name string
+	Age int64
+}
+
+func main() {
+	var age int64
+	if err := reflect.Assign(&age, 7); err != nil {
+		panic(err.Error())
+	}
+	if age != 7 {
+		panic("bad reflect.Assign primitive result")
+	}
+
+	created := reflect.Zero("main.User")
+	if err := reflect.SetField(created, "Name", "mini"); err != nil {
+		panic(err.Error())
+	}
+	if err := reflect.SetField(created, "Age", 9); err != nil {
+		panic(err.Error())
+	}
+	var user User
+	if err := reflect.Assign(&user, created); err != nil {
+		panic(err.Error())
+	}
+	if user.Name != "mini" || user.Age != 9 {
+		panic("bad reflect.Assign struct result")
+	}
+
+	items := reflect.Zero("Array<Int64>")
+	if err := reflect.Append(items, 1); err != nil {
+		panic(err.Error())
+	}
+	if err := reflect.Append(items, 2); err != nil {
+		panic(err.Error())
+	}
+	if reflect.Len(items) != 2 {
+		panic("bad reflect.Append length")
+	}
+	value, ok := reflect.Index(items, 1)
+	if !ok || value.(Int64) != 2 {
+		panic("bad reflect.Append index result")
+	}
+
+	if reflect.Assign(user, created) == nil {
+		panic("non-pointer reflect.Assign should fail")
+	}
+	if reflect.Append(1, 2) == nil {
+		panic("non-array reflect.Append should fail")
+	}
+}
+`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
 func TestReflectMetadataRejectsDirectMutation(t *testing.T) {
 	cases := map[string]string{
 		"field assignment": `
@@ -234,6 +302,87 @@ func main() {
 	lookup["a"] = 99
 	if collections.Lookup["a"] != 1 {
 		panic("map field reflection must return a snapshot")
+	}
+}
+`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestReflectTypeFromRejectsUnregisteredHostRef(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	code := `
+package main
+
+import "reflect"
+
+func main() {
+	if typ, ok := reflect.TypeFrom("HostRef<Int64>"); ok || typ.String() != "" {
+		panic("primitive HostRef should not be reflected")
+	}
+	if typ, ok := reflect.TypeFrom("HostRef<Any>"); ok || typ.String() != "" {
+		panic("Any HostRef should not be reflected")
+	}
+	if typ, ok := reflect.TypeFrom("Ptr<HostRef<Int64>>"); ok || typ.String() != "" {
+		panic("nested unknown HostRef should not be reflected")
+	}
+	if typ, ok := reflect.TypeFrom("function(HostRef<Int64>) Void"); ok || typ.String() != "" {
+		panic("function with unknown HostRef should not be reflected")
+	}
+}
+`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
+func TestReflectTypeFromAcceptsRegisteredHostOpaqueRef(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	schema := miniruntime.NewFFISurfaceSchema()
+	if err := schema.AddStruct("host", "Resource", miniruntime.MustParseRuntimeStructSpec(
+		"host.Resource",
+		miniruntime.StructOwnershipHostOpaque,
+		"struct { Close function(HostRef<host.Resource>) Error; }",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(surface.Router(schema, nil)); err != nil {
+		t.Fatalf("register host schema: %v", err)
+	}
+	code := `
+package main
+
+import "reflect"
+
+func main() {
+	typ, ok := reflect.TypeFrom("HostRef<host.Resource>")
+	if !ok {
+		panic("registered HostRef lookup failed")
+	}
+	if typ.String() != "HostRef<host.Resource>" {
+		panic("bad registered HostRef raw")
+	}
+	if typ.Kind() != reflect.HostRef {
+		panic("bad registered HostRef kind")
+	}
+	if typ.Elem().String() != "host.Resource" {
+		panic("bad HostRef element")
+	}
+	if typ, ok := reflect.TypeFrom("HostRef<Ptr<host.Resource>>"); ok || typ.String() != "" {
+		panic("wrapped HostRef element should not be reflected")
+	}
+	ptr, ok := reflect.TypeFrom("Ptr<HostRef<host.Resource>>")
+	if !ok || ptr.Kind() != reflect.Ptr || ptr.Elem().Kind() != reflect.HostRef {
+		panic("registered nested HostRef should be reflected")
 	}
 }
 `
@@ -394,6 +543,10 @@ type MoreNames Names
 type Lookup map[string]int64
 type Handler func(string, int64) (int64, string)
 
+type Payload struct {
+	Name string
+}
+
 func main() {
 	names, ok := reflect.TypeFrom("main.Names")
 	if !ok || names.String() != "main.Names" || names.Kind() != reflect.Array || names.Elem().String() != "String" {
@@ -416,6 +569,14 @@ func main() {
 	}
 	if handler.NumOut() != 2 || handler.Out(0).String() != "Int64" || handler.Out(1).String() != "String" {
 		panic("bad reflected named function outputs")
+	}
+	ptr, ok := reflect.TypeFrom("Ptr<main.Names>")
+	if !ok || ptr.String() != "Ptr<main.Names>" || ptr.Kind() != reflect.Ptr || ptr.Elem().String() != "main.Names" {
+		panic("bad reflected named pointer element: " + ptr.String() + " -> " + ptr.Elem().String())
+	}
+	structPtr, ok := reflect.TypeFrom("Ptr<main.Payload>")
+	if !ok || structPtr.String() != "Ptr<main.Payload>" || structPtr.Kind() != reflect.Ptr || structPtr.Elem().String() != "main.Payload" {
+		panic("bad reflected struct pointer element: " + structPtr.String() + " -> " + structPtr.Elem().String())
 	}
 }
 `

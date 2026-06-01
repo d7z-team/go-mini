@@ -45,6 +45,8 @@ const (
 	RouteMakeMap       = "reflect.MakeMap"
 	RouteSetMapIndex   = "reflect.SetMapIndex"
 	RouteUnwrap        = "reflect.Unwrap"
+	RouteAssign        = "reflect.Assign"
+	RouteAppend        = "reflect.Append"
 
 	RouteTypeString       = "reflect.Type.String"
 	RouteTypeKind         = "reflect.Type.Kind"
@@ -220,6 +222,8 @@ func PackageFunctions() []Route {
 		{PackagePath: PackagePath, MemberName: "MakeMap", RouteName: RouteMakeMap, MethodID: 29, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.String}, Doc: "Create an empty pure Any map for a canonical map type"},
 		{PackagePath: PackagePath, MemberName: "SetMapIndex", RouteName: RouteSetMapIndex, MethodID: 30, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any, typespec.Any}, RawArgs: []int{0, 1, 2}, Doc: "Assign a pure-value map entry using VM map assignment rules"},
 		{PackagePath: PackagePath, MemberName: "Unwrap", RouteName: RouteUnwrap, MethodID: 31, Return: typespec.Tuple(typespec.Any, typespec.Bool), Params: []typespec.Type{typespec.Any}, RawArgs: []int{0}, Doc: "Return the pure value inside Any or interface wrappers"},
+		{PackagePath: PackagePath, MemberName: "Assign", RouteName: RouteAssign, MethodID: 32, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Assign a VM value into a writable target using normal VM assignment rules"},
+		{PackagePath: PackagePath, MemberName: "Append", RouteName: RouteAppend, MethodID: 33, Return: typespec.Error, Params: []typespec.Type{typespec.Any, typespec.Any}, RawArgs: []int{0, 1}, Doc: "Append a value into an array target using normal VM append and assignment rules"},
 	}
 }
 

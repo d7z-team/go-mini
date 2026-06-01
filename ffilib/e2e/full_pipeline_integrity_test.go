@@ -110,7 +110,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	obj, err := json.Unmarshal(raw)
+	obj, err := json.Decode(raw)
 	if err != nil {
 		panic(err)
 	}

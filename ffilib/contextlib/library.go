@@ -14,7 +14,7 @@ const contextSource = `
 package context
 
 import internal "context/internal"
-import runtimeinternal "runtime/internal"
+import "reflect"
 import "time"
 
 type Context interface {
@@ -116,10 +116,18 @@ func WithValue(parent Context, key any, val any) Context {
 	if key == nil {
 		panic("nil context key")
 	}
-	if !runtimeinternal.Comparable(key) {
+	if !comparableKey(key) {
 		panic("context key is not comparable")
 	}
 	return &valueCtx{parent: parent, key: key, val: val}
+}
+
+func comparableKey(key any) bool {
+	probe, ok := reflect.MakeMap("Map<Any, Bool>")
+	if !ok {
+		return false
+	}
+	return reflect.SetMapIndex(probe, key, true) == nil
 }
 
 func newCancelContext(parent Context) (*cancelCtx, CancelFunc) {

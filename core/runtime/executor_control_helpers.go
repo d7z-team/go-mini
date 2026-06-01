@@ -112,8 +112,12 @@ func (e *Executor) switchCaseTasks(plan *SwitchData, tag *Var, body []Task, scop
 	}
 	out = append(out, body...)
 	if plan.HasAssign {
+		assignValue := cloneVarForAssign(e.unwrapValue(tag))
+		if assignValue == nil {
+			assignValue = cloneVarForAssign(tag)
+		}
 		out = append(out, Task{Op: OpAssign})
-		out = append(out, Task{Op: OpPush, Data: tag})
+		out = append(out, Task{Op: OpPush, Data: assignValue})
 		out = append(out, plan.AssignLHS...)
 	}
 	if plan.IsType {
@@ -124,6 +128,7 @@ func (e *Executor) switchCaseTasks(plan *SwitchData, tag *Var, body []Task, scop
 
 func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 	tag = e.unwrapValue(tag)
+	actual := runtimeTypeForAssignment(tag)
 	for _, targetType := range targets {
 		if targetType.IsEmpty() {
 			continue
@@ -135,38 +140,9 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 			}
 			continue
 		}
-
-		switch targetType.Raw {
-		case "Int64":
-			if tag.VType == TypeInt {
-				return true
-			}
-		case "Float64":
-			if tag.VType == TypeFloat {
-				return true
-			}
-		case "String":
-			if tag.VType == TypeString {
-				return true
-			}
-		case "Bool":
-			if tag.VType == TypeBool {
-				return true
-			}
-		case "TypeBytes":
-			if tag.VType == TypeBytes {
-				return true
-			}
-		case "Any":
-			if tag != nil {
-				return true
-			}
-		case "Error":
-			if tag.VType == TypeError {
-				return true
-			}
+		if targetType.Raw == "Any" {
+			return true
 		}
-
 		if targetType.IsInterface() {
 			if _, err := e.CheckSatisfaction(tag, targetType.Raw.String()); err == nil {
 				return true
@@ -177,6 +153,10 @@ func (e *Executor) switchTypeCaseMatches(tag *Var, targets []RuntimeType) bool {
 			if _, err := e.CheckSatisfaction(tag, targetType.Raw.String()); err == nil {
 				return true
 			}
+			continue
+		}
+		if !actual.IsEmpty() && actual.Raw.Equals(targetType.Raw) {
+			return true
 		}
 	}
 	return false

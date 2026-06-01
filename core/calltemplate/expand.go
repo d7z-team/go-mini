@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -301,6 +302,7 @@ type renderArg struct {
 	Index       int
 	Placeholder string
 	CallValue   string
+	TypeValue   string
 	Display     string
 	DisplayCall string
 }
@@ -830,6 +832,9 @@ func (e *expander) renderCall(tpl registeredTemplate, call *ast.CallExprStmt) (r
 		"callArg": func(index int) (string, error) {
 			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.CallValue })
 		},
+		"argType": func(index int) (string, error) {
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.TypeValue })
+		},
 		"args": func() string {
 			parts := make([]string, len(args))
 			for i, arg := range args {
@@ -881,6 +886,7 @@ func (e *expander) renderArgs(call *ast.CallExprStmt, alloc func(string) string,
 			Index:       i,
 			Placeholder: name,
 			CallValue:   callValue,
+			TypeValue:   strconv.Quote(string(arg.GetBase().Type)),
 			Display:     display,
 			DisplayCall: displayCall,
 		})
@@ -920,6 +926,9 @@ func renderDisplayTemplate(tpl registeredTemplate, args []renderArg, ellipsis bo
 		},
 		"callArg": func(index int) (string, error) {
 			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.DisplayCall })
+		},
+		"argType": func(index int) (string, error) {
+			return templateArg(tpl.ID, args, index, func(arg renderArg) string { return arg.TypeValue })
 		},
 		"args": func() string {
 			parts := make([]string, len(args))
@@ -1516,6 +1525,12 @@ func replacePlaceholdersExpr(expr ast.Expr, args map[string]ast.Expr) (ast.Expr,
 		if err != nil {
 			return nil, err
 		}
+	case *ast.AddressExpr:
+		next, err := replacePlaceholdersExpr(n.Target, args)
+		n.Target = next
+		if err != nil {
+			return nil, err
+		}
 	case *ast.TypeAssertExpr:
 		next, err := replacePlaceholdersExpr(n.X, args)
 		n.X = next
@@ -1715,6 +1730,9 @@ func cloneExpr(expr ast.Expr) (ast.Expr, error) {
 	case *ast.StarExpr:
 		x, err := cloneExpr(n.X)
 		return &ast.StarExpr{BaseNode: cloneBase(n.BaseNode), X: x}, err
+	case *ast.AddressExpr:
+		target, err := cloneExpr(n.Target)
+		return &ast.AddressExpr{BaseNode: cloneBase(n.BaseNode), Target: target}, err
 	case *ast.TypeAssertExpr:
 		x, err := cloneExpr(n.X)
 		return &ast.TypeAssertExpr{BaseNode: cloneBase(n.BaseNode), X: x, Type: n.Type, Multi: n.Multi}, err

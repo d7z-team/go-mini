@@ -191,7 +191,7 @@ func (e *Executor) decodeAnonymousVMStruct(session *StackContext, raw *ffigo.VMS
 		}
 		fields[i] = NewSlot(fieldType, val)
 		byName[field.Name] = i
-		specFields[i] = RuntimeStructField{Name: field.Name, TypeInfo: fieldType}
+		specFields[i] = RuntimeStructField{Name: field.Name, Type: fieldType.Raw, TypeInfo: fieldType}
 	}
 	members := make([]typespec.Member, 0, len(specFields))
 	for _, field := range specFields {

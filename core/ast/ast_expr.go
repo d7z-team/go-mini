@@ -751,6 +751,9 @@ func (c *CallExprStmt) Check(ctx *SemanticContext) error {
 
 	for i := 0; i < fixedNum && i < len(c.Args); i++ {
 		argType := c.Args[i].GetBase().Type
+		if c.isTemplateRawArg(ctx, i) {
+			continue
+		}
 		if !ctx.IsAssignableTo(argType, sigParams[i]) {
 			err := fmt.Errorf("function argument %d type mismatch: expected %s, got %s", i+1, sigParams[i], argType)
 			ctx.AddErrorAt(c.Args[i], "%s", err.Error())
@@ -862,6 +865,20 @@ done:
 	}
 
 	return nil
+}
+
+func (c *CallExprStmt) isTemplateRawArg(ctx *SemanticContext, idx int) bool {
+	if ctx == nil || ctx.ValidContext == nil || c == nil || c.Func == nil {
+		return false
+	}
+	if ref, ok := c.Func.(*ConstRefExpr); ok {
+		return ctx.ValidContext.IsTemplateRawArg(ref.Name, idx)
+	}
+	member, ok := c.Func.(*MemberExpr)
+	if !ok || !member.ResolvedPackageMember || member.ResolvedPackageName == "" {
+		return false
+	}
+	return ctx.ValidContext.IsTemplateRawArg(member.ResolvedPackageName, idx)
 }
 
 func (c *CallExprStmt) checkReflectPackageCall(ctx *SemanticContext, resolved string) (bool, error) {
@@ -984,6 +1001,16 @@ func (m *MemberExpr) Check(ctx *SemanticContext) error {
 					m.ResolvedPackageMember = true
 					m.Type = t
 					return nil
+				}
+				templateName := Ident(path + "." + string(m.Property))
+				if ctx.ValidContext.IsTemplateOnlyMember(templateName) {
+					if t, ok := ctx.GetVariable(templateName); ok {
+						m.ResolvedPackagePath = path
+						m.ResolvedPackageName = templateName
+						m.ResolvedPackageMember = true
+						m.Type = t
+						return nil
+					}
 				}
 				err := fmt.Errorf("package %s has no member %s", id.Name, m.Property)
 				ctx.WithNode(m).AddErrorf("%s", err.Error())

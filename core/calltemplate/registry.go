@@ -18,8 +18,8 @@ const InternalNamePrefix = "__gomini_tpl_"
 // FunctionTemplate describes a compiler-only call template.
 //
 // A template with an empty PackagePath is invoked as a global function. A
-// template with a PackagePath is invoked as a package member, and the compiler
-// validates the real package member lazily when the template is actually used.
+// template with a PackagePath is invoked as a package member. By default the
+// compiler validates the real package member lazily when the template is used.
 type FunctionTemplate struct {
 	// ID is a stable diagnostic name. It is derived from PackagePath and Name
 	// when left empty.
@@ -29,9 +29,17 @@ type FunctionTemplate struct {
 	PackagePath string
 	// Name is the source-visible global function or package member name.
 	Name string
+	// TemplateOnly marks a package-member template as a direct-call source
+	// facade. If the package exists, the member must not be exported as a
+	// runtime package member. The member cannot be used as a function value.
+	TemplateOnly bool
 	// SourceSig is the signature exposed to the first semantic check before the
 	// template is expanded.
 	SourceSig *runtime.RuntimeFuncSig
+	// RawArgs marks 0-based argument positions that should keep their AST form
+	// during the first semantic check instead of being forced through normal
+	// assignability to SourceSig parameter types.
+	RawArgs []int
 	// Body is a Go text/template fragment rendered to Mini source and parsed
 	// back into AST during compiler expansion.
 	Body string
@@ -191,10 +199,21 @@ func validateTemplate(t FunctionTemplate) (registeredTemplate, error) {
 	if t.SourceSig == nil {
 		return registeredTemplate{}, fmt.Errorf("call template %s requires source signature", templateID(t))
 	}
+	for _, idx := range t.RawArgs {
+		if idx < 0 || idx >= len(t.SourceSig.ParamTypes) {
+			return registeredTemplate{}, fmt.Errorf("call template %s raw arg index %d is out of range", templateID(t), idx)
+		}
+		if t.SourceSig.Variadic && idx == len(t.SourceSig.ParamTypes)-1 {
+			return registeredTemplate{}, fmt.Errorf("call template %s raw arg index %d targets variadic parameter", templateID(t), idx)
+		}
+	}
 	if strings.TrimSpace(t.Body) == "" {
 		return registeredTemplate{}, fmt.Errorf("call template %s requires body", templateID(t))
 	}
 	if t.PackagePath == "" {
+		if t.TemplateOnly {
+			return registeredTemplate{}, fmt.Errorf("global call template %s cannot be template-only", templateID(t))
+		}
 		if t.Name == "" {
 			return registeredTemplate{}, fmt.Errorf("global call template %s requires name", templateID(t))
 		}
@@ -231,6 +250,7 @@ func parseTemplateBody(id, body string) (*template.Template, error) {
 		"pkg":      func(string) string { return "" },
 		"arg":      func(int) string { return "" },
 		"callArg":  func(int) string { return "" },
+		"argType":  func(int) string { return "" },
 		"args":     func() string { return "" },
 		"argc":     func() int { return 0 },
 		"ellipsis": func() bool { return false },
@@ -383,6 +403,7 @@ func validTemplateIdent(name string) bool {
 
 func cloneTemplate(t FunctionTemplate) FunctionTemplate {
 	t.SourceSig = runtime.CloneRuntimeFuncSig(t.SourceSig)
+	t.RawArgs = append([]int(nil), t.RawArgs...)
 	return t
 }
 

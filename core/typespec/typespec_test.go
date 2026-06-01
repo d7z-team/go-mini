@@ -117,7 +117,7 @@ func TestParseStructInterfaceAndNamedTraversal(t *testing.T) {
 }
 
 func TestRejectGoStyleTypes(t *testing.T) {
-	for _, typ := range []Type{"[]int", "*File", "map[string]int", "interface{}", "Ptr<[]int>", "Async<Int64>"} {
+	for _, typ := range []Type{"[]int", "*File", "map[string]int", "interface{}", "rune", "Ptr<[]int>", "Async<Int64>"} {
 		t.Run(typ.String(), func(t *testing.T) {
 			if typ.IsCanonical() {
 				t.Fatalf("%q unexpectedly canonical", typ)

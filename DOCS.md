@@ -146,7 +146,7 @@ _ = loaded
 - `interface{Read(TypeBytes) tuple(Int64, Error);}`
 - `struct { Name String; }`
 
-Go 风格输入如 `[]int`、`*T`、`map[string]int`、`interface{}` 会在 Go 前端转换阶段立即规范化。其他语言前端应实现 `core/frontend.Frontend` 并输出 canonical type；执行装载只接受 bytecode。
+Go 风格输入如 `[]int`、`*T`、`map[string]int`、`interface{}` 会在 Go 前端转换阶段立即规范化；标量 `rune` 和 `byte` 都会归一到 `Int64`，字符字面量如 `'A'` / `'\n'` / `'\xff'` / `'你'` 也是 `Int64` code point。`[]byte` 归一为 `TypeBytes`，`[]rune` 归一为 `Array<Int64>`。其他语言前端应实现 `core/frontend.Frontend` 并输出 canonical type；执行装载只接受 bytecode。
 
 公开 FFI schema 使用具体 `HostRef<T>` 或明确的 typed interface schema 表达 host identity。`Ptr<T>` 表示 VM slot 引用；channel 通过 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` 作为 schema endpoint 暴露。`Any` 在 VM 语言层是动态值 wrapper，用于保存 nil 身份和真实动态值；它不是类型系统通配符，`Any` 赋给具体类型需要类型断言或显式转换路径。
 
@@ -439,18 +439,18 @@ FFI 返回的 Go `error` 会进入 `VMHostError` 包装。包装会保留 host h
 - `TypeOf(v) Type`、`TypeFrom(typeName) (Type, Bool)`、`KindOf(v) Int64`、`KindOfType(t) Int64`
 - `Fields(v) []StructField`、`FieldsOfType(t) []StructField`、`Field(v, name) (Any, Bool)`、`SetField(v, name, value) Error`
 - `Zero(typeName) Any`：返回可写入的 pure-Any zero value，便于按字段填充；不会返回 VM pointer
-- `Len(v) Int64`、`Index(v, i) (Any, Bool)`、`MapKeys(v) ([]Any, Bool)`、`MapIndex(v, key) (Any, Bool)`、`MakeMap(typeName) (Any, Bool)`、`SetMapIndex(v, key, value) Error`、`Unwrap(v) (Any, Bool)`
+- `Len(v) Int64`、`Index(v, i) (Any, Bool)`、`MapKeys(v) ([]Any, Bool)`、`MapIndex(v, key) (Any, Bool)`、`MakeMap(typeName) (Any, Bool)`、`SetMapIndex(v, key, value) Error`、`Unwrap(v) (Any, Bool)`、`Assign(target, value) Error`、`Append(target, value) Error`
 - `Methods(v) []Method`、`MethodsOfType(t) []Method`
 - `IsNil`、`IsStruct`、`IsPtr`、`IsHostRef`、`IsChan`、`IsFunc`、`IsFFIFunc`、`IsVMFunc`、`IsNativeFunc`
 - `Package(path) (PackageInfo, Bool)`、`Packages() []PackageInfo`、`Members(p) []Member`、`MemberByName(p, name) (Member, Bool)`
 
-`reflect.Type` 提供 Go-like 方法：`String`、`Kind`、`Name`、`PkgPath`、`Elem`、`Key`、`AssignableTo`、`Comparable`、`NumField`、`Field`、`FieldByName`、`NumMethod`、`Method`、`MethodByName`、`NumIn`、`In`、`NumOut`、`Out`、`IsVariadic`。
+`reflect.Type` 提供 Go-like 方法：`String`、`Kind`、`Name`、`PkgPath`、`Elem`、`Key`、`AssignableTo`、`Comparable`、`NumField`、`Field`、`FieldByName`、`NumMethod`、`Method`、`MethodByName`、`NumIn`、`In`、`NumOut`、`Out`、`IsVariadic`。`reflect.StructField` 只暴露 schema metadata 字段，tag 解析等上层语义由具体源码库自己处理。
 
 VM 源码中的 struct/interface 使用模块限定名作为 runtime 身份。`main.User`、`alpha.User` 和 `beta.User` 是三个不同类型，即使字段完全一致也不会互相 assignable；`Type.String()` 返回限定名，`Type.Name()` 返回短类型名，`Type.PkgPath()` 返回模块路径。`TypeFrom` 查询 VM 源码类型时也要求限定名，例如 `TypeFrom("alpha.User")`；`TypeFrom("User")` 不会隐式选择某个模块。FFI / ffigen / surface 注册的外部 schema 类型保持 schema 中声明的名字，不会自动加 VM 模块前缀。
 
 `TypeFrom` / `Package` 在 `Bool=false` 时返回零值 metadata。`TypeFrom` 要求类型表达式中的所有 named type 都来自已注册 metadata，`Ptr<Missing>`、`Array<Missing>` 或 `function(Missing) Void` 这类嵌套未知类型会返回 `Bool=false`。`Type.Elem()`、`Type.Key()`、`Type.In()` 和 `Type.Out()` 会解析 Mini named type alias 后读取底层 array/map/function 结构；对不适用或越界输入返回零值，不采用 Go 原生 reflect 的 panic 行为。
 
-`Field`、`Index`、`MapKeys`、`MapIndex` 和 `Unwrap` 只会把 pure value snapshot 放入返回的 `Any`；声明类型和实际值都会校验，空 array/map/struct 也不能凭空绕过 pointer、HostRef、channel、module、closure、function、host identity 或其他 FFI Any 禁止值。`MakeMap` 和 `Zero` 只创建可进入 pure `Any` 的类型。`SetField` 只修改 `*struct` 或 `Any` 包装的业务 struct 值；`SetMapIndex` 只写入 pure-value key/value。`reflect.Type`、`reflect.StructField`、`reflect.Method`、`reflect.Route`、`reflect.PackageInfo` 和 `reflect.Member` 是只读 metadata struct，不能通过 `SetField` 修改。
+`Field`、`Index`、`MapKeys`、`MapIndex` 和 `Unwrap` 只会把 pure value snapshot 放入返回的 `Any`；声明类型和实际值都会校验，空 array/map/struct 也不能凭空绕过 pointer、HostRef、channel、module、closure、function、host identity 或其他 FFI Any 禁止值。`MakeMap` 和 `Zero` 只创建可进入 pure `Any` 的值。`SetField` 只修改 `*struct` 或 `Any` 包装的业务 struct 值；`SetMapIndex` 只写入 pure-value key/value；`Assign` 按正常 VM 赋值规则写入 pointer 目标；`Append` 按正常 VM 追加规则写入数组目标。`reflect.Type`、`reflect.StructField`、`reflect.Method`、`reflect.Route`、`reflect.PackageInfo` 和 `reflect.Member` 是只读 metadata struct，不能通过 `SetField` 修改。
 
 ```go
 package main
@@ -477,6 +477,51 @@ func main() {
     if err := reflect.SetField(&u, "Age", 42); err != nil {
         panic(err.Error())
     }
+}
+```
+
+### 2.11 Encoding JSON
+
+顶层 `ffilib` 提供的 `encoding/json` 是 VM 源码库实现，不调用 Go 标准库 `encoding/json`，也不使用 Go 原生 reflect。JSON 文本解析、序列化、struct 字段遍历和 tag 处理都在 VM 代码里完成；typed `Unmarshal` 通过 compiler call template 读取第二个实参的静态类型，因此 `&target` 不需要进入 `Any`。
+
+`encoding/json/internal` 是实现细节，只能被 `encoding/json` 及 compiler 生成的模板代码使用，用户代码不能直接 import。
+
+公开 API：
+
+- `Marshal(v any) ([]byte, error)`
+- `Decode(data []byte) (any, error)`
+- `Unmarshal(data []byte, out *T) error`
+
+`Decode` 返回动态纯值树：object 是 `map[string]any`，array 是 `[]any`，string/bool/null 分别映射为 `string`、`bool`、`nil`，number 统一为 `float64`。`Unmarshal` 是 direct-call compiler template API，不作为 runtime package member 暴露，也不能作为函数值反射或传递；它要求第二个实参是 pointer，按实参静态类型转换并通过 `reflect.Assign` 写回目标。未知字段忽略，缺失字段保持零值。
+
+支持的 JSON 类型目标包括 `bool`、`int64`、`float64`、`string`、`[]byte`、`[]T`、`map[string]T`、struct 和 `any`。struct 字段默认使用字段名，支持 `json:"name"` 和 `json:"-"`；第一版不支持 `omitempty`、`string` option、匿名字段展开、自定义 marshaler/unmarshaler 或非 string map key。pointer 字段、HostRef、channel、function、module、typed interface 和 error 值会返回错误。
+
+```go
+package main
+
+import "encoding/json"
+
+type User struct {
+    Name string `json:"name"`
+    Age  int64  `json:"age"`
+}
+
+func main() {
+    data, err := json.Marshal(User{Name: "mini", Age: 7})
+    if err != nil {
+        panic(err)
+    }
+
+    var out User
+    if err := json.Unmarshal(data, &out); err != nil {
+        panic(err)
+    }
+
+    dynamic, err := json.Decode(data)
+    if err != nil {
+        panic(err)
+    }
+    _ = dynamic
 }
 ```
 

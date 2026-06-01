@@ -86,7 +86,7 @@ func (p *ProgramStmt) Check(ctx *SemanticContext) error {
 	// 处理模块加载
 	if p.Imports != nil {
 		for _, imp := range p.Imports {
-			if err := ctx.ImportPackage(imp.Path); err != nil {
+			if err := ctx.ImportPackage(imp.Path, imp.Synthetic); err != nil {
 				ctx.AddErrorf("%s", err.Error())
 				hasError = true
 			}

@@ -352,14 +352,6 @@ func comparableMapKeyString(v *Var) (string, error) {
 	}
 }
 
-func NativeComparable(_ *Executor, _ *StackContext, _ FFIRoute, args []*Var, _ []LHSValue) (*Var, error) {
-	if len(args) == 0 || args[0] == nil {
-		return NewBool(true), nil
-	}
-	_, err := comparableMapKeyString(args[0])
-	return NewBool(err == nil), nil
-}
-
 func (e *Executor) comparableMapKey(v *Var, keyType RuntimeType) (string, *Var, error) {
 	if keyType.IsAny() {
 		if err := e.validateAnyValue(v); err != nil {

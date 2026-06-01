@@ -17,23 +17,11 @@ func (c *Converter) convertExpr(e ast.Expr) miniast.Expr {
 	case *ast.BadExpr:
 		return c.badExpr(ex, "无法解析的表达式")
 	case *ast.BasicLit:
-		t := string(miniast.TypeString)
-		val := ex.Value
-		switch ex.Kind {
-		case token.INT:
-			t = string(miniast.TypeInt64)
-		case token.FLOAT:
-			t = string(miniast.TypeFloat64)
-		case token.STRING:
-			if len(val) >= 2 {
-				if unquoted, err := strconv.Unquote(val); err == nil {
-					val = unquoted
-				} else {
-					val = val[1 : len(val)-1]
-				}
-			}
+		t, val, err := convertBasicLiteralParts(ex.Kind, ex.Value)
+		if err != nil {
+			return c.badExpr(ex, err.Error())
 		}
-		return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.GoMiniType(t), Loc: c.extractLoc(ex)}, Value: val}
+		return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: t, Loc: c.extractLoc(ex)}, Value: val}
 	case *ast.Ident:
 		if ex.Name == "true" || ex.Name == "false" {
 			return &miniast.LiteralExpr{BaseNode: miniast.BaseNode{ID: c.genID(ex, "literal"), Meta: "literal", Type: miniast.TypeBool, Loc: c.extractLoc(ex)}, Value: ex.Name}

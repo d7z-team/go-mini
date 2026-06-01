@@ -33,6 +33,8 @@ type PlanOptions struct {
 // package-template dependencies when matching templates are expanded.
 type Plan struct {
 	funcSchemas      map[ast.Ident]*runtime.RuntimeFuncSig
+	rawArgs          map[ast.Ident][]int
+	templateOnly     map[ast.Ident]struct{}
 	compileOnlyPaths map[string]struct{}
 	templatePackages map[string]struct{}
 	packageCache     map[string]bool
@@ -48,6 +50,8 @@ type Plan struct {
 func BuildPlan(registry *Registry, opts PlanOptions) (*Plan, error) {
 	plan := &Plan{
 		funcSchemas:      make(map[ast.Ident]*runtime.RuntimeFuncSig),
+		rawArgs:          make(map[ast.Ident][]int),
+		templateOnly:     make(map[ast.Ident]struct{}),
 		compileOnlyPaths: make(map[string]struct{}),
 		templatePackages: make(map[string]struct{}),
 		packageCache:     make(map[string]bool),
@@ -64,10 +68,16 @@ func BuildPlan(registry *Registry, opts PlanOptions) (*Plan, error) {
 	}
 	for name, tpl := range registry.globals {
 		plan.funcSchemas[ast.Ident(name)] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
+		plan.rawArgs[ast.Ident(name)] = append([]int(nil), tpl.RawArgs...)
 	}
 	for _, tpl := range registry.packages {
 		plan.templatePackages[tpl.PackagePath] = struct{}{}
-		plan.funcSchemas[ast.Ident(tpl.PackagePath+"."+tpl.Name)] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
+		key := ast.Ident(tpl.PackagePath + "." + tpl.Name)
+		plan.funcSchemas[key] = runtime.CloneRuntimeFuncSig(tpl.SourceSig)
+		plan.rawArgs[key] = append([]int(nil), tpl.RawArgs...)
+		if tpl.TemplateOnly {
+			plan.templateOnly[key] = struct{}{}
+		}
 	}
 	return plan, nil
 }
@@ -81,6 +91,28 @@ func (p *Plan) FuncSchemas() map[ast.Ident]*runtime.RuntimeFuncSig {
 	out := make(map[ast.Ident]*runtime.RuntimeFuncSig, len(p.funcSchemas))
 	for name, sig := range p.funcSchemas {
 		out[name] = runtime.CloneRuntimeFuncSig(sig)
+	}
+	return out
+}
+
+func (p *Plan) RawArgs() map[ast.Ident][]int {
+	if p == nil || len(p.rawArgs) == 0 {
+		return nil
+	}
+	out := make(map[ast.Ident][]int, len(p.rawArgs))
+	for name, raw := range p.rawArgs {
+		out[name] = append([]int(nil), raw...)
+	}
+	return out
+}
+
+func (p *Plan) TemplateOnlyMembers() map[ast.Ident]struct{} {
+	if p == nil || len(p.templateOnly) == 0 {
+		return nil
+	}
+	out := make(map[ast.Ident]struct{}, len(p.templateOnly))
+	for name := range p.templateOnly {
+		out[name] = struct{}{}
 	}
 	return out
 }
@@ -108,6 +140,12 @@ func (p *Plan) validateTemplateUse(tpl registeredTemplate) error {
 	actual, ok, err := packageMemberSig(tpl.PackagePath, tpl.Name, p.opts)
 	if err != nil {
 		return fmt.Errorf("check package member %s.%s for call template %s: %w", tpl.PackagePath, tpl.Name, tpl.ID, err)
+	}
+	if tpl.TemplateOnly {
+		if ok {
+			return fmt.Errorf("template-only call template %s conflicts with existing package member %s.%s", tpl.ID, tpl.PackagePath, tpl.Name)
+		}
+		return nil
 	}
 	if !ok {
 		return fmt.Errorf("call template %s references missing package member %s.%s", tpl.ID, tpl.PackagePath, tpl.Name)

@@ -121,6 +121,63 @@ func TestBuiltinsMutateCollectionsAndConvertValues(t *testing.T) {
 	}
 }
 
+func TestRuneAliasesAndLiteralsUseInt64(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+
+	code := `
+	package main
+
+	func main() {
+		var r rune = 'A'
+		if r != 65 {
+			panic("rune variable must store Int64 code point")
+		}
+		if '\n' != 10 {
+			panic("escaped rune literal mismatch")
+		}
+		if '你' != 20320 {
+			panic("unicode rune literal mismatch")
+		}
+		if '\xff' != 255 || '\x80' != 128 {
+			panic("byte escaped rune literal mismatch")
+		}
+
+		items := []rune{'a', '你'}
+		if len(items) != 2 || items[0] != 97 || items[1] != 20320 {
+			panic("rune array must be Array<Int64>")
+		}
+
+		lookup := map[rune]string{'a': "ascii", '你': "han"}
+		if lookup['a'] != "ascii" || lookup['你'] != "han" {
+			panic("rune map key must be Int64")
+		}
+
+		data := []byte("ab")
+		data = append(data, 'c')
+		if string(data) != "abc" {
+			panic("rune literal must append to bytes as Int64")
+		}
+
+		var v any = r
+		switch x := v.(type) {
+		case rune:
+			if x != 65 {
+				panic("type switch rune case must be Int64")
+			}
+		default:
+			panic("type switch rune case did not match Int64")
+		}
+	}
+	`
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+}
+
 func TestNilMapBuiltinsAndIndexing(t *testing.T) {
 	executor := engine.MustNewMiniExecutor()
 	code := `

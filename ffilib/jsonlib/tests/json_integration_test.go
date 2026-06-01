@@ -1,26 +1,28 @@
 package jsonlib_test
 
 import (
+	"context"
 	"testing"
 
+	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/ffilib/testutil"
+	"gopkg.d7z.net/go-mini/core/surface"
 	"gopkg.d7z.net/go-mini/ffilib"
-	"gopkg.d7z.net/go-mini/ffilib/jsonlib"
 )
 
 func TestJSONSurfaceIntegration(t *testing.T) {
 	testutil.RunCases(t, []testutil.MethodSchema{
-		testutil.SurfaceFFISchema("encoding/json", jsonlib.SurfaceJSON(&jsonlib.JSONHost{})),
+		testutil.Schema("encoding/json", "Decode", "Marshal", "Unmarshal"),
 	}, []testutil.Case{
 		{
-			Name:    "map-roundtrip",
+			Name:    "decode-dynamic-object",
 			Imports: []string{"encoding/json"},
 			Body: `
 data, err := json.Marshal(map[string]any{"name": "mini"})
 if err != nil {
 	panic(err)
 }
-obj, err := json.Unmarshal(data)
+obj, err := json.Decode(data)
 if err != nil {
 	panic(err)
 }
@@ -31,10 +33,10 @@ if !ok {
 test.Out(name)
 `,
 			Want:   "mini",
-			Covers: []string{"Marshal", "Unmarshal"},
+			Covers: []string{"Decode", "Marshal"},
 		},
 		{
-			Name:    "struct-roundtrip",
+			Name:    "unmarshal-typed-struct-roundtrip",
 			Imports: []string{"encoding/json"},
 			Decls: `
 type Meta struct {
@@ -42,8 +44,9 @@ type Meta struct {
 }
 
 type Payload struct {
-	Name string
-	Meta Meta
+	Name string ` + "`json:\"name\"`" + `
+	Meta Meta ` + "`json:\"meta\"`" + `
+	Skip func() int64 ` + "`json:\"-\"`" + `
 }
 `,
 			Body: `
@@ -51,24 +54,118 @@ data, err := json.Marshal(Payload{Name: "mini", Meta: Meta{Active: true}})
 if err != nil {
 	panic(err)
 }
-obj, err := json.Unmarshal(data)
-if err != nil {
+var payload Payload
+if err := json.Unmarshal(data, &payload); err != nil {
 	panic(err)
 }
-name, ok := obj.Name.(String)
-if !ok {
-	panic("Name must be string")
-}
-test.Out(name)
+test.Out(payload.Name)
 test.Out("|")
-active, ok := obj.Meta.Active.(Bool)
-if !ok {
-	panic("Active must be bool")
-}
-test.OutBool(active)
+test.OutBool(payload.Meta.Active)
 `,
 			Want:   "mini|true",
 			Covers: []string{"Marshal", "Unmarshal"},
 		},
+		{
+			Name:    "unmarshal-rejects-pointer-field",
+			Imports: []string{"encoding/json"},
+			Decls: `
+type Payload struct {
+	Value *int64
+}
+`,
+			Body: `
+data := []byte("{\"Value\":1}")
+var payload Payload
+err := json.Unmarshal(data, &payload)
+if err == nil {
+	panic("expected unsupported pointer field")
+}
+test.Out(err.Error())
+`,
+			Want:   "json: field Value: json: unsupported target type Ptr<Int64>",
+			Covers: []string{"Unmarshal"},
+		},
+		{
+			Name:    "unmarshal-is-direct-call-only",
+			Imports: []string{"encoding/json"},
+			Body: `
+f := json.Unmarshal
+_ = f
+`,
+			WantCompileErr: "remains as runtime package member encoding/json.Unmarshal",
+		},
+		{
+			Name:    "json-public-members-do-not-leak-internal-api",
+			Imports: []string{"encoding/json", "reflect"},
+			Body: `
+pkg, ok := reflect.Package("encoding/json")
+if !ok {
+	panic("encoding/json package not found")
+}
+for _, member := range reflect.Members(pkg) {
+	if member.Name == "Unmarshal" || member.Name == "ConvertDecodedTarget" {
+		panic("internal json member leaked")
+	}
+}
+test.Out("ok")
+`,
+			Want: "ok",
+		},
+		{
+			Name:    "json-internal-package-is-not-user-importable",
+			Imports: []string{"encoding/json/internal"},
+			Body: `
+_ = internal.ConvertDecodedTarget
+`,
+			WantCompileErr: "use of internal package encoding/json/internal not allowed",
+		},
 	}, testutil.WithSurface(ffilib.Surface()))
+}
+
+func TestJSONUnmarshalWorksInsideSurfaceLibrary(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	if err := executor.UseSurface(surface.Merge(
+		ffilib.Surface(),
+		surface.Library("app", surface.GoFile("app.mgo", `
+package app
+
+import "encoding/json"
+
+type Payload struct {
+	Name string
+}
+
+func Decode(data []byte) (Payload, error) {
+	var out Payload
+	if err := json.Unmarshal(data, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+`)),
+	)); err != nil {
+		t.Fatalf("register surface: %v", err)
+	}
+
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "app"
+
+func main() {
+	value, err := app.Decode([]byte("{\"Name\":\"mini\"}"))
+	if err != nil {
+		panic(err)
+	}
+	if value.Name != "mini" {
+		panic("bad decoded value")
+	}
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if err := prog.Execute(context.Background()); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
 }

@@ -24,7 +24,7 @@ import (
 
 func Surface() *surface.Bundle {
 	return surface.Merge(
-		jsonlib.SurfaceJSON(&jsonlib.JSONHost{}),
+		jsonlib.Surface(),
 		timelib.SurfaceModule(&timelib.TimeHost{}),
 		timelib.SurfaceTime(),
 		contextlib.Surface(),

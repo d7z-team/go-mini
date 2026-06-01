@@ -18,30 +18,32 @@ const (
 )
 
 type ValidRoot struct {
-	logs               []Logs
-	types              map[Ident]GoMiniType
-	structs            map[Ident]*ValidStruct
-	interfaces         map[Ident]*InterfaceStmt
-	program            *ProgramStmt
-	Global             *ValidStruct
-	id                 uint64
-	Path               string // 模块的导入路径
-	Package            string
-	Imports            map[string]string
-	vars               map[Ident]GoMiniType
-	readOnlyVars       map[Ident]bool
-	externalTypes      map[Ident]ExternalTypeSpec
-	externalConsts     map[string]string
-	externalConstTypes map[string]GoMiniType
-	ModuleLoader       func(path string) (*ProgramStmt, error)
-	Imported           map[string]bool
-	Modules            map[string]*ModuleExports
-	Discovered         map[Ident]string
-	KnownImports       map[string]struct{}
-	TemplateBuiltins   map[string]GoMiniType
-	importStack        []string
-	MaxTypeDepth       int  // 递归类型检查深度限制
-	Tolerant           bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
+	logs                []Logs
+	types               map[Ident]GoMiniType
+	structs             map[Ident]*ValidStruct
+	interfaces          map[Ident]*InterfaceStmt
+	program             *ProgramStmt
+	Global              *ValidStruct
+	id                  uint64
+	Path                string // 模块的导入路径
+	Package             string
+	Imports             map[string]string
+	vars                map[Ident]GoMiniType
+	readOnlyVars        map[Ident]bool
+	externalTypes       map[Ident]ExternalTypeSpec
+	externalConsts      map[string]string
+	externalConstTypes  map[string]GoMiniType
+	ModuleLoader        func(path string) (*ProgramStmt, error)
+	Imported            map[string]bool
+	Modules             map[string]*ModuleExports
+	Discovered          map[Ident]string
+	KnownImports        map[string]struct{}
+	TemplateBuiltins    map[string]GoMiniType
+	templateRawArgs     map[Ident]map[int]struct{}
+	templateOnlyMembers map[Ident]struct{}
+	importStack         []string
+	MaxTypeDepth        int  // 递归类型检查深度限制
+	Tolerant            bool // 宽容模式：允许保留不完整 AST 并产出诊断/补全
 }
 
 type ValidContext struct {
@@ -155,22 +157,24 @@ func NewValidatorWithExternalTypesAndConstTypes(node *ProgramStmt, externalTypes
 				Methods:   make(map[Ident]CallFunctionType),
 				Ownership: StructOwnershipVMValue,
 			},
-			Package:            pkgName,
-			Path:               modulePath,
-			Imports:            imports,
-			vars:               make(map[Ident]GoMiniType),
-			readOnlyVars:       make(map[Ident]bool),
-			externalTypes:      cloneExternalTypeSpecs(externalTypes),
-			externalConsts:     cloneStringMap(externalConsts),
-			externalConstTypes: cloneGoMiniTypeMap(externalConstTypes),
-			Imported:           make(map[string]bool),
-			Modules:            make(map[string]*ModuleExports),
-			Discovered:         make(map[Ident]string),
-			KnownImports:       make(map[string]struct{}),
-			TemplateBuiltins:   make(map[string]GoMiniType),
-			importStack:        make([]string, 0),
-			MaxTypeDepth:       256,
-			Tolerant:           tolerant,
+			Package:             pkgName,
+			Path:                modulePath,
+			Imports:             imports,
+			vars:                make(map[Ident]GoMiniType),
+			readOnlyVars:        make(map[Ident]bool),
+			externalTypes:       cloneExternalTypeSpecs(externalTypes),
+			externalConsts:      cloneStringMap(externalConsts),
+			externalConstTypes:  cloneGoMiniTypeMap(externalConstTypes),
+			Imported:            make(map[string]bool),
+			Modules:             make(map[string]*ModuleExports),
+			Discovered:          make(map[Ident]string),
+			KnownImports:        make(map[string]struct{}),
+			TemplateBuiltins:    make(map[string]GoMiniType),
+			templateRawArgs:     make(map[Ident]map[int]struct{}),
+			templateOnlyMembers: make(map[Ident]struct{}),
+			importStack:         make([]string, 0),
+			MaxTypeDepth:        256,
+			Tolerant:            tolerant,
 		},
 		parent:  nil,
 		current: node,
@@ -1039,11 +1043,15 @@ func (c *ValidContext) AddStructDefine(name Ident, specs map[Ident]GoMiniType) e
 	return nil
 }
 
-func (c *ValidContext) ImportPackage(path string) error {
+func (c *ValidContext) ImportPackage(path string, syntheticImport ...bool) error {
 	// 1. 路径规范化，防止 "../" 注入
 	path = strings.Trim(path, " \t\n\r")
 	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
 		return fmt.Errorf("invalid import path: %s", path)
+	}
+	synthetic := len(syntheticImport) > 0 && syntheticImport[0]
+	if !synthetic && !internalImportAllowed(c.root.Path, path) {
+		return fmt.Errorf("use of internal package %s not allowed from %s", path, c.root.Path)
 	}
 
 	if c.root.ModuleLoader == nil {
@@ -1083,6 +1091,17 @@ func (c *ValidContext) ImportPackage(path string) error {
 	v, _ := NewValidatorWithExternalTypesAndConstTypes(prog, c.root.externalTypes, c.root.externalConsts, c.root.externalConstTypes, c.root.Tolerant)
 	v.root.Path = path
 	v.SetModuleLoader(c.root.ModuleLoader)
+	if len(c.root.templateRawArgs) > 0 {
+		rawArgs := make(map[Ident][]int, len(c.root.templateRawArgs))
+		for name, indexes := range c.root.templateRawArgs {
+			rawArgs[name] = make([]int, 0, len(indexes))
+			for idx := range indexes {
+				rawArgs[name] = append(rawArgs[name], idx)
+			}
+		}
+		v.SetTemplateRawArgs(rawArgs)
+	}
+	v.SetTemplateOnlyMembers(c.root.templateOnlyMembers)
 	v.root.importStack = append(append([]string(nil), c.root.importStack...), path) // 传递导入栈
 	err = prog.Check(NewSemanticContext(v))
 
@@ -1100,6 +1119,24 @@ func (c *ValidContext) ImportPackage(path string) error {
 	return nil
 }
 
+func internalImportAllowed(importerPath, importPath string) bool {
+	importerPath = strings.TrimSpace(importerPath)
+	parts := strings.Split(importPath, "/")
+	for idx, part := range parts {
+		if part != "internal" {
+			continue
+		}
+		parent := strings.Join(parts[:idx], "/")
+		if parent == "" {
+			return false
+		}
+		if importerPath != parent && !strings.HasPrefix(importerPath, parent+"/") {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *ValidContext) SetModuleLoader(loader func(path string) (*ProgramStmt, error)) {
 	c.root.ModuleLoader = loader
 }
@@ -1112,6 +1149,53 @@ func (c *ValidContext) SetTemplateBuiltins(items map[string]string) {
 	for name, spec := range items {
 		c.root.TemplateBuiltins[name] = GoMiniType(spec)
 	}
+}
+
+func (c *ValidContext) SetTemplateRawArgs(items map[Ident][]int) {
+	if c == nil || c.root == nil {
+		return
+	}
+	c.root.templateRawArgs = make(map[Ident]map[int]struct{}, len(items))
+	for name, indexes := range items {
+		if len(indexes) == 0 {
+			continue
+		}
+		raw := make(map[int]struct{}, len(indexes))
+		for _, idx := range indexes {
+			raw[idx] = struct{}{}
+		}
+		c.root.templateRawArgs[name] = raw
+	}
+}
+
+func (c *ValidContext) SetTemplateOnlyMembers(items map[Ident]struct{}) {
+	if c == nil || c.root == nil {
+		return
+	}
+	c.root.templateOnlyMembers = make(map[Ident]struct{}, len(items))
+	for name := range items {
+		c.root.templateOnlyMembers[name] = struct{}{}
+	}
+}
+
+func (c *ValidContext) IsTemplateOnlyMember(name Ident) bool {
+	if c == nil || c.root == nil || len(c.root.templateOnlyMembers) == 0 {
+		return false
+	}
+	_, ok := c.root.templateOnlyMembers[name]
+	return ok
+}
+
+func (c *ValidContext) IsTemplateRawArg(name Ident, idx int) bool {
+	if c == nil || c.root == nil || len(c.root.templateRawArgs) == 0 {
+		return false
+	}
+	raw, ok := c.root.templateRawArgs[name]
+	if !ok {
+		return false
+	}
+	_, ok = raw[idx]
+	return ok
 }
 
 func checkFuncLit(f *FuncLitExpr, ctx *SemanticContext) error {

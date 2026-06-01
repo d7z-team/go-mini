@@ -12,9 +12,12 @@
 - 对外 JSON / 持久化 / CLI 装载保持 bytecode-first，`go-mini-bytecode` / `PreparedProgram` 是唯一执行装载工件。
 - 不要扩展 AST-only 执行装载入口。
 - 调用模板只允许在 compiler 首次语义检查后、优化前展开为真实 AST；runtime、bytecode、FFI bridge 不得保留模板执行逻辑或模板节点。
+- 调用模板的 raw arg 只允许用于保留源码实参 AST 或读取实参静态 canonical type；不得借 raw arg 绕过 runtime/FFI/`Any` 安全边界，展开后必须回到普通 AST、lowering 和 bytecode 主链。
+- template-only package member 只能作为 direct-call compiler template facade；不得导出为 runtime package member、函数值、reflect member 或 bytecode 可执行符号，若真实 package 已存在同名 member 必须报冲突。
 - 纯 VM 源码库只能作为 `surface.Bundle` 的 compiler/engine 侧输入；executor 状态只保留源码描述并按需重新解析 fresh AST，导出成员必须来自显式 `ModuleExports` / `PreparedProgram.Exports`，不得复用已语义检查改写过的 AST 或继承父程序/FFI 注入 scope；bytecode 必须记录 module requirement 和 prepared exports，runtime 只校验 module hash 并装载 `PreparedProgram`，不得解析源码或引入 AST。
 - VM 源码库和 FFI package 必须进入同一套 runtime module registry；import、reflect、bytecode requirement、LSP/metadata 查询不得各自维护第二套模块解析或回退顺序。
 - 内部模块身份只接受 exact canonical module path；import alias 只属于源码层，不得用最后路径段、suffix、slash/dot 互转或短类型名兜底解析跨模块符号。
+- VM module path 中的 `internal` 段必须遵循 Go-like 可见性：只有父 module 及其子 module 可以直接 import；compiler template 生成的 synthetic import 可访问内部 helper，但不得把内部 package 作为用户可导入 API 暴露。
 - 同一 module path 不允许同时作为源码库和 FFI package；源码库 `package` 声明必须匹配 module path 最后一段；确实需要包装 FFI 时使用独立内部 FFI module path。
 - FFI type schema 必须显式记录 `PackagePath + MemberName` owner，并作为对应 FFI module 的 `type` member 注册；不得从 `pkg.Type` / `pkg.Type.Method` 字符串、最长已知 module path、最后一个点或旧 `TypeName` 字段反推 owner。
 - bytecode 只记录 `ModuleRequirements`；不得恢复 `ExternalRequirements`、`FFIMemberModule` 或 source/FFI 两套 requirement 结构。
@@ -30,6 +33,7 @@
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
 - FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer 或 channel。
 - VM pointer 只能是 runtime-only slot 引用，不得使用 host handle ID 表示，也不得进入 FFI wire、`Any` 或 host identity 路径；`Ptr<T>` 与 `T` 之间不得恢复隐式互转。
+- `encoding/json` 这类标准库源码模块需要 `&target` API 时必须通过 compiler template 或静态类型信息完成 typed write-back，不得把 VM pointer 放入 `Any` 或 FFI wire。
 - FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，decode 必须校验 endpoint 方向，bridge 不得持有 VM pointer 或执行 VM task。
 - MethodID 0 / `Invoke` 只允许在已有明确 schema 的 route 或 typed interface method 上使用，不得恢复无 schema 的 HostRef 动态兜底调用。
 - 直接调用 `executor.UseSurface(...)` 的返回错误必须处理；surface schema 冲突应通过 `UseSurface` 返回错误，不在 surface merge 阶段 panic。

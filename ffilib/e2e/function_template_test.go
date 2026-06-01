@@ -166,6 +166,123 @@ func main() {
 	}
 }
 
+func TestTemplateOnlyPackageMemberSupportsSourcePackageFacade(t *testing.T) {
+	executor := newFFILibTemplateExecutor()
+	registerTemplateModule(t, executor, "trace", `
+	package trace
+
+	func Other() string { return "other" }
+	`)
+	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:           "trace.Line",
+		PackagePath:  "trace",
+		Name:         "Line",
+		TemplateOnly: true,
+		SourceSig:    runtime.MustRuntimeFuncSig(runtime.SpecString, false, runtime.SpecString),
+		Body:         `"line:" + {{ arg 0 }}`,
+	})
+	if err != nil {
+		t.Fatalf("register template-only package member failed: %v", err)
+	}
+	prog, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+func main() {
+	v := trace.Line("x")
+	println(v)
+}
+`)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	recorder := &templateOutputRecorder{}
+	if err := prog.Execute(fmtlib.WithOutputter(context.Background(), recorder)); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got, want := recorder.out.String(), "line:x\n"; got != want {
+		t.Fatalf("unexpected output %q, want %q", got, want)
+	}
+}
+
+func TestTemplateOnlyPackageMemberRejectsRuntimeValueUse(t *testing.T) {
+	executor := newFFILibTemplateExecutor()
+	registerTemplateModule(t, executor, "trace", `
+	package trace
+
+	func Other() string { return "other" }
+	`)
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:           "trace.Line",
+		PackagePath:  "trace",
+		Name:         "Line",
+		TemplateOnly: true,
+		SourceSig:    runtime.MustRuntimeFuncSig(runtime.SpecString, false),
+		Body:         `"line"`,
+	}); err != nil {
+		t.Fatalf("register template-only package member failed: %v", err)
+	}
+	_, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+func main() {
+	f := trace.Line
+	_ = f
+}
+`)
+	if err == nil || !strings.Contains(err.Error(), "remains as runtime package member trace.Line") {
+		t.Fatalf("expected template-only runtime value rejection, got %v", err)
+	}
+}
+
+func TestTemplateOnlyPackageMemberRejectsRealMemberConflict(t *testing.T) {
+	executor := newFFILibTemplateExecutor()
+	registerTemplateModule(t, executor, "trace", `
+	package trace
+
+	func Line() {}
+	`)
+	if err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:           "trace.Line",
+		PackagePath:  "trace",
+		Name:         "Line",
+		TemplateOnly: true,
+		SourceSig:    runtime.MustRuntimeFuncSig(runtime.SpecVoid, false),
+		Body:         `println()`,
+	}); err != nil {
+		t.Fatalf("register template-only package member failed: %v", err)
+	}
+	_, err := executor.NewRuntimeByGoCode(`
+package main
+
+import "trace"
+
+func main() {
+	trace.Line()
+}
+`)
+	if err == nil || !strings.Contains(err.Error(), "template-only call template trace.Line conflicts with existing package member trace.Line") {
+		t.Fatalf("expected template-only member conflict, got %v", err)
+	}
+}
+
+func TestTemplateRegistrationRejectsVariadicRawArgTail(t *testing.T) {
+	executor := newFFILibTemplateExecutor()
+	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{
+		ID:        "bad.rawTail",
+		Name:      "badRawTail",
+		SourceSig: runtime.MustRuntimeFuncSig(runtime.SpecVoid, true, runtime.SpecAny),
+		RawArgs:   []int{0},
+		Body:      `println()`,
+	})
+	if err == nil || !strings.Contains(err.Error(), "raw arg index 0 targets variadic parameter") {
+		t.Fatalf("expected variadic raw arg tail registration error, got %v", err)
+	}
+}
+
 func TestStatementTemplateCanExpandToMultipleStatements(t *testing.T) {
 	executor := newFFILibTemplateExecutor()
 	err := executor.RegisterFunctionTemplate(calltemplate.FunctionTemplate{

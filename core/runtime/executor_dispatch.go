@@ -495,7 +495,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 					}
 					fields[i] = NewSlot(fieldType, cloneVarForAssign(val))
 					byName[fieldName] = i
-					specFields[i] = RuntimeStructField{Name: fieldName, TypeInfo: fieldType}
+					specFields[i] = RuntimeStructField{Name: fieldName, Type: fieldType.Raw, TypeInfo: fieldType}
 				}
 				v = &Var{
 					VType:    TypeStruct,
