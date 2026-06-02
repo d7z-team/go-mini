@@ -13,7 +13,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 11
+	CurrentVersion       = 12
 	pseudoOpLabel        = "PSEUDO_LABEL"
 )
 
@@ -102,9 +102,52 @@ func (p *Program) Validate() error {
 		}
 	}
 	if p.Executable != nil {
+		if err := validateNoEmbeddedSourceModules(p.Executable); err != nil {
+			return err
+		}
 		if err := runtime.ValidatePreparedProgram(p.Executable); err != nil {
 			return fmt.Errorf("invalid executable bytecode: %w", err)
 		}
+	}
+	return nil
+}
+
+func (p *Program) MarshalJSON() ([]byte, error) {
+	if p != nil && p.Executable != nil {
+		if err := validateNoEmbeddedSourceModules(p.Executable); err != nil {
+			return nil, err
+		}
+	}
+	type programJSON Program
+	return json.Marshal((*programJSON)(p))
+}
+
+func (p *Program) UnmarshalJSON(data []byte) error {
+	if p == nil {
+		return errors.New("nil bytecode program")
+	}
+	if err := rejectEmbeddedModulePayload(data); err != nil {
+		return err
+	}
+	type programJSON Program
+	var decoded programJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	program := Program(decoded)
+	if err := program.Validate(); err != nil {
+		return err
+	}
+	*p = program
+	return nil
+}
+
+func validateNoEmbeddedSourceModules(prepared *runtime.PreparedProgram) error {
+	if prepared == nil {
+		return nil
+	}
+	if len(prepared.Modules) > 0 || len(prepared.ModuleHashes) > 0 {
+		return errors.New("bytecode executable must not embed source modules")
 	}
 	return nil
 }
@@ -114,10 +157,30 @@ func UnmarshalJSON(data []byte) (*Program, error) {
 	if err := json.Unmarshal(data, &program); err != nil {
 		return nil, err
 	}
-	if err := program.Validate(); err != nil {
-		return nil, err
-	}
 	return &program, nil
+}
+
+func rejectEmbeddedModulePayload(data []byte) error {
+	var raw struct {
+		Executable json.RawMessage `json:"executable"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw.Executable) == 0 || string(raw.Executable) == "null" {
+		return nil
+	}
+	var executable map[string]json.RawMessage
+	if err := json.Unmarshal(raw.Executable, &executable); err != nil {
+		return err
+	}
+	if _, ok := executable["modules"]; ok {
+		return errors.New("bytecode executable must not embed source modules")
+	}
+	if _, ok := executable["module_hashes"]; ok {
+		return errors.New("bytecode executable must not embed source module hashes")
+	}
+	return nil
 }
 
 func (p *Program) Disassemble() string {
@@ -137,7 +200,6 @@ func (p *Program) Disassemble() string {
 	if p.Executable != nil {
 		execGlobals = len(p.Executable.Globals)
 		execFunctions = len(p.Executable.Functions)
-		fmt.Fprintf(&sb, "; modules    %d\n", len(p.Executable.Modules))
 	}
 	fmt.Fprintf(&sb, "; globals    display=%d executable=%d\n", len(p.Globals), execGlobals)
 	fmt.Fprintf(&sb, "; functions  display=%d executable=%d\n", len(p.Functions), execFunctions)
@@ -146,7 +208,6 @@ func (p *Program) Disassemble() string {
 	writeExecutableMetadataSection(&sb, p)
 	writeGlobalsSections(&sb, p)
 	writeTextSection(&sb, p)
-	writeEmbeddedModuleSections(&sb, p)
 
 	return sb.String()
 }
@@ -291,46 +352,6 @@ func writeTextSection(sb *strings.Builder, p *Program) {
 		} else {
 			sb.WriteString("    ; no body\n")
 		}
-		sb.WriteString("\n")
-	}
-}
-
-func writeEmbeddedModuleSections(sb *strings.Builder, p *Program) {
-	if p == nil || p.Executable == nil || len(p.Executable.Modules) == 0 {
-		return
-	}
-	paths := make([]string, 0, len(p.Executable.Modules))
-	for path := range p.Executable.Modules {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-
-	sb.WriteString("section .modules\n")
-	for _, path := range paths {
-		module := p.Executable.Modules[path]
-		if module == nil {
-			continue
-		}
-		moduleLabel := "module." + sanitizeLabel(path)
-		header := fmt.Sprintf("%s: ; path %s", moduleLabel, path)
-		if hash := p.Executable.ModuleHashes[path]; hash != "" {
-			header += " hash=" + hash
-		}
-		if module.Package != "" {
-			header += " package=" + module.Package
-		}
-		sb.WriteString(header + "\n")
-
-		blocks := preparedGlobalInitBlocks(module)
-		if len(blocks) > 0 {
-			writePreparedGlobalInitBlocks(sb, blocks, moduleLabel+".global", "  ")
-		}
-		if len(module.MainTasks) > 0 {
-			scope := moduleLabel + "._start"
-			fmt.Fprintf(sb, "  %s:\n", scope)
-			writePreparedTasks(sb, module.MainTasks, scope)
-		}
-		writePreparedFunctions(sb, module.Functions, moduleLabel+".fn", "  ")
 		sb.WriteString("\n")
 	}
 }

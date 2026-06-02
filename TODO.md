@@ -1,6 +1,6 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-06-01
+更新时间: 2026-06-02
 
 本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
 
@@ -45,10 +45,10 @@
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
 - `core/surface.Bundle` 承载声明式 schema、runtime bind、compiler-only templates 和纯 VM 源码库；surface 冲突通过 `Bundle.Err` / `UseSurface` 返回错误。
 - `core/surface.Bundle` 可以携带纯 VM 源码库；engine 在 `UseSurface` 阶段解析源码用于校验与 resolved module hash，随后只保留规范化源码描述，后续 compiler / LSP / module 装载每次按需重新解析 fresh AST。
-- 纯 VM 模块不提供公开的预编译模块动态注册入口；VM 库只能通过 `surface.Library(...)` 装配，编译主程序时按实际 import 编译并嵌入 bytecode。
+- 纯 VM 模块不提供公开的预编译模块动态注册入口；VM 库只能通过 `surface.Library(...)` 装配，bytecode 只记录源码库 `ModuleRequirements`，engine 在装载/执行前按当前 executor 已注册的源码库准备 runtime-only prepared module closure。
 - 纯 VM 源码库的可见成员来自 `ModuleExports` / `PreparedProgram.Exports` 显式导出表，导出范围限定为 ASCII 大写开头的 Go-style exported identifier；runtime `TypeModule` 成员访问读取 `VMModule.Data`。
-- executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再把 prepared module closure 写入主程序 bytecode，避免依赖失败留下半成品执行工件。
-- compiler 将导入的 surface library 写入 bytecode `ModuleRequirements`、`ModuleHashes` 和 `Modules`；runtime 只校验 embedded module hash 并从 `PreparedProgram.Modules` 装载 `PreparedProgram`，不提供动态 module loader。
+- executor 准备源码模块时先在 staging 中完成当前模块及依赖模块编译，全部成功后再把 prepared module closure 注入装载期 runtime prepared clone，避免依赖失败留下半成品执行工件；`ExecutableArtifact` 不携带源码模块闭包。
+- compiler 将导入的 surface library 写入 bytecode `ModuleRequirements`；`PreparedProgram.Modules` / `ModuleHashes` 只允许作为 runtime-only 临时闭包，不参与 bytecode JSON / 持久化 / disassembly。bytecode 装载时由当前 executor 已注册的 `surface.Library(...)` 按 requirement 重新准备源码库，缺失或 hash 不匹配直接报错。
 - `PreparedFunction` 记录 VM 方法 receiver 元数据；源码库闭包中的私有指针方法值通过闭包词法 executor 与 receiver 索引解析。
 - 多返回函数和 tuple-return FFI route 的结果可以直接作为另一个多返回函数的返回值转发。
 - 标准库 `context` 由 VM 源码库提供公开 API，内部 `context/internal` FFI 只提供 sentinel error 与 timer；`WithValue` key 校验通过 VM `reflect` 的 `Map<Any, Bool>` 写入路径复用 map key 可比较规则。`Done()` 使用 VM receive-only channel，deadline timer 通过异步 FFI waiter 完成调度，已过期 deadline 同步取消，VM context 父子取消通过 child 注册表传播；`context` deadline / timeout 统一基于宿主真实时间。

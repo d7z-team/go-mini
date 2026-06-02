@@ -255,7 +255,7 @@ bytecode JSON 可以直接恢复为可执行程序，也可以先恢复为 `Exec
 - 程序导出：`MarshalBytecodeJSON`
 - bytecode JSON 恢复编译产物：`ArtifactFromBytecodeJSON`
 
-FFI、编译期模板和纯 VM 源码库都通过 `UseSurface(...)` 装配。VM 模块源码使用 `surface.Library(...)` 注册；编译后的 bytecode 会携带已使用的 VM 源码模块。
+FFI、编译期模板和纯 VM 源码库都通过 `UseSurface(...)` 装配。VM 模块源码使用 `surface.Library(...)` 注册；编译后的 artifact / bytecode 不携带源码模块闭包，只记录已使用 VM 源码模块的 requirement，装载 executor 需要注册相同源码库。
 
 源码库和 FFI package 共享同一套 module namespace，FFI type-only schema 也会成为对应 FFI module 的 `type` member。`import` 只按精确 module path 解析；Go 源码里的默认 alias 仍来自 path 最后一段，但内部身份始终是完整 path，不做 suffix、短包名、slash/dot 互转或按最长已知 path 拆分的兜底。同一个 path 不能同时注册为源码库和 FFI package。
 
@@ -392,7 +392,7 @@ func main() {
 
 源码库 path 必须唯一，且源码中的 `package` 声明必须匹配 path 最后一段，最后一段必须是可作为 Go package 的短标识符。例如 `surface.Library("example/mathx", ...)` 内部源码应声明 `package mathx`。源码库不能和 FFI package 或 FFI type-only module 使用同一个 path；需要隐藏 FFI 细节时，使用独立内部 FFI module path 再由源码库封装。
 
-源码库对外暴露 Go 风格 exported identifier，也就是 ASCII 大写字母开头的函数、变量、常量、类型、结构体和接口。小写 helper 只在库源码内可见。编译后的 bytecode 会携带已使用的源码库，并在 `ModuleRequirements` 中记录 module hash，因此 bytecode JSON 可以在新的 executor 中直接装载执行；FFI 依赖仍需要通过 `UseSurface(...)` 提供。
+源码库对外暴露 Go 风格 exported identifier，也就是 ASCII 大写字母开头的函数、变量、常量、类型、结构体和接口。小写 helper 只在库源码内可见。编译后的 bytecode 只在 `ModuleRequirements` 中记录已使用源码库的 module hash，不携带源码库实现；装载 bytecode 的 executor 必须通过 `UseSurface(...)` 提供相同源码库，FFI 依赖同样必须通过 `UseSurface(...)` 提供。
 
 ### 2.9 Fmt
 

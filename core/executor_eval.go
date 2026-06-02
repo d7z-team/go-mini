@@ -28,7 +28,15 @@ func (e *MiniExecutor) Eval(ctx context.Context, exprStr string, env map[string]
 	if compiled == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
 		return nil, errors.New("eval did not produce executable bytecode")
 	}
-	executor, err := runtime.NewExecutorFromPrepared(compiled.Bytecode.Executable)
+	artifact, err := executableArtifactFromCompiled(compiled)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := e.preparedProgramForArtifact(artifact)
+	if err != nil {
+		return nil, err
+	}
+	executor, err := runtime.NewExecutorFromPrepared(prepared)
 	if err != nil {
 		return nil, err
 	}

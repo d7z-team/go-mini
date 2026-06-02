@@ -15,6 +15,7 @@ type ExecutableProgram struct {
 	artifact *ExecutableArtifact
 	executor *runtime.Executor
 	owner    *MiniExecutor
+	prepared *runtime.PreparedProgram
 }
 
 type StackContext = runtime.StackContext
@@ -85,12 +86,16 @@ func (p *ExecutableProgram) Eval(ctx context.Context, exprStr string, env map[st
 	if p.owner == nil {
 		return nil, errors.New("cannot eval without owning executor")
 	}
-	compiler := p.owner.newEvalCompiler(p.artifact.Bytecode.Executable)
+	prepared := p.prepared
+	if prepared == nil {
+		prepared = p.artifact.Bytecode.Executable
+	}
+	compiler := p.owner.newEvalCompiler(prepared)
 	expr, err := compiler.CompileExprSource(exprStr)
 	if err != nil {
 		return nil, fmt.Errorf("表达式解析失败: %w", err)
 	}
-	program := buildEvalProgram(expr, env, p.artifact.Bytecode.Executable.ImportAliases, p.artifact.Bytecode.Executable)
+	program := buildEvalProgram(expr, env, prepared.ImportAliases, prepared)
 	compiled, semanticCtx, err := compiler.CompileProgram("eval", "", program, false)
 	if err != nil {
 		return nil, newMiniAstError(err, semanticCtx, program)

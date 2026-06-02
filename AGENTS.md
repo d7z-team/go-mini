@@ -21,6 +21,7 @@
 - 同一 module path 不允许同时作为源码库和 FFI package；源码库 `package` 声明必须匹配 module path 最后一段；确实需要包装 FFI 时使用独立内部 FFI module path。
 - FFI type schema 必须显式记录 `PackagePath + MemberName` owner，并作为对应 FFI module 的 `type` member 注册；不得从 `pkg.Type` / `pkg.Type.Method` 字符串、最长已知 module path、最后一个点或旧 `TypeName` 字段反推 owner。
 - bytecode 只记录 `ModuleRequirements`；不得恢复 `ExternalRequirements`、`FFIMemberModule` 或 source/FFI 两套 requirement 结构。
+- `PreparedProgram.Modules` / `ModuleHashes` 只能作为 engine 装载阶段的 runtime-only prepared module closure；不得出现在 bytecode JSON、持久化 payload 或 disassembly 中，bytecode / artifact 装载必须通过当前 executor 已注册的 `surface.Library(...)` 按 `ModuleRequirements` 重新准备源码库；引用已注册源码库的 import 若缺少 source `ModuleRequirements` 必须在装载阶段失败。
 - FFI 只走 schema-only，不引入旧 spec/registrar 双轨。
 - 对外 FFI / 源码库装配只通过 `executor.UseSurface(...)`；不要恢复 executor/runtime 上的直接 route、schema、constant、package value 注册 API，也不要恢复公开 AST module loader。
 - `reflect` 只能基于 Go-Mini lowering / compiler / runtime / surface / ffigen 已注册的 schema metadata；严禁通过 Go 标准库 `reflect` 或宿主原生值动态解构来获得类型、字段、方法或函数信息。

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ast"
@@ -272,22 +274,14 @@ func compiledProgramNode(compiled *compiler.Artifact) *ast.ProgramStmt {
 }
 
 func (e *MiniExecutor) prepareCompiledArtifact(compiled *compiler.Artifact, semanticCtx *ast.SemanticContext) error {
-	if err := e.prepareArtifactModules(compiled); err != nil {
-		return newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
-	}
-	return nil
-}
-
-func (e *MiniExecutor) prepareArtifactModules(compiled *compiler.Artifact) error {
 	if compiled == nil || compiled.Program == nil || compiled.Bytecode == nil || compiled.Bytecode.Executable == nil {
 		return nil
 	}
 	stagedPrepared := make(map[string]*runtime.PreparedProgram)
 	stagedSources := make(map[string]*ast.ProgramStmt)
 	if err := e.compileImportedModules(compiled.Program, compiled.ImportedPrograms, map[string]bool{}, stagedPrepared, stagedSources); err != nil {
-		return err
+		return newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
 	}
-	embedPreparedModules(compiled.Bytecode.Executable, stagedPrepared, e.embeddedModuleHashes(stagedPrepared))
 	return nil
 }
 
@@ -353,7 +347,7 @@ func (e *MiniExecutor) compileImportedModules(program *ast.ProgramStmt, imported
 	return nil
 }
 
-func (e *MiniExecutor) embeddedModuleHashes(stagedPrepared map[string]*runtime.PreparedProgram) map[string]string {
+func (e *MiniExecutor) preparedModuleHashes(stagedPrepared map[string]*runtime.PreparedProgram) map[string]string {
 	if len(stagedPrepared) == 0 {
 		return nil
 	}
@@ -368,7 +362,7 @@ func (e *MiniExecutor) embeddedModuleHashes(stagedPrepared map[string]*runtime.P
 	return hashes
 }
 
-func embedPreparedModules(root *runtime.PreparedProgram, modules map[string]*runtime.PreparedProgram, hashes map[string]string) {
+func attachPreparedModules(root *runtime.PreparedProgram, modules map[string]*runtime.PreparedProgram, hashes map[string]string) {
 	if root == nil {
 		return
 	}
@@ -388,4 +382,209 @@ func embedPreparedModules(root *runtime.PreparedProgram, modules map[string]*run
 			}
 		}
 	}
+}
+
+func (e *MiniExecutor) preparedProgramForArtifact(artifact *ExecutableArtifact) (*runtime.PreparedProgram, error) {
+	if artifact == nil || artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		return nil, errors.New("executable artifact missing executable bytecode")
+	}
+	root := artifact.Bytecode.Executable
+	if len(root.Modules) > 0 || len(root.ModuleHashes) > 0 {
+		return nil, errors.New("bytecode executable must not embed source modules")
+	}
+	if err := e.validateSourceImportRequirements(root); err != nil {
+		return nil, err
+	}
+	modules, hashes, err := e.prepareSourceRequirementModules(root)
+	if err != nil {
+		return nil, err
+	}
+	if len(modules) == 0 {
+		return root, nil
+	}
+	prepared := *root
+	attachPreparedModules(&prepared, modules, hashes)
+	return &prepared, nil
+}
+
+func (e *MiniExecutor) prepareSourceRequirementModules(root *runtime.PreparedProgram) (map[string]*runtime.PreparedProgram, map[string]string, error) {
+	paths := sourceRequirementPaths(root)
+	if len(paths) == 0 {
+		return nil, nil, nil
+	}
+	program := &ast.ProgramStmt{Imports: make([]ast.ImportSpec, 0, len(paths))}
+	for _, path := range paths {
+		program.Imports = append(program.Imports, ast.ImportSpec{Path: path})
+	}
+	stagedPrepared := make(map[string]*runtime.PreparedProgram)
+	stagedSources := make(map[string]*ast.ProgramStmt)
+	if err := e.compileImportedModules(program, nil, map[string]bool{}, stagedPrepared, stagedSources); err != nil {
+		return nil, nil, err
+	}
+	for _, path := range paths {
+		if stagedPrepared[path] == nil {
+			return nil, nil, fmt.Errorf("%w: %s", runtime.ErrModuleNotFound, path)
+		}
+	}
+	return stagedPrepared, e.preparedModuleHashes(stagedPrepared), nil
+}
+
+func (e *MiniExecutor) validateSourceImportRequirements(root *runtime.PreparedProgram) error {
+	if root == nil {
+		return nil
+	}
+	required := sourceRequirementPathSet(root)
+	imports := collectPreparedImportPaths(root)
+	if len(imports) == 0 {
+		return nil
+	}
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for path := range imports {
+		if _, ok := required[path]; ok {
+			continue
+		}
+		if _, ok := e.sourceLibraries[path]; ok {
+			return fmt.Errorf("source import %s missing module requirement", path)
+		}
+	}
+	return nil
+}
+
+func sourceRequirementPathSet(root *runtime.PreparedProgram) map[string]struct{} {
+	paths := make(map[string]struct{})
+	if root == nil {
+		return paths
+	}
+	for _, req := range root.ModuleRequirements {
+		path := strings.TrimSpace(req.Path)
+		if req.Kind == runtime.ModuleKindSource && path != "" {
+			paths[path] = struct{}{}
+		}
+	}
+	return paths
+}
+
+func collectPreparedImportPaths(root *runtime.PreparedProgram) map[string]struct{} {
+	paths := make(map[string]struct{})
+	if root == nil {
+		return paths
+	}
+	for _, path := range root.ImportAliases {
+		if path = strings.TrimSpace(path); path != "" {
+			paths[path] = struct{}{}
+		}
+	}
+	collectImportPathsFromTasks(root.MainTasks, paths)
+	for _, group := range root.GlobalInitGroups {
+		if group != nil {
+			collectImportPathsFromTasks(group.InitPlan, paths)
+		}
+	}
+	for _, global := range root.Globals {
+		if global != nil {
+			collectImportPathsFromTasks(global.InitPlan, paths)
+		}
+	}
+	for _, fn := range root.Functions {
+		if fn != nil {
+			collectImportPathsFromTasks(fn.BodyTasks, paths)
+		}
+	}
+	return paths
+}
+
+func collectImportPathsFromTasks(tasks []runtime.Task, paths map[string]struct{}) {
+	for _, task := range tasks {
+		switch data := task.Data.(type) {
+		case *runtime.ImportInitData:
+			if data == nil {
+				continue
+			}
+			path := strings.TrimSpace(data.Path)
+			if path != "" {
+				paths[path] = struct{}{}
+			}
+		case *runtime.BranchData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Then, paths)
+			collectImportPathsFromTasks(data.Else, paths)
+		case *runtime.DeferData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Tasks, paths)
+		case *runtime.ForData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Cond, paths)
+			collectImportPathsFromTasks(data.Body, paths)
+			collectImportPathsFromTasks(data.Update, paths)
+		case *runtime.JumpData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Right, paths)
+		case *runtime.SwitchData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Init, paths)
+			collectImportPathsFromTasks(data.Tag, paths)
+			collectImportPathsFromTasks(data.AssignLHS, paths)
+			for _, switchCase := range data.Cases {
+				for _, expr := range switchCase.Exprs {
+					collectImportPathsFromTasks(expr, paths)
+				}
+				collectImportPathsFromTasks(switchCase.Body, paths)
+			}
+			collectImportPathsFromTasks(data.DefaultBody, paths)
+		case *runtime.FinallyData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Body, paths)
+		case *runtime.CatchData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Body, paths)
+		case *runtime.RangeData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.Body, paths)
+		case *runtime.SelectData:
+			if data == nil {
+				continue
+			}
+			for _, selectCase := range data.Cases {
+				collectImportPathsFromTasks(selectCase.Body, paths)
+			}
+		case *runtime.ClosureData:
+			if data == nil {
+				continue
+			}
+			collectImportPathsFromTasks(data.BodyTasks, paths)
+		}
+	}
+}
+
+func sourceRequirementPaths(root *runtime.PreparedProgram) []string {
+	if root == nil {
+		return nil
+	}
+	seen := sourceRequirementPathSet(root)
+	if len(seen) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }

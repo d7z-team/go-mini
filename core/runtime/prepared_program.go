@@ -10,8 +10,8 @@ type PreparedProgram struct {
 	StructSchemas      map[string]*RuntimeStructSpec    `json:"struct_schemas,omitempty"`
 	InterfaceSchemas   map[string]*RuntimeInterfaceSpec `json:"interface_schemas,omitempty"`
 	Exports            map[string]PreparedExport        `json:"exports,omitempty"`
-	Modules            map[string]*PreparedProgram      `json:"modules,omitempty"`
-	ModuleHashes       map[string]string                `json:"module_hashes,omitempty"`
+	Modules            map[string]*PreparedProgram      `json:"-"`
+	ModuleHashes       map[string]string                `json:"-"`
 	ModuleRequirements []ModuleRequirement              `json:"module_requirements,omitempty"`
 
 	GlobalInitOrder  []string                     `json:"global_init_order"`

@@ -100,7 +100,7 @@ func main() {}
 	}
 }
 
-func TestSurfaceLibraryBytecodeEmbedsImportedModules(t *testing.T) {
+func TestSurfaceLibraryBytecodeUsesRegisteredSourceModules(t *testing.T) {
 	source := `
 package main
 
@@ -110,7 +110,7 @@ func main() {
 	if labels.Score(20) != 41 {
 		panic("library score mismatch")
 	}
-	}
+}
 `
 	compilerExec := engine.MustNewMiniExecutor()
 	if err := compilerExec.UseSurface(labelsLibrary()); err != nil {
@@ -119,12 +119,68 @@ func main() {
 	if err := compilerExec.UseSurface(mathxLibrary(2)); err != nil {
 		t.Fatal(err)
 	}
-	payload, err := compilerExec.CompileGoCodeToBytecodeJSON(source)
+	artifact, err := compilerExec.CompileGoCode(source)
 	if err != nil {
-		t.Fatalf("compile bytecode: %v", err)
+		t.Fatalf("compile artifact: %v", err)
+	}
+
+	missingArtifactLoader := engine.MustNewMiniExecutor()
+	if _, err := missingArtifactLoader.NewRuntimeByArtifact(artifact); err == nil || !strings.Contains(err.Error(), "module not found: labels") {
+		t.Fatalf("expected missing artifact source module error, got %v", err)
+	}
+
+	artifactLoader := engine.MustNewMiniExecutor()
+	if err := artifactLoader.UseSurface(labelsLibrary()); err != nil {
+		t.Fatal(err)
+	}
+	if err := artifactLoader.UseSurface(mathxLibrary(2)); err != nil {
+		t.Fatal(err)
+	}
+	artifactProg, err := artifactLoader.NewRuntimeByArtifact(artifact)
+	if err != nil {
+		t.Fatalf("load artifact: %v", err)
+	}
+	if err := artifactProg.Execute(context.Background()); err != nil {
+		t.Fatalf("execute artifact: %v", err)
+	}
+
+	payload, err := artifact.MarshalBytecodeJSON()
+	if err != nil {
+		t.Fatalf("marshal bytecode: %v", err)
+	}
+
+	var raw struct {
+		Executable map[string]json.RawMessage `json:"executable"`
+	}
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatalf("unmarshal raw bytecode: %v", err)
+	}
+	if _, ok := raw.Executable["modules"]; ok {
+		t.Fatalf("bytecode must not embed source modules: %s", payload)
+	}
+	if _, ok := raw.Executable["module_hashes"]; ok {
+		t.Fatalf("bytecode must not embed source module hashes: %s", payload)
+	}
+	program, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		t.Fatalf("unmarshal bytecode: %v", err)
+	}
+	if !hasSourceRequirement(program.Executable.ModuleRequirements, "labels") {
+		t.Fatalf("expected labels source requirement, got %#v", program.Executable.ModuleRequirements)
+	}
+
+	missing := engine.MustNewMiniExecutor()
+	if _, err := missing.NewRuntimeByBytecodeJSON(payload); err == nil || !strings.Contains(err.Error(), "module not found: labels") {
+		t.Fatalf("expected missing source module error, got %v", err)
 	}
 
 	loader := engine.MustNewMiniExecutor()
+	if err := loader.UseSurface(labelsLibrary()); err != nil {
+		t.Fatal(err)
+	}
+	if err := loader.UseSurface(mathxLibrary(2)); err != nil {
+		t.Fatal(err)
+	}
 	prog, err := loader.NewRuntimeByBytecodeJSON(payload)
 	if err != nil {
 		t.Fatalf("load bytecode: %v", err)
@@ -133,23 +189,41 @@ func main() {
 		t.Fatalf("execute bytecode: %v", err)
 	}
 
-	program, err := bytecode.UnmarshalJSON(payload)
-	if err != nil {
-		t.Fatalf("unmarshal bytecode: %v", err)
+	mismatch := engine.MustNewMiniExecutor()
+	if err := mismatch.UseSurface(labelsLibrary()); err != nil {
+		t.Fatal(err)
 	}
-	if program.Executable == nil || program.Executable.Modules["labels"] == nil || program.Executable.Modules["mathx"] == nil {
-		t.Fatalf("expected embedded module closure, got %#v", program.Executable.Modules)
+	if err := mismatch.UseSurface(mathxLibrary(3)); err != nil {
+		t.Fatal(err)
 	}
-	if program.Executable.ModuleHashes["labels"] == "" {
-		t.Fatalf("expected embedded module hashes, got %#v", program.Executable.ModuleHashes)
-	}
-	program.Executable.ModuleHashes["labels"] = "tampered"
-	tampered, err := json.Marshal(program)
-	if err != nil {
-		t.Fatalf("marshal tampered bytecode: %v", err)
-	}
-	if _, err := loader.NewRuntimeByBytecodeJSON(tampered); err == nil || !strings.Contains(err.Error(), "source module labels schema mismatch") {
+	if _, err := mismatch.NewRuntimeByBytecodeJSON(payload); err == nil || !strings.Contains(err.Error(), "source module labels schema mismatch") {
 		t.Fatalf("expected source module hash mismatch, got %v", err)
+	}
+}
+
+func TestBytecodeSourceImportRequiresSourceRequirement(t *testing.T) {
+	program := bytecode.NewProgram()
+	program.Executable = &miniruntime.PreparedProgram{
+		Package:         "main",
+		ImportAliases:   map[string]string{"mathx": "mathx"},
+		GlobalInitOrder: []string{},
+		Globals:         map[string]*miniruntime.PreparedGlobal{},
+		Functions:       map[string]*miniruntime.PreparedFunction{},
+		MainTasks: []miniruntime.Task{{
+			Op:   miniruntime.OpImportInit,
+			Data: &miniruntime.ImportInitData{Path: "mathx"},
+		}},
+	}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("handwritten bytecode should be structurally valid: %v", err)
+	}
+
+	loader := engine.MustNewMiniExecutor()
+	if err := loader.UseSurface(mathxLibrary(2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loader.NewRuntimeByBytecode(program); err == nil || !strings.Contains(err.Error(), "source import mathx missing module requirement") {
+		t.Fatalf("expected missing source requirement error, got %v", err)
 	}
 }
 
@@ -251,6 +325,15 @@ func main() {}
 	if _, err := loader.NewRuntimeByBytecodeJSON(payload); err != nil {
 		t.Fatalf("unused surface library should not be required by bytecode: %v", err)
 	}
+}
+
+func hasSourceRequirement(reqs []miniruntime.ModuleRequirement, path string) bool {
+	for _, req := range reqs {
+		if req.Kind == miniruntime.ModuleKindSource && req.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 func mathxLibrary(multiplier int) *surface.Bundle {

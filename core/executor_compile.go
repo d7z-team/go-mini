@@ -51,7 +51,11 @@ func (e *MiniExecutor) NewRuntimeByArtifact(artifact *ExecutableArtifact) (*Exec
 		return nil, errors.New("executable artifact missing executable bytecode")
 	}
 
-	executor, err := runtime.NewExecutorFromPrepared(artifact.Bytecode.Executable)
+	prepared, err := e.preparedProgramForArtifact(artifact)
+	if err != nil {
+		return nil, err
+	}
+	executor, err := runtime.NewExecutorFromPrepared(prepared)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +71,7 @@ func (e *MiniExecutor) NewRuntimeByArtifact(artifact *ExecutableArtifact) (*Exec
 		artifact: artifact,
 		executor: executor,
 		owner:    e,
+		prepared: prepared,
 	}, nil
 }
 

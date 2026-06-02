@@ -295,7 +295,7 @@ func (e *MiniExecutor) prepareModuleFromSource(path string) (*runtime.PreparedPr
 			deps[depPath] = dep
 		}
 	}
-	embedPreparedModules(prepared, deps, e.embeddedModuleHashes(deps))
+	attachPreparedModules(prepared, deps, e.preparedModuleHashes(deps))
 	return prepared, nil
 }
 

@@ -75,24 +75,24 @@ func validatePreparedProgram(plan *PreparedProgram, depth int, stack map[*Prepar
 	}
 	for path, module := range plan.Modules {
 		if strings.TrimSpace(path) == "" {
-			return errors.New("embedded module has empty path")
+			return errors.New("prepared source module has empty path")
 		}
 		if module == nil {
-			return fmt.Errorf("embedded module %s is nil", path)
+			return fmt.Errorf("prepared source module %s is nil", path)
 		}
 		if err := validatePreparedProgram(module, depth+1, stack); err != nil {
-			return fmt.Errorf("embedded module %s invalid: %w", path, err)
+			return fmt.Errorf("prepared source module %s invalid: %w", path, err)
 		}
 	}
 	for path, hash := range plan.ModuleHashes {
 		if strings.TrimSpace(path) == "" {
-			return errors.New("embedded module hash has empty path")
+			return errors.New("prepared source module hash has empty path")
 		}
 		if strings.TrimSpace(hash) == "" {
-			return fmt.Errorf("embedded module %s has empty hash", path)
+			return fmt.Errorf("prepared source module %s has empty hash", path)
 		}
 		if plan.Modules[path] == nil {
-			return fmt.Errorf("embedded module hash %s targets missing module", path)
+			return fmt.Errorf("prepared source module hash %s targets missing module", path)
 		}
 	}
 	for i, req := range plan.ModuleRequirements {

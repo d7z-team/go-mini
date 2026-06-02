@@ -215,15 +215,16 @@ func main() {}
 	}
 }
 
-func TestExecutableEvalUsesEmbeddedModuleAfterBytecodeLoad(t *testing.T) {
-	compilerExec := engine.MustNewMiniExecutor()
-	if err := compilerExec.UseSurface(surface.Library("mathx", surface.GoFile("mathx.mgo", `
-package mathx
+func TestExecutableEvalUsesRegisteredModuleAfterBytecodeLoad(t *testing.T) {
+	mathxSource := `
+	package mathx
 
-func Double(v int) int {
-	return v * 2
-}
-`))); err != nil {
+	func Double(v int) int {
+		return v * 2
+	}
+	`
+	compilerExec := engine.MustNewMiniExecutor()
+	if err := compilerExec.UseSurface(surface.Library("mathx", surface.GoFile("mathx.mgo", mathxSource))); err != nil {
 		t.Fatal(err)
 	}
 	payload, err := compilerExec.CompileGoCodeToBytecodeJSON(`
@@ -242,6 +243,9 @@ func main() {}
 	}
 
 	loader := engine.MustNewMiniExecutor()
+	if err := loader.UseSurface(surface.Library("mathx", surface.GoFile("mathx.mgo", mathxSource))); err != nil {
+		t.Fatal(err)
+	}
 	prog, err := loader.NewRuntimeByBytecodeJSON(payload)
 	if err != nil {
 		t.Fatal(err)

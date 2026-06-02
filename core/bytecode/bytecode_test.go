@@ -2,6 +2,7 @@ package bytecode
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -395,7 +396,7 @@ func TestDisassembleFullyExpandsPreparedSelectBlocks(t *testing.T) {
 	assertContainsAll(t, asm, expected)
 }
 
-func TestDisassembleIncludesEmbeddedModuleTasks(t *testing.T) {
+func TestBytecodeRejectsEmbeddedSourceModules(t *testing.T) {
 	prog := NewProgram()
 	prog.Executable = &runtime.PreparedProgram{
 		Package: "main",
@@ -409,56 +410,37 @@ func TestDisassembleIncludesEmbeddedModuleTasks(t *testing.T) {
 		ModuleHashes: map[string]string{"lib": "hash-lib"},
 		Modules: map[string]*runtime.PreparedProgram{
 			"lib": {
-				Package: "lib",
-				Globals: map[string]*runtime.PreparedGlobal{
-					"Value": {
-						Name:    "Value",
-						Kind:    runtime.MustParseRuntimeType("Int64"),
-						HasInit: true,
-					},
-				},
-				GlobalInitGroups: []*runtime.PreparedGlobalInit{
-					{
-						Names: []string{"Value"},
-						InitPlan: []runtime.Task{
-							{Op: runtime.OpDeclareInitVars, Data: &runtime.VarDeclData{
-								Mode:       runtime.VarDeclInitPerBinding,
-								ValueCount: 1,
-								Bindings: []runtime.DeclareVarData{
-									{Name: "Value", Kind: runtime.MustParseRuntimeType("Int64")},
-								},
-							}},
-							{Op: runtime.OpPush, Data: runtime.NewInt(7)},
-						},
-					},
-				},
-				Functions: map[string]*runtime.PreparedFunction{
-					"Run": {
-						Name:        "Run",
-						FunctionSig: runtime.MustParseRuntimeFuncSig("function() Int64"),
-						BodyTasks: []runtime.Task{
-							{Op: runtime.OpReturn, Data: 1},
-							{Op: runtime.OpLoadVar, Data: &runtime.LoadVarData{Name: "Value", Sym: runtime.SymbolRef{Name: "Value", Kind: runtime.SymbolGlobal}}},
-						},
-					},
-				},
+				Package:   "lib",
+				Globals:   map[string]*runtime.PreparedGlobal{},
+				Functions: map[string]*runtime.PreparedFunction{},
 			},
 		},
 	}
 
-	asm := prog.Disassemble()
-	expected := []string{
-		"; modules    1",
-		"section .modules",
-		"module.lib: ; path lib hash=hash-lib package=lib",
-		"module.lib.global.Value: ; names=Value",
-		"PUSH               7",
-		"DECLARE_INIT_VARS  per_binding bindings=1 values=1 names=Value",
-		"module.lib.fn.Run: ; signature function() Int64",
-		"LOAD_VAR           global[0]=Value",
-		"RETURN             1",
+	if err := prog.Validate(); err == nil || !strings.Contains(err.Error(), "must not embed source modules") {
+		t.Fatalf("expected embedded module validation error, got %v", err)
 	}
-	assertContainsInOrder(t, asm, expected)
+	if _, err := json.Marshal(prog); err == nil || !strings.Contains(err.Error(), "must not embed source modules") {
+		t.Fatalf("expected embedded module marshal error, got %v", err)
+	}
+
+	payload := []byte(`{"format":"go-mini-bytecode","version":` + strconv.Itoa(CurrentVersion) + `,"opcode_set":"runtime.opcode.v5","globals":[],"entry":[],"functions":[],"executable":{"modules":{"lib":{}},"global_init_order":[],"globals":{},"functions":{},"main_tasks":[]}}`)
+	if _, err := UnmarshalJSON(payload); err == nil || !strings.Contains(err.Error(), "must not embed source modules") {
+		t.Fatalf("expected embedded module unmarshal error, got %v", err)
+	}
+	var decoded Program
+	if err := json.Unmarshal(payload, &decoded); err == nil || !strings.Contains(err.Error(), "must not embed source modules") {
+		t.Fatalf("expected direct embedded module unmarshal error, got %v", err)
+	}
+
+	hashPayload := []byte(`{"format":"go-mini-bytecode","version":` + strconv.Itoa(CurrentVersion) + `,"opcode_set":"runtime.opcode.v5","globals":[],"entry":[],"functions":[],"executable":{"module_hashes":{"lib":"hash-lib"},"global_init_order":[],"globals":{},"functions":{},"main_tasks":[]}}`)
+	if _, err := UnmarshalJSON(hashPayload); err == nil || !strings.Contains(err.Error(), "must not embed source module hashes") {
+		t.Fatalf("expected embedded module hash unmarshal error, got %v", err)
+	}
+	decoded = Program{}
+	if err := json.Unmarshal(hashPayload, &decoded); err == nil || !strings.Contains(err.Error(), "must not embed source module hashes") {
+		t.Fatalf("expected direct embedded module hash unmarshal error, got %v", err)
+	}
 }
 
 func TestDisassembleDoesNotDuplicateGroupedZeroInitGlobalsInBSS(t *testing.T) {
