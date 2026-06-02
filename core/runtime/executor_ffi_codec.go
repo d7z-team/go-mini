@@ -404,7 +404,19 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 	case TypeChannel:
 		return errors.New("FFI Any cannot carry channel")
 	case TypeArray:
+		if isByteArrayType(v.RuntimeType()) {
+			raw, err := e.byteSliceFromArray(v)
+			if err != nil {
+				return err
+			}
+			buf.WriteAny(raw)
+			return nil
+		}
 		arr := arrayRef(v)
+		if arr == nil {
+			buf.WriteAny([]interface{}(nil))
+			return nil
+		}
 		items := arr.Snapshot()
 		_ = buf.WriteByte(ffigo.TypeTagArray)
 		buf.WriteUvarint(uint64(len(items)))
@@ -415,6 +427,10 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 		}
 	case TypeMap:
 		vmMap := mapRef(v)
+		if vmMap == nil {
+			buf.WriteAny(map[string]interface{}(nil))
+			return nil
+		}
 		_ = buf.WriteByte(ffigo.TypeTagMap)
 		entries := vmMap.Entries()
 		buf.WriteUvarint(uint64(len(entries)))
@@ -433,27 +449,32 @@ func (e *Executor) serializeVarToAny(buf *ffigo.Buffer, v *Var) error {
 			}
 		}
 	case TypeStruct:
-		st := v.Ref.(*VMStruct)
-		_ = buf.WriteByte(ffigo.TypeTagStruct)
-		typeName := ""
-		if st.Spec != nil {
-			if st.Spec.TypeID != "" {
-				typeName = st.Spec.TypeID
-			} else if !st.Spec.TypeInfo.IsEmpty() {
-				typeName = st.Spec.TypeInfo.Raw.String()
-			}
-		}
-		buf.WriteString(typeName)
-		if st.Spec == nil {
+		st, _ := v.Ref.(*VMStruct)
+		_ = buf.WriteByte(ffigo.TypeTagMap)
+		if st == nil {
 			buf.WriteUvarint(0)
 			return nil
 		}
-		buf.WriteUvarint(uint64(len(st.Spec.Fields)))
-		for i, field := range st.Spec.Fields {
-			buf.WriteString(field.Name)
+		if st.Spec != nil {
+			buf.WriteUvarint(uint64(len(st.Spec.Fields)))
+			for i, field := range st.Spec.Fields {
+				buf.WriteString(field.Name)
+				var fieldVal *Var
+				if i < len(st.Fields) && st.Fields[i] != nil {
+					fieldVal = st.Fields[i].Value
+				}
+				if err := e.serializeVarToAny(buf, fieldVal); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		buf.WriteUvarint(uint64(len(st.ByName)))
+		for name, idx := range st.ByName {
+			buf.WriteString(name)
 			var fieldVal *Var
-			if i < len(st.Fields) && st.Fields[i] != nil {
-				fieldVal = st.Fields[i].Value
+			if idx >= 0 && idx < len(st.Fields) && st.Fields[idx] != nil {
+				fieldVal = st.Fields[idx].Value
 			}
 			if err := e.serializeVarToAny(buf, fieldVal); err != nil {
 				return err
@@ -741,8 +762,6 @@ func rejectHostIdentityInAny(v interface{}) error {
 	switch val := v.(type) {
 	case nil:
 		return nil
-	case uint32:
-		return errors.New("FFI Any cannot carry host reference handle")
 	case ffigo.InterfaceData:
 		return errors.New("FFI Any cannot carry interface")
 	case ffigo.ErrorData:
@@ -750,12 +769,6 @@ func rejectHostIdentityInAny(v interface{}) error {
 			return errors.New("FFI Any cannot carry host error handle")
 		}
 		return nil
-	case *ffigo.VMStruct:
-		for _, field := range val.Fields {
-			if err := rejectHostIdentityInAny(field.Value); err != nil {
-				return err
-			}
-		}
 	case map[string]interface{}:
 		for _, item := range val {
 			if err := rejectHostIdentityInAny(item); err != nil {

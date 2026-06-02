@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
-	"gopkg.d7z.net/go-mini/core/typespec"
 )
 
 const maxHostInt64 = uint64(1<<63 - 1)
@@ -42,6 +41,8 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		return NewInt(int64(v)), nil
 	case uint16:
 		return NewInt(int64(v)), nil
+	case uint32:
+		return NewInt(int64(v)), nil
 	case uint64:
 		return hostUintToVar(v, val)
 	case float64:
@@ -59,14 +60,6 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		return NewByteArray(buf), nil
 	case bool:
 		return NewBool(v), nil
-	case uint32:
-		var h *VMHandle
-		if v != 0 {
-			h = NewVMHandle(v, bridge)
-		}
-		res := &Var{VType: TypeHostRef, Handle: v, Bridge: bridge, Ref: h}
-		res.SetRawType(HostRefType(SpecAny).String())
-		return res, nil
 	case ffigo.InterfaceData:
 		methods := make([]RuntimeInterfaceMethod, 0, len(v.Methods))
 		for k, sig := range v.Methods {
@@ -85,7 +78,6 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		ifaceSpec, _ := ParseRuntimeInterfaceSpec(InterfaceType(methods))
 
 		target := &Var{VType: TypeHostRef, Handle: v.Handle, Bridge: bridge}
-		target.SetRawType(HostRefType(SpecAny).String())
 		if v.Handle != 0 {
 			target.Ref = NewVMHandle(v.Handle, bridge)
 		}
@@ -123,16 +115,6 @@ func (e *Executor) hostValueToVar(session *StackContext, val interface{}, bridge
 		res := &Var{VType: TypeArray, Ref: &VMArray{Data: resArr}}
 		res.SetRawType(ArrayType(SpecAny).String())
 		return res, nil
-	case *ffigo.VMStruct:
-		if e.metadata != nil && v.TypeName != "" {
-			if schema, ok := e.resolveStructSchema(TypeSpec(v.TypeName)); ok && schema != nil {
-				if schema.Ownership != StructOwnershipVMValue {
-					return nil, fmt.Errorf("FFI struct %s is not VMValue", v.TypeName)
-				}
-				return e.decodeKnownVMStruct(session, v, bridge, schema)
-			}
-		}
-		return e.decodeAnonymousVMStruct(session, v, bridge)
 	default:
 		return nil, fmt.Errorf("unsupported host value %T", v)
 	}
@@ -143,65 +125,6 @@ func hostUintToVar(raw uint64, val interface{}) (*Var, error) {
 		return nil, fmt.Errorf("host value %T overflows Int64: %d", val, raw)
 	}
 	return NewInt(int64(raw)), nil
-}
-
-func (e *Executor) decodeKnownVMStruct(session *StackContext, raw *ffigo.VMStruct, bridge ffigo.FFIBridge, schema *RuntimeStructSpec) (*Var, error) {
-	fields := make([]*Slot, len(schema.Fields))
-	byName := make(map[string]int, len(schema.Fields))
-	for i, field := range schema.Fields {
-		var fieldVal *Var
-		for _, rawField := range raw.Fields {
-			if rawField.Name != field.Name {
-				continue
-			}
-			decoded, err := e.ToVar(session, rawField.Value, bridge)
-			if err != nil {
-				return nil, fmt.Errorf("struct %s field %s: %w", schema.TypeID, field.Name, err)
-			}
-			fieldVal = decoded
-			break
-		}
-		if fieldVal != nil {
-			prepared, err := e.prepareValueForType(session, fieldVal, field.TypeInfo)
-			if err != nil {
-				return nil, fmt.Errorf("struct %s field %s: %w", schema.TypeID, field.Name, err)
-			}
-			fieldVal = prepared
-		}
-		fields[i] = NewSlot(field.TypeInfo, fieldVal)
-		byName[field.Name] = i
-	}
-	res := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: schema, Fields: fields, ByName: byName}}
-	res.SetRuntimeType(schema.TypeInfo)
-	return res, nil
-}
-
-func (e *Executor) decodeAnonymousVMStruct(session *StackContext, raw *ffigo.VMStruct, bridge ffigo.FFIBridge) (*Var, error) {
-	fields := make([]*Slot, len(raw.Fields))
-	byName := make(map[string]int, len(raw.Fields))
-	specFields := make([]RuntimeStructField, len(raw.Fields))
-	for i, field := range raw.Fields {
-		val, err := e.ToVar(session, field.Value, bridge)
-		if err != nil {
-			return nil, fmt.Errorf("struct field %s: %w", field.Name, err)
-		}
-		fieldType := MustParseRuntimeType("Any")
-		if val != nil && !val.RuntimeType().IsEmpty() {
-			fieldType = val.RuntimeType()
-		}
-		fields[i] = NewSlot(fieldType, val)
-		byName[field.Name] = i
-		specFields[i] = RuntimeStructField{Name: field.Name, Type: fieldType.Raw, TypeInfo: fieldType}
-	}
-	members := make([]typespec.Member, 0, len(specFields))
-	for _, field := range specFields {
-		members = append(members, typespec.Member{Name: field.Name, Type: field.TypeInfo.Raw})
-	}
-	specType := typespec.Struct(members)
-	spec := &RuntimeStructSpec{Spec: specType, TypeInfo: MustParseRuntimeType(specType), Fields: specFields}
-	res := &Var{VType: TypeStruct, Ref: &VMStruct{Spec: spec, Fields: fields, ByName: byName}}
-	res.SetRuntimeType(spec.TypeInfo)
-	return res, nil
 }
 
 func (e *Executor) wrapAnyVar(inner *Var) *Var {

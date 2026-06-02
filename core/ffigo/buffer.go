@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strings"
 	"sync"
 )
 
@@ -23,8 +22,9 @@ const (
 	TypeTagArray     byte = 8
 	TypeTagInterface byte = 9
 	TypeTagError     byte = 10
-	TypeTagStruct    byte = 11
 )
+
+const maxAnyInt64 = uint64(1<<63 - 1)
 
 // Buffer - Raw & Tagged Serializer
 
@@ -102,6 +102,19 @@ func (b *Buffer) WriteRawInterface(handle uint32, methods map[string]string) {
 	}
 }
 
+func (b *Buffer) writeAnyInt64(v int64) {
+	_ = b.WriteByte(TypeTagInt64)
+	b.WriteVarint(v)
+}
+
+func (b *Buffer) writeAnyUint64(v uint64) {
+	if v > maxAnyInt64 {
+		_ = b.WriteByte(TypeTagUnknown)
+		return
+	}
+	b.writeAnyInt64(int64(v))
+}
+
 func (b *Buffer) WriteAny(v interface{}) {
 	if v == nil {
 		_ = b.WriteByte(TypeTagUnknown)
@@ -109,14 +122,31 @@ func (b *Buffer) WriteAny(v interface{}) {
 	}
 	switch val := v.(type) {
 	case int64:
-		_ = b.WriteByte(TypeTagInt64)
-		b.WriteVarint(val)
+		b.writeAnyInt64(val)
 	case int:
-		_ = b.WriteByte(TypeTagInt64)
-		b.WriteVarint(int64(val))
+		b.writeAnyInt64(int64(val))
+	case int8:
+		b.writeAnyInt64(int64(val))
+	case int16:
+		b.writeAnyInt64(int64(val))
+	case int32:
+		b.writeAnyInt64(int64(val))
+	case uint:
+		b.writeAnyUint64(uint64(val))
+	case uint8:
+		b.writeAnyInt64(int64(val))
+	case uint16:
+		b.writeAnyInt64(int64(val))
+	case uint32:
+		b.writeAnyInt64(int64(val))
+	case uint64:
+		b.writeAnyUint64(val)
 	case float64:
 		_ = b.WriteByte(TypeTagFloat64)
 		b.WriteFloat64(val)
+	case float32:
+		_ = b.WriteByte(TypeTagFloat64)
+		b.WriteFloat64(float64(val))
 	case string:
 		_ = b.WriteByte(TypeTagString)
 		b.WriteString(val)
@@ -403,58 +433,12 @@ func (r *Reader) ReadAny() (interface{}, error) {
 		return r.ReadRawInterface()
 	case TypeTagError:
 		return r.ReadRawError()
-	case TypeTagStruct:
-		typeName, err := r.ReadString()
-		if err != nil {
-			return nil, err
-		}
-		count, err := r.ReadCount(MaxWireCollectionItems, "struct field")
-		if err != nil {
-			return nil, err
-		}
-		fields := make([]StructField, count)
-		for i := 0; i < count; i++ {
-			fields[i].Name, err = r.ReadString()
-			if err != nil {
-				return nil, err
-			}
-			fields[i].Value, err = r.ReadAny()
-			if err != nil {
-				return nil, err
-			}
-		}
-		return &VMStruct{TypeName: typeName, Fields: fields}, nil
 	default:
 		return nil, nil
 	}
 }
 
 // Core Data Structures
-
-type StructField struct {
-	Name  string
-	Value interface{}
-}
-
-type VMStruct struct {
-	TypeName string
-	Fields   []StructField
-}
-
-func (s *VMStruct) String() string {
-	var buf strings.Builder
-	buf.WriteString("{")
-	for i, f := range s.Fields {
-		if i > 0 {
-			buf.WriteString(" ")
-		}
-		buf.WriteString(f.Name)
-		buf.WriteString(":")
-		_, _ = fmt.Fprintf(&buf, "%v", f.Value)
-	}
-	buf.WriteString("}")
-	return buf.String()
-}
 
 type InterfaceData struct {
 	Handle  uint32

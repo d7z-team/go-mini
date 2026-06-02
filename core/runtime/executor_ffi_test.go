@@ -30,11 +30,25 @@ func requireSchemaConflict(t *testing.T, err error, kind string) {
 	}
 }
 
-func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
+func readSerializedAny(t *testing.T, exec *Executor, v *Var) interface{} {
+	t.Helper()
+	buf := ffigo.GetBuffer()
+	defer ffigo.ReleaseBuffer(buf)
+	if err := exec.serializeVarToAny(buf, v); err != nil {
+		t.Fatalf("serializeVarToAny failed: %v", err)
+	}
+	decoded, err := ffigo.NewReader(buf.Bytes()).ReadAny()
+	if err != nil {
+		t.Fatalf("ReadAny failed: %v", err)
+	}
+	return decoded
+}
+
+func TestSerializeVarToAnyProjectsStructAsMap(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
 	}
-	schema := MustParseRuntimeStructSpec("demo.Point", StructOwnershipVMValue, "struct { X Int64; Y Int64; }")
+	schema := MustParseRuntimeStructSpec("demo.Point", StructOwnershipVMValue, "struct { X Int64; Data Array<Byte>; }")
 	exec.metadata.registerStructSchema(schema.Name, schema)
 
 	v := &Var{
@@ -44,52 +58,124 @@ func TestSerializeVarToAnyUsesStructSchemaOrder(t *testing.T) {
 			Spec: schema,
 			Fields: []*Slot{
 				NewSlot(MustParseRuntimeType("Int64"), NewInt(10)),
-				NewSlot(MustParseRuntimeType("Int64"), NewInt(20)),
+				NewSlot(MustParseRuntimeType(ArrayType(SpecByte)), NewByteArray([]byte("ok"))),
 			},
-			ByName: map[string]int{"X": 0, "Y": 1},
+			ByName: map[string]int{"X": 0, "Data": 1},
 		},
 	}
 
-	buf := ffigo.GetBuffer()
-	defer ffigo.ReleaseBuffer(buf)
-	if err := exec.serializeVarToAny(buf, v); err != nil {
-		t.Fatalf("serializeVarToAny failed: %v", err)
-	}
-
-	decoded, err := ffigo.NewReader(buf.Bytes()).ReadAny()
-	if err != nil {
-		t.Fatalf("ReadAny failed: %v", err)
-	}
-	vmStruct, ok := decoded.(*ffigo.VMStruct)
+	decoded := readSerializedAny(t, exec, v)
+	fields, ok := decoded.(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected VMStruct, got %T", decoded)
+		t.Fatalf("expected map projection, got %T", decoded)
 	}
-	if len(vmStruct.Fields) != 2 {
-		t.Fatalf("expected 2 fields, got %d", len(vmStruct.Fields))
+	if got, ok := fields["X"].(int64); !ok || got != 10 {
+		t.Fatalf("unexpected X field: %T %#v", fields["X"], fields["X"])
 	}
-	if vmStruct.Fields[0].Name != "X" || vmStruct.Fields[1].Name != "Y" {
-		t.Fatalf("unexpected field order: %#v", vmStruct.Fields)
+	if got, ok := fields["Data"].([]byte); !ok || !bytes.Equal(got, []byte("ok")) {
+		t.Fatalf("unexpected Data field: %T %#v", fields["Data"], fields["Data"])
 	}
 }
 
-func TestToVarDecodesStructAnyValues(t *testing.T) {
+func TestSerializeVarToAnyProjectsCompositePureValues(t *testing.T) {
 	exec := &Executor{}
 
-	structVal, err := exec.ToVar(nil, &ffigo.VMStruct{Fields: []ffigo.StructField{
-		{Name: "Msg", Value: "ok"},
-		{Name: "Count", Value: int64(2)},
-	}}, nil)
+	byteArray := NewByteArray([]byte{1, 2, 3})
+	decoded := readSerializedAny(t, exec, byteArray)
+	if got, ok := decoded.([]byte); !ok || !bytes.Equal(got, []byte{1, 2, 3}) {
+		t.Fatalf("expected []byte projection, got %T %#v", decoded, decoded)
+	}
+
+	array := &Var{VType: TypeArray, Ref: &VMArray{Data: []*Var{
+		exec.wrapAnyVar(NewByteArray([]byte("ab"))),
+		exec.wrapAnyVar(NewString("tail")),
+	}}}
+	array.SetRawType(ArrayType(SpecAny).String())
+	decodedArrayRaw := readSerializedAny(t, exec, array)
+	decodedArray, ok := decodedArrayRaw.([]interface{})
+	if !ok || len(decodedArray) != 2 {
+		t.Fatalf("expected []any projection, got %T %#v", decodedArrayRaw, decodedArrayRaw)
+	}
+	if got, ok := decodedArray[0].([]byte); !ok || !bytes.Equal(got, []byte("ab")) {
+		t.Fatalf("unexpected array bytes item: %T %#v", decodedArray[0], decodedArray[0])
+	}
+	if got, ok := decodedArray[1].(string); !ok || got != "tail" {
+		t.Fatalf("unexpected array string item: %T %#v", decodedArray[1], decodedArray[1])
+	}
+
+	vmMap := &VMMap{Data: make(map[string]*Var), KeyVars: make(map[string]*Var)}
+	vmMap.StoreWithKey("payload", NewString("payload"), exec.wrapAnyVar(NewByteArray([]byte("xy"))))
+	vmMap.StoreWithKey("count", NewString("count"), exec.wrapAnyVar(NewInt(2)))
+	mapVar := &Var{VType: TypeMap, Ref: vmMap}
+	mapVar.SetRawType(MapType(SpecString, SpecAny).String())
+
+	decodedMapRaw := readSerializedAny(t, exec, mapVar)
+	decodedMap, ok := decodedMapRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map projection, got %T", decodedMapRaw)
+	}
+	if got, ok := decodedMap["payload"].([]byte); !ok || !bytes.Equal(got, []byte("xy")) {
+		t.Fatalf("unexpected map bytes value: %T %#v", decodedMap["payload"], decodedMap["payload"])
+	}
+	if got, ok := decodedMap["count"].(int64); !ok || got != 2 {
+		t.Fatalf("unexpected map count value: %T %#v", decodedMap["count"], decodedMap["count"])
+	}
+}
+
+func TestToVarDecodesHostPureAnyValues(t *testing.T) {
+	exec := &Executor{}
+
+	value, err := exec.ToVar(nil, map[string]interface{}{
+		"Msg":   "ok",
+		"Count": uint32(2),
+		"Data":  []byte("go"),
+	}, nil)
 	if err != nil {
 		t.Fatalf("ToVar failed: %v", err)
 	}
-	if structVal == nil || structVal.VType != TypeStruct {
-		t.Fatalf("expected VM struct, got %#v", structVal)
+	if value == nil || value.VType != TypeMap {
+		t.Fatalf("expected VM map, got %#v", value)
 	}
-	data := structVal.Ref.(*VMStruct)
-	msg, _ := data.Field("Msg")
-	count, _ := data.Field("Count")
-	if msg.Value.Str != "ok" || count.Value.I64 != 2 {
-		t.Fatalf("unexpected decoded struct data: %#v", data)
+	data := value.Ref.(*VMMap)
+	msg, _ := data.Load("Msg")
+	count, _ := data.Load("Count")
+	rawBytes, _ := data.Load("Data")
+
+	if got := exec.unwrapValue(msg); got == nil || got.VType != TypeString || got.Str != "ok" {
+		t.Fatalf("unexpected Msg value: %#v", msg)
+	}
+	if got := exec.unwrapValue(count); got == nil || got.VType != TypeInt || got.I64 != 2 {
+		t.Fatalf("unexpected Count value: %#v", count)
+	}
+	if got := exec.unwrapValue(rawBytes); got == nil || got.VType != TypeArray || !isByteArrayType(got.RuntimeType()) {
+		t.Fatalf("unexpected Data value: %#v", rawBytes)
+	}
+}
+
+func TestToVarDecodesInterfaceDataWithoutHostRefAnyRawType(t *testing.T) {
+	exec := &Executor{}
+
+	value, err := exec.ToVar(nil, ffigo.InterfaceData{
+		Handle: 9,
+		Methods: map[string]string{
+			"Ping": "function() Void",
+		},
+	}, testFFIBridge{})
+	if err != nil {
+		t.Fatalf("ToVar failed: %v", err)
+	}
+	if value == nil || value.VType != TypeInterface {
+		t.Fatalf("expected VM interface, got %#v", value)
+	}
+	iface := value.Ref.(*VMInterface)
+	if iface.Spec == nil || len(iface.Spec.Methods) != 1 || iface.Spec.Methods[0].Name != "Ping" {
+		t.Fatalf("unexpected interface spec: %#v", iface.Spec)
+	}
+	if iface.Target == nil || iface.Target.VType != TypeHostRef || iface.Target.Handle != 9 {
+		t.Fatalf("unexpected interface target: %#v", iface.Target)
+	}
+	if got := iface.Target.RawType(); got != "" {
+		t.Fatalf("interface target must not expose synthetic raw type, got %q", got)
 	}
 }
 
@@ -137,14 +223,18 @@ func TestSerializeVarToAnyRejectsSlotPointer(t *testing.T) {
 	}
 }
 
-func TestAnyWireDoesNotEncodeHostReferenceHandle(t *testing.T) {
+func TestAnyWireEncodesUint32AsNumber(t *testing.T) {
 	buf := ffigo.GetBuffer()
 	buf.WriteAny(uint32(42))
 	reader := ffigo.NewReader(buf.Bytes())
 	ffigo.ReleaseBuffer(buf)
 
-	if got, err := reader.ReadAny(); err != nil || got != nil {
-		t.Fatalf("expected uint32 to be omitted from Any wire, got %T %#v", got, got)
+	got, err := reader.ReadAny()
+	if err != nil {
+		t.Fatalf("ReadAny failed: %v", err)
+	}
+	if got != int64(42) {
+		t.Fatalf("expected uint32 to project as Int64, got %T %#v", got, got)
 	}
 }
 

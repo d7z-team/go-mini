@@ -24,7 +24,7 @@
 - 公开扩展入口统一为 `executor.UseSurface(...)`。
 - FFI route / struct / interface schema 冲突判断由 runtime 统一实现，engine 与 runtime 注册路径复用同一套兼容性规则；FFI route、package value 和 surface 注册在所有冲突检查通过后才写入 executor 状态，bind 阶段产生的 pinned handle 失败时会回滚。
 - 公开 FFI schema 使用具体 `HostRef<T>`、typed interface schema、`Error` 和 channel endpoint 表达宿主身份、错误与 channel；`Any` 面向纯值数据。
-- VM `Any` slot 使用显式 wrapper 保持 nil 与动态值身份；VM pointer、HostRef、channel、module、closure、interface 和 host error/interface identity 可以留在 VM `Any` 这类 runtime-only 路径内；FFI Any wire 只承载纯值，继续拒绝 VM pointer、HostRef、channel、module、closure 和 host error/interface handle。
+- VM `Any` slot 使用显式 wrapper 保持 nil 与动态值身份；VM pointer、HostRef、channel、module、closure、interface 和 host error/interface identity 可以留在 VM `Any` 这类 runtime-only 路径内；FFI Any wire 只承载纯 Go 数据投影，基础整数统一投影为 `Int64`，`Array<Byte>` 投影为 `[]byte`，VM struct value 投影为 `map[string]any` 字段快照，继续拒绝 VM pointer、HostRef、channel、module、closure 和 host error/interface handle。
 - MethodID 0 / `Invoke` 用于显式 schema route 与 typed interface method 调用。
 - Runtime 以统一 module registry 表达源码库和 FFI package；FFI type-only schema 也注册为对应 FFI module 的 type member。module path 是唯一身份，source/FFI 不允许同路径共存，import、reflect 和 requirement 校验只查 registry。
 - Compiler 会把已导入源码库和 FFI package 写入 bytecode `ModuleRequirements`；bytecode 装载会在执行前校验源码 module hash，以及 FFI 函数、常量、包值、类型 schema、方法 route 与 route MethodID。

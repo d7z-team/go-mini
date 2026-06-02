@@ -33,7 +33,7 @@
 - `fmt` 公开包必须作为 VM 源码库实现格式化；`Print` / `Println` / `Printf` / `Sprint` / `Sprintf` / `Errorf` 不得通过 `...Any` FFI、Go `fmt` 或 Go 原生反射直接格式化 VM 值。确实需要宿主输出或 error wrapping 时，只能调用独立 `fmt/internal` helper，并且 helper 只接收已格式化字符串和显式 error causes。
 - struct tag 只能由 Go frontend 捕获并经 AST / lowering 写入 runtime struct schema；runtime、FFI bridge、`core/ffigo` 和 `reflect` 实现不得重新解析 Go 源码、Go AST 或使用 Go 原生反射补 tag。
 - 公开 FFI schema 禁止 `Ptr<T>` 和 `HostRef<Any>`；host identity 只能通过具体 `HostRef<T>` 或明确的 typed interface schema 暴露。
-- FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer、channel、module 或 closure。
+- FFI `Any` 只能承载纯值数据，不得承载 host handle、host ref、host error/interface handle、VM pointer、channel、module 或 closure；VM 到 Go 的 `Any` 投影只允许 nil、bool、string、int64、float64、`[]byte`、`[]any`、`map[string]any` 和无 host handle 的 error message，VM struct value 必须投影为 `map[string]any` 字段快照，不得恢复 `ffigo.VMStruct` / `TypeTagStruct` 专用 wire，`uint32` 等 Go 基础整数是数值而不是 HostRef。
 - VM pointer 只能是 runtime-only slot 引用，不得使用 host handle ID 表示；VM pointer 可以进入 VM `Any`、VM array/map 和 channel 等 runtime-only 路径，但不得进入 FFI wire、JSON 纯值、持久化 wire 或 host identity 路径；`Ptr<T>` 与 `T` 之间不得恢复隐式互转。
 - `encoding/json` 这类标准库源码模块不得调用 Go 标准库 JSON 或 Go 原生反射；`Unmarshal(data, out any)` 必须作为普通 VM 源码函数通过 VM `Any` 承载 pointer target 并使用 VM `reflect.Assign` 写回，`Marshal` / `Decode` 的 JSON 纯值边界必须拒绝 VM pointer、HostRef、channel、module、closure 和 host identity。
 - FFI channel 只允许通过明确 schema 暴露 `Chan<T>` / `RecvChan<T>` / `SendChan<T>` endpoint；wire 只能传 endpoint ID 和 payload，decode 必须校验 endpoint 方向，bridge 不得持有 VM pointer 或执行 VM task。
