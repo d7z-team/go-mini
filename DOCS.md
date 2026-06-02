@@ -82,11 +82,13 @@ if err := run.Wait(); err != nil {
 
 宿主 `context.Context` 仍然是 run 的硬取消边界；pause 冻结的是 VM 等待型时间语义，而不是宿主请求超时、`context` deadline 或 `time.Now` 这类真实时间观测。
 
-如果你启用了 debugger，会话对象只负责断点、按 run ID 绑定的单步策略和可取消事件拉取；恢复执行和单步都通过当前 run handle 完成。断点/单步事件只会在 `RunController` 已进入 `Paused` 后投递，因此收到事件时可以安全读取暂停状态并决定 `Continue()` 或 `StepInto()`。
+如果你启用了 debugger，会话对象只负责精确源码断点、按当前暂停 execution context 绑定的单步策略和可取消事件拉取；恢复执行和单步都通过当前 run handle 完成。断点必须指定 `ModulePath + File + Line`，不支持 line-only 或 file-only 匹配。断点/单步事件只会在 `RunController` 已进入 `Paused` 后投递，因此收到事件时可以安全读取暂停状态并决定 `Continue()`、`StepOver()` 或 `StepInto()`；普通“下一步”应使用 `StepOver()`，只有显式进入 VM 源码库或被调函数时才使用 `StepInto()`。
 
 ```go
 dbg := debugger.NewSession()
-dbg.AddBreakpoint(10)
+if err := dbg.AddBreakpoint(debugger.Breakpoint{ModulePath: "main", File: "snippet", Line: 10}); err != nil {
+    panic(err)
+}
 ctx := debugger.WithDebugger(context.Background(), dbg)
 
 run, err := program.Start(ctx)
@@ -100,7 +102,7 @@ if err != nil {
 }
 _ = event
 
-if err := run.StepInto(); err != nil {
+if err := run.StepOver(); err != nil {
     panic(err)
 }
 if err := run.Continue(); err != nil {

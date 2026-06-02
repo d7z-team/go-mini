@@ -3,6 +3,8 @@ package debugger
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 
 	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
@@ -12,13 +14,31 @@ type Event = miniruntime.DebugEvent
 
 type Position = miniruntime.DebugPosition
 
+type Breakpoint = miniruntime.DebugBreakpoint
+
 var ErrSessionClosed = errors.New("debugger session closed")
+
+type breakpointKey struct {
+	modulePath string
+	file       string
+	line       int
+}
+
+type stepState struct {
+	runID              uint64
+	executionContextID uint32
+	mode               miniruntime.DebugStepMode
+	modulePath         string
+	file               string
+	frameDepth         int
+	active             bool
+}
 
 type Session struct {
 	mu          sync.RWMutex
-	breakpoints map[int]struct{}
-	stepRunID   uint64
-	stepActive  bool
+	breakpoints map[breakpointKey]struct{}
+	step        stepState
+	pausePoints map[uint64]miniruntime.DebugPoint
 
 	eventMu     sync.Mutex
 	eventNotify chan struct{}
@@ -28,50 +48,100 @@ type Session struct {
 
 func NewSession() *Session {
 	return &Session{
-		breakpoints: make(map[int]struct{}),
+		breakpoints: make(map[breakpointKey]struct{}),
+		pausePoints: make(map[uint64]miniruntime.DebugPoint),
 		eventNotify: make(chan struct{}),
 	}
 }
 
-func (s *Session) AddBreakpoint(line int) {
+func (s *Session) AddBreakpoint(bp Breakpoint) error {
+	key, err := keyFromBreakpoint(bp)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.breakpoints[line] = struct{}{}
+	s.breakpoints[key] = struct{}{}
+	return nil
 }
 
-func (s *Session) RemoveBreakpoint(line int) {
+func (s *Session) RemoveBreakpoint(bp Breakpoint) error {
+	key, err := keyFromBreakpoint(bp)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.breakpoints, line)
+	delete(s.breakpoints, key)
+	return nil
 }
 
-func (s *Session) HasBreakpoint(line int) bool {
+func (s *Session) HasBreakpoint(bp Breakpoint) (bool, error) {
+	key, err := keyFromBreakpoint(bp)
+	if err != nil {
+		return false, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.breakpoints[line]
-	return ok
+	_, ok := s.breakpoints[key]
+	return ok, nil
 }
 
 func (s *Session) HasStep(runID uint64) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.stepActive && s.stepRunID == runID
+	return s.step.active && s.step.runID == runID
 }
 
-func (s *Session) RequestStep(runID uint64) {
+func (s *Session) RequestStep(req miniruntime.DebugStepRequest) error {
+	if req.RunID == 0 {
+		return errors.New("debug step requires run id")
+	}
+	if req.Mode == "" {
+		req.Mode = miniruntime.DebugStepInto
+	}
+	if req.Mode != miniruntime.DebugStepInto && req.Mode != miniruntime.DebugStepOver {
+		return errors.New("unsupported debug step mode")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.stepRunID = runID
-	s.stepActive = true
+	point, ok := s.pausePoints[req.RunID]
+	if !ok {
+		return errors.New("debug step requires a paused source location")
+	}
+	s.step = stepState{
+		runID:              req.RunID,
+		executionContextID: point.ExecutionContextID,
+		mode:               req.Mode,
+		modulePath:         point.Loc.ModulePath,
+		file:               point.Loc.F,
+		frameDepth:         point.FrameDepth,
+		active:             true,
+	}
+	return nil
 }
 
 func (s *Session) ClearStep(runID uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.stepActive && s.stepRunID == runID {
-		s.stepActive = false
-		s.stepRunID = 0
+	if s.step.active && s.step.runID == runID {
+		s.step = stepState{}
 	}
+}
+
+func (s *Session) ClearPause(runID uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pausePoints, runID)
+}
+
+func (s *Session) ClearRun(runID uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.step.active && s.step.runID == runID {
+		s.step = stepState{}
+	}
+	delete(s.pausePoints, runID)
 }
 
 func (s *Session) Publish(event *Event) {
@@ -83,6 +153,17 @@ func (s *Session) Publish(event *Event) {
 		s.eventMu.Unlock()
 		return
 	}
+	s.mu.Lock()
+	if event.Loc != nil {
+		s.pausePoints[event.RunID] = miniruntime.DebugPoint{
+			RunID:              event.RunID,
+			ExecutionContextID: event.ExecutionContextID,
+			Loc:                *event.Loc,
+			FrameDepth:         event.FrameDepth,
+		}
+	}
+	s.mu.Unlock()
+
 	s.eventQueue = append(s.eventQueue, event)
 	s.signalEventsLocked()
 	s.eventMu.Unlock()
@@ -136,12 +217,67 @@ func (s *Session) signalEventsLocked() {
 	s.eventNotify = make(chan struct{})
 }
 
-func (s *Session) ShouldTrigger(runID uint64, line int) bool {
+func (s *Session) Checkpoint(point miniruntime.DebugPoint) miniruntime.DebugDecision {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, hitBreakpoint := s.breakpoints[line]
-	stepping := s.stepActive && s.stepRunID == runID
-	return hitBreakpoint || stepping
+	hitBreakpoint := s.hasBreakpointLocked(point)
+	stepMatched := s.step.active && s.step.runID == point.RunID && stepMatchesPoint(s.step, point)
+	stepInterrupted := hitBreakpoint && s.step.active && s.step.runID == point.RunID
+	if !hitBreakpoint && !stepMatched {
+		return miniruntime.DebugDecision{}
+	}
+	decision := miniruntime.DebugDecision{
+		Stop:      true,
+		ClearStep: stepMatched || stepInterrupted,
+	}
+	if hitBreakpoint {
+		decision.Reason = miniruntime.DebugStopBreakpoint
+	} else {
+		decision.Reason = miniruntime.DebugStopStep
+	}
+	return decision
+}
+
+func (s *Session) hasBreakpointLocked(point miniruntime.DebugPoint) bool {
+	key := breakpointKey{
+		modulePath: point.Loc.ModulePath,
+		file:       point.Loc.F,
+		line:       point.Loc.L,
+	}
+	_, ok := s.breakpoints[key]
+	return ok
+}
+
+func keyFromBreakpoint(bp Breakpoint) (breakpointKey, error) {
+	modulePath := strings.TrimSpace(bp.ModulePath)
+	file := strings.TrimSpace(bp.File)
+	if modulePath == "" {
+		return breakpointKey{}, errors.New("debug breakpoint requires module path")
+	}
+	if file == "" {
+		return breakpointKey{}, errors.New("debug breakpoint requires file")
+	}
+	if bp.Line <= 0 {
+		return breakpointKey{}, fmt.Errorf("debug breakpoint requires positive line, got %d", bp.Line)
+	}
+	return breakpointKey{modulePath: modulePath, file: file, line: bp.Line}, nil
+}
+
+func stepMatchesPoint(step stepState, point miniruntime.DebugPoint) bool {
+	if point.ExecutionContextID != step.executionContextID {
+		return false
+	}
+	switch step.mode {
+	case miniruntime.DebugStepOver:
+		if point.FrameDepth < step.frameDepth {
+			return true
+		}
+		return point.FrameDepth == step.frameDepth &&
+			point.Loc.ModulePath == step.modulePath &&
+			point.Loc.F == step.file
+	default:
+		return true
+	}
 }
 
 func WithDebugger(ctx context.Context, s *Session) context.Context {

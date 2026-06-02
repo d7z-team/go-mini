@@ -644,7 +644,7 @@ func (e *Executor) startRun(ctx context.Context, session *StackContext, cleanupS
 				runErr = fmt.Errorf("runtime panic: %v\n%s", r, debug.Stack())
 			}
 			if session.Debugger != nil {
-				session.Debugger.ClearStep(activeController.ID())
+				session.Debugger.ClearRun(activeController.ID())
 			}
 			session.Context = baseCtx
 			session.Controller = baseController
@@ -1114,23 +1114,39 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 				if session.Controller != nil {
 					runID = session.Controller.ID()
 				}
-				if session.Debugger.ShouldTrigger(runID, task.Source.Line) {
-					session.Debugger.ClearStep(runID)
-					var execCtxID uint32
-					if e.scheduler != nil {
-						if execCtx := e.scheduler.Current(); execCtx != nil {
-							execCtxID = execCtx.ID
-						}
+				var execCtxID uint32
+				if e.scheduler != nil {
+					if execCtx := e.scheduler.Current(); execCtx != nil {
+						execCtxID = execCtx.ID
+					}
+				}
+				point := DebugPoint{
+					RunID:              runID,
+					ExecutionContextID: execCtxID,
+					Loc: DebugPosition{
+						ModulePath: task.Source.ModulePath,
+						F:          task.Source.File,
+						L:          task.Source.Line,
+						C:          task.Source.Col,
+					},
+					FrameDepth: session.DebugFrameDepth,
+				}
+				decision := session.Debugger.Checkpoint(point)
+				if decision.Stop {
+					if decision.ClearStep {
+						session.Debugger.ClearStep(runID)
+					}
+					reason := decision.Reason
+					if reason == "" {
+						reason = DebugStopBreakpoint
 					}
 					event := &DebugEvent{
 						RunID:              runID,
 						ExecutionContextID: execCtxID,
-						Loc: &DebugPosition{
-							F: task.Source.File,
-							L: task.Source.Line,
-							C: task.Source.Col,
-						},
-						Variables: session.Stack.DumpVariables(),
+						Loc:                &point.Loc,
+						Reason:             reason,
+						FrameDepth:         point.FrameDepth,
+						Variables:          session.Stack.DumpVariables(),
 					}
 					if session.Controller != nil {
 						if !session.Controller.RequestPause(PauseReason{Kind: "debugger", Meta: task.Source.File}) {

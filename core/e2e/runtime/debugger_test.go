@@ -8,8 +8,28 @@ import (
 
 	engine "gopkg.d7z.net/go-mini/core"
 	"gopkg.d7z.net/go-mini/core/debugger"
+	"gopkg.d7z.net/go-mini/core/ffilib/fmtlib"
 	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/surface"
 )
+
+type discardOutputter struct{}
+
+func (discardOutputter) Print(context.Context, string) {}
+
+const sameFileFunctionStepSource = `package main
+
+func helper() {
+	inside := 1
+	_ = inside
+}
+
+func main() {
+	helper()
+	marker := 1
+	_ = marker
+}
+`
 
 func loadInt64Global(t *testing.T, prog *engine.ExecutableProgram, name string) int64 {
 	t.Helper()
@@ -56,6 +76,26 @@ func nextDebugEventAsync(ctx context.Context, dbg *debugger.Session) <-chan debu
 	return ch
 }
 
+func snippetBreakpoint(line int) debugger.Breakpoint {
+	return debugger.Breakpoint{ModulePath: "main", File: "snippet", Line: line}
+}
+
+func addSnippetBreakpoint(t *testing.T, dbg *debugger.Session, line int) debugger.Breakpoint {
+	t.Helper()
+	bp := snippetBreakpoint(line)
+	if err := dbg.AddBreakpoint(bp); err != nil {
+		t.Fatal(err)
+	}
+	return bp
+}
+
+func removeSnippetBreakpoint(t *testing.T, dbg *debugger.Session, line int) {
+	t.Helper()
+	if err := dbg.RemoveBreakpoint(snippetBreakpoint(line)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDebuggerBasicBreakAndStep(t *testing.T) {
 	testExecutor := engine.MustNewMiniExecutor()
 	sourceProgram := `
@@ -72,7 +112,7 @@ func TestDebuggerBasicBreakAndStep(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(5)
+	addSnippetBreakpoint(t, dbg, 5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -134,6 +174,274 @@ WAIT_DONE:
 	}
 }
 
+func TestDebuggerBreakpointRequiresExactSourceLocation(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	sourceProgram := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("tick")
+}
+`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 13)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = fmtlib.WithOutputter(debugger.WithDebugger(ctx, dbg), discardOutputter{})
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	eventCh := nextDebugEventAsync(ctx, dbg)
+	select {
+	case result := <-eventCh:
+		if result.err != nil {
+			t.Fatalf("next debugger event failed: %v", result.err)
+		}
+		t.Fatalf("breakpoint crossed exact source location: module=%s file=%s line=%d", result.event.Loc.ModulePath, result.event.Loc.F, result.event.Loc.L)
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for program completion")
+	}
+	if run.Phase() != runtime.RunPhaseDone {
+		t.Fatalf("expected completed run, got phase %d", run.Phase())
+	}
+}
+
+func TestDebuggerStepOverDoesNotEnterFmtSource(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	sourceProgram := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("tick")
+	marker := 1
+	_ = marker
+}
+`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 6)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = fmtlib.WithOutputter(debugger.WithDebugger(ctx, dbg), discardOutputter{})
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	event := nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.ModulePath != "main" || event.Loc.L != 6 {
+		t.Fatalf("expected user breakpoint at snippet:6, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.Reason != runtime.DebugStopBreakpoint {
+		t.Fatalf("expected breakpoint reason, got %q", event.Reason)
+	}
+	if err := run.StepOver(); err != nil {
+		t.Fatal(err)
+	}
+
+	event = nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.ModulePath != "main" || event.Loc.L != 7 {
+		t.Fatalf("step-over should stop at next user line, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.Reason != runtime.DebugStopStep {
+		t.Fatalf("expected step reason, got %q", event.Reason)
+	}
+	if err := run.Continue(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDebuggerStepIntoCanEnterFmtSource(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	sourceProgram := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("tick")
+}
+`
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sourceProgram)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 6)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = fmtlib.WithOutputter(debugger.WithDebugger(ctx, dbg), discardOutputter{})
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	event := nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.L != 6 {
+		t.Fatalf("expected user breakpoint at snippet:6, got %s:%d", event.Loc.F, event.Loc.L)
+	}
+	if err := run.StepInto(); err != nil {
+		t.Fatal(err)
+	}
+
+	event = nextDebugEvent(ctx, t, dbg)
+	if event.Loc.ModulePath != "fmt" || event.Loc.F != "fmt.mgo" {
+		t.Fatalf("step-into should enter fmt source, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.Reason != runtime.DebugStopStep {
+		t.Fatalf("expected step reason, got %q", event.Reason)
+	}
+	if err := run.Continue(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDebuggerStepOverSkipsSameFileFunction(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sameFileFunctionStepSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 9)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	event := nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.ModulePath != "main" || event.Loc.L != 9 {
+		t.Fatalf("expected helper call breakpoint at main snippet:9, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.FrameDepth != 1 {
+		t.Fatalf("expected main frame depth 1, got %d", event.FrameDepth)
+	}
+	if err := run.StepOver(); err != nil {
+		t.Fatal(err)
+	}
+
+	event = nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.ModulePath != "main" || event.Loc.L != 10 {
+		t.Fatalf("step-over should skip helper and stop at line 10, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.FrameDepth != 1 {
+		t.Fatalf("expected returned main frame depth 1, got %d", event.FrameDepth)
+	}
+	if err := run.Continue(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDebuggerStepIntoEntersSameFileFunction(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	testProgram, err := testExecutor.NewRuntimeByGoCode(sameFileFunctionStepSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 9)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	event := nextDebugEvent(ctx, t, dbg)
+	if event.Loc.L != 9 {
+		t.Fatalf("expected helper call breakpoint at line 9, got %d", event.Loc.L)
+	}
+	if err := run.StepInto(); err != nil {
+		t.Fatal(err)
+	}
+
+	event = nextDebugEvent(ctx, t, dbg)
+	if event.Loc.F != "snippet" || event.Loc.ModulePath != "main" || event.Loc.L < 3 || event.Loc.L > 5 {
+		t.Fatalf("step-into should enter helper source, got module=%s file=%s line=%d", event.Loc.ModulePath, event.Loc.F, event.Loc.L)
+	}
+	if event.FrameDepth != 2 {
+		t.Fatalf("expected helper frame depth 2, got %d", event.FrameDepth)
+	}
+	if err := run.Continue(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDebuggerBreakpointDoesNotMatchSameFileDifferentModule(t *testing.T) {
+	testExecutor := engine.MustNewMiniExecutor()
+	if err := testExecutor.UseSurface(surface.Library("lib", surface.GoFile("snippet", `package lib
+
+func Run() {
+	hit := 1
+	_ = hit
+}
+`))); err != nil {
+		t.Fatal(err)
+	}
+	testProgram, err := testExecutor.NewRuntimeByGoCode(`package main
+
+import "lib"
+
+func main() {
+	lib.Run()
+}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbg := debugger.NewSession()
+	addSnippetBreakpoint(t, dbg, 4)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = debugger.WithDebugger(ctx, dbg)
+
+	run, done := startDebugRun(ctx, t, testProgram)
+	eventCh := nextDebugEventAsync(ctx, dbg)
+	select {
+	case result := <-eventCh:
+		if result.err != nil {
+			t.Fatalf("next debugger event failed: %v", result.err)
+		}
+		t.Fatalf("breakpoint crossed module boundary: module=%s file=%s line=%d", result.event.Loc.ModulePath, result.event.Loc.F, result.event.Loc.L)
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("timeout waiting for program completion")
+	}
+	if run.Phase() != runtime.RunPhaseDone {
+		t.Fatalf("expected completed run, got phase %d", run.Phase())
+	}
+}
+
 func TestDebuggerSnippetMode(t *testing.T) {
 	testExecutor := engine.MustNewMiniExecutor()
 
@@ -145,7 +453,7 @@ func TestDebuggerSnippetMode(t *testing.T) {
 
 	dbg := debugger.NewSession()
 	for line := 1; line <= 8; line++ {
-		dbg.AddBreakpoint(line)
+		addSnippetBreakpoint(t, dbg, line)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -216,7 +524,7 @@ func main() {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(5)
+	addSnippetBreakpoint(t, dbg, 5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -237,7 +545,7 @@ func main() {
 		t.Fatal("expected debugger step state to be cleared when run ends")
 	}
 
-	dbg.RemoveBreakpoint(5)
+	removeSnippetBreakpoint(t, dbg, 5)
 	secondProgram, err := testExecutor.NewRuntimeByGoCode(`
 package main
 func main() {
@@ -288,7 +596,7 @@ func TestDebuggerLoopExecution(t *testing.T) {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(6)
+	addSnippetBreakpoint(t, dbg, 6)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -396,7 +704,7 @@ func main() {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(5)
+	addSnippetBreakpoint(t, dbg, 5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -445,7 +753,7 @@ func main() {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(5)
+	addSnippetBreakpoint(t, dbg, 5)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -529,7 +837,7 @@ func main() {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(11)
+	addSnippetBreakpoint(t, dbg, 11)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -576,7 +884,7 @@ func main() {
 	}
 
 	dbg := debugger.NewSession()
-	dbg.AddBreakpoint(6)
+	addSnippetBreakpoint(t, dbg, 6)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -588,7 +896,7 @@ func main() {
 	if event.Loc.L != 6 {
 		t.Fatalf("expected first breakpoint at line 6, got %d", event.Loc.L)
 	}
-	dbg.RemoveBreakpoint(6)
+	removeSnippetBreakpoint(t, dbg, 6)
 	if err := run.Continue(); err != nil {
 		t.Fatal(err)
 	}
@@ -632,6 +940,7 @@ func main() {
 
 	stopMutating := make(chan struct{})
 	mutatorDone := make(chan struct{})
+	mutatorErr := make(chan error, 1)
 	go func() {
 		defer close(mutatorDone)
 		for {
@@ -642,9 +951,19 @@ func main() {
 				return
 			default:
 			}
-			dbg.AddBreakpoint(6)
-			_ = dbg.HasBreakpoint(6)
-			dbg.RemoveBreakpoint(6)
+			bp := snippetBreakpoint(6)
+			if err := dbg.AddBreakpoint(bp); err != nil {
+				mutatorErr <- err
+				return
+			}
+			if _, err := dbg.HasBreakpoint(bp); err != nil {
+				mutatorErr <- err
+				return
+			}
+			if err := dbg.RemoveBreakpoint(bp); err != nil {
+				mutatorErr <- err
+				return
+			}
 		}
 	}()
 
@@ -674,6 +993,11 @@ func main() {
 			<-mutatorDone
 			if err != nil {
 				t.Fatal(err)
+			}
+			select {
+			case err := <-mutatorErr:
+				t.Fatal(err)
+			default:
 			}
 			return
 		case <-ctx.Done():

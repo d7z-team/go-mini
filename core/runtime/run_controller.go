@@ -313,8 +313,13 @@ func (h *RunHandle) Resume() error {
 	if h == nil || h.controller == nil {
 		return errors.New("missing run controller")
 	}
+	runID := h.ID()
+	debugPause := h.controller.Phase() == RunPhasePaused && h.controller.PauseReason().Kind == "debugger"
 	if ok := h.controller.Resume(); !ok {
 		return errors.New("run is not paused")
+	}
+	if debugPause && h.debugger != nil {
+		h.debugger.ClearPause(runID)
 	}
 	return nil
 }
@@ -324,12 +329,29 @@ func (h *RunHandle) Continue() error {
 }
 
 func (h *RunHandle) StepInto() error {
+	return h.requestStep(DebugStepInto)
+}
+
+func (h *RunHandle) StepOver() error {
+	return h.requestStep(DebugStepOver)
+}
+
+func (h *RunHandle) requestStep(mode DebugStepMode) error {
 	if h == nil || h.debugger == nil {
 		return errors.New("run has no debugger session")
 	}
-	h.debugger.RequestStep(h.ID())
+	if h.controller == nil {
+		return errors.New("missing run controller")
+	}
+	if h.controller.Phase() != RunPhasePaused || h.controller.PauseReason().Kind != "debugger" {
+		return errors.New("debug step requires a debugger pause")
+	}
+	runID := h.ID()
+	if err := h.debugger.RequestStep(DebugStepRequest{RunID: runID, Mode: mode}); err != nil {
+		return err
+	}
 	if err := h.Resume(); err != nil {
-		h.debugger.ClearStep(h.ID())
+		h.debugger.ClearStep(runID)
 		return err
 	}
 	return nil

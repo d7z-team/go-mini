@@ -81,7 +81,7 @@
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链；bytecode 装载执行使用 `Executable`。
 - 对外 JSON / 持久化 / CLI 装载使用 `go-mini-bytecode`。
-- Debugger session 的断点、按 run ID 绑定的单步策略和 `NextEvent(ctx)` 事件拉取均封装在并发安全方法后，运行中增删断点不会直接读写公开 map；debugger 事件在 VM 已进入 `Paused` 后投递，恢复执行和单步控制由 `RunHandle` 提供。
+- Debugger session 的精确源码断点、按当前暂停 execution context 绑定的 step-over / step-into 策略和 `NextEvent(ctx)` 事件拉取均封装在并发安全方法后，断点按 `ModulePath + File + Line` 精确匹配且不支持 line-only/file-only 兜底，运行中增删断点不会直接读写公开 map；debugger 事件在 VM 已进入 `Paused` 后投递，恢复执行和单步控制由 `RunHandle` 提供。
 - stdio LSP 声明 full text sync；didOpen/didChange 进入 server 侧 diagnostics debounce，didSave 立即 flush pending diagnostics，didClose 取消 pending diagnostics 并清理旧诊断。
 
 ## 剩余工作

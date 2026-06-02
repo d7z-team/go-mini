@@ -235,6 +235,7 @@ const (
 type SourceRef struct {
 	ID          string
 	Meta        string
+	ModulePath  string
 	File        string
 	Line        int
 	Col         int
@@ -444,14 +445,15 @@ type DirectCallData struct {
 }
 
 type CallBoundaryData struct {
-	Name          string
-	OldStack      *Stack
-	OldExec       *Executor
-	OldShared     *SharedState
-	HasReturn     bool
-	ValueBase     int
-	LHSBase       int
-	DefersDrained bool
+	Name               string
+	OldStack           *Stack
+	OldExec            *Executor
+	OldShared          *SharedState
+	OldDebugFrameDepth int
+	HasReturn          bool
+	ValueBase          int
+	LHSBase            int
+	DefersDrained      bool
 }
 
 type CatchScopeData struct {

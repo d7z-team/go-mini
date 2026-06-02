@@ -1258,6 +1258,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	if newDepth > DefaultMaxStackDepth {
 		return errors.New("stack overflow")
 	}
+	oldDebugFrameDepth := session.DebugFrameDepth
 	newStack := &Stack{
 		Parent:     root,
 		MemoryPtr:  make(map[string]*Slot),
@@ -1270,6 +1271,7 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	newStack.DeferOwner = newStack
 
 	session.Stack = newStack
+	session.DebugFrameDepth = oldDebugFrameDepth + 1
 
 	// Inject captured variables
 	if closure != nil {
@@ -1320,13 +1322,14 @@ func (e *Executor) setupFuncCall(session *StackContext, name string, fn *DoCallD
 	session.TaskStack = append(session.TaskStack, Task{
 		Op: OpCallBoundary,
 		Data: &CallBoundaryData{
-			Name:      name,
-			OldStack:  old,
-			OldExec:   oldExec,
-			OldShared: oldShared,
-			HasReturn: !sig.ReturnType.IsVoid(),
-			ValueBase: session.ValueStack.Len(),
-			LHSBase:   session.LHSStack.Len(),
+			Name:               name,
+			OldStack:           old,
+			OldExec:            oldExec,
+			OldShared:          oldShared,
+			OldDebugFrameDepth: oldDebugFrameDepth,
+			HasReturn:          !sig.ReturnType.IsVoid(),
+			ValueBase:          session.ValueStack.Len(),
+			LHSBase:            session.LHSStack.Len(),
 		},
 	})
 	// Push body

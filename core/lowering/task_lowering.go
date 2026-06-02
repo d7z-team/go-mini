@@ -175,6 +175,7 @@ func (b *builder) setSource(tasks []runtime.Task, node ast.Node) []runtime.Task 
 	ref := &runtime.SourceRef{
 		ID:          base.ID,
 		Meta:        base.Meta,
+		ModulePath:  b.modulePath,
 		IsStmtStart: isStmt,
 	}
 	if base.Loc != nil {

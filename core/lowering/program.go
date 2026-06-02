@@ -11,10 +11,11 @@ import (
 )
 
 type builder struct {
-	consts    map[string]runtime.FFIConstValue
-	globals   map[string]struct{}
-	functions map[string]struct{}
-	err       error
+	modulePath string
+	consts     map[string]runtime.FFIConstValue
+	globals    map[string]struct{}
+	functions  map[string]struct{}
+	err        error
 }
 
 // Error reports an AST node that cannot be represented in executable
@@ -53,11 +54,12 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
-func newBuilder(constants map[string]runtime.FFIConstValue, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
+func newBuilder(modulePath string, constants map[string]runtime.FFIConstValue, variables map[ast.Ident]ast.Expr, functions map[ast.Ident]*ast.FunctionStmt) *builder {
 	b := &builder{
-		consts:    constants,
-		globals:   make(map[string]struct{}, len(variables)),
-		functions: make(map[string]struct{}, len(functions)),
+		modulePath: modulePath,
+		consts:     constants,
+		globals:    make(map[string]struct{}, len(variables)),
+		functions:  make(map[string]struct{}, len(functions)),
 	}
 	for ident := range variables {
 		b.globals[string(ident)] = struct{}{}
@@ -174,7 +176,7 @@ func PrepareProgram(program *ast.ProgramStmt) (*runtime.PreparedProgram, error) 
 		}
 	}
 
-	b := newBuilder(prepared.Constants, program.Variables, program.Functions)
+	b := newBuilder(prepared.ModulePath, prepared.Constants, program.Variables, program.Functions)
 	rootScope := b.newRootLoweringScope()
 	for _, group := range groups {
 		if len(group.Names) == 0 {

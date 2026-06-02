@@ -78,7 +78,8 @@ type StackContext struct {
 	StepCount int64
 	StepLimit int64
 
-	Debugger Debugger
+	Debugger        Debugger
+	DebugFrameDepth int
 
 	// 迭代执行器状态 (Iterative Executor State)
 	TaskStack   []Task

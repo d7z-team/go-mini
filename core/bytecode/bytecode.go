@@ -13,7 +13,7 @@ import (
 
 const (
 	FormatGoMiniBytecode = "go-mini-bytecode"
-	CurrentVersion       = 12
+	CurrentVersion       = 13
 	pseudoOpLabel        = "PSEUDO_LABEL"
 )
 

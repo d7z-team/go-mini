@@ -840,6 +840,7 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 		hasReturn := data.HasReturn
 		valueBase := data.ValueBase
 		lhsBase := data.LHSBase
+		session.DebugFrameDepth = data.OldDebugFrameDepth
 
 		// Restore executor if saved (cross-module calls)
 		if data.OldExec != nil {

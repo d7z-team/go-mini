@@ -3,25 +3,68 @@ package runtime
 import "context"
 
 type DebugPosition struct {
-	F  string
-	L  int
-	C  int
-	EL int
-	EC int
+	ModulePath string
+	F          string
+	L          int
+	C          int
+	EL         int
+	EC         int
 }
+
+type DebugStopReason string
+
+const (
+	DebugStopBreakpoint DebugStopReason = "breakpoint"
+	DebugStopStep       DebugStopReason = "step"
+)
 
 type DebugEvent struct {
 	RunID              uint64
 	ExecutionContextID uint32
 	Loc                *DebugPosition
+	Reason             DebugStopReason
+	FrameDepth         int
 	Variables          map[string]string
 }
 
+type DebugBreakpoint struct {
+	ModulePath string
+	File       string
+	Line       int
+}
+
+type DebugStepMode string
+
+const (
+	DebugStepInto DebugStepMode = "into"
+	DebugStepOver DebugStepMode = "over"
+)
+
+type DebugStepRequest struct {
+	RunID uint64
+	Mode  DebugStepMode
+}
+
+type DebugPoint struct {
+	RunID              uint64
+	ExecutionContextID uint32
+	Loc                DebugPosition
+	FrameDepth         int
+}
+
+type DebugDecision struct {
+	Stop      bool
+	Reason    DebugStopReason
+	ClearStep bool
+}
+
 type Debugger interface {
-	ShouldTrigger(runID uint64, line int) bool
+	Checkpoint(point DebugPoint) DebugDecision
 	Publish(event *DebugEvent)
-	RequestStep(runID uint64)
+	RequestStep(req DebugStepRequest) error
+	ClearPause(runID uint64)
 	ClearStep(runID uint64)
+	ClearRun(runID uint64)
 }
 
 type debuggerContextKey struct{}
