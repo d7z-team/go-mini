@@ -5,6 +5,7 @@ const { LanguageClient } = require('vscode-languageclient/node');
 
 let client;
 let outputChannel;
+let fileWatcher;
 const scriptExtension = '.mgo';
 
 function getServerPath(context) {
@@ -34,7 +35,7 @@ async function runFile(context, uri) {
         return;
     }
 
-    await saveTargetFile(uri);
+    await saveWorkspaceBeforeCommand();
     const execPath = getExecPath(context);
     await executeCommand({
         title: 'Run Current Package',
@@ -52,7 +53,7 @@ async function compileFile(context, uri) {
         return;
     }
 
-    await saveTargetFile(uri);
+    await saveWorkspaceBeforeCommand();
     const defaultOutput = path.join(targetDir, `${path.basename(targetDir)}.json`);
     const targetUri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(defaultOutput),
@@ -83,7 +84,7 @@ async function disassembleFile(context, uri) {
         return;
     }
 
-    await saveTargetFile(uri);
+    await saveWorkspaceBeforeCommand();
     const execPath = getExecPath(context);
     await executeCommand({
         title: 'Disassemble Current Package',
@@ -115,18 +116,8 @@ async function resolveTargetDirectory(uri) {
     return path.dirname(filePath);
 }
 
-async function saveTargetFile(uri) {
-    if (uri && uri.fsPath) {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.uri.fsPath === uri.fsPath) {
-            await editor.document.save();
-        }
-        return;
-    }
-    const editor = vscode.window.activeTextEditor;
-    if (editor) {
-        await editor.document.save();
-    }
+async function saveWorkspaceBeforeCommand() {
+    await vscode.workspace.saveAll(false);
 }
 
 function getOutputChannel() {
@@ -181,6 +172,7 @@ function executeCommand({ title, command, args, cwd }) {
 
 async function startClient(context) {
     const serverPath = getServerPath(context);
+    const watcher = getMiniFileWatcher(context);
 
     let serverOptions = {
         command: serverPath,
@@ -188,7 +180,10 @@ async function startClient(context) {
     };
 
     let clientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'go-mini' }]
+        documentSelector: [{ scheme: 'file', language: 'go-mini' }],
+        synchronize: {
+            fileEvents: watcher
+        }
     };
 
     client = new LanguageClient(
@@ -199,6 +194,14 @@ async function startClient(context) {
     );
 
     await client.start();
+}
+
+function getMiniFileWatcher(context) {
+    if (!fileWatcher) {
+        fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.mgo');
+        context.subscriptions.push(fileWatcher);
+    }
+    return fileWatcher;
 }
 
 async function restartServer(context) {

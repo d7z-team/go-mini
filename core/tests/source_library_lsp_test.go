@@ -14,8 +14,8 @@ type surfaceLibraryLSPAnalyzer struct {
 	exec *engine.MiniExecutor
 }
 
-func (a surfaceLibraryLSPAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (lspserv.ProgramView, []error) {
-	return a.exec.AnalyzeProgramTolerant(program, sources)
+func (a surfaceLibraryLSPAnalyzer) AnalyzeSnapshot(snapshot lspserv.PackageSnapshot, options lspserv.AnalysisOptions) (lspserv.AnalysisResult, error) {
+	return a.exec.AnalyzeSnapshot(snapshot, options)
 }
 
 func TestSurfaceLibraryLSPAnalysisRegistersSourceModule(t *testing.T) {

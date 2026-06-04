@@ -7,6 +7,7 @@ import (
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/bytecode"
 	"gopkg.d7z.net/go-mini/core/frontend"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
@@ -150,7 +151,12 @@ func (e *MiniExecutor) AnalyzeGoCodeTolerant(code string) (*AnalysisProgram, []e
 }
 
 func (e *MiniExecutor) AnalyzeGoFileTolerant(filename, code string) (*AnalysisProgram, []error) {
-	compiled, errs, _, err := e.newCompiler().CompileSource(filename, code, true)
+	node, errs := gofrontend.NewConverter().ConvertSourceTolerant(filename, code)
+	program, ok := node.(*ast.ProgramStmt)
+	if !ok || program == nil {
+		return nil, errs
+	}
+	compiled, _, err := e.newCompiler().AnalyzeProgramWithSources(filename, code, program, true, map[string]string{filename: code})
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -167,7 +173,7 @@ func (e *MiniExecutor) AnalyzeGoFileTolerant(filename, code string) (*AnalysisPr
 // such as call template hover previews.
 func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (*AnalysisProgram, []error) {
 	var errs []error
-	compiled, _, err := e.newCompiler().CompileProgramWithSources("ast", "", program, true, sources)
+	compiled, _, err := e.newCompiler().AnalyzeProgramWithSources("ast", "", program, true, sources)
 	if err != nil {
 		errs = append(errs, err)
 	}

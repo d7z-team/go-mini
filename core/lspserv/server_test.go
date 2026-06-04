@@ -2,8 +2,11 @@ package lspserv
 
 import (
 	"bytes"
+	"errors"
 	"go/scanner"
 	"go/token"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,12 +15,16 @@ import (
 
 	"gopkg.d7z.net/go-mini/core/ast"
 	"gopkg.d7z.net/go-mini/core/compiler"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
 )
 
 type stubProgram struct {
 	completions        []ast.CompletionItem
 	definition         ast.Node
 	references         []ast.Node
+	signatureHelp      *ast.SignatureHelpInfo
+	documentSymbols    []ast.DocumentSymbolInfo
+	importPaths        map[string]string
 	includeDeclaration *bool
 	lastFile           string
 }
@@ -45,15 +52,123 @@ func (p *stubProgram) GetReferencesAtFile(file string, line, col int, includeDec
 	return p.references
 }
 
-type stubAnalyzer struct {
-	program     ProgramView
-	errs        []error
-	lastSources map[string]string
+func (p *stubProgram) GetSignatureHelpAtFile(file string, line, col int) *ast.SignatureHelpInfo {
+	p.lastFile = file
+	return p.signatureHelp
 }
 
-func (s *stubAnalyzer) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (ProgramView, []error) {
-	s.lastSources = sources
-	return s.program, s.errs
+func (p *stubProgram) GetDocumentSymbolsAtFile(file string) []ast.DocumentSymbolInfo {
+	p.lastFile = file
+	return p.documentSymbols
+}
+
+func (p *stubProgram) ResolveImportPathForPackage(alias string) string {
+	return p.importPaths[alias]
+}
+
+type stubAnalyzer struct {
+	program        ProgramView
+	errs           []error
+	diagnostics    map[string][]Diagnostic
+	lastSources    map[string]string
+	lastSnapshot   PackageSnapshot
+	disableDerived bool
+}
+
+func (s *stubAnalyzer) AnalyzeSnapshot(snapshot PackageSnapshot, _ AnalysisOptions) (AnalysisResult, error) {
+	s.lastSnapshot = snapshot
+	s.lastSources = make(map[string]string, len(snapshot.Files))
+	for _, file := range snapshot.Files {
+		s.lastSources[file.URI] = file.Code
+	}
+	if s.diagnostics != nil {
+		return AnalysisResult{Program: s.program, Diagnostics: cloneDiagnosticsMap(s.diagnostics)}, nil
+	}
+	diagnostics := make(map[string][]Diagnostic)
+	var programs []*ast.ProgramStmt
+	if !s.disableDerived {
+		for _, file := range snapshot.Files {
+			node, errs := gofrontend.NewConverter().ConvertSourceTolerant(file.URI, file.Code)
+			for _, err := range errs {
+				appendTestDiagnostic(diagnostics, file.URI, file.Code, err)
+			}
+			if prog, ok := node.(*ast.ProgramStmt); ok {
+				programs = append(programs, prog)
+			}
+		}
+		if len(programs) > 0 {
+			if _, err := compiler.MergePrograms(programs); err != nil {
+				appendTestDiagnostic(diagnostics, snapshot.Files[len(snapshot.Files)-1].URI, snapshot.Files[len(snapshot.Files)-1].Code, err)
+			}
+		}
+	}
+	for _, err := range s.errs {
+		fallbackURI, code := "", ""
+		if len(snapshot.Files) > 0 {
+			fallbackURI = snapshot.Files[0].URI
+			code = snapshot.Files[0].Code
+		}
+		appendTestDiagnostic(diagnostics, fallbackURI, code, err)
+	}
+	return AnalysisResult{Program: s.program, Diagnostics: diagnostics}, nil
+}
+
+func appendTestDiagnostic(diagnostics map[string][]Diagnostic, fallbackURI, code string, err error) {
+	if err == nil {
+		return
+	}
+	var scanErr scanner.Error
+	if errors.As(err, &scanErr) {
+		uri := scanErr.Pos.Filename
+		if uri == "" {
+			uri = fallbackURI
+		}
+		diagnostics[uri] = append(diagnostics[uri], Diagnostic{
+			Range:    RangeForScannerError(code, scanErr),
+			Severity: 1,
+			Source:   "go-mini-syntax",
+			Message:  scanErr.Msg,
+		})
+		return
+	}
+	var convertErr *gofrontend.ConvertError
+	if errors.As(err, &convertErr) {
+		uri := fallbackURI
+		if convertErr.Pos != nil && convertErr.Pos.F != "" {
+			uri = convertErr.Pos.F
+		}
+		diagnostics[uri] = append(diagnostics[uri], Diagnostic{
+			Range:    RangeFromInternalPos(code, convertErr.Pos),
+			Severity: 1,
+			Source:   "go-mini-syntax",
+			Message:  convertErr.Message,
+		})
+		return
+	}
+	var astErr *ast.MiniAstError
+	if errors.As(err, &astErr) {
+		for _, log := range astErr.Logs {
+			if log.Node == nil || log.Node.GetBase() == nil || log.Node.GetBase().Loc == nil {
+				continue
+			}
+			loc := log.Node.GetBase().Loc
+			diagnostics[loc.F] = append(diagnostics[loc.F], Diagnostic{
+				Range:    RangeFromInternalPos(code, loc),
+				Severity: 1,
+				Source:   "go-mini-semantic",
+				Message:  log.Message,
+			})
+		}
+		return
+	}
+	if fallbackURI != "" {
+		diagnostics[fallbackURI] = append(diagnostics[fallbackURI], Diagnostic{
+			Range:    RangeFromInternalPos(code, &ast.Position{F: fallbackURI, L: 1, C: 1}),
+			Severity: 1,
+			Source:   "go-mini",
+			Message:  err.Error(),
+		})
+	}
 }
 
 func writeRPCMessages(dst *bytes.Buffer, bodies ...string) {
@@ -130,7 +245,7 @@ func TestLSPServerDoesNotLeakAcrossDirectories(t *testing.T) {
 	}
 }
 
-func TestLSPServerPassesFileSourcesToAnalyzer(t *testing.T) {
+func TestLSPServerPassesSnapshotSourcesToAnalyzer(t *testing.T) {
 	analyzer := &stubAnalyzer{program: &stubProgram{}}
 	server := NewLSPServer(analyzer)
 	uri := "file:///workspace/a/main.go"
@@ -144,7 +259,94 @@ func TestLSPServerPassesFileSourcesToAnalyzer(t *testing.T) {
 	}
 }
 
-func TestServeStreamInitializeAndCompletion(t *testing.T) {
+func TestLSPServerSnapshotIncludesDiskPackageSiblings(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.mgo")
+	helperPath := filepath.Join(dir, "helper.mgo")
+	if err := os.WriteFile(mainPath, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(helperPath, []byte("package main\nfunc Helper() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyzer := &stubAnalyzer{program: &stubProgram{}, disableDerived: true}
+	server := NewLSPServer(analyzer)
+	mainURI := fileURIForPath(mainPath)
+	if _, err := server.UpdateSession(mainURI, "package main\nfunc main() { Helper() }\n"); err != nil {
+		t.Fatalf("UpdateSession failed: %v", err)
+	}
+
+	seen := map[string]SnapshotFile{}
+	for _, file := range analyzer.lastSnapshot.Files {
+		seen[file.URI] = file
+	}
+	if len(seen) != 2 {
+		t.Fatalf("expected open file plus disk sibling in snapshot, got %+v", analyzer.lastSnapshot.Files)
+	}
+	helper := seen[fileURIForPath(helperPath)]
+	if helper.Open || !strings.Contains(helper.Code, "Helper") {
+		t.Fatalf("expected helper from disk snapshot, got %+v", helper)
+	}
+}
+
+func TestRemoveSessionFallsBackToDiskFile(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.mgo")
+	if err := os.WriteFile(mainPath, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
+	uri := fileURIForPath(mainPath)
+	first, _ := server.UpdateSession(uri, "package main\nfunc main() {\n")
+	if len(first[uri]) == 0 {
+		t.Fatalf("expected diagnostics for dirty open overlay, got %+v", first)
+	}
+
+	updates := server.RemoveSession(uri)
+	if current, ok := updates[uri]; !ok || len(current) != 0 {
+		t.Fatalf("expected diagnostics to clear from clean disk fallback, got %+v", updates)
+	}
+	if server.packageForURI(uri) == nil {
+		t.Fatal("expected package to remain queryable from disk file")
+	}
+}
+
+func TestRefreshWorkspaceFilesReanalyzesDiskSibling(t *testing.T) {
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.mgo")
+	helperPath := filepath.Join(dir, "helper.mgo")
+	if err := os.WriteFile(mainPath, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	analyzer := &stubAnalyzer{program: &stubProgram{}, disableDerived: true}
+	server := NewLSPServer(analyzer)
+	mainURI := fileURIForPath(mainPath)
+	if _, err := server.UpdateSession(mainURI, "package main\nfunc main() {}\n"); err != nil {
+		t.Fatalf("UpdateSession failed: %v", err)
+	}
+	if err := os.WriteFile(helperPath, []byte("package main\nfunc Helper() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.RefreshWorkspaceFiles([]string{fileURIForPath(helperPath)}); err != nil {
+		t.Fatalf("RefreshWorkspaceFiles failed: %v", err)
+	}
+
+	found := false
+	for _, file := range analyzer.lastSnapshot.Files {
+		if file.URI == fileURIForPath(helperPath) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected watched disk sibling in refreshed snapshot, got %+v", analyzer.lastSnapshot.Files)
+	}
+}
+
+func TestServeStreamInitializeAdvertisesCapabilitiesAndCompletion(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{
 		program: &stubProgram{
 			completions: []ast.CompletionItem{{Label: "Println", Kind: "func", Type: "function(String) Void"}},
@@ -171,6 +373,9 @@ func TestServeStreamInitializeAndCompletion(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"change":1`) {
 		t.Fatalf("expected full text sync capability, got %q", out.String())
+	}
+	if !strings.Contains(out.String(), `"signatureHelpProvider"`) || !strings.Contains(out.String(), `"semanticTokensProvider"`) || !strings.Contains(out.String(), `"codeActionProvider"`) || !strings.Contains(out.String(), `"didChangeWatchedFiles"`) {
+		t.Fatalf("expected extended initialize capabilities, got %q", out.String())
 	}
 	if !strings.Contains(out.String(), `"label":"Println"`) {
 		t.Fatalf("expected completion result, got %q", out.String())
@@ -355,7 +560,7 @@ func TestUpdateSessionClearsPreviousSyntaxDiagnostics(t *testing.T) {
 	}
 }
 
-func TestRemoveSessionClearsDiagnosticsAndPackageState(t *testing.T) {
+func TestRemoveSessionClearsDiagnosticsWhenNoDiskFile(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 	uri := "file:///workspace/a/main.mgo"
 
@@ -377,7 +582,7 @@ func TestRemoveSessionClearsDiagnosticsAndPackageState(t *testing.T) {
 	}
 }
 
-func TestServeStreamDidClosePublishesEmptyDiagnostics(t *testing.T) {
+func TestServeStreamDidCloseClearsDiagnosticsWithoutDiskFallback(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 	uri := "file:///workspace/a/main.mgo"
 
@@ -396,7 +601,7 @@ func TestServeStreamDidClosePublishesEmptyDiagnostics(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", errOut.String())
 	}
 	if !strings.Contains(out.String(), `"diagnostics":[]`) {
-		t.Fatalf("expected didClose to publish empty diagnostics, got %q", out.String())
+		t.Fatalf("expected didClose without disk fallback to clear diagnostics, got %q", out.String())
 	}
 }
 
@@ -483,13 +688,43 @@ func TestGetReferencesHonorsIncludeDeclaration(t *testing.T) {
 	}
 }
 
+func TestLSPServerReturnsSignatureSymbolsTokensAndImportAction(t *testing.T) {
+	uri := "file:///workspace/a/main.go"
+	program := &stubProgram{
+		signatureHelp: &ast.SignatureHelpInfo{Signatures: []ast.SignatureInformation{{Label: "Helper(v Int64)"}}},
+		documentSymbols: []ast.DocumentSymbolInfo{{
+			Name:         "Helper",
+			Kind:         "func",
+			Loc:          &ast.Position{F: uri, L: 2, C: 1, EL: 2, EC: 7},
+			SelectionLoc: &ast.Position{F: uri, L: 2, C: 1, EL: 2, EC: 7},
+		}},
+		importPaths: map[string]string{"filepath": "path/filepath"},
+	}
+	server := NewLSPServer(&stubAnalyzer{program: program})
+	_, _ = server.UpdateSession(uri, "package main\nfunc Helper(v Int64) {}\nfunc main() { Helper(1) }\n")
+
+	if help := server.GetSignatureHelp(uri, 1, 50); help == nil || len(help.Signatures) != 1 {
+		t.Fatalf("expected signature help from ProgramView, got %+v", help)
+	}
+	if symbols := server.GetDocumentSymbols(uri); len(symbols) != 1 || symbols[0].Name != "Helper" {
+		t.Fatalf("expected document symbols from ProgramView, got %+v", symbols)
+	}
+	if tokens := server.GetSemanticTokens(uri); tokens == nil || len(tokens.Data) == 0 {
+		t.Fatalf("expected semantic tokens, got %+v", tokens)
+	}
+	actions := server.GetCodeActions(uri, []Diagnostic{{Message: "package filepath resolved but not imported"}})
+	if len(actions) != 1 || !strings.Contains(actions[0].Edit.Changes[uri][0].NewText, `import "path/filepath"`) {
+		t.Fatalf("expected missing import code action, got %+v", actions)
+	}
+}
+
 func TestUpdateSessionReportsMergeErrorsAsDiagnostics(t *testing.T) {
 	server := NewLSPServer(&stubAnalyzer{program: &stubProgram{}})
 
 	_, _ = server.UpdateSession("file:///workspace/a/main.go", "package main\nfunc helper() {}\n")
 	diags, err := server.UpdateSession("file:///workspace/a/other.go", "package main\nfunc helper() {}\n")
-	if err == nil {
-		t.Fatal("expected merge error")
+	if err != nil {
+		t.Fatalf("merge diagnostics should not surface as server error: %v", err)
 	}
 	found := false
 	for _, current := range diags {
@@ -525,7 +760,7 @@ func main() {
 }
 
 func TestRangeForScannerErrorClampsEOFToVisibleRange(t *testing.T) {
-	rng := rangeForScannerError("package main\nfunc main() {\n", scanner.Error{
+	rng := RangeForScannerError("package main\nfunc main() {\n", scanner.Error{
 		Pos: token.Position{Line: 3, Column: 2},
 		Msg: "expected '}', found 'EOF'",
 	})
@@ -538,7 +773,7 @@ func TestRangeForScannerErrorClampsEOFToVisibleRange(t *testing.T) {
 }
 
 func TestRangeForScannerErrorUsesTokenWidth(t *testing.T) {
-	rng := rangeForScannerError("package main\nvar x = aaaa\n", scanner.Error{
+	rng := RangeForScannerError("package main\nvar x = aaaa\n", scanner.Error{
 		Pos: token.Position{Line: 2, Column: 9},
 		Msg: "expected ';', found aaaa",
 	})

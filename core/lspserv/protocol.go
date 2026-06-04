@@ -101,6 +101,51 @@ type Location struct {
 	Range Range  `json:"range"`
 }
 
+type SignatureHelp struct {
+	Signatures      []SignatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature,omitempty"`
+	ActiveParameter int                    `json:"activeParameter,omitempty"`
+}
+
+type SignatureInformation struct {
+	Label         string                 `json:"label"`
+	Documentation *MarkupContent         `json:"documentation,omitempty"`
+	Parameters    []ParameterInformation `json:"parameters,omitempty"`
+}
+
+type ParameterInformation struct {
+	Label string `json:"label"`
+}
+
+type DocumentSymbol struct {
+	Name           string           `json:"name"`
+	Detail         string           `json:"detail,omitempty"`
+	Kind           int              `json:"kind"`
+	Range          Range            `json:"range"`
+	SelectionRange Range            `json:"selectionRange"`
+	Children       []DocumentSymbol `json:"children,omitempty"`
+}
+
+type SemanticTokens struct {
+	Data []uint32 `json:"data"`
+}
+
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
+}
+
+type WorkspaceEdit struct {
+	Changes map[string][]TextEdit `json:"changes"`
+}
+
+type CodeAction struct {
+	Title       string         `json:"title"`
+	Kind        string         `json:"kind,omitempty"`
+	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
+	Edit        *WorkspaceEdit `json:"edit,omitempty"`
+}
+
 type DiagnosticRelatedInformation struct {
 	Location Location `json:"location"`
 	Message  string   `json:"message"`
@@ -109,6 +154,7 @@ type DiagnosticRelatedInformation struct {
 type Diagnostic struct {
 	Range              Range                          `json:"range"`
 	Severity           int                            `json:"severity,omitempty"`
+	Code               string                         `json:"code,omitempty"`
 	Source             string                         `json:"source,omitempty"`
 	Message            string                         `json:"message"`
 	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`

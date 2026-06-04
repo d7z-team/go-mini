@@ -35,6 +35,14 @@ type Compiler struct {
 	cfg Config
 }
 
+type checkedProgram struct {
+	artifact         *Artifact
+	semanticCtx      *ast.SemanticContext
+	activeValidator  *ast.ValidContext
+	importedPrograms map[string]*ast.ProgramStmt
+	newValidator     func(target *ast.ProgramStmt, includeTemplates bool) (*ast.ValidContext, error)
+}
+
 type Artifact struct {
 	Filename        string
 	Source          string
@@ -152,11 +160,79 @@ func (c *Compiler) CompileProgram(filename, source string, program *ast.ProgramS
 	return c.CompileProgramWithSources(filename, source, program, tolerant, nil)
 }
 
+// AnalyzeProgramWithSources runs the compiler front-half used by IDE tooling:
+// semantic validation, compiler template expansion, and post-template semantic
+// validation. It intentionally stops before lowering, optimization, bytecode,
+// and prepared runtime validation.
+func (c *Compiler) AnalyzeProgramWithSources(filename, source string, program *ast.ProgramStmt, tolerant bool, sources map[string]string) (*Artifact, *ast.SemanticContext, error) {
+	checked, err := c.checkProgramWithSources(filename, source, program, tolerant, sources)
+	if checked == nil {
+		return nil, nil, err
+	}
+	if err == nil {
+		if kept := pruneImportedPrograms(checked.importedPrograms, checked.artifact.Program); len(kept) > 0 {
+			checked.artifact.ImportedPrograms = kept
+		}
+	}
+	return checked.artifact, checked.semanticCtx, err
+}
+
 // CompileProgramWithSources compiles an existing AST and uses sources only for
 // source-based analysis artifacts such as template previews.
 func (c *Compiler) CompileProgramWithSources(filename, source string, program *ast.ProgramStmt, tolerant bool, sources map[string]string) (*Artifact, *ast.SemanticContext, error) {
+	checked, err := c.checkProgramWithSources(filename, source, program, tolerant, sources)
+	if checked == nil {
+		return nil, nil, err
+	}
+	artifact := checked.artifact
+	semanticCtx := checked.semanticCtx
+	if err != nil {
+		return artifact, semanticCtx, err
+	}
+
+	activeValidator := checked.activeValidator
+	if ast.RewriteOperatorOverloads(artifact.Program) {
+		if err := ast.AssertNoResidualOperatorOverloads(artifact.Program); err != nil {
+			return artifact, semanticCtx, err
+		}
+		activeValidator, err = checked.newValidator(artifact.Program, false)
+		if err != nil {
+			return artifact, semanticCtx, err
+		}
+		semanticCtx = ast.NewSemanticContext(activeValidator)
+		if err := artifact.Program.Check(semanticCtx); err != nil {
+			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
+			return artifact, semanticCtx, err
+		}
+	}
+
+	if prog, ok := artifact.Program.Optimize(ast.NewOptimizeContext(activeValidator)).(*ast.ProgramStmt); ok {
+		artifact.Program = prog
+	}
+
+	if err := fillArtifactGlobalInitOrder(artifact, artifact.Program, true); err != nil {
+		return artifact, semanticCtx, err
+	}
+	bytecodeProgram, err := buildBytecode(artifact.Program)
+	if err != nil {
+		return artifact, semanticCtx, err
+	}
+	if bytecodeProgram != nil && bytecodeProgram.Executable != nil {
+		bytecodeProgram.Executable.ModuleRequirements = c.moduleRequirements(artifact.Program)
+		if err := runtime.ValidatePreparedProgram(bytecodeProgram.Executable); err != nil {
+			return artifact, semanticCtx, err
+		}
+	}
+	artifact.Bytecode = bytecodeProgram
+	if kept := pruneImportedPrograms(checked.importedPrograms, artifact.Program); len(kept) > 0 {
+		artifact.ImportedPrograms = kept
+	}
+	return artifact, semanticCtx, nil
+}
+
+func (c *Compiler) checkProgramWithSources(filename, source string, program *ast.ProgramStmt, tolerant bool, sources map[string]string) (*checkedProgram, error) {
 	if program == nil {
-		return nil, nil, errors.New("invalid program")
+		return nil, errors.New("invalid program")
 	}
 
 	artifact := &Artifact{
@@ -165,13 +241,14 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		Program:  program,
 	}
 	importedPrograms := map[string]*ast.ProgramStmt{}
+	checked := &checkedProgram{artifact: artifact, importedPrograms: importedPrograms}
 	templatePlan, err := c.buildTemplatePlan(importedPrograms)
 	if err != nil {
-		return artifact, nil, err
+		return checked, err
 	}
 
 	if err := calltemplate.ValidateReservedDeclarations(program, c.cfg.Templates); err != nil {
-		return artifact, nil, err
+		return checked, err
 	}
 
 	newValidator := func(target *ast.ProgramStmt, includeTemplates bool) (*ast.ValidContext, error) {
@@ -206,15 +283,18 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		}
 		return validator, nil
 	}
+	checked.newValidator = newValidator
 
 	validator, err := newValidator(program, true)
 	if err != nil {
-		return artifact, nil, err
+		return checked, err
 	}
 	semanticCtx := ast.NewSemanticContext(validator)
+	checked.semanticCtx = semanticCtx
+	checked.activeValidator = validator
 	if err := program.Check(semanticCtx); err != nil {
 		_ = fillArtifactGlobalInitOrder(artifact, program, false)
-		return artifact, semanticCtx, err
+		return checked, err
 	}
 
 	expanded, err := calltemplate.ExpandProgram(artifact.Program, c.cfg.Templates, templatePlan, calltemplate.ExpandOptions{
@@ -222,71 +302,36 @@ func (c *Compiler) CompileProgramWithSources(filename, source string, program *a
 		SourceResolver: calltemplate.SourceResolverFromMap(sources),
 	})
 	if err != nil {
-		return artifact, semanticCtx, err
+		return checked, err
 	}
 	artifact.TemplatePreviews = append([]calltemplate.TemplatePreview(nil), expanded.Previews...)
 	if err := calltemplate.AssertNoResidualTemplateRefs(artifact.Program, c.cfg.Templates); err != nil {
-		return artifact, semanticCtx, err
+		return checked, err
 	}
 
-	activeValidator := validator
 	if expanded.Changed {
-		activeValidator, err = newValidator(artifact.Program, false)
+		activeValidator, err := newValidator(artifact.Program, false)
 		if err != nil {
-			return artifact, semanticCtx, err
+			return checked, err
 		}
 		semanticCtx = ast.NewSemanticContext(activeValidator)
+		checked.semanticCtx = semanticCtx
+		checked.activeValidator = activeValidator
 		if err := artifact.Program.Check(semanticCtx); err != nil {
 			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
-			return artifact, semanticCtx, err
+			return checked, err
 		}
 	}
 	if err := calltemplate.AssertNoCompileOnlyArtifacts(artifact.Program); err != nil {
-		return artifact, semanticCtx, err
+		return checked, err
 	}
 	if expanded.Changed {
 		if err := expanded.CheckTypes(); err != nil {
-			return artifact, semanticCtx, err
+			return checked, err
 		}
 	}
 
-	if ast.RewriteOperatorOverloads(artifact.Program) {
-		if err := ast.AssertNoResidualOperatorOverloads(artifact.Program); err != nil {
-			return artifact, semanticCtx, err
-		}
-		activeValidator, err = newValidator(artifact.Program, false)
-		if err != nil {
-			return artifact, semanticCtx, err
-		}
-		semanticCtx = ast.NewSemanticContext(activeValidator)
-		if err := artifact.Program.Check(semanticCtx); err != nil {
-			_ = fillArtifactGlobalInitOrder(artifact, artifact.Program, false)
-			return artifact, semanticCtx, err
-		}
-	}
-
-	if prog, ok := artifact.Program.Optimize(ast.NewOptimizeContext(activeValidator)).(*ast.ProgramStmt); ok {
-		artifact.Program = prog
-	}
-
-	if err := fillArtifactGlobalInitOrder(artifact, artifact.Program, true); err != nil {
-		return artifact, semanticCtx, err
-	}
-	bytecodeProgram, err := buildBytecode(artifact.Program)
-	if err != nil {
-		return artifact, semanticCtx, err
-	}
-	if bytecodeProgram != nil && bytecodeProgram.Executable != nil {
-		bytecodeProgram.Executable.ModuleRequirements = c.moduleRequirements(artifact.Program)
-		if err := runtime.ValidatePreparedProgram(bytecodeProgram.Executable); err != nil {
-			return artifact, semanticCtx, err
-		}
-	}
-	artifact.Bytecode = bytecodeProgram
-	if kept := pruneImportedPrograms(importedPrograms, artifact.Program); len(kept) > 0 {
-		artifact.ImportedPrograms = kept
-	}
-	return artifact, semanticCtx, nil
+	return checked, nil
 }
 
 func (c *Compiler) resolvedTypeSpecs(includeTemplates bool, plan *calltemplate.Plan) (map[ast.Ident]ast.ExternalTypeSpec, error) {

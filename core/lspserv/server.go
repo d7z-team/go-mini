@@ -1,11 +1,11 @@
 package lspserv
 
 import (
-	"errors"
-	"fmt"
 	"go/scanner"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"gopkg.d7z.net/go-mini/core/ast"
-	"gopkg.d7z.net/go-mini/core/compiler"
 	"gopkg.d7z.net/go-mini/core/gofrontend"
-	"gopkg.d7z.net/go-mini/core/runtime"
 )
 
 type ProgramView interface {
@@ -25,9 +23,48 @@ type ProgramView interface {
 	GetReferencesAtFile(file string, line, col int, includeDeclaration bool) []ast.Node
 }
 
+type signatureHelpProgramView interface {
+	GetSignatureHelpAtFile(file string, line, col int) *ast.SignatureHelpInfo
+}
+
+type documentSymbolProgramView interface {
+	GetDocumentSymbolsAtFile(file string) []ast.DocumentSymbolInfo
+}
+
+type importPathResolverProgramView interface {
+	ResolveImportPathForPackage(alias string) string
+}
+
+type SnapshotFile struct {
+	URI     string
+	Path    string
+	Code    string
+	Open    bool
+	Version uint64
+}
+
+type PackageSnapshot struct {
+	Key         string
+	PackageName string
+	RootURI     string
+	RootPath    string
+	Version     uint64
+	Files       []SnapshotFile
+}
+
+type AnalysisOptions struct {
+	CompileParity bool
+}
+
+type AnalysisResult struct {
+	Program     ProgramView
+	Diagnostics map[string][]Diagnostic
+}
+
 type Analyzer interface {
-	// AnalyzeProgramTolerant analyzes the merged AST and optional source map for LSP.
-	AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (ProgramView, []error)
+	// AnalyzeSnapshot analyzes a package snapshot for LSP without depending on
+	// the runtime execution path.
+	AnalyzeSnapshot(snapshot PackageSnapshot, options AnalysisOptions) (AnalysisResult, error)
 }
 
 type LSPServer struct {
@@ -42,6 +79,7 @@ type LSPServer struct {
 
 type fileSession struct {
 	uri      string
+	path     string
 	pkgKey   string
 	pkgName  string
 	code     string
@@ -50,7 +88,10 @@ type fileSession struct {
 }
 
 type packageState struct {
-	key string
+	key      string
+	pkgName  string
+	rootURI  string
+	rootPath string
 
 	mu sync.RWMutex
 
@@ -61,12 +102,6 @@ type packageState struct {
 	diagnosticTimer      *time.Timer
 	diagnosticGeneration uint64
 	version              uint64
-}
-
-type parsedFile struct {
-	uri         string
-	program     *ast.ProgramStmt
-	diagnostics []Diagnostic
 }
 
 type packageAnalysis struct {
@@ -124,12 +159,13 @@ func (s *LSPServer) flushDiagnostics(uri string) (map[string][]Diagnostic, error
 
 func (s *LSPServer) applySession(uri, code string) (*packageState, *packageState) {
 	pkgName := detectPackageName(uri, code)
+	rootURI, rootPath := packageRootForURI(uri)
 	pkgKey := packageKeyForURI(uri, pkgName)
 
 	s.mu.Lock()
 	file := s.files[uri]
 	if file == nil {
-		file = &fileSession{uri: uri}
+		file = &fileSession{uri: uri, path: localPathForURI(uri)}
 		s.files[uri] = file
 	}
 	oldPkgKey := file.pkgKey
@@ -139,7 +175,7 @@ func (s *LSPServer) applySession(uri, code string) (*packageState, *packageState
 	file.pkgName = pkgName
 	file.code = code
 
-	currentPkg := s.ensurePackageLocked(pkgKey)
+	currentPkg := s.ensurePackageLocked(pkgKey, pkgName, rootURI, rootPath)
 	currentPkg.mu.Lock()
 	currentPkg.files[uri] = cloneFileSession(file)
 	currentPkg.version++
@@ -152,7 +188,7 @@ func (s *LSPServer) applySession(uri, code string) (*packageState, *packageState
 			oldPkg.mu.Lock()
 			delete(oldPkg.files, uri)
 			oldPkg.version++
-			shouldDelete := len(oldPkg.files) == 0
+			shouldDelete := len(oldPkg.files) == 0 && !packageHasDiskFiles(oldPkg)
 			oldPkg.mu.Unlock()
 			if shouldDelete {
 				delete(s.packages, oldPkgKey)
@@ -181,7 +217,8 @@ func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
 	pkg.mu.Lock()
 	delete(pkg.files, uri)
 	pkg.version++
-	if len(pkg.files) == 0 {
+	shouldDelete := len(pkg.files) == 0 && !packageHasDiskFiles(pkg)
+	if shouldDelete {
 		updates := make(map[string][]Diagnostic)
 		for diagURI, old := range pkg.publishedDiagnostics {
 			if len(old) > 0 {
@@ -200,10 +237,54 @@ func (s *LSPServer) RemoveSession(uri string) map[string][]Diagnostic {
 	s.mu.Unlock()
 
 	updates, _ := s.flushPackageDiagnostics(pkg)
-	if _, ok := updates[uri]; !ok {
+	if _, ok := updates[uri]; !ok && !packageContainsDiskURI(pkg, uri) {
 		updates[uri] = []Diagnostic{}
 	}
 	return updates
+}
+
+func (s *LSPServer) RefreshWorkspaceFiles(uris []string) (map[string][]Diagnostic, error) {
+	if len(uris) == 0 {
+		return nil, nil
+	}
+	roots := make(map[string]struct{}, len(uris))
+	for _, uri := range uris {
+		if local := localPathForURI(uri); local != "" {
+			roots[filepath.Dir(local)] = struct{}{}
+		}
+	}
+
+	s.mu.RLock()
+	packages := make([]*packageState, 0)
+	seen := make(map[string]struct{})
+	for _, pkg := range s.packages {
+		if pkg == nil {
+			continue
+		}
+		if _, ok := roots[pkg.rootPath]; !ok {
+			continue
+		}
+		if _, duplicate := seen[pkg.key]; duplicate {
+			continue
+		}
+		seen[pkg.key] = struct{}{}
+		packages = append(packages, pkg)
+	}
+	s.mu.RUnlock()
+
+	updates := make(map[string][]Diagnostic)
+	var firstErr error
+	for _, pkg := range packages {
+		pkg.mu.Lock()
+		pkg.version++
+		pkg.mu.Unlock()
+		current, err := s.flushPackageDiagnostics(pkg)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		mergeDiagnostics(updates, current)
+	}
+	return updates, firstErr
 }
 
 func (s *LSPServer) stopPendingDiagnostics() {
@@ -283,12 +364,18 @@ func (s *LSPServer) publishDiagnosticUpdates(updates map[string][]Diagnostic) {
 	}
 }
 
-func (s *LSPServer) ensurePackageLocked(pkgKey string) *packageState {
+func (s *LSPServer) ensurePackageLocked(pkgKey, pkgName, rootURI, rootPath string) *packageState {
 	if pkg := s.packages[pkgKey]; pkg != nil {
+		pkg.pkgName = pkgName
+		pkg.rootURI = rootURI
+		pkg.rootPath = rootPath
 		return pkg
 	}
 	pkg := &packageState{
 		key:                  pkgKey,
+		pkgName:              pkgName,
+		rootURI:              rootURI,
+		rootPath:             rootPath,
 		files:                make(map[string]*fileSession),
 		publishedDiagnostics: make(map[string][]Diagnostic),
 	}
@@ -309,46 +396,12 @@ func (s *LSPServer) analyzePackage(pkg *packageState) (*packageAnalysis, error) 
 		return nil, nil
 	}
 
-	files, version := snapshotPackageFiles(pkg)
-	if len(files) == 0 {
-		return &packageAnalysis{version: version, diagnostics: nil}, nil
+	snapshot := s.snapshotPackage(pkg)
+	if len(snapshot.Files) == 0 {
+		return &packageAnalysis{version: snapshot.Version, diagnostics: nil}, nil
 	}
-	codeByURI := fileCodeMap(files)
-
-	parsed := make([]parsedFile, 0, len(files))
-	diagnostics := make(map[string][]Diagnostic)
-	for _, file := range files {
-		item := parseFileForLSP(file)
-		parsed = append(parsed, item)
-		if len(item.diagnostics) > 0 {
-			diagnostics[item.uri] = append(diagnostics[item.uri], item.diagnostics...)
-		}
-	}
-
-	combined, mergeURI, mergeErr := mergeParsedPrograms(parsed)
-	if mergeErr != nil {
-		if mergeURI == "" && len(files) > 0 {
-			mergeURI = files[len(files)-1].uri
-		}
-		if mergeURI != "" {
-			diagnostics[mergeURI] = append(diagnostics[mergeURI], Diagnostic{
-				Range:    rangeForInternalPosition(codeByURI, &ast.Position{F: mergeURI, L: 1, C: 1}),
-				Severity: 1,
-				Source:   "go-mini",
-				Message:  mergeErr.Error(),
-			})
-		}
-		return &packageAnalysis{version: version, diagnostics: diagnostics}, mergeErr
-	}
-	if combined == nil {
-		return &packageAnalysis{version: version, diagnostics: diagnostics}, nil
-	}
-
-	prog, errs := s.executor.AnalyzeProgramTolerant(combined, codeByURI)
-	for _, err := range errs {
-		appendAnalysisDiagnostics(diagnostics, codeByURI, err)
-	}
-	return &packageAnalysis{version: version, combined: prog, diagnostics: diagnostics}, nil
+	result, err := s.executor.AnalyzeSnapshot(snapshot, AnalysisOptions{CompileParity: true})
+	return &packageAnalysis{version: snapshot.Version, combined: result.Program, diagnostics: result.Diagnostics}, err
 }
 
 func (s *LSPServer) flushPackageDiagnostics(pkg *packageState) (map[string][]Diagnostic, error) {
@@ -378,129 +431,51 @@ func (s *LSPServer) refreshPackageAnalysis(pkg *packageState) ProgramView {
 	return combined
 }
 
-func snapshotPackageFiles(pkg *packageState) ([]*fileSession, uint64) {
+func (s *LSPServer) snapshotPackage(pkg *packageState) PackageSnapshot {
 	pkg.mu.RLock()
-	defer pkg.mu.RUnlock()
-
-	files := make([]*fileSession, 0, len(pkg.files))
+	key := pkg.key
+	pkgName := pkg.pkgName
+	rootURI := pkg.rootURI
+	rootPath := pkg.rootPath
+	version := pkg.version
+	openFiles := make([]*fileSession, 0, len(pkg.files))
 	for _, file := range pkg.files {
-		files = append(files, cloneFileSession(file))
+		openFiles = append(openFiles, cloneFileSession(file))
+	}
+	pkg.mu.RUnlock()
+
+	byURI := make(map[string]SnapshotFile)
+	for _, file := range diskPackageFiles(rootPath, pkgName) {
+		byURI[file.URI] = file
+	}
+	for _, file := range openFiles {
+		if file == nil {
+			continue
+		}
+		byURI[file.uri] = SnapshotFile{
+			URI:     file.uri,
+			Path:    file.path,
+			Code:    file.code,
+			Open:    true,
+			Version: file.version,
+		}
+	}
+
+	files := make([]SnapshotFile, 0, len(byURI))
+	for _, file := range byURI {
+		files = append(files, file)
 	}
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].uri < files[j].uri
+		return files[i].URI < files[j].URI
 	})
-	return files, pkg.version
-}
 
-func fileCodeMap(files []*fileSession) map[string]string {
-	res := make(map[string]string, len(files))
-	for _, file := range files {
-		if file != nil {
-			res[file.uri] = file.code
-		}
-	}
-	return res
-}
-
-func rangeForInternalPosition(codeByURI map[string]string, pos *ast.Position) Range {
-	if pos == nil {
-		return Range{}
-	}
-	return RangeFromInternalPos(codeByURI[pos.F], pos)
-}
-
-func parseFileForLSP(file *fileSession) parsedFile {
-	result := parsedFile{uri: file.uri}
-	converter := gofrontend.NewConverter()
-	node, errs := converter.ConvertSourceTolerant(file.uri, file.code)
-	for _, err := range errs {
-		var scanErr scanner.Error
-		if errors.As(err, &scanErr) {
-			result.diagnostics = append(result.diagnostics, Diagnostic{
-				Range:    rangeForScannerError(file.code, scanErr),
-				Severity: 1,
-				Source:   "go-mini-syntax",
-				Message:  scanErr.Msg,
-			})
-			continue
-		}
-		var convertErr *gofrontend.ConvertError
-		if errors.As(err, &convertErr) && convertErr.Pos != nil {
-			result.diagnostics = append(result.diagnostics, Diagnostic{
-				Range:    RangeFromInternalPos(file.code, convertErr.Pos),
-				Severity: 1,
-				Source:   "go-mini-syntax",
-				Message:  convertErr.Message,
-			})
-			continue
-		}
-		if err != nil {
-			result.diagnostics = append(result.diagnostics, Diagnostic{
-				Range:    RangeFromInternalPos(file.code, &ast.Position{F: file.uri, L: 1, C: 1}),
-				Severity: 1,
-				Source:   "go-mini-syntax",
-				Message:  err.Error(),
-			})
-		}
-	}
-	if prog, ok := node.(*ast.ProgramStmt); ok {
-		result.program = prog
-	}
-	return result
-}
-
-func mergeParsedPrograms(parsed []parsedFile) (*ast.ProgramStmt, string, error) {
-	var programs []*ast.ProgramStmt
-	var lastURI string
-	for _, item := range parsed {
-		if item.program == nil {
-			continue
-		}
-		programs = append(programs, item.program)
-		lastURI = item.uri
-	}
-	if len(programs) == 0 {
-		return nil, "", nil
-	}
-	combined, err := compiler.MergePrograms(programs)
-	if err != nil {
-		return nil, lastURI, err
-	}
-	return combined, "", nil
-}
-
-func appendAnalysisDiagnostics(diagnostics map[string][]Diagnostic, codeByURI map[string]string, err error) {
-	if err == nil {
-		return
-	}
-	var astErr *ast.MiniAstError
-	if errors.As(err, &astErr) {
-		for _, log := range astErr.Logs {
-			if log.Node == nil || log.Node.GetBase() == nil {
-				continue
-			}
-			loc := log.Node.GetBase().Loc
-			if loc == nil || loc.F == "" {
-				continue
-			}
-			diagnostics[loc.F] = append(diagnostics[loc.F], Diagnostic{
-				Range:    rangeForInternalPosition(codeByURI, loc),
-				Severity: 1,
-				Source:   "go-mini",
-				Message:  log.Message,
-			})
-		}
-		return
-	}
-	var vme *runtime.VMError
-	if errors.As(err, &vme) && len(vme.Frames) > 0 {
-		f := vme.Frames[0]
-		diagnostics[f.Filename] = append(diagnostics[f.Filename], Diagnostic{
-			Range:    rangeForInternalPosition(codeByURI, &ast.Position{F: f.Filename, L: f.Line, C: f.Column}),
-			Severity: 1,
-			Source:   "go-mini-runtime",
-			Message:  vme.Message,
-		})
+	return PackageSnapshot{
+		Key:         key,
+		PackageName: pkgName,
+		RootURI:     rootURI,
+		RootPath:    rootPath,
+		Version:     version,
+		Files:       files,
 	}
 }
 
@@ -555,7 +530,7 @@ func diagnosticSlicesEqual(a, b []Diagnostic) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Range != b[i].Range || a[i].Severity != b[i].Severity || a[i].Source != b[i].Source || a[i].Message != b[i].Message {
+		if a[i].Range != b[i].Range || a[i].Severity != b[i].Severity || a[i].Code != b[i].Code || a[i].Source != b[i].Source || a[i].Message != b[i].Message {
 			return false
 		}
 		if len(a[i].RelatedInformation) != len(b[i].RelatedInformation) {
@@ -574,10 +549,17 @@ func (s *LSPServer) packageForURI(uri string) *packageState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	file := s.files[uri]
-	if file == nil {
-		return nil
+	if file != nil {
+		return s.packages[file.pkgKey]
 	}
-	return s.packages[file.pkgKey]
+	if localPath := localPathForURI(uri); localPath != "" {
+		data, err := os.ReadFile(localPath)
+		if err == nil {
+			pkgKey := packageKeyForURI(uri, detectPackageName(uri, string(data)))
+			return s.packages[pkgKey]
+		}
+	}
+	return nil
 }
 
 func (s *LSPServer) programForURI(uri string) (*packageState, ProgramView) {
@@ -604,6 +586,10 @@ func detectPackageName(uri, code string) string {
 }
 
 func packageKeyForURI(uri, pkgName string) string {
+	rootURI, _ := packageRootForURI(uri)
+	if rootURI != "" {
+		return rootURI + "::" + pkgName
+	}
 	if parsed, err := url.Parse(uri); err == nil {
 		dir := path.Dir(parsed.Path)
 		if dir == "." || dir == "/" || dir == "" {
@@ -620,7 +606,104 @@ func packageKeyForURI(uri, pkgName string) string {
 	return uri[:lastSlash] + "::" + pkgName
 }
 
-func rangeForScannerError(code string, scanErr scanner.Error) Range {
+func packageRootForURI(uri string) (string, string) {
+	if localPath := localPathForURI(uri); localPath != "" {
+		rootPath := filepath.Dir(localPath)
+		return fileURIForPath(rootPath), rootPath
+	}
+	if parsed, err := url.Parse(uri); err == nil {
+		dir := path.Dir(parsed.Path)
+		if dir == "." || dir == "/" || dir == "" {
+			dir = parsed.Host
+		} else if parsed.Host != "" {
+			dir = parsed.Host + dir
+		}
+		return strings.TrimRight(dir, "/"), ""
+	}
+	lastSlash := strings.LastIndex(uri, "/")
+	if lastSlash == -1 {
+		return uri, ""
+	}
+	return uri[:lastSlash], ""
+}
+
+func localPathForURI(uri string) string {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Scheme != "file" {
+		return ""
+	}
+	pathText, err := url.PathUnescape(parsed.Path)
+	if err != nil {
+		pathText = parsed.Path
+	}
+	if pathText == "" {
+		return ""
+	}
+	return filepath.Clean(filepath.FromSlash(pathText))
+}
+
+func fileURIForPath(name string) string {
+	if name == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		abs = name
+	}
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}).String()
+}
+
+func packageHasDiskFiles(pkg *packageState) bool {
+	if pkg == nil || pkg.rootPath == "" {
+		return false
+	}
+	return len(diskPackageFiles(pkg.rootPath, pkg.pkgName)) > 0
+}
+
+func packageContainsDiskURI(pkg *packageState, uri string) bool {
+	if pkg == nil || pkg.rootPath == "" || uri == "" {
+		return false
+	}
+	local := localPathForURI(uri)
+	if local == "" || filepath.Dir(local) != pkg.rootPath {
+		return false
+	}
+	data, err := os.ReadFile(local)
+	if err != nil {
+		return false
+	}
+	return detectPackageName(uri, string(data)) == pkg.pkgName
+}
+
+func diskPackageFiles(rootPath, pkgName string) []SnapshotFile {
+	if rootPath == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(rootPath)
+	if err != nil {
+		return nil
+	}
+	files := make([]SnapshotFile, 0)
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".mgo" {
+			continue
+		}
+		name := filepath.Join(rootPath, entry.Name())
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		uri := fileURIForPath(name)
+		code := string(data)
+		if detectPackageName(uri, code) != pkgName {
+			continue
+		}
+		files = append(files, SnapshotFile{URI: uri, Path: name, Code: code})
+	}
+	return files
+}
+
+func RangeForScannerError(code string, scanErr scanner.Error) Range {
 	lines := strings.Split(code, "\n")
 	if len(lines) == 0 {
 		return Range{}
@@ -687,102 +770,4 @@ func scannerErrorToken(message string) string {
 		return ""
 	}
 	return token
-}
-
-func (s *LSPServer) GetCompletions(uri string, line, char int) []CompletionItem {
-	_, combined := s.programForURI(uri)
-	if combined == nil {
-		return nil
-	}
-	items := combined.GetCompletionsAtFile(uri, line+1, char+1)
-	res := make([]CompletionItem, 0, len(items))
-	for _, it := range items {
-		res = append(res, CompletionItem{
-			Label:         it.Label,
-			Kind:          MapKind(it.Kind),
-			Detail:        string(it.Type),
-			InsertText:    it.Label,
-			Documentation: it.Doc,
-		})
-	}
-	return res
-}
-
-func (s *LSPServer) GetHover(uri string, line, char int) *Hover {
-	_, combined := s.programForURI(uri)
-	if combined == nil {
-		return nil
-	}
-	info := combined.GetHoverAtFile(uri, line+1, char+1)
-	if info == nil {
-		return nil
-	}
-	value := info.Markdown
-	if value == "" {
-		value = fmt.Sprintf("```go\n%s\n```\n%s", info.Signature, info.Doc)
-	}
-	return &Hover{
-		Contents: MarkupContent{
-			Kind:  "markdown",
-			Value: value,
-		},
-	}
-}
-
-func (s *LSPServer) GetDefinition(uri string, line, char int) []Location {
-	pkg, combined := s.programForURI(uri)
-	if pkg == nil {
-		return nil
-	}
-	if combined == nil {
-		return nil
-	}
-	def := combined.GetDefinitionAtFile(uri, line+1, char+1)
-	if def == nil {
-		return nil
-	}
-	defLoc := def.GetBase().Loc
-	targetURI := uri
-	if defLoc != nil && defLoc.F != "" {
-		targetURI = defLoc.F
-	}
-	return []Location{{URI: targetURI, Range: rangeForPackagePosition(pkg, targetURI, defLoc)}}
-}
-
-func (s *LSPServer) GetReferences(uri string, line, char int, includeDeclaration bool) []Location {
-	pkg, combined := s.programForURI(uri)
-	if pkg == nil {
-		return nil
-	}
-	if combined == nil {
-		return nil
-	}
-	refs := combined.GetReferencesAtFile(uri, line+1, char+1, includeDeclaration)
-	res := make([]Location, 0, len(refs))
-	for _, r := range refs {
-		loc := r.GetBase().Loc
-		if loc == nil {
-			continue
-		}
-		targetURI := uri
-		if loc.F != "" {
-			targetURI = loc.F
-		}
-		res = append(res, Location{URI: targetURI, Range: rangeForPackagePosition(pkg, targetURI, loc)})
-	}
-	return res
-}
-
-func rangeForPackagePosition(pkg *packageState, uri string, pos *ast.Position) Range {
-	if pkg == nil || pos == nil {
-		return RangeFromInternalPos("", pos)
-	}
-	pkg.mu.RLock()
-	file := pkg.files[uri]
-	var code string
-	if file != nil {
-		code = file.code
-	}
-	pkg.mu.RUnlock()
-	return RangeFromInternalPos(code, pos)
 }

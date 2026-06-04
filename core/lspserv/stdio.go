@@ -161,6 +161,23 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 					"hoverProvider":      true,
 					"definitionProvider": true,
 					"referencesProvider": true,
+					"signatureHelpProvider": map[string]interface{}{
+						"triggerCharacters": []string{"(", ","},
+					},
+					"documentSymbolProvider": true,
+					"semanticTokensProvider": map[string]interface{}{
+						"legend": map[string]interface{}{
+							"tokenTypes":     semanticTokenTypes,
+							"tokenModifiers": []string{},
+						},
+						"full": true,
+					},
+					"codeActionProvider": true,
+					"workspace": map[string]interface{}{
+						"didChangeWatchedFiles": map[string]interface{}{
+							"dynamicRegistration": false,
+						},
+					},
 				},
 			},
 		})
@@ -245,6 +262,29 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 		publishDiagnostics(server.RemoveSession(params.TextDocument.URI), writeMessage, errOut)
 		return false
 
+	case "workspace/didChangeWatchedFiles":
+		var params struct {
+			Changes []struct {
+				URI string `json:"uri"`
+			} `json:"changes"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		uris := make([]string, 0, len(params.Changes))
+		for _, change := range params.Changes {
+			if strings.TrimSpace(change.URI) != "" {
+				uris = append(uris, change.URI)
+			}
+		}
+		updates, err := server.RefreshWorkspaceFiles(uris)
+		if err != nil {
+			_, _ = fmt.Fprintf(errOut, "Error refreshing watched files: %v\n", err)
+		}
+		publishDiagnostics(updates, writeMessage, errOut)
+		return false
+
 	case "textDocument/completion":
 		var params struct {
 			TextDocument struct{ URI string } `json:"textDocument"`
@@ -314,6 +354,74 @@ func handleMessage(server *LSPServer, msg *rpcMessage, state *streamState, write
 		}
 		locs := server.GetReferences(params.TextDocument.URI, params.Position.Line, params.Position.Character, params.Context.IncludeDeclaration)
 		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: locs})
+		return false
+
+	case "textDocument/signatureHelp":
+		var params struct {
+			TextDocument struct{ URI string } `json:"textDocument"`
+			Position     Position             `json:"position"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		help := server.GetSignatureHelp(params.TextDocument.URI, params.Position.Line, params.Position.Character)
+		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: help})
+		return false
+
+	case "textDocument/documentSymbol":
+		var params struct {
+			TextDocument struct{ URI string } `json:"textDocument"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		symbols := server.GetDocumentSymbols(params.TextDocument.URI)
+		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: symbols})
+		return false
+
+	case "textDocument/semanticTokens/full":
+		var params struct {
+			TextDocument struct{ URI string } `json:"textDocument"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		tokens := server.GetSemanticTokens(params.TextDocument.URI)
+		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: tokens})
+		return false
+
+	case "textDocument/codeAction":
+		var params struct {
+			TextDocument struct{ URI string } `json:"textDocument"`
+			Context      struct {
+				Diagnostics []Diagnostic `json:"diagnostics"`
+			} `json:"context"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			writeInvalidParams(msg, writeMessage, err)
+			return false
+		}
+		if strings.TrimSpace(params.TextDocument.URI) == "" {
+			writeInvalidParams(msg, writeMessage, errMissingTextDocumentURI)
+			return false
+		}
+		actions := server.GetCodeActions(params.TextDocument.URI, params.Context.Diagnostics)
+		writeMessage(rpcMessage{JSONRPC: "2.0", ID: msg.ID, Result: actions})
 		return false
 	default:
 		if msg.ID != nil {

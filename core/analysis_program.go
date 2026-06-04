@@ -147,3 +147,33 @@ func (p *AnalysisProgram) GetCompletionsAtFile(file string, line, col int) []ast
 	}
 	return ast.FindCompletionsAtFile(p.Program, file, line, col)
 }
+
+func (p *AnalysisProgram) GetSignatureHelpAtFile(file string, line, col int) *ast.SignatureHelpInfo {
+	if p == nil || p.Program == nil {
+		return nil
+	}
+	p.BuildAllCache()
+	return ast.FindSignatureHelpAtFile(p.Program, file, line, col, p.parentMap)
+}
+
+func (p *AnalysisProgram) GetDocumentSymbolsAtFile(file string) []ast.DocumentSymbolInfo {
+	if p == nil || p.Program == nil {
+		return nil
+	}
+	return ast.FindDocumentSymbolsAtFile(p.Program, file)
+}
+
+func (p *AnalysisProgram) ResolveImportPathForPackage(alias string) string {
+	if p == nil || p.Program == nil || alias == "" || p.Program.GetBase() == nil {
+		return ""
+	}
+	ctx, ok := p.Program.GetBase().Scope.(*ast.ValidContext)
+	if !ok || ctx == nil || ctx.Root() == nil {
+		return ""
+	}
+	path, known, _ := ctx.Root().ResolvePackage(ast.Ident(alias))
+	if !known {
+		return ""
+	}
+	return path
+}
