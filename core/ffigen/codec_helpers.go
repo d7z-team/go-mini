@@ -67,7 +67,7 @@ func (g *Generator) emitWrite(sb *strings.Builder, prefix, pType string, expr as
 	case "[]byte", "Array<Byte>", "Array<Uint8>", "Array<byte>", "Array<uint8>":
 		fmt.Fprintf(sb, "\t%s.WriteBytes(%s)\n", bufName, prefix)
 	case "Any", "any":
-		fmt.Fprintf(sb, "\t%s.WriteAny(%s)\n", bufName, prefix)
+		fmt.Fprintf(sb, "\tif err := %s.WriteAny(%s); err != nil { return nil, err }\n", bufName, prefix)
 	default:
 		if itemType, ok := readArrayItemType(pType); ok {
 			fmt.Fprintf(sb, "\t%s.WriteUvarint(uint64(len(%s)))\n\tfor _, item := range %s {\n", bufName, prefix, prefix)

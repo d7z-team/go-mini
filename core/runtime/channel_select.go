@@ -180,15 +180,16 @@ func (e *Executor) dispatchSelectCommit(session *StackContext, task Task) error 
 }
 
 func (e *Executor) parkSelect(session *StackContext, task Task, plan *SelectData, operands []SelectOperand) error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("select suspended without active VM scheduler")
 	}
 	commit := &SelectCommitData{Plan: plan, CaseIndex: -1}
-	token, err := e.scheduler.ParkVM(Task{Op: OpSelectCommit, Source: task.Source, Data: commit}, nil, "select", 0)
+	token, err := scheduler.ParkVM(Task{Op: OpSelectCommit, Source: task.Source, Data: commit}, nil, "select", 0)
 	if err != nil {
 		return err
 	}
-	group := &selectWaitGroup{token: token, commit: commit, scheduler: e.scheduler}
+	group := &selectWaitGroup{token: token, commit: commit, scheduler: scheduler}
 	registered := false
 	hasExternal := false
 	for i := range plan.Cases {
@@ -288,11 +289,11 @@ func (e *Executor) parkSelect(session *StackContext, task Task, plan *SelectData
 			kind = ffigo.WaitExternal
 		}
 		wait := ffigoSelectWait(group, kind)
-		if !e.scheduler.SetVMWait(token, wait) {
+		if !scheduler.SetVMWait(token, wait) {
 			wait.Cancel()
 		}
 	} else {
-		e.scheduler.SetVMWait(token, ffigoNilChannelWait("empty select"))
+		scheduler.SetVMWait(token, ffigoNilChannelWait("empty select"))
 	}
 	return errExecutionContextSuspend
 }

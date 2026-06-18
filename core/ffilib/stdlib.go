@@ -87,15 +87,13 @@ func nativeErrorSurface() *surface.Bundle {
 		}
 	}
 	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bound := runtime.NewBoundFFISurface(schema)
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		natives := make(map[uint32]runtime.NativeFunc, len(routes))
 		for _, r := range routes {
-			bound.AddRoute(r.pkg, r.member, runtime.FFIRoute{
-				Name:     r.route,
-				Native:   r.fn,
-				MethodID: r.methodID,
-				FuncSig:  r.sig,
-				Doc:      r.doc,
-			})
+			natives[r.methodID] = r.fn
+		}
+		if err := bound.BindSchemaNativeRoutes(schema, natives); err != nil {
+			return nil, err
 		}
 		return bound, nil
 	})

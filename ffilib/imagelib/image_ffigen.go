@@ -91,7 +91,7 @@ var imageLibRoutes = []runtime.FFIRouteDecl{
 func SurfaceImageLib(impl ImageLib) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(imageLibRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -660,10 +660,10 @@ var imageRoutes = []runtime.FFIRouteDecl{
 func SurfaceImage() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(imageRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("image", "Image", image_Image_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

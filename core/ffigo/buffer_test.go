@@ -99,3 +99,49 @@ func TestReaderReportsInvalidCollectionCount(t *testing.T) {
 		t.Fatal("expected reader error for oversized array")
 	}
 }
+
+func TestRawCallbackIsTypedWireOnly(t *testing.T) {
+	buf := GetBuffer()
+	defer ReleaseBuffer(buf)
+	buf.WriteRawCallback(7, "function() Void")
+	raw, err := NewReader(buf.Bytes()).ReadRawCallback()
+	if err != nil {
+		t.Fatalf("ReadRawCallback failed: %v", err)
+	}
+	if raw.Handle != 7 || raw.Signature != "function() Void" {
+		t.Fatalf("unexpected callback payload: %#v", raw)
+	}
+
+	anyBuf := GetBuffer()
+	defer ReleaseBuffer(anyBuf)
+	if err := anyBuf.WriteAny(CallbackData{Handle: 7, Signature: "function() Void"}); err == nil {
+		t.Fatal("expected callback Any encoding to fail")
+	}
+}
+
+func TestAnyRejectsHostIdentityWireTypes(t *testing.T) {
+	buf := GetBuffer()
+	defer ReleaseBuffer(buf)
+	if err := buf.WriteAny(InterfaceData{Handle: 1, Methods: map[string]string{"Call": "function() Void"}}); err == nil {
+		t.Fatal("expected interface Any encoding to fail")
+	}
+	if err := buf.WriteAny(ErrorData{Message: "boom", Handle: 1}); err == nil {
+		t.Fatal("expected host error handle Any encoding to fail")
+	}
+
+	interfaceBuf := GetBuffer()
+	defer ReleaseBuffer(interfaceBuf)
+	_ = interfaceBuf.WriteByte(TypeTagInterface)
+	interfaceBuf.WriteRawInterface(1, nil)
+	if got, err := NewReader(interfaceBuf.Bytes()).ReadAny(); err == nil || got != nil {
+		t.Fatalf("expected interface Any decoding to fail, got %#v", got)
+	}
+
+	errorBuf := GetBuffer()
+	defer ReleaseBuffer(errorBuf)
+	_ = errorBuf.WriteByte(TypeTagError)
+	errorBuf.WriteRawError("boom", 1)
+	if got, err := NewReader(errorBuf.Bytes()).ReadAny(); err == nil || got != nil {
+		t.Fatalf("expected host error handle Any decoding to fail, got %#v", got)
+	}
+}

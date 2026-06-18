@@ -255,16 +255,16 @@ var mockOSRoutes = []runtime.FFIRouteDecl{
 func SurfaceMockOS(impl MockOS) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(mockOSRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("os", "File", os_File_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("os", "FileInfo", os_FileInfo_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("os", "Nested", os_Nested_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -334,7 +334,7 @@ var contextMockRoutes = []runtime.FFIRouteDecl{
 func SurfaceContextMock(impl ContextMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(contextMockRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -437,13 +437,13 @@ var nativeMockRoutes = []runtime.FFIRouteDecl{
 func SurfaceNativeMock(impl NativeMock) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(nativeMockRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("native", "NativeStruct", native_NativeStruct_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("native", "NativeHandle", native_NativeHandle_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -520,13 +520,13 @@ var pageRoutes = []runtime.FFIRouteDecl{
 func SurfacePage() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(pageRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("browser", "Selector", browser_Selector_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("browser", "Page", browser_Page_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

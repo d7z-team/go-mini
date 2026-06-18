@@ -167,10 +167,10 @@ var orderServiceRoutes = []runtime.FFIRouteDecl{
 func SurfaceOrderService(impl OrderService) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(orderServiceRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("order", "Order", order_Order_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

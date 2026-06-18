@@ -200,61 +200,61 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "ANSIC", runtime.ConstString(string(time.ANSIC))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Hour", runtime.ConstInt64(int64(time.Hour))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Kitchen", runtime.ConstString(string(time.Kitchen))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Layout", runtime.ConstString(string(time.Layout))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Microsecond", runtime.ConstInt64(int64(time.Microsecond))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Millisecond", runtime.ConstInt64(int64(time.Millisecond))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Minute", runtime.ConstInt64(int64(time.Minute))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Nanosecond", runtime.ConstInt64(int64(time.Nanosecond))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC1123", runtime.ConstString(string(time.RFC1123))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC1123Z", runtime.ConstString(string(time.RFC1123Z))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC3339", runtime.ConstString(string(time.RFC3339))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC3339Nano", runtime.ConstString(string(time.RFC3339Nano))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC822", runtime.ConstString(string(time.RFC822))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC822Z", runtime.ConstString(string(time.RFC822Z))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RFC850", runtime.ConstString(string(time.RFC850))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "RubyDate", runtime.ConstString(string(time.RubyDate))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "Second", runtime.ConstInt64(int64(time.Second))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("time", "UnixDate", runtime.ConstString(string(time.UnixDate))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -763,10 +763,10 @@ var timeRoutes = []runtime.FFIRouteDecl{
 func SurfaceTime() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(timeRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("time", "Time", time_Time_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

@@ -15,6 +15,7 @@ const (
 	FrameRoot ExecutionContextFrameKind = iota
 	FrameGo
 	FrameModuleInit
+	FrameHostCallback
 )
 
 type ExecutionContextFrame struct {
@@ -251,6 +252,25 @@ func (s *ExecutionContextScheduler) Go(session *StackContext, exec *Executor) (*
 	return execCtx, nil
 }
 
+func (s *ExecutionContextScheduler) GoFrame(frame *ExecutionContextFrame) (*VMExecutionContext, error) {
+	if s == nil || frame == nil || frame.Session == nil || frame.Executor == nil {
+		return nil, errors.New("invalid VM execution context frame")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return nil, errors.New("cannot start VM execution context after scheduler stopped")
+	}
+	s.nextID++
+	execCtx := &VMExecutionContext{
+		ID:     s.nextID,
+		Frames: []*ExecutionContextFrame{frame},
+	}
+	s.runq.push(execCtx)
+	s.signalLocked()
+	return execCtx, nil
+}
+
 func (s *ExecutionContextScheduler) PushFrame(frame *ExecutionContextFrame) error {
 	if s == nil {
 		return errors.New("missing current VM execution context")
@@ -276,18 +296,18 @@ func (s *ExecutionContextScheduler) EnqueueExecutionContext(execCtx *VMExecution
 	s.signalLocked()
 }
 
-func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireCompletion, error) {
+func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, error) {
 	if s == nil {
-		return 0, nil, errors.New("missing current VM execution context")
+		return 0, errors.New("missing current VM execution context")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.current == nil {
-		return 0, nil, errors.New("missing current VM execution context")
+		return 0, errors.New("missing current VM execution context")
 	}
 	frame := s.current.CurrentFrame()
 	if frame == nil {
-		return 0, nil, errors.New("missing current VM execution context frame")
+		return 0, errors.New("missing current VM execution context frame")
 	}
 	s.nextToken++
 	token := (s.runID << 32) | s.nextToken
@@ -304,7 +324,7 @@ func (s *ExecutionContextScheduler) PrepareFFI(resume Task) (uint64, ffigo.WireC
 		RouteName:        routeName,
 		MethodID:         methodID,
 	}
-	return token, ffiCompletionSink{scheduler: s, token: token}, nil
+	return token, nil
 }
 
 func (s *ExecutionContextScheduler) ParkVM(resume Task, wait ffigo.WaitHandle, routeName string, methodID uint32) (uint64, error) {
@@ -382,11 +402,7 @@ func (s *ExecutionContextScheduler) CommitFFI(token uint64, wait ffigo.WaitHandl
 	if pending == nil {
 		return errors.New("missing pending FFI execution context")
 	}
-	if wait == nil {
-		if _, accepted := s.accepted[token]; !accepted {
-			return fmt.Errorf("async FFI route %s returned no wait handle", pending.RouteName)
-		}
-	} else {
+	if wait != nil {
 		pending.Wait = wait
 	}
 	s.current = nil
@@ -644,16 +660,4 @@ func runExecutionContextCancels(cancels []func()) {
 			cancel()
 		}
 	}
-}
-
-type ffiCompletionSink struct {
-	scheduler *ExecutionContextScheduler
-	token     uint64
-}
-
-func (s ffiCompletionSink) CompleteWire(ret []byte, err error) bool {
-	if s.scheduler == nil {
-		return false
-	}
-	return s.scheduler.completeWire(s.token, ret, err)
 }

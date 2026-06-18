@@ -19,7 +19,7 @@ var io_Reader_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("inter
 func SurfaceReaderSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddInterface("io", "Reader", io_Reader_FFI_InterfaceSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
@@ -32,7 +32,7 @@ var io_Writer_FFI_InterfaceSchema = runtime.MustParseRuntimeInterfaceSpec("inter
 func SurfaceWriterSchema() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddInterface("io", "Writer", io_Writer_FFI_InterfaceSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
@@ -202,22 +202,22 @@ var ioRoutes = []runtime.FFIRouteDecl{
 func SurfaceIO(impl IO) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(ioRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("io", "SeekCurrent", runtime.ConstInt64(int64(io.SeekCurrent))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("io", "SeekEnd", runtime.ConstInt64(int64(io.SeekEnd))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("io", "SeekStart", runtime.ConstInt64(int64(io.SeekStart))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddInterface("io", "Reader", io_Reader_FFI_InterfaceSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddInterface("io", "Writer", io_Writer_FFI_InterfaceSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -640,10 +640,10 @@ var fileRoutes = []runtime.FFIRouteDecl{
 func SurfaceFile() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(fileRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("io", "File", io_File_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {

@@ -227,7 +227,9 @@ func registerMockCounterSurface(t *testing.T, executor *engine.MiniExecutor, bri
 		if err != nil {
 			return nil, err
 		}
-		bound.AddPackageValue("mock", "Default", &miniruntime.ValueSpec{Type: hostRefType, ReadOnly: true}, value)
+		if err := bound.BindPackageValue("mock", "Default", value); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})); err != nil {
 		t.Fatal(err)

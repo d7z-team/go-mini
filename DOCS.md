@@ -27,7 +27,7 @@
 仓库采用多模块布局：
 
 - `gopkg.d7z.net/go-mini/core`: 核心引擎、compiler、runtime、LSP core、FFI wire、`core/cmd/ffigen` 和 `core/ffilib` 默认标准库子集
-- `gopkg.d7z.net/go-mini/ffilib`: 完整标准库 FFI 装配，以及 io/os/time/context/image 等外层标准库模块
+- `gopkg.d7z.net/go-mini/ffilib`: 完整标准库 FFI 装配，以及 io/os/time/context/image/net/http 等外层标准库模块
 - `gopkg.d7z.net/go-mini/examples`: 示例脚本和 `examples/cmd/exec`、`examples/cmd/lsp-server`
 
 日常开发通过 root `go.work` 联动本地模块；`ffilib` 的 `core` 依赖版本表示最低支持版本，实际项目可同时依赖更高版本的 `core`。
@@ -58,7 +58,7 @@ if err := program.Execute(context.Background()); err != nil {
 }
 ```
 
-`core` 默认提供核心引擎、native `errors` / `reflect`、VM 源码 `fmt`，以及 `strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/context/image 等完整标准库 FFI，再通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface。
+`core` 默认提供核心引擎、native `errors` / `reflect`、VM 源码 `fmt`，以及 `strings`、`strconv`、`math`、`sort` 这类纯原生值类型标准库 FFI。若需要 io/os/time/context/image/net/http 等完整标准库 FFI，再通过 `executor.UseSurface(ffilib.Surface())` 装配顶层 surface。
 
 `NewRuntimeByGoCode` 是便捷入口；对外持久化、跨进程传输和正式装载推荐使用 bytecode。
 
@@ -762,13 +762,47 @@ host goroutine 可以由 FFI channel endpoint 用来等待宿主 channel 或 I/O
 
 deadline 依赖 `time.Time` host opaque 类型，timer 等待通过异步 FFI 暴露为 `WaitExternal`，并按真实时间推进。取消 deadline context 时会停止 timer 并完成已挂起的 timer waiter；VM abort 取消 timer wait 时会移除 waiter，并在没有其它 waiter 时停止真实 timer，避免 abandoned wait 继续持有宿主计时器。VM context 父子关系会同步传播取消；只有非 VM context 形态才退回到等待父 `Done()` 的传播执行上下文。
 
-### 当前限制
+### Net HTTP
 
-- 同步 FFI 调用会阻塞整个 VM；只有返回 `ffigo.Async[T]` 的异步 FFI 会挂起当前执行上下文并在 completion 时恢复
+顶层 `ffilib.Surface()` 提供标准库 `net/http` 包。当前 API 覆盖服务器监听、显式 server 生命周期、基础 client 请求、request/response/body 读取和 header 操作：
+
+- `ListenAndServe(addr string, handler func(*ResponseWriter, *Request)) error`
+- `ListenAndServeAsync(addr string, handler func(*ResponseWriter, *Request)) (Server, error)`
+- `NewServer(addr string, handler func(*ResponseWriter, *Request)) Server`
+- `HandleFunc(pattern string, handler func(*ResponseWriter, *Request))`
+- `Get(url string) (Response, error)` / `Head(url string) (Response, error)` / `PostBytes(url string, contentType string, body []byte) (Response, error)`
+- `NewRequest(method string, url string, body []byte) (*Request, error)` / `NewRequestBytes(...)`
+- `DefaultClient() Client` / `NewClient() Client` / `ClientDo(...)` / `ClientGet(...)` / `CloseIdleConnections(...)`
+- `Server.ListenAndServe()` / `Server.Close()` / `Server.Shutdown()`
+- `ResponseWriter.Header()` / `Write(...)` / `WriteHeader(...)`
+- `Request.Method()` / `Path()` / `Header()`
+- `Response.StatusCode()` / `Body()`
+- `Body.Read(buf []byte)` / `Body.Close()`
+
+`Header` 支持 `Set`、`Add`、`Get` 和 `Del`；response body 的 `Read` 会保留 `io.EOF` 语义，循环读取时应按普通 Go 风格处理返回的 error。
+
+`ListenAndServeAsync` 会先完成宿主 listener 创建，再返回 `Server` handle，让 VM 继续执行其它逻辑，并可随后调用 `Close` 或 `Shutdown` 退出；如果端口绑定失败，会同步返回 error。同步 `ListenAndServe` 和 `Server.ListenAndServe` 仍按 Go 语义阻塞当前 VM 执行上下文，适合脚本主流程直接托管 server 的场景。HTTP handler 是 VM callback，宿主 HTTP goroutine 只把 callback event 投递给 VM event loop；handler 代码仍由单线程 VM 调度器执行。
+
+```go
+package main
+
+import "net/http"
+
+func main() {
+    srv, err := http.ListenAndServeAsync("127.0.0.1:8080", func(w *http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/plain")
+        w.Write([]byte("ok"))
+    })
+    if err != nil {
+        panic(err)
+    }
+    defer srv.Shutdown()
+}
+```
 
 ### 异步 FFI 等待来源
 
-`ffigo.Async[T]` 启动后必须返回 `ffigo.WaitHandle`，用于告诉 VM 调度器这个挂起点是否还可能被 VM 外部事件唤醒。
+同步 FFI 调用会阻塞当前 VM run；需要等待外部事件或让出执行上下文时，FFI route 应返回 `ffigo.Async[T]`。`ffigo.Async[T]` 启动后必须返回 `ffigo.WaitHandle`，用于告诉 VM 调度器这个挂起点是否还可能被 VM 外部事件唤醒。
 
 - `ffigo.WaitExternal`: completion 可由 timer、I/O、宿主 goroutine 或其它不依赖 VM 继续执行的外部事件触发。
 - `ffigo.WaitDependsOnVM`: completion 需要其它 VM 执行上下文继续运行才能发生，例如 VM 侧同步对象、等待另一个 VM action 释放的 gate。
@@ -926,7 +960,6 @@ type Pair struct {
 // ffigen:global sample DefaultCounter HostRef<sample.Counter>
 var DefaultCounter = &Counter{Value: 100}
 
-// ffigen:module sample
 // ffigen:module sample
 // ffigen:methods
 type Counter struct {

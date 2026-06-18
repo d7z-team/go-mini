@@ -1320,10 +1320,11 @@ func (e *Executor) dispatch(session *StackContext, task Task) error {
 			session.ValueStack.Push(v)
 			return nil
 		} else if loadState == ModuleLoadWait {
-			if e.scheduler == nil || e.scheduler.Current() == nil {
+			scheduler := e.currentScheduler()
+			if scheduler == nil || scheduler.Current() == nil {
 				return fmt.Errorf("module %s is already loading and cannot be parked without an active scheduler", path)
 			}
-			execCtx, frame, err := e.scheduler.ParkCurrent()
+			execCtx, frame, err := scheduler.ParkCurrent()
 			if err != nil {
 				return err
 			}

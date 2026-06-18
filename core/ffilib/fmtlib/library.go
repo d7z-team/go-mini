@@ -43,21 +43,13 @@ func internalSurface() *surface.Bundle {
 		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("fmt/internal", "Write", runtime.FFIRoute{
-			Name:     "fmt/internal.Write",
-			Native:   nativeWrite,
-			MethodID: methodWrite,
-			FuncSig:  runtime.MustRuntimeFuncSig(runtime.SpecVoid, false, runtime.SpecString),
-			Doc:      "Write already-formatted text to the host output sink",
-		})
-		bound.AddRoute("fmt/internal", "Errorf", runtime.FFIRoute{
-			Name:     "fmt/internal.Errorf",
-			Native:   runtime.NativeFmtErrorf,
-			MethodID: methodErrorf,
-			FuncSig:  runtime.MustRuntimeFuncSig(runtime.SpecError, false, runtime.SpecString, runtime.ArrayType(runtime.SpecError)),
-			Doc:      "Create a VM error with optional wrapped causes",
-		})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaNativeRoutes(schema, map[uint32]runtime.NativeFunc{
+			methodWrite:  nativeWrite,
+			methodErrorf: runtime.NativeFmtErrorf,
+		}); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

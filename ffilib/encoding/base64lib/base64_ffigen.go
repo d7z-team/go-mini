@@ -58,13 +58,13 @@ var moduleRoutes = []runtime.FFIRouteDecl{
 func SurfaceModule(impl Module) *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(moduleRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("encoding/base64", "NoPadding", runtime.ConstRune(int64(base64.NoPadding))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddConst("encoding/base64", "StdPadding", runtime.ConstRune(int64(base64.StdPadding))); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -412,10 +412,10 @@ var encodingRoutes = []runtime.FFIRouteDecl{
 func SurfaceEncoding() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddRouteDecls(encodingRoutes); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	if err := schema.AddStruct("encoding/base64", "Encoding", encoding_base64_Encoding_FFI_StructSchema); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
@@ -433,19 +433,19 @@ func SurfaceGlobals() *surface.Bundle {
 	schema := runtime.NewFFISurfaceSchema()
 	spec0 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
 	if err := schema.AddValue("encoding/base64", "RawStdEncoding", spec0); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	spec1 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
 	if err := schema.AddValue("encoding/base64", "RawURLEncoding", spec1); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	spec2 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
 	if err := schema.AddValue("encoding/base64", "StdEncoding", spec2); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	spec3 := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("HostRef<encoding/base64.Encoding>"), ReadOnly: true}
 	if err := schema.AddValue("encoding/base64", "URLEncoding", spec3); err != nil {
-		panic(err)
+		return &surface.Bundle{Err: err}
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurface(schema)
@@ -456,7 +456,9 @@ func SurfaceGlobals() *surface.Bundle {
 		if err != nil {
 			return nil, err
 		}
-		bound.AddPackageValue("encoding/base64", "RawStdEncoding", spec0, value0)
+		if err := bound.BindPackageValue("encoding/base64", "RawStdEncoding", value0); err != nil {
+			return nil, err
+		}
 		bridge1 := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return encodingHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
 		})
@@ -464,7 +466,9 @@ func SurfaceGlobals() *surface.Bundle {
 		if err != nil {
 			return nil, err
 		}
-		bound.AddPackageValue("encoding/base64", "RawURLEncoding", spec1, value1)
+		if err := bound.BindPackageValue("encoding/base64", "RawURLEncoding", value1); err != nil {
+			return nil, err
+		}
 		bridge2 := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return encodingHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
 		})
@@ -472,7 +476,9 @@ func SurfaceGlobals() *surface.Bundle {
 		if err != nil {
 			return nil, err
 		}
-		bound.AddPackageValue("encoding/base64", "StdEncoding", spec2, value2)
+		if err := bound.BindPackageValue("encoding/base64", "StdEncoding", value2); err != nil {
+			return nil, err
+		}
 		bridge3 := ffigo.NewRouterBridge(ctx.Registry, func(callCtx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
 			return encodingHostRouter(callCtx, nil, ctx.Registry, req.MethodID, req.Method, req.Args)
 		})
@@ -480,7 +486,9 @@ func SurfaceGlobals() *surface.Bundle {
 		if err != nil {
 			return nil, err
 		}
-		bound.AddPackageValue("encoding/base64", "URLEncoding", spec3, value3)
+		if err := bound.BindPackageValue("encoding/base64", "URLEncoding", value3); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

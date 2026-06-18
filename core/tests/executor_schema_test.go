@@ -310,14 +310,15 @@ func TestUseSurfaceRouteConflictDoesNotPolluteRoutes(t *testing.T) {
 func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 	exec := engine.MustNewMiniExecutor()
 	stringSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("String"), ReadOnly: true}
-	intSpec := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType("Int64"), ReadOnly: true}
 	schema := runtime.NewFFISurfaceSchema()
 	if err := schema.AddValue("demo", "Value", stringSpec); err != nil {
 		t.Fatal(err)
 	}
 	if err := exec.UseSurface(surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
-		bound.AddPackageValue("demo", "Value", stringSpec, runtime.NewString("old"))
+		if err := bound.BindPackageValue("demo", "Value", runtime.NewString("old")); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})); err != nil {
 		t.Fatalf("register existing package value failed: %v", err)
@@ -331,11 +332,11 @@ func TestUseSurfaceConflictAfterBindRollsBackPinnedHandles(t *testing.T) {
 		}
 		registry = ctx.Registry
 		handle = ctx.PinnedRegistry.RegisterPinnedTyped(&struct{}{}, "demo.Handle")
-		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
-		bound.AddPackageValue("demo", "Value", intSpec, runtime.NewInt(1))
-		return bound, nil
+		return nil, errors.New("bind failed after pinned handle allocation")
 	}))
-	requireSchemaConflict(t, err, "package value")
+	if err == nil || !strings.Contains(err.Error(), "bind failed") {
+		t.Fatalf("expected bind failure, got %v", err)
+	}
 	if handle == 0 {
 		t.Fatal("expected bind to allocate a pinned handle")
 	}

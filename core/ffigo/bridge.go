@@ -132,6 +132,13 @@ type FFICallRequest struct {
 	Channels ChannelRegistry
 }
 
+// RegistryProvider exposes the handle registry used by a bridge. Runtime uses
+// this narrow capability to register callback proxies for schema-declared
+// function/interface parameters without routing them through FFI Any.
+type RegistryProvider interface {
+	HandleRegistry() *HandleRegistry
+}
+
 func SyncBytes(ret FFIReturn) ([]byte, error) {
 	switch v := ret.(type) {
 	case nil:
@@ -166,6 +173,13 @@ type RouterBridge struct {
 
 func NewRouterBridge(registry *HandleRegistry, router RouterFunc) *RouterBridge {
 	return &RouterBridge{Registry: registry, Router: router}
+}
+
+func (b *RouterBridge) HandleRegistry() *HandleRegistry {
+	if b == nil {
+		return nil
+	}
+	return b.Registry
 }
 
 func (b *RouterBridge) BridgeID() string {

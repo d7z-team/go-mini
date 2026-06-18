@@ -36,7 +36,8 @@ func (e *Executor) dispatchChanRecv(session *StackContext, task Task) error {
 		}
 	}
 
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("channel receive suspended without active VM scheduler")
 	}
 	commit := &ChanRecvCommitData{Multi: data.Multi, ResultType: data.ResultType}
@@ -45,7 +46,7 @@ func (e *Executor) dispatchChanRecv(session *StackContext, task Task) error {
 	if ch == nil {
 		reason = "nil channel receive"
 	}
-	token, err := e.scheduler.ParkVM(resume, nil, reason, 0)
+	token, err := scheduler.ParkVM(resume, nil, reason, 0)
 	if err != nil {
 		return err
 	}
@@ -57,14 +58,14 @@ func (e *Executor) dispatchChanRecv(session *StackContext, task Task) error {
 				commit.OK = recvOK
 				commit.Err = errText
 			},
-			wake: e.scheduler.WakeVM,
+			wake: scheduler.WakeVM,
 		}
 		ch.AddRecvWaiter(waiter)
-		if !e.scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
+		if !scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
 			ch.RemoveWaiter(token)
 		}
 	} else {
-		e.scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
+		scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
 	}
 	return errExecutionContextSuspend
 }
@@ -109,7 +110,8 @@ func (e *Executor) dispatchChanSend(session *StackContext, task Task) error {
 		}
 	}
 
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("channel send suspended without active VM scheduler")
 	}
 	commit := &ChanSendCommitData{}
@@ -118,7 +120,7 @@ func (e *Executor) dispatchChanSend(session *StackContext, task Task) error {
 	if ch == nil {
 		reason = "nil channel send"
 	}
-	token, err := e.scheduler.ParkVM(resume, nil, reason, 0)
+	token, err := scheduler.ParkVM(resume, nil, reason, 0)
 	if err != nil {
 		return err
 	}
@@ -129,14 +131,14 @@ func (e *Executor) dispatchChanSend(session *StackContext, task Task) error {
 			ack: func(errText string) {
 				commit.Err = errText
 			},
-			wake: e.scheduler.WakeVM,
+			wake: scheduler.WakeVM,
 		}
 		ch.AddSendWaiter(waiter)
-		if !e.scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
+		if !scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
 			ch.RemoveWaiter(token)
 		}
 	} else {
-		e.scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
+		scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
 	}
 	return errExecutionContextSuspend
 }
@@ -153,7 +155,8 @@ func (e *Executor) dispatchChanSendCommit(_ *StackContext, task Task) error {
 }
 
 func (e *Executor) parkRangeChannel(session *StackContext, task Task, rData *RangeData, ch *VMChannel) error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("channel range suspended without active VM scheduler")
 	}
 	commit := &RangeChanCommitData{Range: rData}
@@ -161,7 +164,7 @@ func (e *Executor) parkRangeChannel(session *StackContext, task Task, rData *Ran
 	if ch == nil {
 		reason = "nil channel range"
 	}
-	token, err := e.scheduler.ParkVM(Task{Op: OpRangeChanCommit, Source: task.Source, Data: commit}, nil, reason, 0)
+	token, err := scheduler.ParkVM(Task{Op: OpRangeChanCommit, Source: task.Source, Data: commit}, nil, reason, 0)
 	if err != nil {
 		return err
 	}
@@ -176,14 +179,14 @@ func (e *Executor) parkRangeChannel(session *StackContext, task Task, rData *Ran
 				commit.OK = recvOK
 				commit.Err = errText
 			},
-			wake: e.scheduler.WakeVM,
+			wake: scheduler.WakeVM,
 		}
 		ch.AddRecvWaiter(waiter)
-		if !e.scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
+		if !scheduler.SetVMWait(token, channelWaitHandle(ch, token, reason)) {
 			ch.RemoveWaiter(token)
 		}
 	} else {
-		e.scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
+		scheduler.SetVMWait(token, ffigoNilChannelWait(reason))
 	}
 	return errExecutionContextSuspend
 }
@@ -196,16 +199,17 @@ func commitChannelRecv(data *ChanRecvData) *ChanRecvCommitData {
 }
 
 func (e *Executor) parkExternalChannelRecv(session *StackContext, task Task, commit *ChanRecvCommitData, endpoint ffigo.ChannelEndpoint, elem RuntimeType, reason string) error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("external channel receive suspended without active VM scheduler")
 	}
 	resume := Task{Op: OpChanRecvCommit, Source: task.Source, Data: commit}
-	token, err := e.scheduler.ParkVM(resume, nil, reason, 0)
+	token, err := scheduler.ParkVM(resume, nil, reason, 0)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(session.Context)
-	if !e.scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
+	if !scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
 		cancel()
 		return errExecutionContextSuspend
 	}
@@ -225,13 +229,14 @@ func (e *Executor) parkExternalChannelRecv(session *StackContext, task Task, com
 			commit.Value = zeroVarForRuntimeType(elem)
 			commit.OK = false
 		}
-		e.scheduler.WakeVM(token)
+		scheduler.WakeVM(token)
 	}()
 	return errExecutionContextSuspend
 }
 
 func (e *Executor) parkExternalChannelSend(session *StackContext, task Task, endpoint ffigo.ChannelEndpoint, elem RuntimeType, value *Var, reason string) error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return errors.New("external channel send suspended without active VM scheduler")
 	}
 	payload, err := e.encodeChannelPayload(value, elem)
@@ -240,12 +245,12 @@ func (e *Executor) parkExternalChannelSend(session *StackContext, task Task, end
 	}
 	commit := &ChanSendCommitData{}
 	resume := Task{Op: OpChanSendCommit, Source: task.Source, Data: commit}
-	token, err := e.scheduler.ParkVM(resume, nil, reason, 0)
+	token, err := scheduler.ParkVM(resume, nil, reason, 0)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(session.Context)
-	if !e.scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
+	if !scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
 		cancel()
 		return errExecutionContextSuspend
 	}
@@ -253,17 +258,18 @@ func (e *Executor) parkExternalChannelSend(session *StackContext, task Task, end
 		if callErr := endpoint.Send(ctx, payload); callErr != nil {
 			commit.Err = callErr.Error()
 		}
-		e.scheduler.WakeVM(token)
+		scheduler.WakeVM(token)
 	}()
 	return errExecutionContextSuspend
 }
 
 func (e *Executor) parkExternalRangeChannel(session *StackContext, token uint64, commit *RangeChanCommitData, endpoint ffigo.ChannelEndpoint, elem RuntimeType, reason string) error {
-	if e.scheduler == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil {
 		return errors.New("external channel range suspended without active VM scheduler")
 	}
 	ctx, cancel := context.WithCancel(session.Context)
-	if !e.scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
+	if !scheduler.SetVMWait(token, ffigo.NewWaitHandle(ffigo.WaitExternal, reason, cancel)) {
 		cancel()
 		return errExecutionContextSuspend
 	}
@@ -282,7 +288,7 @@ func (e *Executor) parkExternalRangeChannel(session *StackContext, token uint64,
 		} else {
 			commit.OK = false
 		}
-		e.scheduler.WakeVM(token)
+		scheduler.WakeVM(token)
 	}()
 	return errExecutionContextSuspend
 }

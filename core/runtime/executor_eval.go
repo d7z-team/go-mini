@@ -1176,10 +1176,11 @@ func (e *Executor) invokeCall(session *StackContext, name string, receiver *Var,
 }
 
 func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod *VMModule, callable *Var, args []*Var) error {
-	if e.scheduler == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil {
 		return &VMError{Message: "VM execution context scheduler is not initialized", IsPanic: true}
 	}
-	if e.scheduler.Current() == nil {
+	if scheduler.Current() == nil {
 		return &VMError{Message: "go requires an active VM scheduler", IsPanic: true}
 	}
 	if parent == nil {
@@ -1203,7 +1204,7 @@ func (e *Executor) goCall(parent *StackContext, name string, receiver *Var, mod 
 			Args:     append([]*Var(nil), args...),
 		},
 	})
-	if _, err := e.scheduler.Go(child, e); err != nil {
+	if _, err := scheduler.Go(child, e); err != nil {
 		e.CleanupSession(child)
 		return &VMError{Message: err.Error(), IsPanic: true}
 	}

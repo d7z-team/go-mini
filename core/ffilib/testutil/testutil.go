@@ -385,14 +385,9 @@ func testSurface(output *recorder) *surface.Bundle {
 	}
 	return surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
 		bridge := &testBridge{output: output}
-		bound := runtime.NewBoundFFISurface(schema)
-		for _, route := range routes {
-			bound.AddRoute("test", route.member, runtime.FFIRoute{
-				Name:     "test." + route.member,
-				Bridge:   bridge,
-				MethodID: route.methodID,
-				FuncSig:  route.sig,
-			})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
 		}
 		return bound, nil
 	})

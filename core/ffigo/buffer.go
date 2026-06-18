@@ -22,6 +22,7 @@ const (
 	TypeTagArray     byte = 8
 	TypeTagInterface byte = 9
 	TypeTagError     byte = 10
+	TypeTagCallback  byte = 11
 )
 
 const maxAnyInt64 = uint64(1<<63 - 1)
@@ -102,23 +103,32 @@ func (b *Buffer) WriteRawInterface(handle uint32, methods map[string]string) {
 	}
 }
 
+func (b *Buffer) WriteRawCallback(handle uint32, sig string) {
+	b.WriteUvarint(uint64(handle))
+	b.WriteString(sig)
+}
+
 func (b *Buffer) writeAnyInt64(v int64) {
 	_ = b.WriteByte(TypeTagInt64)
 	b.WriteVarint(v)
 }
 
-func (b *Buffer) writeAnyUint64(v uint64) {
+func (b *Buffer) writeAnyUint64(v uint64) error {
 	if v > maxAnyInt64 {
-		_ = b.WriteByte(TypeTagUnknown)
-		return
+		return fmt.Errorf("uint64 value %d exceeds FFI Any int64 range", v)
 	}
 	b.writeAnyInt64(int64(v))
+	return nil
 }
 
-func (b *Buffer) WriteAny(v interface{}) {
+func (b *Buffer) WriteAny(v interface{}) error {
+	return b.writeAny(v, "Any")
+}
+
+func (b *Buffer) writeAny(v interface{}, path string) error {
 	if v == nil {
 		_ = b.WriteByte(TypeTagUnknown)
-		return
+		return nil
 	}
 	switch val := v.(type) {
 	case int64:
@@ -132,7 +142,7 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case int32:
 		b.writeAnyInt64(int64(val))
 	case uint:
-		b.writeAnyUint64(uint64(val))
+		return b.writeAnyUint64(uint64(val))
 	case uint8:
 		b.writeAnyInt64(int64(val))
 	case uint16:
@@ -140,7 +150,7 @@ func (b *Buffer) WriteAny(v interface{}) {
 	case uint32:
 		b.writeAnyInt64(int64(val))
 	case uint64:
-		b.writeAnyUint64(val)
+		return b.writeAnyUint64(val)
 	case float64:
 		_ = b.WriteByte(TypeTagFloat64)
 		b.WriteFloat64(val)
@@ -161,26 +171,35 @@ func (b *Buffer) WriteAny(v interface{}) {
 		b.WriteUvarint(uint64(len(val)))
 		for k, v := range val {
 			b.WriteString(k)
-			b.WriteAny(v)
+			if err := b.writeAny(v, fmt.Sprintf("%s[%q]", path, k)); err != nil {
+				return err
+			}
 		}
 	case []interface{}:
 		_ = b.WriteByte(TypeTagArray)
 		b.WriteUvarint(uint64(len(val)))
-		for _, v := range val {
-			b.WriteAny(v)
+		for i, v := range val {
+			if err := b.writeAny(v, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
 		}
 	case ErrorData:
+		if val.Handle != 0 {
+			return fmt.Errorf("%s cannot carry host error handle", path)
+		}
 		_ = b.WriteByte(TypeTagError)
-		b.WriteRawError(val.Message, val.Handle)
+		b.WriteRawError(val.Message, 0)
 	case InterfaceData:
-		_ = b.WriteByte(TypeTagInterface)
-		b.WriteRawInterface(val.Handle, val.Methods)
+		return fmt.Errorf("%s cannot carry interface", path)
+	case CallbackData:
+		return fmt.Errorf("%s cannot carry callback", path)
 	case error:
 		_ = b.WriteByte(TypeTagError)
 		b.WriteRawError(val.Error(), 0)
 	default:
-		_ = b.WriteByte(TypeTagUnknown)
+		return fmt.Errorf("%s cannot carry %T", path, v)
 	}
+	return nil
 }
 
 // Reader - High-performance Decoupled Deserializer
@@ -379,6 +398,18 @@ func (r *Reader) ReadRawInterface() (InterfaceData, error) {
 	return InterfaceData{Handle: handle, Methods: methods}, nil
 }
 
+func (r *Reader) ReadRawCallback() (CallbackData, error) {
+	rawHandle, err := r.ReadUvarint()
+	if err != nil {
+		return CallbackData{}, err
+	}
+	sig, err := r.ReadString()
+	if err != nil {
+		return CallbackData{Handle: uint32(rawHandle)}, err
+	}
+	return CallbackData{Handle: uint32(rawHandle), Signature: sig}, nil
+}
+
 func (r *Reader) ReadAny() (interface{}, error) {
 	if r == nil || r.err != nil || r.Available() == 0 {
 		return nil, r.Err()
@@ -430,9 +461,21 @@ func (r *Reader) ReadAny() (interface{}, error) {
 		}
 		return a, nil
 	case TypeTagInterface:
-		return r.ReadRawInterface()
+		r.err = errors.New("FFI Any cannot carry interface")
+		return nil, r.err
+	case TypeTagCallback:
+		r.err = errors.New("FFI Any cannot carry callback")
+		return nil, r.err
 	case TypeTagError:
-		return r.ReadRawError()
+		data, err := r.ReadRawError()
+		if err != nil {
+			return nil, err
+		}
+		if data.Handle != 0 {
+			r.err = errors.New("FFI Any cannot carry host error handle")
+			return nil, r.err
+		}
+		return data, nil
 	default:
 		return nil, nil
 	}
@@ -443,6 +486,11 @@ func (r *Reader) ReadAny() (interface{}, error) {
 type InterfaceData struct {
 	Handle  uint32
 	Methods map[string]string
+}
+
+type CallbackData struct {
+	Handle    uint32
+	Signature string
 }
 
 type ErrorData struct {

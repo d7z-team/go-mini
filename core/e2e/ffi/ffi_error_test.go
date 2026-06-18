@@ -81,10 +81,10 @@ func hostErrorSurface() *surface.Bundle {
 		}
 	}
 	return surface.New(schema, func(_ runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {
-		bound := runtime.NewBoundFFISurface(schema)
-		bound.AddRoute("hosterr", "Target", runtime.FFIRoute{Name: "hosterr.Target", Bridge: bridge, MethodID: 1, FuncSig: sig})
-		bound.AddRoute("hosterr", "Wrapped", runtime.FFIRoute{Name: "hosterr.Wrapped", Bridge: bridge, MethodID: 2, FuncSig: sig})
-		bound.AddRoute("hosterr", "Other", runtime.FFIRoute{Name: "hosterr.Other", Bridge: bridge, MethodID: 3, FuncSig: sig})
+		bound := runtime.NewBoundFFISurfaceFromSchema(schema)
+		if err := bound.BindSchemaRoutes(schema, bridge); err != nil {
+			return nil, err
+		}
 		return bound, nil
 	})
 }

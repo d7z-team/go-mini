@@ -397,7 +397,7 @@ func (g *Generator) generateGlobalsCode(globals []globalValue) string {
 	fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
 	for i, item := range items {
 		fmt.Fprintf(&sb, "\tspec%d := &runtime.ValueSpec{Type: runtime.MustParseRuntimeType(%q), ReadOnly: true}\n", i, item.meta.MiniType)
-		fmt.Fprintf(&sb, "\tif err := schema.AddValue(%q, %q, spec%d); err != nil { panic(err) }\n", item.meta.PackagePath, item.meta.Name, i)
+		fmt.Fprintf(&sb, "\tif err := schema.AddValue(%q, %q, spec%d); err != nil { return &surface.Bundle{Err: err} }\n", item.meta.PackagePath, item.meta.Name, i)
 	}
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")
 	fmt.Fprintf(&sb, "\t\tbound := runtime.NewBoundFFISurface(schema)\n")
@@ -412,7 +412,7 @@ func (g *Generator) generateGlobalsCode(globals []globalValue) string {
 		fmt.Fprintf(&sb, "\t\t})\n")
 		fmt.Fprintf(&sb, "\t\tvalue%d, err := (runtime.StaticHostRefProvider{ElementType: runtime.TypeSpec(%q), Value: %s, Bridge: bridge%d}).Bind(ctx)\n", i, elem, item.variable, i)
 		fmt.Fprintf(&sb, "\t\tif err != nil { return nil, err }\n")
-		fmt.Fprintf(&sb, "\t\tbound.AddPackageValue(%q, %q, spec%d, value%d)\n", item.meta.PackagePath, item.meta.Name, i, i)
+		fmt.Fprintf(&sb, "\t\tif err := bound.BindPackageValue(%q, %q, value%d); err != nil { return nil, err }\n", item.meta.PackagePath, item.meta.Name, i)
 	}
 	fmt.Fprintf(&sb, "\t\treturn bound, nil\n")
 	fmt.Fprintf(&sb, "\t})\n")

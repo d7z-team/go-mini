@@ -9,6 +9,7 @@ import (
 
 type ffiCopyBackTarget struct {
 	LHS      LHSValue
+	Current  *Var
 	Type     RuntimeType
 	WireType RuntimeType
 	Mode     FFIParamMode
@@ -75,6 +76,7 @@ func (e *Executor) resolveFFICopyBackTargets(session *StackContext, sig *Runtime
 		}
 		target := ffiCopyBackTarget{
 			LHS:      lhs,
+			Current:  current,
 			Type:     current.RuntimeType(),
 			WireType: sig.ParamTypes[idx],
 			Mode:     mode,
@@ -98,6 +100,7 @@ func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridg
 		if !target.Type.IsEmpty() {
 			next.SetRuntimeType(target.Type)
 		}
+		replaceArrayContents(target.Current, next)
 		return e.storeAddress(session, target.LHS, next)
 	case FFIParamInOutArray:
 		payload, err := reader.ReadBytes()
@@ -115,8 +118,20 @@ func (e *Executor) applyFFICopyBack(session *StackContext, bridge ffigo.FFIBridg
 		if next != nil && !target.Type.IsEmpty() {
 			next.SetRuntimeType(target.Type)
 		}
+		replaceArrayContents(target.Current, next)
 		return e.storeAddress(session, target.LHS, next)
 	default:
 		return fmt.Errorf("unsupported inout parameter mode %d", target.Mode)
 	}
+}
+
+func replaceArrayContents(dst, src *Var) {
+	if dst == nil || src == nil || dst.VType != TypeArray || src.VType != TypeArray {
+		return
+	}
+	dstArr := arrayRef(dst)
+	srcItems := arrayRef(src).Snapshot()
+	dstArr.mu.Lock()
+	defer dstArr.mu.Unlock()
+	dstArr.Data = append(dstArr.Data[:0], srcItems...)
 }

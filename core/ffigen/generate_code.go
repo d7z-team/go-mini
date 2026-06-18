@@ -46,12 +46,12 @@ func validateSchemaMemberName(member, context string) {
 
 func emitSchemaAddStruct(sb *strings.Builder, indent, packageExpr, member, varName string) {
 	validateSchemaMemberName(member, "struct schema owner")
-	fmt.Fprintf(sb, "%sif err := schema.AddStruct(%s, %q, %s); err != nil { panic(err) }\n", indent, packageExpr, member, varName)
+	fmt.Fprintf(sb, "%sif err := schema.AddStruct(%s, %q, %s); err != nil { return &surface.Bundle{Err: err} }\n", indent, packageExpr, member, varName)
 }
 
 func emitSchemaAddInterface(sb *strings.Builder, indent, packageExpr, member, varName string) {
 	validateSchemaMemberName(member, "interface schema owner")
-	fmt.Fprintf(sb, "%sif err := schema.AddInterface(%s, %q, %s); err != nil { panic(err) }\n", indent, packageExpr, member, varName)
+	fmt.Fprintf(sb, "%sif err := schema.AddInterface(%s, %q, %s); err != nil { return &surface.Bundle{Err: err} }\n", indent, packageExpr, member, varName)
 }
 
 func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.StructType, interfaces map[string]*ast.InterfaceType, interfaceFFI map[string]bool, meta targetMeta, constants map[string]constBinding, schemas *schemaRegistry, ownedStructs map[string]bool) string {
@@ -185,7 +185,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		sort.Strings(keys)
 		for _, key := range keys {
 			c := constants[key]
-			fmt.Fprintf(&sb, "\tif err := schema.AddConst(%q, %q, %s); err != nil { panic(err) }\n", fixedPrefix, key, constConstructorExpr(c))
+			fmt.Fprintf(&sb, "\tif err := schema.AddConst(%q, %q, %s); err != nil { return &surface.Bundle{Err: err} }\n", fixedPrefix, key, constConstructorExpr(c))
 		}
 	}
 	referencedInterfaces := g.collectReferencedInterfaceNames(methods, moduleName, interfaceSchemaVars)
@@ -247,7 +247,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		selfVar := selfStructSchemaVar(name)
 		fmt.Fprintf(&sb, "func Surface%s() *surface.Bundle {\n", name)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { panic(err) }\n", routeDeclVarName(name))
+		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { return &surface.Bundle{Err: err} }\n", routeDeclVarName(name))
 		emitStructAdds(fmt.Sprintf("%q", moduleName), name)
 		emitInterfaceAdds(fmt.Sprintf("%q", moduleName))
 		emitSchemaAddStruct(&sb, "\t", fmt.Sprintf("%q", moduleName), name, selfVar)
@@ -265,7 +265,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 		}
 		fmt.Fprintf(&sb, "func Surface%s(impl %s) *surface.Bundle {\n", name, implType)
 		fmt.Fprintf(&sb, "\tschema := runtime.NewFFISurfaceSchema()\n")
-		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { panic(err) }\n", routeDeclVarName(name))
+		fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(%s); err != nil { return &surface.Bundle{Err: err} }\n", routeDeclVarName(name))
 		emitConstAdds()
 		if methodsPrefix != "" {
 			emitStructAdds(fmt.Sprintf("%q", moduleName), methodsPrefix)
@@ -290,7 +290,7 @@ func (g *Generator) generateCode(spec *ast.TypeSpec, structs map[string]*ast.Str
 	fmt.Fprintf(&sb, "\t\troute.RouteName = prefix + \".\" + route.MemberName\n")
 	fmt.Fprintf(&sb, "\t\troutes = append(routes, route)\n")
 	fmt.Fprintf(&sb, "\t}\n")
-	fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(routes); err != nil { panic(err) }\n")
+	fmt.Fprintf(&sb, "\tif err := schema.AddRouteDecls(routes); err != nil { return &surface.Bundle{Err: err} }\n")
 	emitStructAdds("prefix")
 	emitInterfaceAdds("prefix")
 	fmt.Fprintf(&sb, "\treturn surface.New(schema, func(ctx runtime.FFIBindContext) (*runtime.BoundFFISurface, error) {\n")

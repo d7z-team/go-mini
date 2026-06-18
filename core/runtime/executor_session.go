@@ -43,7 +43,7 @@ func (e *Executor) InitializeSession(session *StackContext, env map[string]*Var,
 	if err := e.prepareSession(session, env, invokeMain); err != nil {
 		return err
 	}
-	if e.scheduler != nil && e.scheduler.Current() == nil {
+	if scheduler := e.currentScheduler(); scheduler != nil && scheduler.Current() == nil {
 		run, startErr := e.startRun(session.Context, session, false)
 		if startErr != nil {
 			return startErr

@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"runtime"
+	"sync/atomic"
 
 	"gopkg.d7z.net/go-mini/core/ffigo"
 )
@@ -29,7 +30,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 			if i < len(args) {
 				arg = args[i]
 			}
-			if err := e.serializeRuntimeType(buf, arg, funcSig.ParamTypes[i]); err != nil {
+			if err := e.serializeRuntimeTypeForBridge(buf, arg, funcSig.ParamTypes[i], route.Bridge); err != nil {
 				return nil, err
 			}
 		}
@@ -43,7 +44,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 		itemType := funcSig.ParamTypes[numNormal]
 		if numVariadic > 0 {
 			for i := 0; i < numVariadic; i++ {
-				if err := e.serializeRuntimeType(buf, args[numNormal+i], itemType); err != nil {
+				if err := e.serializeRuntimeTypeForBridge(buf, args[numNormal+i], itemType, route.Bridge); err != nil {
 					return nil, err
 				}
 			}
@@ -55,7 +56,7 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 			if funcSig != nil && i < len(funcSig.ParamTypes) {
 				argType = funcSig.ParamTypes[i]
 			}
-			if err := e.serializeRuntimeType(buf, arg, argType); err != nil {
+			if err := e.serializeRuntimeTypeForBridge(buf, arg, argType, route.Bridge); err != nil {
 				return nil, err
 			}
 		}
@@ -99,33 +100,69 @@ func (e *Executor) evalFFI(session *StackContext, route FFIRoute, args []*Var, a
 	case []byte:
 		return e.finishFFI(session, route, copyBackTargets, v, nil)
 	case ffigo.AsyncCall:
-		if e.scheduler == nil || e.scheduler.Current() == nil {
+		scheduler := e.currentScheduler()
+		if scheduler == nil || scheduler.Current() == nil {
 			return nil, fmt.Errorf("ffi route %s suspended without active VM scheduler", route.Name)
+		}
+		run := e.currentRun()
+		if run == nil || run.Events == nil {
+			return nil, fmt.Errorf("ffi route %s suspended without active VM event loop", route.Name)
 		}
 		resumeData := &ResumeFFIData{
 			Route:           route,
 			CopyBackTargets: copyBackTargets,
 		}
-		token, sink, err := e.scheduler.PrepareFFI(Task{Op: OpResumeFFI, Data: resumeData})
+		token, err := scheduler.PrepareFFI(Task{Op: OpResumeFFI, Data: resumeData})
 		if err != nil {
 			return nil, err
 		}
+		sink := &ffiEventCompletionSink{events: run.Events, token: token}
 		wait, err := v.StartWire(session.Context, sink)
 		if err != nil {
-			e.scheduler.AbortFFI(token)
+			scheduler.AbortFFI(token)
 			return nil, e.wrapFFIError(session, err)
 		}
-		if err := e.scheduler.CommitFFI(token, wait); err != nil {
+		if wait == nil && !sink.Completed() {
+			scheduler.AbortFFI(token)
+			return nil, fmt.Errorf("async FFI route %s returned no wait handle", route.Name)
+		}
+		if err := scheduler.CommitFFI(token, wait); err != nil {
 			if wait != nil {
 				wait.Cancel()
 			}
-			e.scheduler.AbortFFI(token)
+			scheduler.AbortFFI(token)
 			return nil, err
 		}
 		return nil, errExecutionContextSuspend
 	default:
 		return nil, fmt.Errorf("ffi route %s returned unsupported payload %T", route.Name, ret)
 	}
+}
+
+type ffiEventCompletionSink struct {
+	events    *VMEventLoop
+	token     uint64
+	completed atomic.Bool
+}
+
+func (s *ffiEventCompletionSink) CompleteWire(ret []byte, err error) bool {
+	if s.events == nil {
+		return false
+	}
+	owned := append([]byte(nil), ret...)
+	if err := s.events.Post(VMEvent{Kind: VMEventAsyncFFIComplete, Data: &VMAsyncFFICompleteEvent{
+		Token: s.token,
+		Ret:   owned,
+		Err:   err,
+	}}); err != nil {
+		return false
+	}
+	s.completed.Store(true)
+	return true
+}
+
+func (s *ffiEventCompletionSink) Completed() bool {
+	return s != nil && s.completed.Load()
 }
 
 func (e *Executor) wrapFFIError(session *StackContext, err error) error {

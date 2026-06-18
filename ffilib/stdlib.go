@@ -13,6 +13,7 @@ import (
 	"gopkg.d7z.net/go-mini/ffilib/iolib"
 	"gopkg.d7z.net/go-mini/ffilib/jsonlib"
 	"gopkg.d7z.net/go-mini/ffilib/math/randlib"
+	"gopkg.d7z.net/go-mini/ffilib/net/httplib"
 	"gopkg.d7z.net/go-mini/ffilib/net/urllib"
 	"gopkg.d7z.net/go-mini/ffilib/oslib"
 	"gopkg.d7z.net/go-mini/ffilib/regexplib"
@@ -38,6 +39,7 @@ func Surface() *surface.Bundle {
 		hexlib.SurfaceHex(&hexlib.HexHost{}),
 		md5lib.SurfaceMD5(&md5lib.MD5Host{}),
 		sha256lib.SurfaceSHA256(&sha256lib.SHA256Host{}),
+		httplib.Surface(),
 		urllib.SurfaceURL(&urllib.URLHost{}),
 		iolib.SurfaceIO(&iolib.IOHost{}),
 		iolib.SurfaceReaderSchema(),

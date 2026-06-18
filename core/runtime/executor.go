@@ -40,7 +40,7 @@ type Executor struct {
 	mu             sync.RWMutex
 	runMu          sync.Mutex
 	shared         *SharedState
-	scheduler      *ExecutionContextScheduler
+	activeRun      *VMRun
 }
 
 type runStop uint8
@@ -230,7 +230,6 @@ func NewExecutorFromPrepared(prepared *PreparedProgram) (*Executor, error) {
 		modules:            newRuntimeModuleRegistry(),
 		interfaceCache:     make(map[TypeSpec]*RuntimeInterfaceSpec),
 		shared:             NewSharedState(),
-		scheduler:          NewExecutionContextScheduler(),
 	}
 	result.applyPreparedProgram(prepared)
 	return result, nil
@@ -577,10 +576,7 @@ func (e *Executor) NewSession(ctx context.Context, scope string) *StackContext {
 }
 
 func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[string]*Var) error {
-	if e.scheduler == nil {
-		e.scheduler = NewExecutionContextScheduler()
-	}
-	if e.scheduler.Current() != nil {
+	if scheduler := e.currentScheduler(); scheduler != nil && scheduler.Current() != nil {
 		return errors.New("shared state initialization cannot start inside an active VM execution context")
 	}
 	session := e.NewSession(ctx, "global")
@@ -597,7 +593,7 @@ func (e *Executor) EnsureSharedStateInitialized(ctx context.Context, env map[str
 }
 
 func (e *Executor) runStackContext(ctx context.Context, session *StackContext, cleanupSession bool) error {
-	if e.scheduler != nil && e.scheduler.Current() != nil {
+	if scheduler := e.currentScheduler(); scheduler != nil && scheduler.Current() != nil {
 		err := e.Run(session)
 		if cleanupSession {
 			e.CleanupSession(session)
@@ -619,16 +615,19 @@ func (e *Executor) startRun(ctx context.Context, session *StackContext, cleanupS
 		ctx = context.Background()
 	}
 	e.runMu.Lock()
-	if e.scheduler == nil {
-		e.scheduler = NewExecutionContextScheduler()
-	}
+	scheduler := NewExecutionContextScheduler()
+	reactor := NewVMReactor(e, nil)
 	baseCtx := session.Context
 	baseController := session.Controller
 	session.Controller = NewRunController(nil)
 	session.Context = ContextWithRunController(ctx, session.Controller)
 	activeController := session.Controller
-	root, err := e.scheduler.Reset(session, e)
+	activeRun := NewVMRun(e, scheduler, reactor, activeController)
+	reactor.SetRun(activeRun)
+	e.activeRun = activeRun
+	root, err := scheduler.Reset(session, e)
 	if err != nil {
+		e.activeRun = nil
 		session.Context = baseCtx
 		session.Controller = baseController
 		activeController.Stop(err)
@@ -653,7 +652,10 @@ func (e *Executor) startRun(ctx context.Context, session *StackContext, cleanupS
 			}
 			activeController.Stop(runErr)
 			run.setResult(runErr)
-			e.scheduler.Stop()
+			reactor.CloseServices()
+			reactor.SetRun(nil)
+			scheduler.Stop()
+			e.activeRun = nil
 			close(done)
 			e.runMu.Unlock()
 		}()
@@ -915,7 +917,8 @@ func (e *Executor) Run(session *StackContext) error {
 }
 
 func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionContext) error {
-	if e.scheduler == nil || root == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || root == nil {
 		return errors.New("invalid VM execution context scheduler")
 	}
 	if ctx == nil {
@@ -933,18 +936,28 @@ func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionCo
 				return e.abortRun(err)
 			}
 		}
-		snapshot := e.scheduler.Snapshot()
+		if run := e.currentRun(); run != nil && run.Events != nil {
+			if err := run.Events.Drain(e.handleVMEvent); err != nil {
+				return e.abortRun(err)
+			}
+		}
+		snapshot := scheduler.Snapshot()
 		switch snapshot.State {
 		case SchedulerStateDone:
 			return nil
 		case SchedulerStateIdleExternal:
-			wake := e.scheduler.WakeChan()
+			wake := scheduler.WakeChan()
+			var eventWake <-chan struct{}
+			if run := e.currentRun(); run != nil && run.Events != nil {
+				eventWake = run.Events.WakeChan()
+			}
 			var control <-chan struct{}
 			if controller != nil {
 				control = controller.Signal()
 			}
 			select {
 			case <-wake:
+			case <-eventWake:
 			case <-control:
 			case <-ctx.Done():
 				return e.abortRun(ctx.Err())
@@ -965,18 +978,34 @@ func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionCo
 		execCtx := snapshot.ExecCtx
 		frame := execCtx.CurrentFrame()
 		if frame == nil {
-			e.scheduler.FinishCurrent()
+			scheduler.FinishCurrent()
 			continue
 		}
 		stop, err := frame.Executor.runSession(frame.Session, executionContextInstructionQuantum)
 		if err != nil {
+			if frame.OnError != nil {
+				if handleErr := frame.OnError(frame, err); handleErr != nil {
+					return e.abortRun(handleErr)
+				}
+				if frame.Cleanup {
+					frame.Executor.CleanupSession(frame.Session)
+				}
+				_ = execCtx.PopFrame()
+				if len(execCtx.Frames) == 0 {
+					scheduler.FinishCurrent()
+				} else {
+					scheduler.EnqueueExecutionContext(execCtx)
+					scheduler.FinishCurrent()
+				}
+				continue
+			}
 			return e.abortRun(err)
 		}
 		switch stop {
 		case runStopDone:
 			doneFrame := execCtx.PopFrame()
 			if doneFrame == nil {
-				e.scheduler.FinishCurrent()
+				scheduler.FinishCurrent()
 				continue
 			}
 			if doneFrame.OnDone != nil {
@@ -992,14 +1021,14 @@ func (e *Executor) runExecutionContexts(ctx context.Context, root *VMExecutionCo
 			}
 			if len(execCtx.Frames) == 0 {
 				if execCtx.ID != root.ID {
-					e.scheduler.FinishCurrent()
+					scheduler.FinishCurrent()
 					continue
 				}
-				e.scheduler.Stop()
+				scheduler.Stop()
 				return nil
 			}
-			e.scheduler.EnqueueExecutionContext(execCtx)
-			e.scheduler.FinishCurrent()
+			scheduler.EnqueueExecutionContext(execCtx)
+			scheduler.FinishCurrent()
 		case runStopYield, runStopSuspend:
 			// The scheduler method already parked the current VM execution context.
 		}
@@ -1010,10 +1039,11 @@ func (e *Executor) abortRun(cause error) error {
 	if cause == nil {
 		return nil
 	}
-	if e.scheduler == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil {
 		return cause
 	}
-	execCtxs := e.scheduler.AbortAll()
+	execCtxs := scheduler.AbortAll()
 	execCtxs = e.cancelModuleLoadsForExecutionContexts(execCtxs)
 	result := e.unwindExecutionContextErrors(execCtxs, cause)
 	if result == nil {
@@ -1115,8 +1145,8 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 					runID = session.Controller.ID()
 				}
 				var execCtxID uint32
-				if e.scheduler != nil {
-					if execCtx := e.scheduler.Current(); execCtx != nil {
+				if scheduler := e.currentScheduler(); scheduler != nil {
+					if execCtx := scheduler.Current(); execCtx != nil {
 						execCtxID = execCtx.ID
 					}
 				}
@@ -1229,8 +1259,8 @@ func (e *Executor) runSession(session *StackContext, budget int) (runStop, error
 		}
 		executed++
 		if budget > 0 && executed >= budget && len(session.TaskStack) > 0 {
-			if e.scheduler != nil && e.scheduler.Current() != nil {
-				if err := e.scheduler.YieldCurrent(); err != nil {
+			if scheduler := e.currentScheduler(); scheduler != nil && scheduler.Current() != nil {
+				if err := scheduler.YieldCurrent(); err != nil {
 					return runStopDone, err
 				}
 				return runStopYield, nil

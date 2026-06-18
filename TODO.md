@@ -1,8 +1,8 @@
 # TODO: Go-Mini 当前状态与剩余工作
 
-更新时间: 2026-06-02
+更新时间: 2026-06-18
 
-本文只记录当前架构状态、剩余事项和验证门禁。已完成的历史演进细节以 git 提交和对应测试为准，不在这里继续堆积。
+本文只记录当前架构状态、剩余事项和验证门禁。
 
 ## 当前架构状态
 
@@ -16,7 +16,7 @@
 - canonical type 是 Mini AST / lowering / compiler / runtime 的统一类型格式；Go 风格类型在 Go 前端输入层规范化。
 - Go 前端将 `byte` / `uint8` 规范化为 `Byte`，将 `rune` 和字符字面量规范化为 `Rune`；底层运行时仍以 `Int64` 数值存储，只有 `Byte` 在赋值/FFI/reflect 写入时校验 `0..255` 范围，`Rune` 不做 Unicode scalar 校验。`[]byte` 是 `Array<Byte>`，`[]rune` 是 `Array<Rune>`；公开 canonical type 没有独立 bytes 专用类型，FFI 只在 wire codec 内部对 `Array<Byte>` 使用紧凑 bytes 编码。
 - canonical type 文本格式统一由 `core/typespec` 实现；`core/ast/ast_types.go` 是前端门面，`core/runtime/schema.go` 是 VM/schema 门面。
-- 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 不再作为 `Equals` 通配符。
+- 运算类型门禁由 `core/typespec` 统一定义；AST 语义检查与 runtime fallback 使用同一套二元运算、比较、nil-comparable 与赋值规则，`Any` 比较按真实动态值继续执行统一规则。
 - 运算符重载是 compiler 阶段 AST 语法糖：前端只输出普通一元/二元表达式，AST 检查在原生运算不支持时解析接收者 `Op*` 方法，模板展开后、优化前改写为真实方法调用，lowering / bytecode / runtime 不保留重载分派。
 - Go 前端保留源码常量值类型，AST 语义检查显式标记源码命名常量引用，lowering 写入 `PreparedProgram.Constants` / `ConstantTypes` 并把表达式常量降为 `OpLoadConst`；外部 FFI 常量只作为 package member schema 和 bytecode requirement 存在，不写入源码 AST 或 prepared source constants。
 - FFI 统一为 schema-only 注册链路，生成代码、runtime schema 和 compiler 校验使用同一套 `RuntimeFuncSig` / `RuntimeStructSpec` / `RuntimeInterfaceSpec`；runtime FFI 返回路径按 wire schema 解码，不反射解构任意 Go host 值。
@@ -33,13 +33,13 @@
 - 只处理原生值类型且无系统资源能力的默认标准库子集位于 `core/ffilib`，当前包括 native `errors.New` / `errors.Is` / `errors.As` / `errors.Unwrap` / `errors.Stack`、VM 源码库 `fmt` / native `fmt/internal`、native `reflect`，以及 FFI `strings`、`strconv`、`math`、`sort`；该子集由 `engine.NewMiniExecutor()` 默认注册，注册失败通过 error 返回。
 - `reflect` 只读取 Go-Mini runtime / FFI schema metadata，用于 struct 字段、容器值、方法、函数、统一 module registry 包成员和基础 kind introspection；不会调用 Go 原生 `reflect` API。VM 源码 struct/interface 的 runtime identity 使用 `modulePath.Type`，不同模块中的同名同结构类型也不相等，`TypeFrom` 不做未限定短名查找；FFI 函数与 HostRef 类型可被反射，是因为 `ffigen` / surface schema 显式注册了 route/type metadata，FFI type owner 来自结构化 `PackagePath + MemberName` / `reflectspec.Owner`，不从 schema 文本拆分推断。编译期字符串字面量 `reflect.Package` / `TypeFrom` / `Zero` / `MakeMap` 会为已知 FFI package/type 记录 bytecode requirement，动态字符串 lookup 仅做运行期 metadata 查询。reflect API 声明集中在 `core/reflectspec`；`Field` / `Index` / `MapKeys` / `MapIndex` / `Unwrap` / `Elem` 返回 VM `Any`，array/map/struct 等可变容器返回 detached snapshot，pointer/HostRef/channel/module/closure/interface 等身份值保持 runtime identity；`Zero` / `MakeMap` / `SetField` / `SetMapIndex` / `Assign` / `Append` 按 VM `Any` 语义创建或写入运行时值，metadata struct 只读；缺失 lookup、嵌套 unknown named type 与不适用 index API 返回零值 metadata 或 `ok=false`，FFI/JSON/持久化边界单独执行纯值校验。
 - VM 可见 `Error` 直接承载 Go `error`；VM 创建的 error 使用带 VM identity 的 `VMStackError` 记录创建点 stack，FFI 返回的 host error 使用 `VMHostError` 保留 handle/bridge identity 和可解析的 host error chain，`errors.Is/As` 与 VM 源码 `fmt.Errorf("%w")` 复用 Go error wrapping 语义。
-- `fmt` 是 core 默认注册的单个 VM 源码库：`Print` / `Println` / `Printf` / `Sprint` / `Sprintf` / `Errorf` 使用 VM `reflect` 格式化值，支持 VM struct 值、VM pointer 和复合容器；只有 `fmt/internal.Write` 与 `fmt/internal.Errorf` 是 native helper，分别接收已格式化字符串和显式 error causes，不再通过 FFI `Any` 把 VM 值交给 Go `fmt`。
-- 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/image 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
-- 顶层 `ffilib` 的 `encoding/json` 是单个 VM 源码库实现：`Marshal` / `Decode` / `Unmarshal(data, out any)` 通过 VM `reflect`、源码 parser/emitter 和普通源码函数完成，不调用 Go 标准库 `encoding/json`；`Unmarshal` 可以作为 runtime package member 或函数值暴露，pointer target 仅留在 VM `Any` 内，`Marshal` / `Decode` 的 JSON 纯值边界拒绝 VM pointer、HostRef、channel、module、closure、host identity 和循环值；JSON 转换与 tag helper 是 `encoding/json` 包内私有实现，不再拆分 helper module。
+- `fmt` 是 core 默认注册的单个 VM 源码库：`Print` / `Println` / `Printf` / `Sprint` / `Sprintf` / `Errorf` 使用 VM `reflect` 格式化值，支持 VM struct 值、VM pointer 和复合容器；只有 `fmt/internal.Write` 与 `fmt/internal.Errorf` 是 native helper，分别接收已格式化字符串和显式 error causes。
+- 顶层 `ffilib` 继续承载完整标准库 FFI surface，负责注册 io/os/time/context/image/net/http 等外层资源、调度或模板能力；通过 `executor.UseSurface(ffilib.Surface())` 装配，core 纯库不需要外层手动重复装配。
+- 顶层 `ffilib` 的 `encoding/json` 是单个 VM 源码库实现：`Marshal` / `Decode` / `Unmarshal(data, out any)` 通过 VM `reflect`、源码 parser/emitter 和普通源码函数完成，不调用 Go 标准库 `encoding/json`；`Unmarshal` 可以作为 runtime package member 或函数值暴露，pointer target 仅留在 VM `Any` 内，`Marshal` / `Decode` 的 JSON 纯值边界拒绝 VM pointer、HostRef、channel、module、closure、host identity 和循环值；JSON 转换与 tag helper 是 `encoding/json` 包内私有实现。
 - `core/ffilib/testutil` 提供统一表达式/代码块 FFI 测试 harness；`core/ffilib` 与顶层 `ffilib` 模块测试均通过 `test.Out*` / `test.Done()` 校验执行完成与输出。
 - 仓库采用 `core` / `ffilib` / `examples` 多模块布局，root 只保留 `go.work`、文档和仓库级脚本。
 - 调用模板是 compiler 阶段能力：模板注册暴露 schema 给前端校验、LSP 补全与基于源码切片的 hover 渲染预览，随后在首次语义检查后、AST 优化前展开为真实 Mini AST；runtime / bytecode 不保留模板节点或模板执行逻辑。
-- 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 校验签名一致，template-only package member 只允许 direct call 且不进入 runtime exports。导入的 VM 源码库语义检查继承 template raw arg / template-only metadata。模板 raw arg 只在首次语义检查时跳过普通参数 assignability，展开后仍是普通 AST；模板可读取实参静态 canonical type，但 `encoding/json.Unmarshal` 这类普通 VM pointer target API 不再依赖 template。
+- 模板函数支持全局保留名和包成员入口；包成员模式按实际使用校验，真实包/member 校验签名一致，template-only package member 只允许 direct call 且不进入 runtime exports。导入的 VM 源码库语义检查继承 template raw arg / template-only metadata。模板 raw arg 只在首次语义检查时跳过普通参数 assignability，展开后仍是普通 AST；模板可读取实参静态 canonical type，普通 VM pointer target API 走常规源码函数与 reflect 写回路径。
 - `core/ffigo` 承载 FFI wire / bridge / helper 类型。
 - `core/e2e` 聚焦核心语言、runtime、module、FFI 机制测试；完整标准库 FFI 覆盖位于顶层 `ffilib`。
 - `ffigen` 只保留 `-pkg` / `-out` 参数模型；CLI 位于 `core/cmd/ffigen`，生成器核心位于 `core/ffigen`，`ffigen:module` 是 VM 可见模块名来源。
@@ -58,8 +58,11 @@
 - VM 并发模型是单线程协作式 VM 执行上下文调度；`go f()` 创建子执行上下文，不返回 handle/result。
 - 语言级 channel/select 已落到 Go frontend、AST 检查、lowering、bytecode payload 和 runtime；支持 `make(chan T[, cap])`、send/receive、二值 receive、`close`、`len`、`cap`、`select`、`default` 和 channel `for range`。
 - channel canonical type 为 `Chan<T>` / `RecvChan<T>` / `SendChan<T>`，同样由 `core/typespec`、AST 门面和 runtime schema 门面统一解析与渲染。
-- 上下文切换来自内部 safe point 或异步 FFI completion。
-- 异步 FFI completion 由 VM 调度器内部队列接收，不因固定 channel 容量丢失；host goroutine 只入队 completion 和唤醒信号，不执行 VM task。
+- 每次执行 run 都有独立 `VMRun`，集中持有 scheduler、reactor、`VMEventLoop`、host handle registry、host resource scope 和 `RunController`；scheduler/reactor 均为 run-scoped 状态。
+- host callback 与异步 FFI completion 统一投递到 `VMEventLoop`，由单线程 VM 调度循环 drain 后入队 callback frame 或恢复对应 async FFI waiter；event loop 使用 run 内部队列和非阻塞 wake，host goroutine 只 post event/wake，不执行 VM 指令。
+- `VMHostRegistry` 跟踪 callback/interface proxy 暴露给 host 的 handle，`VMResourceScope` 跟踪 server/client 等宿主资源；run 结束、abort 或 fatal error 时统一关闭并释放。
+- 上下文切换来自内部 safe point、channel/select park 点、host callback event 或异步 FFI completion。
+- 异步 FFI completion 由 VM event loop 接收并唤醒调度器，不直接从 host goroutine 操作 VM 执行；completion payload 会复制进事件。
 - 异步 FFI 启动后必须返回 `ffigo.WaitHandle` 描述等待来源；调度器区分 `WaitExternal` 与 `WaitDependsOnVM`，只有存在外部 wake source 时才会在全挂起状态继续等待。
 - FFI schema 支持 channel endpoint：wire 上传递 channel endpoint ID，host 端通过 `ffigo.ChannelRegistry` / `ChannelEndpoint` 收发 payload；endpoint goroutine 等待 host channel、唤醒调度器并完成 wire 编解码。channel endpoint decode 会校验 schema 方向，endpoint close / host channel close 会通过 `UnregisterChannel` 释放 registry 条目。`ffigen` channel 参数使用方向类型代理。
 - 当所有 VM 执行上下文都不可运行，且 pending async FFI 都依赖 VM 继续执行时，runtime 返回 `VMAllBlockedError`，错误包含 execution context、FFI route、method ID 和 wait reason。
@@ -77,7 +80,7 @@
 - Opaque host object 由 FFI factory/return 形成。
 - root `main` 返回后，未完成子执行上下文立即停止；子执行上下文 panic 默认失败整个 VM，除非在子上下文内部 recover。
 - Debugger pause event 显式暴露 `RunID` 和 `ExecutionContextID`；前者标识当前 run，后者表示触发暂停的 VM 执行上下文，root 通常为 1，子上下文为后续递增 ID。
-- 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表只服务调试和必要兼容查找。
+- 局部变量、参数、返回值、upvalue 访问以 slot/frame 为主路径，名字表服务调试和必要的 runtime lookup。
 - 模块导入、全局初始化、共享状态和 Eval/Execute 均通过 `SharedState + 独立 Session` 模型运行。
 - bytecode JSON、prepared executable、module import、runtime 初始化均已接入 bytecode-first 主链；bytecode 装载执行使用 `Executable`。
 - 对外 JSON / 持久化 / CLI 装载使用 `go-mini-bytecode`。
@@ -86,20 +89,9 @@
 
 ## 剩余工作
 
-### Debugger 执行上下文标识与暂停策略
+### Debugger 后续能力
 
-- [x] 决定调试事件显式暴露 VM 执行上下文标识。
-- [x] 当前 debugger pause 策略固定为 all-stop；任一执行上下文命中断点或人工暂停时，整个 VM 通过统一 `RunController` 进入暂停。
-- [x] 补齐 debugger 执行上下文标识与 all-stop 多上下文调试回归测试。
-- [ ] 如后续需要 non-stop 多上下文调试，再单独设计 per-context pause 集合、命令路由和事件顺序。
-
-### Channel / Select 语义
-
-- [x] 评估并确认需要语言级 channel/select，以支持 `context.Context.Done()` 这类 receive-only channel FFI 形态。
-- [x] 完成基于单线程 VM 调度器的语义设计，不新增 host goroutine 执行 VM task。
-- [x] 明确 send/receive/select 与 async FFI completion 的调度关系：VM 内部 channel 等待是 `WaitDependsOnVM`，FFI channel endpoint 等待是外部 wake source。
-- [x] 明确关闭、阻塞、取消、panic/recover 与 root 生命周期语义，并补齐 all-blocked 错误路径。
-- [x] 实现 lowering / bytecode / runtime payload、Go frontend、FFI schema、`ffigen` 和 e2e 回归测试。
+- [ ] 如需要 non-stop 多上下文调试，单独设计 per-context pause 集合、命令路由和事件顺序。
 
 ### Benchmark 与指标
 
@@ -110,11 +102,6 @@
 - [ ] 建立 import 初始化开销 benchmark。
 - [ ] 输出当前基线数据，形成后续优化对比口径。
 - [ ] 针对热点路径做优化前后指标对比，至少跟踪耗时、分配次数和 GC 压力。
-
-## 待办
-
-- [x] 支持 AST 层运算符重载语法糖，并在 compiler 中改写为真实方法调用。
-
 
 ## 变更门禁
 

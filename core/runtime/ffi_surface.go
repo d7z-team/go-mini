@@ -3,6 +3,7 @@ package runtime
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -662,7 +663,9 @@ func NewBoundFFISurfaceFromSchema(schema *FFISurfaceSchema) *BoundFFISurface {
 			switch member.Kind {
 			case FFIMemberConst:
 				if member.Const != nil {
-					bound.AddConst(pkgPath, name, member.Const.Value)
+					if err := bound.addConst(pkgPath, name, member.Const.Value); err != nil {
+						_ = bound.Schema.recordError(err)
+					}
 				}
 			}
 		}
@@ -672,20 +675,53 @@ func NewBoundFFISurfaceFromSchema(schema *FFISurfaceSchema) *BoundFFISurface {
 			continue
 		}
 		typeName := typ.CanonicalName()
-		bound.AddTypeMember(typ.PackagePath, typ.MemberName, MustParseRuntimeType(TypeSpec(typeName)))
+		if err := bound.addTypeMember(typ.PackagePath, typ.MemberName, MustParseRuntimeType(TypeSpec(typeName))); err != nil {
+			_ = bound.Schema.recordError(err)
+		}
 		if typ.Struct != nil {
-			bound.AddStruct(typ.PackagePath, typ.MemberName, typ.Struct)
+			if err := bound.addStruct(typ.PackagePath, typ.MemberName, typ.Struct); err != nil {
+				_ = bound.Schema.recordError(err)
+			}
 		}
 		if typ.Interface != nil {
-			bound.AddInterface(typ.PackagePath, typ.MemberName, typ.Interface)
+			if err := bound.addInterface(typ.PackagePath, typ.MemberName, typ.Interface); err != nil {
+				_ = bound.Schema.recordError(err)
+			}
 		}
 	}
 	return bound
 }
 
 func (b *BoundFFISurface) BindSchemaRoutes(schema *FFISurfaceSchema, bridge ffigo.FFIBridge) error {
+	return b.bindSchemaRoutes(schema, func(spec *FFIRouteSpec, routeName string) FFIRoute {
+		return FFIRoute{
+			Name:     routeName,
+			Bridge:   bridge,
+			MethodID: spec.MethodID,
+			FuncSig:  CloneRuntimeFuncSig(spec.Sig),
+			Doc:      spec.Doc,
+		}
+	})
+}
+
+func (b *BoundFFISurface) BindSchemaNativeRoutes(schema *FFISurfaceSchema, natives map[uint32]NativeFunc) error {
+	return b.bindSchemaRoutes(schema, func(spec *FFIRouteSpec, routeName string) FFIRoute {
+		return FFIRoute{
+			Name:     routeName,
+			Native:   natives[spec.MethodID],
+			MethodID: spec.MethodID,
+			FuncSig:  CloneRuntimeFuncSig(spec.Sig),
+			Doc:      spec.Doc,
+		}
+	})
+}
+
+func (b *BoundFFISurface) bindSchemaRoutes(schema *FFISurfaceSchema, makeRoute func(*FFIRouteSpec, string) FFIRoute) error {
 	if b == nil || schema == nil {
 		return nil
+	}
+	if makeRoute == nil {
+		return errors.New("missing FFI route binder")
 	}
 	bindRoute := func(routeName string, route FFIRoute) error {
 		if b.Routes == nil {
@@ -718,13 +754,7 @@ func (b *BoundFFISurface) BindSchemaRoutes(schema *FFISurfaceSchema, bridge ffig
 			if routeName == "" {
 				routeName = QualifiedMemberName(pkgPath, memberName)
 			}
-			route := FFIRoute{
-				Name:     routeName,
-				Bridge:   bridge,
-				MethodID: member.Route.MethodID,
-				FuncSig:  CloneRuntimeFuncSig(member.Route.Sig),
-				Doc:      member.Route.Doc,
-			}
+			route := makeRoute(member.Route, routeName)
 			if err := bindRoute(routeName, route); err != nil {
 				return err
 			}
@@ -739,7 +769,9 @@ func (b *BoundFFISurface) BindSchemaRoutes(schema *FFISurfaceSchema, bridge ffig
 			continue
 		}
 		typeName := typ.CanonicalName()
-		b.AddTypeMember(typ.PackagePath, typ.MemberName, MustParseRuntimeType(TypeSpec(typeName)))
+		if err := b.addTypeMember(typ.PackagePath, typ.MemberName, MustParseRuntimeType(TypeSpec(typeName))); err != nil {
+			return err
+		}
 		for methodName, method := range typ.Methods {
 			if method == nil {
 				return fmt.Errorf("ffi type method %s missing schema", QualifiedMemberName(typeName, methodName))
@@ -748,13 +780,7 @@ func (b *BoundFFISurface) BindSchemaRoutes(schema *FFISurfaceSchema, bridge ffig
 			if routeName == "" {
 				routeName = QualifiedMemberName(typeName, methodName)
 			}
-			if err := bindRoute(routeName, FFIRoute{
-				Name:     routeName,
-				Bridge:   bridge,
-				MethodID: method.MethodID,
-				FuncSig:  CloneRuntimeFuncSig(method.Sig),
-				Doc:      method.Doc,
-			}); err != nil {
+			if err := bindRoute(routeName, makeRoute(method, routeName)); err != nil {
 				return err
 			}
 		}
@@ -778,25 +804,10 @@ func (b *BoundFFISurface) EnsurePackage(path string) *BoundFFIPackage {
 	return pkg
 }
 
-func (b *BoundFFISurface) AddRoute(pkgPath, member string, route FFIRoute) {
+func (b *BoundFFISurface) addConst(pkgPath, member string, value FFIConstValue) error {
 	pkg := b.EnsurePackage(pkgPath)
 	if pkg == nil || member == "" {
-		return
-	}
-	if route.Name == "" {
-		route.Name = QualifiedMemberName(pkgPath, member)
-	}
-	if b.Routes == nil {
-		b.Routes = make(map[string]FFIRoute)
-	}
-	b.Routes[route.Name] = route
-	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberFunc, ReadOnly: true, RouteName: route.Name}
-}
-
-func (b *BoundFFISurface) AddConst(pkgPath, member string, value FFIConstValue) {
-	pkg := b.EnsurePackage(pkgPath)
-	if pkg == nil || member == "" {
-		return
+		return fmt.Errorf("ffi constant missing package or member: package=%q member=%q", pkgPath, member)
 	}
 	name := QualifiedMemberName(pkgPath, member)
 	if b.Consts == nil {
@@ -804,12 +815,28 @@ func (b *BoundFFISurface) AddConst(pkgPath, member string, value FFIConstValue) 
 	}
 	b.Consts[name] = value
 	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberConst, ReadOnly: true, Const: value}
+	return nil
 }
 
-func (b *BoundFFISurface) AddPackageValue(pkgPath, member string, spec *ValueSpec, value *Var) {
+func (b *BoundFFISurface) BindPackageValue(pkgPath, member string, value *Var) error {
+	if b == nil || b.Schema == nil {
+		return errors.New("missing FFI surface schema for package value binding")
+	}
+	pkg, ok := b.Schema.Packages[pkgPath]
+	if !ok || pkg == nil {
+		return fmt.Errorf("ffi package value %s.%s missing package schema", pkgPath, member)
+	}
+	memberSchema := pkg.Members[member]
+	if memberSchema == nil || memberSchema.Kind != FFIMemberValue || memberSchema.Value == nil {
+		return fmt.Errorf("ffi package value %s.%s missing value schema", pkgPath, member)
+	}
+	return b.addPackageValue(pkgPath, member, memberSchema.Value.Spec, value)
+}
+
+func (b *BoundFFISurface) addPackageValue(pkgPath, member string, spec *ValueSpec, value *Var) error {
 	pkg := b.EnsurePackage(pkgPath)
 	if pkg == nil || member == "" || value == nil {
-		return
+		return fmt.Errorf("ffi package value missing package, member, or value: package=%q member=%q", pkgPath, member)
 	}
 	name := QualifiedMemberName(pkgPath, member)
 	if b.PackageValues == nil {
@@ -820,41 +847,43 @@ func (b *BoundFFISurface) AddPackageValue(pkgPath, member string, spec *ValueSpe
 	}
 	b.PackageValues[name] = &BoundPackageValue{Name: name, Spec: spec, Value: value}
 	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberValue, Type: spec.Type, ReadOnly: spec.ReadOnly, Value: value}
+	return nil
 }
 
-func (b *BoundFFISurface) AddTypeMember(pkgPath, member string, typ RuntimeType) {
+func (b *BoundFFISurface) addTypeMember(pkgPath, member string, typ RuntimeType) error {
 	pkg := b.EnsurePackage(pkgPath)
 	if pkg == nil || member == "" {
-		return
+		return fmt.Errorf("ffi type member missing package or member: package=%q member=%q", pkgPath, member)
 	}
 	if typ.IsEmpty() {
 		typ = MustParseRuntimeType(TypeSpec(QualifiedMemberName(pkgPath, member)))
 	}
 	pkg.Members[member] = &BoundFFIMember{Name: member, Kind: FFIMemberType, Type: typ, ReadOnly: true}
+	return nil
 }
 
-func (b *BoundFFISurface) AddStruct(pkgPath, member string, spec *RuntimeStructSpec) {
+func (b *BoundFFISurface) addStruct(pkgPath, member string, spec *RuntimeStructSpec) error {
 	if pkgPath == "" || member == "" || spec == nil {
-		return
+		return fmt.Errorf("ffi struct missing package, member, or schema: package=%q member=%q", pkgPath, member)
 	}
 	name := QualifiedMemberName(pkgPath, member)
 	if b.Structs == nil {
 		b.Structs = make(map[string]*RuntimeStructSpec)
 	}
 	b.Structs[name] = CloneRuntimeStructSpec(spec)
-	b.AddTypeMember(pkgPath, member, MustParseRuntimeType(TypeSpec(name)))
+	return b.addTypeMember(pkgPath, member, MustParseRuntimeType(TypeSpec(name)))
 }
 
-func (b *BoundFFISurface) AddInterface(pkgPath, member string, spec *RuntimeInterfaceSpec) {
+func (b *BoundFFISurface) addInterface(pkgPath, member string, spec *RuntimeInterfaceSpec) error {
 	if pkgPath == "" || member == "" || spec == nil {
-		return
+		return fmt.Errorf("ffi interface missing package, member, or schema: package=%q member=%q", pkgPath, member)
 	}
 	name := QualifiedMemberName(pkgPath, member)
 	if b.Interfaces == nil {
 		b.Interfaces = make(map[string]*RuntimeInterfaceSpec)
 	}
 	b.Interfaces[name] = CloneRuntimeInterfaceSpec(spec)
-	b.AddTypeMember(pkgPath, member, MustParseRuntimeType(TypeSpec(name)))
+	return b.addTypeMember(pkgPath, member, MustParseRuntimeType(TypeSpec(name)))
 }
 
 func (b *BoundFFISurface) Merge(next *BoundFFISurface) error {

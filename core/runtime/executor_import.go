@@ -76,7 +76,8 @@ func (e *Executor) buildImportedModuleValue(path string, modExec *Executor, modS
 }
 
 func (e *Executor) startImportedProgram(parent *StackContext, path string, prepared *PreparedProgram) error {
-	if e.scheduler == nil || e.scheduler.Current() == nil {
+	scheduler := e.currentScheduler()
+	if scheduler == nil || scheduler.Current() == nil {
 		return fmt.Errorf("module %s requires an active VM scheduler", path)
 	}
 	modExecutor, err := NewExecutorFromPrepared(prepared)
@@ -117,7 +118,7 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 	if err := modExecutor.ValidateModuleRequirements(); err != nil {
 		return err
 	}
-	modExecutor.scheduler = e.scheduler
+	modExecutor.activeRun = e.currentRun()
 
 	modSession := modExecutor.NewSession(parent.Context, "global")
 	modSession.StepLimit = parent.StepLimit
@@ -153,17 +154,18 @@ func (e *Executor) startImportedProgram(parent *StackContext, path string, prepa
 		e.scheduleModuleWaiters(waiters, nil, loadErr)
 		return loadErr
 	}
-	if err := e.scheduler.PushFrame(frame); err != nil {
+	if err := scheduler.PushFrame(frame); err != nil {
 		return err
 	}
-	if err := e.scheduler.YieldCurrent(); err != nil {
+	if err := scheduler.YieldCurrent(); err != nil {
 		return err
 	}
 	return errExecutionContextYield
 }
 
 func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err error) {
-	if len(waiters) == 0 || e.scheduler == nil {
+	scheduler := e.currentScheduler()
+	if len(waiters) == 0 || scheduler == nil {
 		return
 	}
 	for _, waiter := range waiters {
@@ -178,7 +180,7 @@ func (e *Executor) scheduleModuleWaiters(waiters []moduleWaiter, value *Var, err
 		data.Value = value
 		data.Err = err
 		waiter.Frame.Session.TaskStack = append(waiter.Frame.Session.TaskStack, waiter.Resume)
-		e.scheduler.EnqueueExecutionContext(waiter.ExecutionContext)
+		scheduler.EnqueueExecutionContext(waiter.ExecutionContext)
 	}
 }
 

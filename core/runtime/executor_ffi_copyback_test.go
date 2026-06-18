@@ -127,6 +127,45 @@ func TestEvalFFICopyBackWritesWholeArrayBackToCaller(t *testing.T) {
 	}
 }
 
+func TestEvalFFICopyBackMutatesSharedArrayArgument(t *testing.T) {
+	exec := newEmptyExecutor(t)
+	session := exec.NewSession(context.Background(), "global")
+	if err := session.NewVar("caller", MustParseRuntimeType("Array<Byte>")); err != nil {
+		t.Fatalf("new caller failed: %v", err)
+	}
+	if err := session.NewVar("param", MustParseRuntimeType("Array<Byte>")); err != nil {
+		t.Fatalf("new param failed: %v", err)
+	}
+	shared := NewByteArray([]byte(".."))
+	if err := session.Store("caller", shared); err != nil {
+		t.Fatalf("store caller failed: %v", err)
+	}
+	if err := session.Store("param", shared); err != nil {
+		t.Fatalf("store param failed: %v", err)
+	}
+
+	route := FFIRoute{
+		Name:    "demo.Mutate",
+		Bridge:  copyBackFFIBridge{returnValue: []byte("ret")},
+		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Array<Byte>", FFIParamInOutBytes),
+	}
+	arg, err := session.Load("param")
+	if err != nil {
+		t.Fatalf("load param failed: %v", err)
+	}
+	_, err = exec.evalFFI(session, route, []*Var{arg}, []LHSValue{&LHSEnv{Name: "param"}})
+	if err != nil {
+		t.Fatalf("evalFFI failed: %v", err)
+	}
+	caller, err := session.Load("caller")
+	if err != nil {
+		t.Fatalf("load caller failed: %v", err)
+	}
+	if got := byteArrayText(t, exec, caller); got != "..!" {
+		t.Fatalf("shared caller array was not mutated, got %q", got)
+	}
+}
+
 func TestEvalFFICopyBackWritesSliceWindowArgument(t *testing.T) {
 	exec := newEmptyExecutor(t)
 	session := exec.NewSession(context.Background(), "global")

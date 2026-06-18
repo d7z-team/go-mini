@@ -22,12 +22,43 @@ func (testFFIBridge) Invoke(context.Context, *ffigo.FFICallRequest) (ffigo.FFIRe
 
 func (testFFIBridge) DestroyHandle(uint32) error { return nil }
 
+type testHostService struct {
+	closed int
+}
+
+func (s *testHostService) Close() error {
+	s.closed++
+	return nil
+}
+
+func (s *testHostService) Shutdown(context.Context) error {
+	return s.Close()
+}
+
 func requireSchemaConflict(t *testing.T, err error, kind string) {
 	t.Helper()
 	var conflict *SchemaConflictError
 	if !errors.As(err, &conflict) || conflict.Kind != kind {
 		t.Fatalf("expected %s conflict, got %T %v", kind, err, err)
 	}
+}
+
+func boundSurfaceFromSchema(t *testing.T, schema *FFISurfaceSchema) *BoundFFISurface {
+	t.Helper()
+	bound := NewBoundFFISurfaceFromSchema(schema)
+	if err := bound.BindSchemaRoutes(schema, nil); err != nil {
+		t.Fatalf("bind schema routes failed: %v", err)
+	}
+	return bound
+}
+
+func boundSurfaceWithFunc(t *testing.T, pkg, member, route string, methodID uint32, sig *RuntimeFuncSig) *BoundFFISurface {
+	t.Helper()
+	schema := NewFFISurfaceSchema()
+	if err := schema.AddFunc(pkg, member, route, methodID, sig, ""); err != nil {
+		t.Fatalf("add function schema failed: %v", err)
+	}
+	return boundSurfaceFromSchema(t, schema)
 }
 
 func readSerializedAny(t *testing.T, exec *Executor, v *Var) interface{} {
@@ -179,6 +210,92 @@ func TestToVarDecodesInterfaceDataWithoutHostRefAnyRawType(t *testing.T) {
 	}
 }
 
+func TestRejectHostIdentityInAnyRejectsCallbackData(t *testing.T) {
+	if err := rejectHostIdentityInAny(ffigo.CallbackData{Handle: 1, Signature: "function() Void"}); err == nil || !strings.Contains(err.Error(), "callback") {
+		t.Fatalf("expected callback rejection, got %v", err)
+	}
+	if err := rejectHostIdentityInAny(map[string]interface{}{
+		"cb": ffigo.CallbackData{Handle: 1, Signature: "function() Void"},
+	}); err == nil || !strings.Contains(err.Error(), "callback") {
+		t.Fatalf("expected nested callback rejection, got %v", err)
+	}
+}
+
+func TestVMReactorCloseServicesReleasesCallbackHandles(t *testing.T) {
+	exec := &Executor{}
+	reactor := NewVMReactor(exec, nil)
+	reactor.SetRun(NewVMRun(exec, NewExecutionContextScheduler(), reactor, nil))
+	registry := ffigo.NewHandleRegistry()
+	proxy := reactor.NewCallbackProxy(&Var{VType: TypeClosure, Ref: &VMClosure{FunctionSig: MustParseRuntimeFuncSig("function() Void")}}, nil)
+	handle := registry.Register(proxy)
+	proxy.BindHostHandle(registry, handle)
+	if _, ok := registry.Get(handle); !ok {
+		t.Fatal("expected callback handle to be registered")
+	}
+	reactor.CloseServices()
+	if _, ok := registry.Get(handle); ok {
+		t.Fatal("expected callback handle to be released")
+	}
+}
+
+func TestVMReactorCloseServicesClosesRegisteredServices(t *testing.T) {
+	exec := &Executor{}
+	reactor := NewVMReactor(exec, nil)
+	reactor.SetRun(NewVMRun(exec, NewExecutionContextScheduler(), reactor, nil))
+	closed := &testHostService{}
+	unregistered := &testHostService{}
+	closedID := reactor.RegisterService(closed)
+	unregisteredID := reactor.RegisterService(unregistered)
+	if closedID == 0 || unregisteredID == 0 {
+		t.Fatalf("expected service registrations, got %d and %d", closedID, unregisteredID)
+	}
+	reactor.UnregisterService(unregisteredID)
+	reactor.CloseServices()
+	if closed.closed != 1 {
+		t.Fatalf("expected registered service to close once, got %d", closed.closed)
+	}
+	if unregistered.closed != 0 {
+		t.Fatalf("expected unregistered service to remain open, got %d", unregistered.closed)
+	}
+	reactor.CloseServices()
+	if closed.closed != 1 {
+		t.Fatalf("expected service close to be idempotent, got %d", closed.closed)
+	}
+}
+
+func TestVMEventLoopDrainsLargeBurstWithoutBlockingPosters(t *testing.T) {
+	loop := NewVMEventLoop()
+	const events = 4096
+	for i := 0; i < events; i++ {
+		if err := loop.Post(VMEvent{Kind: VMEventAsyncFFIComplete, Data: i}); err != nil {
+			t.Fatalf("Post failed: %v", err)
+		}
+	}
+
+	var seen int
+	if err := loop.Drain(func(event VMEvent) error {
+		if event.Kind != VMEventAsyncFFIComplete {
+			t.Fatalf("unexpected event kind: %v", event.Kind)
+		}
+		if event.Data != seen {
+			t.Fatalf("event order mismatch: got %v, want %d", event.Data, seen)
+		}
+		seen++
+		return nil
+	}); err != nil {
+		t.Fatalf("Drain failed: %v", err)
+	}
+	if seen != events {
+		t.Fatalf("drained %d events, want %d", seen, events)
+	}
+
+	select {
+	case <-loop.WakeChan():
+	default:
+		t.Fatal("expected wake signal after posted events")
+	}
+}
+
 func TestLookupStructSchemaUsesCanonicalIndexes(t *testing.T) {
 	exec := &Executor{
 		metadata: newRuntimeMetadataRegistry(),
@@ -225,7 +342,9 @@ func TestSerializeVarToAnyRejectsSlotPointer(t *testing.T) {
 
 func TestAnyWireEncodesUint32AsNumber(t *testing.T) {
 	buf := ffigo.GetBuffer()
-	buf.WriteAny(uint32(42))
+	if err := buf.WriteAny(uint32(42)); err != nil {
+		t.Fatalf("WriteAny failed: %v", err)
+	}
 	reader := ffigo.NewReader(buf.Bytes())
 	ffigo.ReleaseBuffer(buf)
 
@@ -345,22 +464,12 @@ func TestApplyBoundFFISurfaceRejectsConflictingRouteDefinitions(t *testing.T) {
 		metadata: newRuntimeMetadataRegistry(),
 		routes:   make(map[string]FFIRoute),
 	}
-	first := NewBoundFFISurface(nil)
-	first.AddRoute("demo", "Call", FFIRoute{
-		Name:     "demo.Call",
-		MethodID: 1,
-		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
-	})
+	first := boundSurfaceWithFunc(t, "demo", "Call", "demo.Call", 1, MustParseRuntimeFuncSig("function(String) Void"))
 	if err := exec.ApplyBoundFFISurface(first); err != nil {
 		t.Fatalf("apply first route failed: %v", err)
 	}
 
-	second := NewBoundFFISurface(nil)
-	second.AddRoute("demo", "Call", FFIRoute{
-		Name:     "demo.Call",
-		MethodID: 2,
-		FuncSig:  MustParseRuntimeFuncSig("function(String) Void"),
-	})
+	second := boundSurfaceWithFunc(t, "demo", "Call", "demo.Call", 2, MustParseRuntimeFuncSig("function(String) Void"))
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(second), "route")
 }
 
@@ -370,8 +479,11 @@ func TestApplyBoundFFISurfaceRejectsConflictingStructDefinitions(t *testing.T) {
 	}
 	exec.metadata.registerStructSchema("demo.Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; }"))
 
-	surface := NewBoundFFISurface(nil)
-	surface.AddStruct("demo", "Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }"))
+	schema := NewFFISurfaceSchema()
+	if err := schema.AddStruct("demo", "Type", MustParseRuntimeStructSpec("demo.Type", StructOwnershipVMValue, "struct { Value Int64; Name String; }")); err != nil {
+		t.Fatalf("add struct schema failed: %v", err)
+	}
+	surface := boundSurfaceFromSchema(t, schema)
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 }
 
@@ -393,20 +505,12 @@ func TestApplyBoundFFISurfaceReportsParamModeConflict(t *testing.T) {
 		metadata: newRuntimeMetadataRegistry(),
 		routes:   make(map[string]FFIRoute),
 	}
-	first := NewBoundFFISurface(nil)
-	first.AddRoute("demo", "Mutate", FFIRoute{
-		Name:    "demo.Mutate",
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamInOutBytes),
-	})
+	first := boundSurfaceWithFunc(t, "demo", "Mutate", "demo.Mutate", 0, MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamInOutBytes))
 	if err := exec.ApplyBoundFFISurface(first); err != nil {
 		t.Fatalf("register route failed: %v", err)
 	}
 
-	second := NewBoundFFISurface(nil)
-	second.AddRoute("demo", "Mutate", FFIRoute{
-		Name:    "demo.Mutate",
-		FuncSig: MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamIn),
-	})
+	second := boundSurfaceWithFunc(t, "demo", "Mutate", "demo.Mutate", 0, MustParseRuntimeFuncSigWithModes("function(Array<Byte>) Void", FFIParamIn))
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(second), "route")
 }
 
@@ -457,12 +561,14 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPolluteRoutes(t *testing.T) {
 	}
 	exec.metadata.registerStructSchema("demo.Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; }"))
 
-	surface := NewBoundFFISurface(nil)
-	surface.AddRoute("demo", "Call", FFIRoute{
-		Name:    "demo.Call",
-		FuncSig: MustParseRuntimeFuncSig("function(String) Void"),
-	})
-	surface.AddStruct("demo", "Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }"))
+	schema := NewFFISurfaceSchema()
+	if err := schema.AddFunc("demo", "Call", "demo.Call", 0, MustParseRuntimeFuncSig("function(String) Void"), ""); err != nil {
+		t.Fatalf("add function schema failed: %v", err)
+	}
+	if err := schema.AddStruct("demo", "Payload", MustParseRuntimeStructSpec("demo.Payload", StructOwnershipVMValue, "struct { Msg String; Count Int64; }")); err != nil {
+		t.Fatalf("add struct schema failed: %v", err)
+	}
+	surface := boundSurfaceFromSchema(t, schema)
 
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "struct schema")
 	if _, ok := exec.routes["demo.Call"]; ok {
@@ -487,12 +593,17 @@ func TestRuntimeApplyBoundFFISurfaceConflictDoesNotPollutePackageMembers(t *test
 		Value: NewString("old"),
 	}
 
-	surface := NewBoundFFISurface(nil)
-	surface.AddRoute("demo", "Call", FFIRoute{
-		Name:    "demo.Call",
-		FuncSig: MustParseRuntimeFuncSig("function(String) Void"),
-	})
-	surface.AddPackageValue("demo", "Value", &ValueSpec{Type: MustParseRuntimeType("Int64"), ReadOnly: true}, NewInt(1))
+	schema := NewFFISurfaceSchema()
+	if err := schema.AddFunc("demo", "Call", "demo.Call", 0, MustParseRuntimeFuncSig("function(String) Void"), ""); err != nil {
+		t.Fatalf("add function schema failed: %v", err)
+	}
+	if err := schema.AddValue("demo", "Value", &ValueSpec{Type: MustParseRuntimeType("Int64"), ReadOnly: true}); err != nil {
+		t.Fatalf("add package value schema failed: %v", err)
+	}
+	surface := boundSurfaceFromSchema(t, schema)
+	if err := surface.BindPackageValue("demo", "Value", NewInt(1)); err != nil {
+		t.Fatalf("bind package value failed: %v", err)
+	}
 
 	requireSchemaConflict(t, exec.ApplyBoundFFISurface(surface), "package value")
 	if _, ok := exec.routes["demo.Call"]; ok {
