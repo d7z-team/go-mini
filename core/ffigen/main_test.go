@@ -1,6 +1,7 @@
 package ffigen
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"os"
@@ -9,6 +10,40 @@ import (
 	"sync"
 	"testing"
 )
+
+func TestRunDirConstantKindFromValue(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "consts.go", `package pkgmode
+
+const (
+	LocatorLayerKindLocator = "locator"
+	LocatorLayerKindFrame   = "frame"
+)
+`)
+	writeTestFile(t, workspace, "target.go", `package pkgmode
+
+// ffigen:module demo
+type DemoModule interface {
+	Echo(s string) string
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	generatedPath := filepath.Join(outputDir, "ffigen_pkgmode.go")
+	code := readGeneratedCode(t, generatedPath)
+
+	// Both constants should be ConstString, not ConstInt64
+	for _, name := range []string{"LocatorLayerKindLocator", "LocatorLayerKindFrame"} {
+		want := fmt.Sprintf(`schema.AddConst("demo", %q, runtime.ConstString`, name)
+		if !strings.Contains(code, want) {
+			t.Fatalf("expected ConstString for %s, got:\n%s", name, code)
+		}
+	}
+}
 
 func TestRunDirGeneratesPackageOutput(t *testing.T) {
 	workspace := makeModuleTempDir(t)
