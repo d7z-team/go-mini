@@ -64,6 +64,11 @@ func TestRunUsesOptions(t *testing.T) {
 
 const Small byte = 7
 const Mark rune = 'A'
+const Lower = "hello"
+const Score = 42
+const Rate = 3.14
+const Ready = true
+const NamedLower string = "world"
 
 // ffigen:module demo
 type DemoModule interface {
@@ -89,6 +94,21 @@ type DemoModule interface {
 	}
 	if !strings.Contains(code, `schema.AddConst("demo", "Mark", runtime.ConstRune(int64('A')))`) {
 		t.Fatalf("expected rune constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Lower", runtime.ConstString(string("hello")))`) {
+		t.Fatalf("expected string constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Score", runtime.ConstInt64(int64(42)))`) {
+		t.Fatalf("expected int64 constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Rate", runtime.ConstFloat64(float64(3.14)))`) {
+		t.Fatalf("expected float64 constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "Ready", runtime.ConstBool(bool(true)))`) {
+		t.Fatalf("expected bool constant schema, got:\n%s", code)
+	}
+	if !strings.Contains(code, `schema.AddConst("demo", "NamedLower", runtime.ConstString(string("world")))`) {
+		t.Fatalf("expected typed string constant schema, got:\n%s", code)
 	}
 }
 

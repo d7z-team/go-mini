@@ -130,8 +130,13 @@ func (g *Generator) constKindForName(name *ast.Ident, expr ast.Expr) string {
 		}
 	}
 	tv, ok := g.typeInfo.Types[expr]
-	if ok && tv.Type != nil {
-		return constKindFromType(tv.Type)
+	if ok {
+		if tv.Value != nil {
+			return constKindFromValue(tv.Value)
+		}
+		if tv.Type != nil {
+			return constKindFromType(tv.Type)
+		}
 	}
 	switch n := expr.(type) {
 	case *ast.Ident:
@@ -215,19 +220,7 @@ func constKindFromType(typ types.Type) string {
 	case types.Uint8:
 		return "byte"
 	}
-	info := basic.Info()
-	switch {
-	case info&types.IsBoolean != 0:
-		return "bool"
-	case info&types.IsString != 0:
-		return "string"
-	case info&types.IsFloat != 0:
-		return "float64"
-	case info&types.IsInteger != 0:
-		return "int64"
-	default:
-		return ""
-	}
+	return ""
 }
 
 func constConstructorExpr(c constBinding) string {
