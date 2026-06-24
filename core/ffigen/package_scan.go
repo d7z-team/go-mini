@@ -171,7 +171,7 @@ func (g *Generator) collectPackageData(allFiles, targetFiles []*ast.File) (map[s
 							}
 							expr := valSpec.Values[i]
 							if val := exprToString(expr); val != "" {
-								globalConsts[name.Name] = constBinding{Expr: val, Kind: g.constKindForName(name, expr)}
+								globalConsts[name.Name] = constBinding{Expr: val, Kind: g.constKindForName(name, expr, valSpec.Type)}
 							}
 						}
 					}

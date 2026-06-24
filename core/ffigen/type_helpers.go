@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/importer"
+	"go/token"
 	"go/types"
 	"strings"
 
@@ -113,9 +114,15 @@ func (g *Generator) unsupportedInterfaceExpr(expr ast.Expr) bool {
 	return ok && iface.NumMethods() > 0
 }
 
-func (g *Generator) constKindForName(name *ast.Ident, expr ast.Expr) string {
+func (g *Generator) constKindForName(name *ast.Ident, expr, explicitType ast.Expr) string {
 	if g.typeInfo == nil || expr == nil {
 		return ""
+	}
+	if kind := g.constKindFromTypeExpr(explicitType); kind != "" {
+		return kind
+	}
+	if kind := constKindFromSyntax(expr); kind != "" {
+		return kind
 	}
 	if selector, ok := expr.(*ast.SelectorExpr); ok {
 		if kind := g.importedSelectorConstKind(selector); kind != "" {
@@ -149,6 +156,130 @@ func (g *Generator) constKindForName(name *ast.Ident, expr ast.Expr) string {
 		}
 	}
 	return ""
+}
+
+func (g *Generator) constKindFromTypeExpr(expr ast.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	switch t := expr.(type) {
+	case *ast.Ident:
+		switch t.Name {
+		case "bool":
+			return "bool"
+		case "string":
+			return "string"
+		case "float32", "float64":
+			return "float64"
+		case "byte", "uint8":
+			return "byte"
+		case "rune":
+			return "rune"
+		case "int", "int8", "int16", "int32", "int64",
+			"uint", "uint16", "uint32", "uint64", "uintptr":
+			return "int64"
+		default:
+			return ""
+		}
+	case *ast.SelectorExpr:
+		if obj := g.lookupTypeObject(t.Sel); obj != nil {
+			return constKindFromType(obj.Type())
+		}
+	}
+	return ""
+}
+
+func constKindFromSyntax(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.BasicLit:
+		switch t.Kind {
+		case token.INT:
+			return "int64"
+		case token.FLOAT:
+			return "float64"
+		case token.CHAR:
+			return "rune"
+		case token.STRING:
+			return "string"
+		default:
+			return ""
+		}
+	case *ast.Ident:
+		switch t.Name {
+		case "true", "false":
+			return "bool"
+		default:
+			return ""
+		}
+	case *ast.ParenExpr:
+		return constKindFromSyntax(t.X)
+	case *ast.UnaryExpr:
+		switch t.Op {
+		case token.ADD, token.SUB:
+			kind := constKindFromSyntax(t.X)
+			if kind == "int64" || kind == "float64" || kind == "rune" {
+				return kind
+			}
+		default:
+			return ""
+		}
+	case *ast.BinaryExpr:
+		left := constKindFromSyntax(t.X)
+		right := constKindFromSyntax(t.Y)
+		switch t.Op {
+		case token.ADD:
+			if left == "string" && right == "string" {
+				return "string"
+			}
+			return mergeNumericConstKinds(left, right)
+		case token.SUB, token.MUL, token.QUO, token.REM,
+			token.AND, token.OR, token.XOR, token.SHL, token.SHR, token.AND_NOT:
+			return mergeNumericConstKinds(left, right)
+		case token.LAND, token.LOR:
+			if left == "bool" && right == "bool" {
+				return "bool"
+			}
+		case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+			if left != "" && right != "" {
+				return "bool"
+			}
+		}
+	}
+	return ""
+}
+
+func mergeNumericConstKinds(left, right string) string {
+	if left == "" || right == "" {
+		return ""
+	}
+	if left == "float64" || right == "float64" {
+		return "float64"
+	}
+	if left == "int64" || right == "int64" || left == "rune" || right == "rune" {
+		return "int64"
+	}
+	return ""
+}
+
+func constKindFromBasicKind(kind types.BasicKind) string {
+	switch kind {
+	case types.Bool, types.UntypedBool:
+		return "bool"
+	case types.String, types.UntypedString:
+		return "string"
+	case types.Float32, types.Float64, types.UntypedFloat:
+		return "float64"
+	case types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
+		types.Uint, types.Uint16, types.Uint32, types.Uint64, types.Uintptr,
+		types.UntypedInt:
+		return "int64"
+	case types.Uint8:
+		return "byte"
+	case types.UntypedRune:
+		return "rune"
+	default:
+		return ""
+	}
 }
 
 func (g *Generator) importedSelectorConstKind(expr *ast.SelectorExpr) string {
@@ -215,12 +346,11 @@ func constKindFromType(typ types.Type) string {
 		return ""
 	}
 	switch basic.Kind() {
-	case types.UntypedRune:
-		return "rune"
-	case types.Uint8:
-		return "byte"
+	case types.Invalid:
+		return ""
+	default:
+		return constKindFromBasicKind(basic.Kind())
 	}
-	return ""
 }
 
 func constConstructorExpr(c constBinding) string {

@@ -18,6 +18,13 @@ func TestRunDirConstantKindFromValue(t *testing.T) {
 const (
 	LocatorLayerKindLocator = "locator"
 	LocatorLayerKindFrame   = "frame"
+	Small                   byte = 7
+	Mark                    rune = 'A'
+	Score                   = 42
+	Rate                    = 3.14
+	Ready                   = true
+	Negative                = -9
+	Joined                  = "lo" + "cator"
 )
 `)
 	writeTestFile(t, workspace, "target.go", `package pkgmode
@@ -41,6 +48,63 @@ type DemoModule interface {
 		want := fmt.Sprintf(`schema.AddConst("demo", %q, runtime.ConstString`, name)
 		if !strings.Contains(code, want) {
 			t.Fatalf("expected ConstString for %s, got:\n%s", name, code)
+		}
+	}
+}
+
+func TestRunDirPrimitiveConstantKindWithTypeCheckWarning(t *testing.T) {
+	workspace := makeModuleTempDir(t)
+	writeTestFile(t, workspace, "consts.go", `package pkgmode
+
+const (
+	LocatorLayerKindLocator = "locator"
+	LocatorLayerKindFrame   = "frame"
+	Small                   byte = 7
+	Mark                    rune = 'A'
+	Score                   = 42
+	Rate                    = 3.14
+	Ready                   = true
+	Negative                = -9
+	Joined                  = "lo" + "cator"
+)
+`)
+	writeTestFile(t, workspace, "broken.go", `package pkgmode
+
+type Object struct {
+	vars variables.Variables
+}
+`)
+	writeTestFile(t, workspace, "target.go", `package pkgmode
+
+// ffigen:module demo
+type DemoModule interface {
+	Echo(s string) string
+}
+`)
+
+	outputDir := filepath.Join(workspace, "gen")
+	if err := runDirectoryModeForTest("pkgmode", outputDir, workspace); err != nil {
+		t.Fatalf("runDirectoryMode: %v", err)
+	}
+
+	code := readGeneratedCode(t, filepath.Join(outputDir, "ffigen_pkgmode.go"))
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{"LocatorLayerKindLocator", `runtime.ConstString(string("locator"))`},
+		{"LocatorLayerKindFrame", `runtime.ConstString(string("frame"))`},
+		{"Small", `runtime.ConstByte(byte(7))`},
+		{"Mark", `runtime.ConstRune(int64('A'))`},
+		{"Score", `runtime.ConstInt64(int64(42))`},
+		{"Rate", `runtime.ConstFloat64(float64(3.14))`},
+		{"Ready", `runtime.ConstBool(bool(true))`},
+		{"Negative", `runtime.ConstInt64(int64(-9))`},
+		{"Joined", `runtime.ConstString(string("lo"+"cator"))`},
+	} {
+		want := fmt.Sprintf(`schema.AddConst("demo", %q, %s)`, tc.name, tc.want)
+		if !strings.Contains(code, want) {
+			t.Fatalf("expected primitive const schema %s despite type-check warning, got:\n%s", want, code)
 		}
 	}
 }
