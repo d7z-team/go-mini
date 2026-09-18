@@ -1,0 +1,28 @@
+package main
+
+import "fmt"
+import "regexp"
+import "strings"
+
+func main() {
+	raw := "  mini-123 go-456  "
+	// strings/regexp 通过 FFI 暴露，API 尽量保持 Go 标准库语义。
+	clean := strings.TrimSpace(raw)
+	if clean != "mini-123 go-456" {
+		panic("trim failed")
+	}
+
+	// regexp.FindStringSubmatch 返回完整匹配和捕获组。
+	words := regexp.FindStringSubmatch("([a-z]+)-([0-9]+)", clean)
+	if len(words) != 3 || words[1] != "mini" || words[2] != "123" {
+		panic("regexp extract failed")
+	}
+
+	// 带 error 返回值的 FFI 调用需要和普通 mgo 函数一样显式检查错误。
+	all, err := regexp.FindAllString("[a-z]+", clean, -1)
+	if err != nil || len(all) != 2 {
+		panic("regexp find all failed")
+	}
+
+	fmt.Println(strings.Join(all, ", "))
+}

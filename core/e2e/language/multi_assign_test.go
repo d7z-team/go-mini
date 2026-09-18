@@ -1,0 +1,286 @@
+package tests
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	"gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
+)
+
+func TestMultiAssignment(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+
+	t.Run("ResultDestructuring", func(t *testing.T) {
+		code := `
+		package main
+
+		func decode(ok Bool) (Any, String) {
+			if !ok {
+				return nil, "decode failed"
+			}
+			return map[string]any{"age": 25}, ""
+		}
+
+		func main() {
+			// 1. Test Result destructuring (val, err)
+			v, err := decode(true)
+			if err != "" {
+				panic("decode failed")
+			}
+			
+			if v.age != 25 {
+				panic("Value mismatch")
+			}
+
+			// 2. Test failed decode
+			v2, err2 := decode(false)
+			_ = v2
+			if err2 == "" {
+				panic("Should have failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ArrayDestructuring", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			a, b, c := []int{10, 20, 30}
+			if a != 10 || b != 20 || c != 30 {
+				panic("Array destructuring failed")
+			}
+
+			// Test reassignment
+			a, b = []int{100, 200}
+			if a != 100 || b != 200 {
+				panic("Reassignment failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("TupleDestructuring", func(t *testing.T) {
+		// Mock a bridge that returns a Tuple
+		bridge := &mockTupleBridge{}
+		testsurface.UseRoute(t, executor, "calc.DivMod", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
+
+		code := `
+		package main
+		import "calc"
+		func main() {
+			q, r := calc.DivMod(10, 3)
+			if q != 3 || r != 1 {
+				panic("Tuple destructuring failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("FFITupleReturnForwarding", func(t *testing.T) {
+		bridge := &mockTupleBridge{}
+		testsurface.UseRoute(t, executor, "calc.DivModForward", bridge, 1, runtime.MustParseRuntimeFuncSig("function(Int64, Int64) tuple(Int64, Int64)"), "")
+
+		code := `
+		package main
+		import "calc"
+		func divmod(a int, b int) (int, int) {
+			return calc.DivModForward(a, b)
+		}
+		func main() {
+			q, r := divmod(17, 5)
+			if q != 3 || r != 2 {
+				panic("FFI tuple forwarding failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ComplexDestructuring", func(t *testing.T) {
+		code := `
+		package main
+		
+		type Point struct {
+			X int
+			Y int
+		}
+
+		func getCoords() []int {
+			return []int{100, 200}
+		}
+
+		func main() {
+			arr := []int{0, 0}
+			p := Point{X: 0, Y: 0}
+
+			// Complex LHS: array index and member expression
+			arr[1], p.X = getCoords()
+
+			if arr[1] != 100 {
+				panic("arr[1] mismatch")
+			}
+			if p.X != 200 {
+				panic("p.X mismatch")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclAllowsMixedExistingAndNewNames", func(t *testing.T) {
+		code := `
+		package main
+		func first() (int, string) {
+			return 1, "first"
+		}
+		func second() (int, string) {
+			return 2, "second"
+		}
+		func main() {
+			a, err := first()
+			b, err := second()
+			if a != 1 || b != 2 || err != "second" {
+				panic("mixed short declaration failed")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclRequiresAtLeastOneNewName", func(t *testing.T) {
+		code := `
+		package main
+		func pair() (int, int) {
+			return 1, 2
+		}
+		func main() {
+			a, b := pair()
+			a, b := pair()
+			_, _ = a, b
+		}
+		`
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Fatal("expected compile error for := without new names")
+		}
+		if !strings.Contains(err.Error(), "no new variables on left side of :=") {
+			t.Fatalf("unexpected compile error: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclRHSUsesPreviousBindings", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			x := 5
+			y, x := x, 7
+			if y != 5 {
+				panic("short declaration RHS did not read previous x")
+			}
+			if x != 7 {
+				panic("short declaration did not update x")
+			}
+		}
+		`
+		prog, err := executor.NewRuntimeByGoCode(code)
+		if err != nil {
+			t.Fatalf("Compile failed: %v", err)
+		}
+		if err := prog.Execute(context.Background()); err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+	})
+
+	t.Run("ShortDeclRHSCannotSeeNewName", func(t *testing.T) {
+		code := `
+		package main
+		func main() {
+			y := y
+			_ = y
+		}
+		`
+		_, err := executor.NewRuntimeByGoCode(code)
+		if err == nil {
+			t.Fatal("expected compile error for short declaration RHS reading newly declared y")
+		}
+		if !strings.Contains(err.Error(), "variable y does not exist") {
+			t.Fatalf("unexpected compile error: %v", err)
+		}
+	})
+}
+
+type mockTupleBridge struct{}
+
+func (b *mockTupleBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	reader := ffigo.NewReader(req.Args)
+	a, err := reader.ReadVarint()
+	if err != nil {
+		return nil, err
+	}
+	bVal, err := reader.ReadVarint()
+	if err != nil {
+		return nil, err
+	}
+
+	q := a / bVal
+	r := a % bVal
+
+	buf := ffigo.GetBuffer()
+	buf.WriteVarint(q)
+	buf.WriteVarint(r)
+	return buf.Bytes(), nil
+}
+
+func (b *mockTupleBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, nil
+}
+
+func (b *mockTupleBridge) DestroyHandle(handle uint32) error { return nil }

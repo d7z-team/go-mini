@@ -1,0 +1,4 @@
+gopkg.d7z.net/go-mini/core v0.0.0-20260522064438-5ca8482a4eed h1:M2ZJ+r9YAZNqe1D8yFe7n5/PKzrjWjP2tJULPw/98Dk=
+gopkg.d7z.net/go-mini/core v0.0.0-20260522064438-5ca8482a4eed/go.mod h1:xxvjqwrbvk5BDWxqXaVGjexEtvXKyQk+85J9ZwZ3Lpg=
+gopkg.d7z.net/go-mini/ffilib v0.0.0-20260522072605-85b07b61f9ca h1:ieMXeCY/T1PlwC9ACLBLhPJpGyiHDxdXWlyNXNPx5AQ=
+gopkg.d7z.net/go-mini/ffilib v0.0.0-20260522072605-85b07b61f9ca/go.mod h1:T92GX5YZFlZSny+9zmjRK7/WORKuAQNsN7YJhuLagzM=

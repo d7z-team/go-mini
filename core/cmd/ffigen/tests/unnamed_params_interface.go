@@ -1,0 +1,12 @@
+package tests
+
+//go:generate go run gopkg.d7z.net/go-mini/core/cmd/ffigen -pkg tests -out unnamed_params_ffigen.go unnamed_params_interface.go
+
+import "context"
+
+// ffigen:module logger
+type Logger interface {
+	Log(ctx context.Context, msg, level string, code int64)
+	// Internal uses unnamed parameters to test ffigen's default naming (arg0, arg1, etc.)
+	Internal(string, string, int64)
+}

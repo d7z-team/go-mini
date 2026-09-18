@@ -1,0 +1,122 @@
+package tests
+
+import (
+	"context"
+	"fmt"
+	goruntime "runtime"
+	"testing"
+	"time"
+
+	engine "gopkg.d7z.net/go-mini/core"
+	"gopkg.d7z.net/go-mini/core/ffigo"
+	miniruntime "gopkg.d7z.net/go-mini/core/runtime"
+	"gopkg.d7z.net/go-mini/core/testsurface"
+)
+
+// MockResource 模拟一个宿主侧的句柄资源
+type MockResource struct {
+	ID uint32
+}
+
+func (m *MockResource) GetID() int64 {
+	return int64(m.ID)
+}
+
+// lifecycleMockBridge 实现 ffigo.FFIBridge 接口用于生命周期测试
+type lifecycleMockBridge struct {
+	registry *ffigo.HandleRegistry
+	t        *testing.T
+}
+
+func (m *lifecycleMockBridge) Call(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	switch req.MethodID {
+	case 1: // 模拟 Screenshot
+		res := &MockResource{ID: 12}
+		id := m.registry.RegisterTyped(res, "mock.Resource")
+
+		buf := ffigo.GetBuffer()
+		defer ffigo.ReleaseBuffer(buf)
+		buf.WriteUvarint(uint64(id))
+		return buf.Bytes(), nil
+
+	case 2: // 模拟 GetWidth
+		reader := ffigo.NewReader(req.Args)
+		rawID, err := reader.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		id := uint32(rawID)
+
+		obj, err := m.registry.GetTypedWithAudit(id, "mock.Resource")
+		if err != nil {
+			return nil, ffigo.ErrorData{Message: fmt.Sprintf("invalid handle ID: %d", id)}
+		}
+		res := obj.(*MockResource)
+		buf := ffigo.GetBuffer()
+		defer ffigo.ReleaseBuffer(buf)
+		buf.WriteVarint(res.GetID())
+		return buf.Bytes(), nil
+
+	case 3: // 模拟 GC 压力
+		goruntime.GC()
+		time.Sleep(50 * time.Millisecond)
+		goruntime.GC()
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (m *lifecycleMockBridge) Invoke(ctx context.Context, req *ffigo.FFICallRequest) (ffigo.FFIReturn, error) {
+	return nil, nil
+}
+
+func (m *lifecycleMockBridge) DestroyHandle(id uint32) error {
+	m.registry.Remove(id)
+	return nil
+}
+
+// TestHandleGCLifecycleRegression 验证句柄在 GC 压力下的生命周期，防止 "invalid handle ID" 回归
+func TestHandleGCLifecycleRegression(t *testing.T) {
+	executor := engine.MustNewMiniExecutor()
+	registry := ffigo.NewHandleRegistry()
+	bridge := &lifecycleMockBridge{registry: registry, t: t}
+
+	schema := miniruntime.NewFFISurfaceSchema()
+	if err := schema.AddStruct("mock", "Resource", miniruntime.MustParseRuntimeStructSpec("mock.Resource", miniruntime.StructOwnershipHostOpaque, "struct { }")); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.AddRouteDecls([]miniruntime.FFIRouteDecl{
+		testsurface.Route("mock.Screenshot", 1, miniruntime.MustParseRuntimeFuncSig("function() HostRef<mock.Resource>"), ""),
+		testsurface.Route("mock.GetWidth", 2, miniruntime.MustParseRuntimeFuncSig("function(HostRef<mock.Resource>) Int64"), ""),
+		testsurface.Route("mock.TriggerGC", 3, miniruntime.MustParseRuntimeFuncSig("function() Void"), ""),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.UseSurface(testsurface.SchemaBundle(schema, bridge)); err != nil {
+		t.Fatal(err)
+	}
+
+	code := `
+		package main
+		import "mock"
+		func main() {
+			img := mock.Screenshot()
+			imgCopy := img
+			mock.TriggerGC()
+			w := mock.GetWidth(imgCopy)
+			if w != 12 { panic("wrong width") }
+		}
+	`
+
+	prog, err := executor.NewRuntimeByGoCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 50; i++ {
+		err = prog.Execute(context.Background())
+		if err != nil {
+			t.Fatalf("Iteration %d failed: %v", i, err)
+		}
+	}
+}

@@ -1,0 +1,9 @@
+.idea
+*.iml
+coverage.txt
+bin/
+vscode-ext/node_modules/
+*.vsix
+*.txt
+.codex
+report

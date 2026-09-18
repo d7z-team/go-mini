@@ -1,0 +1,730 @@
+package ast_test
+
+import (
+	"strings"
+	"testing"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
+)
+
+func TestUnimportedFFIValidation(t *testing.T) {
+	code := `package main
+func main() {
+	os.ReadFile("test.txt")
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	// 模拟 FFI 符号
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
+	}
+
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = prog.Check(semanticCtx)
+	if err == nil {
+		t.Fatalf("Expected validation error for unimported FFI package, got none")
+	}
+	found := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "package os resolved but not imported") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Expected missing import diagnostic, got logs: %+v", validator.Logs())
+	}
+}
+
+func TestUnimportedFFICompletion(t *testing.T) {
+	// 使用完整的成员表达式，然后在成员位置尝试补全
+	code := `package main
+func main() {
+	os.ReadFile("test")
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"os.ReadFile":  "function(String) (Array<Byte>, String)",
+		"os.WriteFile": "function(String, Array<Byte>) String",
+	}
+
+	ast.NewValidator(prog, externalSpecs, nil, true)
+	// 在 "os." 之后触发补全
+	// Line 3, Col 5 是 "o", Col 6 是 "s", Col 7 是 "."
+	completions := ast.FindCompletionsAt(prog, 3, 7)
+
+	foundReadFile := false
+	foundWriteFile := false
+	for _, item := range completions {
+		if item.Label == "ReadFile" {
+			foundReadFile = true
+		}
+		if item.Label == "WriteFile" {
+			foundWriteFile = true
+		}
+	}
+
+	if !foundReadFile || !foundWriteFile {
+		t.Errorf("Expected 'ReadFile' and 'WriteFile' in completions, got: %+v", completions)
+	}
+}
+
+func TestGoSourceModuleCompletion(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	// 模拟导入的子模块
+	subCode := `package mymath
+func Add(a Int64, b Int64) Int64 { return a + b }
+type Point struct { X Int64 }
+`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	math.Add(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+
+	// 手动注入子模块 Root (模拟 Loader 行为之后的结果)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	registerModuleExports(validator, "my/math", subValidator)
+	// 注意：converter 已经根据 import "my/math" 建立了 math -> my/math 的映射
+
+	// 在 "math." 之后触发补全 (Line 4, Col 6 是 '.', 尝试 Col 6 或 Col 7)
+	completions := ast.FindCompletionsAt(mainProg, 4, 6)
+
+	foundAdd := false
+	foundPoint := false
+	for _, item := range completions {
+		if item.Label == "Add" {
+			foundAdd = true
+		}
+		if item.Label == "Point" {
+			foundPoint = true
+		}
+	}
+
+	if !foundAdd || !foundPoint {
+		t.Errorf("Expected 'Add' and 'Point' in completions, got: %+v", completions)
+	}
+}
+
+func TestGlobalPackageCompletion(t *testing.T) {
+	code := `package main
+func main() {
+	
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
+		"fmt.Printf":  "function(String, ...Any) Void",
+	}
+
+	ast.NewValidator(prog, externalSpecs, nil, true)
+	// 在空行触发补全
+	completions := ast.FindCompletionsAt(prog, 3, 1)
+
+	foundOs := false
+	foundFmt := false
+	for _, item := range completions {
+		if item.Label == "os" && item.Kind == "package" {
+			foundOs = true
+		}
+		if item.Label == "fmt" && item.Kind == "package" {
+			foundFmt = true
+		}
+	}
+
+	if !foundOs || !foundFmt {
+		t.Errorf("Expected 'os' and 'fmt' packages in global completion list, got: %+v", completions)
+	}
+}
+
+func TestUnimportedFFIValidationError(t *testing.T) {
+	code := `package main
+func main() {
+	os.NonExistentFunction("test.txt")
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	// 模拟 FFI 符号，但不包含 NonExistentFunction
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
+	}
+
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = prog.Check(semanticCtx)
+
+	// 预期有验证错误，因为 NonExistentFunction 不存在
+	if err == nil {
+		t.Errorf("Expected validation error for non-existent function in unimported FFI package, but got none")
+	} else {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestUnimportedUnknownPackageCompletion(t *testing.T) {
+	code := `package main
+func main() {
+	unknownpkg.SomeFunc()
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"os.ReadFile": "function(String) (Array<Byte>, String)",
+	}
+
+	ast.NewValidator(prog, externalSpecs, nil, true)
+	// 在 "unknownpkg." 之后触发补全 (Line 3, Col 12 是 '.')
+	completions := ast.FindCompletionsAt(prog, 3, 12)
+
+	if len(completions) > 0 {
+		t.Errorf("Expected no completions for unknown package, but got: %+v", completions)
+	}
+}
+
+func TestUnimportedUnknownPackageCheck(t *testing.T) {
+	code := `package main
+func main() {
+	unknownpkg.SomeFunc()
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = prog.Check(semanticCtx)
+
+	// 预期有验证错误，因为 unknownpkg 既没导入也不是 FFI 包
+	if err == nil {
+		t.Errorf("Expected validation error for unknown package, but got none")
+	} else {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestImportedRootCompletionWithoutExplicitImport(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	// 模拟已加载但未导入的子模块
+	subCode := `package mymath
+func Add(a Int64, b Int64) Int64 { return a + b }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+
+	mainCode := `package main
+func main() {
+	mymath.Add(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
+	registerModuleExports(validator, "mymath", subValidator)
+
+	// 在 "mymath." 之后触发补全 (Line 3, Col 8 是 '.')
+	completions := ast.FindCompletionsAt(mainProg, 3, 8)
+
+	foundAdd := false
+	for _, item := range completions {
+		if item.Label == "Add" {
+			foundAdd = true
+		}
+	}
+
+	if !foundAdd {
+		t.Errorf("Expected 'Add' in completions for unimported but loaded package, but got: %+v", completions)
+	}
+}
+
+func TestImportedRootCheckWithoutExplicitImport(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	// 模拟已加载但未导入的子模块
+	subCode := `package mymath
+func Add(a Int64, b Int64) Int64 { return a + b }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+
+	mainCode := `package main
+func main() {
+	mymath.Add(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	// 模拟 Loader 已加载了该包，但 main 代码中没有 import "my/math"
+	registerModuleExports(validator, "mymath", subValidator)
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = mainProg.Check(semanticCtx)
+
+	// 预期有验证错误，因为没导入，即使 Loader 已经把它读进来了
+	if err == nil {
+		t.Errorf("Expected validation error for unimported package, but got none")
+	} else {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestImportedRootPathCompletionRequiresExplicitImport(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	// 模拟已加载但未导入的子模块，路径带有层级
+	subCode := `package math
+func Add(a Int64, b Int64) Int64 { return a + b }`
+	subNode, err := conv.ConvertSource("math", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+
+	mainCode := `package main
+func main() {
+	math.Add(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	// 模拟 Loader 已加载了该包，路径为 "my/math"
+	registerModuleExports(validator, "my/math", subValidator)
+
+	// 重新初始化以应用宽容模式下的 Package 注册逻辑 (实际上通常是在 Loader 填充后再创建 Validator，这里手动触发)
+	validator, _ = ast.NewValidator(mainProg, nil, nil, true)
+	registerModuleExports(validator, "my/math", subValidator)
+
+	// 在 "math." 之后触发补全 (Line 3, Col 6 是 '.')
+	completions := ast.FindCompletionsAt(mainProg, 3, 6)
+
+	foundAdd := false
+	for _, item := range completions {
+		if item.Label == "Add" {
+			foundAdd = true
+		}
+	}
+
+	if foundAdd {
+		t.Errorf("unexpected completion for non-imported module path alias: %+v", completions)
+	}
+}
+
+func TestImportedRootCheckWithPackageType(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	// 模拟已加载但未导入的子模块
+	subCode := `package mymath
+func Add(a Int64, b Int64) Int64 { return a + b }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+
+	mainCode := `package main
+func main() {
+	mymath.Add(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	registerModuleExports(validator, "mymath", subValidator)
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = mainProg.Check(semanticCtx)
+	if err == nil {
+		t.Fatalf("Expected validation error for recognized but unimported package, but got none")
+	}
+
+	foundMissingImport := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "resolved but not imported") {
+			foundMissingImport = true
+			break
+		}
+	}
+	if !foundMissingImport {
+		t.Fatalf("Expected missing import diagnostic, got logs: %+v", validator.Logs())
+	}
+}
+
+func TestImportedRootCheckMemberNotExist(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	subCode := `package mymath
+func Add(a Int64, b Int64) Int64 { return a + b }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+
+	mainCode := `package main
+func main() {
+	mymath.Sub(1, 2)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	registerModuleExports(validator, "mymath", subValidator)
+
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = mainProg.Check(semanticCtx)
+
+	// 预期有验证错误，因为 Sub 在 mymath 中不存在
+	if err == nil {
+		t.Errorf("Expected validation error for non-existent member in recognized package, but got none")
+	} else {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestCompletionDoesNotLeakFutureLocalVariables(t *testing.T) {
+	code := `package main
+func main() {
+	prin
+	later := 1
+}`
+
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(prog, nil, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	_ = prog.Check(semanticCtx)
+
+	completions := ast.FindCompletionsAt(prog, 3, 5)
+	for _, item := range completions {
+		if item.Label == "later" {
+			t.Fatalf("future local variable leaked into completion list: %+v", completions)
+		}
+	}
+}
+
+func TestUnimportedFFIPackageCheckReportsDiagnostic(t *testing.T) {
+	code := `package main
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, OpsGO Runtime!")
+	time.Sleep(1 * time.Second)
+	fmt.Println("Done.")
+}`
+	conv := gofrontend.NewConverter()
+	node, err := conv.ConvertSource("snippet", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := node.(*ast.ProgramStmt)
+
+	externalSpecs := map[ast.Ident]ast.GoMiniType{
+		"fmt.Println": "function(...Any) Void",
+		"time.Sleep":  "function(Duration) Void",
+		"time.Second": "Duration",
+	}
+
+	validator, _ := ast.NewValidator(prog, externalSpecs, nil, true)
+	semanticCtx := ast.NewSemanticContext(validator)
+	err = prog.Check(semanticCtx)
+	if err == nil {
+		t.Fatal("expected missing import validation error, got none")
+	}
+
+	found := false
+	for _, log := range validator.Logs() {
+		if strings.Contains(log.Message, "package time resolved but not imported") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing import diagnostic, got logs: %+v", validator.Logs())
+	}
+}
+
+func TestImportedModuleChainedMemberCompletion(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+func NewPoint(x Int64, y Int64) Point { return Point{X: x, Y: y} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
+		t.Fatalf("sub module check failed: %v", err)
+	}
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.NewPoint(1, 2).Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	registerModuleExports(validator, "my/math", subValidator)
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 26)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected chained member completions X/Y, got %+v", completions)
+	}
+}
+
+func TestImportedModuleTupleReturnMemberCompletion(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+func SplitPoint() (Point, Bool) { return Point{X: 1, Y: 2}, true }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.SplitPoint().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	registerModuleExports(validator, "my/math", subValidator)
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 25)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected tuple-return completions X/Y, got %+v", completions)
+	}
+}
+
+func TestImportedModuleAliasReturnMemberCompletion(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+type PointAlias = Point
+func MakeAlias() PointAlias { return PointAlias{X: 1, Y: 2} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	_ = subProg.Check(ast.NewSemanticContext(subValidator))
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.MakeAlias().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	registerModuleExports(validator, "my/math", subValidator)
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 24)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected alias-return completions X/Y, got %+v", completions)
+	}
+}
+
+func TestImportedModuleInterfaceChainCompletion(t *testing.T) {
+	conv := gofrontend.NewConverter()
+
+	subCode := `package mymath
+type Point struct { X Int64; Y Int64 }
+type Builder interface { Next() Point }
+type BuilderImpl struct {}
+func (b BuilderImpl) Next() Point { return Point{X: 1, Y: 2} }
+func Factory() Builder { return BuilderImpl{} }`
+	subNode, err := conv.ConvertSource("mymath", subCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subProg := subNode.(*ast.ProgramStmt)
+	subProg.ModulePath = "my/math"
+	subValidator, _ := ast.NewValidator(subProg, nil, nil, true)
+	if err := subProg.Check(ast.NewSemanticContext(subValidator)); err != nil {
+		t.Fatalf("sub module check failed: %v", err)
+	}
+
+	mainCode := `package main
+import "my/math"
+func main() {
+	print(math.Factory().Next().Y)
+}`
+	mainNode, err := conv.ConvertSource("main", mainCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mainProg := mainNode.(*ast.ProgramStmt)
+
+	validator, _ := ast.NewValidator(mainProg, nil, nil, true)
+	registerModuleExports(validator, "my/math", subValidator)
+	_ = mainProg.Check(ast.NewSemanticContext(validator))
+
+	completions := ast.FindCompletionsAt(mainProg, 4, 29)
+	foundX := false
+	foundY := false
+	for _, item := range completions {
+		if item.Label == "X" {
+			foundX = true
+		}
+		if item.Label == "Y" {
+			foundY = true
+		}
+	}
+	if !foundX || !foundY {
+		t.Fatalf("expected interface-chain completions X/Y, got %+v", completions)
+	}
+}

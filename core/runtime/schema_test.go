@@ -1,0 +1,158 @@
+package runtime
+
+import "testing"
+
+func TestParseRuntimeFuncSig(t *testing.T) {
+	sig, err := ParseRuntimeFuncSig("function(String, ...Any) tuple(Void, String)")
+	if err != nil {
+		t.Fatalf("ParseRuntimeFuncSig failed: %v", err)
+	}
+	if sig == nil {
+		t.Fatal("expected non-nil function signature")
+	}
+	if !sig.Variadic {
+		t.Fatal("expected variadic signature")
+	}
+	if len(sig.ParamTypes) != 2 {
+		t.Fatalf("expected 2 params, got %d", len(sig.ParamTypes))
+	}
+	if got := string(sig.ReturnType.Raw); got != "tuple(Void, String)" {
+		t.Fatalf("unexpected return type: %s", got)
+	}
+}
+
+func TestParseRuntimeStructSpec(t *testing.T) {
+	spec, err := ParseRuntimeStructSpec("Example", StructOwnershipVMValue, "struct { Msg String; Value Int64; Child Ptr<demo.Type>; }")
+	if err != nil {
+		t.Fatalf("ParseRuntimeStructSpec failed: %v", err)
+	}
+	if spec == nil {
+		t.Fatal("expected non-nil struct spec")
+	}
+	if len(spec.Fields) != 3 {
+		t.Fatalf("expected 3 fields, got %d", len(spec.Fields))
+	}
+	if spec.Fields[0].Name != "Msg" || spec.Fields[0].Type != "String" {
+		t.Fatalf("unexpected first field: %+v", spec.Fields[0])
+	}
+	if spec.Fields[2].Name != "Child" || spec.Fields[2].Type != "Ptr<demo.Type>" {
+		t.Fatalf("unexpected third field: %+v", spec.Fields[2])
+	}
+	if got := spec.ByName["Value"].Type; got != "Int64" {
+		t.Fatalf("unexpected field lookup result: %s", got)
+	}
+	if spec.TypeID != "Example" {
+		t.Fatalf("unexpected type id: %s", spec.TypeID)
+	}
+	if spec.Layout.Size != 3 {
+		t.Fatalf("unexpected layout size: %d", spec.Layout.Size)
+	}
+	if spec.Layout.FieldIndex["Value"] != 1 || spec.Layout.FieldOffset["Child"] != 2 {
+		t.Fatalf("unexpected struct layout: %+v", spec.Layout)
+	}
+}
+
+func TestParseHostOpaqueStructSpecSplitsMethods(t *testing.T) {
+	spec, err := ParseRuntimeStructSpec("demo.Handle", StructOwnershipHostOpaque, "struct { Ping function(HostRef<demo.Handle>) Void; }")
+	if err != nil {
+		t.Fatalf("ParseRuntimeStructSpec failed: %v", err)
+	}
+	if spec.Ownership != StructOwnershipHostOpaque {
+		t.Fatalf("unexpected ownership: %s", spec.Ownership)
+	}
+	if len(spec.Fields) != 0 || len(spec.Methods) != 1 {
+		t.Fatalf("expected method-only host opaque schema, got fields=%d methods=%d", len(spec.Fields), len(spec.Methods))
+	}
+	if spec.ByMethod["Ping"] == nil {
+		t.Fatalf("missing Ping method metadata: %+v", spec.ByMethod)
+	}
+	if _, err := ParseRuntimeStructSpec("demo.Bad", StructOwnershipHostOpaque, "struct { Value Int64; }"); err == nil {
+		t.Fatal("expected host opaque data field rejection")
+	}
+}
+
+func TestParseRuntimeInterfaceSpec(t *testing.T) {
+	spec, err := ParseRuntimeInterfaceSpec("interface{Read(Array<Byte>) tuple(Int64, Error); Close() Error;}")
+	if err != nil {
+		t.Fatalf("ParseRuntimeInterfaceSpec failed: %v", err)
+	}
+	if spec == nil {
+		t.Fatal("expected non-nil interface spec")
+	}
+	if len(spec.Methods) != 2 {
+		t.Fatalf("expected 2 methods, got %d", len(spec.Methods))
+	}
+	if spec.ByName["Read"] == nil || spec.ByName["Close"] == nil {
+		t.Fatalf("missing parsed interface methods: %+v", spec.ByName)
+	}
+	if got := spec.MethodStringMap()["Close"]; got != "function() Error" {
+		t.Fatalf("unexpected close signature: %s", got)
+	}
+	if spec.MethodIndex["Close"] != 0 || spec.MethodIndex["Read"] != 1 {
+		t.Fatalf("unexpected method index map: %+v", spec.MethodIndex)
+	}
+	if spec.Methods[0].Name != "Close" || spec.Methods[1].Name != "Read" {
+		t.Fatalf("expected deterministic method order, got %+v", spec.Methods)
+	}
+}
+
+func TestParseRuntimeTypeAndCanonicalID(t *testing.T) {
+	typ, err := ParseRuntimeType("Ptr<demo.Type>")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType failed: %v", err)
+	}
+	if typ.Kind != RuntimeTypePointer {
+		t.Fatalf("unexpected type kind: %v", typ.Kind)
+	}
+	if typ.TypeID != "demo.Type" {
+		t.Fatalf("unexpected canonical type id: %s", typ.TypeID)
+	}
+	if got := CanonicalTypeID("Ptr<demo.Type>"); got != "demo.Type" {
+		t.Fatalf("unexpected canonical id helper result: %s", got)
+	}
+	hostRef, err := ParseRuntimeType("HostRef<demo.Type>")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType HostRef failed: %v", err)
+	}
+	if hostRef.Kind != RuntimeTypeHostRef || hostRef.TypeID != "demo.Type" {
+		t.Fatalf("unexpected HostRef type: %+v", hostRef)
+	}
+	if got := CanonicalTypeID("HostRef<demo.Type>"); got != "demo.Type" {
+		t.Fatalf("unexpected host ref canonical id helper result: %s", got)
+	}
+	module, err := ParseRuntimeType("TypeModule")
+	if err != nil {
+		t.Fatalf("ParseRuntimeType TypeModule failed: %v", err)
+	}
+	if module.IsAny() || module.Kind == RuntimeTypeAny {
+		t.Fatalf("TypeModule must not behave as Any: %+v", module)
+	}
+	if module.Kind != RuntimeTypePrimitive {
+		t.Fatalf("unexpected TypeModule kind: %+v", module)
+	}
+}
+
+func TestParseRuntimeTypeRejectsNonCanonicalTypes(t *testing.T) {
+	tests := []string{
+		"int",
+		"uint",
+		"Int",
+		"[]Int64",
+		"map[string]int",
+		"function(int) Void",
+		"Array<int>",
+		"complex64",
+	}
+	for _, spec := range tests {
+		if _, err := ParseRuntimeType(spec); err == nil {
+			t.Fatalf("expected non-canonical type %q to be rejected", spec)
+		}
+	}
+}
+
+func TestSetRawTypeDoesNotPreserveInvalidType(t *testing.T) {
+	v := NewVar("int", TypeInt)
+	if v.RawType() != "Any" || v.TypeInfo.Kind != RuntimeTypeAny {
+		t.Fatalf("expected invalid raw type to fall back to Any, got %+v", v.TypeInfo)
+	}
+}

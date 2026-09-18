@@ -1,0 +1,195 @@
+package engine
+
+import (
+	"context"
+	"errors"
+
+	"gopkg.d7z.net/go-mini/core/ast"
+	"gopkg.d7z.net/go-mini/core/bytecode"
+	"gopkg.d7z.net/go-mini/core/frontend"
+	"gopkg.d7z.net/go-mini/core/gofrontend"
+	"gopkg.d7z.net/go-mini/core/runtime"
+)
+
+func (e *MiniExecutor) CompileWithFrontend(ctx context.Context, fe frontend.Frontend, files []SourceFile) (*ExecutableArtifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileWithFrontend(ctx, fe, files, "", false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	return executableArtifactFromCompiled(compiled)
+}
+
+func (e *MiniExecutor) CompileFiles(files []SourceFile) (*ExecutableArtifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileFiles(files, false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	return executableArtifactFromCompiled(compiled)
+}
+
+func (e *MiniExecutor) CompileDir(dir string) (*ExecutableArtifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileDir(dir, false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	return executableArtifactFromCompiled(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByArtifact(artifact *ExecutableArtifact) (*ExecutableProgram, error) {
+	if artifact == nil {
+		return nil, errors.New("invalid executable artifact")
+	}
+	if artifact.Bytecode == nil || artifact.Bytecode.Executable == nil {
+		return nil, errors.New("executable artifact missing executable bytecode")
+	}
+
+	prepared, err := e.preparedProgramForArtifact(artifact)
+	if err != nil {
+		return nil, err
+	}
+	executor, err := runtime.NewExecutorFromPrepared(prepared)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.applyExecutorConfig(executor); err != nil {
+		return nil, err
+	}
+	if err := executor.ValidateModuleRequirements(); err != nil {
+		return nil, err
+	}
+
+	return &ExecutableProgram{
+		Source:   artifact.Source,
+		artifact: artifact,
+		executor: executor,
+		owner:    e,
+		prepared: prepared,
+	}, nil
+}
+
+func (e *MiniExecutor) NewRuntimeByFiles(files []SourceFile) (*ExecutableProgram, error) {
+	compiled, err := e.CompileFiles(files)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByArtifact(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByDir(dir string) (*ExecutableProgram, error) {
+	compiled, err := e.CompileDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByArtifact(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByBytecode(program *bytecode.Program) (*ExecutableProgram, error) {
+	artifact, err := e.ArtifactFromBytecode(program)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByArtifact(artifact)
+}
+
+func (e *MiniExecutor) ArtifactFromBytecode(program *bytecode.Program) (*ExecutableArtifact, error) {
+	return ExecutableArtifactFromBytecode("bytecode", "", program)
+}
+
+func (e *MiniExecutor) ArtifactFromBytecodeJSON(payload []byte) (*ExecutableArtifact, error) {
+	return ExecutableArtifactFromBytecodeJSON(payload)
+}
+
+func (e *MiniExecutor) NewRuntimeByBytecodeJSON(payload []byte) (*ExecutableProgram, error) {
+	program, err := bytecode.UnmarshalJSON(payload)
+	if err != nil {
+		return nil, err
+	}
+	return e.NewRuntimeByBytecode(program)
+}
+
+func (e *MiniExecutor) CompileGoCode(code string) (*ExecutableArtifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileSource("snippet", code, false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	return executableArtifactFromCompiled(compiled)
+}
+
+func (e *MiniExecutor) CompileGoFile(filename, code string) (*ExecutableArtifact, error) {
+	compiled, _, semanticCtx, err := e.newCompiler().CompileSource(filename, code, false)
+	if err != nil {
+		return nil, newMiniAstError(err, semanticCtx, compiledProgramNode(compiled))
+	}
+	if err := e.prepareCompiledArtifact(compiled, semanticCtx); err != nil {
+		return nil, err
+	}
+	return executableArtifactFromCompiled(compiled)
+}
+
+func (e *MiniExecutor) NewRuntimeByGoCode(code string) (*ExecutableProgram, error) {
+	return e.newRuntimeByGoCode("snippet", code)
+}
+
+func (e *MiniExecutor) NewRuntimeByGoFile(filename, code string) (*ExecutableProgram, error) {
+	return e.newRuntimeByGoCode(filename, code)
+}
+
+func (e *MiniExecutor) AnalyzeGoCodeTolerant(code string) (*AnalysisProgram, []error) {
+	return e.AnalyzeGoFileTolerant("snippet", code)
+}
+
+func (e *MiniExecutor) AnalyzeGoFileTolerant(filename, code string) (*AnalysisProgram, []error) {
+	node, errs := gofrontend.NewConverter().ConvertSourceTolerant(filename, code)
+	program, ok := node.(*ast.ProgramStmt)
+	if !ok || program == nil {
+		return nil, errs
+	}
+	compiled, _, err := e.newCompiler().AnalyzeProgramWithSources(filename, code, program, true, map[string]string{filename: code})
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if compiled == nil {
+		return nil, errs
+	}
+	return newAnalysisProgram(code, compiled, compiled.Program), errs
+}
+
+// AnalyzeProgramTolerant compiles an AST in analysis mode and returns collected
+// diagnostics without treating the result as a runtime loading artifact.
+//
+// The sources map is optional. When provided, it enables source-based artifacts
+// such as call template hover previews.
+func (e *MiniExecutor) AnalyzeProgramTolerant(program *ast.ProgramStmt, sources map[string]string) (*AnalysisProgram, []error) {
+	var errs []error
+	compiled, _, err := e.newCompiler().AnalyzeProgramWithSources("ast", "", program, true, sources)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	return newAnalysisProgram("", compiled, program), errs
+}
+
+func (e *MiniExecutor) newRuntimeByGoCode(filename, code string) (*ExecutableProgram, error) {
+	artifact, err := e.CompileGoFile(filename, code)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := e.NewRuntimeByArtifact(artifact)
+	if err != nil {
+		return nil, err
+	}
+	res.Source = code
+	return res, nil
+}

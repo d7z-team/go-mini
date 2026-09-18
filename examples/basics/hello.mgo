@@ -1,0 +1,18 @@
+package main
+
+import "fmt"
+
+// mgo 函数声明和 Go 接近，参数与返回值都需要显式类型。
+func greet(name string) string {
+	return fmt.Sprintf("hello, %s", name)
+}
+
+func main() {
+	message := greet("go-mini")
+	// 示例里保留断言，方便 make examples 同时充当轻量回归检查。
+	if message != "hello, go-mini" {
+		panic("unexpected greeting")
+	}
+
+	fmt.Println(message)
+}

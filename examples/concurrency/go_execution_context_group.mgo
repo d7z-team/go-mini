@@ -1,0 +1,24 @@
+package main
+
+import "fmt"
+import "time"
+
+var a Int64
+var b Int64
+
+func main() {
+	go func() {
+		a = 10 * 2
+	}()
+	go func() {
+		b = 21 * 2
+	}()
+	time.Sleep(1)
+	time.Sleep(1)
+
+	if a != 20 || b != 42 {
+		panic("unexpected go result")
+	}
+
+	fmt.Println("results:", a, b)
+}

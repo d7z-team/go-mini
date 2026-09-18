@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Go-Mini",
+  "scopeName": "source.mgo",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#types" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.mgo", "match": "//.*" },
+        { "name": "comment.block.mgo", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "keywords": {
+      "patterns": [{
+        "name": "keyword.control.mgo",
+        "match": "\\b(if|else|for|range|switch|case|default|return|defer|go|try|catch|finally|throw|break|continue|fallthrough|package|import|func|var|type|struct|interface)\\b"
+      }]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.mgo", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.mgo" }] },
+        { "name": "string.quoted.raw.mgo", "begin": "`", "end": "`" }
+      ]
+    },
+    "numbers": {
+      "patterns": [{
+        "name": "constant.numeric.mgo",
+        "match": "\\b\\d+(\\.\\d+)?\\b"
+      }]
+    },
+    "types": {
+      "patterns": [{
+        "name": "entity.name.type.mgo",
+        "match": "\\b(Int64|Float64|String|Bool|Byte|Rune|Any|Void|TypeModule|TypeClosure|Ptr|Array|Map)\\b"
+      }]
+    }
+  }
+}
